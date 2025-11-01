@@ -3344,55 +3344,102 @@ async def run_workflow(
                     steps=list(steps),
                 )
 
-            # Récupérer le compte SIP (ou utiliser le défaut)
-            if not sip_account_id and database_session:
-                default_account = database_session.query(SipAccount).filter_by(
-                    is_default=True, is_active=True
-                ).first()
-                if default_account:
-                    sip_account_id = default_account.id
-
-            if not sip_account_id:
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Aucun compte SIP configuré pour les appels sortants",
-                    step=current_node.slug,
-                    steps=list(steps),
-                )
-
-            # Récupérer from_number depuis le compte SIP
-            if database_session:
-                sip_account = database_session.query(SipAccount).filter_by(
-                    id=sip_account_id
-                ).first()
-                from_number = sip_account.contact_host if sip_account else "unknown"
-            else:
-                from_number = "unknown"
-
-            # Préparer les métadonnées
-            metadata = {
-                "triggered_by_workflow_id": workflow_definition.id if workflow_definition else None,
-                "triggered_by_session_id": agent_context.thread.id if agent_context else None,
-                "trigger_node_slug": current_node.slug,
-                "trigger_context": params.get("metadata", {}),
-            }
+            # Créer une session de base de données pour ce bloc
+            database_session = SessionLocal()
 
             try:
+                # Vérifier que le workflow vocal existe et récupérer sa version active
+                from ..models import WorkflowDefinition, Workflow
+
+                # Le voice_workflow_id peut être soit un workflow.id, soit un workflow_definition.id
+                # On essaie d'abord comme workflow.id (cas le plus probable depuis le frontend)
+                workflow = database_session.query(Workflow).filter_by(
+                    id=voice_workflow_id
+                ).first()
+
+                if workflow and workflow.active_version_id:
+                    # On a trouvé un workflow parent, utiliser sa version active
+                    voice_workflow_definition_id = workflow.active_version_id
+                elif workflow:
+                    # Workflow existe mais pas de version active, chercher une version active
+                    active_def = database_session.query(WorkflowDefinition).filter_by(
+                        workflow_id=workflow.id,
+                        is_active=True
+                    ).first()
+                    if not active_def:
+                        raise WorkflowExecutionError(
+                            current_node.slug,
+                            title,
+                            Exception(f"Le workflow '{workflow.display_name}' (ID: {voice_workflow_id}) n'a pas de version active. Veuillez activer une version."),
+                            list(steps),
+                        )
+                    voice_workflow_definition_id = active_def.id
+                else:
+                    # Peut-être que c'est directement un workflow_definition.id
+                    voice_workflow_def = database_session.query(WorkflowDefinition).filter_by(
+                        id=voice_workflow_id
+                    ).first()
+                    if not voice_workflow_def:
+                        raise WorkflowExecutionError(
+                            current_node.slug,
+                            title,
+                            Exception(f"Le workflow avec l'ID {voice_workflow_id} n'existe pas. Veuillez créer ou sélectionner un workflow valide."),
+                            list(steps),
+                        )
+                    voice_workflow_definition_id = voice_workflow_def.id
+
+                # Utiliser voice_workflow_definition_id pour l'appel sortant
+                # Note: On accepte n'importe quel type de workflow tant qu'il existe
+                # La validation du contenu (présence d'un bloc vocal) sera faite à l'exécution
+
+                # Récupérer le compte SIP (ou utiliser le défaut)
+                if not sip_account_id and database_session:
+                    default_account = database_session.query(SipAccount).filter_by(
+                        is_default=True, is_active=True
+                    ).first()
+                    if default_account:
+                        sip_account_id = default_account.id
+
+                if not sip_account_id:
+                    raise WorkflowExecutionError(
+                        "configuration",
+                        "Aucun compte SIP configuré pour les appels sortants",
+                        step=current_node.slug,
+                        steps=list(steps),
+                    )
+
+                # Récupérer from_number depuis le compte SIP
+                if database_session:
+                    sip_account = database_session.query(SipAccount).filter_by(
+                        id=sip_account_id
+                    ).first()
+                    from_number = sip_account.contact_host if sip_account else "unknown"
+                else:
+                    from_number = "unknown"
+
+                # Préparer les métadonnées
+                metadata = {
+                    "triggered_by_workflow_id": workflow_definition.id if workflow_definition else None,
+                    "triggered_by_session_id": agent_context.thread.id if agent_context else None,
+                    "trigger_node_slug": current_node.slug,
+                    "trigger_context": params.get("metadata", {}),
+                }
+
                 # Initier l'appel
                 outbound_manager = get_outbound_call_manager()
                 if not database_session:
                     raise WorkflowExecutionError(
-                        "configuration",
-                        "Session de base de données non disponible",
-                        step=current_node.slug,
-                        steps=list(steps),
+                        current_node.slug,
+                        title,
+                        Exception("Session de base de données non disponible"),
+                        list(steps),
                     )
 
                 call_session = await outbound_manager.initiate_call(
                     db=database_session,
                     to_number=to_number,
                     from_number=from_number,
-                    workflow_id=voice_workflow_id,
+                    workflow_id=voice_workflow_definition_id,
                     sip_account_id=sip_account_id,
                     metadata=metadata,
                 )
@@ -3452,6 +3499,9 @@ async def run_workflow(
                     exc,
                 )
                 raise_step_error(current_node.slug, title, exc)
+            finally:
+                # Fermer la session de base de données
+                database_session.close()
 
             transition = _next_edge(current_slug)
             if transition is None:

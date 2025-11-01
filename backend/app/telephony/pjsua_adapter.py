@@ -145,11 +145,23 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self.bits_per_sample = 16
 
         # Files pour l'audio
-        # Note: OpenAI peut envoyer de gros chunks (jusqu'à 28800 bytes) qui sont divisés
-        # en frames de 320 bytes. Pour absorber les rafales sans perdre d'audio, on utilise
-        # une queue plus grande (1000 éléments = ~20 secondes de buffer)
+        # Buffer de 1000 frames = 20 secondes @ 20ms/frame
+        # Grande capacité nécessaire:
+        # - OpenAI envoie en très gros bursts (plusieurs centaines de ms d'audio d'un coup)
+        # - PJSUA consomme à taux fixe (20ms/frame)
+        # - Queue absorbe les bursts sans perdre de paquets
+        # - Préférer latence plutôt que perte audio (coupures audibles)
+        # - Tests montrent que 1000 frames évite les "⚠️ Queue audio sortante pleine"
         self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
-        self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone
+        self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone - 20s max
+
+        # Compteurs pour diagnostics
+        self._frame_count = 0
+        self._audio_frame_count = 0
+        self._silence_frame_count = 0
+
+        # Flag pour arrêter le traitement après la déconnexion de l'appel
+        self._active = True
 
         # Initialiser le port
         super().__init__()
@@ -172,12 +184,37 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         if not PJSUA_AVAILABLE:
             return
 
+        # Si le port a été désactivé (appel terminé), envoyer du silence sans incrémenter les compteurs
+        if not self._active:
+            expected_size = self.samples_per_frame * 2  # 320 bytes
+            frame.buf.clear()
+            for _ in range(expected_size):
+                frame.buf.append(0)
+            frame.size = expected_size
+            frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
+            return
+
+        self._frame_count += 1
+
+        # Au premier appel, signaler que PJSUA est prêt à consommer l'audio
+        if self._frame_count == 1 and self.adapter._frame_requested_event and not self.adapter._frame_requested_event.is_set():
+            logger.info("🎬 Premier onFrameRequested - PJSUA est prêt à consommer l'audio")
+            self.adapter._frame_requested_event.set()
+
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
 
         try:
             # Récupérer l'audio de la queue (non-bloquant)
             audio_data = self._outgoing_audio_queue.get_nowait()
-            logger.debug("📢 onFrameRequested: audio trouvé dans queue (%d bytes)", len(audio_data))
+            self._audio_frame_count += 1
+
+            # Vérifier si c'est vraiment de l'audio (pas du silence)
+            is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
+
+            if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20 and not is_silence):
+                logger.info("📢 onFrameRequested #%d: audio trouvé (%d bytes) - %s",
+                           self._frame_count, len(audio_data),
+                           "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
 
             # S'assurer que la taille est correcte
             if len(audio_data) < expected_size:
@@ -197,6 +234,12 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         except queue.Empty:
             # Pas d'audio disponible, envoyer du silence PCM (0x00)
+            self._silence_frame_count += 1
+
+            if self._silence_frame_count <= 5 or self._silence_frame_count % 50 == 0:
+                logger.debug("🔇 onFrameRequested #%d: queue vide, envoi silence (total silence: %d)",
+                           self._frame_count, self._silence_frame_count)
+
             frame.buf.clear()
             for _ in range(expected_size):
                 frame.buf.append(0)
@@ -213,13 +256,29 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         if not PJSUA_AVAILABLE:
             return
 
+        # Log pour diagnostiquer si ce callback est bien appelé
+        if not hasattr(self, '_frame_received_count'):
+            self._frame_received_count = 0
+        self._frame_received_count += 1
+
+        if self._frame_received_count <= 10:
+            logger.info("📥 onFrameReceived appelé #%d: type=%s, size=%d, buf_len=%d",
+                       self._frame_received_count, frame.type, frame.size, len(frame.buf) if frame.buf else 0)
+
         if frame.type == pj.PJMEDIA_FRAME_TYPE_AUDIO and frame.buf:
             try:
                 # Récupérer l'audio PCM déjà décodé par PJSUA
                 audio_pcm = bytes(frame.buf[:frame.size])
 
+                if self._frame_received_count <= 5:
+                    logger.info("✅ Audio PCM extrait: %d bytes, premiers bytes: %s",
+                               len(audio_pcm), list(audio_pcm[:10]) if len(audio_pcm) >= 10 else list(audio_pcm))
+
                 # Ajouter l'audio PCM à la queue pour traitement async
                 self._incoming_audio_queue.put_nowait(audio_pcm)
+
+                if self._frame_received_count <= 5:
+                    logger.info("✅ Audio ajouté à la queue (taille queue: %d)", self._incoming_audio_queue.qsize())
 
                 # Notifier l'adaptateur qu'il y a de l'audio
                 if hasattr(self.adapter, '_on_audio_received'):
@@ -232,13 +291,25 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                         logger.debug("Erreur notification audio reçu: %s", e)
             except queue.Full:
                 logger.warning("Queue audio entrante pleine, frame ignorée")
+        else:
+            if self._frame_received_count <= 10:
+                logger.warning("⚠️ Frame reçue mais type=%s ou buf vide", frame.type)
 
     def send_audio(self, audio_data: bytes) -> None:
         """Envoie de l'audio vers le téléphone (appelé depuis l'async loop)."""
         try:
             self._outgoing_audio_queue.put_nowait(audio_data)
+
+            # Log des premières fois pour confirmer que l'audio arrive
+            queue_size = self._outgoing_audio_queue.qsize()
+            if self._audio_frame_count < 5:
+                # Vérifier si c'est du silence
+                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
+                logger.info("📥 send_audio: %d bytes ajoutés à queue (taille: %d) - %s",
+                           len(audio_data), queue_size,
+                           "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
         except queue.Full:
-            logger.warning("Queue audio sortante pleine, frame ignorée")
+            logger.warning("⚠️ Queue audio sortante pleine, frame ignorée")
 
     async def get_audio(self) -> bytes | None:
         """Récupère l'audio reçu du téléphone (appelé depuis l'async loop)."""
@@ -266,6 +337,37 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         return count
 
+    def deactivate(self) -> None:
+        """Désactive le port audio et vide les queues (appelé quand l'appel se termine).
+
+        Cela empêche PJSUA de continuer à envoyer de l'audio depuis ce port même après
+        la déconnexion de l'appel, ce qui causait l'envoi continu de silence.
+        """
+        logger.info("🛑 Désactivation du port audio (arrêt du traitement des frames)")
+        self._active = False
+
+        # Vider les queues pour libérer la mémoire
+        incoming_cleared = 0
+        outgoing_cleared = 0
+
+        try:
+            while True:
+                self._incoming_audio_queue.get_nowait()
+                incoming_cleared += 1
+        except queue.Empty:
+            pass
+
+        try:
+            while True:
+                self._outgoing_audio_queue.get_nowait()
+                outgoing_cleared += 1
+        except queue.Empty:
+            pass
+
+        if incoming_cleared > 0 or outgoing_cleared > 0:
+            logger.info("🗑️  Queues audio vidées: %d frames entrantes, %d frames sortantes",
+                       incoming_cleared, outgoing_cleared)
+
 
 class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
     """Callback pour un appel PJSUA."""
@@ -287,9 +389,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         ci = self.getInfo()
         logger.info(
-            "État appel: %s (state=%s)",
-            ci.stateText,
+            "📞 onCallState - call_id=%s, state=%d (%s), remote=%s",
+            ci.id,
             ci.state,
+            ci.stateText,
+            ci.remoteUri,
         )
 
         # Notifier l'adaptateur du changement d'état
@@ -309,28 +413,50 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         ci = self.getInfo()
 
+        logger.info("🎵 onCallMediaState appelé pour call_id=%s, state=%s", ci.id, ci.state)
+
         # Vérifier si le média est actif
+        media_is_active = False
         if ci.media:
+            logger.info("📊 Nombre de médias: %d", len(ci.media))
             for mi in ci.media:
                 if mi.type == pj.PJMEDIA_TYPE_AUDIO and mi.status == pj.PJSUA_CALL_MEDIA_ACTIVE:
+                    media_is_active = True
                     self._media_active = True
-                    logger.info("Média audio actif pour l'appel")
+                    logger.info("✅ Média audio actif pour call_id=%s, index=%d", ci.id, mi.index)
 
                     # Créer et connecter le port audio personnalisé
-                    if self._audio_port is None:
-                        self._audio_port = AudioMediaPort(self.adapter)
+                    # IMPORTANT: Toujours recréer le port car PJSUA peut détruire et recréer
+                    # le stream audio lors des UPDATE SIP (changement de codec)
+                    if self._audio_port is not None:
+                        logger.info("🔄 Port audio existe déjà, destruction avant recréation (call_id=%s)", ci.id)
+                        try:
+                            self._audio_port.deactivate()
+                        except Exception as e:
+                            logger.warning("Erreur désactivation ancien port: %s", e)
 
-                        # Obtenir le média audio de l'appel
-                        call_media = self.getMedia(mi.index)
-                        audio_media = pj.AudioMedia.typecastFromMedia(call_media)
+                    logger.info("🔧 Création du AudioMediaPort pour call_id=%s", ci.id)
+                    self._audio_port = AudioMediaPort(self.adapter)
 
-                        # Connecter : téléphone -> notre port (pour recevoir)
-                        audio_media.startTransmit(self._audio_port)
+                    # Obtenir le média audio de l'appel
+                    call_media = self.getMedia(mi.index)
+                    audio_media = pj.AudioMedia.typecastFromMedia(call_media)
 
-                        # Connecter : notre port -> téléphone (pour envoyer)
-                        self._audio_port.startTransmit(audio_media)
+                    # Connecter : téléphone -> notre port (pour recevoir)
+                    audio_media.startTransmit(self._audio_port)
+                    logger.info("✅ Connexion téléphone → port audio établie (call_id=%s)", ci.id)
 
-                        logger.info("Port audio connecté (bidirectionnel)")
+                    # Connecter : notre port -> téléphone (pour envoyer)
+                    self._audio_port.startTransmit(audio_media)
+                    logger.info("✅ Connexion port audio → téléphone établie (call_id=%s)", ci.id)
+
+                    # Log info du port (éviter clockRate qui n'existe pas sur ConfPortInfo)
+                    try:
+                        port_info = audio_media.getPortInfo()
+                        logger.info("🎵 Port audio connecté bidirectionnellement (call_id=%s) - Port: name=%s",
+                                   ci.id, port_info.name)
+                    except Exception as e:
+                        logger.debug("Erreur lecture info port (ignorée): %s", e)
 
                     # Notifier l'adaptateur que le média est prêt
                     if hasattr(self.adapter, '_on_media_active'):
@@ -341,6 +467,20 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                             )
                         except Exception as e:
                             logger.exception("Erreur dans onCallMediaState callback: %s", e)
+
+        # IMPORTANT: Si le média n'est plus actif et qu'on a un port audio, le désactiver
+        # Cela évite les "ports zombies" qui continuent d'envoyer du silence après la fin de l'appel
+        if not media_is_active and self._audio_port is not None:
+            logger.warning("⚠️ Média désactivé mais port audio encore actif (call_id=%s) - nettoyage", ci.id)
+            try:
+                self._audio_port.deactivate()
+                logger.info("✅ Port audio zombie désactivé (call_id=%s)", ci.id)
+            except Exception as e:
+                logger.warning("Erreur désactivation port audio zombie: %s", e)
+            finally:
+                # Ne pas mettre à None ici car _on_call_state le fera
+                # self._audio_port = None
+                pass
 
 
 class PJSUAAdapter:
@@ -359,6 +499,9 @@ class PJSUAAdapter:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
 
+        # Event qui se déclenche quand PJSUA commence à consommer l'audio (onFrameRequested appelé)
+        self._frame_requested_event: asyncio.Event | None = None
+
         # Callbacks
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._call_state_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
@@ -375,6 +518,7 @@ class PJSUAAdapter:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
         self._loop = asyncio.get_running_loop()
+        self._frame_requested_event = asyncio.Event()
 
         # Créer l'endpoint PJSUA
         self._ep = pj.Endpoint()
@@ -554,6 +698,32 @@ class PJSUAAdapter:
         # Nettoyer les appels terminés
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
             self._active_calls.pop(call_info.id, None)
+
+            # IMPORTANT: Arrêter l'audio bridge d'abord pour stopper le RTP stream
+            if hasattr(call, '_audio_bridge') and call._audio_bridge:
+                try:
+                    logger.info("🛑 Arrêt de l'audio bridge (call_id=%s)", call_info.id)
+                    call._audio_bridge.stop()
+                except Exception as e:
+                    logger.warning("Erreur arrêt audio bridge: %s", e)
+                finally:
+                    call._audio_bridge = None
+
+            # IMPORTANT: Nettoyer le port audio pour éviter les fuites
+            # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
+            if call._audio_port:
+                try:
+                    # Désactiver le port pour arrêter le traitement des frames
+                    # Cela empêche l'envoi continu de silence après la fin de l'appel
+                    call._audio_port.deactivate()
+                    logger.info("✅ Port audio désactivé (call_id=%s)", call_info.id)
+
+                    # Note: stopTransmit() nécessiterait l'audio_media comme argument
+                    # et de toute façon le port sera détruit, donc pas nécessaire
+                except Exception as e:
+                    logger.warning("Erreur désactivation port audio: %s", e)
+                finally:
+                    call._audio_port = None
 
         if self._call_state_callback:
             await self._call_state_callback(call, call_info)

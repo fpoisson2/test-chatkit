@@ -226,36 +226,151 @@ class OutboundCallManager:
             # Format: sip:+33612345678@domain.com
             to_uri = self._build_sip_uri(session.to_number, sip_account.trunk_uri)
 
-            logger.info("Making PJSUA call to %s", to_uri)
+            # Créer un Event pour attendre que le média soit actif
+            # IMPORTANT: Créer AVANT make_call pour éviter race condition
+            media_active_event = asyncio.Event()
 
-            # Initier l'appel avec PJSUA
+            # Créer une référence pour le call qu'on va créer
+            # On va la remplir après make_call
+            pjsua_call_ref: list[Any] = [None]
+
+            # Variable pour stocker pjsua_ready_event (sera rempli après création du bridge)
+            pjsua_ready_event_ref: list[asyncio.Event | None] = [None]
+
+            # Callback pour débloquer l'audio quand le média est actif
+            # IMPORTANT: Définir AVANT make_call pour capturer onCallMediaState
+            async def on_media_active_callback_outbound(active_call: Any, media_info: Any) -> None:
+                """Appelé quand le média devient actif (port audio créé)."""
+                if pjsua_call_ref[0] is None or active_call != pjsua_call_ref[0]:
+                    return
+
+                logger.info("🎵 Média actif détecté pour appel sortant (call_id=%s)", session.call_id)
+
+                # Attendre que le jitter buffer soit initialisé
+                logger.info("⏱️ Attente 50ms pour initialisation jitter buffer... (call_id=%s)", session.call_id)
+                await asyncio.sleep(0.05)  # 50ms
+
+                # Attendre que PJSUA commence à consommer l'audio (onFrameRequested appelé)
+                pjsua_ready_event = pjsua_ready_event_ref[0]
+                if pjsua_ready_event:
+                    logger.info("⏱️ Attente que PJSUA soit prêt à consommer l'audio... (call_id=%s)", session.call_id)
+                    await pjsua_ready_event.wait()
+                    logger.info("✅ PJSUA prêt - onFrameRequested appelé (call_id=%s)", session.call_id)
+
+                # Marquer l'appel comme connecté MAINTENANT
+                session.status = "answered"
+                self._update_call_status(
+                    db, call_db_id, "answered", answered_at=datetime.now(UTC)
+                )
+
+                logger.info("PJSUA call %s answered, média ready", session.call_id)
+                media_active_event.set()
+
+            # Enregistrer le callback média
+            self._pjsua_adapter.set_media_active_callback(on_media_active_callback_outbound)
+
+            # Callback pour nettoyer les ressources quand l'appel se termine
+            cleanup_done = asyncio.Event()
+
+            # Sauvegarder le callback précédent s'il existe
+            previous_call_state_callback = getattr(self._pjsua_adapter, '_call_state_callback', None)
+
+            async def on_call_state_callback_outbound(active_call: Any, call_info: Any) -> None:
+                """Appelé quand l'état de l'appel change."""
+                # D'abord, appeler le callback précédent s'il existe
+                if previous_call_state_callback:
+                    try:
+                        await previous_call_state_callback(active_call, call_info)
+                    except Exception as e:
+                        logger.warning("Erreur dans callback précédent: %s", e)
+
+                # Ensuite, gérer notre propre nettoyage
+                if pjsua_call_ref[0] and active_call == pjsua_call_ref[0]:
+                    # Si l'appel est déconnecté, nettoyer les ressources
+                    if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
+                        if not cleanup_done.is_set():
+                            logger.info("📞 Appel sortant déconnecté - nettoyage des ressources (call_id=%s)", session.call_id)
+
+                            # Arrêter le bridge audio
+                            if session._audio_bridge:
+                                try:
+                                    session._audio_bridge.stop()
+                                    logger.info("✅ Bridge audio arrêté (call_id=%s)", session.call_id)
+                                except Exception as e:
+                                    logger.warning("Erreur arrêt bridge audio: %s", e)
+
+                            cleanup_done.set()
+
+            # Enregistrer le callback de changement d'état
+            self._pjsua_adapter.set_call_state_callback(on_call_state_callback_outbound)
+
+            # CRITIQUE: Maintenant on initie l'appel APRÈS avoir enregistré les callbacks
+            logger.info("📞 Initiation de l'appel PJSUA vers %s (call_id=%s)", to_uri, session.call_id)
             pjsua_call = await self._pjsua_adapter.make_call(to_uri)
+
+            # Remplir la référence pour que les callbacks puissent l'utiliser
+            pjsua_call_ref[0] = pjsua_call
             session._pjsua_call = pjsua_call
 
-            # Attendre que l'appel soit connecté (200 OK)
-            # TODO: Ajouter un timeout et gérer les différents états
-            # Pour l'instant, on continue directement
-            session.status = "ringing"
-            self._update_call_status(db, call_db_id, "ringing")
+            logger.info("✅ Appel PJSUA initié, création de l'audio bridge (call_id=%s)", session.call_id)
 
-            # Attendre que le média soit actif
-            # TODO: Implémenter une attente conditionnelle sur l'état du média
-            await asyncio.sleep(1)  # Attendre 1s pour que le média soit prêt
-
-            # Créer l'audio bridge (8kHz ↔ 24kHz)
-            rtp_stream, send_to_peer = await create_pjsua_audio_bridge(pjsua_call)
-
-            # Marquer l'appel comme connecté
-            session.status = "answered"
-            self._update_call_status(
-                db, call_db_id, "answered", answered_at=datetime.now(UTC)
+            # Créer l'audio bridge MAINTENANT que l'appel existe
+            rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, audio_bridge = await create_pjsua_audio_bridge(
+                pjsua_call, media_active_event
             )
 
-            logger.info("PJSUA call %s answered, starting voice bridge", session.call_id)
+            # Remplir la référence pour le callback
+            pjsua_ready_event_ref[0] = pjsua_ready_event
+            session._audio_bridge = audio_bridge
+
+            logger.info("✅ Audio bridge créé, attente du média actif (call_id=%s)", session.call_id)
+
+            # Attendre que le média soit actif (max 10 secondes pour les appels sortants)
+            # OU que l'appel soit déconnecté (cleanup_done)
+            logger.info("⏱️ Attente activation du média pour appel sortant... (call_id=%s)", session.call_id)
+            try:
+                # Attendre soit media_active_event soit cleanup_done (appel terminé)
+                done, pending = await asyncio.wait(
+                    [
+                        asyncio.create_task(media_active_event.wait()),
+                        asyncio.create_task(cleanup_done.wait())
+                    ],
+                    timeout=10.0,
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Annuler les tâches en attente
+                for task in pending:
+                    task.cancel()
+
+                # Si l'appel a été déconnecté (cleanup_done), arrêter ici
+                if cleanup_done.is_set():
+                    logger.warning("❌ Appel déconnecté avant que le média soit actif (call_id=%s)", session.call_id)
+                    return
+
+                logger.info("✅ Média actif confirmé (call_id=%s)", session.call_id)
+            except asyncio.TimeoutError:
+                # Vérifier si l'appel est toujours connecté
+                if cleanup_done.is_set():
+                    logger.warning("❌ Appel déconnecté pendant l'attente du média (call_id=%s)", session.call_id)
+                    return
+
+                logger.warning("⚠️ Timeout attente média actif - on continue quand même (call_id=%s)", session.call_id)
+                session.status = "answered"
+                self._update_call_status(
+                    db, call_db_id, "answered", answered_at=datetime.now(UTC)
+                )
+
+            # Wrapper send_to_peer pour bloquer l'audio jusqu'à ce que le média soit actif
+            # CRITIQUE: Sans ce wrapper, OpenAI envoie de l'audio avant que le port soit prêt
+            async def send_to_peer_blocked(audio: bytes) -> None:
+                """Wrapper qui bloque l'envoi d'audio jusqu'à ce que le port audio existe."""
+                await media_active_event.wait()
+                await send_to_peer(audio)
 
             # Démarrer la session vocale (similaire au code existant)
             await self._run_voice_session_pjsua(
-                db, session, call_db_id, rtp_stream, send_to_peer
+                db, session, call_db_id, rtp_stream, send_to_peer_blocked, clear_queue, pjsua_ready_event
             )
 
         except Exception as e:
@@ -270,6 +385,15 @@ class OutboundCallManager:
             )
         finally:
             # Nettoyer
+            # 1. Arrêter l'audio bridge d'abord
+            if hasattr(session, '_audio_bridge') and session._audio_bridge:
+                try:
+                    logger.info("Stopping audio bridge for call %s", session.call_id)
+                    session._audio_bridge.stop()
+                except Exception as e:
+                    logger.warning("Error stopping audio bridge: %s", e)
+
+            # 2. Raccrocher l'appel PJSUA
             if session._pjsua_call:
                 try:
                     await self._pjsua_adapter.hangup_call(session._pjsua_call)
@@ -286,6 +410,8 @@ class OutboundCallManager:
         call_db_id: int,
         rtp_stream: Any,
         send_to_peer: Any,
+        clear_queue: Any,
+        pjsua_ready_event: asyncio.Event,
     ) -> None:
         """Exécute la session vocale avec PJSUA audio bridge."""
         try:
@@ -300,11 +426,24 @@ class OutboundCallManager:
             # Résoudre la configuration de démarrage
             from ..workflows.service import resolve_start_telephony_config
 
-            route, instructions, voice_model, voice_name = resolve_start_telephony_config(
-                workflow, db
-            )
+            voice_config = resolve_start_telephony_config(workflow)
+            if not voice_config or not voice_config.default_route:
+                raise ValueError(
+                    f"Workflow {session.workflow_id} has no voice configuration"
+                )
 
-            # Extraire les tools et handoffs du workflow (identique au code existant)
+            route = voice_config.default_route
+
+            # Valeurs par défaut depuis la route/config
+            voice_model = route.overrides.model or get_settings().chatkit_realtime_model
+            instructions = (
+                route.overrides.instructions or get_settings().chatkit_realtime_instructions
+            )
+            voice_name = route.overrides.voice or get_settings().chatkit_realtime_voice
+            voice_provider_slug = getattr(route, "provider_slug", None) or "openai"
+            voice_provider_id = getattr(route, "provider_id", None)
+
+            # Extraire TOUS les paramètres du bloc voice_agent (pas seulement tools/handoffs)
             voice_tools = []
             voice_handoffs = []
 
@@ -312,6 +451,36 @@ class OutboundCallManager:
                 if getattr(step, "kind", None) == "voice_agent":
                     params = getattr(step, "parameters", None)
                     if isinstance(params, dict):
+                        # Instructions personnalisées (override les instructions de la route)
+                        custom_instructions = params.get("instructions")
+                        if isinstance(custom_instructions, str) and custom_instructions.strip():
+                            instructions = custom_instructions
+                            logger.info("Using custom instructions from voice_agent block")
+
+                        # Modèle vocal personnalisé
+                        custom_model = params.get("model")
+                        if isinstance(custom_model, str) and custom_model.strip():
+                            voice_model = custom_model
+                            logger.info("Using custom model from voice_agent block: %s", voice_model)
+
+                        # Voix personnalisée
+                        custom_voice = params.get("voice")
+                        if isinstance(custom_voice, str) and custom_voice.strip():
+                            voice_name = custom_voice
+                            logger.info("Using custom voice from voice_agent block: %s", voice_name)
+
+                        # Provider personnalisé
+                        custom_provider_slug = params.get("model_provider_slug")
+                        if isinstance(custom_provider_slug, str) and custom_provider_slug.strip():
+                            voice_provider_slug = custom_provider_slug
+                            logger.info("Using custom provider slug from voice_agent block: %s", voice_provider_slug)
+
+                        custom_provider_id = params.get("model_provider_id")
+                        if isinstance(custom_provider_id, str) and custom_provider_id.strip():
+                            voice_provider_id = custom_provider_id
+                            logger.info("Using custom provider id from voice_agent block: %s", voice_provider_id)
+
+                        # Tools et handoffs
                         tools_payload = params.get("tools")
                         if isinstance(tools_payload, list):
                             voice_tools.extend(tools_payload)
@@ -320,10 +489,6 @@ class OutboundCallManager:
                         if isinstance(handoffs_payload, list):
                             voice_handoffs.extend(handoffs_payload)
                     break
-
-            # Ouvrir la session vocale
-            voice_provider_slug = getattr(route, "provider_slug", None) or "openai"
-            voice_provider_id = getattr(route, "provider_id", None)
 
             session_handle = await open_voice_session(
                 user_id=f"outbound:{session.call_id}",
@@ -382,7 +547,7 @@ class OutboundCallManager:
             )
 
             # Créer le voice bridge
-            voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+            voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
             session._voice_bridge = voice_bridge
 
             # Déterminer le base URL pour le provider
@@ -400,7 +565,9 @@ class OutboundCallManager:
                     instructions=instructions,
                     voice=voice_name,
                     rtp_stream=rtp_stream,  # PJSUA audio bridge stream
-                    send_to_peer=send_to_peer,  # PJSUA audio bridge callback
+                    send_to_peer=send_to_peer,  # PJSUA audio bridge callback (wrapped pour bloquer)
+                    clear_audio_queue=clear_queue,  # Permet d'interrompre l'audio
+                    pjsua_ready_to_consume=pjsua_ready_event,  # Attend que PJSUA soit prêt avant speak_first
                     api_base=realtime_api_base,
                     tools=voice_tools,
                     handoffs=voice_handoffs,
@@ -760,7 +927,7 @@ class OutboundCallManager:
                 )
 
                 # Créer le voice bridge
-                voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+                voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
                 session._voice_bridge = voice_bridge
 
                 # Callback pour envoyer l'audio au peer

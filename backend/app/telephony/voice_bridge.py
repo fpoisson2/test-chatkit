@@ -277,6 +277,7 @@ class TelephonyVoiceBridge:
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
         clear_audio_queue: Callable[[], int] | None = None,
+        pjsua_ready_to_consume: asyncio.Event | None = None,
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
@@ -299,6 +300,9 @@ class TelephonyVoiceBridge:
         error: Exception | None = None
         session: Any | None = None
         stop_event = asyncio.Event()
+
+        # Track if we've sent response.create immediately (for speak_first optimization)
+        response_create_sent_immediately = False
 
         # Use a list to create a mutable reference for block_audio_send
         block_audio_send_ref = [False]
@@ -340,15 +344,9 @@ class TelephonyVoiceBridge:
                     logger.debug("Erreur lors de la fermeture anticipée de session: %s", e)
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes
+            nonlocal inbound_audio_bytes, response_create_sent_immediately
             packet_count = 0
-            bytes_sent = 0
-            # Si on utilise une session pré-initialisée, turn_detection est déjà activé
-            turn_detection_enabled = preinit_session is not None
-            if turn_detection_enabled:
-                logger.info("Turn detection déjà activé (session pré-initialisée)")
-            # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
-            MIN_AUDIO_BEFORE_VAD = 4800  # 100ms minimum before enabling VAD
+            # Note: turn_detection est déjà activé dans la configuration initiale de session (_build_session_update)
             # Track if we've sent response.create when phone became ready
             response_create_sent_on_ready = False
 
@@ -364,11 +362,10 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
-                        # l'envoyer immédiatement - le RTP server attendra 150ms avant de flusher le buffer
-                        # et OpenAI prendra 200-400ms pour générer l'audio, donc le téléphone sera prêt à temps
-                        if speak_first and not preinit_response_create_sent and not response_create_sent_on_ready:
-                            logger.info("📞 Premier paquet RTP reçu - envoi immédiat de response.create pour speak_first")
+                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create (immédiatement ou pendant preinit),
+                        # l'envoyer maintenant comme fallback (mais normalement c'est déjà fait immédiatement après le démarrage de la session)
+                        if speak_first and not preinit_response_create_sent and not response_create_sent_immediately and not response_create_sent_on_ready:
+                            logger.warning("⚠️ FALLBACK: Premier paquet RTP reçu - envoi de response.create (devrait être déjà fait immédiatement !)")
                             try:
                                 from agents.realtime.model_inputs import (
                                     RealtimeModelRawClientMessage,
@@ -383,41 +380,17 @@ class TelephonyVoiceBridge:
                                     )
                                 )
                                 response_create_sent_on_ready = True
-                                logger.info("✅ response.create envoyé - l'assistant va parler en premier")
+                                logger.info("✅ response.create envoyé en fallback")
                             except Exception as exc:
                                 logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
-                    bytes_sent += len(pcm)
 
-                    # After sending enough audio, enable turn_detection (if not already enabled)
-                    # Note: create_response=False car on gère manuellement via response.create
-                    if not turn_detection_enabled and bytes_sent >= MIN_AUDIO_BEFORE_VAD:
-                        logger.info(
-                            "Activation de turn_detection après %.1fms d'audio",
-                            bytes_sent / 2 / 24000 * 1000
-                        )
-                        try:
-                            from agents.realtime.model_inputs import RealtimeModelSendSessionUpdate
-                            await session._model.send_event(
-                                RealtimeModelSendSessionUpdate(
-                                    session_settings={
-                                        "input_audio_transcription": {
-                                            "model": "whisper-1",
-                                        },
-                                        "turn_detection": {
-                                            "type": "semantic_vad",
-                                            "create_response": True,  # OpenAI crée automatiquement une réponse quand l'utilisateur arrête de parler
-                                            "interrupt_response": True,
-                                        },
-                                    }
-                                )
-                            )
-                            turn_detection_enabled = True
-                            logger.info("Turn detection (semantic_vad) activé avec succès (avec create_response automatique)")
-                        except Exception as e:
-                            logger.warning("Impossible d'activer turn_detection: %s", e)
+                    # Note: turn_detection est déjà activé dans la configuration initiale de session
+                    # (voir _build_session_update), donc on n'a pas besoin de l'activer ici.
+                    # Tenter de le faire après le speak_first cause l'erreur:
+                    # "Cannot update a conversation's voice if assistant audio is present."
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
@@ -882,8 +855,37 @@ class TelephonyVoiceBridge:
                 await session.__aenter__()
                 logger.info("Session SDK démarrée avec succès")
 
-            # Note: Si speak_first est activé, response.create sera envoyé dans forward_audio()
-            # quand le premier paquet RTP sera reçu (téléphone prêt à recevoir l'audio)
+            # Si speak_first est activé et qu'on n'a pas déjà envoyé response.create pendant preinit,
+            # attendre que PJSUA soit prêt à consommer l'audio AVANT d'envoyer response.create
+            # Cela garantit que le premier "Allô!" sera bien consommé et entendu
+            if speak_first and not preinit_response_create_sent:
+                if pjsua_ready_to_consume is not None:
+                    logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
+                    try:
+                        await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
+                        logger.info("✅ PJSUA prêt à consommer - envoi de response.create maintenant")
+                    except asyncio.TimeoutError:
+                        logger.warning("⚠️ Timeout en attendant PJSUA - envoi de response.create quand même")
+                else:
+                    logger.info("🚀 Envoi IMMÉDIAT de response.create pour speak_first (pas d'attente PJSUA)")
+
+                try:
+                    from agents.realtime.model_inputs import (
+                        RealtimeModelRawClientMessage,
+                        RealtimeModelSendRawMessage,
+                    )
+                    await session._model.send_event(
+                        RealtimeModelSendRawMessage(
+                            message=RealtimeModelRawClientMessage(
+                                type="response.create",
+                                other_data={},
+                            )
+                        )
+                    )
+                    response_create_sent_immediately = True
+                    logger.info("✅ response.create envoyé - l'assistant génère l'audio")
+                except Exception as exc:
+                    logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
 
             # Log available tools
             try:
