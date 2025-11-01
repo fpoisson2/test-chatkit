@@ -238,24 +238,62 @@ class OutboundCallManager:
             session.status = "ringing"
             self._update_call_status(db, call_db_id, "ringing")
 
-            # Attendre que le média soit actif
-            # TODO: Implémenter une attente conditionnelle sur l'état du média
-            await asyncio.sleep(1)  # Attendre 1s pour que le média soit prêt
-
-            # Créer l'audio bridge (8kHz ↔ 24kHz)
+            # Créer l'audio bridge IMMÉDIATEMENT (avant même le média actif)
+            # pour permettre la préparation de l'audio pendant la négociation
+            logger.info("Création de l'audio bridge PJSUA pour appel sortant (call_id=%s)", session.call_id)
             rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(pjsua_call)
 
             # Stocker le bridge dans la session ET dans le call PJSUA pour le cleanup
             session._audio_bridge = bridge
             pjsua_call._audio_bridge = bridge
 
-            # Marquer l'appel comme connecté
-            session.status = "answered"
-            self._update_call_status(
-                db, call_db_id, "answered", answered_at=datetime.now(UTC)
-            )
+            # Reset l'event frame_requested pour cet appel (partagé entre tous les appels)
+            if self._pjsua_adapter._frame_requested_event:
+                self._pjsua_adapter._frame_requested_event.clear()
+                logger.info("🔄 Event frame_requested réinitialisé pour l'appel sortant (call_id=%s)", session.call_id)
 
-            logger.info("PJSUA call %s answered, starting voice bridge", session.call_id)
+            # Créer un Event pour attendre que le média soit actif
+            media_active_event = asyncio.Event()
+
+            # Callback pour débloquer l'audio quand le média est actif
+            async def on_media_active_callback_outbound(active_call: Any, media_info: Any) -> None:
+                """Appelé quand le média devient actif (port audio créé)."""
+                if active_call == pjsua_call:
+                    logger.info("🎵 Média actif détecté pour appel sortant (call_id=%s)", session.call_id)
+
+                    # Attendre que le jitter buffer soit initialisé
+                    logger.info("⏱️ Attente 50ms pour initialisation jitter buffer... (call_id=%s)", session.call_id)
+                    await asyncio.sleep(0.05)  # 50ms
+
+                    # Attendre que PJSUA commence à consommer l'audio (onFrameRequested appelé)
+                    if pjsua_ready_event:
+                        logger.info("⏱️ Attente que PJSUA soit prêt à consommer l'audio... (call_id=%s)", session.call_id)
+                        await pjsua_ready_event.wait()
+                        logger.info("✅ PJSUA prêt - onFrameRequested appelé (call_id=%s)", session.call_id)
+
+                    # Marquer l'appel comme connecté MAINTENANT
+                    session.status = "answered"
+                    self._update_call_status(
+                        db, call_db_id, "answered", answered_at=datetime.now(UTC)
+                    )
+
+                    logger.info("PJSUA call %s answered, média ready", session.call_id)
+                    media_active_event.set()
+
+            # Enregistrer le callback média
+            self._pjsua_adapter.set_media_active_callback(on_media_active_callback_outbound)
+
+            # Attendre que le média soit actif (max 5 secondes)
+            logger.info("⏱️ Attente activation du média pour appel sortant... (call_id=%s)", session.call_id)
+            try:
+                await asyncio.wait_for(media_active_event.wait(), timeout=5.0)
+                logger.info("✅ Média actif confirmé (call_id=%s)", session.call_id)
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Timeout attente média actif - on continue quand même (call_id=%s)", session.call_id)
+                session.status = "answered"
+                self._update_call_status(
+                    db, call_db_id, "answered", answered_at=datetime.now(UTC)
+                )
 
             # Démarrer la session vocale (similaire au code existant)
             await self._run_voice_session_pjsua(
