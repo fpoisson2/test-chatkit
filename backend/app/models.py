@@ -355,7 +355,7 @@ class Workflow(Base):
         foreign_keys="Workflow.active_version_id",
         viewonly=True,
     )
-    appearance_override: Mapped["WorkflowAppearance" | None] = relationship(
+    appearance_override: Mapped[WorkflowAppearance | None] = relationship(
         "WorkflowAppearance",
         back_populates="workflow",
         cascade="all, delete-orphan",
