@@ -82,21 +82,8 @@ class PJSUAAudioBridge:
                     logger.info("⚠️ Audio reçu mais len=0")
                     continue
 
-                # Détecter et ignorer le silence et le bruit de fond faible
-                # Cela évite d'envoyer du bruit à OpenAI et perturber le VAD
+                # Calculer l'amplitude pour diagnostic
                 max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
-
-                # Seuil de bruit: ignorer les paquets avec amplitude < 500
-                # Une vraie parole humaine a typiquement une amplitude > 1000
-                # Le bruit de fond a une amplitude de 50-200
-                NOISE_THRESHOLD = 500
-
-                if max_amplitude < NOISE_THRESHOLD:
-                    # Silence ou bruit de fond, ignorer
-                    if packet_count < 10:
-                        logger.debug("🔇 Paquet bruit/silence ignoré (amplitude=%d, seuil=%d)",
-                                    max_amplitude, NOISE_THRESHOLD)
-                    continue
 
                 # Signaler la réception du premier paquet pour confirmer que le flux est établi
                 if packet_count == 0:
