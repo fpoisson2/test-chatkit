@@ -1738,6 +1738,138 @@ def _run_ad_hoc_migrations() -> None:
                         "TEXT"
                     )
                 )
+            if "appearance_color_scheme" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_color_scheme"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_color_scheme "
+                        "VARCHAR(16)"
+                    )
+                )
+            if "appearance_accent_color" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_accent_color"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_accent_color "
+                        "VARCHAR(32)"
+                    )
+                )
+            if "appearance_use_custom_surface" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_use_custom_surface"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_use_custom_surface "
+                        "BOOLEAN"
+                    )
+                )
+            if "appearance_surface_hue" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_surface_hue"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_surface_hue "
+                        "FLOAT"
+                    )
+                )
+            if "appearance_surface_tint" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_surface_tint"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_surface_tint "
+                        "FLOAT"
+                    )
+                )
+            if "appearance_surface_shade" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_surface_shade"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_surface_shade "
+                        "FLOAT"
+                    )
+                )
+            if "appearance_heading_font" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_heading_font"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_heading_font "
+                        "VARCHAR(128)"
+                    )
+                )
+            if "appearance_body_font" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_body_font"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_body_font "
+                        "VARCHAR(128)"
+                    )
+                )
+            if "appearance_start_greeting" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_start_greeting"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_start_greeting "
+                        "TEXT"
+                    )
+                )
+            if "appearance_start_prompt" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_start_prompt"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_start_prompt "
+                        "TEXT"
+                    )
+                )
+            if "appearance_input_placeholder" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_input_placeholder"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_input_placeholder "
+                        "TEXT"
+                    )
+                )
+            if "appearance_disclaimer" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_disclaimer"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_disclaimer "
+                        "TEXT"
+                    )
+                )
 
         if "telephony_routes" not in table_names:
             logger.info("Création de la table telephony_routes manquante")

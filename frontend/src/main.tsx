@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import { AuthProvider } from "./auth";
+import { AppearanceSettingsProvider } from "./features/appearance/AppearanceSettingsContext";
 import { I18nProvider } from "./i18n";
 import { enableDevMocks } from "./dev-mock";
 import "./styles.css";
@@ -16,7 +17,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <I18nProvider>
         <AuthProvider>
-          <App />
+          <AppearanceSettingsProvider>
+            <App />
+          </AppearanceSettingsProvider>
         </AuthProvider>
       </I18nProvider>
     </BrowserRouter>

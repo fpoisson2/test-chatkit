@@ -1,13 +1,32 @@
 :root {
   color-scheme: light;
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --appearance-body-font: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --appearance-heading-font: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --appearance-accent: #2563eb;
+  --appearance-accent-hover: #1d4ed8;
+  --appearance-light-surface: #ffffff;
+  --appearance-light-surface-subtle: #f4f4f5;
+  --appearance-light-border: rgba(24, 24, 27, 0.12);
+  --appearance-dark-surface: #18181b;
+  --appearance-dark-surface-subtle: #111114;
+  --appearance-dark-border: rgba(228, 228, 231, 0.16);
+  font-family: var(
+    --appearance-body-font,
+    "Inter",
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Helvetica Neue",
+    sans-serif
+  );
   --app-gradient: linear-gradient(160deg, #111827 0%, #1f2937 45%, #334155 100%);
   --color-text: #18181b;
   --color-text-strong: #09090b;
   --color-text-muted: #52525b;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f4f4f5;
-  --color-border-subtle: rgba(24, 24, 27, 0.12);
+  --color-surface: var(--appearance-light-surface);
+  --color-surface-subtle: var(--appearance-light-surface-subtle);
+  --color-border-subtle: var(--appearance-light-border);
   --surface-color: color-mix(in srgb, var(--color-surface) 92%, transparent);
   --surface-strong: var(--color-surface);
   --surface-border: var(--color-border-subtle);
@@ -19,8 +38,8 @@
   --sidebar-scrollbar-thumb-hover: rgba(24, 24, 27, 0.32);
   --sidebar-scrollbar-track: rgba(24, 24, 27, 0.08);
   --main-background: var(--color-surface-subtle);
-  --primary-color: #2563eb;
-  --primary-hover: #1d4ed8;
+  --primary-color: var(--appearance-accent);
+  --primary-hover: var(--appearance-accent-hover);
   --hosted-accent: #7c3aed;
   --hosted-accent-strong: #5b21b6;
   --hosted-accent-border: rgba(124, 58, 237, 0.35);
@@ -43,22 +62,22 @@
   --color-text: #e4e4e7;
   --color-text-strong: #fafafa;
   --color-text-muted: #a1a1aa;
-  --color-surface: #18181b;
-  --color-surface-subtle: #111114;
-  --color-border-subtle: rgba(228, 228, 231, 0.16);
+  --color-surface: var(--appearance-dark-surface);
+  --color-surface-subtle: var(--appearance-dark-surface-subtle);
+  --color-border-subtle: var(--appearance-dark-border);
   --surface-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
   --surface-strong: var(--color-surface);
   --surface-border: var(--color-border-subtle);
   --text-color: var(--color-text);
   --text-muted: var(--color-text-muted);
-  --sidebar-background: #09090b;
+  --sidebar-background: var(--appearance-dark-surface-subtle);
   --sidebar-border: rgba(228, 228, 231, 0.08);
   --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
   --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
   --sidebar-scrollbar-track: rgba(228, 228, 231, 0.12);
-  --main-background: #09090b;
-  --primary-color: #38bdf8;
-  --primary-hover: #0ea5e9;
+  --main-background: var(--appearance-dark-surface-subtle);
+  --primary-color: var(--appearance-accent);
+  --primary-hover: var(--appearance-accent-hover);
   --hosted-accent: #c4b5fd;
   --hosted-accent-strong: #a78bfa;
   --hosted-accent-border: rgba(196, 181, 253, 0.65);
@@ -123,6 +142,16 @@ body {
   align-items: stretch;
   padding: 0;
   width: 100%;
+  font-family: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--appearance-heading-font, inherit);
 }
 
 #root {
@@ -2181,6 +2210,54 @@ button {
   width: 18px;
   height: 18px;
   accent-color: var(--primary-color);
+}
+
+.radio-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.radio-field input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color);
+}
+
+.admin-form__color-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-form__color-picker input[type="color"] {
+  width: 48px;
+  height: 36px;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.admin-form__color-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.admin-form__slider-group {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-form__slider-value {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .admin-table-wrapper {

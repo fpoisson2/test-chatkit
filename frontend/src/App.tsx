@@ -13,6 +13,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
 import { AdminAppSettingsPage } from "./pages/AdminAppSettingsPage";
 import { AdminTelephonyPage } from "./pages/AdminTelephonyPage";
+import { AdminAppearancePage } from "./pages/AdminAppearancePage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
 
@@ -115,6 +116,16 @@ export const App = () => (
         <RequireAdmin>
           <AppLayout>
             <AdminAppSettingsPage />
+          </AppLayout>
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/appearance"
+      element={
+        <RequireAdmin>
+          <AppLayout>
+            <AdminAppearancePage />
           </AppLayout>
         </RequireAdmin>
       }

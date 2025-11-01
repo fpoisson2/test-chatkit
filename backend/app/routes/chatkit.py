@@ -71,6 +71,7 @@ from ..chatkit_sessions import (
     proxy_chatkit_request,
     summarize_payload_shape,
 )
+from ..admin_settings import resolve_appearance_settings
 from ..config import Settings, get_settings
 from ..database import SessionLocal, get_session
 from ..dependencies import get_current_user, get_optional_user
@@ -78,6 +79,7 @@ from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
 from ..realtime_runner import close_voice_session, open_voice_session
 from ..schemas import (
+    AppearanceSettingsResponse,
     ChatKitWorkflowResponse,
     HostedWorkflowCreateRequest,
     HostedWorkflowOption,
@@ -116,6 +118,16 @@ from ..workflows import (
 )
 
 router = APIRouter()
+
+
+@router.get(
+    "/api/appearance-settings", response_model=AppearanceSettingsResponse
+)
+async def get_public_appearance_settings(
+    session: Session = Depends(get_session),
+):
+    payload = resolve_appearance_settings(session)
+    return AppearanceSettingsResponse.model_validate(payload)
 
 
 logger = logging.getLogger("chatkit.voice")
