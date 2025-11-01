@@ -82,6 +82,15 @@ class PJSUAAudioBridge:
                     logger.info("⚠️ Audio reçu mais len=0")
                     continue
 
+                # Détecter et ignorer le silence pur (tous des zéros)
+                # Cela évite d'envoyer du bruit à OpenAI et perturber le VAD
+                max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
+                if max_amplitude == 0:
+                    # Silence pur, ignorer
+                    if packet_count < 10:
+                        logger.debug("🔇 Paquet silence ignoré (amplitude=0)")
+                    continue
+
                 # Signaler la réception du premier paquet pour confirmer que le flux est établi
                 if packet_count == 0:
                     logger.info("📥 Premier paquet audio reçu du téléphone - flux bidirectionnel confirmé (après %d None)", none_count)
@@ -89,7 +98,7 @@ class PJSUAAudioBridge:
 
                 # Log first few packets for diagnostics
                 if packet_count < 5:
-                    logger.info("📥 RTP stream: reçu %d bytes @ 8kHz depuis PJSUA", len(audio_8khz))
+                    logger.info("📥 RTP stream: reçu %d bytes @ 8kHz depuis PJSUA (max_amplitude=%d)", len(audio_8khz), max_amplitude)
 
                 # Resample 8kHz → 24kHz
                 try:
