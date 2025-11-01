@@ -20,18 +20,78 @@ if "backend" not in sys.modules:
     backend_pkg = types.ModuleType("backend")
     backend_pkg.__path__ = [str(ROOT_DIR / "backend")]
     sys.modules["backend"] = backend_pkg
+else:
+    backend_pkg = sys.modules["backend"]
 
 if "backend.app" not in sys.modules:
     backend_app_pkg = types.ModuleType("backend.app")
     backend_app_pkg.__path__ = [str(ROOT_DIR / "backend" / "app")]
     sys.modules["backend.app"] = backend_app_pkg
     backend_pkg.app = backend_app_pkg  # type: ignore[attr-defined]
+else:
+    backend_app_pkg = sys.modules["backend.app"]
 
 if "backend.app.telephony" not in sys.modules:
     telephony_pkg = types.ModuleType("backend.app.telephony")
     telephony_pkg.__path__ = [str(ROOT_DIR / "backend" / "app" / "telephony")]
     sys.modules["backend.app.telephony"] = telephony_pkg
     backend_app_pkg.telephony = telephony_pkg  # type: ignore[attr-defined]
+else:
+    telephony_pkg = sys.modules["backend.app.telephony"]
+
+if "dotenv" not in sys.modules:
+    dotenv_pkg = types.ModuleType("dotenv")
+
+    def _stub_load_dotenv(*args: Any, **kwargs: Any) -> None:
+        return
+
+    dotenv_pkg.load_dotenv = _stub_load_dotenv  # type: ignore[attr-defined]
+    sys.modules["dotenv"] = dotenv_pkg
+
+if "pgvector" not in sys.modules:
+    pgvector_pkg = types.ModuleType("pgvector")
+    pgvector_sqlalchemy_pkg = types.ModuleType("pgvector.sqlalchemy")
+
+    class _StubVector:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            return
+
+    pgvector_sqlalchemy_pkg.Vector = _StubVector  # type: ignore[attr-defined]
+    sys.modules["pgvector"] = pgvector_pkg
+    sys.modules["pgvector.sqlalchemy"] = pgvector_sqlalchemy_pkg
+    pgvector_pkg.sqlalchemy = pgvector_sqlalchemy_pkg  # type: ignore[attr-defined]
+
+if "backend.app.models" not in sys.modules:
+    models_pkg = types.ModuleType("backend.app.models")
+
+    class _StubOutboundCall(SimpleNamespace):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+
+    class _StubSipAccount(SimpleNamespace):
+        pass
+
+    class _StubWorkflow(SimpleNamespace):
+        steps: list[Any] = []
+
+    models_pkg.OutboundCall = _StubOutboundCall  # type: ignore[attr-defined]
+    models_pkg.SipAccount = _StubSipAccount  # type: ignore[attr-defined]
+    models_pkg.WorkflowDefinition = _StubWorkflow  # type: ignore[attr-defined]
+    sys.modules["backend.app.models"] = models_pkg
+
+if "backend.app.database" not in sys.modules:
+    database_pkg = types.ModuleType("backend.app.database")
+    database_pkg.SessionLocal = None  # type: ignore[attr-defined]
+    sys.modules["backend.app.database"] = database_pkg
+
+if "pydantic" not in sys.modules:
+    pydantic_pkg = types.ModuleType("pydantic")
+
+    class _StubBaseModel(SimpleNamespace):
+        pass
+
+    pydantic_pkg.BaseModel = _StubBaseModel  # type: ignore[attr-defined]
+    sys.modules["pydantic"] = pydantic_pkg
 
 if "backend.app.telephony.voice_bridge" not in sys.modules:
     voice_bridge_pkg = types.ModuleType("backend.app.telephony.voice_bridge")

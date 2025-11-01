@@ -935,6 +935,33 @@ class RealtimeSessionGateway:
             except RuntimeError:  # pragma: no cover - websocket déjà fermé
                 continue
 
+    async def broadcast_audio_sniff(
+        self,
+        session_id: str,
+        *,
+        direction: str,
+        pcm: bytes,
+    ) -> None:
+        """Diffuse un morceau audio "sniffé" (entrant ou sortant) aux connexions navigateur."""
+
+        if not session_id or not pcm:
+            return
+
+        async with self._lock:
+            state = self._sessions.get(session_id)
+
+        if state is None:
+            return
+
+        safe_direction = direction if isinstance(direction, str) else ""
+        payload = {
+            "type": "audio_sniff",
+            "direction": safe_direction or "unknown",
+            "data": base64.b64encode(pcm).decode("ascii"),
+        }
+
+        await self.broadcast_session_event(state, payload)
+
     async def broadcast_session_event(
         self, state: _RealtimeSessionState, payload: Mapping[str, Any]
     ) -> None:

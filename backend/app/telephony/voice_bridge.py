@@ -284,6 +284,7 @@ class TelephonyVoiceBridge:
         speak_first: bool = False,
         preinit_response_create_sent: bool = False,
         preinit_session: Any | None = None,
+        sniff: Callable[[str, bytes], Awaitable[None]] | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -314,6 +315,19 @@ class TelephonyVoiceBridge:
 
         # Create playback tracker for proper interruption handling
         playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=on_playback_interrupted)
+
+        async def emit_sniff(direction: str, chunk: bytes) -> None:
+            if sniff is None or not chunk:
+                return
+            try:
+                await sniff(direction, chunk)
+            except Exception:  # pragma: no cover - sniff best effort
+                logger.debug(
+                    "Émission sniff audio échouée (direction=%s, taille=%d)",
+                    direction,
+                    len(chunk),
+                    exc_info=True,
+                )
 
         def should_continue() -> bool:
             if stop_event.is_set():
@@ -386,6 +400,7 @@ class TelephonyVoiceBridge:
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
+                    await emit_sniff("inbound", pcm)
 
                     # Note: turn_detection est déjà activé dans la configuration initiale de session
                     # (voir _build_session_update), donc on n'a pas besoin de l'activer ici.
@@ -692,6 +707,7 @@ class TelephonyVoiceBridge:
                                 outbound_audio_bytes += len(pcm_data)
                                 # Send audio and wait until it's actually sent via RTP
                                 await send_to_peer(pcm_data)
+                                await emit_sniff("outbound", pcm_data)
                                 # Now update the playback tracker so OpenAI knows when audio was played
                                 # This is critical for proper interruption handling!
                                 playback_tracker.on_play_bytes(

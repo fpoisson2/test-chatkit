@@ -7,7 +7,7 @@ import logging
 import os
 import uuid
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime, UTC
 from typing import Any
 
@@ -24,6 +24,7 @@ from ..realtime_runner import (
     close_voice_session,
     open_voice_session,
 )
+from ..realtime_gateway import get_realtime_gateway
 
 logger = logging.getLogger("chatkit.telephony.outbound")
 
@@ -237,6 +238,37 @@ class OutboundCallManager:
         metadata.update(base_metadata)
 
         return owner_user_id, metadata
+
+    def _build_audio_sniff_callback(
+        self, handle: VoiceSessionHandle
+    ) -> Callable[[str, bytes], Awaitable[None]] | None:
+        try:
+            gateway = get_realtime_gateway()
+        except Exception:
+            gateway = None
+
+        session_id = getattr(handle, "session_id", "")
+        if not gateway or not session_id:
+            return None
+
+        async def _sniff(direction: str, chunk: bytes) -> None:
+            if not chunk:
+                return
+            try:
+                await gateway.broadcast_audio_sniff(
+                    session_id=session_id,
+                    direction=direction,
+                    pcm=chunk,
+                )
+            except Exception:  # pragma: no cover - diffusion best effort
+                logger.debug(
+                    "Échec diffusion audio sniff (session=%s, direction=%s)",
+                    session_id,
+                    direction,
+                    exc_info=True,
+                )
+
+        return _sniff
 
     async def _open_voice_session_for_call(
         self,
@@ -579,6 +611,8 @@ class OutboundCallManager:
 
             logger.info("PJSUA voice session created (session_id=%s)", session_handle.session_id)
 
+            sniff_callback = self._build_audio_sniff_callback(session_handle)
+
             # Créer les hooks pour le voice bridge (adapté pour PJSUA)
             async def close_dialog_hook() -> None:
                 pass  # Géré dans le cleanup final
@@ -635,6 +669,7 @@ class OutboundCallManager:
                     api_base=realtime_api_base,
                     tools=voice_tools,
                     handoffs=voice_handoffs,
+                    sniff=sniff_callback,
                 )
 
                 logger.info("PJSUA TelephonyVoiceBridge completed: %s", stats)
@@ -1013,6 +1048,7 @@ class OutboundCallManager:
                         api_base=realtime_api_base,
                         tools=voice_tools,
                         handoffs=voice_handoffs,
+                        sniff=sniff_callback,
                     )
 
                     # Le voice bridge est terminé

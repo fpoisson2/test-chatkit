@@ -47,6 +47,7 @@ from .models import (
     VoiceSettings,
     Workflow,
 )
+from .realtime_gateway import get_realtime_gateway
 from .realtime_runner import close_voice_session, open_voice_session
 from .security import hash_password
 from .telephony.invite_handler import (
@@ -798,6 +799,33 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
         if voice_provider_slug == "openai":
             realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
 
+        sniff_callback = None
+        try:
+            gateway = get_realtime_gateway()
+        except Exception:
+            gateway = None
+        if gateway is not None and session_handle.session_id:
+            session_id = session_handle.session_id
+
+            async def _sniff(direction: str, chunk: bytes) -> None:
+                if not chunk:
+                    return
+                try:
+                    await gateway.broadcast_audio_sniff(
+                        session_id=session_id,
+                        direction=direction,
+                        pcm=chunk,
+                    )
+                except Exception:  # pragma: no cover - diffusion best effort
+                    logger.debug(
+                        "Échec diffusion sniff (session=%s, direction=%s)",
+                        session_id,
+                        direction,
+                        exc_info=True,
+                    )
+
+            sniff_callback = _sniff
+
         try:
             stats = await voice_bridge.run(
                 runner=session_handle.runner,
@@ -813,6 +841,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 speak_first=speak_first,
                 preinit_response_create_sent=preinit_response_create_sent,
                 preinit_session=preinit_session,
+                sniff=sniff_callback,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
@@ -2646,6 +2675,33 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             if voice_provider_slug == "openai":
                 realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
 
+            sniff_callback = None
+            try:
+                gateway = get_realtime_gateway()
+            except Exception:
+                gateway = None
+            if gateway is not None and session_handle.session_id:
+                session_id = session_handle.session_id
+
+                async def _sniff(direction: str, chunk: bytes) -> None:
+                    if not chunk:
+                        return
+                    try:
+                        await gateway.broadcast_audio_sniff(
+                            session_id=session_id,
+                            direction=direction,
+                            pcm=chunk,
+                        )
+                    except Exception:  # pragma: no cover - diffusion best effort
+                        logger.debug(
+                            "Échec diffusion sniff (session=%s, direction=%s)",
+                            session_id,
+                            direction,
+                            exc_info=True,
+                        )
+
+                sniff_callback = _sniff
+
             # Event pour contrôler quand démarrer le voice bridge
             # Le voice bridge ne doit démarrer QU'APRÈS que le média soit actif et l'audio débloqué
             voice_bridge_start_event = asyncio.Event()
@@ -2677,6 +2733,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         speak_first=speak_first,  # speak_first sera traité par VoiceBridge au bon moment
                         preinit_session=preinit_session,  # Session pré-initialisée pendant la sonnerie
                         preinit_response_create_sent=preinit_response_create_sent,  # response.create déjà envoyé pendant sonnerie
+                        sniff=sniff_callback,
                     )
                     logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
                 except Exception as e:

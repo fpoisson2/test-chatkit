@@ -5,6 +5,7 @@ import json
 import os
 import struct
 import sys
+import types
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -15,9 +16,70 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+CHATKIT_DIR = ROOT_DIR / "chatkit-python"
+if str(CHATKIT_DIR) not in sys.path:
+    sys.path.insert(0, str(CHATKIT_DIR))
+
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
+
+if "fastapi" not in sys.modules:
+    fastapi_pkg = types.ModuleType("fastapi")
+
+    class _StubFastAPI:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            return
+
+        def add_middleware(self, *args: Any, **kwargs: Any) -> None:
+            return
+
+    fastapi_pkg.FastAPI = _StubFastAPI  # type: ignore[attr-defined]
+    sys.modules["fastapi"] = fastapi_pkg
+
+    middleware_pkg = types.ModuleType("fastapi.middleware")
+    cors_pkg = types.ModuleType("fastapi.middleware.cors")
+
+    class _StubCORSMiddleware:
+        ...
+
+    cors_pkg.CORSMiddleware = _StubCORSMiddleware  # type: ignore[attr-defined]
+    middleware_pkg.cors = cors_pkg  # type: ignore[attr-defined]
+    fastapi_pkg.middleware = middleware_pkg  # type: ignore[attr-defined]
+    sys.modules["fastapi.middleware"] = middleware_pkg
+    sys.modules["fastapi.middleware.cors"] = cors_pkg
+
+if "dotenv" not in sys.modules:
+    dotenv_pkg = types.ModuleType("dotenv")
+
+    def _stub_load_dotenv(*args: Any, **kwargs: Any) -> None:
+        return
+
+    dotenv_pkg.load_dotenv = _stub_load_dotenv  # type: ignore[attr-defined]
+    sys.modules["dotenv"] = dotenv_pkg
+
+if "backend" not in sys.modules:
+    backend_pkg = types.ModuleType("backend")
+    backend_pkg.__path__ = [str(ROOT_DIR / "backend")]
+    sys.modules["backend"] = backend_pkg
+else:
+    backend_pkg = sys.modules["backend"]
+
+if "backend.app" not in sys.modules:
+    backend_app_pkg = types.ModuleType("backend.app")
+    backend_app_pkg.__path__ = [str(ROOT_DIR / "backend" / "app")]
+    sys.modules["backend.app"] = backend_app_pkg
+    backend_pkg.app = backend_app_pkg  # type: ignore[attr-defined]
+else:
+    backend_app_pkg = sys.modules["backend.app"]
+
+if "backend.app.telephony" not in sys.modules:
+    telephony_pkg = types.ModuleType("backend.app.telephony")
+    telephony_pkg.__path__ = [str(ROOT_DIR / "backend" / "app" / "telephony")]
+    sys.modules["backend.app.telephony"] = telephony_pkg
+    backend_app_pkg.telephony = telephony_pkg  # type: ignore[attr-defined]
+else:
+    telephony_pkg = sys.modules["backend.app.telephony"]
 
 from backend.app.telephony.voice_bridge import (  # noqa: E402
     RtpPacket,
@@ -91,6 +153,11 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     close_calls = 0
     clear_calls = 0
 
+    sniff_calls: list[tuple[str, bytes]] = []
+
+    async def _sniff(direction: str, chunk: bytes) -> None:
+        sniff_calls.append((direction, chunk))
+
     async def _close_dialog() -> None:
         nonlocal close_calls
         close_calls += 1
@@ -160,6 +227,7 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
         voice="verse",
         rtp_stream=stream,
         send_to_peer=_send_to_peer,
+        sniff=_sniff,
     )
 
     assert stats.error is None
@@ -193,6 +261,11 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     assert snapshot["total_sessions"] == 1
     assert snapshot["total_errors"] == 0
     assert snapshot["total_outbound_audio_bytes"] == len(b"assistant-audio")
+
+    directions = {direction for direction, _ in sniff_calls}
+    assert "inbound" in directions
+    assert "outbound" in directions
+    assert any(len(chunk) > 0 for direction, chunk in sniff_calls if direction == "inbound")
 
 
 @pytest.mark.anyio

@@ -1,8 +1,10 @@
 import asyncio
 import base64
+import base64
 import json
 import os
 import sys
+import types
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +16,56 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+
+CHATKIT_DIR = os.path.join(ROOT_DIR, "chatkit-python")
+if CHATKIT_DIR not in sys.path:
+    sys.path.insert(0, CHATKIT_DIR)
+
+if "dotenv" not in sys.modules:
+    dotenv_pkg = types.ModuleType("dotenv")
+
+    def _stub_load_dotenv(*args: object, **kwargs: object) -> None:
+        return
+
+    dotenv_pkg.load_dotenv = _stub_load_dotenv  # type: ignore[attr-defined]
+    sys.modules["dotenv"] = dotenv_pkg
+
+if "pgvector" not in sys.modules:
+    pgvector_pkg = types.ModuleType("pgvector")
+    pgvector_sqlalchemy_pkg = types.ModuleType("pgvector.sqlalchemy")
+
+    class _StubVector:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            return
+
+    pgvector_sqlalchemy_pkg.Vector = _StubVector  # type: ignore[attr-defined]
+    sys.modules["pgvector"] = pgvector_pkg
+    sys.modules["pgvector.sqlalchemy"] = pgvector_sqlalchemy_pkg
+    pgvector_pkg.sqlalchemy = pgvector_sqlalchemy_pkg  # type: ignore[attr-defined]
+
+if "backend" not in sys.modules:
+    backend_pkg = types.ModuleType("backend")
+    backend_pkg.__path__ = [str(ROOT_DIR / "backend")]
+    sys.modules["backend"] = backend_pkg
+else:
+    backend_pkg = sys.modules["backend"]
+
+if "backend.app" not in sys.modules:
+    backend_app_pkg = types.ModuleType("backend.app")
+    backend_app_pkg.__path__ = [str(ROOT_DIR / "backend" / "app")]
+    sys.modules["backend.app"] = backend_app_pkg
+    backend_pkg.app = backend_app_pkg  # type: ignore[attr-defined]
+else:
+    backend_app_pkg = sys.modules["backend.app"]
+
+if "pydantic" not in sys.modules:
+    pydantic_pkg = types.ModuleType("pydantic")
+
+    class _StubBaseModel(SimpleNamespace):
+        pass
+
+    pydantic_pkg.BaseModel = _StubBaseModel  # type: ignore[attr-defined]
+    sys.modules["pydantic"] = pydantic_pkg
 
 from agents.tool import FunctionTool  # noqa: E402
 from backend.app.realtime_gateway import (  # noqa: E402
@@ -282,6 +334,37 @@ def test_finalize_closes_session_and_broadcasts(
         assert handle.session_id not in gateway._sessions  # type: ignore[attr-defined]
 
         assert any(msg.get("type") == "session_finalized" for msg in messages)
+
+    asyncio.run(_run())
+
+
+def test_broadcast_audio_sniff_sends_payload() -> None:
+    async def _run() -> None:
+        gateway = RealtimeSessionGateway()
+        handle = _make_handle()
+        state = _RealtimeSessionState(handle, gateway)
+        gateway._sessions[handle.session_id] = state  # type: ignore[attr-defined]
+
+        messages: list[dict[str, object]] = []
+        connection = GatewayConnection(
+            websocket=_StubWebSocket(messages),
+            user=GatewayUser(id=handle.metadata.get("user_id") or "user-1", email=None),
+            authorization="Bearer token",
+        )
+
+        await gateway.register_connection(connection)
+
+        payload_bytes = b"pcm-data"
+        await gateway.broadcast_audio_sniff(
+            handle.session_id, direction="inbound", pcm=payload_bytes
+        )
+
+        assert messages, "aucun message reçu sur la connexion"
+        sniff_payload = messages[-1]
+        assert sniff_payload["type"] == "audio_sniff"
+        assert sniff_payload["direction"] == "inbound"
+        assert sniff_payload["session_id"] == handle.session_id
+        assert sniff_payload["data"] == base64.b64encode(payload_bytes).decode("ascii")
 
     asyncio.run(_run())
 
