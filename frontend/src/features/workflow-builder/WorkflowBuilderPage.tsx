@@ -480,6 +480,7 @@ const WorkflowBuilderPage = () => {
   const workflowsRef = useRef(workflows);
   const hostedWorkflowsRef = useRef(hostedWorkflows);
   const workflowSortCollatorRef = useRef<Intl.Collator | null>(null);
+  const hasLoadedWorkflowsRef = useRef(false);
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
@@ -1029,11 +1030,11 @@ const WorkflowBuilderPage = () => {
   }, [selectedWorkflowId]);
 
   useEffect(() => {
-    setPinnedLookup((current) => {
-      if (!token) {
-        return current;
-      }
+    if (!token || !hasLoadedWorkflowsRef.current) {
+      return;
+    }
 
+    setPinnedLookup((current) => {
       const availableLocalIds = new Set(workflows.map((workflow) => workflow.id));
       const availableHostedSlugs = new Set(
         hostedWorkflows.filter((workflow) => workflow.managed).map((workflow) => workflow.slug),
@@ -2111,6 +2112,7 @@ const WorkflowBuilderPage = () => {
         excludeWorkflowId,
         suppressLoadingState = false,
       } = options;
+      hasLoadedWorkflowsRef.current = false;
       if (!suppressLoadingState) {
         setLoading(true);
       }
@@ -2129,6 +2131,7 @@ const WorkflowBuilderPage = () => {
             throw new Error(`Échec du chargement de la bibliothèque (${response.status})`);
           }
           const data: WorkflowSummary[] = await response.json();
+          hasLoadedWorkflowsRef.current = true;
           setWorkflows(data);
           if (data.length === 0) {
             setSelectedWorkflowId(null);
@@ -2201,6 +2204,7 @@ const WorkflowBuilderPage = () => {
         setLoadError(lastError.message);
       }
       setLoading(false);
+      hasLoadedWorkflowsRef.current = false;
     },
     [
       authHeader,
@@ -6978,10 +6982,13 @@ const WorkflowBuilderPage = () => {
               key={`hosted:${hosted.slug}`}
               className="chatkit-sidebar__workflow-list-item"
               data-hosted-workflow=""
+              data-pinned={isPinned ? "" : undefined}
             >
               <button
                 type="button"
-                className="chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted"
+                className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
+                  isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
+                }`}
                 aria-disabled="true"
                 tabIndex={-1}
                 title={hosted.description ?? t("workflows.hostedBadge")}
@@ -7100,10 +7107,16 @@ const WorkflowBuilderPage = () => {
           ? t("workflows.unpinAction", { label: workflow.display_name })
           : t("workflows.pinAction", { label: workflow.display_name });
         return (
-          <li key={`local:${workflow.id}`} className="chatkit-sidebar__workflow-list-item">
+          <li
+            key={`local:${workflow.id}`}
+            className="chatkit-sidebar__workflow-list-item"
+            data-pinned={isPinned ? "" : undefined}
+          >
             <button
               type="button"
-              className="chatkit-sidebar__workflow-button"
+              className={`chatkit-sidebar__workflow-button${
+                isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
+              }`}
               onClick={() => handleSelectWorkflow(workflow.id)}
               aria-current={isActive ? "true" : undefined}
               title={workflow.display_name}
@@ -7392,12 +7405,18 @@ const WorkflowBuilderPage = () => {
     const regularEntries = entries.filter((entry) => !entry.isPinned);
 
     const renderShortcut = (workflow: ShortcutEntry) => (
-      <li key={workflow.key} className="chatkit-sidebar__workflow-compact-item">
+      <li
+        key={workflow.key}
+        className="chatkit-sidebar__workflow-compact-item"
+        data-pinned={workflow.isPinned ? "" : undefined}
+      >
         <button
           type="button"
           className={`chatkit-sidebar__workflow-compact-button${
             workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-          }${workflow.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}`}
+          }${workflow.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}${
+            workflow.isPinned ? " chatkit-sidebar__workflow-compact-button--pinned" : ""
+          }`}
           onClick={workflow.onClick}
           disabled={workflow.disabled}
           aria-current={workflow.isActive ? "true" : undefined}

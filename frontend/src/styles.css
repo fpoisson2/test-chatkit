@@ -1038,6 +1038,90 @@ button {
   background: rgba(37, 99, 235, 0.18);
 }
 
+.chatkit-sidebar__workflow-group[data-workflow-group="pinned"] .chatkit-sidebar__workflow-group-title::before,
+.chatkit-sidebar__workflow-compact-group[data-workflow-group="pinned"]
+  .chatkit-sidebar__workflow-compact-group-title::before {
+  content: "★";
+  display: inline-block;
+  margin-right: 0.4rem;
+  color: #f59e0b;
+  font-size: 0.8rem;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.chatkit-sidebar__workflow-list-item[data-pinned]::before {
+  content: "";
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: calc(var(--chatkit-sidebar-content-padding-x) - 8px);
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f59e0b, #facc15);
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.chatkit-sidebar__workflow-button--pinned {
+  color: #b45309;
+}
+
+.chatkit-sidebar__workflow-button--pinned:hover,
+.chatkit-sidebar__workflow-button--pinned:focus-visible {
+  color: #92400e;
+}
+
+.chatkit-sidebar__workflow-button--pinned::after {
+  background: linear-gradient(90deg, rgba(254, 240, 138, 0.42), rgba(255, 255, 255, 0));
+}
+
+.chatkit-sidebar__workflow-button--pinned:hover::after,
+.chatkit-sidebar__workflow-button--pinned:focus-visible::after {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.5), rgba(255, 255, 255, 0.12));
+}
+
+.chatkit-sidebar__workflow-button--pinned[aria-current="true"]::after {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.5), rgba(37, 99, 235, 0.25));
+}
+
+.chatkit-sidebar__workflow-button--pinned .chatkit-sidebar__workflow-badge {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #b45309;
+}
+
+.chatkit-sidebar__workflow-button--hosted.chatkit-sidebar__workflow-button--pinned
+  .chatkit-sidebar__workflow-badge {
+  background: rgba(251, 146, 60, 0.2);
+  border-color: rgba(249, 115, 22, 0.45);
+  color: #9a3412;
+}
+
+.chatkit-sidebar__workflow-compact-item[data-pinned]
+  .chatkit-sidebar__workflow-compact-button {
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25), 0 10px 20px rgba(245, 158, 11, 0.16);
+}
+
+.chatkit-sidebar__workflow-compact-button--pinned {
+  border-color: rgba(251, 191, 36, 0.78);
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.96), rgba(255, 255, 255, 0));
+  color: #b45309;
+}
+
+.chatkit-sidebar__workflow-compact-button--pinned:not([disabled]):hover,
+.chatkit-sidebar__workflow-compact-button--pinned:not([disabled]):focus-visible {
+  background: linear-gradient(135deg, rgba(253, 224, 71, 0.92), rgba(255, 255, 255, 0.18));
+  border-color: rgba(245, 158, 11, 0.85);
+  color: #92400e;
+}
+
+.chatkit-sidebar__workflow-compact-button--pinned.chatkit-sidebar__workflow-compact-button--active {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.9), rgba(37, 99, 235, 0.25));
+  border-color: rgba(245, 158, 11, 0.9);
+  color: #fff;
+}
+
 .chatkit-sidebar__workflow-label {
   display: -webkit-box;
   max-width: 100%;

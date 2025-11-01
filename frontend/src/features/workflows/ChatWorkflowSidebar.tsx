@@ -93,6 +93,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const onWorkflowActivatedRef = useRef(onWorkflowActivated);
   const workflowCollatorRef = useRef<Intl.Collator | null>(null);
   const previousTokenRef = useRef<string | null>(token ?? null);
+  const hasLoadedWorkflowsRef = useRef(false);
 
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {
@@ -202,11 +203,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   }, [hostedWorkflows, workflows]);
 
   useEffect(() => {
-    setPinnedLookup((current) => {
-      if (!token) {
-        return current;
-      }
+    if (!token || !hasLoadedWorkflowsRef.current) {
+      return;
+    }
 
+    setPinnedLookup((current) => {
       const availableLocalIds = new Set(workflows.map((workflow) => workflow.id));
       const availableHostedSlugs = new Set(hostedWorkflows.map((workflow) => workflow.slug));
       const nextLocal = Array.from(current.local).filter((id) => availableLocalIds.has(id));
@@ -231,6 +232,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (!token) {
       clearWorkflowSidebarCache();
+      hasLoadedWorkflowsRef.current = false;
       if (previousToken) {
         writeStoredWorkflowSelection(null);
       }
@@ -280,6 +282,8 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
       const [items, hosted] = await Promise.all([workflowsPromise, hostedPromise]);
       const hostedList = Array.isArray(hosted) ? hosted : [];
+
+      hasLoadedWorkflowsRef.current = true;
 
       const storedSelection = readStoredWorkflowSelection();
       const defaultLocal =
@@ -402,6 +406,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         setMode("local");
       }
       onWorkflowActivatedRef.current({ kind: "local", workflow: null }, { reason: "initial" });
+      hasLoadedWorkflowsRef.current = false;
     } finally {
       setLoading(false);
     }
@@ -770,10 +775,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             className="chatkit-sidebar__workflow-list-item"
             key={`hosted:${option.slug}`}
             data-hosted-workflow=""
+            data-pinned={isPinned ? "" : undefined}
           >
             <button
               type="button"
-              className="chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted"
+              className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
+                isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
+              }`}
               onClick={() => void handleHostedWorkflowClick(option.slug)}
               disabled={!option.available}
               aria-current={isSelected ? "true" : undefined}
@@ -825,10 +833,16 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         ? t("workflows.unpinAction", { label: workflow.display_name })
         : t("workflows.pinAction", { label: workflow.display_name });
       return (
-        <li key={`local:${workflow.id}`} className="chatkit-sidebar__workflow-list-item">
+        <li
+          key={`local:${workflow.id}`}
+          className="chatkit-sidebar__workflow-list-item"
+          data-pinned={isPinned ? "" : undefined}
+        >
           <button
             type="button"
-            className="chatkit-sidebar__workflow-button"
+            className={`chatkit-sidebar__workflow-button${
+              isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
+            }`}
             onClick={() => void handleWorkflowClick(workflow.id)}
             disabled={!hasProduction}
             aria-current={isActive ? "true" : undefined}
@@ -924,12 +938,18 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     }
 
     const renderCompactEntry = (entry: CompactEntry) => (
-      <li key={entry.key} className="chatkit-sidebar__workflow-compact-item">
+      <li
+        key={entry.key}
+        className="chatkit-sidebar__workflow-compact-item"
+        data-pinned={entry.isPinned ? "" : undefined}
+      >
         <button
           type="button"
           className={`chatkit-sidebar__workflow-compact-button${
             entry.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-          }${entry.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}`}
+          }${entry.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}${
+            entry.isPinned ? " chatkit-sidebar__workflow-compact-button--pinned" : ""
+          }`}
           onClick={entry.onClick}
           disabled={entry.disabled}
           aria-current={entry.isActive ? "true" : undefined}

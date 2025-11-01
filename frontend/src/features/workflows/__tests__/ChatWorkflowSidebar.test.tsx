@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 
 import { I18nProvider } from "../../../i18n";
 import { WORKFLOW_SELECTION_STORAGE_KEY } from "../utils";
+import type { StoredWorkflowSelection } from "../utils";
 import type { HostedWorkflowMetadata } from "../../../utils/backend";
 import type { WorkflowSummary } from "../../../types/workflows";
 import { chatkitApi, workflowsApi } from "../../../utils/backend";
@@ -97,6 +98,16 @@ const createHosted = (slug: string, label: string): HostedWorkflowMetadata => ({
   available: true,
   managed: true,
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 describe("ChatWorkflowSidebar pinning", () => {
   beforeEach(() => {
@@ -270,6 +281,53 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     rerendered.unmount();
     rerenderedHost.unmount();
+  });
+
+  it("preserves stored pins while workflows are still loading", async () => {
+    const storedSelection = {
+      mode: "local" as const,
+      localWorkflowId: 1,
+      hostedSlug: null,
+      lastUsedAt: { local: {}, hosted: {} },
+      pinned: { local: [2], hosted: [] },
+    } satisfies StoredWorkflowSelection;
+
+    window.localStorage.setItem(WORKFLOW_SELECTION_STORAGE_KEY, JSON.stringify(storedSelection));
+
+    const workflowsDeferred = createDeferred<WorkflowSummary[]>();
+    const hostedDeferred = createDeferred<HostedWorkflowMetadata[] | null>();
+
+    vi.mocked(workflowsApi.list).mockReturnValue(workflowsDeferred.promise);
+    vi.mocked(chatkitApi.getHostedWorkflows).mockReturnValue(hostedDeferred.promise);
+
+    render(
+      <I18nProvider>
+        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+      </I18nProvider>,
+    );
+
+    const sidebarHost = await renderSidebarHost();
+
+    await waitFor(() => {
+      const stored = window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY);
+      expect(stored).toContain("\"local\":[2]");
+    });
+
+    workflowsDeferred.resolve([
+      createWorkflow(1, "Alpha"),
+      createWorkflow(2, "Beta"),
+    ]);
+    hostedDeferred.resolve([createHosted("gamma", "Gamma")]);
+
+    await waitFor(() => {
+      sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
+      expect(
+        sidebarHost.getByRole("heading", { name: "Pinned workflows" }),
+      ).toBeInTheDocument();
+    });
+
+    const storedAfter = window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY);
+    expect(storedAfter).toContain("\"local\":[2]");
   });
 
   it("retains pinned workflows when the auth token arrives after mount", async () => {
