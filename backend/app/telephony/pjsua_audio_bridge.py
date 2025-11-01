@@ -12,7 +12,7 @@ import asyncio
 import audioop
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .voice_bridge import RtpPacket
 
@@ -50,6 +50,12 @@ class PJSUAAudioBridge:
         # Event qui se déclenche quand on reçoit le premier paquet audio du téléphone
         # Cela confirme que le flux audio bidirectionnel est établi
         self._first_packet_received = asyncio.Event()
+
+        # State used to preserve resampling continuity from 24kHz → 8kHz
+        self._send_to_peer_state: Any = None
+
+        # Silence gate to avoid amplifying background noise
+        self._silence_threshold = 250
 
     async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).
@@ -173,31 +179,38 @@ class PJSUAAudioBridge:
 
         # Resample 24kHz → 8kHz
         try:
-            # Note: ratecv maintains state for better quality, but for send_to_peer
-            # we get called with arbitrary chunks, so we can't maintain state easily.
-            # Using None for state means each chunk is resampled independently.
-            audio_8khz, _ = audioop.ratecv(
+            # ratecv renvoie également un état qui permet de préserver la continuité entre les chunks.
+            # On le conserve pour réduire les artefacts de rééchantillonnage sur les longs flux audio.
+            audio_8khz, self._send_to_peer_state = audioop.ratecv(
                 audio_24khz,
                 self.BYTES_PER_SAMPLE,
                 self.CHANNELS,
                 self.VOICE_BRIDGE_SAMPLE_RATE,
                 self.PJSUA_SAMPLE_RATE,
-                None,  # No state - each chunk is independent
+                self._send_to_peer_state,
             )
             logger.debug("✅ Resamplé à %d bytes @ 8kHz", len(audio_8khz))
         except audioop.error as e:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
+            self._send_to_peer_state = None
             return
 
         # Amplification dynamique pour garantir une amplitude minimale audible
         # OpenAI envoie parfois un audio très faible (amplitude ~7) qui est inaudible
         try:
             max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
+            if max_amplitude < self._silence_threshold:
+                logger.debug("🔇 Audio sous le seuil de silence (max=%d), envoi silence", max_amplitude)
+                audio_8khz = bytes(len(audio_8khz))
+                max_amplitude = 0
+                gain = 0.0
+            else:
+                gain = 1.0
             if max_amplitude > 0:
                 # Garantir une amplitude minimale de 2000 (audible au téléphone)
-                min_target_amplitude = 2000
+                min_target_amplitude = 1800
                 if max_amplitude < min_target_amplitude:
-                    gain = min(min_target_amplitude / max_amplitude, 10.0)  # Max 10x pour éviter distorsion
+                    gain = min(min_target_amplitude / max_amplitude, 6.0)  # Limiter pour éviter saturation
                     audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
                     logger.info("🔊 Audio amplifié (max=%d → %d, gain=%.1fx)",
                                max_amplitude, int(max_amplitude * gain), gain)
@@ -225,12 +238,15 @@ class PJSUAAudioBridge:
         Returns:
             Number of frames cleared
         """
-        return self._adapter.clear_call_audio_queue(self._call)
+        cleared = self._adapter.clear_call_audio_queue(self._call)
+        self._send_to_peer_state = None  # Réinitialiser l'état de resampling pour éviter des artefacts
+        return cleared
 
     def stop(self) -> None:
         """Stop the audio bridge."""
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
+        self._send_to_peer_state = None
 
     @property
     def is_stopped(self) -> bool:
