@@ -944,23 +944,32 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     updateStoredWorkflowSelection((previous) => {
       if (selectedWorkflowId == null) {
-        if (!previous) {
-          return null;
-        }
-        if (previous.mode === "hosted") {
+        if (!previous || previous.mode === "hosted" || previous.localWorkflowId == null) {
           return previous;
         }
-        return { ...previous, localWorkflowId: null, lastUsedAt: previous.lastUsedAt };
+
+        return { ...previous, localWorkflowId: null };
+      }
+
+      const preservedHostedSlug = previous?.hostedSlug ?? null;
+
+      if (
+        previous &&
+        previous.mode === "local" &&
+        previous.localWorkflowId === selectedWorkflowId &&
+        previous.hostedSlug === preservedHostedSlug
+      ) {
+        return previous;
       }
 
       return {
         mode: "local",
         localWorkflowId: selectedWorkflowId,
-        hostedSlug: previous?.hostedSlug ?? null,
-        lastUsedAt: previous?.lastUsedAt ?? lastUsedAt,
+        hostedSlug: preservedHostedSlug,
+        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
       };
     });
-  }, [lastUsedAt, selectedWorkflowId]);
+  }, [selectedWorkflowId]);
 
   useEffect(() => {
     if (workflows.length === 0 && hostedWorkflows.length === 0) {
