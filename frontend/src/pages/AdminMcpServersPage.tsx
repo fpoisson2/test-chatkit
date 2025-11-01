@@ -652,8 +652,8 @@ export const AdminMcpServersPage = () => {
       const result = await startMcpOAuthNegotiation({
         token,
         url: basePayload.server_url ?? formState.serverUrl.trim(),
-        clientId: basePayload.oauth_client_id ?? formState.oauthClientId.trim() || null,
-        scope: basePayload.oauth_scope ?? formState.oauthScope.trim() || null,
+        clientId: (basePayload.oauth_client_id ?? formState.oauthClientId.trim()) || null,
+        scope: (basePayload.oauth_scope ?? formState.oauthScope.trim()) || null,
         persistence: persistencePlan,
       });
 

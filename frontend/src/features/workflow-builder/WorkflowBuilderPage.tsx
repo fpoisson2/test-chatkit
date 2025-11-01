@@ -139,7 +139,6 @@ import {
   type McpSseToolConfig,
   type LegacyMcpSseToolConfig,
   setAgentMcpServers,
-  setLegacyMcpSseConfig,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import CreateWorkflowModal from "./components/CreateWorkflowModal";
