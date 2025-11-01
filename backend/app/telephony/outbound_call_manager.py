@@ -7,6 +7,7 @@ import logging
 import os
 import uuid
 import random
+from collections.abc import Mapping, Sequence
 from datetime import datetime, UTC
 from typing import Any
 
@@ -18,7 +19,11 @@ from .rtp_server import RtpServer, RtpServerConfig
 from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks, VoiceBridgeMetricsRecorder
 from ..workflows.service import WorkflowService, resolve_start_telephony_config
 from ..config import get_settings
-from ..realtime_runner import open_voice_session, close_voice_session
+from ..realtime_runner import (
+    VoiceSessionHandle,
+    close_voice_session,
+    open_voice_session,
+)
 
 logger = logging.getLogger("chatkit.telephony.outbound")
 
@@ -195,6 +200,70 @@ class OutboundCallManager:
             asyncio.create_task(self._execute_call_sip(db, session, call_record.id))
 
         return session
+
+    def _prepare_voice_session_metadata(
+        self, session: OutboundCallSession
+    ) -> tuple[str, dict[str, Any]]:
+        base_metadata: dict[str, Any] = {}
+        if isinstance(session.metadata, Mapping):
+            base_metadata = dict(session.metadata)
+
+        thread_id_value = base_metadata.get("thread_id")
+        if isinstance(thread_id_value, str):
+            candidate = thread_id_value.strip()
+            if candidate:
+                base_metadata["thread_id"] = candidate
+            else:
+                base_metadata.pop("thread_id", None)
+        elif thread_id_value is not None:
+            base_metadata.pop("thread_id", None)
+
+        owner_user_id = base_metadata.get("user_id")
+        if isinstance(owner_user_id, str):
+            owner_user_id = owner_user_id.strip()
+        else:
+            owner_user_id = None
+
+        if not owner_user_id:
+            owner_user_id = f"outbound:{session.call_id}"
+
+        base_metadata["user_id"] = owner_user_id
+
+        metadata: dict[str, Any] = {
+            "outbound_call_id": session.call_id,
+            "to_number": session.to_number,
+            "from_number": session.from_number,
+        }
+        metadata.update(base_metadata)
+
+        return owner_user_id, metadata
+
+    async def _open_voice_session_for_call(
+        self,
+        session: OutboundCallSession,
+        *,
+        model: str,
+        instructions: str,
+        voice: str | None,
+        provider_id: str | None,
+        provider_slug: str | None,
+        tools: Sequence[Any],
+        handoffs: Sequence[Any],
+        realtime: Mapping[str, Any] | None = None,
+    ) -> VoiceSessionHandle:
+        user_id, metadata = self._prepare_voice_session_metadata(session)
+        return await open_voice_session(
+            user_id=user_id,
+            model=model,
+            instructions=instructions,
+            voice=voice,
+            provider_id=provider_id,
+            provider_slug=provider_slug,
+            tools=tools,
+            handoffs=handoffs,
+            realtime=realtime or {},
+            metadata=metadata,
+        )
 
     async def _execute_call_pjsua(
         self, db: Session, session: OutboundCallSession, call_db_id: int
@@ -490,8 +559,8 @@ class OutboundCallManager:
                             voice_handoffs.extend(handoffs_payload)
                     break
 
-            session_handle = await open_voice_session(
-                user_id=f"outbound:{session.call_id}",
+            session_handle = await self._open_voice_session_for_call(
+                session,
                 model=voice_model,
                 instructions=instructions,
                 voice=voice_name,
@@ -500,11 +569,6 @@ class OutboundCallManager:
                 tools=voice_tools,
                 handoffs=voice_handoffs,
                 realtime={},
-                metadata={
-                    "outbound_call_id": session.call_id,
-                    "to_number": session.to_number,
-                    "from_number": session.from_number,
-                },
             )
 
             # Récupérer le client secret
@@ -839,8 +903,8 @@ class OutboundCallManager:
                 voice_provider_slug = getattr(route, "provider_slug", None) or "openai"
                 voice_provider_id = getattr(route, "provider_id", None)
 
-                session_handle = await open_voice_session(
-                    user_id=f"outbound:{session.call_id}",
+                session_handle = await self._open_voice_session_for_call(
+                    session,
                     model=voice_model,
                     instructions=instructions,
                     voice=voice_name,
@@ -849,11 +913,6 @@ class OutboundCallManager:
                     tools=voice_tools,
                     handoffs=voice_handoffs,
                     realtime={},
-                    metadata={
-                        "outbound_call_id": session.call_id,
-                        "to_number": session.to_number,
-                        "from_number": session.from_number,
-                    },
                 )
 
                 # Récupérer le client secret
