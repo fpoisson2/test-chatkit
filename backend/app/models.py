@@ -7,6 +7,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -353,6 +354,67 @@ class Workflow(Base):
         primaryjoin="Workflow.active_version_id==WorkflowDefinition.id",
         foreign_keys="Workflow.active_version_id",
         viewonly=True,
+    )
+    appearance_override: Mapped["WorkflowAppearance" | None] = relationship(
+        "WorkflowAppearance",
+        back_populates="workflow",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class WorkflowAppearance(Base):
+    __tablename__ = "workflow_appearances"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id", name="uq_workflow_appearances_workflow_id"
+        ),
+        UniqueConstraint(
+            "hosted_workflow_slug",
+            name="uq_workflow_appearances_hosted_slug",
+        ),
+        CheckConstraint(
+            "(workflow_id IS NOT NULL AND hosted_workflow_slug IS NULL) OR "
+            "(workflow_id IS NULL AND hosted_workflow_slug IS NOT NULL)",
+            name="ck_workflow_appearances_target",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workflow_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    hosted_workflow_slug: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    appearance_color_scheme: Mapped[str | None] = mapped_column(String(16))
+    appearance_accent_color: Mapped[str | None] = mapped_column(String(32))
+    appearance_use_custom_surface: Mapped[bool | None] = mapped_column(Boolean)
+    appearance_surface_hue: Mapped[float | None] = mapped_column(Float)
+    appearance_surface_tint: Mapped[float | None] = mapped_column(Float)
+    appearance_surface_shade: Mapped[float | None] = mapped_column(Float)
+    appearance_heading_font: Mapped[str | None] = mapped_column(String(128))
+    appearance_body_font: Mapped[str | None] = mapped_column(String(128))
+    appearance_start_greeting: Mapped[str | None] = mapped_column(Text)
+    appearance_start_prompt: Mapped[str | None] = mapped_column(Text)
+    appearance_input_placeholder: Mapped[str | None] = mapped_column(Text)
+    appearance_disclaimer: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    workflow: Mapped[Workflow | None] = relationship(
+        "Workflow", back_populates="appearance_override"
     )
 
 
