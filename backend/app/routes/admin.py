@@ -14,7 +14,9 @@ from ..admin_settings import (
     apply_runtime_model_overrides,
     get_thread_title_prompt_override,
     serialize_admin_settings,
+    serialize_appearance_settings,
     update_admin_settings,
+    update_appearance_settings,
 )
 from ..config import get_settings
 from ..database import get_session
@@ -24,6 +26,8 @@ from ..models import SipAccount, TelephonyRoute, User
 from ..schemas import (
     AppSettingsResponse,
     AppSettingsUpdateRequest,
+    AppearanceSettingsResponse,
+    AppearanceSettingsUpdateRequest,
     SipAccountCreateRequest,
     SipAccountResponse,
     SipAccountUpdateRequest,
@@ -126,6 +130,72 @@ async def patch_app_settings(
     override = get_thread_title_prompt_override(session)
     serialized = serialize_admin_settings(override)
     return AppSettingsResponse.model_validate(serialized)
+
+
+@router.get(
+    "/api/admin/appearance-settings",
+    response_model=AppearanceSettingsResponse,
+)
+async def get_appearance_settings_admin(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    override = get_thread_title_prompt_override(session)
+    payload = serialize_appearance_settings(override)
+    return AppearanceSettingsResponse.model_validate(payload)
+
+
+@router.patch(
+    "/api/admin/appearance-settings",
+    response_model=AppearanceSettingsResponse,
+)
+async def patch_appearance_settings(
+    payload: AppearanceSettingsUpdateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    kwargs: dict[str, object] = {}
+    if "color_scheme" in payload.model_fields_set:
+        kwargs["color_scheme"] = payload.color_scheme
+    if "accent_color" in payload.model_fields_set:
+        kwargs["accent_color"] = payload.accent_color
+    if "use_custom_surface_colors" in payload.model_fields_set:
+        kwargs["use_custom_surface_colors"] = payload.use_custom_surface_colors
+    if "surface_hue" in payload.model_fields_set:
+        kwargs["surface_hue"] = payload.surface_hue
+    if "surface_tint" in payload.model_fields_set:
+        kwargs["surface_tint"] = payload.surface_tint
+    if "surface_shade" in payload.model_fields_set:
+        kwargs["surface_shade"] = payload.surface_shade
+    if "heading_font" in payload.model_fields_set:
+        kwargs["heading_font"] = payload.heading_font
+    if "body_font" in payload.model_fields_set:
+        kwargs["body_font"] = payload.body_font
+    if "start_screen_greeting" in payload.model_fields_set:
+        kwargs["start_screen_greeting"] = payload.start_screen_greeting
+    if "start_screen_prompt" in payload.model_fields_set:
+        kwargs["start_screen_prompt"] = payload.start_screen_prompt
+    if "start_screen_placeholder" in payload.model_fields_set:
+        kwargs["start_screen_placeholder"] = payload.start_screen_placeholder
+    if "start_screen_disclaimer" in payload.model_fields_set:
+        kwargs["start_screen_disclaimer"] = payload.start_screen_disclaimer
+
+    try:
+        settings = update_appearance_settings(session, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except SQLAlchemyError as exc:  # pragma: no cover - database failure
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Impossible d'enregistrer l'apparence",
+        ) from exc
+
+    serialized = serialize_appearance_settings(settings)
+    return AppearanceSettingsResponse.model_validate(serialized)
 
 
 @router.get("/api/admin/users", response_model=list[UserResponse])

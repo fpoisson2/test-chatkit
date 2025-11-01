@@ -262,6 +262,38 @@ export type AppSettingsUpdatePayload = {
   sip_contact_transport?: string | null;
 };
 
+export type AppearanceSettings = {
+  color_scheme: "system" | "light" | "dark";
+  accent_color: string;
+  use_custom_surface_colors: boolean;
+  surface_hue: number;
+  surface_tint: number;
+  surface_shade: number;
+  heading_font: string;
+  body_font: string;
+  start_screen_greeting: string;
+  start_screen_prompt: string;
+  start_screen_placeholder: string;
+  start_screen_disclaimer: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type AppearanceSettingsUpdatePayload = {
+  color_scheme?: "system" | "light" | "dark" | null;
+  accent_color?: string | null;
+  use_custom_surface_colors?: boolean | null;
+  surface_hue?: number | null;
+  surface_tint?: number | null;
+  surface_shade?: number | null;
+  heading_font?: string | null;
+  body_font?: string | null;
+  start_screen_greeting?: string | null;
+  start_screen_prompt?: string | null;
+  start_screen_placeholder?: string | null;
+  start_screen_disclaimer?: string | null;
+};
+
 export type ChatKitWorkflowInfo = {
   workflow_id: number;
   workflow_slug: string | null;
@@ -528,6 +560,46 @@ export const appSettingsApi = {
       headers: withAuthHeaders(token),
       body: JSON.stringify(payload),
     });
+    return response.json();
+  },
+};
+
+type AppearanceSettingsScope = "admin" | "public";
+
+export const appearanceSettingsApi = {
+  async get(
+    token: string | null,
+    options: { scope?: AppearanceSettingsScope } = {},
+  ): Promise<AppearanceSettings> {
+    const scope: AppearanceSettingsScope = options.scope
+      ? options.scope
+      : token
+      ? "admin"
+      : "public";
+    const url =
+      scope === "admin"
+        ? "/api/admin/appearance-settings"
+        : "/api/appearance-settings";
+    const init: RequestInit = {};
+    if (scope === "admin") {
+      init.headers = withAuthHeaders(token);
+    }
+    const response = await requestWithFallback(url, init);
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    payload: AppearanceSettingsUpdatePayload,
+  ): Promise<AppearanceSettings> {
+    const response = await requestWithFallback(
+      "/api/admin/appearance-settings",
+      {
+        method: "PATCH",
+        headers: withAuthHeaders(token),
+        body: JSON.stringify(payload),
+      },
+    );
     return response.json();
   },
 };

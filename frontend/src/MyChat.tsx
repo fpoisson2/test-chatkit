@@ -6,6 +6,7 @@ import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
+import { useAppearanceSettings } from "./features/appearance/AppearanceSettingsContext";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
@@ -131,6 +132,7 @@ const ensureSecureUrl = (rawUrl: string): SecureUrlNormalizationResult => {
 
 export function MyChat() {
   const { token, user } = useAuth();
+  const { settings: appearanceSettings } = useAppearanceSettings();
   const { openSidebar } = useAppLayout();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
@@ -709,6 +711,13 @@ export function MyChat() {
     [attachmentsEnabled],
   );
 
+  const composerPlaceholder = useMemo(() => {
+    const candidate = appearanceSettings.start_screen_placeholder?.trim();
+    return candidate && candidate.length > 0
+      ? candidate
+      : "Posez votre question...";
+  }, [appearanceSettings.start_screen_placeholder]);
+
   const chatkitOptions = useMemo(
     () =>
       ({
@@ -726,8 +735,7 @@ export function MyChat() {
           density: "normal",
           typography: {
             baseSize: 16,
-            fontFamily:
-              '"OpenAI Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+            fontFamily: appearanceSettings.body_font,
             fontFamilyMono:
               'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
             fontSources: [
@@ -743,7 +751,7 @@ export function MyChat() {
           },
         },
         composer: {
-          placeholder: "Posez votre question...",
+          placeholder: composerPlaceholder,
           attachments: attachmentsConfig,
         },
         onClientTool: async (toolCall) => {
@@ -825,6 +833,8 @@ export function MyChat() {
       chatInstanceKey,
       preferredColorScheme,
       reportError,
+      appearanceSettings.body_font,
+      composerPlaceholder,
     ],
   );
 
@@ -844,7 +854,21 @@ export function MyChat() {
     };
   }, [requestRefresh]);
 
-  const statusMessage = error ?? (isLoading ? "Initialisation de la session…" : null);
+  const hasActiveThread = Boolean(control.threadId);
+  const introMessage =
+    !error && !isLoading && !hasActiveThread
+      ? [
+          appearanceSettings.start_screen_greeting,
+          appearanceSettings.start_screen_prompt,
+          appearanceSettings.start_screen_disclaimer,
+        ]
+          .map((part) => part?.trim())
+          .filter((part): part is string => Boolean(part && part.length > 0))
+          .join("\n\n") || null
+      : null;
+
+  const statusMessage =
+    error ?? (isLoading ? "Initialisation de la session…" : introMessage);
 
   const voiceStatusMessage = voiceStatus === "connected"
     ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`

@@ -5,7 +5,9 @@ import datetime
 import hashlib
 import json
 import logging
+import math
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
@@ -66,6 +68,23 @@ class ResolvedModelProviderCredentials:
     api_key: str | None
 
 _UNSET = object()
+
+
+DEFAULT_APPEARANCE_COLOR_SCHEME = "system"
+DEFAULT_APPEARANCE_ACCENT_COLOR = "#2563eb"
+DEFAULT_APPEARANCE_USE_CUSTOM_SURFACE = False
+DEFAULT_APPEARANCE_SURFACE_HUE = 222.0
+DEFAULT_APPEARANCE_SURFACE_TINT = 92.0
+DEFAULT_APPEARANCE_SURFACE_SHADE = 16.0
+DEFAULT_APPEARANCE_BODY_FONT = (
+    '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif'
+)
+DEFAULT_APPEARANCE_HEADING_FONT = DEFAULT_APPEARANCE_BODY_FONT
+DEFAULT_APPEARANCE_GREETING = ""
+DEFAULT_APPEARANCE_PROMPT = ""
+DEFAULT_APPEARANCE_PLACEHOLDER = "Posez votre question..."
+DEFAULT_APPEARANCE_DISCLAIMER = ""
+_ALLOWED_COLOR_SCHEMES = {"system", "light", "dark"}
 
 
 def _now() -> datetime.datetime:
@@ -185,6 +204,135 @@ def _normalize_optional_int(value: int | str | None) -> int | None:
     if port <= 0 or port > 65535:
         return None
     return port
+
+
+def _sanitize_color_scheme(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(
+            "Le mode de couleur doit être system, light ou dark."
+        )
+    candidate = value.strip().lower()
+    if candidate not in _ALLOWED_COLOR_SCHEMES:
+        raise ValueError(
+            "Le mode de couleur doit être system, light ou dark."
+        )
+    return None if candidate == DEFAULT_APPEARANCE_COLOR_SCHEME else candidate
+
+
+def _resolve_color_scheme(settings: AppSettings | None) -> str:
+    raw_value = getattr(settings, "appearance_color_scheme", None)
+    if isinstance(raw_value, str):
+        candidate = raw_value.strip().lower()
+        if candidate in _ALLOWED_COLOR_SCHEMES:
+            return candidate
+    return DEFAULT_APPEARANCE_COLOR_SCHEME
+
+
+_HEX_COLOR_PATTERN = re.compile(r"#([0-9a-fA-F]{6})")
+
+
+def _sanitize_accent_color(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(
+            "La couleur d'accent doit être au format hexadécimal (#RRGGBB)."
+        )
+    candidate = value.strip()
+    if not candidate:
+        return None
+    if not candidate.startswith("#"):
+        candidate = f"#{candidate}"
+    if not _HEX_COLOR_PATTERN.fullmatch(candidate):
+        raise ValueError(
+            "La couleur d'accent doit être au format hexadécimal (#RRGGBB)."
+        )
+    normalized = candidate.lower()
+    return None if normalized == DEFAULT_APPEARANCE_ACCENT_COLOR else normalized
+
+
+def _resolve_accent_color(settings: AppSettings | None) -> str:
+    raw_value = getattr(settings, "appearance_accent_color", None)
+    if isinstance(raw_value, str):
+        candidate = raw_value.strip()
+        if candidate and candidate.startswith("#"):
+            normalized = candidate.lower()
+            if _HEX_COLOR_PATTERN.fullmatch(normalized):
+                return normalized
+    return DEFAULT_APPEARANCE_ACCENT_COLOR
+
+
+def _sanitize_surface_value(
+    name: str,
+    value: int | float | str | None,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float | None:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"La valeur {name} doit être numérique."
+        ) from None
+    if not math.isfinite(numeric) or numeric < minimum or numeric > maximum:
+        raise ValueError(
+            f"La valeur {name} doit être comprise entre {minimum} et {maximum}."
+        )
+    return float(numeric)
+
+
+def _resolve_surface_value(
+    value: int | float | str | None,
+    default: float,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(numeric):
+        return default
+    return float(min(max(numeric, minimum), maximum))
+
+
+def _sanitize_font(value: str | None, default: str) -> str | None:
+    if value is None:
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    return None if candidate == default else candidate
+
+
+def _resolve_font(value: str | None, default: str) -> str:
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate:
+            return candidate
+    return default
+
+
+def _resolve_placeholder(value: str | None) -> str:
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate:
+            return candidate
+    return DEFAULT_APPEARANCE_PLACEHOLDER
+
+
+def _resolve_optional_text(value: str | None) -> str:
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate:
+            return candidate
+    return ""
 
 
 _VALID_TRANSPORTS = {"udp", "tcp", "tls"}
@@ -409,6 +557,83 @@ def _compute_model_overrides(settings: AppSettings | None) -> dict[str, Any]:
     return overrides
 
 
+def _resolve_appearance_settings(settings: AppSettings | None) -> dict[str, Any]:
+    return {
+        "color_scheme": _resolve_color_scheme(settings),
+        "accent_color": _resolve_accent_color(settings),
+        "use_custom_surface_colors": bool(
+            getattr(settings, "appearance_use_custom_surface", False)
+        ),
+        "surface_hue": _resolve_surface_value(
+            getattr(settings, "appearance_surface_hue", None),
+            DEFAULT_APPEARANCE_SURFACE_HUE,
+            minimum=0.0,
+            maximum=360.0,
+        ),
+        "surface_tint": _resolve_surface_value(
+            getattr(settings, "appearance_surface_tint", None),
+            DEFAULT_APPEARANCE_SURFACE_TINT,
+            minimum=0.0,
+            maximum=100.0,
+        ),
+        "surface_shade": _resolve_surface_value(
+            getattr(settings, "appearance_surface_shade", None),
+            DEFAULT_APPEARANCE_SURFACE_SHADE,
+            minimum=0.0,
+            maximum=100.0,
+        ),
+        "heading_font": _resolve_font(
+            getattr(settings, "appearance_heading_font", None),
+            DEFAULT_APPEARANCE_HEADING_FONT,
+        ),
+        "body_font": _resolve_font(
+            getattr(settings, "appearance_body_font", None),
+            DEFAULT_APPEARANCE_BODY_FONT,
+        ),
+        "start_screen_greeting": _resolve_optional_text(
+            getattr(settings, "appearance_start_greeting", None)
+        ),
+        "start_screen_prompt": _resolve_optional_text(
+            getattr(settings, "appearance_start_prompt", None)
+        ),
+        "start_screen_placeholder": _resolve_placeholder(
+            getattr(settings, "appearance_input_placeholder", None)
+        ),
+        "start_screen_disclaimer": _resolve_optional_text(
+            getattr(settings, "appearance_disclaimer", None)
+        ),
+    }
+
+
+def _has_custom_appearance(settings: AppSettings | None) -> bool:
+    if not settings:
+        return False
+    resolved = _resolve_appearance_settings(settings)
+    if resolved["color_scheme"] != DEFAULT_APPEARANCE_COLOR_SCHEME:
+        return True
+    if resolved["accent_color"].lower() != DEFAULT_APPEARANCE_ACCENT_COLOR:
+        return True
+    if resolved["use_custom_surface_colors"] and (
+        resolved["surface_hue"] != DEFAULT_APPEARANCE_SURFACE_HUE
+        or resolved["surface_tint"] != DEFAULT_APPEARANCE_SURFACE_TINT
+        or resolved["surface_shade"] != DEFAULT_APPEARANCE_SURFACE_SHADE
+    ):
+        return True
+    if resolved["heading_font"] != DEFAULT_APPEARANCE_HEADING_FONT:
+        return True
+    if resolved["body_font"] != DEFAULT_APPEARANCE_BODY_FONT:
+        return True
+    if resolved["start_screen_greeting"] != DEFAULT_APPEARANCE_GREETING:
+        return True
+    if resolved["start_screen_prompt"] != DEFAULT_APPEARANCE_PROMPT:
+        return True
+    if resolved["start_screen_placeholder"] != DEFAULT_APPEARANCE_PLACEHOLDER:
+        return True
+    if resolved["start_screen_disclaimer"] != DEFAULT_APPEARANCE_DISCLAIMER:
+        return True
+    return False
+
+
 def apply_runtime_model_overrides(settings: AppSettings | None) -> Any:
     overrides = _compute_model_overrides(settings)
     set_runtime_settings_overrides(overrides or None)
@@ -435,6 +660,139 @@ def _resolved_sip_values(
         _normalize_optional_int(settings.sip_contact_port),
         _normalize_transport(settings.sip_contact_transport),
     )
+
+
+def update_appearance_settings(
+    session: Session,
+    *,
+    color_scheme: str | None | object = _UNSET,
+    accent_color: str | None | object = _UNSET,
+    use_custom_surface_colors: bool | None | object = _UNSET,
+    surface_hue: float | int | str | None | object = _UNSET,
+    surface_tint: float | int | str | None | object = _UNSET,
+    surface_shade: float | int | str | None | object = _UNSET,
+    heading_font: str | None | object = _UNSET,
+    body_font: str | None | object = _UNSET,
+    start_screen_greeting: str | None | object = _UNSET,
+    start_screen_prompt: str | None | object = _UNSET,
+    start_screen_placeholder: str | None | object = _UNSET,
+    start_screen_disclaimer: str | None | object = _UNSET,
+) -> AppSettings:
+    stored_settings = get_thread_title_prompt_override(session)
+    settings = stored_settings
+    if settings is None:
+        settings = AppSettings(
+            thread_title_prompt=_default_thread_title_prompt(),
+            thread_title_model=_default_thread_title_model(),
+        )
+
+    changed = False
+
+    if color_scheme is not _UNSET:
+        if color_scheme is not None and not isinstance(color_scheme, str):
+            raise ValueError(
+                "Le mode de couleur doit être une chaîne de caractères."
+            )
+        settings.appearance_color_scheme = _sanitize_color_scheme(
+            color_scheme
+        )
+        changed = True
+
+    if accent_color is not _UNSET:
+        if accent_color is not None and not isinstance(accent_color, str):
+            raise ValueError(
+                "La couleur d'accent doit être une chaîne au format #RRGGBB."
+            )
+        settings.appearance_accent_color = _sanitize_accent_color(accent_color)
+        changed = True
+
+    if use_custom_surface_colors is not _UNSET:
+        settings.appearance_use_custom_surface = bool(use_custom_surface_colors)
+        changed = True
+
+    if surface_hue is not _UNSET:
+        settings.appearance_surface_hue = _sanitize_surface_value(
+            "surface_hue",
+            surface_hue,
+            minimum=0.0,
+            maximum=360.0,
+        )
+        changed = True
+
+    if surface_tint is not _UNSET:
+        settings.appearance_surface_tint = _sanitize_surface_value(
+            "surface_tint",
+            surface_tint,
+            minimum=0.0,
+            maximum=100.0,
+        )
+        changed = True
+
+    if surface_shade is not _UNSET:
+        settings.appearance_surface_shade = _sanitize_surface_value(
+            "surface_shade",
+            surface_shade,
+            minimum=0.0,
+            maximum=100.0,
+        )
+        changed = True
+
+    if heading_font is not _UNSET:
+        if heading_font is not None and not isinstance(heading_font, str):
+            raise ValueError("La police des titres doit être une chaîne.")
+        settings.appearance_heading_font = _sanitize_font(
+            heading_font, DEFAULT_APPEARANCE_HEADING_FONT
+        )
+        changed = True
+
+    if body_font is not _UNSET:
+        if body_font is not None and not isinstance(body_font, str):
+            raise ValueError("La police principale doit être une chaîne.")
+        settings.appearance_body_font = _sanitize_font(
+            body_font, DEFAULT_APPEARANCE_BODY_FONT
+        )
+        changed = True
+
+    if start_screen_greeting is not _UNSET:
+        if start_screen_greeting is not None and not isinstance(start_screen_greeting, str):
+            raise ValueError("Le message de bienvenue doit être une chaîne.")
+        settings.appearance_start_greeting = _normalize_optional_string(
+            start_screen_greeting
+        )
+        changed = True
+
+    if start_screen_prompt is not _UNSET:
+        if start_screen_prompt is not None and not isinstance(start_screen_prompt, str):
+            raise ValueError("La phrase d'accroche doit être une chaîne.")
+        settings.appearance_start_prompt = _normalize_optional_string(
+            start_screen_prompt
+        )
+        changed = True
+
+    if start_screen_placeholder is not _UNSET:
+        if start_screen_placeholder is not None and not isinstance(start_screen_placeholder, str):
+            raise ValueError("Le placeholder doit être une chaîne.")
+        settings.appearance_input_placeholder = _normalize_optional_string(
+            start_screen_placeholder
+        )
+        changed = True
+
+    if start_screen_disclaimer is not _UNSET:
+        if start_screen_disclaimer is not None and not isinstance(start_screen_disclaimer, str):
+            raise ValueError("L'avertissement doit être une chaîne.")
+        settings.appearance_disclaimer = _normalize_optional_string(
+            start_screen_disclaimer
+        )
+        changed = True
+
+    if not changed:
+        return settings
+
+    settings.updated_at = _now()
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings
 
 
 def update_admin_settings(
@@ -688,12 +1046,14 @@ def update_admin_settings(
     has_sip_values = any(value is not None for value in resolved_sip_values)
     new_overrides = _compute_model_overrides(settings)
     has_model_values = bool(new_overrides)
+    has_appearance_values = _has_custom_appearance(settings)
 
     if (
         not has_custom_prompt
         and not has_custom_model
         and not has_sip_values
         and not has_model_values
+        and not has_appearance_values
     ):
         new_prompt = default_prompt
         new_model = default_model
@@ -774,6 +1134,18 @@ def resolve_thread_title_model(session: Session | None = None) -> str:
     return default_model
 
 
+def resolve_appearance_settings(session: Session | None = None) -> dict[str, Any]:
+    try:
+        if session is not None:
+            override = get_thread_title_prompt_override(session)
+            return serialize_appearance_settings(override)
+        with SessionLocal() as owned_session:
+            override = get_thread_title_prompt_override(owned_session)
+            return serialize_appearance_settings(override)
+    except Exception:  # pragma: no cover - fallback
+        return serialize_appearance_settings(None)
+
+
 def serialize_admin_settings(
     settings: AppSettings | None,
     *,
@@ -849,3 +1221,10 @@ def serialize_admin_settings(
         "created_at": settings.created_at if settings else None,
         "updated_at": settings.updated_at if settings else None,
     }
+
+
+def serialize_appearance_settings(settings: AppSettings | None) -> dict[str, Any]:
+    resolved = _resolve_appearance_settings(settings)
+    resolved["created_at"] = settings.created_at if settings else None
+    resolved["updated_at"] = settings.updated_at if settings else None
+    return resolved

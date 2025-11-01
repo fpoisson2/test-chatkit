@@ -38,6 +38,7 @@ const fr: TranslationDictionary = {
   "admin.tabs.widgets": "Bibliothèque de widgets",
   "admin.tabs.telephony": "Téléphonie",
   "admin.tabs.settings": "Paramètres généraux",
+  "admin.tabs.appearance": "Apparence et thème",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Navigation du panneau d'administration",
   "admin.models.form.modelIdLabel": "Identifiant du modèle*",
@@ -216,6 +217,49 @@ const fr: TranslationDictionary = {
   "admin.appSettings.sipTrunk.contactTransportOptionTls": "TLS",
   "admin.appSettings.sipTrunk.contactTransportHelp":
     "Sélectionnez le transport annoncé dans l'en-tête Contact (laisser vide pour la valeur par défaut).",
+  "admin.appearance.page.title": "Apparence & thème",
+  "admin.appearance.page.subtitle":
+    "Personnalisez les couleurs, les polices et les messages d'accueil de ChatKit.",
+  "admin.appearance.colorScheme.cardTitle": "Mode de couleur",
+  "admin.appearance.colorScheme.cardDescription":
+    "Choisissez le mode appliqué par défaut à l'ensemble des utilisateurs.",
+  "admin.appearance.colorScheme.option.system": "Suivre le système",
+  "admin.appearance.colorScheme.option.light": "Mode clair",
+  "admin.appearance.colorScheme.option.dark": "Mode sombre",
+  "admin.appearance.colors.cardTitle": "Couleurs de l'interface",
+  "admin.appearance.colors.cardDescription":
+    "Définissez la couleur d'accent et ajustez les surfaces si nécessaire.",
+  "admin.appearance.colors.accentLabel": "Couleur d'accent",
+  "admin.appearance.colors.accentHint":
+    "Cette couleur est utilisée pour les boutons principaux et les éléments mis en avant.",
+  "admin.appearance.colors.accentAria": "Choisir la couleur d'accent",
+  "admin.appearance.colors.enableCustomSurfaces":
+    "Activer des couleurs de surface personnalisées",
+  "admin.appearance.colors.hueLabel": "Teinte",
+  "admin.appearance.colors.tintLabel": "Luminosité (clair)",
+  "admin.appearance.colors.shadeLabel": "Ombre (sombre)",
+  "admin.appearance.typography.cardTitle": "Typographie",
+  "admin.appearance.typography.cardDescription":
+    "Appliquez des polices personnalisées à l'interface ChatKit.",
+  "admin.appearance.typography.bodyLabel": "Police principale",
+  "admin.appearance.typography.headingLabel": "Police des titres",
+  "admin.appearance.typography.hint":
+    "Saisissez une pile de polices séparées par des virgules avec des alternatives.",
+  "admin.appearance.start.cardTitle": "Écran de démarrage",
+  "admin.appearance.start.cardDescription":
+    "Personnalisez le message de bienvenue et les instructions affichés avant le premier échange.",
+  "admin.appearance.start.greetingLabel": "Message de bienvenue",
+  "admin.appearance.start.promptLabel": "Phrase d'accroche",
+  "admin.appearance.start.placeholderLabel": "Texte d'aide du champ de saisie",
+  "admin.appearance.start.disclaimerLabel": "Avertissement",
+  "admin.appearance.actions.save": "Enregistrer l'apparence",
+  "admin.appearance.feedback.saved": "Apparence enregistrée avec succès.",
+  "admin.appearance.feedback.error": "Impossible d'enregistrer l'apparence.",
+  "admin.appearance.feedback.loadError":
+    "Impossible de charger les paramètres d'apparence.",
+  "admin.appearance.feedback.sessionExpired":
+    "Session expirée, veuillez vous reconnecter.",
+  "admin.appearance.loading": "Chargement des paramètres d'apparence…",
   "auth.login.title": "Connexion",
   "auth.login.subtitle":
     "Accédez au panneau d'administration pour gérer les utilisateurs et vos sessions ChatKit.",
@@ -645,6 +689,7 @@ const en: TranslationDictionary = {
   "admin.tabs.widgets": "Widget library",
   "admin.tabs.telephony": "Telephony",
   "admin.tabs.settings": "General settings",
+  "admin.tabs.appearance": "Appearance",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Administration navigation",
   "admin.models.form.modelIdLabel": "Model identifier*",
@@ -811,6 +856,49 @@ const en: TranslationDictionary = {
   "admin.appSettings.sipTrunk.contactTransportOptionTls": "TLS",
   "admin.appSettings.sipTrunk.contactTransportHelp":
     "Select the transport advertised in the Contact header (leave empty for the default).",
+  "admin.appearance.page.title": "Appearance",
+  "admin.appearance.page.subtitle":
+    "Control ChatKit colors, fonts, and welcome messages.",
+  "admin.appearance.colorScheme.cardTitle": "Color scheme",
+  "admin.appearance.colorScheme.cardDescription":
+    "Select the default mode applied to every user.",
+  "admin.appearance.colorScheme.option.system": "Match system",
+  "admin.appearance.colorScheme.option.light": "Light mode",
+  "admin.appearance.colorScheme.option.dark": "Dark mode",
+  "admin.appearance.colors.cardTitle": "Interface colors",
+  "admin.appearance.colors.cardDescription":
+    "Define the accent color and tweak surfaces when needed.",
+  "admin.appearance.colors.accentLabel": "Accent color",
+  "admin.appearance.colors.accentHint":
+    "Used for primary buttons and highlighted elements.",
+  "admin.appearance.colors.accentAria": "Pick accent color",
+  "admin.appearance.colors.enableCustomSurfaces":
+    "Enable custom surface colors",
+  "admin.appearance.colors.hueLabel": "Hue",
+  "admin.appearance.colors.tintLabel": "Tint (light)",
+  "admin.appearance.colors.shadeLabel": "Shade (dark)",
+  "admin.appearance.typography.cardTitle": "Typography",
+  "admin.appearance.typography.cardDescription":
+    "Apply custom fonts across the ChatKit interface.",
+  "admin.appearance.typography.bodyLabel": "Body font",
+  "admin.appearance.typography.headingLabel": "Heading font",
+  "admin.appearance.typography.hint":
+    "Provide a comma-separated font stack with fallbacks.",
+  "admin.appearance.start.cardTitle": "Start screen",
+  "admin.appearance.start.cardDescription":
+    "Customize the greeting and guidance displayed before the first exchange.",
+  "admin.appearance.start.greetingLabel": "Welcome message",
+  "admin.appearance.start.promptLabel": "Call to action",
+  "admin.appearance.start.placeholderLabel": "Composer placeholder",
+  "admin.appearance.start.disclaimerLabel": "Disclaimer",
+  "admin.appearance.actions.save": "Save appearance",
+  "admin.appearance.feedback.saved": "Appearance settings saved.",
+  "admin.appearance.feedback.error": "Unable to save appearance settings.",
+  "admin.appearance.feedback.loadError":
+    "Unable to load appearance settings.",
+  "admin.appearance.feedback.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.appearance.loading": "Loading appearance settings…",
   "auth.login.title": "Sign in",
   "auth.login.subtitle": "Access the admin console to manage users and ChatKit sessions.",
   "auth.login.email.label": "Email address",
