@@ -226,61 +226,45 @@ class OutboundCallManager:
             # Format: sip:+33612345678@domain.com
             to_uri = self._build_sip_uri(session.to_number, sip_account.trunk_uri)
 
-            logger.info("Making PJSUA call to %s", to_uri)
-
-            # Initier l'appel avec PJSUA
-            pjsua_call = await self._pjsua_adapter.make_call(to_uri)
-            session._pjsua_call = pjsua_call
-
-            # Attendre que l'appel soit connecté (200 OK)
-            # TODO: Ajouter un timeout et gérer les différents états
-            # Pour l'instant, on continue directement
-            session.status = "ringing"
-            self._update_call_status(db, call_db_id, "ringing")
-
             # Créer un Event pour attendre que le média soit actif
-            # Cet event sera passé au RTP stream pour éviter de capturer du bruit avant que le média soit prêt
+            # IMPORTANT: Créer AVANT make_call pour éviter race condition
             media_active_event = asyncio.Event()
 
-            # Créer l'audio bridge IMMÉDIATEMENT (avant même le média actif)
-            # pour permettre la préparation de l'audio pendant la négociation
-            # IMPORTANT: Le RTP stream attendra media_active_event avant de yield des paquets
-            logger.info("Création de l'audio bridge PJSUA pour appel sortant (call_id=%s)", session.call_id)
-            rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(pjsua_call, media_active_event)
+            # Créer une référence pour le call qu'on va créer
+            # On va la remplir après make_call
+            pjsua_call_ref: list[Any] = [None]
 
-            # Stocker le bridge dans la session ET dans le call PJSUA pour le cleanup
-            session._audio_bridge = bridge
-            pjsua_call._audio_bridge = bridge
-
-            # Reset l'event frame_requested pour cet appel (partagé entre tous les appels)
-            if self._pjsua_adapter._frame_requested_event:
-                self._pjsua_adapter._frame_requested_event.clear()
-                logger.info("🔄 Event frame_requested réinitialisé pour l'appel sortant (call_id=%s)", session.call_id)
+            # Variable pour stocker pjsua_ready_event (sera rempli après création du bridge)
+            pjsua_ready_event_ref: list[asyncio.Event | None] = [None]
 
             # Callback pour débloquer l'audio quand le média est actif
+            # IMPORTANT: Définir AVANT make_call pour capturer onCallMediaState
             async def on_media_active_callback_outbound(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
-                if active_call == pjsua_call:
-                    logger.info("🎵 Média actif détecté pour appel sortant (call_id=%s)", session.call_id)
+                if pjsua_call_ref[0] is None or active_call != pjsua_call_ref[0]:
+                    return
 
-                    # Attendre que le jitter buffer soit initialisé
-                    logger.info("⏱️ Attente 50ms pour initialisation jitter buffer... (call_id=%s)", session.call_id)
-                    await asyncio.sleep(0.05)  # 50ms
+                logger.info("🎵 Média actif détecté pour appel sortant (call_id=%s)", session.call_id)
 
-                    # Attendre que PJSUA commence à consommer l'audio (onFrameRequested appelé)
-                    if pjsua_ready_event:
-                        logger.info("⏱️ Attente que PJSUA soit prêt à consommer l'audio... (call_id=%s)", session.call_id)
-                        await pjsua_ready_event.wait()
-                        logger.info("✅ PJSUA prêt - onFrameRequested appelé (call_id=%s)", session.call_id)
+                # Attendre que le jitter buffer soit initialisé
+                logger.info("⏱️ Attente 50ms pour initialisation jitter buffer... (call_id=%s)", session.call_id)
+                await asyncio.sleep(0.05)  # 50ms
 
-                    # Marquer l'appel comme connecté MAINTENANT
-                    session.status = "answered"
-                    self._update_call_status(
-                        db, call_db_id, "answered", answered_at=datetime.now(UTC)
-                    )
+                # Attendre que PJSUA commence à consommer l'audio (onFrameRequested appelé)
+                pjsua_ready_event = pjsua_ready_event_ref[0]
+                if pjsua_ready_event:
+                    logger.info("⏱️ Attente que PJSUA soit prêt à consommer l'audio... (call_id=%s)", session.call_id)
+                    await pjsua_ready_event.wait()
+                    logger.info("✅ PJSUA prêt - onFrameRequested appelé (call_id=%s)", session.call_id)
 
-                    logger.info("PJSUA call %s answered, média ready", session.call_id)
-                    media_active_event.set()
+                # Marquer l'appel comme connecté MAINTENANT
+                session.status = "answered"
+                self._update_call_status(
+                    db, call_db_id, "answered", answered_at=datetime.now(UTC)
+                )
+
+                logger.info("PJSUA call %s answered, média ready", session.call_id)
+                media_active_event.set()
 
             # Enregistrer le callback média
             self._pjsua_adapter.set_media_active_callback(on_media_active_callback_outbound)
@@ -301,7 +285,7 @@ class OutboundCallManager:
                         logger.warning("Erreur dans callback précédent: %s", e)
 
                 # Ensuite, gérer notre propre nettoyage
-                if active_call == pjsua_call:
+                if pjsua_call_ref[0] and active_call == pjsua_call_ref[0]:
                     # Si l'appel est déconnecté, nettoyer les ressources
                     if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
                         if not cleanup_done.is_set():
@@ -320,10 +304,31 @@ class OutboundCallManager:
             # Enregistrer le callback de changement d'état
             self._pjsua_adapter.set_call_state_callback(on_call_state_callback_outbound)
 
-            # Attendre que le média soit actif (max 5 secondes)
+            # CRITIQUE: Maintenant on initie l'appel APRÈS avoir enregistré les callbacks
+            logger.info("📞 Initiation de l'appel PJSUA vers %s (call_id=%s)", to_uri, session.call_id)
+            pjsua_call = await self._pjsua_adapter.make_call(to_uri)
+
+            # Remplir la référence pour que les callbacks puissent l'utiliser
+            pjsua_call_ref[0] = pjsua_call
+            session._pjsua_call = pjsua_call
+
+            logger.info("✅ Appel PJSUA initié, création de l'audio bridge (call_id=%s)", session.call_id)
+
+            # Créer l'audio bridge MAINTENANT que l'appel existe
+            rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, audio_bridge = await create_pjsua_audio_bridge(
+                pjsua_call, media_active_event
+            )
+
+            # Remplir la référence pour le callback
+            pjsua_ready_event_ref[0] = pjsua_ready_event
+            session._audio_bridge = audio_bridge
+
+            logger.info("✅ Audio bridge créé, attente du média actif (call_id=%s)", session.call_id)
+
+            # Attendre que le média soit actif (max 10 secondes pour les appels sortants)
             logger.info("⏱️ Attente activation du média pour appel sortant... (call_id=%s)", session.call_id)
             try:
-                await asyncio.wait_for(media_active_event.wait(), timeout=5.0)
+                await asyncio.wait_for(media_active_event.wait(), timeout=10.0)
                 logger.info("✅ Média actif confirmé (call_id=%s)", session.call_id)
             except asyncio.TimeoutError:
                 logger.warning("⚠️ Timeout attente média actif - on continue quand même (call_id=%s)", session.call_id)
