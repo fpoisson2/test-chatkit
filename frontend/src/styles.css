@@ -602,11 +602,19 @@ button {
 
   .chatkit-layout--desktop .chatkit-sidebar__topline {
     align-items: center;
+    justify-content: center;
     gap: 20px;
+  }
+
+  .chatkit-layout--desktop .chatkit-sidebar__brand {
+    justify-content: center;
+    text-align: center;
   }
 
   .chatkit-layout--desktop .chatkit-sidebar__brand-title {
     font-size: 1.35rem;
+    text-align: center;
+    width: 100%;
   }
 
   .chatkit-layout--desktop .chatkit-sidebar__brand-mark {
