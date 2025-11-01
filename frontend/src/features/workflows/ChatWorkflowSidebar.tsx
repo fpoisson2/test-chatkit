@@ -778,11 +778,31 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           : t("workflows.pinAction", { label: option.label });
         return (
           <li
-            className="chatkit-sidebar__workflow-list-item"
+            className="chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin"
             key={`hosted:${option.slug}`}
             data-hosted-workflow=""
             data-pinned={isPinned ? "" : undefined}
           >
+            <button
+              type="button"
+              className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleHostedPin(option.slug);
+              }}
+              aria-pressed={isPinned}
+              aria-label={pinLabel}
+              title={pinLabel}
+            >
+              <Star
+                aria-hidden="true"
+                className="chatkit-sidebar__workflow-pin-icon"
+                size={18}
+                strokeWidth={isPinned ? 1.75 : 2}
+                fill={isPinned ? "currentColor" : "none"}
+              />
+            </button>
             <button
               type="button"
               className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
@@ -798,28 +818,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                 {t("workflows.hostedBadge")}
               </span>
             </button>
-            <div className="chatkit-sidebar__workflow-actions">
-              <button
-                type="button"
-                className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  toggleHostedPin(option.slug);
-                }}
-                aria-pressed={isPinned}
-                aria-label={pinLabel}
-                title={pinLabel}
-              >
-                <Star
-                  aria-hidden="true"
-                  className="chatkit-sidebar__workflow-pin-icon"
-                  size={18}
-                  strokeWidth={isPinned ? 1.75 : 2}
-                  fill={isPinned ? "currentColor" : "none"}
-                />
-              </button>
-            </div>
             {!option.available ? (
               <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
                 {t("workflows.hostedUnavailable")}
@@ -841,9 +839,29 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       return (
         <li
           key={`local:${workflow.id}`}
-          className="chatkit-sidebar__workflow-list-item"
+          className="chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin"
           data-pinned={isPinned ? "" : undefined}
         >
+          <button
+            type="button"
+            className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              toggleLocalPin(workflow.id);
+            }}
+            aria-pressed={isPinned}
+            aria-label={pinLabel}
+            title={pinLabel}
+          >
+            <Star
+              aria-hidden="true"
+              className="chatkit-sidebar__workflow-pin-icon"
+              size={18}
+              strokeWidth={isPinned ? 1.75 : 2}
+              fill={isPinned ? "currentColor" : "none"}
+            />
+          </button>
           <button
             type="button"
             className={`chatkit-sidebar__workflow-button${
@@ -855,28 +873,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           >
             <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
           </button>
-          <div className="chatkit-sidebar__workflow-actions">
-            <button
-              type="button"
-              className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                toggleLocalPin(workflow.id);
-              }}
-              aria-pressed={isPinned}
-              aria-label={pinLabel}
-              title={pinLabel}
-            >
-              <Star
-                aria-hidden="true"
-                className="chatkit-sidebar__workflow-pin-icon"
-                size={18}
-                strokeWidth={isPinned ? 1.75 : 2}
-                fill={isPinned ? "currentColor" : "none"}
-              />
-            </button>
-          </div>
         </li>
       );
     };
