@@ -307,13 +307,17 @@ class OutboundCallManager:
                 )
 
             route = voice_config.default_route
+
+            # Valeurs par défaut depuis la route/config
             voice_model = route.overrides.model or get_settings().chatkit_realtime_model
             instructions = (
                 route.overrides.instructions or get_settings().chatkit_realtime_instructions
             )
             voice_name = route.overrides.voice or get_settings().chatkit_realtime_voice
+            voice_provider_slug = getattr(route, "provider_slug", None) or "openai"
+            voice_provider_id = getattr(route, "provider_id", None)
 
-            # Extraire les tools et handoffs du workflow (identique au code existant)
+            # Extraire TOUS les paramètres du bloc voice_agent (pas seulement tools/handoffs)
             voice_tools = []
             voice_handoffs = []
 
@@ -321,6 +325,36 @@ class OutboundCallManager:
                 if getattr(step, "kind", None) == "voice_agent":
                     params = getattr(step, "parameters", None)
                     if isinstance(params, dict):
+                        # Instructions personnalisées (override les instructions de la route)
+                        custom_instructions = params.get("instructions")
+                        if isinstance(custom_instructions, str) and custom_instructions.strip():
+                            instructions = custom_instructions
+                            logger.info("Using custom instructions from voice_agent block")
+
+                        # Modèle vocal personnalisé
+                        custom_model = params.get("model")
+                        if isinstance(custom_model, str) and custom_model.strip():
+                            voice_model = custom_model
+                            logger.info("Using custom model from voice_agent block: %s", voice_model)
+
+                        # Voix personnalisée
+                        custom_voice = params.get("voice")
+                        if isinstance(custom_voice, str) and custom_voice.strip():
+                            voice_name = custom_voice
+                            logger.info("Using custom voice from voice_agent block: %s", voice_name)
+
+                        # Provider personnalisé
+                        custom_provider_slug = params.get("model_provider_slug")
+                        if isinstance(custom_provider_slug, str) and custom_provider_slug.strip():
+                            voice_provider_slug = custom_provider_slug
+                            logger.info("Using custom provider slug from voice_agent block: %s", voice_provider_slug)
+
+                        custom_provider_id = params.get("model_provider_id")
+                        if isinstance(custom_provider_id, str) and custom_provider_id.strip():
+                            voice_provider_id = custom_provider_id
+                            logger.info("Using custom provider id from voice_agent block: %s", voice_provider_id)
+
+                        # Tools et handoffs
                         tools_payload = params.get("tools")
                         if isinstance(tools_payload, list):
                             voice_tools.extend(tools_payload)
@@ -329,10 +363,6 @@ class OutboundCallManager:
                         if isinstance(handoffs_payload, list):
                             voice_handoffs.extend(handoffs_payload)
                     break
-
-            # Ouvrir la session vocale
-            voice_provider_slug = getattr(route, "provider_slug", None) or "openai"
-            voice_provider_id = getattr(route, "provider_id", None)
 
             session_handle = await open_voice_session(
                 user_id=f"outbound:{session.call_id}",
