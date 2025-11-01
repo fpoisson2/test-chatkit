@@ -92,6 +92,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const hostedInitialAnnouncedRef = useRef(false);
   const onWorkflowActivatedRef = useRef(onWorkflowActivated);
   const workflowCollatorRef = useRef<Intl.Collator | null>(null);
+  const previousTokenRef = useRef<string | null>(token ?? null);
 
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {
@@ -202,6 +203,10 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   useEffect(() => {
     setPinnedLookup((current) => {
+      if (!token) {
+        return current;
+      }
+
       const availableLocalIds = new Set(workflows.map((workflow) => workflow.id));
       const availableHostedSlugs = new Set(hostedWorkflows.map((workflow) => workflow.slug));
       const nextLocal = Array.from(current.local).filter((id) => availableLocalIds.has(id));
@@ -218,12 +223,17 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       persistPinnedLookup(next);
       return next;
     });
-  }, [hostedWorkflows, persistPinnedLookup, workflows]);
+  }, [hostedWorkflows, persistPinnedLookup, token, workflows]);
 
   const loadWorkflows = useCallback(async () => {
+    const previousToken = previousTokenRef.current;
+    previousTokenRef.current = token ?? null;
+
     if (!token) {
       clearWorkflowSidebarCache();
-      writeStoredWorkflowSelection(null);
+      if (previousToken) {
+        writeStoredWorkflowSelection(null);
+      }
       setWorkflows([]);
       setHostedWorkflows([]);
       setSelectedHostedSlug(null);

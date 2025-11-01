@@ -1030,6 +1030,10 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     setPinnedLookup((current) => {
+      if (!token) {
+        return current;
+      }
+
       const availableLocalIds = new Set(workflows.map((workflow) => workflow.id));
       const availableHostedSlugs = new Set(
         hostedWorkflows.filter((workflow) => workflow.managed).map((workflow) => workflow.slug),
@@ -1049,7 +1053,7 @@ const WorkflowBuilderPage = () => {
       persistPinnedLookup(next);
       return next;
     });
-  }, [hostedWorkflows, persistPinnedLookup, workflows]);
+  }, [hostedWorkflows, persistPinnedLookup, token, workflows]);
 
   useEffect(() => {
     updateStoredWorkflowSelection((previous) => {

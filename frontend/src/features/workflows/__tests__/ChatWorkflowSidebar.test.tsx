@@ -41,11 +41,13 @@ beforeAll(async () => {
   ({ ChatWorkflowSidebar } = await import("../ChatWorkflowSidebar"));
 });
 
+const authState: { token: string | null; user: { is_admin: boolean } } = {
+  token: "token",
+  user: { is_admin: true },
+};
+
 vi.mock("../../../auth", () => ({
-  useAuth: () => ({
-    token: "token",
-    user: { is_admin: true },
-  }),
+  useAuth: () => authState,
 }));
 
 
@@ -86,6 +88,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     setSidebarContentMock.mockClear();
     clearSidebarContentMock.mockClear();
     window.sessionStorage.clear();
+    authState.token = "token";
     Object.defineProperty(window, "localStorage", {
       value: {
         getItem: vi.fn(),
@@ -185,5 +188,60 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     rerendered.unmount();
     rerenderedHost.unmount();
+  });
+
+  it("retains pinned workflows when the auth token arrives after mount", async () => {
+    authState.token = null;
+    const storedSelection = {
+      mode: "local",
+      localWorkflowId: 2,
+      hostedSlug: null,
+      lastUsedAt: { local: {}, hosted: {} },
+      pinned: { local: [2], hosted: [] },
+    };
+    window.sessionStorage.setItem(
+      WORKFLOW_SELECTION_STORAGE_KEY,
+      JSON.stringify(storedSelection),
+    );
+
+    const rendered = render(
+      <I18nProvider>
+        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+      </I18nProvider>,
+    );
+
+    // Ensure the stored selection remains untouched while the token is missing
+    expect(window.sessionStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toBe(
+      JSON.stringify(storedSelection),
+    );
+
+    authState.token = "token";
+    rendered.rerender(
+      <I18nProvider>
+        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+      </I18nProvider>,
+    );
+
+    const sidebarHost = await renderSidebarHost();
+    await waitFor(() => {
+      sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
+      expect(sidebarHost.getByRole("heading", { name: "Pinned workflows" })).toBeInTheDocument();
+    });
+
+    const pinnedHeading = sidebarHost.getByRole("heading", { name: "Pinned workflows" });
+    const pinnedGroup = pinnedHeading.closest('[data-workflow-group="pinned"]');
+    expect(pinnedGroup).not.toBeNull();
+    const pinnedList = within(pinnedGroup as HTMLElement).getByRole("list");
+    const pinnedItems = within(pinnedList).getAllByRole("listitem");
+    expect(within(pinnedItems[0]).getByText("Beta")).toBeInTheDocument();
+    expect(sidebarHost.getByRole("button", { name: "Unpin Beta" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    expect(window.sessionStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toContain("\"local\":[2]");
+
+    sidebarHost.unmount();
+    rendered.unmount();
   });
 });
