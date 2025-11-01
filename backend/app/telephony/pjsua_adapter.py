@@ -699,6 +699,16 @@ class PJSUAAdapter:
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
             self._active_calls.pop(call_info.id, None)
 
+            # IMPORTANT: Arrêter l'audio bridge d'abord pour stopper le RTP stream
+            if hasattr(call, '_audio_bridge') and call._audio_bridge:
+                try:
+                    logger.info("🛑 Arrêt de l'audio bridge (call_id=%s)", call_info.id)
+                    call._audio_bridge.stop()
+                except Exception as e:
+                    logger.warning("Erreur arrêt audio bridge: %s", e)
+                finally:
+                    call._audio_bridge = None
+
             # IMPORTANT: Nettoyer le port audio pour éviter les fuites
             # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
             if call._audio_port:

@@ -245,8 +245,9 @@ class OutboundCallManager:
             # Créer l'audio bridge (8kHz ↔ 24kHz)
             rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(pjsua_call)
 
-            # Stocker le bridge dans la session pour le cleanup
+            # Stocker le bridge dans la session ET dans le call PJSUA pour le cleanup
             session._audio_bridge = bridge
+            pjsua_call._audio_bridge = bridge
 
             # Marquer l'appel comme connecté
             session.status = "answered"

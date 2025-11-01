@@ -90,9 +90,11 @@ class PJSUAAudioBridge:
                     logger.info("📥 Premier paquet audio reçu du téléphone - flux bidirectionnel confirmé (après %d None)", none_count)
                     self._first_packet_received.set()
 
-                # Log first few packets for diagnostics
-                if packet_count < 5:
-                    logger.info("📥 RTP stream: reçu %d bytes @ 8kHz depuis PJSUA (max_amplitude=%d)", len(audio_8khz), max_amplitude)
+                # Log TOUS les paquets avec leur amplitude pour diagnostiquer le bruit
+                # Après les 50 premiers, on log seulement tous les 50 paquets
+                if packet_count < 50 or packet_count % 50 == 0:
+                    logger.info("📥 RTP stream #%d: reçu %d bytes @ 8kHz depuis PJSUA (max_amplitude=%d)",
+                               packet_count, len(audio_8khz), max_amplitude)
 
                 # Resample 8kHz → 24kHz
                 try:
