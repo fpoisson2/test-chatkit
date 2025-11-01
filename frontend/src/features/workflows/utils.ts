@@ -371,11 +371,10 @@ const resolvePinnedStatus = (
   return Boolean(candidate.pinned_at ?? candidate.pinnedAt ?? null);
 };
 
-export const getWorkflowSortMetadata = (
+export const isWorkflowPinned = (
   entry: WorkflowSortEntry,
-  lastUsedAt: StoredWorkflowLastUsedAt,
   pinnedLookup?: StoredWorkflowPinnedLookup,
-): WorkflowSortMetadata => {
+): boolean => {
   const isStoredPinned = () => {
     if (!pinnedLookup) {
       return false;
@@ -389,9 +388,21 @@ export const getWorkflowSortMetadata = (
   };
 
   if (entry.kind === "local") {
+    return resolvePinnedStatus(entry.workflow) || isStoredPinned();
+  }
+
+  return resolvePinnedStatus(entry.workflow) || isStoredPinned();
+};
+
+export const getWorkflowSortMetadata = (
+  entry: WorkflowSortEntry,
+  lastUsedAt: StoredWorkflowLastUsedAt,
+  pinnedLookup?: StoredWorkflowPinnedLookup,
+): WorkflowSortMetadata => {
+  if (entry.kind === "local") {
     const key = String(entry.workflow.id);
     return {
-      pinned: resolvePinnedStatus(entry.workflow) || isStoredPinned(),
+      pinned: isWorkflowPinned(entry, pinnedLookup),
       lastUsedAt: lastUsedAt.local[key] ?? null,
       label: entry.workflow.display_name,
     };
@@ -399,7 +410,7 @@ export const getWorkflowSortMetadata = (
 
   const key = entry.workflow.slug;
   return {
-    pinned: resolvePinnedStatus(entry.workflow) || isStoredPinned(),
+    pinned: isWorkflowPinned(entry, pinnedLookup),
     lastUsedAt: lastUsedAt.hosted[key] ?? null,
     label: entry.workflow.label,
   };

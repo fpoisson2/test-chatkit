@@ -133,6 +133,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     const list = sidebarHost.getByRole("list");
     let items = within(list).getAllByRole("listitem");
     expect(within(items[0]).getByText("Alpha")).toBeInTheDocument();
+    expect(sidebarHost.queryByRole("heading", { name: "Pinned workflows" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Pin Beta" }));
 
@@ -142,8 +143,12 @@ describe("ChatWorkflowSidebar pinning", () => {
     });
 
     sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
-    items = within(sidebarHost.getByRole("list")).getAllByRole("listitem");
-    expect(within(items[0]).getByText("Beta")).toBeInTheDocument();
+    const pinnedHeading = sidebarHost.getByRole("heading", { name: "Pinned workflows" });
+    const pinnedGroup = pinnedHeading.closest('[data-workflow-group="pinned"]');
+    expect(pinnedGroup).not.toBeNull();
+    const pinnedList = within(pinnedGroup as HTMLElement).getByRole("list");
+    let pinnedItems = within(pinnedList).getAllByRole("listitem");
+    expect(within(pinnedItems[0]).getByText("Beta")).toBeInTheDocument();
     expect(sidebarHost.getByRole("button", { name: "Unpin Beta" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -162,11 +167,17 @@ describe("ChatWorkflowSidebar pinning", () => {
     const rerenderedHost = await renderSidebarHost();
     await waitFor(() => {
       rerenderedHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
-      expect(rerenderedHost.getByRole("list")).toBeInTheDocument();
+      expect(rerenderedHost.getAllByRole("list").length).toBeGreaterThan(0);
     });
 
-    const rerenderedItems = within(rerenderedHost.getByRole("list")).getAllByRole("listitem");
-    expect(within(rerenderedItems[0]).getByText("Beta")).toBeInTheDocument();
+    const rerenderedPinnedHeading = rerenderedHost.getByRole("heading", {
+      name: "Pinned workflows",
+    });
+    const rerenderedPinnedGroup = rerenderedPinnedHeading.closest('[data-workflow-group="pinned"]');
+    expect(rerenderedPinnedGroup).not.toBeNull();
+    const rerenderedPinnedList = within(rerenderedPinnedGroup as HTMLElement).getByRole("list");
+    pinnedItems = within(rerenderedPinnedList).getAllByRole("listitem");
+    expect(within(pinnedItems[0]).getByText("Beta")).toBeInTheDocument();
     expect(rerenderedHost.getByRole("button", { name: "Unpin Beta" })).toHaveAttribute(
       "aria-pressed",
       "true",

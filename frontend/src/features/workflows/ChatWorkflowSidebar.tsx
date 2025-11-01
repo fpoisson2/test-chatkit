@@ -13,6 +13,7 @@ import {
   buildWorkflowOrderingTimestamps,
   clearWorkflowSidebarCache,
   getWorkflowInitials,
+  isWorkflowPinned,
   orderWorkflowEntries,
   recordWorkflowLastUsedAt,
   readStoredWorkflowSelection,
@@ -611,14 +612,36 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     ],
   );
 
-  const combinedEntries = useMemo(
+  type CombinedEntry =
+    | { kind: "hosted"; option: HostedWorkflowMetadata; isPinned: boolean }
+    | { kind: "local"; workflow: WorkflowSummary; isPinned: boolean };
+
+  const combinedEntries: CombinedEntry[] = useMemo(
     () =>
       sortedWorkflowEntries.map((entry) =>
         entry.kind === "hosted"
-          ? ({ kind: "hosted" as const, option: entry.workflow })
-          : ({ kind: "local" as const, workflow: entry.workflow })
+          ? ({
+              kind: "hosted" as const,
+              option: entry.workflow,
+              isPinned: isWorkflowPinned(entry, pinnedLookup),
+            })
+          : ({
+              kind: "local" as const,
+              workflow: entry.workflow,
+              isPinned: isWorkflowPinned(entry, pinnedLookup),
+            })
       ),
-    [sortedWorkflowEntries],
+    [pinnedLookup, sortedWorkflowEntries],
+  );
+
+  const pinnedCombinedEntries = useMemo(
+    () => combinedEntries.filter((entry) => entry.isPinned),
+    [combinedEntries],
+  );
+
+  const regularCombinedEntries = useMemo(
+    () => combinedEntries.filter((entry) => !entry.isPinned),
+    [combinedEntries],
   );
 
   useEffect(() => {
@@ -702,6 +725,109 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       );
     }
 
+    const renderEntry = (entry: CombinedEntry) => {
+      if (entry.kind === "hosted") {
+        const { option, isPinned } = entry;
+        const isSelected = mode === "hosted" && selectedHostedSlug === option.slug;
+        const pinLabel = isPinned
+          ? t("workflows.unpinAction", { label: option.label })
+          : t("workflows.pinAction", { label: option.label });
+        return (
+          <li
+            className="chatkit-sidebar__workflow-list-item"
+            key={`hosted:${option.slug}`}
+            data-hosted-workflow=""
+          >
+            <button
+              type="button"
+              className="chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted"
+              onClick={() => void handleHostedWorkflowClick(option.slug)}
+              disabled={!option.available}
+              aria-current={isSelected ? "true" : undefined}
+              title={option.description ?? t("workflows.hostedBadge")}
+            >
+              <span className="chatkit-sidebar__workflow-label">{option.label}</span>
+              <span className="chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--hosted">
+                {t("workflows.hostedBadge")}
+              </span>
+            </button>
+            <div className="chatkit-sidebar__workflow-actions">
+              <button
+                type="button"
+                className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleHostedPin(option.slug);
+                }}
+                aria-pressed={isPinned}
+                aria-label={pinLabel}
+                title={pinLabel}
+              >
+                <Star
+                  aria-hidden="true"
+                  className="chatkit-sidebar__workflow-pin-icon"
+                  size={18}
+                  strokeWidth={isPinned ? 1.75 : 2}
+                  fill={isPinned ? "currentColor" : "none"}
+                />
+              </button>
+            </div>
+            {!option.available ? (
+              <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
+                {t("workflows.hostedUnavailable")}
+              </p>
+            ) : null}
+            {option.description ? (
+              <p className="chatkit-sidebar__workflow-meta">{option.description}</p>
+            ) : null}
+          </li>
+        );
+      }
+
+      const { workflow, isPinned } = entry;
+      const isActive = mode === "local" && workflow.id === selectedWorkflowId;
+      const hasProduction = workflow.active_version_id !== null;
+      const pinLabel = isPinned
+        ? t("workflows.unpinAction", { label: workflow.display_name })
+        : t("workflows.pinAction", { label: workflow.display_name });
+      return (
+        <li key={`local:${workflow.id}`} className="chatkit-sidebar__workflow-list-item">
+          <button
+            type="button"
+            className="chatkit-sidebar__workflow-button"
+            onClick={() => void handleWorkflowClick(workflow.id)}
+            disabled={!hasProduction}
+            aria-current={isActive ? "true" : undefined}
+          >
+            <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
+          </button>
+          <div className="chatkit-sidebar__workflow-actions">
+            <button
+              type="button"
+              className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleLocalPin(workflow.id);
+              }}
+              aria-pressed={isPinned}
+              aria-label={pinLabel}
+              title={pinLabel}
+            >
+              <Star
+                aria-hidden="true"
+                className="chatkit-sidebar__workflow-pin-icon"
+                size={18}
+                strokeWidth={isPinned ? 1.75 : 2}
+                fill={isPinned ? "currentColor" : "none"}
+              />
+            </button>
+          </div>
+        </li>
+      );
+    };
+
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header">
@@ -709,112 +835,24 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             Workflow
           </h2>
         </div>
-        <ul className="chatkit-sidebar__workflow-list">
-          {combinedEntries.map((entry) => {
-            if (entry.kind === "hosted") {
-              const { option } = entry;
-              const isSelected = mode === "hosted" && selectedHostedSlug === option.slug;
-              const isPinned = pinnedLookup.hosted.has(option.slug);
-              const pinLabel = isPinned
-                ? t("workflows.unpinAction", { label: option.label })
-                : t("workflows.pinAction", { label: option.label });
-              return (
-                <li
-                  className="chatkit-sidebar__workflow-list-item"
-                  key={`hosted:${option.slug}`}
-                  data-hosted-workflow=""
-                >
-                  <button
-                    type="button"
-                    className="chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted"
-                    onClick={() => void handleHostedWorkflowClick(option.slug)}
-                    disabled={!option.available}
-                    aria-current={isSelected ? "true" : undefined}
-                    title={option.description ?? t("workflows.hostedBadge")}
-                  >
-                    <span className="chatkit-sidebar__workflow-label">{option.label}</span>
-                    <span className="chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--hosted">
-                      {t("workflows.hostedBadge")}
-                    </span>
-                  </button>
-                  <div className="chatkit-sidebar__workflow-actions">
-                    <button
-                      type="button"
-                      className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        toggleHostedPin(option.slug);
-                      }}
-                      aria-pressed={isPinned}
-                      aria-label={pinLabel}
-                      title={pinLabel}
-                    >
-                      <Star
-                        aria-hidden="true"
-                        className="chatkit-sidebar__workflow-pin-icon"
-                        size={18}
-                        strokeWidth={isPinned ? 1.75 : 2}
-                        fill={isPinned ? "currentColor" : "none"}
-                      />
-                    </button>
-                  </div>
-                  {!option.available ? (
-                    <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
-                      {t("workflows.hostedUnavailable")}
-                    </p>
-                  ) : null}
-                  {option.description ? (
-                    <p className="chatkit-sidebar__workflow-meta">{option.description}</p>
-                  ) : null}
-                </li>
-              );
-            }
-
-            const { workflow } = entry;
-            const isActive = mode === "local" && workflow.id === selectedWorkflowId;
-            const hasProduction = workflow.active_version_id !== null;
-            const isPinned = pinnedLookup.local.has(workflow.id);
-            const pinLabel = isPinned
-              ? t("workflows.unpinAction", { label: workflow.display_name })
-              : t("workflows.pinAction", { label: workflow.display_name });
-            return (
-              <li key={`local:${workflow.id}`} className="chatkit-sidebar__workflow-list-item">
-                <button
-                  type="button"
-                  className="chatkit-sidebar__workflow-button"
-                  onClick={() => void handleWorkflowClick(workflow.id)}
-                  disabled={!hasProduction}
-                  aria-current={isActive ? "true" : undefined}
-                >
-                  <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
-                </button>
-                <div className="chatkit-sidebar__workflow-actions">
-                  <button
-                    type="button"
-                    className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      toggleLocalPin(workflow.id);
-                    }}
-                    aria-pressed={isPinned}
-                    aria-label={pinLabel}
-                    title={pinLabel}
-                  >
-                    <Star
-                      aria-hidden="true"
-                      className="chatkit-sidebar__workflow-pin-icon"
-                      size={18}
-                      strokeWidth={isPinned ? 1.75 : 2}
-                      fill={isPinned ? "currentColor" : "none"}
-                    />
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        {pinnedCombinedEntries.length > 0 ? (
+          <div
+            className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
+            data-workflow-group="pinned"
+          >
+            <h3 className="chatkit-sidebar__workflow-group-title">
+              {t("workflows.pinnedSectionTitle")}
+            </h3>
+            <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+              {pinnedCombinedEntries.map((entry) => renderEntry(entry))}
+            </ul>
+          </div>
+        ) : null}
+        {regularCombinedEntries.length > 0 ? (
+          <ul className="chatkit-sidebar__workflow-list" data-workflow-group="default">
+            {regularCombinedEntries.map((entry) => renderEntry(entry))}
+          </ul>
+        ) : null}
         {!hasLocalWorkflows && isAdmin ? (
           <button
             type="button"
@@ -827,7 +865,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       </section>
     );
   }, [
-    combinedEntries,
     error,
     handleOpenBuilder,
     handleHostedWorkflowClick,
@@ -837,7 +874,10 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     loadWorkflows,
     loading,
     mode,
-    pinnedLookup,
+    pinnedCombinedEntries,
+    regularCombinedEntries,
+    toggleHostedPin,
+    toggleLocalPin,
     selectedHostedSlug,
     selectedWorkflowId,
     t,

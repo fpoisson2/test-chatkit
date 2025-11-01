@@ -803,6 +803,31 @@ button {
   flex-direction: column;
 }
 
+.chatkit-sidebar__workflow-group {
+  margin: 0 0 1.5rem;
+}
+
+.chatkit-sidebar__workflow-group--pinned {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.chatkit-sidebar__workflow-group-title {
+  margin: 0 0 0.35rem;
+  margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+  padding: 0.25rem var(--chatkit-sidebar-content-padding-x) 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b45309;
+}
+
+.chatkit-sidebar__workflow-list--grouped {
+  margin-top: 0;
+}
+
 .chatkit-layout--desktop .chatkit-sidebar__workflow-list {
   padding-inline: 0;
 }
