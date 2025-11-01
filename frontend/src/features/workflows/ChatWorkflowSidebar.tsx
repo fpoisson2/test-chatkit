@@ -612,15 +612,18 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     [pinnedLookup, sortedWorkflowEntries],
   );
 
-  const pinnedCombinedEntries = useMemo(
-    () => combinedEntries.filter((entry) => entry.isPinned),
-    [combinedEntries],
-  );
-
-  const regularCombinedEntries = useMemo(
-    () => combinedEntries.filter((entry) => !entry.isPinned),
-    [combinedEntries],
-  );
+  const { pinnedCombinedEntries, regularCombinedEntries } = useMemo(() => {
+    const pinned: CombinedEntry[] = [];
+    const regular: CombinedEntry[] = [];
+    for (const entry of combinedEntries) {
+      if (entry.isPinned) {
+        pinned.push(entry);
+      } else {
+        regular.push(entry);
+      }
+    }
+    return { pinnedCombinedEntries: pinned, regularCombinedEntries: regular };
+  }, [combinedEntries]);
 
   type CompactEntry = {
     key: string;
@@ -672,15 +675,18 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     ],
   );
 
-  const pinnedCompactEntries = useMemo(
-    () => compactEntries.filter((entry) => entry.isPinned),
-    [compactEntries],
-  );
-
-  const regularCompactEntries = useMemo(
-    () => compactEntries.filter((entry) => !entry.isPinned),
-    [compactEntries],
-  );
+  const { pinnedCompactEntries, regularCompactEntries } = useMemo(() => {
+    const pinned: CompactEntry[] = [];
+    const regular: CompactEntry[] = [];
+    for (const entry of compactEntries) {
+      if (entry.isPinned) {
+        pinned.push(entry);
+      } else {
+        regular.push(entry);
+      }
+    }
+    return { pinnedCompactEntries: pinned, regularCompactEntries: regular };
+  }, [compactEntries]);
 
   useEffect(() => {
     if (!token) {

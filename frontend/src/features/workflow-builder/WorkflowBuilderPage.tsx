@@ -6909,7 +6909,10 @@ const WorkflowBuilderPage = () => {
 
   const workflowSidebarContent = useMemo(() => {
     const sectionId = "workflow-builder-sidebar";
-    const warningStyle: CSSProperties = { color: "#b45309", fontWeight: 600 };
+    const warningStyle: CSSProperties = {
+      color: "var(--text-muted)",
+      fontWeight: 600,
+    };
     const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
     const collator =
       workflowSortCollatorRef.current ?? new Intl.Collator(undefined, { sensitivity: "base" });
@@ -6938,8 +6941,15 @@ const WorkflowBuilderPage = () => {
           })
     );
 
-    const pinnedEntries = combinedEntries.filter((entry) => entry.isPinned);
-    const regularEntries = combinedEntries.filter((entry) => !entry.isPinned);
+    const pinnedEntries: CombinedEntry[] = [];
+    const regularEntries: CombinedEntry[] = [];
+    for (const entry of combinedEntries) {
+      if (entry.isPinned) {
+        pinnedEntries.push(entry);
+      } else {
+        regularEntries.push(entry);
+      }
+    }
 
     const renderWorkflowList = () => {
       if (loading && combinedEntries.length === 0) {
@@ -7401,8 +7411,15 @@ const WorkflowBuilderPage = () => {
       return null;
     }
 
-    const pinnedEntries = entries.filter((entry) => entry.isPinned);
-    const regularEntries = entries.filter((entry) => !entry.isPinned);
+    const pinnedEntries: ShortcutEntry[] = [];
+    const regularEntries: ShortcutEntry[] = [];
+    for (const entry of entries) {
+      if (entry.isPinned) {
+        pinnedEntries.push(entry);
+      } else {
+        regularEntries.push(entry);
+      }
+    }
 
     const renderShortcut = (workflow: ShortcutEntry) => (
       <li
