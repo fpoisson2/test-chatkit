@@ -538,7 +538,7 @@ export const startMcpOAuthNegotiation = async ({
     throw new Error("Missing OAuth provider URL");
   }
 
-  const payload: Record<string, string> = { url: trimmedUrl };
+  const payload: Record<string, string | number> = { url: trimmedUrl };
 
   const normalizedClientId = clientId?.trim();
   if (normalizedClientId) {
@@ -569,6 +569,10 @@ export const startMcpOAuthNegotiation = async ({
     }
   }
 
+  if (persistedServerId != null) {
+    payload.server_id = persistedServerId;
+  }
+
   const response = await requestWithFallback("/api/tools/mcp/oauth/start", {
     method: "POST",
     headers: withAuthHeaders(token ?? null),
@@ -577,6 +581,7 @@ export const startMcpOAuthNegotiation = async ({
   });
 
   const result: McpOAuthStartResponse = await response.json();
+
   if (persistedServerId != null) {
     return { ...result, server_id: persistedServerId };
   }
