@@ -638,12 +638,11 @@ button {
 
 .chatkit-sidebar__section--with-floating-action {
   position: relative;
-  padding-top: 0.35rem;
 }
 
 .chatkit-sidebar__section-floating-action {
   position: absolute;
-  top: calc(-1.9rem + max(env(safe-area-inset-top), 0px));
+  top: calc(-1.75rem + max(env(safe-area-inset-top), 0px));
   right: calc(var(--chatkit-sidebar-content-padding-x) + max(env(safe-area-inset-right), 0px));
   display: flex;
   align-items: center;
