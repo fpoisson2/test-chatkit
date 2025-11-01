@@ -84,43 +84,76 @@ const extractStringFromTokenPayload = (
     return null;
   }
 
-  const normalizedKeys = candidateKeys.map((key) => key.toLowerCase());
+  const normalizeKey = (key: string): string => key.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const normalizedCandidates = candidateKeys
+    .map((key) => normalizeKey(key))
+    .filter((key) => key.length > 0)
+    .sort((a, b) => b.length - a.length);
+
   const visited = new Set<object>();
-  const stack: unknown[] = [payload];
+  type StackEntry = { value: unknown; matchedCandidate: string | null };
+  const stack: StackEntry[] = [{ value: payload, matchedCandidate: null }];
 
   while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || typeof current !== "object") {
-      continue;
-    }
-    if (visited.has(current as object)) {
-      continue;
-    }
-    visited.add(current as object);
+    const { value, matchedCandidate } = stack.pop()!;
 
-    if (Array.isArray(current)) {
-      for (const item of current) {
-        if (item && typeof item === "object") {
-          stack.push(item);
-        }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed && matchedCandidate) {
+        return trimmed;
       }
       continue;
     }
 
-    const record = current as Record<string, unknown>;
-    for (const [key, value] of Object.entries(record)) {
-      if (normalizedKeys.includes(key.toLowerCase()) && typeof value === "string") {
-        const trimmed = value.trim();
-        if (trimmed) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+
+    if (visited.has(value as object)) {
+      continue;
+    }
+    visited.add(value as object);
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        stack.push({ value: item, matchedCandidate });
+      }
+      continue;
+    }
+
+    const record = value as Record<string, unknown>;
+    for (const [rawKey, child] of Object.entries(record)) {
+      if (!rawKey) {
+        stack.push({ value: child, matchedCandidate });
+        continue;
+      }
+
+      const normalizedKey = normalizeKey(rawKey);
+      const candidateMatch = normalizedCandidates.find((candidate) => {
+        if (candidate === normalizedKey) {
+          return true;
+        }
+        if (!normalizedKey || !candidate) {
+          return false;
+        }
+        if (normalizedKey.length > candidate.length) {
+          return normalizedKey.includes(candidate);
+        }
+        return candidate.includes(normalizedKey);
+      });
+
+      const nextMatch = candidateMatch ?? matchedCandidate;
+
+      if (typeof child === "string") {
+        const trimmed = child.trim();
+        if (trimmed && nextMatch) {
           return trimmed;
         }
+        continue;
       }
-    }
 
-    for (const value of Object.values(record)) {
-      if (value && typeof value === "object") {
-        stack.push(value);
-      }
+      stack.push({ value: child, matchedCandidate: nextMatch });
     }
   }
 
