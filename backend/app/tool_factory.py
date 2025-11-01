@@ -8,11 +8,11 @@ import logging
 import re
 import unicodedata
 from collections.abc import Mapping
-from dataclasses import field
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from agents import FunctionTool, RunContextWrapper, WebSearchTool, function_tool
-from agents.mcp import MCPServerSse
+from agents.mcp import MCPServer, MCPServerSse
 from agents.tool import ComputerTool
 
 try:  # pragma: no cover - dépend des versions du SDK Agents
@@ -42,6 +42,8 @@ from chatkit.types import CustomSummary, ThoughtTask, Workflow
 
 from .computer.hosted_browser import HostedBrowser, HostedBrowserError
 from .database import SessionLocal
+from .models import McpServer
+from .secret_utils import decrypt_secret
 from .vector_store import (
     DocumentSearchResult,
     JsonVectorStoreService,
@@ -67,6 +69,23 @@ _SUPPORTED_IMAGE_OUTPUT_FORMATS = frozenset({"png", "jpeg", "webp"})
 _WEATHER_FUNCTION_TOOL_ALIASES = {"fetch_weather", "get_weather"}
 
 _WORKFLOW_TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+@dataclass(slots=True)
+class ResolvedMcpServerContext:
+    """Runtime metadata extracted while building an MCP tool."""
+
+    record: McpServer | None
+    server_id: int | None
+    label: str | None
+    server_url: str
+    transport: str
+    authorization: str | None
+    authorization_token: str | None
+    allowlist: tuple[str, ...] | None
+
+
+_MCP_RUNTIME_CONTEXT_ATTR = "_chatkit_mcp_runtime_context"
 
 
 def _normalize_workflow_tool_name(candidate: Any) -> str | None:
@@ -999,97 +1018,259 @@ def _extract_mcp_payload(payload: Any) -> Mapping[str, Any]:
     raise ValueError("La configuration MCP doit être un objet JSON.")
 
 
+def get_mcp_runtime_context(server: MCPServer) -> ResolvedMcpServerContext | None:
+    """Retrieve the runtime context previously attached to an MCP server."""
+
+    context = getattr(server, _MCP_RUNTIME_CONTEXT_ATTR, None)
+    if isinstance(context, ResolvedMcpServerContext):
+        return context
+    return None
+
+
+def attach_mcp_runtime_context(
+    server: MCPServer, context: ResolvedMcpServerContext
+) -> None:
+    """Attach runtime metadata to an MCP server instance."""
+
+    setattr(server, _MCP_RUNTIME_CONTEXT_ATTR, context)
+
+
+def resolve_mcp_tool_configuration(
+    payload: Any,
+) -> tuple[dict[str, Any], ResolvedMcpServerContext | None]:
+    """Resolve an arbitrary MCP payload into a normalized configuration."""
+
+    config = dict(_extract_mcp_payload(payload))
+    return _resolve_mcp_configuration(config)
+
+
+def _resolve_mcp_configuration(
+    config: Mapping[str, Any]
+) -> tuple[dict[str, Any], ResolvedMcpServerContext | None]:
+    merged_config = dict(config)
+
+    server_block = merged_config.get("server")
+    if isinstance(server_block, Mapping):
+        if "server_id" not in merged_config and "id" in server_block:
+            merged_config["server_id"] = server_block.get("id")
+        if "label" not in merged_config and "label" in server_block:
+            merged_config["label"] = server_block.get("label")
+
+    server_id_value = merged_config.get("server_id")
+    resolved_server: McpServer | None = None
+    resolved_server_id: int | None = None
+
+    if server_id_value is not None:
+        if isinstance(server_id_value, int):
+            resolved_server_id = server_id_value
+        elif isinstance(server_id_value, str) and server_id_value.strip():
+            try:
+                resolved_server_id = int(server_id_value.strip())
+            except ValueError as exc:
+                raise ValueError("Identifiant de serveur MCP invalide.") from exc
+        else:
+            raise ValueError("Identifiant de serveur MCP invalide.")
+
+        with SessionLocal() as session:
+            resolved_server = session.get(McpServer, resolved_server_id)
+        if resolved_server is None:
+            raise ValueError("Serveur MCP introuvable pour server_id fourni.")
+
+    raw_type = merged_config.get("type") or merged_config.get("name")
+    if isinstance(raw_type, str) and raw_type.strip():
+        normalized_type = raw_type.strip().lower()
+        if normalized_type not in {"", "mcp"}:
+            raise ValueError("Le type d'outil MCP doit être 'mcp'.")
+
+    raw_transport = (
+        merged_config.get("transport")
+        or merged_config.get("kind")
+        or (resolved_server.transport if resolved_server else None)
+    )
+    if not isinstance(raw_transport, str) or not raw_transport.strip():
+        normalized_transport = "http_sse"
+    else:
+        candidate = raw_transport.strip().lower()
+        if candidate in {"sse", "http_sse"}:
+            normalized_transport = "http_sse"
+        elif candidate in {"streamable_http", "streamable-http", "http_streamable"}:
+            normalized_transport = "streamable_http"
+        else:
+            raise ValueError("Le transport MCP supporté est 'http_sse'.")
+
+    raw_url = merged_config.get("url") or merged_config.get("server_url")
+    if not isinstance(raw_url, str) or not raw_url.strip():
+        if resolved_server is not None and resolved_server.server_url:
+            normalized_url = resolved_server.server_url.strip()
+        else:
+            raise ValueError("Le champ 'url' est obligatoire pour une connexion MCP.")
+    else:
+        normalized_url = raw_url.strip()
+
+    raw_headers = merged_config.get("headers")
+    headers: dict[str, str] = {}
+    if isinstance(raw_headers, Mapping):
+        for key, value in raw_headers.items():
+            if isinstance(key, str) and isinstance(value, str):
+                trimmed_key = key.strip()
+                trimmed_value = value.strip()
+                if trimmed_key and trimmed_value:
+                    headers[trimmed_key] = trimmed_value
+
+    raw_authorization = merged_config.get("authorization")
+    if raw_authorization is None and resolved_server is not None:
+        raw_authorization = decrypt_secret(resolved_server.authorization_encrypted)
+
+    authorization_token: str | None = None
+    if raw_authorization is not None:
+        if not isinstance(raw_authorization, str):
+            raise ValueError(
+                "Le champ 'authorization' doit être une chaîne de caractères."
+            )
+        token = raw_authorization.strip()
+        if token:
+            lower = token.lower()
+            if lower.startswith("bearer "):
+                token = token[7:].strip()
+            elif lower == "bearer":
+                token = ""
+            if not token:
+                raise ValueError(
+                    "Le champ 'authorization' doit contenir un jeton Bearer valide."
+                )
+            authorization_token = token
+        else:
+            raise ValueError(
+                "Le champ 'authorization' ne peut pas être une chaîne vide."
+            )
+
+    authorization_header: str | None = None
+    if authorization_token:
+        authorization_header = f"Bearer {authorization_token}"
+        headers["Authorization"] = authorization_header
+
+    timeout = _coerce_positive_float(
+        merged_config.get("timeout"), field_name="timeout"
+    )
+    sse_read_timeout = _coerce_positive_float(
+        merged_config.get("sse_read_timeout"), field_name="sse_read_timeout"
+    )
+    client_session_timeout = _coerce_positive_float(
+        merged_config.get("client_session_timeout_seconds"),
+        field_name="client_session_timeout_seconds",
+    )
+
+    tool_name = None
+    raw_name = merged_config.get("name")
+    if isinstance(raw_name, str):
+        stripped = raw_name.strip()
+        tool_name = stripped or None
+
+    allowlist: list[str] = []
+    allow_config = merged_config.get("allow") or merged_config.get("allowlist")
+    if isinstance(allow_config, Mapping):
+        candidates = allow_config.get("tools")
+    else:
+        candidates = allow_config
+    if isinstance(candidates, list | tuple | set):
+        for entry in candidates:
+            if isinstance(entry, str):
+                trimmed = entry.strip()
+                if trimmed:
+                    allowlist.append(trimmed)
+
+    if resolved_server and isinstance(resolved_server.tools_cache, Mapping):
+        cache_tools = resolved_server.tools_cache.get("tool_names")
+        if isinstance(cache_tools, list | tuple | set):
+            for entry in cache_tools:
+                if isinstance(entry, str):
+                    trimmed = entry.strip()
+                    if trimmed:
+                        allowlist.append(trimmed)
+
+    if allowlist:
+        seen: dict[str, None] = {}
+        for entry in allowlist:
+            if entry not in seen:
+                seen[entry] = None
+        normalized_allowlist: tuple[str, ...] | None = tuple(seen.keys())
+    else:
+        normalized_allowlist = None
+
+    context = ResolvedMcpServerContext(
+        record=resolved_server,
+        server_id=resolved_server.id if resolved_server else resolved_server_id,
+        label=(
+            resolved_server.label
+            if resolved_server is not None
+            else (
+                merged_config.get("label")
+                if isinstance(merged_config.get("label"), str)
+                else None
+            )
+        ),
+        server_url=normalized_url,
+        transport=normalized_transport,
+        authorization=authorization_header,
+        authorization_token=authorization_token,
+        allowlist=normalized_allowlist,
+    )
+
+    normalized_config: dict[str, Any] = {
+        "type": "mcp",
+        "transport": normalized_transport,
+        "url": normalized_url,
+    }
+    if headers:
+        normalized_config["headers"] = headers
+    if authorization_header:
+        normalized_config["authorization"] = authorization_header
+    if timeout is not None:
+        normalized_config["timeout"] = timeout
+    if sse_read_timeout is not None:
+        normalized_config["sse_read_timeout"] = sse_read_timeout
+    if client_session_timeout is not None:
+        normalized_config["client_session_timeout_seconds"] = client_session_timeout
+    if tool_name is not None:
+        normalized_config["name"] = tool_name
+
+    return normalized_config, context
+
+
 def build_mcp_tool(payload: Any) -> MCPServerSse:
     """Construit une instance réutilisable de serveur MCP via SSE."""
 
     if isinstance(payload, MCPServerSse):
         return payload
 
-    config = dict(_extract_mcp_payload(payload))
+    normalized_config, context = resolve_mcp_tool_configuration(payload)
 
-    tool_type = config.get("type") or config.get("name")
-    if isinstance(tool_type, str) and tool_type.strip().lower() not in {"", "mcp"}:
-        raise ValueError("Le type d'outil MCP doit être 'mcp'.")
+    params: dict[str, Any] = {"url": normalized_config["url"]}
+    headers = normalized_config.get("headers")
+    if isinstance(headers, Mapping) and headers:
+        params["headers"] = dict(headers)
 
-    raw_transport = config.get("transport")
-    if raw_transport is None:
-        raw_transport = config.get("kind")
-
-    if not isinstance(raw_transport, str) or not raw_transport.strip():
-        raise ValueError("Le transport MCP supporté est 'http_sse'.")
-
-    normalized_transport = raw_transport.strip().lower()
-    if normalized_transport in {"sse", "http_sse"}:
-        normalized_transport = "http_sse"
-    else:
-        raise ValueError("Le transport MCP supporté est 'http_sse'.")
-
-    url = config.get("url")
-    normalized_url: str | None = None
-    if isinstance(url, str) and url.strip():
-        normalized_url = url.strip()
-    if normalized_url is None:
-        server_url = config.get("server_url")
-        if not isinstance(server_url, str) or not server_url.strip():
-            raise ValueError(
-                "Le champ 'url' est obligatoire pour une connexion MCP."
-            )
-        normalized_url = server_url.strip()
-
-    headers: dict[str, str] | None = None
-    authorization = config.get("authorization")
-    if authorization is not None:
-        if not isinstance(authorization, str):
-            raise ValueError(
-                "Le champ 'authorization' doit être une chaîne de caractères."
-            )
-
-        token = authorization.strip()
-        if not token:
-            raise ValueError(
-                "Le champ 'authorization' ne peut pas être une chaîne vide."
-            )
-
-        normalized_token = token
-        lower_token = token.lower()
-        if lower_token.startswith("bearer "):
-            normalized_token = token[7:].strip()
-        elif lower_token == "bearer":
-            normalized_token = ""
-
-        if not normalized_token:
-            raise ValueError(
-                "Le champ 'authorization' doit contenir un jeton Bearer valide."
-            )
-
-        headers = {"Authorization": f"Bearer {normalized_token}"}
-
-    timeout = _coerce_positive_float(config.get("timeout"), field_name="timeout")
-    sse_read_timeout = _coerce_positive_float(
-        config.get("sse_read_timeout"), field_name="sse_read_timeout"
-    )
-    client_session_timeout = _coerce_positive_float(
-        config.get("client_session_timeout_seconds"),
-        field_name="client_session_timeout_seconds",
-    )
-
-    params: dict[str, Any] = {"url": normalized_url}
-    if headers:
-        params["headers"] = headers
-    if timeout is not None:
+    timeout = normalized_config.get("timeout")
+    if isinstance(timeout, int | float):
         params["timeout"] = timeout
-    if sse_read_timeout is not None:
+
+    sse_read_timeout = normalized_config.get("sse_read_timeout")
+    if isinstance(sse_read_timeout, int | float):
         params["sse_read_timeout"] = sse_read_timeout
 
-    name_candidate = config.get("name")
-    tool_name: str | None = None
-    if isinstance(name_candidate, str):
-        stripped = name_candidate.strip()
-        tool_name = stripped or None
+    client_session_timeout = normalized_config.get(
+        "client_session_timeout_seconds"
+    )
+    if isinstance(client_session_timeout, int | float):
+        params["client_session_timeout_seconds"] = client_session_timeout
+
+    tool_name = normalized_config.get("name")
+    if isinstance(tool_name, str) and not tool_name.strip():
+        tool_name = None
 
     logger.info(
         "Initialisation d'une connexion MCP SSE vers un serveur externe : %s",
-        normalized_url,
+        normalized_config["url"],
     )
     logger.debug(
         "MCP SSE params keys=%s has_headers=%s",
@@ -1103,10 +1284,24 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
     }
     if tool_name is not None:
         kwargs["name"] = tool_name
-    if client_session_timeout is not None:
-        kwargs["client_session_timeout_seconds"] = client_session_timeout
+    if context and context.transport == "streamable_http":
+        try:
+            from agents.mcp import MCPServerStreamableHttp  # type: ignore
+        except ImportError:  # pragma: no cover - dépend du SDK
+            logger.warning(
+                "Transport streamable_http demandé mais non disponible, "
+                "utilisation du transport http_sse."
+            )
+            server = MCPServerSse(**kwargs)
+        else:
+            server = MCPServerStreamableHttp(**kwargs)
+    else:
+        server = MCPServerSse(**kwargs)
 
-    return MCPServerSse(**kwargs)
+    if context is not None:
+        attach_mcp_runtime_context(server, context)
+
+    return server
 
 
 def validate_workflow_graph(

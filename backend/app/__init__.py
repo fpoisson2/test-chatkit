@@ -8,6 +8,7 @@ from .routes import (
     admin,
     auth,
     docs,
+    mcp,
     model_registry,
     outbound,
     tools,
@@ -43,6 +44,7 @@ app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(docs.router)
 app.include_router(model_registry.router)
+app.include_router(mcp.router)
 if chatkit_routes and hasattr(chatkit_routes, "router"):
     app.include_router(chatkit_routes.router)
 app.include_router(tools.router)

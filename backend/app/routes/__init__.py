@@ -5,6 +5,7 @@ __all__ = [
     "auth",
     "chatkit",
     "docs",
+    "mcp",
     "model_registry",
     "tools",
     "users",

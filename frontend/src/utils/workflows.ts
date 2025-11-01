@@ -21,6 +21,12 @@ export type ComputerUseConfig = {
 };
 
 export type McpSseToolConfig = {
+  serverId: number;
+  toolNames: string[];
+  authorizationOverride?: string;
+};
+
+export type LegacyMcpSseToolConfig = {
   url: string;
   authorization: string;
   oauth_client_id?: string;
@@ -2799,7 +2805,7 @@ const sanitizeComputerUseConfig = (
   return payload;
 };
 
-const isMcpSseTool = (value: unknown): value is Record<string, unknown> => {
+const isLegacyMcpTool = (value: unknown): value is Record<string, unknown> => {
   if (!isPlainRecord(value)) {
     return false;
   }
@@ -2814,9 +2820,9 @@ const isMcpSseTool = (value: unknown): value is Record<string, unknown> => {
   return typeof value.url === "string";
 };
 
-const sanitizeMcpSseConfig = (
-  config: Partial<McpSseToolConfig> | null | undefined,
-): McpSseToolConfig | null => {
+const sanitizeLegacyMcpConfig = (
+  config: Partial<LegacyMcpSseToolConfig> | null | undefined,
+): LegacyMcpSseToolConfig | null => {
   if (!config) {
     return null;
   }
@@ -2832,7 +2838,9 @@ const sanitizeMcpSseConfig = (
   return { url, authorization };
 };
 
-const buildMcpSseToolEntry = (config: McpSseToolConfig): Record<string, unknown> => {
+const buildLegacyMcpToolEntry = (
+  config: LegacyMcpSseToolConfig,
+): Record<string, unknown> => {
   const entry: Record<string, unknown> = {
     type: "mcp",
     transport: "http_sse",
@@ -2841,6 +2849,145 @@ const buildMcpSseToolEntry = (config: McpSseToolConfig): Record<string, unknown>
 
   if (config.authorization) {
     entry.authorization = config.authorization;
+  }
+
+  return entry;
+};
+
+const coerceServerId = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parsed = Number.parseInt(trimmed, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const isPersistedMcpTool = (
+  value: unknown,
+): value is Record<string, unknown> => {
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+  const type = value.type;
+  if (typeof type !== "string" || type.trim().toLowerCase() !== "mcp") {
+    return false;
+  }
+  const directId = coerceServerId((value as Record<string, unknown>).server_id);
+  if (directId !== null) {
+    return true;
+  }
+  const server = (value as Record<string, unknown>).server;
+  if (isPlainRecord(server)) {
+    const nestedId = coerceServerId((server as Record<string, unknown>).id);
+    if (nestedId !== null) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const extractPersistedMcpServerId = (
+  tool: Record<string, unknown>,
+): number | null => {
+  const direct = coerceServerId(tool.server_id);
+  if (direct !== null) {
+    return direct;
+  }
+  const server = tool.server;
+  if (isPlainRecord(server)) {
+    return coerceServerId((server as Record<string, unknown>).id);
+  }
+  return null;
+};
+
+const normalizeToolNames = (input: unknown): string[] => {
+  const seen = new Set<string>();
+  if (Array.isArray(input)) {
+    for (const entry of input) {
+      if (typeof entry === "string") {
+        const trimmed = entry.trim();
+        if (trimmed) {
+          seen.add(trimmed);
+        }
+      }
+    }
+  }
+  return Array.from(seen.values());
+};
+
+const extractPersistedMcpToolNames = (
+  tool: Record<string, unknown>,
+): string[] => {
+  const allow = tool.allow ?? tool.allowlist;
+  if (isPlainRecord(allow)) {
+    const candidates = (allow as Record<string, unknown>).tools;
+    const names = normalizeToolNames(Array.isArray(candidates) ? candidates : []);
+    if (names.length > 0) {
+      return names;
+    }
+  }
+  const cached = tool.tool_names;
+  if (Array.isArray(cached)) {
+    const names = normalizeToolNames(cached);
+    if (names.length > 0) {
+      return names;
+    }
+  }
+  return [];
+};
+
+const sanitizeMcpServerConfig = (
+  config: McpSseToolConfig | null | undefined,
+): McpSseToolConfig | null => {
+  if (!config) {
+    return null;
+  }
+  const serverId = coerceServerId(config.serverId);
+  if (serverId === null) {
+    return null;
+  }
+  const toolNames = normalizeToolNames(config.toolNames ?? []);
+  const authorization =
+    typeof config.authorizationOverride === "string"
+      ? config.authorizationOverride.trim()
+      : "";
+  const payload: McpSseToolConfig = {
+    serverId,
+    toolNames,
+  };
+  if (authorization) {
+    payload.authorizationOverride = authorization;
+  }
+  return payload;
+};
+
+const buildPersistedMcpToolEntry = (
+  config: McpSseToolConfig,
+): Record<string, unknown> => {
+  const entry: Record<string, unknown> = {
+    type: "mcp",
+    transport: "http_sse",
+    server_id: config.serverId,
+    server: { id: config.serverId },
+  };
+
+  if (config.toolNames.length > 0) {
+    entry.allow = { tools: [...config.toolNames] };
+    entry.tool_names = [...config.toolNames];
+  }
+
+  if (config.authorizationOverride) {
+    entry.authorization = config.authorizationOverride;
+    entry.authorization_override = config.authorizationOverride;
   }
 
   return entry;
@@ -3543,9 +3690,9 @@ export const getAgentComputerUseConfig = (
   return null;
 };
 
-export const getAgentMcpSseConfig = (
+export const getLegacyMcpSseConfig = (
   parameters: AgentParameters | null | undefined,
-): McpSseToolConfig | null => {
+): LegacyMcpSseToolConfig | null => {
   if (!parameters) {
     return null;
   }
@@ -3556,7 +3703,7 @@ export const getAgentMcpSseConfig = (
   }
 
   for (const tool of tools) {
-    if (!isMcpSseTool(tool)) {
+    if (!isLegacyMcpTool(tool)) {
       continue;
     }
 
@@ -3694,14 +3841,65 @@ export const setAgentComputerUseConfig = (
   return { ...next, tools: [...tools, toolEntry] };
 };
 
-export const setAgentMcpSseConfig = (
+export const getAgentMcpServers = (
+  parameters: AgentParameters | null | undefined,
+): McpSseToolConfig[] => {
+  if (!parameters) {
+    return [];
+  }
+
+  const tools = (parameters as Record<string, unknown>).tools;
+  if (!Array.isArray(tools)) {
+    return [];
+  }
+
+  const normalized = new Map<number, McpSseToolConfig>();
+
+  for (const tool of tools) {
+    if (!isPersistedMcpTool(tool)) {
+      continue;
+    }
+
+    const record = tool as Record<string, unknown>;
+    const serverId = extractPersistedMcpServerId(record);
+    if (serverId === null) {
+      continue;
+    }
+
+    const toolNames = extractPersistedMcpToolNames(record);
+
+    let authorization: string | undefined;
+    const rawAuthorization = record.authorization ?? record.authorization_override;
+    if (typeof rawAuthorization === "string") {
+      const trimmed = rawAuthorization.trim();
+      if (trimmed) {
+        authorization = trimmed;
+      }
+    }
+
+    const payload: McpSseToolConfig = {
+      serverId,
+      toolNames,
+    };
+
+    if (authorization) {
+      payload.authorizationOverride = authorization;
+    }
+
+    normalized.set(serverId, payload);
+  }
+
+  return Array.from(normalized.values());
+};
+
+export const setLegacyMcpSseConfig = (
   parameters: AgentParameters,
-  config: McpSseToolConfig | null,
+  config: LegacyMcpSseToolConfig | null,
 ): AgentParameters => {
   const next = { ...parameters } as AgentParameters;
-  const sanitized = sanitizeMcpSseConfig(config);
+  const sanitized = sanitizeLegacyMcpConfig(config);
   const tools = Array.isArray(next.tools)
-    ? (next.tools as unknown[]).filter((tool) => !isMcpSseTool(tool))
+    ? (next.tools as unknown[]).filter((tool) => !isLegacyMcpTool(tool))
     : [];
 
   if (!sanitized) {
@@ -3712,8 +3910,42 @@ export const setAgentMcpSseConfig = (
     return { ...next, tools };
   }
 
-  const entry = buildMcpSseToolEntry(sanitized);
+  const entry = buildLegacyMcpToolEntry(sanitized);
   return { ...next, tools: [...tools, entry] };
+};
+
+export const setAgentMcpServers = (
+  parameters: AgentParameters,
+  configs: McpSseToolConfig[],
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const tools = Array.isArray(next.tools)
+    ? ([...(next.tools as unknown[])] as unknown[])
+    : [];
+
+  const preserved = tools.filter((tool) => !isPersistedMcpTool(tool));
+
+  const normalized = new Map<number, McpSseToolConfig>();
+  configs.forEach((config) => {
+    const sanitized = sanitizeMcpServerConfig(config);
+    if (!sanitized) {
+      return;
+    }
+    normalized.set(sanitized.serverId, sanitized);
+  });
+
+  const sanitizedConfigs = Array.from(normalized.values());
+
+  if (sanitizedConfigs.length === 0) {
+    if (preserved.length === 0) {
+      const { tools: _ignored, ...rest } = next as Record<string, unknown>;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools: preserved };
+  }
+
+  const entries = sanitizedConfigs.map(buildPersistedMcpToolEntry);
+  return { ...next, tools: [...preserved, ...entries] };
 };
 
 export const setAgentImageGenerationConfig = (

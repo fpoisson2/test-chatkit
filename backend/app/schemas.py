@@ -5,6 +5,7 @@ import math
 from typing import Any, Literal
 
 from pydantic import (
+    AnyHttpUrl,
     BaseModel,
     ConfigDict,
     EmailStr,
@@ -45,7 +46,10 @@ class VoiceSessionRequest(BaseModel):
     )
     thread_id: str | None = Field(
         default=None,
-        description="Identifiant du thread ChatKit pour persister les transcriptions (optionnel).",
+        description=(
+            "Identifiant du thread ChatKit pour persister les transcriptions "
+            "(optionnel)."
+        ),
     )
 
 
@@ -457,6 +461,128 @@ class SipAccountResponse(SipAccountBase):
     id: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class McpServerBase(BaseModel):
+    label: constr(strip_whitespace=True, min_length=1, max_length=128)
+    server_url: AnyHttpUrl
+    transport: Literal["http_sse"] | None = "http_sse"
+    is_active: bool = True
+    oauth_client_id: (
+        constr(strip_whitespace=True, min_length=1, max_length=255) | None
+    ) = None
+    oauth_scope: constr(strip_whitespace=True, min_length=1) | None = None
+    oauth_authorization_endpoint: AnyHttpUrl | None = None
+    oauth_token_endpoint: AnyHttpUrl | None = None
+    oauth_redirect_uri: AnyHttpUrl | None = None
+    oauth_metadata: dict[str, Any] | None = None
+
+    @field_validator("server_url", mode="before")
+    @classmethod
+    def _normalize_server_url(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("transport", mode="before")
+    @classmethod
+    def _normalize_transport(
+        cls, value: str | None
+    ) -> Literal["http_sse"] | None:
+        if value is None:
+            return "http_sse"
+        candidate = value.strip().lower()
+        if candidate in {"http_sse", "sse"}:
+            return "http_sse"
+        raise ValueError("Le transport MCP supporté est 'http_sse'.")
+
+    @field_validator(
+        "oauth_client_id",
+        "oauth_scope",
+    )
+    @classmethod
+    def _normalize_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        return candidate or None
+
+    @field_validator(
+        "oauth_authorization_endpoint",
+        "oauth_token_endpoint",
+        "oauth_redirect_uri",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_optional_url(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class McpServerCreateRequest(McpServerBase):
+    authorization: constr(strip_whitespace=True, min_length=1) | None = None
+    access_token: constr(strip_whitespace=True, min_length=1) | None = None
+    refresh_token: constr(strip_whitespace=True, min_length=1) | None = None
+    oauth_client_secret: constr(strip_whitespace=True, min_length=1) | None = None
+    refresh_tools: bool = True
+
+
+class McpServerUpdateRequest(BaseModel):
+    label: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
+    server_url: AnyHttpUrl | None = None
+    transport: Literal["http_sse"] | None = None
+    is_active: bool | None = None
+    authorization: constr(strip_whitespace=True, min_length=1) | None = None
+    access_token: constr(strip_whitespace=True, min_length=1) | None = None
+    refresh_token: constr(strip_whitespace=True, min_length=1) | None = None
+    oauth_client_id: (
+        constr(strip_whitespace=True, min_length=1, max_length=255) | None
+    ) = None
+    oauth_client_secret: constr(strip_whitespace=True, min_length=1) | None = None
+    oauth_scope: constr(strip_whitespace=True, min_length=1) | None = None
+    oauth_authorization_endpoint: AnyHttpUrl | None = None
+    oauth_token_endpoint: AnyHttpUrl | None = None
+    oauth_redirect_uri: AnyHttpUrl | None = None
+    oauth_metadata: dict[str, Any] | None = None
+    refresh_tools: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class McpServerResponse(McpServerBase):
+    id: int
+    authorization_hint: str | None = None
+    access_token_hint: str | None = None
+    refresh_token_hint: str | None = None
+    oauth_client_secret_hint: str | None = None
+    tools_cache: dict[str, Any] | None = None
+    tools_cache_updated_at: datetime.datetime | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class McpServerPublicResponse(BaseModel):
+    id: int
+    label: str
+    server_url: str
+    transport: str | None = None
+    is_active: bool
+    tools_cache: dict[str, Any] | None = None
+    tools_cache_updated_at: datetime.datetime | None = None
+    has_authorization: bool
+    has_access_token: bool
+    has_refresh_token: bool
+    has_oauth_client_secret: bool
 
     model_config = ConfigDict(from_attributes=True)
 

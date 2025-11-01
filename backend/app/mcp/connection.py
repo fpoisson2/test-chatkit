@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 from collections.abc import Mapping
 from typing import Any
@@ -7,7 +8,9 @@ from typing import Any
 import httpx
 from agents.mcp import MCPServerSse
 
-from ..tool_factory import build_mcp_tool
+from ..database import SessionLocal
+from ..models import McpServer
+from ..tool_factory import build_mcp_tool, get_mcp_runtime_context
 
 logger = logging.getLogger("chatkit.mcp")
 
@@ -18,6 +21,7 @@ async def probe_mcp_connection(
     """Établit une connexion MCP pour valider l'accès au serveur distant."""
 
     server = build_mcp_tool(config)
+    context = get_mcp_runtime_context(server)
 
     tools: list[Any]
 
@@ -69,11 +73,36 @@ async def probe_mcp_connection(
         if getattr(tool, "name", None)
     ]
 
-    return {
+    result: dict[str, Any] = {
         "status": "ok",
         "detail": f"Connexion établie ({len(tools)} outil(s) disponible(s)).",
         "tool_names": tool_names,
     }
+
+    if context and context.server_id is not None:
+        result["server_id"] = context.server_id
+        if context.allowlist:
+            result["allow"] = {"tools": list(context.allowlist)}
+
+        with SessionLocal() as session:
+            record = session.get(McpServer, context.server_id)
+            if record is not None and result["status"] == "ok":
+                now = datetime.datetime.now(datetime.UTC)
+                storage_payload = {
+                    "status": result["status"],
+                    "detail": result["detail"],
+                    "tool_names": tool_names,
+                }
+                record.tools_cache = storage_payload
+                record.tools_cache_updated_at = now
+                session.add(record)
+                session.commit()
+                session.refresh(record)
+                result["tools_cache_updated_at"] = (
+                    record.tools_cache_updated_at.isoformat()
+                )
+
+    return result
 
 
 def _safe_url(server: MCPServerSse) -> str:

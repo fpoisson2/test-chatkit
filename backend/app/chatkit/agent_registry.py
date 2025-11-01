@@ -42,6 +42,7 @@ from ..model_providers._shared import normalize_api_base
 from ..models import AvailableModel
 from ..token_sanitizer import sanitize_model_like
 from ..tool_factory import (
+    ResolvedMcpServerContext,
     build_computer_use_tool,
     build_file_search_tool,
     build_image_generation_tool,
@@ -50,6 +51,7 @@ from ..tool_factory import (
     build_web_search_tool,
     build_widget_validation_tool,
     build_workflow_tool,
+    get_mcp_runtime_context,
 )
 
 logger = logging.getLogger("chatkit.server")
@@ -875,10 +877,14 @@ def _build_agent_kwargs(
 
         normalized_tools: list[Any] = []
         extracted_mcp_servers: list[MCPServer] = []
+        resolved_mcp_contexts: list[ResolvedMcpServerContext] = []
         if coerced_tools:
             for tool in coerced_tools:
                 if isinstance(tool, MCPServer):
                     extracted_mcp_servers.append(tool)
+                    context = get_mcp_runtime_context(tool)
+                    if context is not None:
+                        resolved_mcp_contexts.append(context)
                 elif tool is not None:
                     normalized_tools.append(tool)
 
@@ -898,6 +904,28 @@ def _build_agent_kwargs(
             if extracted_mcp_servers:
                 filtered_existing.extend(extracted_mcp_servers)
             merged["mcp_servers"] = filtered_existing
+
+        if resolved_mcp_contexts:
+            merged["mcp_server_contexts"] = list(resolved_mcp_contexts)
+            resolved_records = [
+                context.record
+                for context in resolved_mcp_contexts
+                if context.record is not None
+            ]
+            if resolved_records:
+                merged["mcp_server_records"] = resolved_records
+
+            allowlist_entries = [
+                {
+                    "server_id": context.server_id,
+                    "server_url": context.server_url,
+                    "tools": list(context.allowlist),
+                }
+                for context in resolved_mcp_contexts
+                if context.allowlist
+            ]
+            if allowlist_entries:
+                merged["mcp_server_allowlists"] = allowlist_entries
 
         if coerced_tools and any(
             isinstance(tool, ComputerTool) for tool in coerced_tools if tool is not None

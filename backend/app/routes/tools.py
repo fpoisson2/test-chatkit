@@ -30,6 +30,11 @@ class MCPTestConnectionPayload(BaseModel):
         ..., description="Type de transport MCP supporté par le backend."
     )
     url: AnyHttpUrl = Field(..., description="URL publique du serveur MCP externe.")
+    server_id: int | None = Field(
+        None,
+        ge=1,
+        description="Identifiant d'un serveur MCP persisté à réutiliser.",
+    )
     authorization: str | None = Field(
         None,
         min_length=1,

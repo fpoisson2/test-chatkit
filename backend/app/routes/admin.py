@@ -19,11 +19,15 @@ from ..admin_settings import (
 from ..config import get_settings
 from ..database import get_session
 from ..dependencies import require_admin
+from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
 from ..models import SipAccount, TelephonyRoute, User
 from ..schemas import (
     AppSettingsResponse,
     AppSettingsUpdateRequest,
+    McpServerCreateRequest,
+    McpServerResponse,
+    McpServerUpdateRequest,
     SipAccountCreateRequest,
     SipAccountResponse,
     SipAccountUpdateRequest,
@@ -330,6 +334,62 @@ async def delete_telephony_route(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+# ========== MCP Servers ==========
+
+
+@router.get("/api/admin/mcp-servers", response_model=list[McpServerResponse])
+async def list_mcp_servers(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    service = McpServerService(session)
+    return service.list_servers()
+
+
+@router.post(
+    "/api/admin/mcp-servers",
+    response_model=McpServerResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_mcp_server(
+    payload: McpServerCreateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    service = McpServerService(session)
+    server = await service.create_server(payload)
+    return server
+
+
+@router.patch(
+    "/api/admin/mcp-servers/{server_id}",
+    response_model=McpServerResponse,
+)
+async def update_mcp_server(
+    server_id: int,
+    payload: McpServerUpdateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    service = McpServerService(session)
+    server = await service.update_server(server_id, payload)
+    return server
+
+
+@router.delete(
+    "/api/admin/mcp-servers/{server_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_mcp_server(
+    server_id: int,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    service = McpServerService(session)
+    service.delete_server(server_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 # ========== SIP Accounts ==========
 
 
@@ -340,7 +400,9 @@ async def list_sip_accounts(
 ):
     """Récupère la liste de tous les comptes SIP."""
     accounts = session.scalars(
-        select(SipAccount).order_by(SipAccount.is_default.desc(), SipAccount.label.asc())
+        select(SipAccount).order_by(
+            SipAccount.is_default.desc(), SipAccount.label.asc()
+        )
     ).all()
     return accounts
 
@@ -379,7 +441,7 @@ async def list_sip_accounts_availability(
     # Récupérer tous les comptes SIP actifs
     accounts = session.scalars(
         select(SipAccount)
-        .where(SipAccount.is_active == True)
+        .where(SipAccount.is_active)
         .order_by(SipAccount.is_default.desc(), SipAccount.label.asc())
     ).all()
 
@@ -390,7 +452,7 @@ async def list_sip_accounts_availability(
             select(WorkflowDefinition)
             .where(
                 WorkflowDefinition.sip_account_id == account.id,
-                WorkflowDefinition.is_active == True,
+                WorkflowDefinition.is_active,
             )
         )
 
@@ -446,7 +508,7 @@ async def create_sip_account(
     # Si is_default est True, désactiver les autres comptes par défaut
     if payload.is_default:
         existing_defaults = session.scalars(
-            select(SipAccount).where(SipAccount.is_default == True)
+            select(SipAccount).where(SipAccount.is_default)
         ).all()
         for account in existing_defaults:
             account.is_default = False
@@ -474,7 +536,9 @@ async def create_sip_account(
             await manager.load_accounts_from_db(session)
             logger.info("Comptes SIP rechargés après création")
         except Exception as exc:
-            logger.exception("Erreur lors du rechargement des comptes SIP", exc_info=exc)
+            logger.exception(
+                "Erreur lors du rechargement des comptes SIP", exc_info=exc
+            )
 
     return account
 
@@ -501,7 +565,7 @@ async def update_sip_account(
     if payload.is_default is True and not account.is_default:
         existing_defaults = session.scalars(
             select(SipAccount).where(
-                SipAccount.is_default == True,
+                SipAccount.is_default,
                 SipAccount.id != account_id,
             )
         ).all()
@@ -552,7 +616,9 @@ async def update_sip_account(
                 await manager.load_accounts_from_db(session)
                 logger.info("Comptes SIP rechargés après modification")
             except Exception as exc:
-                logger.exception("Erreur lors du rechargement des comptes SIP", exc_info=exc)
+                logger.exception(
+                    "Erreur lors du rechargement des comptes SIP", exc_info=exc
+                )
 
     return account
 
@@ -585,7 +651,9 @@ async def delete_sip_account(
             await manager.load_accounts_from_db(session)
             logger.info("Comptes SIP rechargés après suppression")
         except Exception as exc:
-            logger.exception("Erreur lors du rechargement des comptes SIP", exc_info=exc)
+            logger.exception(
+                "Erreur lors du rechargement des comptes SIP", exc_info=exc
+            )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -616,7 +684,10 @@ async def migrate_global_sip_to_account(
     if existing_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Des comptes SIP existent déjà. La migration n'est possible que s'il n'y a aucun compte.",
+            detail=(
+                "Des comptes SIP existent déjà. La migration n'est possible que s'il "
+                "n'y a aucun compte."
+            ),
         )
 
     # Récupérer les paramètres globaux
@@ -683,6 +754,8 @@ async def migrate_global_sip_to_account(
             await manager.load_accounts_from_db(session)
             logger.info("Comptes SIP rechargés après migration")
         except Exception as exc:
-            logger.exception("Erreur lors du rechargement des comptes SIP", exc_info=exc)
+            logger.exception(
+                "Erreur lors du rechargement des comptes SIP", exc_info=exc
+            )
 
     return account

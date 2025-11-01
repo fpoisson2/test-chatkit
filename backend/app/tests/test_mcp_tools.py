@@ -20,10 +20,14 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
+from app import realtime_runner as realtime_runner_module  # noqa: E402
 from app import tool_factory as tool_factory_module  # noqa: E402
 from app.chatkit import agent_registry  # noqa: E402
+from app.database import SessionLocal, engine  # noqa: E402
 from app.mcp import connection as mcp_connection  # noqa: E402
 from app.mcp import oauth as oauth_module  # noqa: E402
+from app.models import Base, McpServer  # noqa: E402
+from app.secret_utils import encrypt_secret  # noqa: E402
 
 FASTAPI_AVAILABLE = importlib.util.find_spec("fastapi") is not None
 if FASTAPI_AVAILABLE:  # pragma: no branch - dépendances optionnelles
@@ -34,6 +38,12 @@ else:  # pragma: no cover - environnement réduit
     FastAPI = None  # type: ignore[assignment]
     TestClient = None  # type: ignore[assignment]
     tools_routes = None  # type: ignore[assignment]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _setup_mcp_tables() -> None:
+    Base.metadata.create_all(engine)
+    yield
 
 
 def test_build_mcp_tool_constructs_server(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,6 +156,52 @@ def test_build_mcp_tool_rejects_empty_bearer(monkeypatch: pytest.MonkeyPatch) ->
 
     with pytest.raises(ValueError):
         tool_factory_module.build_mcp_tool(payload)
+
+
+def test_build_mcp_tool_supports_server_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    with SessionLocal() as session:
+        record = McpServer(
+            label="Stored",
+            server_url="https://stored.example/mcp",
+            transport="http_sse",
+            is_active=True,
+            authorization_encrypted=encrypt_secret("stored-token"),
+            tools_cache={"tool_names": ["alpha", "beta"]},
+        )
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+
+    created: dict[str, Any] = {}
+
+    class _StubServer:
+        def __init__(
+            self,
+            *,
+            params: dict[str, Any],
+            cache_tools_list: bool,
+            name: str | None = None,
+        ) -> None:
+            created["params"] = params
+            created["cache_tools_list"] = cache_tools_list
+            created["name"] = name
+
+    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _StubServer)
+
+    server = tool_factory_module.build_mcp_tool({"type": "mcp", "server_id": record.id})
+
+    assert isinstance(server, _StubServer)
+    params = created["params"]
+    assert params["url"] == "https://stored.example/mcp"
+    headers = params.get("headers")
+    assert isinstance(headers, dict)
+    assert headers.get("Authorization") == "Bearer stored-token"
+
+    context = tool_factory_module.get_mcp_runtime_context(server)
+    assert context is not None
+    assert context.server_id == record.id
+    assert context.server_url == "https://stored.example/mcp"
+    assert context.allowlist == ("alpha", "beta")
 
 
 def test_coerce_agent_tools_supports_mcp(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -278,6 +334,44 @@ def test_build_agent_kwargs_preserves_existing_mcp_servers(
     assert result["mcp_servers"] == [existing, created[0]]
 
 
+def test_normalize_realtime_tools_payload_uses_allowlist() -> None:
+    with SessionLocal() as session:
+        record = McpServer(
+            label="Realtime",
+            server_url="https://realtime.example/mcp",
+            transport="http_sse",
+            is_active=True,
+            authorization_encrypted=encrypt_secret("runtime-token"),
+            tools_cache={"tool_names": ["delta", "gamma"]},
+        )
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+
+    mcp_configs: list[dict[str, Any]] = []
+    normalized = realtime_runner_module._normalize_realtime_tools_payload(
+        [
+            {
+                "type": "mcp",
+                "server_id": record.id,
+            }
+        ],
+        mcp_server_configs=mcp_configs,
+    )
+
+    assert normalized is not None and len(normalized) == 1
+    entry = normalized[0]
+    assert entry.get("server_url") == "https://realtime.example/mcp"
+    assert entry.get("authorization") == "Bearer runtime-token"
+    assert entry.get("allow") == {"tools": ["delta", "gamma"]}
+
+    assert mcp_configs and len(mcp_configs) == 1
+    config_entry = mcp_configs[0]
+    assert config_entry.get("server_id") == record.id
+    assert config_entry.get("authorization") == "Bearer runtime-token"
+    assert config_entry.get("allow") == ["delta", "gamma"]
+
+
 def test_probe_mcp_connection_success(monkeypatch: pytest.MonkeyPatch) -> None:
     class _StubServer:
         def __init__(self) -> None:
@@ -366,6 +460,38 @@ def test_post_mcp_test_connection(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+@pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
+def test_post_mcp_test_connection_supports_server_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert FastAPI is not None and TestClient is not None and tools_routes is not None
+
+    app = FastAPI()
+    app.include_router(tools_routes.router)
+
+    captured: dict[str, Any] = {}
+
+    async def _fake_probe(config: dict[str, Any]) -> dict[str, Any]:
+        captured.update(config)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(tools_routes, "probe_mcp_connection", _fake_probe)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/tools/mcp/test-connection",
+        json={
+            "type": "mcp",
+            "transport": "http_sse",
+            "url": "https://example.com/mcp",
+            "server_id": 7,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["server_id"] == 7
 
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")

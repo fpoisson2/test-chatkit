@@ -41,6 +41,7 @@ from .models import (
     AppSettings,
     AvailableModel,
     Base,
+    McpServer,
     SipAccount,
     TelephonyRoute,
     User,
@@ -1476,6 +1477,64 @@ def _run_ad_hoc_migrations() -> None:
             logger.info("Création de la table sip_accounts pour les comptes SIP multiples")
             SipAccount.__table__.create(bind=connection)
             table_names.add("sip_accounts")
+
+        if "mcp_servers" not in table_names:
+            logger.info("Création de la table mcp_servers manquante")
+            McpServer.__table__.create(bind=connection)
+            table_names.add("mcp_servers")
+        else:
+            mcp_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("mcp_servers")
+            }
+            dialect_name = connection.dialect.name
+            json_type = "JSONB" if dialect_name == "postgresql" else "JSON"
+            timestamp_type = (
+                "TIMESTAMP WITH TIME ZONE"
+                if dialect_name == "postgresql"
+                else "TIMESTAMP"
+            )
+
+            def _add_mcp_column(name: str, definition: str) -> None:
+                if name in mcp_columns:
+                    return
+                logger.info(
+                    "Migration du schéma mcp_servers : ajout de la colonne %s",
+                    name,
+                )
+                connection.execute(
+                    text(f"ALTER TABLE mcp_servers ADD COLUMN {name} {definition}")
+                )
+                mcp_columns.add(name)
+
+            _add_mcp_column("transport", "VARCHAR(32)")
+            _add_mcp_column("is_active", "BOOLEAN NOT NULL DEFAULT TRUE")
+            _add_mcp_column("authorization_encrypted", "TEXT")
+            _add_mcp_column("authorization_hint", "VARCHAR(128)")
+            _add_mcp_column("access_token_encrypted", "TEXT")
+            _add_mcp_column("access_token_hint", "VARCHAR(128)")
+            _add_mcp_column("refresh_token_encrypted", "TEXT")
+            _add_mcp_column("refresh_token_hint", "VARCHAR(128)")
+            _add_mcp_column("oauth_client_id", "VARCHAR(255)")
+            _add_mcp_column("oauth_client_secret_encrypted", "TEXT")
+            _add_mcp_column("oauth_client_secret_hint", "VARCHAR(128)")
+            _add_mcp_column("oauth_scope", "TEXT")
+            _add_mcp_column("oauth_authorization_endpoint", "TEXT")
+            _add_mcp_column("oauth_token_endpoint", "TEXT")
+            _add_mcp_column("oauth_redirect_uri", "TEXT")
+            _add_mcp_column("oauth_metadata", json_type)
+            _add_mcp_column("tools_cache", json_type)
+            _add_mcp_column(
+                "tools_cache_updated_at", f"{timestamp_type}"
+            )
+            _add_mcp_column(
+                "created_at",
+                f"{timestamp_type} NOT NULL DEFAULT CURRENT_TIMESTAMP",
+            )
+            _add_mcp_column(
+                "updated_at",
+                f"{timestamp_type} NOT NULL DEFAULT CURRENT_TIMESTAMP",
+            )
 
         # Ajouter la colonne sip_account_id dans workflow_definitions
         if "workflow_definitions" in table_names:
