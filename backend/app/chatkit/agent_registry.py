@@ -968,11 +968,17 @@ def _build_agent_kwargs(
 AGENT_RESPONSE_FORMATS: weakref.WeakKeyDictionary[Agent, dict[str, Any]] = (
     weakref.WeakKeyDictionary()
 )
+AGENT_MCP_METADATA: weakref.WeakKeyDictionary[Agent, dict[str, Any]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     response_format = kwargs.pop("_response_format_override", None)
     provider_binding = kwargs.pop("_provider_binding", None)
+    mcp_server_contexts = kwargs.pop("mcp_server_contexts", None)
+    mcp_server_records = kwargs.pop("mcp_server_records", None)
+    mcp_server_allowlists = kwargs.pop("mcp_server_allowlists", None)
     agent = Agent(**kwargs)
     if response_format is not None:
         try:
@@ -994,6 +1000,31 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
         except Exception:
             logger.debug(
                 "Impossible de mémoriser le response_format pour l'agent %s",
+                getattr(agent, "name", "<inconnu>"),
+            )
+    if any(
+        value is not None
+        for value in (mcp_server_contexts, mcp_server_records, mcp_server_allowlists)
+    ):
+        metadata: dict[str, Any] = {}
+        if mcp_server_contexts is not None:
+            metadata["contexts"] = mcp_server_contexts
+        if mcp_server_records is not None:
+            metadata["records"] = mcp_server_records
+        if mcp_server_allowlists is not None:
+            metadata["allowlists"] = mcp_server_allowlists
+        try:
+            agent._chatkit_mcp_metadata = metadata
+        except Exception:
+            logger.debug(
+                "Impossible d'attacher les métadonnées MCP à l'agent %s",
+                getattr(agent, "name", "<inconnu>"),
+            )
+        try:
+            AGENT_MCP_METADATA[agent] = metadata
+        except Exception:
+            logger.debug(
+                "Impossible de mémoriser les métadonnées MCP pour l'agent %s",
                 getattr(agent, "name", "<inconnu>"),
             )
     if provider_binding is not None:
@@ -1098,6 +1129,7 @@ __all__ = [
     "get_agent_provider_binding",
     "AGENT_BUILDERS",
     "AGENT_RESPONSE_FORMATS",
+    "AGENT_MCP_METADATA",
     "STEP_TITLES",
     "_build_agent_kwargs",
     "_build_custom_agent",
