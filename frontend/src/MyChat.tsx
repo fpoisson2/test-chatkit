@@ -5,7 +5,6 @@ import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
-import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { useAppearanceSettings } from "./features/appearance/AppearanceSettingsContext";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
@@ -1008,6 +1007,12 @@ export function MyChat() {
   const statusMessage =
     error ?? (isLoading ? "Initialisation de la session…" : introMessage);
 
+  const statusTone: "info" | "error" | "loading" = error
+    ? "error"
+    : isLoading
+      ? "loading"
+      : "info";
+
   const voiceStatusMessage = voiceStatus === "connected"
     ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`
     : voiceStatus === "connecting"
@@ -1016,9 +1021,17 @@ export function MyChat() {
 
   return (
     <>
-      <ChatSidebar mode={mode} setMode={setMode} onWorkflowActivated={handleWorkflowActivated} />
-      <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
-      <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
+      <ChatSidebar
+        mode={mode}
+        setMode={setMode}
+        onWorkflowActivated={handleWorkflowActivated}
+      />
+      <ChatKitHost
+        control={control}
+        chatInstanceKey={chatInstanceKey}
+        statusMessage={statusMessage}
+        statusTone={statusTone}
+      />
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",
