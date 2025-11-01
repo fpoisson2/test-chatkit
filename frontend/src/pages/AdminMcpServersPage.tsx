@@ -273,12 +273,44 @@ export const AdminMcpServersPage = () => {
       tokenPayload,
       plan,
     }: {
-      serverId: number;
+      serverId: number | null;
       tokenPayload: Record<string, unknown>;
       plan: McpOAuthPersistencePlan | null;
-    }): Promise<{ ok: true } | { ok: false; message: string }> => {
+    }): Promise<
+      | { ok: true; server: McpServerSummary | null }
+      | { ok: false; message: string }
+    > => {
       if (!token) {
         return { ok: false, message: t("admin.mcpServers.errors.sessionExpired") };
+      }
+
+      const planPayload: McpServerPayload = { ...(plan?.payload ?? {}) };
+      const existingServer =
+        serverId != null ? servers.find((item) => item.id === serverId) ?? null : null;
+
+      if (!planPayload.label && existingServer?.label) {
+        planPayload.label = existingServer.label;
+      }
+      if (!planPayload.server_url && existingServer?.server_url) {
+        planPayload.server_url = existingServer.server_url;
+      }
+      if (planPayload.is_active === undefined && existingServer) {
+        planPayload.is_active = Boolean(existingServer.is_active);
+      }
+      if (!planPayload.transport && existingServer?.transport) {
+        planPayload.transport = existingServer.transport ?? undefined;
+      }
+
+      const resolvedLabel =
+        typeof planPayload.label === "string" ? planPayload.label.trim() : "";
+      const resolvedUrl =
+        typeof planPayload.server_url === "string" ? planPayload.server_url.trim() : "";
+
+      if (!resolvedLabel || !resolvedUrl) {
+        return {
+          ok: false,
+          message: t("admin.mcpServers.oauth.errorMissingDraft"),
+        };
       }
 
       const accessTokenRaw = tokenPayload.access_token;
@@ -292,54 +324,82 @@ export const AdminMcpServersPage = () => {
       const tokenType =
         typeof tokenTypeRaw === "string" ? tokenTypeRaw.trim() : "";
 
-      const updatePayload: McpServerPayload = {
-        refresh_tools:
-          plan?.refreshToolsOnSuccess === undefined
-            ? true
-            : Boolean(plan.refreshToolsOnSuccess),
+      const shouldRefreshTools =
+        plan?.refreshToolsOnSuccess === undefined
+          ? true
+          : Boolean(plan.refreshToolsOnSuccess);
+
+      const payload: McpServerPayload = {
+        ...planPayload,
+        label: resolvedLabel,
+        server_url: resolvedUrl,
+        refresh_tools: shouldRefreshTools,
       };
 
       if (accessToken) {
-        updatePayload.access_token = accessToken;
-        updatePayload.authorization = tokenType
+        payload.access_token = accessToken;
+        payload.authorization = tokenType
           ? `${tokenType} ${accessToken}`.trim()
           : `Bearer ${accessToken}`;
       }
 
       if (refreshToken) {
-        updatePayload.refresh_token = refreshToken;
+        payload.refresh_token = refreshToken;
       }
 
       const shouldStoreMetadata = plan?.storeTokenMetadata ?? true;
-      if (shouldStoreMetadata) {
-        const planMetadata = plan?.payload?.oauth_metadata;
-        const existing = servers.find((item) => item.id === serverId)?.oauth_metadata;
+      const planMetadata = planPayload.oauth_metadata;
 
+      if (shouldStoreMetadata) {
+        const existingMetadata = existingServer?.oauth_metadata;
         const baseMetadata = (() => {
           if (planMetadata && typeof planMetadata === "object" && !Array.isArray(planMetadata)) {
             return planMetadata;
           }
-          if (existing && typeof existing === "object" && !Array.isArray(existing)) {
-            return existing;
+          if (
+            existingMetadata &&
+            typeof existingMetadata === "object" &&
+            !Array.isArray(existingMetadata)
+          ) {
+            return existingMetadata;
           }
           return undefined;
         })();
 
-        updatePayload.oauth_metadata = {
+        payload.oauth_metadata = {
           ...(baseMetadata ?? {}),
           token: tokenPayload,
         };
+      } else if (planMetadata !== undefined) {
+        payload.oauth_metadata = planMetadata ?? null;
       }
 
       try {
-        const updated = await mcpServersApi.update(token, serverId, updatePayload);
-        setServers((prev) =>
-          prev.map((item) => (item.id === updated.id ? updated : item)),
-        );
-        if (editingId === serverId) {
-          applyServerToForm(updated);
+        let persisted: McpServerSummary | null = null;
+
+        if (serverId != null) {
+          const updated = await mcpServersApi.update(token, serverId, payload);
+          persisted = updated;
+          setServers((prev) =>
+            prev.map((item) => (item.id === updated.id ? updated : item)),
+          );
+          if (editingId === serverId) {
+            applyServerToForm(updated);
+          }
+        } else {
+          const created = await mcpServersApi.create(token, payload);
+          persisted = created;
+          setServers((prev) => {
+            const others = prev.filter((item) => item.id !== created.id);
+            return [...others, created].sort((a, b) =>
+              a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+            );
+          });
+          setEditingId(created.id);
+          applyServerToForm(created);
         }
-        return { ok: true };
+
+        return { ok: true, server: persisted };
       } catch (err) {
         if (isUnauthorizedError(err)) {
           logout();
@@ -357,6 +417,7 @@ export const AdminMcpServersPage = () => {
       editingId,
       logout,
       servers,
+      setEditingId,
       t,
       token,
     ],
@@ -372,15 +433,12 @@ export const AdminMcpServersPage = () => {
 
       if (result.status === "ok") {
         const plan = oauthPlanRef.current;
-        const serverId = plan?.serverId ?? oauthFeedback.serverId ?? null;
+        const fallbackServerId = plan?.serverId ?? oauthFeedback.serverId ?? null;
+        let persistedServerId: number | null = fallbackServerId;
 
-        if (
-          serverId != null &&
-          result.token &&
-          typeof result.token === "object"
-        ) {
+        if (result.token && typeof result.token === "object") {
           const outcome = await persistOAuthTokens({
-            serverId,
+            serverId: fallbackServerId,
             tokenPayload: result.token as Record<string, unknown>,
             plan: plan ?? null,
           });
@@ -391,18 +449,20 @@ export const AdminMcpServersPage = () => {
               status: "error",
               message,
               stateId: null,
-              serverId,
+              serverId: fallbackServerId,
             });
             setError(message);
             return;
           }
+
+          persistedServerId = outcome.server?.id ?? fallbackServerId ?? null;
         }
 
         setOauthFeedback({
           status: "success",
           message: t("admin.mcpServers.oauth.success"),
           stateId: null,
-          serverId: serverId ?? null,
+          serverId: persistedServerId,
         });
         setSuccess(t("admin.mcpServers.feedback.oauthSuccess"));
         setError(null);

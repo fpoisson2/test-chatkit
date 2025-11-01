@@ -753,6 +753,8 @@ const fr: TranslationDictionary = {
   "admin.mcpServers.oauth.success": "Jeton OAuth enregistré.",
   "admin.mcpServers.oauth.errorGeneric": "Échec du flux OAuth.",
   "admin.mcpServers.oauth.errorWithDetail": "Échec du flux OAuth : {{detail}}",
+  "admin.mcpServers.oauth.errorMissingDraft":
+    "Impossible d'enregistrer le serveur OAuth : brouillon incomplet.",
   "admin.mcpServers.feedback.created": "Serveur « {{label}} » créé.",
   "admin.mcpServers.feedback.updated": "Serveur « {{label}} » mis à jour.",
   "admin.mcpServers.feedback.deleted": "Serveur « {{label}} » supprimé.",
@@ -1498,6 +1500,8 @@ const en: TranslationDictionary = {
   "admin.mcpServers.oauth.success": "OAuth token saved.",
   "admin.mcpServers.oauth.errorGeneric": "OAuth flow failed.",
   "admin.mcpServers.oauth.errorWithDetail": "OAuth flow failed: {{detail}}",
+  "admin.mcpServers.oauth.errorMissingDraft":
+    "Unable to save the OAuth result: the draft configuration is incomplete.",
   "admin.mcpServers.feedback.created": "Server “{{label}}” created.",
   "admin.mcpServers.feedback.updated": "Server “{{label}}” updated.",
   "admin.mcpServers.feedback.deleted": "Server “{{label}}” deleted.",
