@@ -704,18 +704,22 @@ const fr: TranslationDictionary = {
   "admin.mcpServers.form.serverUrlPlaceholder": "https://mcp.example.com/",
   "admin.mcpServers.form.authorizationLabel": "En-tête Authorization",
   "admin.mcpServers.form.authorizationPlaceholder": "Bearer …",
-  "admin.mcpServers.form.authorizationHint": "En-tête actuel : {{hint}}",
+  "admin.mcpServers.form.authorizationHint":
+    "En-tête actuel : {{hint}} (laisser vide pour conserver)",
   "admin.mcpServers.form.accessTokenLabel": "Jeton d'accès",
   "admin.mcpServers.form.accessTokenPlaceholder": "Nouveau jeton d'accès",
-  "admin.mcpServers.form.accessTokenHint": "Jeton enregistré : {{hint}}",
+  "admin.mcpServers.form.accessTokenHint":
+    "Jeton enregistré : {{hint}} (laisser vide pour conserver)",
   "admin.mcpServers.form.refreshTokenLabel": "Refresh token",
   "admin.mcpServers.form.refreshTokenPlaceholder": "Nouveau refresh token",
-  "admin.mcpServers.form.refreshTokenHint": "Refresh token enregistré : {{hint}}",
+  "admin.mcpServers.form.refreshTokenHint":
+    "Refresh token enregistré : {{hint}} (laisser vide pour conserver)",
   "admin.mcpServers.form.oauthClientIdLabel": "Client ID OAuth",
   "admin.mcpServers.form.oauthClientIdPlaceholder": "Identifiant client",
   "admin.mcpServers.form.oauthClientSecretLabel": "Client secret OAuth",
   "admin.mcpServers.form.oauthClientSecretPlaceholder": "Nouveau client secret",
-  "admin.mcpServers.form.oauthClientSecretHint": "Secret enregistré : {{hint}}",
+  "admin.mcpServers.form.oauthClientSecretHint":
+    "Secret enregistré : {{hint}} (laisser vide pour conserver)",
   "admin.mcpServers.form.oauthScopeLabel": "Scopes OAuth",
   "admin.mcpServers.form.oauthScopePlaceholder": "scope1 scope2",
   "admin.mcpServers.form.oauthAuthorizationEndpointLabel":
@@ -1446,18 +1450,22 @@ const en: TranslationDictionary = {
   "admin.mcpServers.form.serverUrlPlaceholder": "https://mcp.example.com/",
   "admin.mcpServers.form.authorizationLabel": "Authorization header",
   "admin.mcpServers.form.authorizationPlaceholder": "Bearer …",
-  "admin.mcpServers.form.authorizationHint": "Current header: {{hint}}",
+  "admin.mcpServers.form.authorizationHint":
+    "Current header: {{hint}} (leave blank to keep it)",
   "admin.mcpServers.form.accessTokenLabel": "Access token",
   "admin.mcpServers.form.accessTokenPlaceholder": "New access token",
-  "admin.mcpServers.form.accessTokenHint": "Stored token: {{hint}}",
+  "admin.mcpServers.form.accessTokenHint":
+    "Stored token: {{hint}} (leave blank to keep it)",
   "admin.mcpServers.form.refreshTokenLabel": "Refresh token",
   "admin.mcpServers.form.refreshTokenPlaceholder": "New refresh token",
-  "admin.mcpServers.form.refreshTokenHint": "Stored refresh token: {{hint}}",
+  "admin.mcpServers.form.refreshTokenHint":
+    "Stored refresh token: {{hint}} (leave blank to keep it)",
   "admin.mcpServers.form.oauthClientIdLabel": "OAuth client ID",
   "admin.mcpServers.form.oauthClientIdPlaceholder": "Client identifier",
   "admin.mcpServers.form.oauthClientSecretLabel": "OAuth client secret",
   "admin.mcpServers.form.oauthClientSecretPlaceholder": "New client secret",
-  "admin.mcpServers.form.oauthClientSecretHint": "Stored secret: {{hint}}",
+  "admin.mcpServers.form.oauthClientSecretHint":
+    "Stored secret: {{hint}} (leave blank to keep it)",
   "admin.mcpServers.form.oauthScopeLabel": "OAuth scopes",
   "admin.mcpServers.form.oauthScopePlaceholder": "scope1 scope2",
   "admin.mcpServers.form.oauthAuthorizationEndpointLabel":
