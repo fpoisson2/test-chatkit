@@ -4,7 +4,14 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAppLayout, useSidebarPortal } from "./AppLayout";
 import { useI18n } from "../i18n";
 
-type AdminTabKey = "users" | "models" | "vector-stores" | "widgets" | "telephony" | "settings";
+type AdminTabKey =
+  | "users"
+  | "models"
+  | "vector-stores"
+  | "widgets"
+  | "telephony"
+  | "settings"
+  | "appearance";
 
 type AdminTabsProps = {
   activeTab: AdminTabKey;
@@ -17,6 +24,7 @@ const TAB_DEFINITIONS: { key: AdminTabKey; to: string; labelKey: string }[] = [
   { key: "widgets", to: "/widgets", labelKey: "admin.tabs.widgets" },
   { key: "telephony", to: "/admin/sip-accounts", labelKey: "admin.tabs.telephony" },
   { key: "settings", to: "/admin/settings", labelKey: "admin.tabs.settings" },
+  { key: "appearance", to: "/admin/appearance", labelKey: "admin.tabs.appearance" },
 ];
 
 export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
