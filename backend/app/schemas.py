@@ -1448,6 +1448,7 @@ class LTISessionResponse(BaseModel):
     context_label: str | None
     context_title: str | None
     workflow_id: int | None
+    thread_id: str | None
     score: float | None
     score_maximum: float
     score_submitted: bool

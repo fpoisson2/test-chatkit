@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import (
+    ChatThread,
     LTIDeployment,
     LTINonce,
     LTIPlatform,
@@ -249,7 +250,7 @@ class LTIService:
 
         return user
 
-    def create_lti_session(
+    def get_or_create_lti_session(
         self,
         user: User,
         platform: LTIPlatform,
@@ -257,8 +258,33 @@ class LTIService:
         launch_data: LTILaunchData,
         workflow: Workflow | None = None,
     ) -> LTISession:
-        """Create an LTI session"""
+        """Get or create an LTI session with thread"""
+        # For resource link launches, try to find existing session
+        # based on resource_link_id, user, and workflow
+        if launch_data.resource_link_id and launch_data.message_type == self.MESSAGE_TYPE_RESOURCE_LINK:
+            stmt = select(LTISession).where(
+                LTISession.resource_link_id == launch_data.resource_link_id,
+                LTISession.user_id == user.id,
+                LTISession.workflow_id == (workflow.id if workflow else None),
+            ).order_by(LTISession.created_at.desc())
+
+            existing_session = self.session.execute(stmt).scalar_one_or_none()
+
+            if existing_session:
+                # Update the session with new launch data
+                existing_session.ags_lineitem_url = launch_data.ags_lineitem
+                existing_session.ags_scope = launch_data.ags_scope if launch_data.ags_scope else None
+                existing_session.launch_data = launch_data.model_dump()
+                existing_session.updated_at = datetime.datetime.now(datetime.UTC)
+                self.session.commit()
+                self.session.refresh(existing_session)
+                return existing_session
+
+        # Create new session
         session_id = str(uuid.uuid4())
+
+        # Create or get ChatKit thread
+        thread_id = self._create_chatkit_thread(user, workflow, launch_data)
 
         lti_session = LTISession(
             session_id=session_id,
@@ -279,6 +305,7 @@ class LTIService:
             ags_lineitem_url=launch_data.ags_lineitem,
             ags_scope=launch_data.ags_scope if launch_data.ags_scope else None,
             workflow_id=workflow.id if workflow else None,
+            thread_id=thread_id,
             launch_data=launch_data.model_dump(),
         )
 
@@ -287,6 +314,59 @@ class LTIService:
         self.session.refresh(lti_session)
 
         return lti_session
+
+    def _create_chatkit_thread(
+        self, user: User, workflow: Workflow | None, launch_data: LTILaunchData
+    ) -> str:
+        """Create a ChatKit thread for the LTI session"""
+        thread_id = str(uuid.uuid4())
+        now = datetime.datetime.now(datetime.UTC)
+
+        # Build thread metadata
+        metadata = {
+            "lti": True,
+            "resource_link_id": launch_data.resource_link_id,
+            "context_id": launch_data.context_id,
+            "context_title": launch_data.context_title,
+        }
+
+        if workflow:
+            metadata["workflow_id"] = workflow.id
+            metadata["workflow_slug"] = workflow.slug
+
+        # Create thread payload
+        payload = {
+            "id": thread_id,
+            "metadata": metadata,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }
+
+        # Create ChatThread
+        thread = ChatThread(
+            id=thread_id,
+            owner_id=str(user.id),
+            created_at=now,
+            updated_at=now,
+            payload=payload,
+        )
+
+        self.session.add(thread)
+        self.session.commit()
+
+        return thread_id
+
+    # Backwards compatibility
+    def create_lti_session(
+        self,
+        user: User,
+        platform: LTIPlatform,
+        deployment: LTIDeployment,
+        launch_data: LTILaunchData,
+        workflow: Workflow | None = None,
+    ) -> LTISession:
+        """Create an LTI session (deprecated, use get_or_create_lti_session)"""
+        return self.get_or_create_lti_session(user, platform, deployment, launch_data, workflow)
 
     def generate_oidc_auth_response(
         self, platform: LTIPlatform, login_hint: str, target_link_uri: str

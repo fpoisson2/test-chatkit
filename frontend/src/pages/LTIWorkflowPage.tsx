@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth';
-import MyChat from '../MyChat';
+import { MyChat } from '../MyChat';
+import { persistStoredThreadId } from '../utils/chatkitThread';
 
 interface LTISession {
   id: number;
   session_id: string;
   user_id: number;
   workflow_id: number | null;
+  thread_id: string | null;
   score: number | null;
   score_maximum: number;
   score_submitted: boolean;
@@ -56,6 +58,11 @@ export default function LTIWorkflowPage() {
 
         const data = await response.json();
         setLTISession(data);
+
+        // Store the thread_id in localStorage so MyChat can use it
+        if (data.thread_id) {
+          persistStoredThreadId(data.thread_id);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
@@ -142,12 +149,7 @@ export default function LTIWorkflowPage() {
         </div>
       )}
 
-      <MyChat
-        hostedWorkflowSlug={workflowSlug}
-        onWorkflowComplete={handleWorkflowComplete}
-        ltiMode={true}
-        ltiSessionId={sessionId || undefined}
-      />
+      <MyChat />
     </div>
   );
 }

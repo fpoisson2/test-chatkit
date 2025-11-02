@@ -1033,6 +1033,11 @@ class LTISession(Base):
         Integer, ForeignKey("workflows.id", ondelete="SET NULL"), nullable=True
     )
 
+    # ChatKit thread tracking
+    thread_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("chat_threads.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Score tracking
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     score_maximum: Mapped[float] = mapped_column(
