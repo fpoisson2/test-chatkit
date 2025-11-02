@@ -52,6 +52,7 @@ from .vector_store import (
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService, WidgetValidationError
 from .workflows import WorkflowService, WorkflowValidationError
+from .lti.tools import submit_lti_grade
 
 if TYPE_CHECKING:
     from .workflows.executor import (
@@ -67,6 +68,8 @@ ImageGenerationTool = _AgentImageGenerationTool
 _SUPPORTED_IMAGE_OUTPUT_FORMATS = frozenset({"png", "jpeg", "webp"})
 
 _WEATHER_FUNCTION_TOOL_ALIASES = {"fetch_weather", "get_weather"}
+
+_LTI_GRADE_TOOL_ALIASES = {"submit_lti_grade", "submit_grade", "send_grade"}
 
 _WORKFLOW_TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
@@ -1048,6 +1051,44 @@ def build_weather_tool(payload: Any) -> FunctionTool | None:
     return tool
 
 
+def build_lti_grade_tool(payload: Any) -> FunctionTool | None:
+    """Construit un FunctionTool pour soumettre des notes via LTI AGS."""
+
+    if isinstance(payload, FunctionTool):
+        return payload
+
+    name_override = "submit_lti_grade"
+    description = (
+        "Submit a grade to the Learning Management System (LMS) via LTI. "
+        "Use this tool to send student scores back to their LMS gradebook. "
+        "The grade is associated with the current LTI activity."
+    )
+
+    if isinstance(payload, dict):
+        raw_name = (
+            payload.get("name") or payload.get("id") or payload.get("function_name")
+        )
+        if isinstance(raw_name, str) and raw_name.strip():
+            candidate = raw_name.strip()
+            if candidate.lower() in _LTI_GRADE_TOOL_ALIASES:
+                name_override = candidate
+            else:
+                return None
+        raw_description = payload.get("description")
+        if isinstance(raw_description, str) and raw_description.strip():
+            description = raw_description.strip()
+    elif isinstance(payload, str) and payload.strip():
+        candidate = payload.strip()
+        if candidate.lower() in _LTI_GRADE_TOOL_ALIASES:
+            name_override = candidate
+        else:
+            return None
+
+    tool = function_tool(name_override=name_override)(submit_lti_grade)
+    tool.description = description
+    return tool
+
+
 def _extract_mcp_payload(payload: Any) -> Mapping[str, Any]:
     if isinstance(payload, Mapping):
         return payload
@@ -1913,6 +1954,7 @@ __all__ = [
     "WorkflowValidationResult",
     "build_file_search_tool",
     "build_image_generation_tool",
+    "build_lti_grade_tool",
     "build_mcp_tool",
     "build_weather_tool",
     "build_workflow_tool",
