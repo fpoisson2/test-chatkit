@@ -1086,18 +1086,18 @@ async def generate_language_file(
 
             with SessionLocal() as db_session:
                 app_settings = get_thread_title_prompt_override(db_session)
-                if app_settings and app_settings.model_providers:
-                    # Parse le JSON des model_providers
+                if app_settings and app_settings.model_provider_configs:
+                    # Parse le JSON des model_provider_configs
                     import json
                     try:
-                        providers_data = json.loads(app_settings.model_providers)
+                        providers_data = json.loads(app_settings.model_provider_configs)
                         for provider_data in providers_data:
                             if provider_data.get("provider", "").lower() == provider_slug.lower():
                                 provider_id_used = provider_data.get("id")
                                 logger.info(f"Found provider in database with ID: {provider_id_used}")
                                 break
                     except (json.JSONDecodeError, AttributeError) as e:
-                        logger.warning(f"Failed to parse model_providers JSON: {e}")
+                        logger.warning(f"Failed to parse model_provider_configs JSON: {e}")
 
         # Debug: afficher les providers disponibles
         settings = get_settings()
