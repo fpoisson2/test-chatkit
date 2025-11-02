@@ -844,13 +844,19 @@ class LanguageResponse(BaseModel):
     fileExists: bool
 
 
-class LanguageCreateRequest(BaseModel):
+class LanguageGenerateRequest(BaseModel):
     code: str
     name: str
 
 
 class LanguagesListResponse(BaseModel):
     languages: list[LanguageResponse]
+
+
+class GeneratedFileResponse(BaseModel):
+    filename: str
+    content: str
+    instructions: str
 
 
 @router.get("/api/admin/languages", response_model=LanguagesListResponse)
@@ -955,16 +961,19 @@ async def list_languages(_admin: User = Depends(require_admin)):
         )
 
 
-@router.post("/api/admin/languages", response_model=LanguageResponse)
-async def create_language(
-    request: LanguageCreateRequest,
+
+@router.post("/api/admin/languages/generate", response_model=GeneratedFileResponse)
+async def generate_language_file(
+    request: LanguageGenerateRequest,
     _admin: User = Depends(require_admin)
 ):
     """
-    Crée une nouvelle langue dans l'interface.
+    Génère un fichier de traductions traduit automatiquement par IA.
+    Retourne le contenu du fichier au lieu de l'écrire sur le disque.
+    L'administrateur peut ensuite télécharger et ajouter manuellement le fichier.
     """
-    import os
     import re
+    import json
     from pathlib import Path
     
     code = request.code.strip().lower()
@@ -980,156 +989,8 @@ async def create_language(
     if code in ["en", "fr"]:
         raise HTTPException(
             status_code=400,
-            detail="Cannot create base languages (en, fr)"
+            detail="Cannot generate base languages (en, fr) - they already exist"
         )
-    
-    # Le frontend est monté en lecture seule dans /frontend via docker-compose
-    i18n_path = Path("/frontend/src/i18n")
-    
-    # Vérifier si la langue existe déjà
-    translation_file_path = i18n_path / f"translations.{code}.ts"
-    if translation_file_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Language {code} already exists"
-        )
-    
-    # Créer le fichier de traductions vide
-    file_content = f'''import type {{ TranslationDictionary }} from "./translations";
-
-export const {code}: TranslationDictionary = {{
-  "language.name.en": "English",
-  "language.name.fr": "French",
-  "language.name.{code}": "{name}",
-}};
-'''
-    
-    translation_file_path.write_text(file_content)
-    
-    # Mettre à jour le fichier principal translations.ts
-    main_file = i18n_path / "translations.ts"
-    main_content = main_file.read_text()
-    
-    # Ajouter le code de langue au type Language
-    lang_type_pattern = r'(export type Language = (?:"[a-z]{2}"\s*\|\s*)+)"([a-z]{2})";'
-    match = re.search(lang_type_pattern, main_content)
-    if match:
-        main_content = re.sub(
-            lang_type_pattern,
-            rf'\1"\2" | "{code}";',
-            main_content
-        )
-    
-    # Ajouter à AVAILABLE_LANGUAGES
-    available_langs_pattern = r'(export const AVAILABLE_LANGUAGES[^=]*=\s*\[(?:[^\]]+)\])'
-    match = re.search(available_langs_pattern, main_content, re.DOTALL)
-    if match:
-        langs_block = match.group(1)
-        new_langs_block = langs_block.rstrip(']').rstrip() + f',\n  {{ code: "{code}", label: "{name}" }},\n]'
-        main_content = main_content.replace(langs_block, new_langs_block)
-    
-    # Ajouter l'import
-    import_pattern = r'(import \{ [^\}]+ \} from "./translations\.[a-z]{2}";)'
-    imports = re.findall(import_pattern, main_content)
-    if imports:
-        last_import = imports[-1]
-        new_import = f'import {{ {code} }} from "./translations.{code}";'
-        main_content = main_content.replace(last_import, f'{last_import}\n{new_import}')
-    
-    # Ajouter au tableau des traductions
-    translations_pattern = r'(export const translations: Translations = \{[^\}]+)'
-    match = re.search(translations_pattern, main_content, re.DOTALL)
-    if match:
-        trans_block = match.group(1)
-        new_trans_block = trans_block.rstrip() + f',\n  {code},'
-        main_content = main_content.replace(trans_block, new_trans_block)
-    
-    main_file.write_text(main_content)
-    
-    return LanguageResponse(
-        code=code,
-        name=name,
-        translationFile=f"translations.{code}.ts",
-        keysCount=3,
-        totalKeys=0,
-        fileExists=True,
-    )
-
-
-@router.delete("/api/admin/languages/{code}")
-async def delete_language(
-    code: str,
-    _admin: User = Depends(require_admin)
-):
-    """
-    Supprime une langue de l'interface.
-    """
-    import os
-    import re
-    from pathlib import Path
-    
-    code = code.strip().lower()
-    
-    # Empêcher la suppression des langues de base
-    if code in ["en", "fr"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete base languages (en, fr)"
-        )
-    
-    # Le frontend est monté en lecture seule dans /frontend via docker-compose
-    i18n_path = Path("/frontend/src/i18n")
-    
-    # Supprimer le fichier de traductions
-    translation_file = i18n_path / f"translations.{code}.ts"
-    if translation_file.exists():
-        translation_file.unlink()
-    
-    # Mettre à jour le fichier principal
-    main_file = i18n_path / "translations.ts"
-    if main_file.exists():
-        main_content = main_file.read_text()
-        
-        # Retirer du type Language
-        main_content = re.sub(rf'\s*\|\s*"{code}"', '', main_content)
-        main_content = re.sub(rf'"{code}"\s*\|\s*', '', main_content)
-        
-        # Retirer de AVAILABLE_LANGUAGES
-        main_content = re.sub(
-            rf',?\s*\{{\s*code:\s*"{code}",\s*label:\s*"[^"]+"\s*\}},?',
-            '',
-            main_content
-        )
-        
-        # Retirer l'import
-        main_content = re.sub(rf'import \{{ {code} \}} from "./translations\.{code}";\n', '', main_content)
-        
-        # Retirer du tableau translations
-        main_content = re.sub(rf',?\s*{code},?\s*', '', main_content)
-        
-        # Nettoyer les virgules en trop
-        main_content = re.sub(r',(\s*[}\]])', r'\1', main_content)
-        main_content = re.sub(r'([{\[])\s*,', r'\1', main_content)
-        
-        main_file.write_text(main_content)
-    
-    return {"message": f"Language {code} deleted successfully"}
-
-
-@router.post("/api/admin/languages/{code}/auto-translate")
-async def auto_translate_language(
-    code: str,
-    _admin: User = Depends(require_admin)
-):
-    """
-    Traduit automatiquement une langue en utilisant l'IA via OpenAI.
-    """
-    import os
-    import re
-    import json
-    from pathlib import Path
-    
-    code = code.strip().lower()
     
     # Le frontend est monté en lecture seule dans /frontend via docker-compose
     i18n_path = Path("/frontend/src/i18n")
@@ -1137,9 +998,7 @@ async def auto_translate_language(
     # Charger le fichier source (anglais)
     en_file = i18n_path / "translations.en.ts"
     if not en_file.exists():
-        raise HTTPException(status_code=404, detail="Source language file not found")
-    
-    target_file = i18n_path / f"translations.{code}.ts"
+        raise HTTPException(status_code=404, detail="Source language file (English) not found")
     
     # Extraire toutes les clés et valeurs du fichier anglais
     en_content = en_file.read_text()
@@ -1154,13 +1013,7 @@ async def auto_translate_language(
     # Créer un dictionnaire des traductions anglaises
     en_translations = {key: value for key, value in matches}
     
-    # Obtenir le nom de la langue cible
-    target_lang_name = code.upper()
-    if target_file.exists():
-        target_content = target_file.read_text()
-        name_match = re.search(rf'"language\.name\.{code}"\s*:\s*"([^"]+)"', target_content)
-        if name_match:
-            target_lang_name = name_match.group(1)
+    logger.info(f"Generating translation file for {code} ({name}) with {len(en_translations)} keys")
     
     # Utiliser l'API OpenAI pour traduire
     try:
@@ -1182,7 +1035,7 @@ async def auto_translate_language(
         # Préparer le prompt pour la traduction
         translations_json = json.dumps(en_translations, ensure_ascii=False, indent=2)
 
-        prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {target_lang_name} ({code}).
+        prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {name} ({code}).
 
 IMPORTANT RULES:
 1. Keep all keys exactly as they are (do not translate keys)
@@ -1195,8 +1048,9 @@ IMPORTANT RULES:
 Source translations (English):
 {translations_json}
 
-Return the complete JSON object with all keys and their translated values in {target_lang_name}."""
+Return the complete JSON object with all keys and their translated values in {name}."""
 
+        logger.info(f"Calling OpenAI API for translation to {name}")
         response = await client.chat.completions.create(
             model="gpt-4o",
             max_tokens=16000,
@@ -1212,9 +1066,11 @@ Return the complete JSON object with all keys and their translated values in {ta
         # Nettoyer le texte pour extraire seulement le JSON
         json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
         if not json_match:
+            logger.error("Failed to extract JSON from AI response")
             raise HTTPException(status_code=500, detail="Failed to parse AI response")
         
         translated_dict = json.loads(json_match.group(0))
+        logger.info(f"Successfully translated {len(translated_dict)} keys")
         
         # Générer le fichier de traductions
         file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {code}: TranslationDictionary = {{\n'
@@ -1226,17 +1082,41 @@ Return the complete JSON object with all keys and their translated values in {ta
         
         file_content += '};\n'
         
-        # Écrire le fichier
-        target_file.write_text(file_content)
+        # Instructions pour l'administrateur
+        instructions = f"""# How to add this language to your application
+
+1. Save this file as `frontend/src/i18n/translations.{code}.ts`
+
+2. Edit `frontend/src/i18n/translations.ts` and add:
+
+   a) Add to the Language type:
+      export type Language = "en" | "fr" | "{code}";
+   
+   b) Add to AVAILABLE_LANGUAGES array:
+      {{ code: "{code}", label: "{name}" }},
+   
+   c) Add the import:
+      import {{ {code} }} from "./translations.{code}";
+   
+   d) Add to translations object:
+      {code},
+
+3. Restart the frontend development server
+
+4. The new language will appear in the language switcher
+"""
         
-        return {
-            "message": f"Language {code} translated successfully",
-            "translated_count": len(translated_dict)
-        }
+        return GeneratedFileResponse(
+            filename=f"translations.{code}.ts",
+            content=file_content,
+            instructions=instructions
+        )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception(f"Failed to auto-translate language {code}")
+        logger.exception(f"Failed to generate translation for {code}: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Translation failed: {str(e)}"
+            detail=f"Translation generation failed: {str(e)}"
         )

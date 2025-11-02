@@ -44,9 +44,7 @@ export const AdminLanguagesPage = () => {
   const [formState, setFormState] = useState<LanguageFormState>(initialFormState);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-
-  const [deletingCode, setDeletingCode] = useState<string | null>(null);
-  const [translatingCode, setTranslatingCode] = useState<string | null>(null);
+  const [instructions, setInstructions] = useState<string | null>(null);
 
   const loadLanguages = useCallback(async () => {
     if (!token) {
@@ -94,6 +92,7 @@ export const AdminLanguagesPage = () => {
     e.preventDefault();
     setFormError(null);
     setSuccess(null);
+    setInstructions(null);
 
     if (!formState.code.trim()) {
       setFormError(t("admin.languages.errors.codeRequired"));
@@ -102,6 +101,7 @@ export const AdminLanguagesPage = () => {
 
     if (!formState.name.trim()) {
       setFormError(t("admin.languages.errors.nameRequired"));
+      return;
     }
 
     if (!/^[a-z]{2}$/.test(formState.code.trim())) {
@@ -112,7 +112,7 @@ export const AdminLanguagesPage = () => {
     setSubmitting(true);
 
     try {
-      const response = await fetch("/api/admin/languages", {
+      const response = await fetch("/api/admin/languages/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -131,7 +131,7 @@ export const AdminLanguagesPage = () => {
         }
 
         const errorData = await response.json().catch(() => ({}));
-        if (errorData.detail?.includes("already exists")) {
+        if (errorData.detail?.includes("already exist")) {
           setFormError(t("admin.languages.errors.codeExists"));
         } else {
           setFormError(t("admin.languages.errors.createFailed"));
@@ -140,94 +140,27 @@ export const AdminLanguagesPage = () => {
       }
 
       const data = await response.json();
-      setSuccess(t("admin.languages.feedback.created", { name: data.name }));
+
+      // Télécharger le fichier généré
+      const blob = new Blob([data.content], { type: "text/typescript" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = data.filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setSuccess(t("admin.languages.feedback.created", { name: formState.name }));
+      setInstructions(data.instructions);
       setFormState(initialFormState);
       await loadLanguages();
     } catch (err) {
-      console.error("Failed to create language:", err);
+      console.error("Failed to generate language:", err);
       setFormError(t("admin.languages.errors.createFailed"));
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (code: string, name: string) => {
-    if (!confirm(t("admin.languages.confirm.delete", { code, name }))) {
-      return;
-    }
-
-    setDeletingCode(code);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await fetch(`/api/admin/languages/${code}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-
-        const errorData = await response.json().catch(() => ({}));
-        if (errorData.detail?.includes("base language")) {
-          setError(t("admin.languages.errors.cannotDeleteBase"));
-        } else {
-          setError(t("admin.languages.errors.deleteFailed"));
-        }
-        return;
-      }
-
-      setSuccess(t("admin.languages.feedback.deleted", { name }));
-      await loadLanguages();
-    } catch (err) {
-      console.error("Failed to delete language:", err);
-      setError(t("admin.languages.errors.deleteFailed"));
-    } finally {
-      setDeletingCode(null);
-    }
-  };
-
-  const handleAutoTranslate = async (code: string, name: string) => {
-    if (!confirm(t("admin.languages.confirm.autoTranslate", { name }))) {
-      return;
-    }
-
-    setTranslatingCode(code);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await fetch(`/api/admin/languages/${code}/auto-translate`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      setSuccess(
-        t("admin.languages.feedback.translationComplete", { count: data.translated_count })
-      );
-      await loadLanguages();
-    } catch (err) {
-      console.error("Failed to auto-translate language:", err);
-      setError(t("admin.languages.errors.translationFailed"));
-    } finally {
-      setTranslatingCode(null);
     }
   };
 
@@ -268,8 +201,14 @@ export const AdminLanguagesPage = () => {
             </div>
           )}
 
+          {instructions && (
+            <div className="alert alert--info" role="alert" style={{ marginBottom: "1.5rem", whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.875rem" }}>
+              {instructions}
+            </div>
+          )}
+
           <div className="admin-grid">
-            {/* Add Language Form */}
+            {/* Generate Language Form */}
             <section className="admin-card">
               <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
                 {t("admin.languages.form.addTitle")}
@@ -336,6 +275,7 @@ export const AdminLanguagesPage = () => {
                       onClick={() => {
                         setFormState(initialFormState);
                         setFormError(null);
+                        setInstructions(null);
                       }}
                       className="button button--secondary"
                     >
@@ -369,7 +309,6 @@ export const AdminLanguagesPage = () => {
                         <th>{t("admin.languages.list.columns.translationFile")}</th>
                         <th>{t("admin.languages.list.columns.keysCount")}</th>
                         <th>{t("admin.languages.list.columns.status")}</th>
-                        <th>{t("admin.languages.list.columns.actions")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -398,35 +337,6 @@ export const AdminLanguagesPage = () => {
                             {lang.keysCount} / {lang.totalKeys}
                           </td>
                           <td>{getStatusLabel(lang)}</td>
-                          <td>
-                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                              <button
-                                onClick={() => handleAutoTranslate(lang.code, lang.name)}
-                                disabled={translatingCode === lang.code || deletingCode === lang.code}
-                                className="button button--small button--primary"
-                                title={t("admin.languages.actions.autoTranslate")}
-                              >
-                                {translatingCode === lang.code
-                                  ? t("admin.languages.actions.translating")
-                                  : t("admin.languages.actions.autoTranslate")}
-                              </button>
-                              <button
-                                onClick={() => handleDelete(lang.code, lang.name)}
-                                disabled={
-                                  deletingCode === lang.code ||
-                                  translatingCode === lang.code ||
-                                  lang.code === "en" ||
-                                  lang.code === "fr"
-                                }
-                                className="button button--small button--danger"
-                                title={t("admin.languages.actions.delete")}
-                              >
-                                {deletingCode === lang.code
-                                  ? t("admin.languages.actions.deleting")
-                                  : t("admin.languages.actions.delete")}
-                              </button>
-                            </div>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
