@@ -1245,6 +1245,7 @@ class AvailableModelResponse(BaseModel):
     name: str
     provider_id: str | None
     provider_slug: str | None
+    provider_configured: bool  # True if provider can be resolved
 
 
 class AvailableModelsListResponse(BaseModel):
@@ -1265,6 +1266,7 @@ async def list_available_models(
     """
     from sqlalchemy import select
     from ..models import AvailableModel
+    from ..chatkit.agent_registry import get_agent_provider_binding
 
     try:
         with SessionLocal() as session:
@@ -1273,15 +1275,21 @@ async def list_available_models(
                 .order_by(AvailableModel.provider_slug, AvailableModel.name)
             ).all()
 
-            model_list = [
-                AvailableModelResponse(
+            model_list = []
+            for model in models:
+                # Check if provider can be resolved
+                provider_configured = False
+                if model.provider_id or model.provider_slug:
+                    binding = get_agent_provider_binding(model.provider_id, model.provider_slug)
+                    provider_configured = binding is not None
+
+                model_list.append(AvailableModelResponse(
                     id=model.id,
                     name=model.name,
                     provider_id=model.provider_id,
-                    provider_slug=model.provider_slug
-                )
-                for model in models
-            ]
+                    provider_slug=model.provider_slug,
+                    provider_configured=provider_configured
+                ))
 
             return AvailableModelsListResponse(models=model_list)
 
