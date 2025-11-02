@@ -851,6 +851,7 @@ class LanguageGenerateRequest(BaseModel):
     provider_id: str | None = None
     provider_slug: str | None = None
     custom_prompt: str | None = None
+    save_to_db: bool = False  # Sauvegarder en BD en plus du téléchargement
 
 
 class LanguagesListResponse(BaseModel):
