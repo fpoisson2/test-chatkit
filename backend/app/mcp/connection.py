@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 from collections.abc import Mapping
 from typing import Any
@@ -74,16 +75,23 @@ async def probe_mcp_connection(
             status_label = "http_error"
             detail = f"Le serveur MCP a renvoyé le statut HTTP {status_code}."
         response_headers = _format_headers_for_logging(exc.response.headers)
+        request_headers = _format_headers_for_logging(exc.request.headers)
         response_body = _preview_response_text(exc.response)
+        response_json = _preview_response_json(exc.response)
         logger.warning(
             (
                 "Test de connexion MCP échoué (HTTP %s) pour %s | "
-                "response_headers=%s | body=%s"
+                "request_method=%s | request_url=%s | request_headers=%s | "
+                "response_headers=%s | body=%s | json=%s"
             ),
             status_code,
             _safe_url(server),
+            exc.request.method,
+            str(exc.request.url),
+            request_headers,
             response_headers,
             response_body,
+            response_json,
         )
         return {
             "status": status_label,
@@ -198,3 +206,45 @@ def _trim_preview(payload: str, *, limit: int = 512) -> str:
     if len(payload) <= limit:
         return payload
     return f"{payload[:limit]}…"
+
+
+def _sanitize_structure(value: Any, *, depth: int = 4) -> Any:
+    if depth <= 0:
+        return "<limite atteinte>"
+
+    if isinstance(value, Mapping):
+        sanitized: dict[str, Any] = {}
+        for raw_key, raw_value in value.items():
+            key = str(raw_key)
+            lower_key = key.lower()
+            if any(marker in lower_key for marker in _SENSITIVE_HEADER_MARKERS):
+                sanitized[key] = _mask_sensitive_value(raw_value)
+            else:
+                sanitized[key] = _sanitize_structure(raw_value, depth=depth - 1)
+        return sanitized
+
+    if isinstance(value, list):
+        return [_sanitize_structure(item, depth=depth - 1) for item in value]
+
+    if isinstance(value, str | int | float | bool) or value is None:
+        if isinstance(value, str) and any(
+            marker in value.lower() for marker in _SENSITIVE_HEADER_MARKERS
+        ):
+            return _mask_sensitive_value(value)
+        return value
+
+    return str(value)
+
+
+def _preview_response_json(response: httpx.Response) -> str | None:
+    try:
+        payload = response.json()
+    except Exception:  # pragma: no cover - conversion défensive
+        return None
+
+    sanitized = _sanitize_structure(payload)
+    try:
+        rendered = json.dumps(sanitized, ensure_ascii=False, sort_keys=True)
+    except Exception:  # pragma: no cover - fallback si json.dumps échoue
+        rendered = str(sanitized)
+    return _trim_preview(rendered)
