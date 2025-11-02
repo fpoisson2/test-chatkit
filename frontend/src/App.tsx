@@ -15,6 +15,7 @@ import { AdminAppSettingsPage } from "./pages/AdminAppSettingsPage";
 import { AdminTelephonyPage } from "./pages/AdminTelephonyPage";
 import { AdminMcpServersPage } from "./pages/AdminMcpServersPage";
 import { AdminAppearancePage } from "./pages/AdminAppearancePage";
+import { AdminLanguagesPage } from "./pages/AdminLanguagesPage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
 
@@ -157,6 +158,16 @@ export const App = () => (
         <RequireAdmin>
           <AppLayout>
             <AdminMcpServersPage />
+          </AppLayout>
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/languages"
+      element={
+        <RequireAdmin>
+          <AppLayout>
+            <AdminLanguagesPage />
           </AppLayout>
         </RequireAdmin>
       }

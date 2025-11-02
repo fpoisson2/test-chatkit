@@ -424,6 +424,7 @@ def _build_model_provider_configs(
     records = _load_stored_model_providers(settings)
     configs: list[ModelProviderConfig] = []
 
+    # Ajouter les providers de la DB
     if records:
         for record in records:
             configs.append(
@@ -435,20 +436,42 @@ def _build_model_provider_configs(
                     id=record.id,
                 )
             )
-        return tuple(configs)
 
-    provider = _normalize_model_provider(settings.model_provider)
-    base = _sanitize_model_api_base(settings.model_api_base, strict=False)
-    if provider and base:
-        configs.append(
-            ModelProviderConfig(
-                provider=provider,
-                api_base=base,
-                api_key=_decrypt_secret(settings.model_api_key_encrypted),
-                is_default=True,
-                id="__env__",
+    # Ajouter aussi les providers de l'env de base pour ne pas les perdre
+    # Cela permet de garder OpenAI (ou autre provider .env) même si on configure
+    # d'autres providers (comme Groq) dans l'admin DB
+    try:
+        # Récupérer les settings de base AVANT overrides
+        # get_settings() retourne les settings avec overrides, mais comme on est EN TRAIN
+        # de calculer les nouveaux overrides, il retourne encore les anciens
+        base_settings = get_settings()
+        if base_settings and base_settings.model_providers:
+            # Identifier les slugs déjà présents dans la DB
+            db_provider_slugs = {r.provider for r in records} if records else set()
+
+            # Ajouter les providers de l'env qui ne sont PAS déjà dans la DB
+            for env_provider in base_settings.model_providers:
+                # La DB a priorité : si le même slug existe dans la DB, ne pas ajouter l'env
+                if env_provider.provider not in db_provider_slugs:
+                    configs.append(env_provider)
+    except Exception:  # pragma: no cover - fallback best effort
+        pass
+
+    # Si aucun provider DB et aucun provider env, essayer de créer un depuis AppSettings
+    if not configs:
+        provider = _normalize_model_provider(settings.model_provider)
+        base = _sanitize_model_api_base(settings.model_api_base, strict=False)
+        if provider and base:
+            configs.append(
+                ModelProviderConfig(
+                    provider=provider,
+                    api_base=base,
+                    api_key=_decrypt_secret(settings.model_api_key_encrypted),
+                    is_default=True,
+                    id="__env__",
+                )
             )
-        )
+
     return tuple(configs)
 
 
