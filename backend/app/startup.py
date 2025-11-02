@@ -2968,15 +2968,20 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Créer la tâche mais elle attendra l'event avant de démarrer
             voice_bridge_task = asyncio.create_task(run_voice_bridge())
 
-            # PRÉ-INITIALISATION PENDANT LA SONNERIE pour réduire la latence
-            # Profiter des 3 secondes de sonnerie pour créer la session OpenAI et générer le premier audio
+            # PRÉ-INITIALISATION PENDANT LA SONNERIE - DÉSACTIVÉE
+            # La pré-initialisation crée des problèmes avec les serveurs MCP qui ont des outils en double.
+            # Le SDK agents détecte les doublons et lance une exception.
+            # On désactive pour l'instant et on fait juste attendre le ring timeout.
             if ring_timeout_seconds > 0:
                 logger.info(
-                    "⏰ Sonnerie de %.2f secondes - pré-initialisation de la session OpenAI (call_id=%s)",
+                    "⏰ Sonnerie de %.2f secondes - attente avant de répondre (call_id=%s)",
                     ring_timeout_seconds,
                     call_id,
                 )
+                await asyncio.sleep(ring_timeout_seconds)
 
+                # Code de pré-initialisation commenté (causait des erreurs de doublons)
+                """
                 try:
                     # Créer la session OpenAI PENDANT la sonnerie pour gagner du temps
                     from agents.realtime.model_inputs import (
@@ -3035,6 +3040,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     preinit_response_create_sent = False
                     # Attendre quand même le temps de sonnerie
                     await asyncio.sleep(ring_timeout_seconds)
+                """
 
             # Répondre à l'appel (200 OK)
             logger.debug("Réponse à l'appel PJSUA avec 200 OK (call_id=%s)", call_id)

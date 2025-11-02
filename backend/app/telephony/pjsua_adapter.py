@@ -526,8 +526,14 @@ class PJSUAAdapter:
 
         # Configuration de l'endpoint
         ep_cfg = pj.EpConfig()
-        ep_cfg.logConfig.level = 4  # INFO level
-        ep_cfg.logConfig.consoleLevel = 4
+        # Si CHATKIT_CALL_TRACKER_ONLY=true, désactiver complètement les logs PJSIP
+        import os
+        if os.getenv("CHATKIT_CALL_TRACKER_ONLY", "false").lower() in ("true", "1", "yes"):
+            ep_cfg.logConfig.level = 0  # Désactiver complètement
+            ep_cfg.logConfig.consoleLevel = 0
+        else:
+            ep_cfg.logConfig.level = 4  # INFO level
+            ep_cfg.logConfig.consoleLevel = 4
 
         # Initialiser l'endpoint
         self._ep.libInit(ep_cfg)

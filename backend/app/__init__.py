@@ -12,27 +12,39 @@ if os.getenv("CHATKIT_CALL_TRACKER_ONLY", "false").lower() in ("true", "1", "yes
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
 
-    # Couper TOUT par défaut - désactiver le root logger
-    logging.basicConfig(level=logging.CRITICAL, handlers=[])
+    # Couper TOUT par défaut - désactiver le root logger avec force=True
+    logging.basicConfig(level=logging.CRITICAL, handlers=[], force=True)
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.CRITICAL)
     root_logger.handlers = []
 
-    # Désactiver tous les loggers bruyants (inclure aussi 'app' et '')
-    for name in ['', 'app', 'chatkit', 'chatkit.telephony', 'chatkit.telephony.pjsua',
-                 'chatkit.server', 'chatkit.telephony.voice_bridge',
-                 'chatkit.realtime', 'httpcore', 'httpx', 'mcp', 'openai', 'uvicorn',
-                 'uvicorn.access', 'uvicorn.error', 'fastapi', 'sqlalchemy']:
+    # Désactiver TOUS les loggers bruyants (liste exhaustive)
+    silent_loggers = [
+        '', 'root', 'app', 'chatkit', 'chatkit.telephony', 'chatkit.telephony.pjsua',
+        'chatkit.server', 'chatkit.telephony.voice_bridge', 'chatkit.realtime',
+        'httpcore', 'httpcore.http11', 'httpcore.connection', 'httpx',
+        'mcp', 'mcp.client', 'mcp.client.sse', 'mcp.client.stdio',
+        'openai', 'openai.agents', 'openai._base_client',
+        'uvicorn', 'uvicorn.access', 'uvicorn.error',
+        'fastapi', 'sqlalchemy', 'websockets', 'agents', 'agents.realtime'
+    ]
+
+    for name in silent_loggers:
         logger = logging.getLogger(name)
         logger.setLevel(logging.CRITICAL)
         logger.handlers = []
         logger.propagate = False
+        logger.disabled = True  # FORCER la désactivation
 
     # Activer UNIQUEMENT le call tracker
     call_tracker = logging.getLogger('chatkit.telephony.call_tracker')
     call_tracker.setLevel(logging.INFO)
     call_tracker.handlers = [handler]
     call_tracker.propagate = False
+    call_tracker.disabled = False
+
+    # Désactiver aussi les logs natifs de PJSIP
+    os.environ['PJSIP_LOG_LEVEL'] = '0'
 
     print("✅ Logs filtrés: UNIQUEMENT chatkit.telephony.call_tracker visible")
 
