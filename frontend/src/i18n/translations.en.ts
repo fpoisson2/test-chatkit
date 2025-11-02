@@ -1,0 +1,830 @@
+import type { TranslationDictionary } from "./translations";
+
+export const en: TranslationDictionary = {
+  "language.name.en": "English",
+  "language.name.fr": "French",
+  "language.switcher.label": "Change language",
+  "app.sidebar.applications.chat": "Chat",
+  "app.sidebar.applications.workflows": "Builder",
+  "app.sidebar.applications.vectorStores": "Vector stores",
+  "app.sidebar.applications.widgets": "Widget library",
+  "app.sidebar.applications.admin": "Administration",
+  "app.sidebar.brandTitle": "ChatKit",
+  "app.sidebar.docs": "Docs",
+  "app.sidebar.login": "Sign in",
+  "app.sidebar.ariaLabel": "Primary navigation",
+  "app.sidebar.switcherLabel": "Applications",
+  "app.sidebar.close": "Close sidebar",
+  "app.sidebar.menu": "Main menu",
+  "app.sidebar.profile.role.admin": "Administrator",
+  "app.sidebar.profile.role.user": "User",
+  "app.sidebar.profile.admin": "Administration",
+  "app.sidebar.profile.settings": "Settings",
+  "app.sidebar.profile.logout": "Sign out",
+  "admin.tabs.users": "User management",
+  "admin.tabs.models": "Available models",
+  "admin.tabs.vectorStores": "Vector stores",
+  "admin.tabs.widgets": "Widget library",
+  "admin.tabs.mcpServers": "MCP servers",
+  "admin.tabs.telephony": "Telephony",
+  "admin.tabs.settings": "General settings",
+  "admin.tabs.appearance": "Appearance",
+  "admin.tabs.sectionTitle": "Administration",
+  "admin.tabs.navigationLabel": "Administration navigation",
+  "admin.models.form.modelIdLabel": "Model identifier*",
+  "admin.models.form.modelIdPlaceholder": "e.g. gpt-4.1-mini",
+  "admin.models.form.providerIdLabel": "Provider identifier (optional)",
+  "admin.models.form.providerIdPlaceholder": "e.g. proxy-openai",
+  "admin.models.form.providerSlugLabel": "Provider slug (optional)",
+  "admin.models.form.providerSlugPlaceholder": "e.g. openai",
+  "admin.models.form.providerSelectLabel": "Configured provider",
+  "admin.models.form.providerSelectPlaceholder": "Select a provider",
+  "admin.models.form.providerSelectLoading": "Loading providers…",
+  "admin.models.form.providerSelectHint":
+    "Pick a provider that is already configured or the native OpenAI API.",
+  "admin.models.form.providerOptionOpenAI": "OpenAI (native)",
+  "admin.models.form.providerOptionWithDefault": "{{provider}} (default)",
+  "admin.models.form.createTitle": "Add a model",
+  "admin.models.form.createSubtitle":
+    "Register a model available in the workflow builder and specify its capabilities.",
+  "admin.models.form.editTitle": "Edit a model",
+  "admin.models.form.editSubtitle":
+    "Update an existing model without creating a new entry.",
+  "admin.models.form.editingNotice":
+    "Editing \"{{model}}\". Changes apply immediately.",
+  "admin.models.form.submitCreate": "Add model",
+  "admin.models.form.submitUpdate": "Save changes",
+  "admin.models.form.cancelEdit": "Cancel edit",
+  "admin.models.form.supportsPreviousResponseId":
+    "Supports incremental responses (previous_response_id)",
+  "admin.models.form.supportsReasoningSummary":
+    "Supports reasoning summary (reasoning_summary)",
+  "admin.models.form.storeLabel": "Response storage",
+  "admin.models.form.storeHint":
+    "Some proxies require disabling automatic response storage (store=false).",
+  "admin.models.form.storeOptionDisabled": "Disable storage (false)",
+  "admin.models.form.storeOptionDefault":
+    "Use the provider default behaviour (null)",
+  "admin.models.errors.missingModelId": "Enter the model identifier.",
+  "admin.models.errors.missingProvider": "Select a provider for this model.",
+  "admin.models.errors.providersLoadFailed":
+    "Unable to load the list of available providers.",
+  "admin.models.errors.createFailed": "Unable to add the model.",
+  "admin.models.errors.updateFailed": "Unable to update the model.",
+  "admin.models.feedback.created":
+    "Model \"{{model}}\" added successfully.",
+  "admin.models.feedback.updated":
+    "Model \"{{model}}\" updated successfully.",
+  "admin.models.feedback.deleted": "Model \"{{model}}\" deleted.",
+  "admin.models.table.previousResponseId": "Incremental responses",
+  "admin.models.table.reasoningSummary": "Reasoning summary",
+  "admin.models.table.editAction": "Edit",
+  "admin.models.table.deleteAction": "Delete",
+  "admin.appSettings.page.title": "General settings",
+  "admin.appSettings.page.subtitle": "Control ChatKit's global behaviour.",
+  "admin.appSettings.threadTitle.cardTitle": "Automatic thread titles prompt",
+  "admin.appSettings.threadTitle.cardDescription":
+    "Customize the prompt used to name chat threads automatically.",
+  "admin.appSettings.threadTitle.fieldLabel": "Thread title prompt",
+  "admin.appSettings.threadTitle.placeholder":
+    "Describe the instructions to generate a thread title…",
+  "admin.appSettings.threadTitle.hint":
+    "Provide concise instructions for the assistant.",
+  "admin.appSettings.threadTitle.status.custom":
+    "A custom prompt is currently active.",
+  "admin.appSettings.threadTitle.status.default":
+    "The default prompt is in use.",
+  "admin.appSettings.threadTitle.defaultLabel": "Default prompt",
+  "admin.appSettings.threadTitle.modelLabel": "Thread title model",
+  "admin.appSettings.threadTitle.modelPlaceholder":
+    "Select a model",
+  "admin.appSettings.threadTitle.modelHint":
+    "Pick a model from the list or choose the custom option to type an identifier.",
+  "admin.appSettings.threadTitle.modelStatus.custom":
+    "A custom model is currently active.",
+  "admin.appSettings.threadTitle.modelStatus.default":
+    "The default model is in use.",
+  "admin.appSettings.threadTitle.modelDefaultLabel": "Default model",
+  "admin.appSettings.threadTitle.modelLoadingOption":
+    "Loading models…",
+  "admin.appSettings.threadTitle.modelCustomOption": "Custom model…",
+  "admin.appSettings.threadTitle.modelCustomLabel": "Custom model identifier",
+  "admin.appSettings.model.cardTitle": "Model provider",
+  "admin.appSettings.model.cardDescription":
+    "Control the provider used to run ChatKit agents.",
+  "admin.appSettings.model.enableCustomLabel":
+    "Override environment configuration",
+  "admin.appSettings.model.customConfigHint":
+    "Provide one or more providers, their base URLs and API keys to use a custom proxy.",
+  "admin.appSettings.model.environmentSummary":
+    "Current configuration: provider {{provider}}, base {{base}}.",
+  "admin.appSettings.model.providerUnknown": "unknown",
+  "admin.appSettings.model.baseUnknown": "not set",
+  "admin.appSettings.model.providerLabel": "Model provider",
+  "admin.appSettings.model.providerOpenAI": "OpenAI (public API)",
+  "admin.appSettings.model.providerLiteLLM":
+    "LiteLLM (OpenAI-compatible proxy)",
+  "admin.appSettings.model.providerCustom": "Other provider…",
+  "admin.appSettings.model.providerNameLabel": "Provider identifier",
+  "admin.appSettings.model.providerNamePlaceholder": "e.g. gemini, claude, litellm",
+  "admin.appSettings.model.defaultProviderLabel": "Set as default provider",
+  "admin.appSettings.model.removeProvider": "Remove this provider",
+  "admin.appSettings.model.addProvider": "Add provider",
+  "admin.appSettings.model.apiBaseLabel": "API base URL",
+  "admin.appSettings.model.apiBaseHint":
+    "The URL must start with http:// or https:// and point to the proxy to use.",
+  "admin.appSettings.model.apiKeyLabel": "API key",
+  "admin.appSettings.model.apiKeyPlaceholder":
+    "Enter a new key to store it on the server",
+  "admin.appSettings.model.apiKeyHelp":
+    "Leave empty to keep the current key or use the environment variable.",
+  "admin.appSettings.model.apiKeyStoredHint":
+    "A key is stored ({{hint}}). Enter a new key to replace it.",
+  "admin.appSettings.model.apiKeyUnknownHint": "hidden value",
+  "admin.appSettings.model.apiKeyClearLabel": "Remove the stored key",
+  "admin.appSettings.success.saved": "Settings saved successfully.",
+  "admin.appSettings.success.reset": "Default prompt and model restored.",
+  "admin.appSettings.errors.loadFailed": "Unable to load general settings.",
+  "admin.appSettings.errors.saveFailed": "Unable to save the custom prompt.",
+  "admin.appSettings.errors.resetFailed": "Unable to reset the prompt.",
+  "admin.appSettings.errors.promptRequired":
+    "The prompt must contain at least one character.",
+  "admin.appSettings.errors.threadTitleModelRequired":
+    "Enter the model used for automatic titles.",
+  "admin.appSettings.errors.threadTitleModelsLoadFailed":
+    "Unable to load the list of available models.",
+  "admin.appSettings.errors.invalidSipPort":
+    "The SIP port must be an integer between 1 and 65535.",
+  "admin.appSettings.errors.invalidSipTransport":
+    "The SIP transport must be empty or one of udp, tcp, tls.",
+  "admin.appSettings.errors.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.appSettings.errors.modelProviderRequired":
+    "Provide the provider identifier when the custom configuration is enabled.",
+  "admin.appSettings.errors.modelApiBaseRequired":
+    "Provide the provider base URL when the custom configuration is enabled.",
+  "admin.appSettings.errors.modelProvidersRequired":
+    "Add at least one provider when the custom configuration is enabled.",
+  "admin.appSettings.errors.modelDefaultRequired":
+    "Select a default provider.",
+  "admin.appSettings.errors.invalidModelApiBase":
+    "The provider base URL must be valid and use http or https.",
+  "admin.appSettings.actions.save": "Save settings",
+  "admin.appSettings.actions.reset": "Revert to defaults",
+  "admin.appSettings.sipTrunk.cardTitle": "SIP trunk",
+  "admin.appSettings.sipTrunk.cardDescription":
+    "Configure the SIP access used for inbound telephony.",
+  "admin.appSettings.sipTrunk.uriLabel": "SIP trunk URI",
+  "admin.appSettings.sipTrunk.uriPlaceholder": "e.g. sip:pbx.example.com",
+  "admin.appSettings.sipTrunk.usernameLabel": "SIP username",
+  "admin.appSettings.sipTrunk.usernamePlaceholder": "Optional username",
+  "admin.appSettings.sipTrunk.passwordLabel": "SIP password",
+  "admin.appSettings.sipTrunk.passwordPlaceholder": "Password (optional)",
+  "admin.appSettings.sipTrunk.passwordHelp":
+    "Leave empty to remove the stored password.",
+  "admin.appSettings.sipTrunk.contactHostLabel": "SIP contact host",
+  "admin.appSettings.sipTrunk.contactHostPlaceholder": "e.g. 192.0.2.10",
+  "admin.appSettings.sipTrunk.contactHostHelp":
+    "Leave empty to let ChatKit detect the outbound IP address automatically.",
+  "admin.appSettings.sipTrunk.contactPortLabel": "SIP contact port",
+  "admin.appSettings.sipTrunk.contactPortPlaceholder": "e.g. 5070",
+  "admin.appSettings.sipTrunk.contactTransportLabel": "SIP contact transport",
+  "admin.appSettings.sipTrunk.contactTransportOptionDefault": "Use default value",
+  "admin.appSettings.sipTrunk.contactTransportOptionUdp": "UDP",
+  "admin.appSettings.sipTrunk.contactTransportOptionTcp": "TCP",
+  "admin.appSettings.sipTrunk.contactTransportOptionTls": "TLS",
+  "admin.appSettings.sipTrunk.contactTransportHelp":
+    "Select the transport advertised in the Contact header (leave empty for the default).",
+  "admin.appearance.page.title": "Appearance",
+  "admin.appearance.page.subtitle":
+    "Control ChatKit colors, fonts, and welcome messages.",
+  "admin.appearance.colorScheme.cardTitle": "Color scheme",
+  "admin.appearance.colorScheme.cardDescription":
+    "Select the default mode applied to every user.",
+  "admin.appearance.colorScheme.option.system": "Match system",
+  "admin.appearance.colorScheme.option.light": "Light mode",
+  "admin.appearance.colorScheme.option.dark": "Dark mode",
+  "admin.appearance.colors.cardTitle": "Interface colors",
+  "admin.appearance.colors.cardDescription":
+    "Define the accent color and tweak surfaces when needed.",
+  "admin.appearance.colors.accentLabel": "Accent color",
+  "admin.appearance.colors.accentHint":
+    "Used for primary buttons and highlighted elements.",
+  "admin.appearance.colors.accentAria": "Pick accent color",
+  "admin.appearance.colors.enableCustomSurfaces":
+    "Enable custom surface colors",
+  "admin.appearance.colors.hueLabel": "Hue",
+  "admin.appearance.colors.tintLabel": "Tint (light)",
+  "admin.appearance.colors.shadeLabel": "Shade (dark)",
+  "admin.appearance.typography.cardTitle": "Typography",
+  "admin.appearance.typography.cardDescription":
+    "Apply custom fonts across the ChatKit interface.",
+  "admin.appearance.typography.bodyLabel": "Body font",
+  "admin.appearance.typography.headingLabel": "Heading font",
+  "admin.appearance.typography.hint":
+    "Provide a comma-separated font stack with fallbacks.",
+  "admin.appearance.start.cardTitle": "Start screen",
+  "admin.appearance.start.cardDescription":
+    "Customize the greeting and guidance displayed before the first exchange.",
+  "admin.appearance.start.greetingLabel": "Welcome message",
+  "admin.appearance.start.promptLabel": "Call to action",
+  "admin.appearance.start.promptHint":
+    "Enter one call to action per line. Use 'Title | Prompt' to customize the visible label.",
+  "admin.appearance.start.placeholderLabel": "Composer placeholder",
+  "admin.appearance.start.disclaimerLabel": "Disclaimer",
+  "admin.appearance.actions.save": "Save appearance",
+  "admin.appearance.feedback.saved": "Appearance settings saved.",
+  "admin.appearance.feedback.error": "Unable to save appearance settings.",
+  "admin.appearance.feedback.loadError":
+    "Unable to load appearance settings.",
+  "admin.appearance.feedback.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.appearance.loading": "Loading appearance settings…",
+  "auth.login.title": "Sign in",
+  "auth.login.subtitle": "Access the admin console to manage users and ChatKit sessions.",
+  "auth.login.email.label": "Email address",
+  "auth.login.email.placeholder": "you@example.com",
+  "auth.login.password.label": "Password",
+  "auth.login.password.placeholder": "••••••••",
+  "auth.login.submit.loading": "Signing in…",
+  "auth.login.submit.label": "Sign in",
+  "auth.login.error.failure": "Sign-in failed",
+  "auth.login.error.unexpected": "An unexpected error occurred",
+  "auth.login.error.unreachable": "Unable to reach the authentication backend",
+  "layout.menu.openSidebar": "Open global navigation",
+  "settings.page.title": "Settings",
+  "settings.page.subtitle": "Tailor the ChatKit experience to your needs.",
+  "settings.page.navLabel": "Settings navigation",
+  "settings.sections.preferences.label": "Preferences",
+  "settings.sections.preferences.description": "Tailor the ChatKit experience to your needs.",
+  "docs.title": "Documentation",
+  "docs.subtitle": "Browse internal guides and reference material.",
+  "docs.list.loading": "Loading documentation…",
+  "docs.list.error": "Unable to load documentation.",
+  "docs.list.empty": "No documents are available yet.",
+  "docs.list.create": "Create document",
+  "docs.list.language": "Language: {{language}}",
+  "docs.list.updatedAt": "Updated {{value}}",
+  "docs.list.open": "Open",
+  "docs.errors.sessionExpired": "Session expired, please sign in again.",
+  "docs.editor.title.create": "Create document",
+  "docs.editor.title.edit": "Edit document",
+  "docs.editor.fields.slug": "Identifier (slug)",
+  "docs.editor.fields.title": "Title",
+  "docs.editor.fields.summary": "Summary",
+  "docs.editor.fields.content": "Markdown content",
+  "docs.editor.actions.cancel": "Cancel",
+  "docs.editor.actions.create": "Create",
+  "docs.editor.actions.save": "Save",
+  "docs.editor.saving": "Saving…",
+  "docs.editor.creating": "Creating…",
+  "docs.editor.error.requiredSlug": "The slug is required.",
+  "docs.editor.error.unexpected": "An unexpected error occurred.",
+  "docs.detail.loading": "Loading document…",
+  "docs.detail.error": "Unable to load this document.",
+  "docs.detail.missing": "Document not found.",
+  "docs.detail.back": "← Back to docs",
+  "docs.detail.edit": "Edit",
+  "docs.detail.delete": "Delete",
+  "docs.detail.delete.confirm": "Delete the document “{{title}}”?",
+  "docs.detail.updatedAt": "Updated {{value}}",
+  "docs.detail.language": "Language: {{language}}",
+  "docs.detail.empty": "This document does not contain any content yet.",
+  "docs.detail.fallbackTitle": "Document",
+  "settings.modal.title": "Quick settings",
+  "settings.modal.subtitle": "Jump straight to the key areas of your workspace.",
+  "settings.modal.close": "Close settings",
+  "settings.modal.navLabel": "Settings sections",
+  "settings.preferences.language.title": "Interface language",
+  "settings.preferences.language.description":
+    "Choose which language is used throughout the application.",
+  "settings.preferences.language.label": "Preferred language",
+  "settings.preferences.language.hint":
+    "ChatKit automatically detects your browser language the first time you sign in.",
+  "Propriétés de l'arête sélectionnée": "Selected edge properties",
+  "Connexion sélectionnée": "Selected connection",
+  "Supprimer cette connexion": "Delete this connection",
+  "Depuis": "From",
+  "Vers": "To",
+  "Branche conditionnelle": "Conditional branch",
+  "Laisser vide pour la branche par défaut": "Leave blank for the default branch",
+  "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
+    "Give the branch a unique name (e.g. approve, reject). Leave it blank to set the default branch.",
+  "Libellé affiché": "Display label",
+  "workflowBuilder.actions.importJson": "Import JSON",
+  "workflowBuilder.agentInspector.modelLabel": "Available model",
+  "workflowBuilder.agentInspector.modelHelp": "Choose a model available for this block.",
+  "workflowBuilder.agentInspector.modelPlaceholder": "Select a model",
+  "workflowBuilder.agentInspector.reasoningSuffix": " – reasoning",
+  "workflowBuilder.agentInspector.providerLabel": "Provider",
+  "workflowBuilder.agentInspector.providerPlaceholder": "All providers",
+  "workflowBuilder.agentInspector.nestedWorkflowLabel": "Nested workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHelp":
+    "Choose another workflow to run instead of this agent.",
+  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Select a workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowCustomOption": "Custom",
+  "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Local workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Hosted workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Hosted workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedLoading": "Loading workflows…",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "No hosted workflows available",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Workflow ID",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "e.g. 123",
+  "workflowBuilder.agentInspector.nestedWorkflowMissing":
+    "The selected workflow is no longer available.",
+  "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
+    "Workflow selected via slug \"{{slug}}\".",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfo":
+    "The remaining settings are hidden because this block delegates to the nested workflow “{{label}}”.",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfoUnknown":
+    "The remaining settings are hidden because this block delegates to a nested workflow.",
+  "workflowBuilder.agentInspector.unlistedModelWarning":
+    "This block currently uses an unlisted model ({{model}}). Pick a model from the list above.",
+  "workflowBuilder.agentInspector.workflowToolsTitle": "ChatKit workflows",
+  "workflowBuilder.agentInspector.workflowToolsDescription":
+    "Expose these workflows as tools that the agent can call through function calls.",
+  "workflowBuilder.agentInspector.workflowToolsToggleHelp":
+    "Expose the \"{{slug}}\" workflow as a callable tool.",
+  "workflowBuilder.agentInspector.workflowToolsEmpty":
+    "No other workflows are available to expose as tools.",
+  "workflowBuilder.agentInspector.workflowToolsMissing":
+    "The \"{{slug}}\" workflow is no longer available. Remove it from the configuration.",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "MCP server",
+  "workflowBuilder.agentInspector.mcpSectionDescription":
+    "Connect an existing MCP server to expose its tools to the agent.",
+  "workflowBuilder.agentInspector.mcpEnabledLabel": "Enable MCP server",
+  "workflowBuilder.agentInspector.mcpEnabledHelp":
+    "Turn off to temporarily remove the MCP integration from this agent while keeping the details.",
+  "workflowBuilder.agentInspector.mcpDisabledInfo":
+    "Enable the MCP server to configure its URL and run connection tests.",
+  "workflowBuilder.agentInspector.mcpUrlLabel": "MCP server URL",
+  "workflowBuilder.agentInspector.mcpAuthorizationLabel":
+    "Authorization header (Bearer …)",
+  "workflowBuilder.agentInspector.mcpAuthorizationPlaceholder": "Bearer …",
+  "workflowBuilder.agentInspector.mcpAuthorizationHelp":
+    "Leave empty if the server does not require authentication.",
+  "workflowBuilder.agentInspector.mcpClientIdLabel": "Client ID (optional)",
+  "workflowBuilder.agentInspector.mcpClientIdPlaceholder": "OAuth2 client ID",
+  "workflowBuilder.agentInspector.mcpScopeLabel": "OAuth scopes (optional)",
+  "workflowBuilder.agentInspector.mcpScopePlaceholder": "e.g. profile email",
+  "workflowBuilder.agentInspector.mcpScopeHelp":
+    "Separate scopes with spaces. Leave empty to rely on the provider defaults.",
+  "workflowBuilder.agentInspector.mcpOAuthButton": "Connect via OAuth",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.starting":
+    "Starting OAuth flow…",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.pending":
+    "Authorize the connection in the popup window, then return here.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.success":
+    "OAuth token saved successfully.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.error":
+    "OAuth authentication failed.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.errorWithDetail":
+    "OAuth authentication failed: {{detail}}",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.windowBlocked":
+    "The authorization window could not be opened. Allow pop-ups and try again.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.sessionExpired":
+    "The OAuth session expired. Restart the authentication.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.noAccessToken":
+    "The OAuth provider did not return an access token.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.unknownError": "unknown error",
+  "workflowBuilder.agentInspector.mcpTestButton": "Test connection",
+  "workflowBuilder.agentInspector.mcpTestStatus.ok":
+    "Connection established. {{count}} tool(s) available.",
+  "workflowBuilder.agentInspector.mcpTestStatus.unauthorized":
+    "Authentication rejected by the MCP server.",
+  "workflowBuilder.agentInspector.mcpTestStatus.forbidden":
+    "Access denied by the MCP server.",
+  "workflowBuilder.agentInspector.mcpTestStatus.http_error":
+    "The MCP server returned HTTP status {{statusCode}}.",
+  "workflowBuilder.agentInspector.mcpTestStatus.timeout":
+    "The MCP server did not respond before the timeout.",
+  "workflowBuilder.agentInspector.mcpTestStatus.error":
+    "Unable to test the connection: {{detail}}",
+  "workflowBuilder.agentInspector.mcpTestStatus.invalidConfig":
+    "Provide a valid MCP URL before running the test.",
+  "workflowBuilder.agentInspector.mcpTestStatus.loading": "Testing connection…",
+  "workflowBuilder.agentInspector.mcpTestStatus.toolListLabel": "Available tools",
+  "workflowBuilder.agentInspector.mcpTestStatus.errorUnknown": "unknown error",
+  "workflowBuilder.agentInspector.mcpServersTitle": "Assigned MCP servers",
+  "workflowBuilder.agentInspector.mcpServersDescription":
+    "Select persisted MCP servers and configure the allowed tools.",
+  "workflowBuilder.agentInspector.mcpServersAddButton": "Add an MCP server",
+  "workflowBuilder.agentInspector.mcpServersRefreshButton": "Refresh list",
+  "workflowBuilder.agentInspector.mcpServersRefreshing": "Refreshing…",
+  "workflowBuilder.agentInspector.mcpServersLoading": "Loading MCP servers…",
+  "workflowBuilder.agentInspector.mcpServersLoadError":
+    "Unable to load MCP servers.",
+  "workflowBuilder.agentInspector.mcpServersEmpty": "No MCP server is available yet.",
+  "workflowBuilder.agentInspector.mcpServersAuthorizationOverrideLabel":
+    "Custom Authorization header",
+  "workflowBuilder.agentInspector.mcpServersAuthorizationStored":
+    "Stored header: {{hint}}",
+  "workflowBuilder.agentInspector.mcpServersCacheUpdated":
+    "Cache updated: {{value}}",
+  "workflowBuilder.agentInspector.mcpServersRestrictToggle":
+    "Restrict to selected tools",
+  "workflowBuilder.agentInspector.mcpServersRestrictHelp":
+    "Disable this option to allow every tool exposed by the server.",
+  "workflowBuilder.agentInspector.mcpServersNoTools":
+    "No cached tool for this server.",
+  "workflowBuilder.agentInspector.mcpServersAddToolLabel": "Add a tool",
+  "workflowBuilder.agentInspector.mcpServersAddToolPlaceholder":
+    "Tool name (e.g. fetch_weather)",
+  "workflowBuilder.agentInspector.mcpServersAddToolButton": "Add",
+  "workflowBuilder.agentInspector.mcpServersProbeButton": "Refresh tool cache",
+  "workflowBuilder.agentInspector.mcpServersProbeLoading": "Refreshing…",
+  "workflowBuilder.agentInspector.mcpServersProbeSuccess":
+    "{{count}} tool(s) refreshed from the server.",
+  "workflowBuilder.agentInspector.mcpServersProbeError":
+    "Unable to refresh the tool list.",
+  "workflowBuilder.agentInspector.mcpServersModalTitle": "Create an MCP server",
+  "workflowBuilder.agentInspector.mcpServersModalLabel": "Label",
+  "workflowBuilder.agentInspector.mcpServersModalUrl": "MCP server URL",
+  "workflowBuilder.agentInspector.mcpServersModalClientSecret": "OAuth client secret",
+  "workflowBuilder.agentInspector.mcpServersModalAccessToken": "Access token",
+  "workflowBuilder.agentInspector.mcpServersModalRefreshToken": "Refresh token",
+  "workflowBuilder.agentInspector.mcpServersModalCancel": "Cancel",
+  "workflowBuilder.agentInspector.mcpServersModalSubmit": "Create server",
+  "workflowBuilder.agentInspector.mcpServersModalSaving": "Saving…",
+  "workflowBuilder.agentInspector.mcpServersModalMissingFields":
+    "Provide the MCP server label and URL.",
+  "workflowBuilder.agentInspector.mcpServersModalError":
+    "Unable to save the MCP server.",
+  "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",
+  "workflowBuilder.agentInspector.imageToolToggleHelp":
+    "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
+  "workflowBuilder.agentInspector.imageModelHelp":
+    "Select a supported image model. Currently only OpenAI variants are available.",
+  "workflowBuilder.agentInspector.computerUseToggle": "Enable computer-use tool",
+  "workflowBuilder.agentInspector.computerUseToggleHelp":
+    "Allows the agent to control a hosted computer, launching a dedicated browser.",
+  "workflowBuilder.agentInspector.computerUseWidthLabel": "Screen width (px)",
+  "workflowBuilder.agentInspector.computerUseHeightLabel": "Screen height (px)",
+  "workflowBuilder.agentInspector.computerUseEnvironmentLabel": "Environment",
+  "workflowBuilder.agentInspector.computerUseEnvironment.browser": "Browser",
+  "workflowBuilder.agentInspector.computerUseEnvironment.mac": "macOS",
+  "workflowBuilder.agentInspector.computerUseEnvironment.windows": "Windows",
+  "workflowBuilder.agentInspector.computerUseEnvironment.ubuntu": "Ubuntu",
+  "workflowBuilder.agentInspector.computerUseStartUrlLabel": "Initial URL (optional)",
+  "workflowBuilder.agentInspector.computerUseStartUrlHelp":
+    "Load this address as soon as the controlled session starts (leave blank for the default page).",
+  "workflowBuilder.agentInspector.computerUseStartUrlPlaceholder": "https://example.com",
+  "workflowBuilder.startInspector.autoRunLabel": "Start automatically",
+  "workflowBuilder.startInspector.autoRunHelp":
+    "Runs the workflow as soon as a thread opens, even without a user message.",
+  "workflowBuilder.startInspector.autoRunUserMessageLabel": "Initial user message",
+  "workflowBuilder.startInspector.autoRunUserMessagePlaceholder":
+    "e.g. Hello, here is the starting context… (optional)",
+  "workflowBuilder.startInspector.autoRunUserMessageHint":
+    "This message is sent to the agent when a thread starts without user input. Entering an assistant message below clears it automatically.",
+  "workflowBuilder.startInspector.autoRunAssistantMessageLabel": "Initial assistant message",
+  "workflowBuilder.startInspector.autoRunAssistantMessagePlaceholder":
+    "e.g. Hello, I'm your assistant… (optional)",
+  "workflowBuilder.startInspector.autoRunAssistantMessageHint":
+    "This message is delivered as the assistant's first reply when auto-start triggers. Add a user message above to disable it.",
+  "workflowBuilder.startInspector.hostedSectionTitle": "Hosted workflows",
+  "workflowBuilder.startInspector.hostedSectionDescription":
+    "Expose ChatKit hosted workflows directly from this Start block.",
+  "workflowBuilder.startInspector.hostedEmpty":
+    "No hosted workflow is configured yet.",
+  "workflowBuilder.startInspector.hostedAddButton": "Add a hosted workflow",
+  "workflowBuilder.startInspector.hostedSlugLabel": "Hosted workflow slug",
+  "workflowBuilder.startInspector.hostedSlugPlaceholder": "e.g. support-pro",
+  "workflowBuilder.startInspector.hostedSlugHelp":
+    "Human-readable identifier used to distinguish each hosted workflow.",
+  "workflowBuilder.startInspector.hostedSlugErrorRequired": "Slug is required.",
+  "workflowBuilder.startInspector.hostedSlugErrorDuplicate":
+    "Each slug must be unique.",
+  "workflowBuilder.startInspector.hostedLabelLabel": "Display label",
+  "workflowBuilder.startInspector.hostedLabelPlaceholder":
+    "Name shown in the chat sidebar",
+  "workflowBuilder.startInspector.hostedWorkflowIdLabel":
+    "Hosted workflow ID",
+  "workflowBuilder.startInspector.hostedWorkflowIdPlaceholder":
+    "ID from the ChatKit console",
+  "workflowBuilder.startInspector.hostedWorkflowIdHelp":
+    "Copy the workflow identifier published in the ChatKit console.",
+  "workflowBuilder.startInspector.hostedWorkflowIdError":
+    "Enter the hosted workflow identifier.",
+  "workflowBuilder.startInspector.hostedDescriptionLabel": "Description (optional)",
+  "workflowBuilder.startInspector.hostedDescriptionPlaceholder":
+    "Internal note or tooltip shown in the UI",
+  "workflowBuilder.startInspector.hostedRemoveButton": "Remove this hosted workflow",
+  "workflowBuilder.startInspector.telephonyIsSipWorkflowLabel": "SIP calls workflow",
+  "workflowBuilder.startInspector.telephonyIsSipWorkflowHelp":
+    "Enable this option to use this workflow for incoming SIP calls. Only one workflow can be configured as the SIP workflow at a time. Voice parameters will be taken from the voice-agent block in the workflow.",
+  "workflowBuilder.startInspector.telephonyRingTimeoutLabel": "Ring timeout (seconds)",
+  "workflowBuilder.startInspector.telephonyRingTimeoutHelp":
+    "Duration the phone will ring before the voice agent answers. Value between 0 and 30 seconds.",
+  "workflows.hostedBadge": "Hosted",
+  "workflows.hostedUnavailable": "Unavailable right now.",
+  "workflows.hostedCompactLabel": "{label} (hosted)",
+  "workflows.pinAction": "Pin {{label}}",
+  "workflows.unpinAction": "Unpin {{label}}",
+  "workflows.pinnedSectionTitle": "Pinned workflows",
+  "workflows.defaultSectionTitle": "Workflows",
+  "workflowBuilder.createWorkflow.modal.title": "New workflow",
+  "workflowBuilder.createWorkflow.modal.typeLabel": "Type",
+  "workflowBuilder.createWorkflow.modal.typeLocal": "Local",
+  "workflowBuilder.createWorkflow.modal.typeHosted": "Hosted",
+  "workflowBuilder.createWorkflow.modal.nameLabel": "Workflow name",
+  "workflowBuilder.createWorkflow.modal.remoteIdLabel": "Hosted workflow ID",
+  "workflowBuilder.createWorkflow.modal.submit": "Create",
+  "workflowBuilder.createWorkflow.modal.cancel": "Cancel",
+  "workflowBuilder.createWorkflow.openModal": "Create a workflow",
+  "workflowBuilder.createWorkflow.errorMissingName": "Workflow name is required.",
+  "workflowBuilder.createWorkflow.errorMissingRemoteId":
+    "Hosted workflow identifier is required.",
+  "workflowBuilder.createWorkflow.creatingHosted": "Creating hosted workflow…",
+  "workflowBuilder.createWorkflow.successHosted":
+    "Hosted workflow \"{label}\" added successfully.",
+  "workflowBuilder.createWorkflow.errorCreateHosted":
+    "Unable to create hosted workflow.",
+  "workflowBuilder.createWorkflow.errorAuthentication":
+    "You must be signed in to manage hosted workflows.",
+  "workflowBuilder.createWorkflow.successLocal":
+    "Workflow \"{name}\" created successfully.",
+  "workflowBuilder.createWorkflow.errorCreateLocal":
+    "Unable to create the workflow.",
+  "workflowBuilder.hostedSection.title": "Hosted workflows",
+  "workflowBuilder.hostedSection.loading": "Loading hosted workflows…",
+  "workflowBuilder.hostedSection.empty":
+    "No hosted workflow managed from the interface yet.",
+  "workflowBuilder.hostedSection.customizeAction": "Customize appearance",
+  "workflowBuilder.hostedSection.deleteAction": "Delete",
+  "workflowBuilder.hostedSection.openActions": "Actions for {label}",
+  "workflowBuilder.hostedSection.deleting": "Deleting hosted workflow…",
+  "workflowBuilder.hostedSection.deleteSuccess":
+    "Hosted workflow \"{label}\" removed.",
+  "workflowBuilder.hostedSection.deleteError":
+    "Unable to delete the hosted workflow.",
+  "workflowBuilder.hostedSection.loadError":
+    "Unable to load hosted workflows.",
+  "workflowBuilder.hostedSection.confirmDelete":
+    "Delete hosted workflow \"{label}\"? This action cannot be undone.",
+  "workflowAppearance.modal.title":
+    "Customize appearance for \"{label}\"",
+  "workflowAppearance.modal.defaultTitle": "Customize appearance",
+  "workflowAppearance.modal.inherited":
+    "\"{label}\" currently uses the global appearance.",
+  "workflowAppearance.modal.customized":
+    "\"{label}\" uses a custom appearance.",
+  "workflowAppearance.actions.save": "Save",
+  "workflowAppearance.actions.cancel": "Cancel",
+  "workflowAppearance.actions.reset": "Reset to global",
+  "workflowAppearance.feedback.saved": "Workflow appearance updated.",
+  "workflowAppearance.feedback.reset":
+    "Workflow appearance reset to the global settings.",
+  "workflowAppearance.errors.missingReference":
+    "Unable to determine the workflow to customize.",
+  "workflowAppearance.errors.loadFailed":
+    "Unable to load the workflow appearance.",
+  "workflowAppearance.errors.saveFailed":
+    "Unable to save the workflow appearance.",
+  "workflowAppearance.errors.resetFailed":
+    "Unable to reset the workflow appearance.",
+  "workflowBuilder.save.autoSaveSuccess": "Changes saved automatically.",
+  "workflowBuilder.save.draftDisplayName": "Draft",
+  "workflowBuilder.save.failure": "Unable to save the workflow.",
+  "workflowBuilder.save.failureWithStatus": "Save failed (status {{status}}).",
+  "workflowBuilder.localSection.customizeAction": "Customize appearance",
+  "workflowBuilder.localSection.openActions": "Actions for {label}",
+  "workflowBuilder.localSection.duplicateAction": "Duplicate",
+  "workflowBuilder.localSection.renameAction": "Rename",
+  "workflowBuilder.localSection.exportAction": "Export as JSON",
+  "workflowBuilder.localSection.deleteAction": "Delete",
+  "workflowBuilder.localSection.missingProduction": "No production version",
+  "workflowBuilder.actions.exportJson": "Export as JSON",
+  "workflowBuilder.export.preparing": "Preparing export…",
+  "workflowBuilder.export.success": "JSON export downloaded.",
+  "workflowBuilder.export.error": "Unable to export the workflow.",
+  "workflowBuilder.export.errorWithStatus": "Unable to export the workflow (status {{status}}).",
+  "workflowBuilder.mobileActions.open": "Show actions",
+  "workflowBuilder.mobileActions.title": "Workflow actions",
+  "workflowBuilder.mobileActions.close": "Close",
+  "workflowBuilder.mobileActions.properties": "Block properties",
+  "workflowBuilder.mobileActions.duplicate": "Duplicate selection",
+  "workflowBuilder.mobileActions.delete": "Delete selection",
+  "workflowBuilder.deleteBlock.confirm":
+    "Delete the \"{{name}}\" block? This action cannot be undone.",
+  "workflowBuilder.deleteSelection.confirmSingle":
+    "Delete the selected block? This action cannot be undone.",
+  "workflowBuilder.deleteSelection.confirmMultiple":
+    "Delete the {{count}} selected blocks? This action cannot be undone.",
+  "workflowBuilder.mobileActions.undo": "Undo (Ctrl+Z)",
+  "workflowBuilder.mobileActions.redo": "Redo (Ctrl+Y)",
+  "workflowBuilder.duplicate.success": "Selection duplicated.",
+  "workflowBuilder.duplicate.empty": "Select a block to duplicate.",
+  "workflowBuilder.duplicate.error": "Unable to duplicate the selection.",
+  "workflowBuilder.import.inProgress": "Importing…",
+  "workflowBuilder.import.saving": "Importing workflow…",
+  "workflowBuilder.import.success": "Workflow imported successfully.",
+  "workflowBuilder.import.error": "Unable to import the workflow.",
+  "workflowBuilder.import.errorInvalidJson": "The file does not contain valid JSON.",
+  "workflowBuilder.import.errorInvalidGraph": "The JSON does not describe a valid workflow graph.",
+  "workflowBuilder.import.errorInvalidNode": "A workflow block is invalid.",
+  "workflowBuilder.import.errorInvalidEdge": "A workflow connection is invalid.",
+  "workflowBuilder.import.errorMissingNodes": "The JSON does not contain any workflow nodes.",
+  "workflowBuilder.import.errorMissingName": "A name is required for the imported workflow.",
+  "workflowBuilder.import.errorFileRead": "Unable to read the selected file.",
+  "workflowBuilder.import.promptDisplayName": "Name for the imported workflow?",
+  "workflowBuilder.import.defaultVersionName": "Import on {{timestamp}}",
+  "workflowBuilder.import.errorWithStatus": "Unable to import the workflow (status {{status}}).",
+  "workflowBuilder.clipboard.copySelectionSuccess": "Selection copied to clipboard.",
+  "workflowBuilder.clipboard.copyAllSuccess": "Entire workflow copied to clipboard.",
+  "workflowBuilder.clipboard.copyEmpty": "No blocks to copy.",
+  "workflowBuilder.clipboard.copyError": "Unable to copy selection.",
+  "workflowBuilder.clipboard.pasteEmpty": "Clipboard is empty.",
+  "workflowBuilder.clipboard.pasteInvalid": "Clipboard does not contain a valid workflow.",
+  "workflowBuilder.clipboard.pasteNothing": "Nothing to paste.",
+  "workflowBuilder.clipboard.pasteError": "Unable to paste workflow.",
+  "workflowBuilder.clipboard.pasteSuccess": "Blocks pasted from clipboard.",
+  "workflowBuilder.deploy.missingTarget": "No version available for promotion.",
+  "workflowBuilder.deploy.pendingChangesError": "Saving changes is required before deployment.",
+  "workflowBuilder.deploy.promoting": "Promoting the selected version…",
+  "workflowBuilder.deploy.successProduction": "Selected version deployed to production.",
+  "workflowBuilder.deploy.successPublished": "Selected version published.",
+  "workflowBuilder.deploy.promoteFailedWithStatus": "Promotion failed (status {{status}}).",
+  "workflowBuilder.deploy.promoteError": "Unable to promote the selected version.",
+  "workflowBuilder.deploy.publishError": "Unable to publish the workflow.",
+  "workflowBuilder.deploy.modal.titlePublishDraft": "Publish changes?",
+  "workflowBuilder.deploy.modal.descriptionPublishDraft":
+    "Create a new version of the workflow with your latest changes.",
+  "workflowBuilder.deploy.modal.titlePromoteSelected": "Deploy selected version?",
+  "workflowBuilder.deploy.modal.descriptionPromoteSelected":
+    "Replace the current production version with revision v{{version}}.",
+  "workflowBuilder.deploy.modal.titleMissing": "Select a version to deploy",
+  "workflowBuilder.deploy.modal.descriptionMissing":
+    "Choose a draft or existing version to promote.",
+  "workflowBuilder.deploy.modal.path.draft": "Draft",
+  "workflowBuilder.deploy.modal.path.newVersion": "New version",
+  "workflowBuilder.deploy.modal.path.selectedWithVersion": "Selected version v{{version}}",
+  "workflowBuilder.deploy.modal.path.production": "Production",
+  "workflowBuilder.deploy.modal.productionToggle": "Deploy to production",
+  "workflowBuilder.deploy.modal.action.cancel": "Cancel",
+  "workflowBuilder.deploy.modal.action.publish": "Publish",
+  "workflowBuilder.deploy.modal.action.deploy": "Deploy",
+  "workflowBuilder.voiceInspector.modelLabel": "Realtime model",
+  "workflowBuilder.voiceInspector.voiceLabel": "Voice ID",
+  "workflowBuilder.voiceInspector.instructionsLabel": "Realtime instructions",
+  "workflowBuilder.voiceInspector.instructionsPlaceholder":
+    "Guidance shared with the voice assistant",
+  "workflowBuilder.voiceInspector.startBehaviorLabel": "Session start",
+  "workflowBuilder.voiceInspector.stopBehaviorLabel": "Session stop",
+  "workflowBuilder.voiceInspector.start.manual": "Manual start",
+  "workflowBuilder.voiceInspector.start.auto": "Automatically when the block runs",
+  "workflowBuilder.voiceInspector.stop.manual": "Manual stop (keep session active)",
+  "workflowBuilder.voiceInspector.stop.auto": "Stop automatically after the response",
+  "workflowBuilder.voiceInspector.toolsLabel": "Realtime tools",
+  "workflowBuilder.voiceInspector.tool.response": "Audio responses",
+  "workflowBuilder.voiceInspector.tool.transcription": "Speech-to-text transcripts",
+  "workflowBuilder.voiceInspector.tool.functionCall": "Function calling",
+  "workflowBuilder.voiceInspector.tool.functionCall.help":
+    "Enable function calls to invoke custom business logic.",
+  "workflowBuilder.node.kind.start": "Start",
+  "workflowBuilder.node.kind.agent": "Agent",
+  "workflowBuilder.node.kind.voice_agent": "Voice agent",
+  "workflowBuilder.node.kind.outbound_call": "Outbound call",
+  "workflowBuilder.node.kind.condition": "Condition",
+  "workflowBuilder.node.kind.state": "State block",
+  "workflowBuilder.node.kind.transform": "Transform block",
+  "workflowBuilder.node.kind.watch": "Watch block",
+  "workflowBuilder.node.kind.wait_for_user_input": "Wait for user input",
+  "workflowBuilder.node.kind.assistant_message": "Assistant message",
+  "workflowBuilder.node.kind.user_message": "User message",
+  "workflowBuilder.node.kind.json_vector_store": "JSON vector store",
+  "workflowBuilder.node.kind.parallel_split": "Parallel split",
+  "workflowBuilder.node.kind.parallel_join": "Parallel join",
+  "workflowBuilder.node.kind.widget": "Widget block",
+  "workflowBuilder.node.kind.end": "End",
+  "workflowBuilder.parallel.joinSlugLabel": "Associated join block",
+  "workflowBuilder.parallel.joinSlugHelp": "Provide the slug of the matching parallel_join block.",
+  "workflowBuilder.parallel.joinSlugPlaceholder": "e.g. parallel-join-1",
+  "workflowBuilder.parallel.branchesTitle": "Parallel branches",
+  "workflowBuilder.parallel.branchLabelLabel": "Branch {{index}} label",
+  "workflowBuilder.parallel.branchLabelPlaceholder": "Label shown in the interface",
+  "workflowBuilder.parallel.branchSlugLabel": "Internal identifier: {{slug}}",
+  "workflowBuilder.parallel.branchRemove": "Remove",
+  "workflowBuilder.parallel.branchAdd": "Add branch",
+  "workflowBuilder.parallel.branchHint":
+    "Create as many branches as outgoing connections from this block.",
+  "workflowBuilder.parallel.branchMinimum":
+    "At least two branches are required for a parallel split.",
+  "admin.mcpServers.page.title": "MCP servers",
+  "admin.mcpServers.page.subtitle":
+    "Register and secure the MCP servers used by ChatKit.",
+  "admin.mcpServers.actions.startCreate": "Add a server",
+  "admin.mcpServers.list.title": "Configured servers",
+  "admin.mcpServers.list.subtitle":
+    "Manage access and cached tools exposed by your MCP servers.",
+  "admin.mcpServers.list.loading": "Loading MCP servers…",
+  "admin.mcpServers.list.empty": "No MCP server has been registered yet.",
+  "admin.mcpServers.list.columns.label": "Label",
+  "admin.mcpServers.list.columns.url": "Server URL",
+  "admin.mcpServers.list.columns.tools": "Cached tools",
+  "admin.mcpServers.list.columns.updated": "Cache updated",
+  "admin.mcpServers.list.columns.status": "Status",
+  "admin.mcpServers.list.columns.actions": "Actions",
+  "admin.mcpServers.list.authorizationHint": "Stored token: {{hint}}",
+  "admin.mcpServers.list.toolsWithNames": "{{count}} tool(s): {{tools}}",
+  "admin.mcpServers.list.toolsEmpty": "No cached tool",
+  "admin.mcpServers.list.neverRefreshed": "Never refreshed",
+  "admin.mcpServers.list.status.active": "Active",
+  "admin.mcpServers.list.status.inactive": "Inactive",
+  "admin.mcpServers.actions.edit": "Edit",
+  "admin.mcpServers.actions.refreshTools": "Refresh tools",
+  "admin.mcpServers.actions.refreshing": "Refreshing…",
+  "admin.mcpServers.actions.delete": "Delete",
+  "admin.mcpServers.actions.deleting": "Deleting…",
+  "admin.mcpServers.confirm.delete": "Delete server “{{label}}”?",
+  "admin.mcpServers.form.createTitle": "Add an MCP server",
+  "admin.mcpServers.form.editTitle": "Edit “{{label}}”",
+  "admin.mcpServers.form.createSubtitle":
+    "Provide the server URL and any required authentication details.",
+  "admin.mcpServers.form.editSubtitle":
+    "Update the stored information or refresh the cached tools.",
+  "admin.mcpServers.form.labelLabel": "Label*",
+  "admin.mcpServers.form.labelPlaceholder": "Partner server",
+  "admin.mcpServers.form.serverUrlLabel": "MCP server URL*",
+  "admin.mcpServers.form.serverUrlPlaceholder": "https://mcp.example.com/",
+  "admin.mcpServers.form.authorizationLabel": "Authorization header",
+  "admin.mcpServers.form.authorizationPlaceholder": "Bearer …",
+  "admin.mcpServers.form.authorizationHint":
+    "Current header: {{hint}} (leave blank to keep it)",
+  "admin.mcpServers.form.accessTokenLabel": "Access token",
+  "admin.mcpServers.form.accessTokenPlaceholder": "New access token",
+  "admin.mcpServers.form.accessTokenHint":
+    "Stored token: {{hint}} (leave blank to keep it)",
+  "admin.mcpServers.form.refreshTokenLabel": "Refresh token",
+  "admin.mcpServers.form.refreshTokenPlaceholder": "New refresh token",
+  "admin.mcpServers.form.refreshTokenHint":
+    "Stored refresh token: {{hint}} (leave blank to keep it)",
+  "admin.mcpServers.form.oauthClientIdLabel": "OAuth client ID",
+  "admin.mcpServers.form.oauthClientIdPlaceholder": "Client identifier",
+  "admin.mcpServers.form.oauthClientSecretLabel": "OAuth client secret",
+  "admin.mcpServers.form.oauthClientSecretPlaceholder": "New client secret",
+  "admin.mcpServers.form.oauthClientSecretHint":
+    "Stored secret: {{hint}} (leave blank to keep it)",
+  "admin.mcpServers.form.oauthScopeLabel": "OAuth scopes",
+  "admin.mcpServers.form.oauthScopePlaceholder": "scope1 scope2",
+  "admin.mcpServers.form.oauthAuthorizationEndpointLabel":
+    "Authorization endpoint",
+  "admin.mcpServers.form.oauthAuthorizationEndpointPlaceholder":
+    "https://auth.example.com/authorize",
+  "admin.mcpServers.form.oauthTokenEndpointLabel": "Token endpoint",
+  "admin.mcpServers.form.oauthTokenEndpointPlaceholder":
+    "https://auth.example.com/token",
+  "admin.mcpServers.form.oauthRedirectUriLabel": "Redirect URI",
+  "admin.mcpServers.form.oauthRedirectUriPlaceholder": "Custom redirect URL",
+  "admin.mcpServers.form.oauthMetadataLabel": "OAuth metadata (JSON)",
+  "admin.mcpServers.form.oauthMetadataPlaceholder": "{ \"aud\": \"…\" }",
+  "admin.mcpServers.form.oauthMetadataHint":
+    "Content is stored as-is for reference and can be left empty.",
+  "admin.mcpServers.form.isActiveLabel": "Enable this server",
+  "admin.mcpServers.form.saving": "Saving…",
+  "admin.mcpServers.form.createSubmit": "Create server",
+  "admin.mcpServers.form.updateSubmit": "Save changes",
+  "admin.mcpServers.form.cancelEdit": "Cancel edit",
+  "admin.mcpServers.form.oauthButton": "Start OAuth",
+  "admin.mcpServers.form.testButton": "Test connection",
+  "admin.mcpServers.test.running": "Testing…",
+  "admin.mcpServers.test.successWithTools":
+    "Connection established ({{count}} tool(s): {{tools}}).",
+  "admin.mcpServers.test.success": "Connection established successfully.",
+  "admin.mcpServers.test.errorGeneric": "The connection test failed.",
+  "admin.mcpServers.oauth.starting": "Starting OAuth flow…",
+  "admin.mcpServers.oauth.pending": "Waiting for OAuth confirmation…",
+  "admin.mcpServers.oauth.success": "OAuth token saved.",
+  "admin.mcpServers.oauth.errorGeneric": "OAuth flow failed.",
+  "admin.mcpServers.oauth.errorWithDetail": "OAuth flow failed: {{detail}}",
+  "admin.mcpServers.oauth.errorMissingDraft":
+    "Unable to save the OAuth result: the draft configuration is incomplete.",
+  "admin.mcpServers.feedback.created": "Server “{{label}}” created.",
+  "admin.mcpServers.feedback.updated": "Server “{{label}}” updated.",
+  "admin.mcpServers.feedback.deleted": "Server “{{label}}” deleted.",
+  "admin.mcpServers.feedback.toolsRefreshed":
+    "Tool cache refreshed for “{{label}}”.",
+  "admin.mcpServers.feedback.oauthSuccess":
+    "OAuth credentials were synchronised.",
+  "admin.mcpServers.errors.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.mcpServers.errors.loadFailed":
+    "Unable to load MCP servers.",
+  "admin.mcpServers.errors.deleteFailed":
+    "Unable to delete the server.",
+  "admin.mcpServers.errors.refreshFailed":
+    "Unable to refresh the tool cache.",
+  "admin.mcpServers.errors.saveFailed":
+    "Unable to save the server.",
+  "admin.mcpServers.errors.labelRequired":
+    "Provide a label for this server.",
+  "admin.mcpServers.errors.serverUrlRequired":
+    "Provide the MCP server URL.",
+  "admin.mcpServers.errors.invalidMetadata":
+    "Metadata must be a valid JSON object.",
+  "admin.mcpServers.errors.testFailed":
+    "Unable to test the MCP connection.",
+  "vectorStore.ingestion.success.document":
+    "Document “{{docId}}” ingested ({{chunkCount}} segment{{pluralSuffix}}).",
+};
+  
