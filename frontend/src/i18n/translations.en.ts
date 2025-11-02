@@ -895,6 +895,6 @@ export const en: TranslationDictionary = {
   "admin.languages.errors.sessionExpired":
     "Session expired, please sign in again.",
   "vectorStore.ingestion.success.document":
-    "Document "{{docId}}" ingested ({{chunkCount}} segment{{pluralSuffix}}).",
+    "Document \"{{docId}}\" ingested ({{chunkCount}} segment{{pluralSuffix}}).",
 };
   
