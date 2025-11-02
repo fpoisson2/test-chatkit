@@ -1015,22 +1015,41 @@ async def generate_language_file(
     
     logger.info(f"Generating translation file for {code} ({name}) with {len(en_translations)} keys")
     
-    # Utiliser l'API OpenAI pour traduire
+    # Utiliser le SDK Agent pour traduire
     try:
-        from openai import AsyncOpenAI
-        from ..model_providers._shared import normalize_api_base
+        from agents import Agent, Runner
+        from sqlalchemy import select
+        from ..models import AvailableModel
+        from ..chatkit.agent_registry import get_agent_provider_binding
 
-        # Obtenir la configuration OpenAI
-        settings = get_settings()
-        api_key = settings.model_api_key
-        if not api_key:
-            raise HTTPException(
-                status_code=500,
-                detail="OpenAI API key not configured"
+        # Charger un modèle disponible depuis la base de données
+        with SessionLocal() as session:
+            # Essayer d'obtenir le premier modèle disponible
+            available_model = session.scalar(
+                select(AvailableModel)
+                .order_by(AvailableModel.id)
+                .limit(1)
             )
 
-        api_base = normalize_api_base(settings.model_api_base)
-        client = AsyncOpenAI(api_key=api_key, base_url=api_base)
+            if not available_model:
+                raise HTTPException(
+                    status_code=500,
+                    detail="No models configured in the database. Please add a model first."
+                )
+
+            model_name = available_model.name
+            provider_id = available_model.provider_id
+            provider_slug = available_model.provider_slug
+
+            logger.info(f"Using model {model_name} from provider {provider_slug} for translation")
+
+        # Obtenir le provider binding
+        provider_binding = get_agent_provider_binding(provider_id, provider_slug)
+        if not provider_binding:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to get provider binding for model {model_name}"
+            )
 
         # Préparer le prompt pour la traduction
         translations_json = json.dumps(en_translations, ensure_ascii=False, indent=2)
@@ -1050,17 +1069,22 @@ Source translations (English):
 
 Return the complete JSON object with all keys and their translated values in {name}."""
 
-        logger.info(f"Calling OpenAI API for translation to {name}")
-        response = await client.chat.completions.create(
-            model="gpt-4o",
-            max_tokens=16000,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+        logger.info(f"Using agent SDK for translation to {name}")
+
+        # Créer l'agent avec le provider
+        agent = Agent(
+            name="Language Translator",
+            model=model_name,
+            instructions=prompt,
+            provider=provider_binding.provider
         )
 
+        # Exécuter l'agent
+        runner = Runner(agent=agent)
+        result = await runner.run("Translate the provided JSON to the target language.")
+
         # Extraire la réponse
-        response_text = response.choices[0].message.content
+        response_text = result.output if hasattr(result, 'output') else str(result)
         
         # Parser le JSON de la réponse
         # Nettoyer le texte pour extraire seulement le JSON
