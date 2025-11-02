@@ -23,7 +23,7 @@ from ..database import get_session, SessionLocal
 from ..dependencies import require_admin
 from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
-from ..models import SipAccount, TelephonyRoute, User
+from ..models import Language, LanguageGenerationTask, SipAccount, TelephonyRoute, User
 from ..schemas import (
     AppSettingsResponse,
     AppSettingsUpdateRequest,
@@ -856,6 +856,35 @@ class LanguageGenerateRequest(BaseModel):
 
 class LanguagesListResponse(BaseModel):
     languages: list[LanguageResponse]
+
+
+class TaskStartedResponse(BaseModel):
+    task_id: str
+    status: str
+    message: str
+
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    status: str  # pending, running, completed, failed
+    progress: int  # 0-100
+    error_message: str | None = None
+    created_at: str
+    completed_at: str | None = None
+    language_id: int | None = None
+    can_download: bool
+
+
+class StoredLanguageResponse(BaseModel):
+    id: int
+    code: str
+    name: str
+    created_at: str
+    updated_at: str
+
+
+class StoredLanguagesListResponse(BaseModel):
+    languages: list[StoredLanguageResponse]
 
 
 class GeneratedFileResponse(BaseModel):
