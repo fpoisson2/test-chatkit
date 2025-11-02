@@ -8,7 +8,6 @@ import {
 } from "react";
 
 import {
-  testMcpToolConnection,
   startMcpOAuthNegotiation,
   pollMcpOAuthSession,
   cancelMcpOAuthSession,
@@ -27,7 +26,6 @@ import type {
   ImageGenerationToolConfig,
   WebSearchConfig,
   WorkflowSummary,
-  LegacyMcpSseToolConfig,
   McpSseToolConfig,
 } from "../../../types";
 import {
@@ -133,10 +131,6 @@ type AgentInspectorSectionProps = {
     nodeId: string,
     config: ComputerUseConfig | null,
   ) => void;
-  onAgentMcpSseConfigChange: (
-    nodeId: string,
-    config: LegacyMcpSseToolConfig | null,
-  ) => void;
   onAgentMcpServersChange?: (
     nodeId: string,
     configs: McpSseToolConfig[],
@@ -198,7 +192,6 @@ export const AgentInspectorSection = ({
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
   onAgentComputerUseChange,
-  onAgentMcpSseConfigChange,
   onAgentMcpServersChange,
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
@@ -338,11 +331,6 @@ export const AgentInspectorSection = ({
   );
 
   const { t } = useI18n();
-  const handleTestMcpSseConnection = useCallback(
-    (config: LegacyMcpSseToolConfig) =>
-      testMcpToolConnection(token ?? null, config),
-    [token],
-  );
   const handleStartMcpOAuth = useCallback(
     (payload: { url: string; clientId: string | null; scope: string | null }) =>
       startMcpOAuthNegotiation({
@@ -1763,9 +1751,7 @@ export const AgentInspectorSection = ({
                 onAgentWorkflowValidationToolChange
               }
               onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
-              onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
               onAgentMcpServersChange={onAgentMcpServersChange}
-              onTestMcpSseConnection={handleTestMcpSseConnection}
               onStartMcpOAuth={handleStartMcpOAuth}
               onPollMcpOAuth={handlePollMcpOAuth}
               onCancelMcpOAuth={handleCancelMcpOAuth}

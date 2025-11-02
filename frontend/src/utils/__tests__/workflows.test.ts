@@ -11,14 +11,12 @@ import {
   DEFAULT_TRANSCRIPTION_LANGUAGE,
   getAgentNestedWorkflow,
   getAgentMcpServers,
-  getLegacyMcpSseConfig,
   getAgentWorkflowTools,
   getWidgetNodeConfig,
   resolveVoiceAgentParameters,
   resolveWidgetNodeParameters,
   setAgentNestedWorkflow,
   setAgentMcpServers,
-  setLegacyMcpSseConfig,
   setAgentWorkflowTools,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
@@ -34,7 +32,6 @@ import {
   resolveStartParameters,
   type WorkflowToolConfig,
   type McpSseToolConfig,
-  type LegacyMcpSseToolConfig,
 } from "../workflows";
 
 describe("widget_source override", () => {
@@ -245,57 +242,6 @@ describe("start telephony helpers", () => {
         },
       },
     });
-  });
-});
-
-describe("mcp sse tool helpers", () => {
-  it("extrait une configuration normalisée depuis les paramètres", () => {
-    const parameters: AgentParameters = {
-      tools: [
-        {
-          type: "mcp",
-          transport: "http_sse",
-          url: "  https://ha.local/mcp  ",
-          authorization: "  Bearer secret  ",
-        },
-      ],
-    };
-
-    expect(getLegacyMcpSseConfig(parameters)).toEqual({
-      url: "https://ha.local/mcp",
-      authorization: "Bearer secret",
-    });
-  });
-
-  it("met à jour et supprime la configuration MCP selon l'URL fournie", () => {
-    const baseTool = { type: "function", function: { name: "other" } };
-    const initial: AgentParameters = { tools: [baseTool] };
-
-    const config: LegacyMcpSseToolConfig = {
-      url: "  https://ha.local/mcp  ",
-      authorization: "",
-    };
-
-    const withConfig = setLegacyMcpSseConfig(initial, config);
-    expect(withConfig).toEqual({
-      tools: [
-        baseTool,
-        {
-          type: "mcp",
-          transport: "http_sse",
-          url: "https://ha.local/mcp",
-        },
-      ],
-    });
-
-    const cleared = setLegacyMcpSseConfig(withConfig, {
-      url: "   ",
-      authorization: "",
-    });
-    expect(cleared).toEqual({ tools: [baseTool] });
-
-    const fullyCleared = setLegacyMcpSseConfig({ tools: [] }, null);
-    expect(fullyCleared).toEqual({});
   });
 });
 
