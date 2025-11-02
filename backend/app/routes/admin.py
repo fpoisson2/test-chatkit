@@ -1063,14 +1063,20 @@ async def generate_language_file(
             logger.info(f"Using model {model_name} from provider {provider_slug} for translation")
 
         # Obtenir le provider binding
+        logger.info(f"Getting provider binding for provider_id={provider_id_used}, provider_slug={provider_slug}")
         provider_binding = get_agent_provider_binding(provider_id_used, provider_slug)
+        logger.info(f"Provider binding result: {provider_binding}")
+
         if not provider_binding:
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to get provider binding for model {model_name}"
             )
 
+        logger.info(f"Provider binding obtained successfully: id={provider_binding.provider_id}, slug={provider_binding.provider_slug}")
+
         # Préparer le prompt pour la traduction
+        logger.info("Preparing translation prompt")
         translations_json = json.dumps(en_translations, ensure_ascii=False, indent=2)
 
         # Utiliser le prompt personnalisé ou le prompt par défaut
@@ -1097,7 +1103,7 @@ Source translations (English):
 Return the complete JSON object with all keys and their translated values in {name}."""
 
         logger.info(f"Using agent SDK for translation to {name}")
-        logger.info(f"About to create agent with model={model_name}, provider={provider_binding.provider_slug}")
+        logger.info(f"About to create agent with model={model_name}")
 
         # Créer l'agent avec le provider
         try:
@@ -1193,7 +1199,12 @@ Return the complete JSON object with all keys and their translated values in {na
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Failed to generate translation for {code}: {e}")
+        import traceback
+        error_msg = f"Failed to generate translation for {code}: {e}"
+        traceback_str = traceback.format_exc()
+        print(f"ERROR: {error_msg}")
+        print(f"TRACEBACK: {traceback_str}")
+        logger.exception(error_msg)
         raise HTTPException(
             status_code=500,
             detail=f"Translation generation failed: {str(e)}"
