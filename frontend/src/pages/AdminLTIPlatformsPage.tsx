@@ -38,6 +38,8 @@ export default function AdminLTIPlatformsPage() {
     key_set_url: '',
     auth_audience: '',
     ags_lineitems_url: '',
+    primary_deployment_id: '',
+    additional_deployment_ids: '',
   });
 
   const [deploymentFormData, setDeploymentFormData] = useState({
@@ -100,6 +102,17 @@ export default function AdminLTIPlatformsPage() {
     e.preventDefault();
 
     try {
+      // Parse additional deployment IDs from textarea (one per line)
+      const additionalDeployments = formData.additional_deployment_ids
+        .split('\n')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
+
+      const payload = {
+        ...formData,
+        additional_deployment_ids: additionalDeployments,
+      };
+
       const response = await fetch(
         `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'}/api/admin/lti/platforms`,
         {
@@ -108,7 +121,7 @@ export default function AdminLTIPlatformsPage() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         }
       );
 
@@ -124,6 +137,8 @@ export default function AdminLTIPlatformsPage() {
         key_set_url: '',
         auth_audience: '',
         ags_lineitems_url: '',
+        primary_deployment_id: '',
+        additional_deployment_ids: '',
       });
       fetchPlatforms();
     } catch (error) {
@@ -208,10 +223,10 @@ export default function AdminLTIPlatformsPage() {
       {showAddForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-4">Add LTI Platform</h2>
+            <h2 className="text-2xl font-bold mb-4">Enregistre les informations fournies par ton fournisseur LTI</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Platform Name</label>
+                <label className="block text-sm font-medium mb-1">Nom de la plateforme</label>
                 <input
                   type="text"
                   required
@@ -220,6 +235,9 @@ export default function AdminLTIPlatformsPage() {
                   className="w-full px-3 py-2 border rounded-md"
                   placeholder="Moodle Production"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Nom descriptif pour identifier cette plateforme
+                </p>
               </div>
 
               <div>
@@ -230,7 +248,7 @@ export default function AdminLTIPlatformsPage() {
                   value={formData.issuer}
                   onChange={(e) => setFormData({ ...formData, issuer: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
-                  placeholder="https://moodle.example.com"
+                  placeholder="https://lti.example"
                 />
               </div>
 
@@ -242,44 +260,83 @@ export default function AdminLTIPlatformsPage() {
                   value={formData.client_id}
                   onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
-                  placeholder="abc123"
+                  placeholder="Identifiant fourni"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Auth Login URL</label>
+                <label className="block text-sm font-medium mb-1">URL d'autorisation</label>
                 <input
                   type="url"
                   required
                   value={formData.auth_login_url}
                   onChange={(e) => setFormData({ ...formData, auth_login_url: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
-                  placeholder="https://moodle.example.com/mod/lti/auth.php"
+                  placeholder="https://platform.example/auth"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Auth Token URL</label>
+                <label className="block text-sm font-medium mb-1">Token endpoint</label>
                 <input
                   type="url"
                   required
                   value={formData.auth_token_url}
                   onChange={(e) => setFormData({ ...formData, auth_token_url: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
-                  placeholder="https://moodle.example.com/mod/lti/token.php"
+                  placeholder="https://platform.example/token"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Key Set URL (JWKS)</label>
+                <label className="block text-sm font-medium mb-1">JWKS URI</label>
                 <input
                   type="url"
                   required
                   value={formData.key_set_url}
                   onChange={(e) => setFormData({ ...formData, key_set_url: e.target.value })}
                   className="w-full px-3 py-2 border rounded-md"
-                  placeholder="https://moodle.example.com/mod/lti/certs.php"
+                  placeholder="https://platform.example/jwks"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Audience</label>
+                <input
+                  type="text"
+                  value={formData.auth_audience}
+                  onChange={(e) => setFormData({ ...formData, auth_audience: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                  placeholder="Audience optionnelle"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Deployment ID principal</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.primary_deployment_id}
+                  onChange={(e) => setFormData({ ...formData, primary_deployment_id: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-md"
+                  placeholder="ex: deployment-123"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Autres deployment IDs (un par ligne)
+                </label>
+                <textarea
+                  value={formData.additional_deployment_ids}
+                  onChange={(e) =>
+                    setFormData({ ...formData, additional_deployment_ids: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border rounded-md"
+                  rows={3}
+                  placeholder="deployment-456&#10;deployment-789"
+                />
+                <p className="text-xs text-gray-500 mt-1">Optionnel : un deployment ID par ligne</p>
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">
@@ -288,13 +345,13 @@ export default function AdminLTIPlatformsPage() {
                   onClick={() => setShowAddForm(false)}
                   className="px-4 py-2 border rounded-md hover:bg-gray-50"
                 >
-                  Cancel
+                  Annuler
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
-                  Add Platform
+                  Enregistrer
                 </button>
               </div>
             </form>

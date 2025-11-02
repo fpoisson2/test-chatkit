@@ -71,11 +71,38 @@ async def create_platform(
             detail="Platform with this issuer and client_id already exists",
         )
 
-    # Create platform
-    platform = LTIPlatform(**platform_data.model_dump())
+    # Extract deployment IDs before creating platform
+    primary_deployment_id = platform_data.primary_deployment_id
+    additional_deployment_ids = platform_data.additional_deployment_ids
+
+    # Create platform (exclude deployment fields)
+    platform_dict = platform_data.model_dump(
+        exclude={"primary_deployment_id", "additional_deployment_ids"}
+    )
+    platform = LTIPlatform(**platform_dict)
     session.add(platform)
     session.commit()
     session.refresh(platform)
+
+    # Create primary deployment
+    primary_deployment = LTIDeployment(
+        platform_id=platform.id,
+        deployment_id=primary_deployment_id,
+        name="Primary Deployment",
+    )
+    session.add(primary_deployment)
+
+    # Create additional deployments
+    for i, deployment_id in enumerate(additional_deployment_ids, start=2):
+        if deployment_id.strip():  # Only if not empty
+            deployment = LTIDeployment(
+                platform_id=platform.id,
+                deployment_id=deployment_id.strip(),
+                name=f"Deployment {i}",
+            )
+            session.add(deployment)
+
+    session.commit()
 
     return LTIPlatformResponse.model_validate(platform)
 

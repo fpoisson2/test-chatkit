@@ -1329,6 +1329,10 @@ class LTIPlatformCreate(BaseModel):
     public_key: str | None = None
     is_active: bool = True
 
+    # Deployment IDs
+    primary_deployment_id: str  # Deployment ID principal
+    additional_deployment_ids: list[str] = Field(default_factory=list)  # Autres deployment IDs
+
 
 class LTIPlatformUpdate(BaseModel):
     name: str | None = None
