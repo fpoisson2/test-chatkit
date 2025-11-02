@@ -847,6 +847,9 @@ class LanguageResponse(BaseModel):
 class LanguageGenerateRequest(BaseModel):
     code: str
     name: str
+    model: str | None = None
+    provider_id: str | None = None
+    custom_prompt: str | None = None
 
 
 class LanguagesListResponse(BaseModel):
@@ -978,14 +981,17 @@ async def generate_language_file(
     
     code = request.code.strip().lower()
     name = request.name.strip()
-    
+    model_name = request.model.strip() if request.model else None
+    provider_id = request.provider_id.strip() if request.provider_id else None
+    custom_prompt = request.custom_prompt.strip() if request.custom_prompt else None
+
     # Validation
     if not re.match(r'^[a-z]{2}$', code):
         raise HTTPException(
             status_code=400,
             detail="Language code must be 2 lowercase letters (ISO 639-1)"
         )
-    
+
     if code in ["en", "fr"]:
         raise HTTPException(
             status_code=400,
@@ -1022,29 +1028,42 @@ async def generate_language_file(
         from ..models import AvailableModel
         from ..chatkit.agent_registry import get_agent_provider_binding
 
-        # Charger un modèle disponible depuis la base de données
+        # Charger le modèle depuis la base de données
         with SessionLocal() as session:
-            # Essayer d'obtenir le premier modèle disponible
-            available_model = session.scalar(
-                select(AvailableModel)
-                .order_by(AvailableModel.id)
-                .limit(1)
-            )
+            if model_name:
+                # Si un modèle spécifique est demandé, le chercher
+                query = select(AvailableModel).where(AvailableModel.name == model_name)
+                if provider_id:
+                    query = query.where(AvailableModel.provider_id == provider_id)
+                available_model = session.scalar(query)
 
-            if not available_model:
-                raise HTTPException(
-                    status_code=500,
-                    detail="No models configured in the database. Please add a model first."
+                if not available_model:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Model '{model_name}' not found in database"
+                    )
+            else:
+                # Sinon, prendre le premier modèle disponible
+                available_model = session.scalar(
+                    select(AvailableModel)
+                    .order_by(AvailableModel.id)
+                    .limit(1)
                 )
 
+                if not available_model:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="No models configured in the database. Please add a model first."
+                    )
+
             model_name = available_model.name
-            provider_id = available_model.provider_id
+            provider_id_used = available_model.provider_id
             provider_slug = available_model.provider_slug
 
             logger.info(f"Using model {model_name} from provider {provider_slug} for translation")
 
         # Obtenir le provider binding
-        provider_binding = get_agent_provider_binding(provider_id, provider_slug)
+        provider_binding = get_agent_provider_binding(provider_id_used, provider_slug)
         if not provider_binding:
             raise HTTPException(
                 status_code=500,
@@ -1054,7 +1073,15 @@ async def generate_language_file(
         # Préparer le prompt pour la traduction
         translations_json = json.dumps(en_translations, ensure_ascii=False, indent=2)
 
-        prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {name} ({code}).
+        # Utiliser le prompt personnalisé ou le prompt par défaut
+        if custom_prompt:
+            # Remplacer les variables dans le prompt personnalisé
+            prompt = custom_prompt.replace("{{language_name}}", name)
+            prompt = prompt.replace("{{language_code}}", code)
+            prompt = prompt.replace("{{translations_json}}", translations_json)
+        else:
+            # Prompt par défaut
+            prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {name} ({code}).
 
 IMPORTANT RULES:
 1. Keep all keys exactly as they are (do not translate keys)
@@ -1144,3 +1171,84 @@ Return the complete JSON object with all keys and their translated values in {na
             status_code=500,
             detail=f"Translation generation failed: {str(e)}"
         )
+
+
+class AvailableModelResponse(BaseModel):
+    id: int
+    name: str
+    provider_id: str
+    provider_slug: str
+
+
+class AvailableModelsListResponse(BaseModel):
+    models: list[AvailableModelResponse]
+
+
+class DefaultPromptResponse(BaseModel):
+    prompt: str
+    variables: list[str]
+
+
+@router.get("/api/admin/languages/models", response_model=AvailableModelsListResponse)
+async def list_available_models(
+    _admin: User = Depends(require_admin)
+):
+    """
+    Liste tous les modèles disponibles pour la génération de traductions.
+    """
+    from sqlalchemy import select
+    from ..models import AvailableModel
+
+    try:
+        with SessionLocal() as session:
+            models = session.scalars(
+                select(AvailableModel)
+                .order_by(AvailableModel.provider_slug, AvailableModel.name)
+            ).all()
+
+            model_list = [
+                AvailableModelResponse(
+                    id=model.id,
+                    name=model.name,
+                    provider_id=model.provider_id,
+                    provider_slug=model.provider_slug
+                )
+                for model in models
+            ]
+
+            return AvailableModelsListResponse(models=model_list)
+
+    except Exception as e:
+        logger.exception(f"Failed to list available models: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list available models: {str(e)}"
+        )
+
+
+@router.get("/api/admin/languages/default-prompt", response_model=DefaultPromptResponse)
+async def get_default_translation_prompt(
+    _admin: User = Depends(require_admin)
+):
+    """
+    Retourne le prompt par défaut pour la génération de traductions avec la liste des variables disponibles.
+    """
+    default_prompt = """You are a professional translator. Translate the following JSON object containing interface strings from English to {{language_name}} ({{language_code}}).
+
+IMPORTANT RULES:
+1. Keep all keys exactly as they are (do not translate keys)
+2. Only translate the values
+3. Preserve any placeholders like {{variable}}, {{count}}, etc.
+4. Preserve any HTML tags or special formatting
+5. Maintain the same level of formality/informality as the source
+6. Return ONLY the translated JSON object, nothing else
+
+Source translations (English):
+{{translations_json}}
+
+Return the complete JSON object with all keys and their translated values in {{language_name}}."""
+
+    return DefaultPromptResponse(
+        prompt=default_prompt,
+        variables=["{{language_name}}", "{{language_code}}", "{{translations_json}}"]
+    )

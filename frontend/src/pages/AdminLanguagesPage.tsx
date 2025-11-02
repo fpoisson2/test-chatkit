@@ -22,14 +22,27 @@ type Language = {
   fileExists: boolean;
 };
 
+type AvailableModel = {
+  id: number;
+  name: string;
+  provider_id: string;
+  provider_slug: string;
+};
+
 type LanguageFormState = {
   code: string;
   name: string;
+  model: string;
+  provider_id: string;
+  custom_prompt: string;
 };
 
 const initialFormState: LanguageFormState = {
   code: "",
   name: "",
+  model: "",
+  provider_id: "",
+  custom_prompt: "",
 };
 
 export const AdminLanguagesPage = () => {
@@ -45,6 +58,10 @@ export const AdminLanguagesPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [instructions, setInstructions] = useState<string | null>(null);
+
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [defaultPrompt, setDefaultPrompt] = useState<string>("");
+  const [showPromptEditor, setShowPromptEditor] = useState(false);
 
   const loadLanguages = useCallback(async () => {
     if (!token) {
@@ -79,9 +96,65 @@ export const AdminLanguagesPage = () => {
     }
   }, [token, logout, t]);
 
+  const loadAvailableModels = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/admin/languages/models", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (isUnauthorizedError(response.status)) {
+          logout();
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setAvailableModels(data.models || []);
+    } catch (err) {
+      console.error("Failed to load available models:", err);
+    }
+  }, [token, logout]);
+
+  const loadDefaultPrompt = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/admin/languages/default-prompt", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (isUnauthorizedError(response.status)) {
+          logout();
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setDefaultPrompt(data.prompt || "");
+    } catch (err) {
+      console.error("Failed to load default prompt:", err);
+    }
+  }, [token, logout]);
+
   useEffect(() => {
     void loadLanguages();
-  }, [loadLanguages]);
+    void loadAvailableModels();
+    void loadDefaultPrompt();
+  }, [loadLanguages, loadAvailableModels, loadDefaultPrompt]);
 
   const handleFormChange = (field: keyof LanguageFormState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -112,16 +185,35 @@ export const AdminLanguagesPage = () => {
     setSubmitting(true);
 
     try {
+      const requestBody: {
+        code: string;
+        name: string;
+        model?: string;
+        provider_id?: string;
+        custom_prompt?: string;
+      } = {
+        code: formState.code.trim().toLowerCase(),
+        name: formState.name.trim(),
+      };
+
+      // Ajouter les paramètres optionnels s'ils sont fournis
+      if (formState.model.trim()) {
+        requestBody.model = formState.model.trim();
+      }
+      if (formState.provider_id.trim()) {
+        requestBody.provider_id = formState.provider_id.trim();
+      }
+      if (formState.custom_prompt.trim()) {
+        requestBody.custom_prompt = formState.custom_prompt.trim();
+      }
+
       const response = await fetch("/api/admin/languages/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          code: formState.code.trim().toLowerCase(),
-          name: formState.name.trim(),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -257,6 +349,73 @@ export const AdminLanguagesPage = () => {
                   <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
                     {t("admin.languages.form.nameHint")}
                   </small>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="model-select" className="form-label">
+                    {t("admin.languages.form.modelLabel")}
+                  </label>
+                  <select
+                    id="model-select"
+                    value={formState.model}
+                    onChange={(e) => {
+                      const selectedModel = availableModels.find(m => m.name === e.target.value);
+                      handleFormChange("model", e.target.value);
+                      if (selectedModel) {
+                        handleFormChange("provider_id", selectedModel.provider_id);
+                      }
+                    }}
+                    disabled={submitting}
+                    className="form-input"
+                  >
+                    <option value="">{t("admin.languages.form.modelPlaceholder")}</option>
+                    {availableModels.map((model) => (
+                      <option key={model.id} value={model.name}>
+                        {model.name} ({model.provider_slug})
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                    {t("admin.languages.form.modelHint")}
+                  </small>
+                </div>
+
+                <div className="form-group">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                    <label htmlFor="custom-prompt" className="form-label" style={{ margin: 0 }}>
+                      {t("admin.languages.form.promptLabel")}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPromptEditor(!showPromptEditor);
+                        if (!showPromptEditor && !formState.custom_prompt && defaultPrompt) {
+                          handleFormChange("custom_prompt", defaultPrompt);
+                        }
+                      }}
+                      className="button button--sm button--secondary"
+                      disabled={submitting}
+                    >
+                      {showPromptEditor ? t("admin.languages.form.hidePrompt") : t("admin.languages.form.showPrompt")}
+                    </button>
+                  </div>
+                  {showPromptEditor && (
+                    <>
+                      <textarea
+                        id="custom-prompt"
+                        value={formState.custom_prompt}
+                        onChange={(e) => handleFormChange("custom_prompt", e.target.value)}
+                        placeholder={defaultPrompt || t("admin.languages.form.promptPlaceholder")}
+                        disabled={submitting}
+                        className="form-input"
+                        rows={12}
+                        style={{ fontFamily: "monospace", fontSize: "0.875rem" }}
+                      />
+                      <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                        {t("admin.languages.form.promptHint")}
+                      </small>
+                    </>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", gap: "0.75rem" }}>

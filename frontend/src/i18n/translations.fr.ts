@@ -880,6 +880,16 @@ export const fr: TranslationDictionary = {
   "admin.languages.form.submitAdd": "Ajouter la langue",
   "admin.languages.form.cancel": "Annuler",
   "admin.languages.form.creating": "Création…",
+  "admin.languages.form.modelLabel": "Modèle",
+  "admin.languages.form.modelPlaceholder": "Utiliser le modèle par défaut",
+  "admin.languages.form.modelHint":
+    "Sélectionner un modèle spécifique pour la traduction (optionnel).",
+  "admin.languages.form.promptLabel": "Prompt de traduction",
+  "admin.languages.form.showPrompt": "Personnaliser le prompt",
+  "admin.languages.form.hidePrompt": "Masquer le prompt",
+  "admin.languages.form.promptPlaceholder": "Entrer un prompt personnalisé...",
+  "admin.languages.form.promptHint":
+    "Variables disponibles: {{language_name}}, {{language_code}}, {{translations_json}}",
   "admin.languages.actions.autoTranslate": "Traduire automatiquement",
   "admin.languages.actions.translating": "Traduction en cours…",
   "admin.languages.actions.delete": "Supprimer",
