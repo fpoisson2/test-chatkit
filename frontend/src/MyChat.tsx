@@ -276,15 +276,6 @@ export function MyChat() {
       : null;
   const hostedWorkflowSlug =
     workflowSelection.kind === "hosted" ? workflowSelection.slug : null;
-  const appearanceWorkflowReference = useMemo<AppearanceWorkflowReference>(() => {
-    if (mode === "hosted") {
-      return hostedWorkflowSlug ? { kind: "hosted", slug: hostedWorkflowSlug } : null;
-    }
-    if (activeWorkflowId != null) {
-      return { kind: "local", id: activeWorkflowId };
-    }
-    return null;
-  }, [activeWorkflowId, hostedWorkflowSlug, mode]);
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
@@ -308,6 +299,16 @@ export function MyChat() {
   const { mode, setMode, hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
     onDisable: handleHostedFlowDisabled,
   });
+
+  const appearanceWorkflowReference = useMemo<AppearanceWorkflowReference>(() => {
+    if (mode === "hosted") {
+      return hostedWorkflowSlug ? { kind: "hosted", slug: hostedWorkflowSlug } : null;
+    }
+    if (activeWorkflowId != null) {
+      return { kind: "local", id: activeWorkflowId };
+    }
+    return null;
+  }, [activeWorkflowId, hostedWorkflowSlug, mode]);
 
   useEffect(() => {
     const desired = appearanceWorkflowReference;
