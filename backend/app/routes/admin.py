@@ -1455,8 +1455,9 @@ async def activate_stored_language(
 
     Cette fonction :
     1. Récupère la langue depuis la BD
-    2. Écrit le fichier translations.{code}.ts
-    3. Met à jour translations.ts pour ajouter la langue à AVAILABLE_LANGUAGES
+    2. Écrit le fichier translations.{code}.ts avec le nom de la langue
+    3. Ajoute le nom de la langue dans tous les fichiers existants
+    4. Met à jour translations.ts pour ajouter la langue à AVAILABLE_LANGUAGES
     """
     language = session.get(Language, id)
     if not language:
@@ -1467,10 +1468,15 @@ async def activate_stored_language(
 
     i18n_path = Path("/frontend/src/i18n")
 
-    # 1. Générer et écrire le fichier de traduction
+    # 1. Générer et écrire le fichier de traduction avec le nom de la langue
     translation_file = i18n_path / f"translations.{language.code}.ts"
+
+    # Ajouter la clé du nom de la langue
+    translations_with_name = dict(language.translations)
+    translations_with_name[f"language.name.{language.code}"] = language.name
+
     file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {language.code}: TranslationDictionary = {{\n'
-    for key, value in language.translations.items():
+    for key, value in translations_with_name.items():
         escaped_value = str(value).replace('\\', '\\\\').replace('"', '\\"')
         file_content += f'  "{key}": "{escaped_value}",\n'
     file_content += '};\n'
@@ -1484,6 +1490,79 @@ async def activate_stored_language(
             status_code=500,
             detail=f"Failed to write translation file: {str(e)}"
         )
+
+    # 1.5. Traduire le nom de la langue et l'ajouter dans tous les fichiers existants
+    try:
+        # Utiliser l'IA pour traduire le nom de la langue dans les autres langues
+        from agents import Agent, Runner, RunConfig
+        from ..models import AvailableModel
+        from ..chatkit.agent_registry import get_agent_provider_binding
+
+        # Charger un modèle pour la traduction
+        available_model = session.scalar(
+            select(AvailableModel).order_by(AvailableModel.id).limit(1)
+        )
+
+        if available_model:
+            provider_binding = get_agent_provider_binding(None, available_model.provider_slug)
+
+            if provider_binding:
+                # Pour chaque fichier de langue existant
+                for existing_file in i18n_path.glob("translations.*.ts"):
+                    if existing_file.name == f"translations.{language.code}.ts":
+                        continue  # Skip le fichier qu'on vient de créer
+
+                    # Extraire le code de langue du nom du fichier
+                    existing_code = existing_file.stem.split('.')[-1]
+
+                    # Traduire le nom de la langue
+                    prompt = f"Translate the language name '{language.name}' to {existing_code.upper()}. Reply with ONLY the translated name, nothing else."
+
+                    agent = Agent(
+                        name="Language Name Translator",
+                        model=available_model.name,
+                        instructions=prompt,
+                    )
+                    agent._chatkit_provider_binding = provider_binding
+
+                    run_config_kwargs = {}
+                    if provider_binding is not None:
+                        run_config_kwargs["model_provider"] = provider_binding.provider
+
+                    try:
+                        run_config = RunConfig(**run_config_kwargs)
+                    except TypeError:
+                        run_config_kwargs.pop("model_provider", None)
+                        run_config = RunConfig(**run_config_kwargs)
+
+                    result = await Runner.run(
+                        agent,
+                        input=f"Translate '{language.name}' to {existing_code}",
+                        run_config=run_config
+                    )
+
+                    translated_name = (result.output if hasattr(result, 'output') else str(result)).strip()
+
+                    # Lire le fichier existant
+                    content = existing_file.read_text(encoding='utf-8')
+                    lines = content.split('\n')
+
+                    # Trouver la ligne avant la dernière accolade fermante et ajouter la nouvelle clé
+                    for i in range(len(lines) - 1, -1, -1):
+                        if lines[i].strip() == '};':
+                            # Insérer avant cette ligne
+                            escaped_name = translated_name.replace('\\', '\\\\').replace('"', '\\"')
+                            lines.insert(i, f'  "language.name.{language.code}": "{escaped_name}",')
+                            break
+
+                    # Réécrire le fichier
+                    new_content = '\n'.join(lines)
+                    existing_file.write_text(new_content, encoding='utf-8')
+                    logger.info(f"Added language name to {existing_file.name}")
+
+    except Exception as e:
+        logger.warning(f"Failed to add language names to existing files: {e}")
+        # Ne pas bloquer l'activation si la traduction des noms échoue
 
     # 2. Mettre à jour translations.ts
     main_file = i18n_path / "translations.ts"
