@@ -31,8 +31,9 @@ type AvailableModel = {
 };
 
 type Provider = {
-  id: string;
-  provider: string;
+  value: string; // Combined key "id|slug"
+  id: string | null;
+  slug: string | null;
   label: string;
 };
 
@@ -40,7 +41,7 @@ type LanguageFormState = {
   code: string;
   name: string;
   model: string;
-  provider_id: string;
+  provider_value: string; // Combined value "id|slug"
   custom_prompt: string;
 };
 
@@ -48,7 +49,7 @@ const initialFormState: LanguageFormState = {
   code: "",
   name: "",
   model: "",
-  provider_id: "",
+  provider_value: "",
   custom_prompt: "",
 };
 
@@ -180,8 +181,9 @@ export const AdminLanguagesPage = () => {
       const label = slug && id ? `${slug} (${id})` : baseLabel;
 
       providers.push({
-        id: id || slug || key,
-        provider: slug || id || "",
+        value: key,
+        id: id || null,
+        slug: slug || null,
         label
       });
     }
@@ -229,6 +231,7 @@ export const AdminLanguagesPage = () => {
         name: string;
         model?: string;
         provider_id?: string;
+        provider_slug?: string;
         custom_prompt?: string;
       } = {
         code: formState.code.trim().toLowerCase(),
@@ -239,9 +242,20 @@ export const AdminLanguagesPage = () => {
       if (formState.model.trim()) {
         requestBody.model = formState.model.trim();
       }
-      if (formState.provider_id.trim()) {
-        requestBody.provider_id = formState.provider_id.trim();
+
+      // Parse provider_value to extract provider_id and provider_slug
+      if (formState.provider_value.trim()) {
+        const selectedProvider = availableProviders.find(p => p.value === formState.provider_value);
+        if (selectedProvider) {
+          if (selectedProvider.id) {
+            requestBody.provider_id = selectedProvider.id;
+          }
+          if (selectedProvider.slug) {
+            requestBody.provider_slug = selectedProvider.slug;
+          }
+        }
       }
+
       if (formState.custom_prompt.trim()) {
         requestBody.custom_prompt = formState.custom_prompt.trim();
       }
@@ -421,14 +435,14 @@ export const AdminLanguagesPage = () => {
                   </label>
                   <select
                     id="provider-select"
-                    value={formState.provider_id}
-                    onChange={(e) => handleFormChange("provider_id", e.target.value)}
+                    value={formState.provider_value}
+                    onChange={(e) => handleFormChange("provider_value", e.target.value)}
                     disabled={submitting}
                     className="form-input"
                   >
                     <option value="">{t("admin.languages.form.providerPlaceholder")}</option>
                     {availableProviders.map((provider) => (
-                      <option key={provider.id} value={provider.id}>
+                      <option key={provider.value} value={provider.value}>
                         {provider.label}
                       </option>
                     ))}

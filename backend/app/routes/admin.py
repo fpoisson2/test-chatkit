@@ -849,6 +849,7 @@ class LanguageGenerateRequest(BaseModel):
     name: str
     model: str | None = None
     provider_id: str | None = None
+    provider_slug: str | None = None
     custom_prompt: str | None = None
 
 
@@ -983,6 +984,7 @@ async def generate_language_file(
     name = request.name.strip()
     model_name = request.model.strip() if request.model else None
     provider_id = request.provider_id.strip() if request.provider_id else None
+    provider_slug_from_request = request.provider_slug.strip() if request.provider_slug else None
     custom_prompt = request.custom_prompt.strip() if request.custom_prompt else None
 
     # Validation
@@ -1056,8 +1058,8 @@ async def generate_language_file(
 
             model_name = available_model.name
 
-            # Utiliser le provider_id fourni dans le formulaire en priorité
-            # Sinon, utiliser celui du modèle dans la base de données
+            # Utiliser le provider_id et provider_slug fournis dans le formulaire en priorité
+            # Sinon, utiliser ceux du modèle dans la base de données
             if provider_id:
                 provider_id_used = provider_id
                 logger.info(f"Using provider_id from form: {provider_id}")
@@ -1065,7 +1067,12 @@ async def generate_language_file(
                 provider_id_used = available_model.provider_id
                 logger.info(f"Using provider_id from model in database: {provider_id_used}")
 
-            provider_slug = available_model.provider_slug
+            if provider_slug_from_request:
+                provider_slug = provider_slug_from_request
+                logger.info(f"Using provider_slug from form: {provider_slug}")
+            else:
+                provider_slug = available_model.provider_slug
+                logger.info(f"Using provider_slug from model in database: {provider_slug}")
 
             logger.info(f"Using model {model_name} with provider_id={provider_id_used}, provider_slug={provider_slug}")
 
