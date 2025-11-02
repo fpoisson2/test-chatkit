@@ -7047,6 +7047,7 @@ const WorkflowBuilderPage = () => {
               className="chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin"
               data-hosted-workflow=""
               data-pinned={isPinned ? "" : undefined}
+              data-has-actions=""
             >
               <button
                 type="button"
@@ -7195,6 +7196,7 @@ const WorkflowBuilderPage = () => {
             key={`local:${workflow.id}`}
             className="chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin"
             data-pinned={isPinned ? "" : undefined}
+            data-has-actions=""
           >
             <button
               type="button"
