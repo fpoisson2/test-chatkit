@@ -351,6 +351,37 @@ export const AdminLanguagesPage = () => {
     }
   }, [token, loadStoredLanguages, t]);
 
+  const activateStoredLanguage = useCallback(async (id: number, code: string, name: string) => {
+    if (!token) {
+      return;
+    }
+
+    if (!confirm(`Activate language ${name} (${code})? This will add it to the application and restart may be required.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/languages/stored/${id}/activate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setSuccess(data.message || `Language ${name} activated successfully. Refresh the page to see it in the language selector.`);
+      await loadLanguages();
+    } catch (err) {
+      console.error("Failed to activate stored language:", err);
+      setError(err instanceof Error ? err.message : "Failed to activate language");
+    }
+  }, [token, loadLanguages]);
+
   // Extract unique providers from available models
   const availableProviders = useMemo(() => {
     const seen = new Set<string>();
@@ -866,7 +897,14 @@ export const AdminLanguagesPage = () => {
                           <td>{new Date(lang.created_at).toLocaleDateString()}</td>
                           <td>{new Date(lang.updated_at).toLocaleDateString()}</td>
                           <td>
-                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => activateStoredLanguage(lang.id, lang.code, lang.name)}
+                                className="button button--sm button--primary"
+                              >
+                                Activate
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => downloadStoredLanguage(lang.id)}

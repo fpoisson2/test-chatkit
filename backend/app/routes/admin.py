@@ -1444,6 +1444,124 @@ async def delete_stored_language(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/api/admin/languages/stored/{id}/activate")
+async def activate_stored_language(
+    id: int,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin)
+):
+    """
+    Active une langue stockée en BD en l'ajoutant au système de traduction.
+
+    Cette fonction :
+    1. Récupère la langue depuis la BD
+    2. Écrit le fichier translations.{code}.ts
+    3. Met à jour translations.ts pour ajouter la langue à AVAILABLE_LANGUAGES
+    """
+    language = session.get(Language, id)
+    if not language:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Language with id {id} not found"
+        )
+
+    i18n_path = Path("/frontend/src/i18n")
+
+    # 1. Générer et écrire le fichier de traduction
+    translation_file = i18n_path / f"translations.{language.code}.ts"
+    file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {language.code}: TranslationDictionary = {{\n'
+    for key, value in language.translations.items():
+        escaped_value = str(value).replace('\\', '\\\\').replace('"', '\\"')
+        file_content += f'  "{key}": "{escaped_value}",\n'
+    file_content += '};\n'
+
+    try:
+        translation_file.write_text(file_content, encoding='utf-8')
+        logger.info(f"Written translation file: {translation_file}")
+    except Exception as e:
+        logger.exception(f"Failed to write translation file: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to write translation file: {str(e)}"
+        )
+
+    # 2. Mettre à jour translations.ts
+    main_file = i18n_path / "translations.ts"
+
+    try:
+        content = main_file.read_text(encoding='utf-8')
+
+        # Vérifier si la langue existe déjà
+        if f'"{language.code}"' in content.split('\n')[0]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Language {language.code} is already activated"
+            )
+
+        # Modifier la ligne du type Language
+        lines = content.split('\n')
+
+        # 1. Modifier la première ligne pour ajouter le code
+        if lines[0].startswith('export type Language = '):
+            # Extraire les codes existants
+            match = re.search(r'= (.+);', lines[0])
+            if match:
+                existing_codes = match.group(1)
+                # Ajouter le nouveau code
+                new_codes = f'{existing_codes.rstrip(";")} | "{language.code}";'
+                lines[0] = f'export type Language = {new_codes}'
+
+        # 2. Ajouter dans AVAILABLE_LANGUAGES (après la ligne avec "fr")
+        for i, line in enumerate(lines):
+            if '{ code: "fr"' in line:
+                # Trouver l'indentation
+                indent = '  '
+                # Insérer après cette ligne
+                lines.insert(i + 1, f'{indent}{{ code: "{language.code}", label: "{language.name}" }},')
+                break
+
+        # 3. Ajouter l'import (après les imports existants)
+        import_line = f'import {{ {language.code} }} from "./translations.{language.code}";'
+        for i, line in enumerate(lines):
+            if line.startswith('import { en }'):
+                lines.insert(i + 1, import_line)
+                break
+
+        # 4. Ajouter dans l'objet translations (avant la ligne avec "fr,")
+        for i, line in enumerate(lines):
+            if line.strip() == 'fr,':
+                indent = '  '
+                lines.insert(i + 1, f'{indent}{language.code},')
+                break
+
+        # Écrire le fichier modifié
+        new_content = '\n'.join(lines)
+        main_file.write_text(new_content, encoding='utf-8')
+        logger.info(f"Updated translations.ts to include {language.code}")
+
+        return {
+            "success": True,
+            "message": f"Language {language.code} ({language.name}) has been activated",
+            "code": language.code,
+            "name": language.name
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to update translations.ts: {e}")
+        # Essayer de supprimer le fichier de traduction si on a échoué
+        try:
+            if translation_file.exists():
+                translation_file.unlink()
+        except:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update translations.ts: {str(e)}"
+        )
+
+
 class AvailableModelResponse(BaseModel):
     id: int
     name: str
