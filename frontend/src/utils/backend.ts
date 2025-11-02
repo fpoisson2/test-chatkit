@@ -801,27 +801,6 @@ export const mcpServersApi = {
       headers: withAuthHeaders(token),
       body: JSON.stringify(body),
     });
-type AppearanceSettingsScope = "admin" | "public";
-
-export const appearanceSettingsApi = {
-  async get(
-    token: string | null,
-    options: { scope?: AppearanceSettingsScope } = {},
-  ): Promise<AppearanceSettings> {
-    const scope: AppearanceSettingsScope = options.scope
-      ? options.scope
-      : token
-      ? "admin"
-      : "public";
-    const url =
-      scope === "admin"
-        ? "/api/admin/appearance-settings"
-        : "/api/appearance-settings";
-    const init: RequestInit = {};
-    if (scope === "admin") {
-      init.headers = withAuthHeaders(token);
-    }
-    const response = await requestWithFallback(url, init);
     return response.json();
   },
 
@@ -875,17 +854,43 @@ export const appearanceSettingsApi = {
       headers: withAuthHeaders(token),
       body: JSON.stringify(body),
     });
+    return response.json();
+  },
+};
 
+type AppearanceSettingsScope = "admin" | "public";
+
+export const appearanceSettingsApi = {
+  async get(
+    token: string | null,
+    options: { scope?: AppearanceSettingsScope } = {},
+  ): Promise<AppearanceSettings> {
+    const scope: AppearanceSettingsScope = options.scope
+      ? options.scope
+      : token
+      ? "admin"
+      : "public";
+    const url =
+      scope === "admin"
+        ? "/api/admin/appearance-settings"
+        : "/api/appearance-settings";
+    const init: RequestInit = {};
+    if (scope === "admin") {
+      init.headers = withAuthHeaders(token);
+    }
+    const response = await requestWithFallback(url, init);
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
     payload: AppearanceSettingsUpdatePayload,
   ): Promise<AppearanceSettings> {
-    const response = await requestWithFallback(
-      "/api/admin/appearance-settings",
-      {
-        method: "PATCH",
-        headers: withAuthHeaders(token),
-        body: JSON.stringify(payload),
-      },
-    );
+    const response = await requestWithFallback("/api/admin/appearance-settings", {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
     return response.json();
   },
 };

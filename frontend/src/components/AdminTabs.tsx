@@ -11,7 +11,6 @@ type AdminTabKey =
   | "widgets"
   | "telephony"
   | "mcp-servers"
-  | "settings";
   | "settings"
   | "appearance";
 
