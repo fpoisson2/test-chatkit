@@ -353,6 +353,8 @@ async def _connect_mcp_servers(
     """Crée et connecte les serveurs MCP définis dans la configuration."""
 
     servers: list[MCPServer] = []
+    seen_tool_names: set[str] = set()
+
     for config in configs:
         context = config.get("__context__")
         server = _create_mcp_server_from_config(config)
@@ -393,6 +395,51 @@ async def _connect_mcp_servers(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={"error": "MCP server connection failed"},
             ) from exc
+
+        # Detect and filter duplicate tool names across MCP servers
+        # The OpenAI Agents SDK requires all tool names to be globally unique
+        try:
+            server_tools = await server.list_tools()
+            duplicate_tools: list[str] = []
+            unique_tools: list[str] = []
+
+            for tool in server_tools:
+                tool_name = getattr(tool, "name", None)
+                if tool_name:
+                    if tool_name in seen_tool_names:
+                        duplicate_tools.append(tool_name)
+                    else:
+                        seen_tool_names.add(tool_name)
+                        unique_tools.append(tool_name)
+
+            if duplicate_tools:
+                server_label = getattr(server, "name", None) or config.get("server_label", "unknown")
+                logger.warning(
+                    "Serveur MCP '%s': %d outils en double ignorés: %s",
+                    server_label,
+                    len(duplicate_tools),
+                    duplicate_tools[:10]  # Log first 10
+                )
+                # Apply allowlist to filter duplicates (keep only unique tools)
+                if unique_tools:
+                    # Combine with existing allowlist if present
+                    existing_allowlist = getattr(server, "_chatkit_mcp_allowlist", None)
+                    if existing_allowlist:
+                        # Intersection: keep only tools that are both unique AND in existing allowlist
+                        unique_tools = [t for t in unique_tools if t in existing_allowlist]
+                    server._chatkit_mcp_allowlist = tuple(unique_tools)
+                    logger.info(
+                        "Serveur MCP '%s': allowlist appliquée avec %d outils uniques",
+                        server_label,
+                        len(unique_tools)
+                    )
+        except Exception as exc:
+            logger.warning(
+                "Impossible de lister les outils du serveur MCP %s: %s",
+                config.get("server_url"),
+                exc
+            )
+
         if isinstance(context, ResolvedMcpServerContext) and context.allowlist:
             sanitized_allowlist = [
                 entry
@@ -400,7 +447,13 @@ async def _connect_mcp_servers(
                 if isinstance(entry, str) and entry.strip()
             ]
             if sanitized_allowlist:
+                # Merge with duplicate-filtered allowlist if it exists
+                existing_allowlist = getattr(server, "_chatkit_mcp_allowlist", None)
+                if existing_allowlist:
+                    # Intersection: keep only tools in both lists
+                    sanitized_allowlist = [t for t in sanitized_allowlist if t in existing_allowlist]
                 server._chatkit_mcp_allowlist = tuple(sanitized_allowlist)
+
         servers.append(server)
 
     return servers
