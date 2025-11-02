@@ -1132,14 +1132,15 @@ Return the complete JSON object with all keys and their translated values in {na
         logger.info(f"Using agent SDK for translation to {name}")
         logger.info(f"About to create agent with model={model_name}")
 
-        # Créer l'agent avec le provider
+        # Créer l'agent (sans passer le provider directement)
         try:
             agent = Agent(
                 name="Language Translator",
                 model=model_name,
                 instructions=prompt,
-                provider=provider_binding.provider
             )
+            # Attacher le provider_binding à l'agent (pattern utilisé par _build_thread_title_agent)
+            agent._chatkit_provider_binding = provider_binding
             logger.info("Agent created successfully")
         except Exception as e:
             logger.exception(f"Failed to create agent: {e}")
@@ -1148,11 +1149,26 @@ Return the complete JSON object with all keys and their translated values in {na
                 detail=f"Failed to create translation agent: {str(e)}"
             )
 
-        # Exécuter l'agent
+        # Exécuter l'agent avec le provider dans RunConfig
         try:
             logger.info("Starting agent execution")
-            runner = Runner(agent=agent)
-            result = await runner.run("Translate the provided JSON to the target language.")
+            from agents import RunConfig
+
+            run_config_kwargs = {}
+            if provider_binding is not None:
+                run_config_kwargs["model_provider"] = provider_binding.provider
+
+            try:
+                run_config = RunConfig(**run_config_kwargs)
+            except TypeError:  # pragma: no cover - compatibilité SDK
+                run_config_kwargs.pop("model_provider", None)
+                run_config = RunConfig(**run_config_kwargs)
+
+            result = await Runner.run(
+                agent,
+                input="Translate the provided JSON to the target language.",
+                run_config=run_config
+            )
             logger.info(f"Agent execution completed, result type: {type(result)}")
         except Exception as e:
             logger.exception(f"Failed to run agent: {e}")
