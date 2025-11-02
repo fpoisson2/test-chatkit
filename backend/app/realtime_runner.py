@@ -69,6 +69,7 @@ def _normalize_realtime_tools_payload(
 
     disallowed_tool_keys = {"agent", "function", "metadata"}
     # Only include parameters that are supported by OpenAI Realtime API
+    # Note: allow/allowlist is handled by SDK runtime, not sent to API
     mcp_allowed_keys = {
         "type",
         "server_label",
@@ -76,7 +77,6 @@ def _normalize_realtime_tools_payload(
         "authorization",
         "name",
         "description",
-        "allow",
     }
 
     for index, entry in enumerate(source_entries):
@@ -182,30 +182,17 @@ def _normalize_realtime_tools_payload(
                 elif "authorization" in tool_entry:
                     tool_entry.pop("authorization", None)
 
-                if isinstance(context, ResolvedMcpServerContext):
-                    # server_id is internal only, not sent to OpenAI API
-                    if context.allowlist:
-                        tool_entry["allow"] = {"tools": list(context.allowlist)}
+                # server_id, require_approval, and allow are internal only
+                # They are NOT sent to OpenAI API, but used by SDK runtime
+                # The allowlist is stored in mcp_server_configs and applied by SDK
 
-                # require_approval is internal only, not sent to OpenAI API
-
-                # Deduplicate MCP servers by URL - keep the most complete one (with allowlist)
+                # Deduplicate MCP servers by URL - skip duplicates entirely
                 normalized_url = server_url.strip()
                 if normalized_url in seen_mcp_urls:
-                    existing_index = seen_mcp_urls[normalized_url]
-                    existing_entry = normalized[existing_index]
-                    # Replace with new entry if it has allowlist and existing doesn't
-                    if "allow" in tool_entry and "allow" not in existing_entry:
-                        logger.info(
-                            "Replacing MCP server at %s (no allowlist) with version that has allowlist",
-                            normalized_url,
-                        )
-                        normalized[existing_index] = tool_entry
-                    else:
-                        logger.info(
-                            "Skipping duplicate MCP server at %s",
-                            normalized_url,
-                        )
+                    logger.info(
+                        "Skipping duplicate MCP server at %s",
+                        normalized_url,
+                    )
                     continue
 
                 seen_mcp_urls[normalized_url] = len(normalized)
