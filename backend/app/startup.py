@@ -2805,6 +2805,40 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             }
             telephony_tools.append(transfer_tool_config)
 
+            # 📊 LOG DÉTAILLÉ: Configuration des tools pour l'appel
+            logger.info("=" * 80)
+            logger.info("📞 CONFIGURATION APPEL ENTRANT (call_id=%s)", call_id)
+            logger.info("=" * 80)
+            logger.info("📍 Numéro entrant: %s", incoming_number or "<inconnu>")
+            logger.info("🤖 Modèle: %s", voice_model)
+            logger.info("🎤 Voix: %s", voice_name)
+            logger.info("🔧 Provider: %s (id=%s)", voice_provider_slug, voice_provider_id)
+            logger.info("💬 Speak first: %s", speak_first)
+            logger.info("⏱️  Ring timeout: %ss", ring_timeout_seconds)
+            logger.info("")
+            logger.info("🛠️  TOOLS CONFIGURÉS (%d tools):", len(telephony_tools))
+            for idx, tool in enumerate(telephony_tools, 1):
+                if isinstance(tool, dict):
+                    tool_type = tool.get("type", "unknown")
+                    tool_name = tool.get("name", tool.get("server_label", "<unnamed>"))
+                    logger.info("  %d. [%s] %s", idx, tool_type, tool_name)
+                    if tool_type == "mcp":
+                        logger.info("      └─ URL: %s", tool.get("server_url", "<no-url>"))
+                        if tool.get("allow"):
+                            logger.info("      └─ Allowlist: %s", tool.get("allow"))
+                else:
+                    logger.info("  %d. %s", idx, type(tool).__name__)
+
+            if voice_handoffs:
+                logger.info("🔄 HANDOFFS CONFIGURÉS (%d):", len(voice_handoffs))
+                for idx, handoff in enumerate(voice_handoffs, 1):
+                    logger.info("  %d. %s", idx, handoff)
+            else:
+                logger.info("🔄 Aucun handoff configuré")
+
+            logger.info("=" * 80)
+
+            logger.info("🔐 Création de la session vocale...")
             session_handle = await open_voice_session(
                 user_id=f"pjsua:{call_id}",
                 model=voice_model,
@@ -2827,7 +2861,33 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             if not client_secret:
                 raise ValueError(f"Client secret introuvable pour l'appel {call_id}")
 
-            logger.info("Session vocale créée (session_id=%s)", session_handle.session_id)
+            # 📊 LOG DÉTAILLÉ: Session créée avec succès
+            logger.info("=" * 80)
+            logger.info("✅ SESSION VOCALE CRÉÉE AVEC SUCCÈS")
+            logger.info("=" * 80)
+            logger.info("🆔 Session ID: %s", session_handle.session_id)
+            logger.info("🔑 Client secret: %s***", client_secret[:10] if client_secret else "<none>")
+            logger.info("🏃 Runner: %s", type(session_handle.runner).__name__)
+            logger.info("🤖 Agent: %s", type(session_handle.agent).__name__)
+            logger.info("🌐 Serveurs MCP connectés: %d", len(session_handle.mcp_servers))
+            for idx, mcp_server in enumerate(session_handle.mcp_servers, 1):
+                server_name = getattr(mcp_server, "name", None) or f"<server-{idx}>"
+                logger.info("  %d. %s", idx, server_name)
+                # Log allowlist if present
+                allowlist = getattr(mcp_server, "_chatkit_mcp_allowlist", None)
+                if allowlist:
+                    logger.info("      └─ Allowlist actif: %d outils", len(allowlist))
+                    logger.info("      └─ Outils: %s", list(allowlist)[:5])  # First 5
+
+            metadata = session_handle.metadata
+            if metadata:
+                logger.info("📋 Metadata:")
+                for key, value in metadata.items():
+                    if key not in ("tools", "sdk_tools", "sdk_handoffs", "mcp_servers"):
+                        logger.info("  • %s: %s", key, value)
+
+            logger.info("=" * 80)
+            logger.info("")
 
             # Créer les hooks pour le voice bridge
             async def close_dialog_hook() -> None:
@@ -2974,8 +3034,25 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     await asyncio.sleep(ring_timeout_seconds)
 
             # Répondre à l'appel (200 OK)
-            logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)
+            logger.info("📞 Réponse à l'appel PJSUA avec 200 OK (call_id=%s)", call_id)
             await pjsua_adapter.answer_call(call, code=200)
+
+            # 📊 LOG DÉTAILLÉ: Appel accepté et prêt
+            logger.info("=" * 80)
+            logger.info("✅ APPEL ACCEPTÉ - EN ATTENTE DE MÉDIA ACTIF")
+            logger.info("=" * 80)
+            logger.info("📞 Call ID: %s", call_id)
+            logger.info("📍 Depuis: %s", incoming_number or "<inconnu>")
+            logger.info("🎯 Prochaine étape: Attente callback on_media_active_callback")
+            logger.info("   ↳ Initialisation jitter buffer (50ms)")
+            logger.info("   ↳ Attente onFrameRequested de PJSUA")
+            logger.info("   ↳ Déblocage audio et démarrage VoiceBridge")
+            if speak_first:
+                logger.info("🗣️  Mode speak_first actif - l'assistant parlera en premier")
+            if preinit_session:
+                logger.info("⚡ Session OpenAI pré-initialisée pendant la sonnerie (latence réduite)")
+            logger.info("=" * 80)
+            logger.info("")
 
             # L'audio sera débloqué automatiquement par le callback on_media_active_callback
             # quand PJSUA appellera onCallMediaState et créera le port audio
@@ -3000,11 +3077,27 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     pass
 
         except Exception as e:
-            logger.exception("Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
+            # 📊 LOG DÉTAILLÉ: Erreur lors du traitement de l'appel
+            logger.error("=" * 80)
+            logger.error("❌ ERREUR TRAITEMENT APPEL ENTRANT")
+            logger.error("=" * 80)
+            logger.error("📞 Call ID: %s", call_id)
+            logger.error("📍 Numéro: %s", incoming_number or "<inconnu>")
+            logger.error("⚠️  Type d'erreur: %s", type(e).__name__)
+            logger.error("💬 Message: %s", str(e))
+
+            # Essayer d'extraire plus de détails si c'est une HTTPException
+            if hasattr(e, 'detail'):
+                logger.error("📋 Détails: %s", e.detail)
+
+            logger.error("=" * 80)
+            logger.exception("Stack trace complète:")
+
             try:
                 await pjsua_adapter.hangup_call(call)
-            except Exception:
-                pass
+                logger.info("📞 Appel raccroché suite à l'erreur (call_id=%s)", call_id)
+            except Exception as hangup_err:
+                logger.warning("Impossible de raccrocher l'appel: %s", hangup_err)
 
     return _handle_pjsua_incoming_call
 
