@@ -8,6 +8,7 @@ import {
   getWorkflowSortMetadata,
   orderWorkflowEntries,
   readStoredWorkflowSelection,
+  readStoredWorkflowPinnedLookup,
   recordWorkflowLastUsedAt,
   updateStoredWorkflowSelection,
   writeStoredWorkflowSelection,
@@ -18,6 +19,7 @@ import type { HostedWorkflowMetadata } from "../../../utils/backend";
 import type { WorkflowSummary } from "../../../types/workflows";
 
 type WindowWithStubs = Window & {
+  localStorage: Storage;
   sessionStorage: Storage;
   addEventListener: Window["addEventListener"];
   removeEventListener: Window["removeEventListener"];
@@ -59,23 +61,29 @@ const createHostedWorkflow = (
 let windowStub: WindowWithStubs;
 
 beforeEach(() => {
-  const storage = new Map<string, string>();
+  const localStorageEntries = new Map<string, string>();
+  const sessionStorageEntries = new Map<string, string>();
   const listeners = new Map<string, Set<(event: Event) => void>>();
 
-  const sessionStorage = {
-    getItem: vi.fn((key: string) => storage.get(key) ?? null),
+  const createStorage = (entries: Map<string, string>): Storage => ({
+    getItem: vi.fn((key: string) => entries.get(key) ?? null),
     setItem: vi.fn((key: string, value: string) => {
-      storage.set(key, value);
+      entries.set(key, value);
     }),
     removeItem: vi.fn((key: string) => {
-      storage.delete(key);
+      entries.delete(key);
     }),
     clear: vi.fn(() => {
-      storage.clear();
+      entries.clear();
     }),
-    key: vi.fn(),
-    length: 0,
-  } satisfies Storage;
+    key: vi.fn((index: number) => Array.from(entries.keys())[index] ?? null),
+    get length() {
+      return entries.size;
+    },
+  }) as Storage;
+
+  const localStorage = createStorage(localStorageEntries);
+  const sessionStorage = createStorage(sessionStorageEntries);
 
   const addEventListener = vi.fn((type: string, handler: EventListenerOrEventListenerObject) => {
     const set = listeners.get(type) ?? new Set<(event: Event) => void>();
@@ -111,6 +119,7 @@ beforeEach(() => {
   });
 
   windowStub = {
+    localStorage,
     sessionStorage,
     addEventListener,
     removeEventListener,
@@ -174,6 +183,7 @@ describe("workflow storage helpers", () => {
       localWorkflowId: 7,
       hostedSlug: null,
       lastUsedAt: lastUsed,
+      pinned: { local: [], hosted: [] },
     });
 
     updateStoredWorkflowSelection((previous) => {
@@ -207,6 +217,14 @@ describe("workflow storage helpers", () => {
     const selection = readStoredWorkflowSelection();
     expect(selection).not.toBeNull();
     expect(selection?.lastUsedAt).toEqual({ hosted: {}, local: {} });
+    expect(selection?.pinned).toEqual({ hosted: [], local: [] });
+    expect(windowStub.localStorage.setItem).toHaveBeenCalledWith(
+      WORKFLOW_SELECTION_STORAGE_KEY,
+      JSON.stringify(legacyPayload),
+    );
+    expect(windowStub.sessionStorage.removeItem).toHaveBeenCalledWith(
+      WORKFLOW_SELECTION_STORAGE_KEY,
+    );
   });
 });
 
@@ -251,6 +269,56 @@ describe("workflow ordering timestamps", () => {
       "2": Date.parse("2024-04-01T00:00:00Z"),
     });
     expect(ordering.hosted).toEqual({ assistant: 9_999 });
+  });
+});
+
+describe("pinned workflows", () => {
+  it("prioritizes pinned entries in ordering", () => {
+    const localAlpha = createWorkflowSummary(1, "Alpha");
+    const localBeta = createWorkflowSummary(2, "Beta");
+    const hosted = createHostedWorkflow("assistant", "Assistant");
+
+    writeStoredWorkflowSelection({
+      mode: "local",
+      localWorkflowId: 1,
+      hostedSlug: null,
+      lastUsedAt: { local: {}, hosted: {} },
+      pinned: { local: [2], hosted: [hosted.slug] },
+    });
+
+    const ordered = orderWorkflowEntries(
+      [
+        { kind: "local", workflow: localAlpha },
+        { kind: "local", workflow: localBeta },
+        { kind: "hosted", workflow: hosted },
+      ],
+      { local: {}, hosted: {} },
+      { pinnedLookup: readStoredWorkflowPinnedLookup() },
+    );
+
+    const keys = ordered.map((entry) =>
+      entry.kind === "local" ? `local:${entry.workflow.id}` : `hosted:${entry.workflow.slug}`,
+    );
+    expect(new Set(keys.slice(0, 2))).toEqual(
+      new Set([`local:${localBeta.id}`, `hosted:${hosted.slug}`]),
+    );
+    expect(keys[2]).toBe(`local:${localAlpha.id}`);
+  });
+
+  it("exposes pinned values as sets", () => {
+    writeStoredWorkflowSelection({
+      mode: "local",
+      localWorkflowId: null,
+      hostedSlug: null,
+      lastUsedAt: { local: {}, hosted: {} },
+      pinned: { local: [3, 3], hosted: ["workflow", ""] },
+    });
+
+    const lookup = readStoredWorkflowPinnedLookup();
+    expect(lookup.local.has(3)).toBe(true);
+    expect(lookup.local.size).toBe(1);
+    expect(lookup.hosted.has("workflow")).toBe(true);
+    expect(lookup.hosted.size).toBe(1);
   });
 });
 

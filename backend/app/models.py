@@ -209,6 +209,42 @@ class AppSettings(Base):
     model_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_api_key_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
     model_provider_configs: Mapped[str | None] = mapped_column(Text, nullable=True)
+    appearance_color_scheme: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    appearance_accent_color: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    appearance_use_custom_surface: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    appearance_surface_hue: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    appearance_surface_tint: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    appearance_surface_shade: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    appearance_heading_font: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    appearance_body_font: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    appearance_start_greeting: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    appearance_start_prompt: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    appearance_input_placeholder: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    appearance_disclaimer: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

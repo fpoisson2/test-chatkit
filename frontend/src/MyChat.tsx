@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatKitOptions } from "@openai/chatkit";
+import type { ChatKitOptions, StartScreenPrompt } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
-import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
+import { useAppearanceSettings } from "./features/appearance/AppearanceSettingsContext";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
@@ -20,6 +20,7 @@ import {
 } from "./utils/chatkitThread";
 import type { WorkflowSummary } from "./types/workflows";
 import { makeApiEndpointCandidates } from "./utils/backend";
+import type { AppearanceSettings } from "./utils/backend";
 
 type ChatConfigDebugSnapshot = {
   hostedFlow: boolean;
@@ -129,8 +130,123 @@ const ensureSecureUrl = (rawUrl: string): SecureUrlNormalizationResult => {
   return { kind: "ok", url: parsed.toString(), wasUpgraded: false };
 };
 
+type ResolvedColorScheme = "light" | "dark";
+
+const clampToRange = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+type SurfacePalette = {
+  light: { background: string; foreground: string; border: string };
+  dark: { background: string; foreground: string; border: string };
+};
+
+const DEFAULT_LIGHT_SURFACE = "#ffffff";
+const DEFAULT_LIGHT_SURFACE_SUBTLE = "#f4f4f5";
+const DEFAULT_LIGHT_BORDER = "rgba(24, 24, 27, 0.12)";
+const DEFAULT_DARK_SURFACE = "#18181b";
+const DEFAULT_DARK_SURFACE_SUBTLE = "#111114";
+const DEFAULT_DARK_BORDER = "rgba(228, 228, 231, 0.16)";
+
+const buildSurfacePalette = (settings: AppearanceSettings): SurfacePalette => {
+  if (!settings.use_custom_surface_colors) {
+    return {
+      light: {
+        background: DEFAULT_LIGHT_SURFACE,
+        foreground: DEFAULT_LIGHT_SURFACE_SUBTLE,
+        border: DEFAULT_LIGHT_BORDER,
+      },
+      dark: {
+        background: DEFAULT_DARK_SURFACE,
+        foreground: DEFAULT_DARK_SURFACE_SUBTLE,
+        border: DEFAULT_DARK_BORDER,
+      },
+    };
+  }
+
+  const hue = clampToRange(settings.surface_hue ?? 222, 0, 360);
+  const tint = clampToRange(settings.surface_tint ?? 92, 0, 100);
+  const shade = clampToRange(settings.surface_shade ?? 16, 0, 100);
+
+  const lightBackground = `hsl(${hue} 28% ${clampToRange(tint, 20, 98)}%)`;
+  const lightForeground = `hsl(${hue} 32% ${clampToRange(tint + 4, 20, 100)}%)`;
+  const lightBorder = `hsla(${hue} 30% ${clampToRange(tint - 38, 0, 90)}%, 0.28)`;
+  const darkBackground = `hsl(${hue} 20% ${clampToRange(shade, 2, 42)}%)`;
+  const darkForeground = `hsl(${hue} 18% ${clampToRange(shade - 6, 0, 32)}%)`;
+  const darkBorder = `hsla(${hue} 34% ${clampToRange(shade + 30, 0, 100)}%, 0.28)`;
+
+  return {
+    light: {
+      background: lightBackground,
+      foreground: lightForeground,
+      border: lightBorder,
+    },
+    dark: {
+      background: darkBackground,
+      foreground: darkForeground,
+      border: darkBorder,
+    },
+  };
+};
+
+const resolveSurfaceColors = (
+  palette: SurfacePalette,
+  scheme: ResolvedColorScheme,
+): SurfacePalette["light"] =>
+  scheme === "dark" ? palette.dark : palette.light;
+
+const resolveThemeColorScheme = (
+  settings: AppearanceSettings,
+  preferred: ResolvedColorScheme,
+): ResolvedColorScheme => {
+  if (settings.color_scheme === "light" || settings.color_scheme === "dark") {
+    return settings.color_scheme;
+  }
+  return preferred;
+};
+
+const normalizeText = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+};
+
+const parseStartScreenPrompts = (
+  raw: string | null | undefined,
+): StartScreenPrompt[] => {
+  if (!raw) {
+    return [];
+  }
+
+  return raw
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry, index) => {
+      const separatorIndex = entry.indexOf("|");
+
+      let label = entry;
+      let prompt = entry;
+
+      if (separatorIndex !== -1) {
+        const rawLabel = entry.slice(0, separatorIndex).trim();
+        const rawPrompt = entry.slice(separatorIndex + 1).trim();
+
+        if (rawLabel || rawPrompt) {
+          label = rawLabel || rawPrompt;
+          prompt = rawPrompt || rawLabel || entry;
+        }
+      }
+
+      return {
+        label,
+        prompt,
+        ...(index === 0 ? { icon: "sparkle" as const } : {}),
+      };
+    });
+};
+
 export function MyChat() {
   const { token, user } = useAuth();
+  const { settings: appearanceSettings } = useAppearanceSettings();
   const { openSidebar } = useAppLayout();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
@@ -709,9 +825,30 @@ export function MyChat() {
     [attachmentsEnabled],
   );
 
+  const composerPlaceholder = useMemo(() => {
+    const candidate = appearanceSettings.start_screen_placeholder?.trim();
+    return candidate && candidate.length > 0
+      ? candidate
+      : "Posez votre question...";
+  }, [appearanceSettings.start_screen_placeholder]);
+
   const chatkitOptions = useMemo(
-    () =>
-      ({
+    () => {
+      const colorScheme = resolveThemeColorScheme(
+        appearanceSettings,
+        preferredColorScheme,
+      );
+      const surfacePalette = buildSurfacePalette(appearanceSettings);
+      const surface = resolveSurfaceColors(surfacePalette, colorScheme);
+      const greeting = normalizeText(appearanceSettings.start_screen_greeting);
+      const prompts = parseStartScreenPrompts(
+        appearanceSettings.start_screen_prompt,
+      );
+      const disclaimerText = normalizeText(
+        appearanceSettings.start_screen_disclaimer,
+      );
+
+      return {
         api: apiConfig,
         initialThread: initialThreadId,
         header: {
@@ -721,29 +858,36 @@ export function MyChat() {
           },
         },
         theme: {
-          colorScheme: preferredColorScheme,
+          colorScheme,
           radius: "pill",
           density: "normal",
+          color: {
+            accent: {
+              primary: appearanceSettings.accent_color,
+              level: 1,
+            },
+            surface: {
+              background: surface.background,
+              foreground: surface.foreground,
+            },
+          },
           typography: {
             baseSize: 16,
-            fontFamily:
-              '"OpenAI Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+            fontFamily: appearanceSettings.body_font,
             fontFamilyMono:
               'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
-            fontSources: [
-              {
-                family: "OpenAI Sans",
-                src: "https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2",
-                weight: 400,
-                style: "normal",
-                display: "swap",
-              },
-              // ...and 7 more font sources
-            ],
           },
         },
+        startScreen:
+          greeting || prompts.length > 0
+            ? {
+                ...(greeting ? { greeting } : {}),
+                ...(prompts.length > 0 ? { prompts } : {}),
+              }
+            : undefined,
+        disclaimer: disclaimerText ? { text: disclaimerText } : undefined,
         composer: {
-          placeholder: "Posez votre question...",
+          placeholder: composerPlaceholder,
           attachments: attachmentsConfig,
         },
         onClientTool: async (toolCall) => {
@@ -813,17 +957,20 @@ export function MyChat() {
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
-      }) satisfies ChatKitOptions,
+      } satisfies ChatKitOptions;
+    },
     [
+      appearanceSettings,
       apiConfig,
       attachmentsConfig,
+      composerPlaceholder,
       initialThreadId,
       openSidebar,
+      preferredColorScheme,
       sessionOwner,
       activeWorkflow?.id,
       activeWorkflowSlug,
-      chatInstanceKey,
-      preferredColorScheme,
+      persistenceSlug,
       reportError,
     ],
   );
@@ -844,8 +991,6 @@ export function MyChat() {
     };
   }, [requestRefresh]);
 
-  const statusMessage = error ?? (isLoading ? "Initialisation de la session…" : null);
-
   const voiceStatusMessage = voiceStatus === "connected"
     ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`
     : voiceStatus === "connecting"
@@ -854,9 +999,15 @@ export function MyChat() {
 
   return (
     <>
-      <ChatSidebar mode={mode} setMode={setMode} onWorkflowActivated={handleWorkflowActivated} />
-      <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
-      <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
+      <ChatSidebar
+        mode={mode}
+        setMode={setMode}
+        onWorkflowActivated={handleWorkflowActivated}
+      />
+      <ChatKitHost
+        control={control}
+        chatInstanceKey={chatInstanceKey}
+      />
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",

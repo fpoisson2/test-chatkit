@@ -5,7 +5,10 @@ type ChatKitHostProps = {
   chatInstanceKey: number;
 };
 
-export const ChatKitHost = ({ control, chatInstanceKey }: ChatKitHostProps) => (
+export const ChatKitHost = ({
+  control,
+  chatInstanceKey,
+}: ChatKitHostProps) => (
   <div className="chatkit-layout__widget">
     <ChatKit
       key={chatInstanceKey}

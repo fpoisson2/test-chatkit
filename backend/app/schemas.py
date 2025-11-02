@@ -230,6 +230,84 @@ class ModelProviderSettingsUpdate(BaseModel):
     )
 
 
+class AppearanceSettingsResponse(BaseModel):
+    color_scheme: Literal["system", "light", "dark"]
+    accent_color: constr(pattern=r"^#[0-9a-fA-F]{6}$")
+    use_custom_surface_colors: bool
+    surface_hue: float
+    surface_tint: float
+    surface_shade: float
+    heading_font: str
+    body_font: str
+    start_screen_greeting: str
+    start_screen_prompt: str
+    start_screen_placeholder: str
+    start_screen_disclaimer: str
+    created_at: datetime.datetime | None = None
+    updated_at: datetime.datetime | None = None
+
+
+class AppearanceSettingsUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    color_scheme: Literal["system", "light", "dark"] | None = Field(
+        default=None,
+        description="Mode de couleur à appliquer (system, light ou dark).",
+    )
+    accent_color: constr(pattern=r"^#[0-9a-fA-F]{6}$") | None = Field(
+        default=None,
+        description="Couleur d'accentuation au format hexadécimal (#RRGGBB).",
+    )
+    use_custom_surface_colors: bool | None = Field(
+        default=None,
+        description="Active les couleurs de surface personnalisées.",
+    )
+    surface_hue: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=360.0,
+        description="Teinte HSL pour les surfaces personnalisées (0-360).",
+    )
+    surface_tint: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Luminosité claire pour les surfaces personnalisées (0-100).",
+    )
+    surface_shade: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Luminosité sombre pour les surfaces personnalisées (0-100).",
+    )
+    heading_font: constr(strip_whitespace=True, min_length=1, max_length=256) | None = (
+        Field(
+            default=None,
+            description="Pile de polices à utiliser pour les titres.",
+        )
+    )
+    body_font: constr(strip_whitespace=True, min_length=1, max_length=256) | None = Field(
+        default=None,
+        description="Pile de polices à utiliser pour le texte principal.",
+    )
+    start_screen_greeting: constr(max_length=4000) | None = Field(
+        default=None,
+        description="Message d'accueil affiché sur l'écran de démarrage.",
+    )
+    start_screen_prompt: constr(max_length=4000) | None = Field(
+        default=None,
+        description="Phrase d'accroche affichée sur l'écran de démarrage.",
+    )
+    start_screen_placeholder: constr(max_length=4000) | None = Field(
+        default=None,
+        description="Placeholder du champ de saisie principal.",
+    )
+    start_screen_disclaimer: constr(max_length=4000) | None = Field(
+        default=None,
+        description="Avertissement facultatif pour l'écran de démarrage.",
+    )
+
+
 class AppSettingsResponse(BaseModel):
     thread_title_prompt: str
     default_thread_title_prompt: str
