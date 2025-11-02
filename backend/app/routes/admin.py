@@ -1078,6 +1078,11 @@ async def generate_language_file(
 
         # Obtenir le provider binding
         logger.info(f"Getting provider binding for provider_id={provider_id_used}, provider_slug={provider_slug}")
+
+        # Debug: afficher les providers disponibles
+        settings = get_settings()
+        logger.info(f"Available providers in settings: {[(p.provider, p.id if hasattr(p, 'id') else 'no-id') for p in settings.model_providers]}")
+
         provider_binding = get_agent_provider_binding(provider_id_used, provider_slug)
 
         print(f"CHECKPOINT 5: Got provider binding result")
