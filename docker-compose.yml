@@ -20,6 +20,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CHATKIT_WORKFLOW_ID: ${CHATKIT_WORKFLOW_ID:-}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
@@ -35,6 +37,7 @@ services:
       SIP_TRANSPORT: ${SIP_TRANSPORT:-udp}
     depends_on:
       - db
+      - redis
   frontend:
     image: node:20
     working_dir: /app
@@ -69,6 +72,39 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatkit}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    command: redis-server --port 6379
+    volumes:
+      - redis-data:/data
+  celery-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    working_dir: /app
+    network_mode: host
+    command: >-
+      celery -A app.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./backend:/app
+      - ./frontend:/frontend
+    environment:
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
+      MODEL_API_BASE: ${MODEL_API_BASE:-}
+      MODEL_API_KEY_ENV: ${MODEL_API_KEY_ENV:-}
+      LITELLM_API_BASE: ${LITELLM_API_BASE:-}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      CHATKIT_API_BASE: ${CHATKIT_API_BASE:-https://api.openai.com}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      - db
+      - redis
 volumes:
   frontend-node_modules:
   postgres-data:
+  redis-data:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import datetime
 import json
 import logging
@@ -1000,232 +999,6 @@ async def list_languages(_admin: User = Depends(require_admin)):
 
 
 
-async def _generate_language_background(
-    task_id: str,
-    code: str,
-    name: str,
-    model_name: str | None,
-    provider_id: str | None,
-    provider_slug: str | None,
-    custom_prompt: str | None,
-    save_to_db: bool
-):
-    """
-    Génère une langue en background et met à jour la tâche.
-
-    Steps:
-    1. Charger le modèle et provider (copier de l'endpoint actuel)
-    2. Extraire les traductions EN (copier de l'endpoint actuel)
-    3. Mettre à jour task.status = "running", task.progress = 10
-    4. Créer un Pydantic model dynamique pour structured output
-    5. Créer Agent avec le model dynamique en output_type
-    6. Exécuter avec Runner.run()
-    7. Mettre à jour task.progress = 80
-    8. Si save_to_db: créer/update Language en BD
-    9. Générer file_content (format .ts)
-    10. Sauvegarder task.file_content, task.language_id
-    11. Mettre à jour task.status = "completed", task.progress = 100
-
-    En cas d'erreur:
-    - task.status = "failed"
-    - task.error_message = str(e)
-    - task.progress = 0
-    """
-    try:
-        # Utiliser SessionLocal pour créer une session dans le background task
-        with SessionLocal() as session:
-            # Charger la tâche
-            task = session.scalar(
-                select(LanguageGenerationTask).where(LanguageGenerationTask.task_id == task_id)
-            )
-            if not task:
-                logger.error(f"Task {task_id} not found in database")
-                return
-
-            try:
-                # Étape 1: Charger les traductions anglaises
-                i18n_path = Path("/frontend/src/i18n")
-                en_file = i18n_path / "translations.en.ts"
-
-                if not en_file.exists():
-                    raise ValueError("Source language file (English) not found")
-
-                en_content = en_file.read_text()
-                pattern = r'"([^"]+)"\s*:\s*"([^"]*(?:\\.[^"]*)*)"'
-                matches = re.findall(pattern, en_content)
-
-                if not matches:
-                    raise ValueError("No translations found in source file")
-
-                en_translations = {key: value for key, value in matches}
-
-                # Mettre à jour: status = running, progress = 10
-                task.status = "running"
-                task.progress = 10
-                session.commit()
-
-                logger.info(f"Task {task_id}: Starting translation for {code} ({name}) with {len(en_translations)} keys")
-
-                # Étape 2: Charger le modèle et provider
-                from agents import Agent, Runner, RunConfig
-                from ..models import AvailableModel
-                from ..chatkit.agent_registry import get_agent_provider_binding
-
-                if model_name:
-                    query = select(AvailableModel).where(AvailableModel.name == model_name)
-                    available_model = session.scalar(query)
-                    if not available_model:
-                        raise ValueError(f"Model '{model_name}' not found in database")
-                else:
-                    available_model = session.scalar(
-                        select(AvailableModel).order_by(AvailableModel.id).limit(1)
-                    )
-                    if not available_model:
-                        raise ValueError("No models configured in the database")
-
-                model_name = available_model.name
-
-                # Résoudre le provider
-                if provider_id or provider_slug:
-                    provider_id_used = provider_id
-                    provider_slug_used = provider_slug
-                else:
-                    provider_id_used = None
-                    provider_slug_used = available_model.provider_slug
-
-                provider_binding = get_agent_provider_binding(provider_id_used, provider_slug_used)
-                if not provider_binding:
-                    raise ValueError(f"Failed to get provider binding for model '{model_name}'")
-
-                # Étape 3: Préparer le prompt
-                translations_json = json.dumps(en_translations, ensure_ascii=False, indent=2)
-
-                if custom_prompt:
-                    prompt = custom_prompt.replace("{{language_name}}", name)
-                    prompt = prompt.replace("{{language_code}}", code)
-                    prompt = prompt.replace("{{translations_json}}", translations_json)
-                else:
-                    prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {name} ({code}).
-
-IMPORTANT RULES:
-1. Keep all keys exactly as they are (do not translate keys)
-2. Only translate the values
-3. Preserve any placeholders like {{{{variable}}}}, {{{{count}}}}, etc.
-4. Preserve any HTML tags or special formatting
-5. Maintain the same level of formality/informality as the source
-6. Return ONLY the translated JSON object, nothing else
-
-Source translations (English):
-{translations_json}
-
-Return the complete JSON object with all keys and their translated values in {name}."""
-
-                # Mettre à jour progress = 20
-                task.progress = 20
-                session.commit()
-
-                # Étape 4: Créer l'agent et exécuter
-                agent = Agent(
-                    name="Language Translator",
-                    model=model_name,
-                    instructions=prompt,
-                )
-                agent._chatkit_provider_binding = provider_binding
-
-                # Mettre à jour progress = 30
-                task.progress = 30
-                session.commit()
-
-                logger.info(f"Task {task_id}: Executing translation agent")
-
-                run_config_kwargs = {}
-                if provider_binding is not None:
-                    run_config_kwargs["model_provider"] = provider_binding.provider
-
-                try:
-                    run_config = RunConfig(**run_config_kwargs)
-                except TypeError:
-                    run_config_kwargs.pop("model_provider", None)
-                    run_config = RunConfig(**run_config_kwargs)
-
-                result = await Runner.run(
-                    agent,
-                    input="Translate the provided JSON to the target language.",
-                    run_config=run_config
-                )
-
-                # Mettre à jour progress = 80
-                task.progress = 80
-                session.commit()
-
-                logger.info(f"Task {task_id}: Translation completed, processing result")
-
-                # Étape 5: Extraire et parser la réponse
-                response_text = result.output if hasattr(result, 'output') else str(result)
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if not json_match:
-                    raise ValueError("Failed to extract JSON from AI response")
-
-                translated_dict = json.loads(json_match.group(0))
-                logger.info(f"Task {task_id}: Successfully translated {len(translated_dict)} keys")
-
-                # Étape 6: Générer le fichier .ts
-                file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {code}: TranslationDictionary = {{\n'
-                for key, value in translated_dict.items():
-                    escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
-                    file_content += f'  "{key}": "{escaped_value}",\n'
-                file_content += '};\n'
-
-                task.file_content = file_content
-
-                # Étape 7: Si save_to_db, créer/update Language en BD
-                language_id = None
-                if save_to_db:
-                    logger.info(f"Task {task_id}: Saving to database")
-                    existing_lang = session.scalar(
-                        select(Language).where(Language.code == code)
-                    )
-
-                    if existing_lang:
-                        existing_lang.name = name
-                        existing_lang.translations = translated_dict
-                        existing_lang.updated_at = datetime.datetime.now(datetime.UTC)
-                        language = existing_lang
-                    else:
-                        language = Language(
-                            code=code,
-                            name=name,
-                            translations=translated_dict
-                        )
-                        session.add(language)
-
-                    session.commit()
-                    session.refresh(language)
-                    language_id = language.id
-                    task.language_id = language_id
-                    logger.info(f"Task {task_id}: Saved to database with language_id={language_id}")
-
-                # Étape 8: Marquer comme terminé
-                task.status = "completed"
-                task.progress = 100
-                task.completed_at = datetime.datetime.now(datetime.UTC)
-                session.commit()
-
-                logger.info(f"Task {task_id}: Completed successfully")
-
-            except Exception as e:
-                # En cas d'erreur, marquer la tâche comme failed
-                logger.exception(f"Task {task_id} failed: {e}")
-                task.status = "failed"
-                task.error_message = str(e)
-                task.progress = 0
-                session.commit()
-
-    except Exception as e:
-        # Erreur fatale (impossible de charger la tâche)
-        logger.exception(f"Fatal error in background task {task_id}: {e}")
-
-
 @router.post("/api/admin/languages/generate", response_model=TaskStartedResponse)
 async def generate_language_file(
     request: LanguageGenerateRequest,
@@ -1233,8 +1006,10 @@ async def generate_language_file(
     _admin: User = Depends(require_admin)
 ):
     """
-    Lance la génération de traduction en background et retourne task_id immédiatement.
+    Lance la génération de traduction en background avec Celery et retourne task_id immédiatement.
     """
+    from ..tasks.language_generation import generate_language_task
+
     code = request.code.strip().lower()
     name = request.name.strip()
     model_name = request.model.strip() if request.model else None
@@ -1276,8 +1051,9 @@ async def generate_language_file(
 
     logger.info(f"Created task {task_id} for language {code} ({name})")
 
-    # Lancer la génération en background
-    asyncio.create_task(_generate_language_background(
+    # Lancer la génération avec Celery
+    # La tâche Celery s'exécutera dans un worker séparé
+    generate_language_task.delay(
         task_id=task_id,
         code=code,
         name=name,
@@ -1286,7 +1062,7 @@ async def generate_language_file(
         provider_slug=provider_slug,
         custom_prompt=custom_prompt,
         save_to_db=save_to_db
-    ))
+    )
 
     return TaskStartedResponse(
         task_id=task_id,
