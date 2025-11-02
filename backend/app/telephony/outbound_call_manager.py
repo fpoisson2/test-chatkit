@@ -1189,6 +1189,9 @@ a=sendrecv
             call.status = status
             for key, value in kwargs.items():
                 if hasattr(call, key):
+                    # Truncate failure_reason to 256 characters to avoid database errors
+                    if key == "failure_reason" and isinstance(value, str) and len(value) > 256:
+                        value = value[:253] + "..."
                     setattr(call, key, value)
             db.commit()
 

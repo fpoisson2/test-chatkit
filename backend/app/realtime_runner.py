@@ -65,8 +65,11 @@ def _normalize_realtime_tools_payload(
 
     normalized: list[Any] = []
     seen_labels: set[str] = set()
+    seen_mcp_urls: dict[str, int] = {}  # URL -> index in normalized list
 
     disallowed_tool_keys = {"agent", "function", "metadata"}
+    # Only include parameters that are supported by OpenAI Realtime API
+    # Note: allow/allowlist is handled by SDK runtime, not sent to API
     mcp_allowed_keys = {
         "type",
         "server_label",
@@ -74,10 +77,6 @@ def _normalize_realtime_tools_payload(
         "authorization",
         "name",
         "description",
-        "transport",
-        "server_id",
-        "allow",
-        "require_approval",  # Allow require_approval for telephony (set to 'never')
     }
 
     for index, entry in enumerate(source_entries):
@@ -176,7 +175,6 @@ def _normalize_realtime_tools_payload(
                 tool_entry["type"] = "mcp"
                 tool_entry["server_label"] = label
                 tool_entry["server_url"] = server_url.strip()
-                tool_entry["transport"] = resolved_config.get("transport")
 
                 authorization_header = resolved_config.get("authorization")
                 if authorization_header:
@@ -184,15 +182,22 @@ def _normalize_realtime_tools_payload(
                 elif "authorization" in tool_entry:
                     tool_entry.pop("authorization", None)
 
-                if isinstance(context, ResolvedMcpServerContext):
-                    if context.server_id is not None:
-                        tool_entry["server_id"] = context.server_id
-                    if context.allowlist:
-                        tool_entry["allow"] = {"tools": list(context.allowlist)}
+                # server_id, require_approval, and allow are internal only
+                # They are NOT sent to OpenAI API, but used by SDK runtime
+                # The allowlist is stored in mcp_server_configs and applied by SDK
 
-                if "require_approval" not in tool_entry:
-                    tool_entry["require_approval"] = "never"
+                # Deduplicate MCP servers by URL - skip duplicates entirely
+                normalized_url = server_url.strip()
+                if normalized_url in seen_mcp_urls:
+                    logger.info(
+                        "Skipping duplicate MCP server at %s",
+                        normalized_url,
+                    )
+                    continue
 
+                seen_mcp_urls[normalized_url] = len(normalized)
+
+                # Add to mcp_server_configs only if not a duplicate
                 if mcp_server_configs is not None:
                     config_entry: dict[str, Any] = {
                         "server_label": label,
