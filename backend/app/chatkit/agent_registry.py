@@ -42,6 +42,7 @@ from ..model_providers._shared import normalize_api_base
 from ..models import AvailableModel
 from ..token_sanitizer import sanitize_model_like
 from ..tool_factory import (
+    ResolvedMcpServerContext,
     build_computer_use_tool,
     build_file_search_tool,
     build_image_generation_tool,
@@ -50,6 +51,7 @@ from ..tool_factory import (
     build_web_search_tool,
     build_widget_validation_tool,
     build_workflow_tool,
+    get_mcp_runtime_context,
 )
 
 logger = logging.getLogger("chatkit.server")
@@ -875,10 +877,14 @@ def _build_agent_kwargs(
 
         normalized_tools: list[Any] = []
         extracted_mcp_servers: list[MCPServer] = []
+        resolved_mcp_contexts: list[ResolvedMcpServerContext] = []
         if coerced_tools:
             for tool in coerced_tools:
                 if isinstance(tool, MCPServer):
                     extracted_mcp_servers.append(tool)
+                    context = get_mcp_runtime_context(tool)
+                    if context is not None:
+                        resolved_mcp_contexts.append(context)
                 elif tool is not None:
                     normalized_tools.append(tool)
 
@@ -898,6 +904,28 @@ def _build_agent_kwargs(
             if extracted_mcp_servers:
                 filtered_existing.extend(extracted_mcp_servers)
             merged["mcp_servers"] = filtered_existing
+
+        if resolved_mcp_contexts:
+            merged["mcp_server_contexts"] = list(resolved_mcp_contexts)
+            resolved_records = [
+                context.record
+                for context in resolved_mcp_contexts
+                if context.record is not None
+            ]
+            if resolved_records:
+                merged["mcp_server_records"] = resolved_records
+
+            allowlist_entries = [
+                {
+                    "server_id": context.server_id,
+                    "server_url": context.server_url,
+                    "tools": list(context.allowlist),
+                }
+                for context in resolved_mcp_contexts
+                if context.allowlist
+            ]
+            if allowlist_entries:
+                merged["mcp_server_allowlists"] = allowlist_entries
 
         if coerced_tools and any(
             isinstance(tool, ComputerTool) for tool in coerced_tools if tool is not None
@@ -940,11 +968,17 @@ def _build_agent_kwargs(
 AGENT_RESPONSE_FORMATS: weakref.WeakKeyDictionary[Agent, dict[str, Any]] = (
     weakref.WeakKeyDictionary()
 )
+AGENT_MCP_METADATA: weakref.WeakKeyDictionary[Agent, dict[str, Any]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     response_format = kwargs.pop("_response_format_override", None)
     provider_binding = kwargs.pop("_provider_binding", None)
+    mcp_server_contexts = kwargs.pop("mcp_server_contexts", None)
+    mcp_server_records = kwargs.pop("mcp_server_records", None)
+    mcp_server_allowlists = kwargs.pop("mcp_server_allowlists", None)
     agent = Agent(**kwargs)
     if response_format is not None:
         try:
@@ -966,6 +1000,31 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
         except Exception:
             logger.debug(
                 "Impossible de mémoriser le response_format pour l'agent %s",
+                getattr(agent, "name", "<inconnu>"),
+            )
+    if any(
+        value is not None
+        for value in (mcp_server_contexts, mcp_server_records, mcp_server_allowlists)
+    ):
+        metadata: dict[str, Any] = {}
+        if mcp_server_contexts is not None:
+            metadata["contexts"] = mcp_server_contexts
+        if mcp_server_records is not None:
+            metadata["records"] = mcp_server_records
+        if mcp_server_allowlists is not None:
+            metadata["allowlists"] = mcp_server_allowlists
+        try:
+            agent._chatkit_mcp_metadata = metadata
+        except Exception:
+            logger.debug(
+                "Impossible d'attacher les métadonnées MCP à l'agent %s",
+                getattr(agent, "name", "<inconnu>"),
+            )
+        try:
+            AGENT_MCP_METADATA[agent] = metadata
+        except Exception:
+            logger.debug(
+                "Impossible de mémoriser les métadonnées MCP pour l'agent %s",
                 getattr(agent, "name", "<inconnu>"),
             )
     if provider_binding is not None:
@@ -1070,6 +1129,7 @@ __all__ = [
     "get_agent_provider_binding",
     "AGENT_BUILDERS",
     "AGENT_RESPONSE_FORMATS",
+    "AGENT_MCP_METADATA",
     "STEP_TITLES",
     "_build_agent_kwargs",
     "_build_custom_agent",

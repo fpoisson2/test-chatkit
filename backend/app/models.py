@@ -291,6 +291,57 @@ class SipAccount(Base):
     )
 
 
+class McpServer(Base):
+    """Configuration persistée d'un serveur MCP externe."""
+
+    __tablename__ = "mcp_servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    server_url: Mapped[str] = mapped_column(Text, nullable=False)
+    transport: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    authorization_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    authorization_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    refresh_token_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    oauth_client_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    oauth_client_secret_encrypted: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    oauth_client_secret_hint: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    oauth_scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    oauth_authorization_endpoint: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    oauth_token_endpoint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    oauth_redirect_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    oauth_metadata: Mapped[dict[str, Any] | None] = mapped_column(
+        PortableJSONB(), nullable=True
+    )
+    tools_cache: Mapped[dict[str, Any] | None] = mapped_column(
+        PortableJSONB(), nullable=True
+    )
+    tools_cache_updated_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
 class HostedWorkflow(Base):
     __tablename__ = "hosted_workflows"
 

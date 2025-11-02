@@ -118,5 +118,6 @@ export type {
   WorkflowToolConfig,
   ParallelBranch,
   McpSseToolConfig,
+  LegacyMcpSseToolConfig,
 } from "../../utils/workflows";
 export type { WorkflowSummary, WorkflowVersionSummary } from "../../types/workflows";

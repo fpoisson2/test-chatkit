@@ -10,6 +10,8 @@ type AdminTabKey =
   | "vector-stores"
   | "widgets"
   | "telephony"
+  | "mcp-servers"
+  | "settings";
   | "settings"
   | "appearance";
 
@@ -22,6 +24,7 @@ const TAB_DEFINITIONS: { key: AdminTabKey; to: string; labelKey: string }[] = [
   { key: "models", to: "/admin/models", labelKey: "admin.tabs.models" },
   { key: "vector-stores", to: "/vector-stores", labelKey: "admin.tabs.vectorStores" },
   { key: "widgets", to: "/widgets", labelKey: "admin.tabs.widgets" },
+  { key: "mcp-servers", to: "/admin/mcp-servers", labelKey: "admin.tabs.mcpServers" },
   { key: "telephony", to: "/admin/sip-accounts", labelKey: "admin.tabs.telephony" },
   { key: "settings", to: "/admin/settings", labelKey: "admin.tabs.settings" },
   { key: "appearance", to: "/admin/appearance", labelKey: "admin.tabs.appearance" },
