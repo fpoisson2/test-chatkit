@@ -1,6 +1,28 @@
 # Comment voir UNIQUEMENT les logs d'appels
 
-## Méthode 1: Modifier le fichier de démarrage principal
+## Méthode 1: Variable d'environnement (LA PLUS SIMPLE!)
+
+**C'EST DÉJÀ CONFIGURÉ!** Il suffit d'ajouter une ligne à votre `.env`:
+
+```bash
+CHATKIT_CALL_TRACKER_ONLY=true
+```
+
+Puis relancez votre backend:
+
+```bash
+docker-compose restart backend
+# ou
+docker-compose up backend
+```
+
+Vous ne verrez plus que les logs d'appels structurés! 🎉
+
+**Voir:** `.env.example.call_tracker` pour un exemple complet avec documentation.
+
+---
+
+## Méthode 2: Modifier le fichier de démarrage principal
 
 Trouvez votre fichier de démarrage (probablement `backend/app/main.py` ou similaire) et ajoutez ceci **TOUT AU DÉBUT**, avant les autres imports:
 

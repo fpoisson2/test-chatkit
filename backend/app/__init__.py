@@ -1,5 +1,35 @@
 """Initialisation du backend FastAPI."""
 
+# ⚠️ CONFIGURATION LOGGING - DOIT ÊTRE EN PREMIER ⚠️
+# Configurer le logging AVANT tous les autres imports pour éviter les logs parasites
+import os
+import logging
+import sys
+
+if os.getenv("CHATKIT_CALL_TRACKER_ONLY", "false").lower() in ("true", "1", "yes"):
+    # Ne montrer QUE les logs d'appels structurés
+    formatter = logging.Formatter('%(message)s')
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+
+    # Couper TOUT par défaut
+    logging.basicConfig(level=logging.CRITICAL, handlers=[])
+
+    # Désactiver tous les loggers bruyants
+    for name in ['chatkit.telephony.pjsua', 'chatkit.server', 'chatkit.telephony.voice_bridge',
+                 'chatkit.realtime', 'httpcore', 'httpx', 'mcp', 'openai', 'uvicorn',
+                 'uvicorn.access', 'uvicorn.error']:
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+        logging.getLogger(name).propagate = False
+
+    # Activer UNIQUEMENT le call tracker
+    call_tracker = logging.getLogger('chatkit.telephony.call_tracker')
+    call_tracker.setLevel(logging.INFO)
+    call_tracker.handlers = [handler]
+    call_tracker.propagate = False
+
+    print("✅ Logs filtrés: UNIQUEMENT chatkit.telephony.call_tracker visible")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
