@@ -7,14 +7,18 @@ import {
   DEFAULT_VOICE_AGENT_START_BEHAVIOR,
   DEFAULT_VOICE_AGENT_STOP_BEHAVIOR,
   DEFAULT_VOICE_AGENT_VOICE,
+  DEFAULT_TRANSCRIPTION_MODEL,
+  DEFAULT_TRANSCRIPTION_LANGUAGE,
   getAgentNestedWorkflow,
-  getAgentMcpSseConfig,
+  getAgentMcpServers,
+  getLegacyMcpSseConfig,
   getAgentWorkflowTools,
   getWidgetNodeConfig,
   resolveVoiceAgentParameters,
   resolveWidgetNodeParameters,
   setAgentNestedWorkflow,
-  setAgentMcpSseConfig,
+  setAgentMcpServers,
+  setLegacyMcpSseConfig,
   setAgentWorkflowTools,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
@@ -30,6 +34,7 @@ import {
   resolveStartParameters,
   type WorkflowToolConfig,
   type McpSseToolConfig,
+  type LegacyMcpSseToolConfig,
 } from "../workflows";
 
 describe("widget_source override", () => {
@@ -256,7 +261,7 @@ describe("mcp sse tool helpers", () => {
       ],
     };
 
-    expect(getAgentMcpSseConfig(parameters)).toEqual({
+    expect(getLegacyMcpSseConfig(parameters)).toEqual({
       url: "https://ha.local/mcp",
       authorization: "Bearer secret",
     });
@@ -266,12 +271,12 @@ describe("mcp sse tool helpers", () => {
     const baseTool = { type: "function", function: { name: "other" } };
     const initial: AgentParameters = { tools: [baseTool] };
 
-    const config: McpSseToolConfig = {
+    const config: LegacyMcpSseToolConfig = {
       url: "  https://ha.local/mcp  ",
       authorization: "",
     };
 
-    const withConfig = setAgentMcpSseConfig(initial, config);
+    const withConfig = setLegacyMcpSseConfig(initial, config);
     expect(withConfig).toEqual({
       tools: [
         baseTool,
@@ -283,10 +288,100 @@ describe("mcp sse tool helpers", () => {
       ],
     });
 
-    const cleared = setAgentMcpSseConfig(withConfig, { url: "   ", authorization: "" });
+    const cleared = setLegacyMcpSseConfig(withConfig, {
+      url: "   ",
+      authorization: "",
+    });
     expect(cleared).toEqual({ tools: [baseTool] });
 
-    const fullyCleared = setAgentMcpSseConfig({ tools: [] }, null);
+    const fullyCleared = setLegacyMcpSseConfig({ tools: [] }, null);
+    expect(fullyCleared).toEqual({});
+  });
+});
+
+describe("mcp server helpers", () => {
+  it("extrait les serveurs persistés et ignore les entrées héritées", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        {
+          type: "mcp",
+          transport: "http_sse",
+          server_id: 7,
+          authorization: "  Bearer foo  ",
+          allow: { tools: ["Alpha", "beta  ", "", 42] },
+        },
+        {
+          type: "mcp",
+          server: { id: " 8 " },
+          tool_names: ["gamma", "gamma"],
+          authorization_override: " override ",
+        },
+        {
+          type: "mcp",
+          transport: "http_sse",
+          url: "https://legacy.example/mcp",
+        },
+        { type: "function", function: { name: "other" } },
+      ],
+    };
+
+    expect(getAgentMcpServers(parameters)).toEqual([
+      {
+        serverId: 7,
+        toolNames: ["Alpha", "beta"],
+        authorizationOverride: "Bearer foo",
+      },
+      {
+        serverId: 8,
+        toolNames: ["gamma"],
+        authorizationOverride: "override",
+      },
+    ]);
+  });
+
+  it("met à jour la liste des serveurs tout en préservant les autres outils", () => {
+    const baseTool = { type: "function", function: { name: "other" } };
+    const legacyTool = {
+      type: "mcp",
+      transport: "http_sse",
+      url: "https://legacy.example/mcp",
+    };
+
+    const initial: AgentParameters = { tools: [baseTool, legacyTool] };
+
+    const updated = setAgentMcpServers(initial, [
+      { serverId: 4, toolNames: ["alpha", "alpha"], authorizationOverride: "   " },
+      { serverId: 3, toolNames: [], authorizationOverride: "token" },
+      { serverId: 4, toolNames: ["beta"] },
+    ]);
+
+    expect(updated).toEqual({
+      tools: [
+        baseTool,
+        legacyTool,
+        {
+          type: "mcp",
+          transport: "http_sse",
+          server_id: 4,
+          server: { id: 4 },
+          allow: { tools: ["beta"] },
+          tool_names: ["beta"],
+        },
+        {
+          type: "mcp",
+          transport: "http_sse",
+          server_id: 3,
+          server: { id: 3 },
+          authorization: "token",
+          authorization_override: "token",
+        },
+      ],
+    });
+
+    const cleared = setAgentMcpServers(updated, []);
+    expect(cleared).toEqual({ tools: [baseTool, legacyTool] });
+
+    const fullyCleared = setAgentMcpServers({ tools: [] }, []);
     expect(fullyCleared).toEqual({});
   });
 });
@@ -305,6 +400,10 @@ describe("voice agent helpers", () => {
           response: true,
           transcription: true,
           function_call: false,
+        },
+        input_audio_transcription: {
+          model: DEFAULT_TRANSCRIPTION_MODEL,
+          language: DEFAULT_TRANSCRIPTION_LANGUAGE,
         },
       },
     });
@@ -337,6 +436,10 @@ describe("voice agent helpers", () => {
           response: true,
           transcription: false,
           function_call: false,
+        },
+        input_audio_transcription: {
+          model: DEFAULT_TRANSCRIPTION_MODEL,
+          language: DEFAULT_TRANSCRIPTION_LANGUAGE,
         },
       },
     });

@@ -6,6 +6,43 @@ import { I18nProvider } from "../../../../../../i18n";
 import type { WorkflowSummary } from "../../../types";
 import { VoiceAgentInspectorSection } from "../VoiceAgentInspectorSection";
 
+vi.mock("../../../../../../auth", () => ({
+  useAuth: () => ({
+    token: "test-token",
+    user: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+  }),
+}));
+
+const { listMock, createMock, probeMock } = vi.hoisted(() => ({
+  listMock: vi.fn(),
+  createMock: vi.fn(),
+  probeMock: vi.fn(),
+}));
+
+vi.mock("../../../../../../utils/backend", async () => {
+  const actual = await vi.importActual<typeof import("../../../../../../utils/backend")>(
+    "../../../../../../utils/backend",
+  );
+  return {
+    ...actual,
+    mcpServersApi: {
+      ...actual.mcpServersApi,
+      list: listMock,
+      create: createMock,
+    },
+    probeMcpServer: probeMock,
+  };
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  listMock.mockResolvedValue([]);
+  createMock.mockResolvedValue(null);
+  probeMock.mockResolvedValue({ status: "ok", tool_names: [] });
+});
+
 const baseWorkflows: WorkflowSummary[] = [
   {
     id: 1,
@@ -54,6 +91,7 @@ const renderSection = (overrides: Partial<Parameters<typeof VoiceAgentInspectorS
     onAgentWorkflowValidationToolChange: vi.fn(),
     onAgentWorkflowToolToggle: vi.fn(),
     onAgentMcpSseConfigChange: vi.fn(),
+    onAgentMcpServersChange: vi.fn(),
     ...overrides,
   };
 

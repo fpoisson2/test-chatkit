@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import base64
 import datetime
-import hashlib
 import json
 import logging
 import math
@@ -15,7 +13,6 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlparse
 
-from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -29,6 +26,11 @@ from .config import (
 )
 from .database import SessionLocal
 from .models import AppSettings, WorkflowAppearance
+from .models import AppSettings
+from .secret_utils import decrypt_secret as _decrypt_secret
+from .secret_utils import encrypt_secret as _encrypt_secret
+from .secret_utils import ensure_secret_key_available
+from .secret_utils import mask_secret as _mask_secret
 
 logger = logging.getLogger(__name__)
 
@@ -91,47 +93,6 @@ _ALLOWED_COLOR_SCHEMES = {"system", "light", "dark"}
 
 def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
-
-
-@lru_cache(maxsize=1)
-def _get_cipher() -> Fernet:
-    secret = os.environ.get("APP_SETTINGS_SECRET_KEY") or os.environ.get(
-        "AUTH_SECRET_KEY"
-    )
-    if not secret:
-        raise RuntimeError(
-            "APP_SETTINGS_SECRET_KEY (ou AUTH_SECRET_KEY) doit être défini pour "
-            "chiffrer les clés API."
-        )
-    digest = hashlib.sha256(secret.encode("utf-8")).digest()
-    key = base64.urlsafe_b64encode(digest)
-    return Fernet(key)
-
-
-def _encrypt_secret(value: str) -> str:
-    return _get_cipher().encrypt(value.encode("utf-8")).decode("utf-8")
-
-
-def _decrypt_secret(value: str | None) -> str | None:
-    if not value:
-        return None
-    try:
-        decrypted = _get_cipher().decrypt(value.encode("utf-8"))
-    except InvalidToken:
-        logger.warning(
-            "Clé API modèle illisible : le secret a probablement été modifié."
-        )
-        return None
-    return decrypted.decode("utf-8")
-
-
-def _mask_secret(value: str) -> str:
-    trimmed = value.strip()
-    if not trimmed:
-        return ""
-    if len(trimmed) <= 4:
-        return "•" * len(trimmed)
-    return "•" * (len(trimmed) - 4) + trimmed[-4:]
 
 
 def _default_thread_title_prompt() -> str:
@@ -1002,6 +963,7 @@ def update_admin_settings(
             stripped_key = candidate_key.strip()
             if not stripped_key:
                 raise ValueError("La clé API ne peut pas être vide.")
+            ensure_secret_key_available()
             settings.model_api_key_encrypted = _encrypt_secret(stripped_key)
             settings.model_api_key_hint = _mask_secret(stripped_key)
         changed = True
@@ -1068,6 +1030,7 @@ def update_admin_settings(
                 stripped_candidate = candidate.strip()
                 if not stripped_candidate:
                     raise ValueError("La clé API ne peut pas être vide.")
+                ensure_secret_key_available()
                 encrypted = _encrypt_secret(stripped_candidate)
                 hint = _mask_secret(stripped_candidate)
             elif delete_flag:

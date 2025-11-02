@@ -36,6 +36,7 @@ const fr: TranslationDictionary = {
   "admin.tabs.models": "Modèles disponibles",
   "admin.tabs.vectorStores": "Vector stores",
   "admin.tabs.widgets": "Bibliothèque de widgets",
+  "admin.tabs.mcpServers": "Serveurs MCP",
   "admin.tabs.telephony": "Téléphonie",
   "admin.tabs.settings": "Paramètres généraux",
   "admin.tabs.appearance": "Apparence et thème",
@@ -430,6 +431,54 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.mcpTestStatus.loading": "Test de connexion en cours…",
   "workflowBuilder.agentInspector.mcpTestStatus.toolListLabel": "Outils disponibles",
   "workflowBuilder.agentInspector.mcpTestStatus.errorUnknown": "erreur inconnue",
+  "workflowBuilder.agentInspector.mcpServersTitle": "Serveurs MCP attribués",
+  "workflowBuilder.agentInspector.mcpServersDescription":
+    "Sélectionnez les serveurs MCP persistés et définissez les outils autorisés.",
+  "workflowBuilder.agentInspector.mcpServersAddButton": "Ajouter un serveur MCP",
+  "workflowBuilder.agentInspector.mcpServersRefreshButton": "Actualiser la liste",
+  "workflowBuilder.agentInspector.mcpServersRefreshing": "Actualisation…",
+  "workflowBuilder.agentInspector.mcpServersLoading": "Chargement des serveurs MCP…",
+  "workflowBuilder.agentInspector.mcpServersLoadError":
+    "Impossible de charger les serveurs MCP.",
+  "workflowBuilder.agentInspector.mcpServersEmpty":
+    "Aucun serveur MCP n'est encore disponible.",
+  "workflowBuilder.agentInspector.mcpServersAuthorizationOverrideLabel":
+    "En-tête Authorization personnalisé",
+  "workflowBuilder.agentInspector.mcpServersAuthorizationStored":
+    "En-tête enregistré : {{hint}}",
+  "workflowBuilder.agentInspector.mcpServersCacheUpdated":
+    "Cache actualisé : {{value}}",
+  "workflowBuilder.agentInspector.mcpServersRestrictToggle":
+    "Limiter aux outils sélectionnés",
+  "workflowBuilder.agentInspector.mcpServersRestrictHelp":
+    "Désactivez cette option pour autoriser tous les outils exposés par le serveur.",
+  "workflowBuilder.agentInspector.mcpServersNoTools":
+    "Aucun outil mis en cache pour ce serveur.",
+  "workflowBuilder.agentInspector.mcpServersAddToolLabel": "Ajouter un outil",
+  "workflowBuilder.agentInspector.mcpServersAddToolPlaceholder":
+    "Nom d'outil (ex. fetch_weather)",
+  "workflowBuilder.agentInspector.mcpServersAddToolButton": "Ajouter",
+  "workflowBuilder.agentInspector.mcpServersProbeButton":
+    "Rafraîchir le cache des outils",
+  "workflowBuilder.agentInspector.mcpServersProbeLoading": "Actualisation en cours…",
+  "workflowBuilder.agentInspector.mcpServersProbeSuccess":
+    "{{count}} outil(s) mis à jour depuis le serveur.",
+  "workflowBuilder.agentInspector.mcpServersProbeError":
+    "Impossible d'actualiser les outils.",
+  "workflowBuilder.agentInspector.mcpServersModalTitle": "Créer un serveur MCP",
+  "workflowBuilder.agentInspector.mcpServersModalLabel": "Libellé",
+  "workflowBuilder.agentInspector.mcpServersModalUrl": "URL du serveur MCP",
+  "workflowBuilder.agentInspector.mcpServersModalClientSecret":
+    "Secret client OAuth",
+  "workflowBuilder.agentInspector.mcpServersModalAccessToken": "Jeton d'accès",
+  "workflowBuilder.agentInspector.mcpServersModalRefreshToken": "Refresh token",
+  "workflowBuilder.agentInspector.mcpServersModalCancel": "Annuler",
+  "workflowBuilder.agentInspector.mcpServersModalSubmit": "Créer le serveur",
+  "workflowBuilder.agentInspector.mcpServersModalSaving": "Enregistrement…",
+  "workflowBuilder.agentInspector.mcpServersModalMissingFields":
+    "Renseignez le libellé et l'URL du serveur MCP.",
+  "workflowBuilder.agentInspector.mcpServersModalError":
+    "Impossible d'enregistrer le serveur MCP.",
   "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
@@ -690,6 +739,121 @@ const fr: TranslationDictionary = {
     "Créez autant de branches que de connexions sortantes depuis ce bloc.",
   "workflowBuilder.parallel.branchMinimum":
     "Au moins deux branches sont nécessaires pour une scission parallèle.",
+  "admin.mcpServers.page.title": "Serveurs MCP",
+  "admin.mcpServers.page.subtitle":
+    "Déclarez et sécurisez les serveurs MCP utilisés par ChatKit.",
+  "admin.mcpServers.actions.startCreate": "Ajouter un serveur",
+  "admin.mcpServers.list.title": "Serveurs configurés",
+  "admin.mcpServers.list.subtitle":
+    "Contrôlez les connexions et le cache des outils exposés par les serveurs MCP.",
+  "admin.mcpServers.list.loading": "Chargement des serveurs MCP…",
+  "admin.mcpServers.list.empty": "Aucun serveur MCP n'est enregistré pour le moment.",
+  "admin.mcpServers.list.columns.label": "Libellé",
+  "admin.mcpServers.list.columns.url": "URL du serveur",
+  "admin.mcpServers.list.columns.tools": "Outils mis en cache",
+  "admin.mcpServers.list.columns.updated": "Cache actualisé",
+  "admin.mcpServers.list.columns.status": "Statut",
+  "admin.mcpServers.list.columns.actions": "Actions",
+  "admin.mcpServers.list.authorizationHint": "Jeton stocké : {{hint}}",
+  "admin.mcpServers.list.toolsWithNames": "{{count}} outil(s) : {{tools}}",
+  "admin.mcpServers.list.toolsEmpty": "Aucun outil mis en cache",
+  "admin.mcpServers.list.neverRefreshed": "Jamais actualisé",
+  "admin.mcpServers.list.status.active": "Actif",
+  "admin.mcpServers.list.status.inactive": "Inactif",
+  "admin.mcpServers.actions.edit": "Modifier",
+  "admin.mcpServers.actions.refreshTools": "Rafraîchir les outils",
+  "admin.mcpServers.actions.refreshing": "Actualisation…",
+  "admin.mcpServers.actions.delete": "Supprimer",
+  "admin.mcpServers.actions.deleting": "Suppression…",
+  "admin.mcpServers.confirm.delete": "Supprimer le serveur « {{label}} » ?",
+  "admin.mcpServers.form.createTitle": "Ajouter un serveur MCP",
+  "admin.mcpServers.form.editTitle": "Modifier « {{label}} »",
+  "admin.mcpServers.form.createSubtitle":
+    "Renseignez l'URL du serveur et les informations d'authentification nécessaires.",
+  "admin.mcpServers.form.editSubtitle":
+    "Mettez à jour les informations ou rafraîchissez le cache des outils.",
+  "admin.mcpServers.form.labelLabel": "Libellé*",
+  "admin.mcpServers.form.labelPlaceholder": "Serveur partenaire",
+  "admin.mcpServers.form.serverUrlLabel": "URL du serveur MCP*",
+  "admin.mcpServers.form.serverUrlPlaceholder": "https://mcp.example.com/",
+  "admin.mcpServers.form.authorizationLabel": "En-tête Authorization",
+  "admin.mcpServers.form.authorizationPlaceholder": "Bearer …",
+  "admin.mcpServers.form.authorizationHint":
+    "En-tête actuel : {{hint}} (laisser vide pour conserver)",
+  "admin.mcpServers.form.accessTokenLabel": "Jeton d'accès",
+  "admin.mcpServers.form.accessTokenPlaceholder": "Nouveau jeton d'accès",
+  "admin.mcpServers.form.accessTokenHint":
+    "Jeton enregistré : {{hint}} (laisser vide pour conserver)",
+  "admin.mcpServers.form.refreshTokenLabel": "Refresh token",
+  "admin.mcpServers.form.refreshTokenPlaceholder": "Nouveau refresh token",
+  "admin.mcpServers.form.refreshTokenHint":
+    "Refresh token enregistré : {{hint}} (laisser vide pour conserver)",
+  "admin.mcpServers.form.oauthClientIdLabel": "Client ID OAuth",
+  "admin.mcpServers.form.oauthClientIdPlaceholder": "Identifiant client",
+  "admin.mcpServers.form.oauthClientSecretLabel": "Client secret OAuth",
+  "admin.mcpServers.form.oauthClientSecretPlaceholder": "Nouveau client secret",
+  "admin.mcpServers.form.oauthClientSecretHint":
+    "Secret enregistré : {{hint}} (laisser vide pour conserver)",
+  "admin.mcpServers.form.oauthScopeLabel": "Scopes OAuth",
+  "admin.mcpServers.form.oauthScopePlaceholder": "scope1 scope2",
+  "admin.mcpServers.form.oauthAuthorizationEndpointLabel":
+    "Endpoint d'autorisation",
+  "admin.mcpServers.form.oauthAuthorizationEndpointPlaceholder":
+    "https://auth.example.com/authorize",
+  "admin.mcpServers.form.oauthTokenEndpointLabel": "Endpoint de jeton",
+  "admin.mcpServers.form.oauthTokenEndpointPlaceholder":
+    "https://auth.example.com/token",
+  "admin.mcpServers.form.oauthRedirectUriLabel": "Redirect URI",
+  "admin.mcpServers.form.oauthRedirectUriPlaceholder":
+    "URL de redirection personnalisée",
+  "admin.mcpServers.form.oauthMetadataLabel": "Métadonnées OAuth (JSON)",
+  "admin.mcpServers.form.oauthMetadataPlaceholder": "{ \"aud\": \"…\" }",
+  "admin.mcpServers.form.oauthMetadataHint":
+    "Le contenu est stocké tel quel pour référence et peut être laissé vide.",
+  "admin.mcpServers.form.isActiveLabel": "Activer ce serveur",
+  "admin.mcpServers.form.saving": "Enregistrement…",
+  "admin.mcpServers.form.createSubmit": "Créer le serveur",
+  "admin.mcpServers.form.updateSubmit": "Enregistrer les modifications",
+  "admin.mcpServers.form.cancelEdit": "Annuler la modification",
+  "admin.mcpServers.form.oauthButton": "Lancer OAuth",
+  "admin.mcpServers.form.testButton": "Tester la connexion",
+  "admin.mcpServers.test.running": "Test en cours…",
+  "admin.mcpServers.test.successWithTools":
+    "Connexion établie ({{count}} outil(s) : {{tools}}).",
+  "admin.mcpServers.test.success": "Connexion établie avec succès.",
+  "admin.mcpServers.test.errorGeneric": "Le test de connexion a échoué.",
+  "admin.mcpServers.oauth.starting": "Initialisation du flux OAuth…",
+  "admin.mcpServers.oauth.pending": "Flux OAuth en attente de validation…",
+  "admin.mcpServers.oauth.success": "Jeton OAuth enregistré.",
+  "admin.mcpServers.oauth.errorGeneric": "Échec du flux OAuth.",
+  "admin.mcpServers.oauth.errorWithDetail": "Échec du flux OAuth : {{detail}}",
+  "admin.mcpServers.oauth.errorMissingDraft":
+    "Impossible d'enregistrer le serveur OAuth : brouillon incomplet.",
+  "admin.mcpServers.feedback.created": "Serveur « {{label}} » créé.",
+  "admin.mcpServers.feedback.updated": "Serveur « {{label}} » mis à jour.",
+  "admin.mcpServers.feedback.deleted": "Serveur « {{label}} » supprimé.",
+  "admin.mcpServers.feedback.toolsRefreshed":
+    "Cache d'outils rafraîchi pour « {{label}} ».",
+  "admin.mcpServers.feedback.oauthSuccess":
+    "Les identifiants OAuth ont été synchronisés.",
+  "admin.mcpServers.errors.sessionExpired":
+    "Session expirée, veuillez vous reconnecter.",
+  "admin.mcpServers.errors.loadFailed":
+    "Impossible de charger les serveurs MCP.",
+  "admin.mcpServers.errors.deleteFailed":
+    "Impossible de supprimer le serveur.",
+  "admin.mcpServers.errors.refreshFailed":
+    "Impossible d'actualiser le cache d'outils.",
+  "admin.mcpServers.errors.saveFailed":
+    "Impossible d'enregistrer le serveur.",
+  "admin.mcpServers.errors.labelRequired":
+    "Indiquez un libellé pour ce serveur.",
+  "admin.mcpServers.errors.serverUrlRequired":
+    "Indiquez l'URL du serveur MCP.",
+  "admin.mcpServers.errors.invalidMetadata":
+    "Les métadonnées doivent être un objet JSON valide.",
+  "admin.mcpServers.errors.testFailed":
+    "Impossible de tester la connexion MCP.",
 };
 
 const en: TranslationDictionary = {
@@ -717,6 +881,7 @@ const en: TranslationDictionary = {
   "admin.tabs.models": "Available models",
   "admin.tabs.vectorStores": "Vector stores",
   "admin.tabs.widgets": "Widget library",
+  "admin.tabs.mcpServers": "MCP servers",
   "admin.tabs.telephony": "Telephony",
   "admin.tabs.settings": "General settings",
   "admin.tabs.appearance": "Appearance",
@@ -1096,6 +1261,51 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.mcpTestStatus.loading": "Testing connection…",
   "workflowBuilder.agentInspector.mcpTestStatus.toolListLabel": "Available tools",
   "workflowBuilder.agentInspector.mcpTestStatus.errorUnknown": "unknown error",
+  "workflowBuilder.agentInspector.mcpServersTitle": "Assigned MCP servers",
+  "workflowBuilder.agentInspector.mcpServersDescription":
+    "Select persisted MCP servers and configure the allowed tools.",
+  "workflowBuilder.agentInspector.mcpServersAddButton": "Add an MCP server",
+  "workflowBuilder.agentInspector.mcpServersRefreshButton": "Refresh list",
+  "workflowBuilder.agentInspector.mcpServersRefreshing": "Refreshing…",
+  "workflowBuilder.agentInspector.mcpServersLoading": "Loading MCP servers…",
+  "workflowBuilder.agentInspector.mcpServersLoadError":
+    "Unable to load MCP servers.",
+  "workflowBuilder.agentInspector.mcpServersEmpty": "No MCP server is available yet.",
+  "workflowBuilder.agentInspector.mcpServersAuthorizationOverrideLabel":
+    "Custom Authorization header",
+  "workflowBuilder.agentInspector.mcpServersAuthorizationStored":
+    "Stored header: {{hint}}",
+  "workflowBuilder.agentInspector.mcpServersCacheUpdated":
+    "Cache updated: {{value}}",
+  "workflowBuilder.agentInspector.mcpServersRestrictToggle":
+    "Restrict to selected tools",
+  "workflowBuilder.agentInspector.mcpServersRestrictHelp":
+    "Disable this option to allow every tool exposed by the server.",
+  "workflowBuilder.agentInspector.mcpServersNoTools":
+    "No cached tool for this server.",
+  "workflowBuilder.agentInspector.mcpServersAddToolLabel": "Add a tool",
+  "workflowBuilder.agentInspector.mcpServersAddToolPlaceholder":
+    "Tool name (e.g. fetch_weather)",
+  "workflowBuilder.agentInspector.mcpServersAddToolButton": "Add",
+  "workflowBuilder.agentInspector.mcpServersProbeButton": "Refresh tool cache",
+  "workflowBuilder.agentInspector.mcpServersProbeLoading": "Refreshing…",
+  "workflowBuilder.agentInspector.mcpServersProbeSuccess":
+    "{{count}} tool(s) refreshed from the server.",
+  "workflowBuilder.agentInspector.mcpServersProbeError":
+    "Unable to refresh the tool list.",
+  "workflowBuilder.agentInspector.mcpServersModalTitle": "Create an MCP server",
+  "workflowBuilder.agentInspector.mcpServersModalLabel": "Label",
+  "workflowBuilder.agentInspector.mcpServersModalUrl": "MCP server URL",
+  "workflowBuilder.agentInspector.mcpServersModalClientSecret": "OAuth client secret",
+  "workflowBuilder.agentInspector.mcpServersModalAccessToken": "Access token",
+  "workflowBuilder.agentInspector.mcpServersModalRefreshToken": "Refresh token",
+  "workflowBuilder.agentInspector.mcpServersModalCancel": "Cancel",
+  "workflowBuilder.agentInspector.mcpServersModalSubmit": "Create server",
+  "workflowBuilder.agentInspector.mcpServersModalSaving": "Saving…",
+  "workflowBuilder.agentInspector.mcpServersModalMissingFields":
+    "Provide the MCP server label and URL.",
+  "workflowBuilder.agentInspector.mcpServersModalError":
+    "Unable to save the MCP server.",
   "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
@@ -1350,6 +1560,120 @@ const en: TranslationDictionary = {
     "Create as many branches as outgoing connections from this block.",
   "workflowBuilder.parallel.branchMinimum":
     "At least two branches are required for a parallel split.",
+  "admin.mcpServers.page.title": "MCP servers",
+  "admin.mcpServers.page.subtitle":
+    "Register and secure the MCP servers used by ChatKit.",
+  "admin.mcpServers.actions.startCreate": "Add a server",
+  "admin.mcpServers.list.title": "Configured servers",
+  "admin.mcpServers.list.subtitle":
+    "Manage access and cached tools exposed by your MCP servers.",
+  "admin.mcpServers.list.loading": "Loading MCP servers…",
+  "admin.mcpServers.list.empty": "No MCP server has been registered yet.",
+  "admin.mcpServers.list.columns.label": "Label",
+  "admin.mcpServers.list.columns.url": "Server URL",
+  "admin.mcpServers.list.columns.tools": "Cached tools",
+  "admin.mcpServers.list.columns.updated": "Cache updated",
+  "admin.mcpServers.list.columns.status": "Status",
+  "admin.mcpServers.list.columns.actions": "Actions",
+  "admin.mcpServers.list.authorizationHint": "Stored token: {{hint}}",
+  "admin.mcpServers.list.toolsWithNames": "{{count}} tool(s): {{tools}}",
+  "admin.mcpServers.list.toolsEmpty": "No cached tool",
+  "admin.mcpServers.list.neverRefreshed": "Never refreshed",
+  "admin.mcpServers.list.status.active": "Active",
+  "admin.mcpServers.list.status.inactive": "Inactive",
+  "admin.mcpServers.actions.edit": "Edit",
+  "admin.mcpServers.actions.refreshTools": "Refresh tools",
+  "admin.mcpServers.actions.refreshing": "Refreshing…",
+  "admin.mcpServers.actions.delete": "Delete",
+  "admin.mcpServers.actions.deleting": "Deleting…",
+  "admin.mcpServers.confirm.delete": "Delete server “{{label}}”?",
+  "admin.mcpServers.form.createTitle": "Add an MCP server",
+  "admin.mcpServers.form.editTitle": "Edit “{{label}}”",
+  "admin.mcpServers.form.createSubtitle":
+    "Provide the server URL and any required authentication details.",
+  "admin.mcpServers.form.editSubtitle":
+    "Update the stored information or refresh the cached tools.",
+  "admin.mcpServers.form.labelLabel": "Label*",
+  "admin.mcpServers.form.labelPlaceholder": "Partner server",
+  "admin.mcpServers.form.serverUrlLabel": "MCP server URL*",
+  "admin.mcpServers.form.serverUrlPlaceholder": "https://mcp.example.com/",
+  "admin.mcpServers.form.authorizationLabel": "Authorization header",
+  "admin.mcpServers.form.authorizationPlaceholder": "Bearer …",
+  "admin.mcpServers.form.authorizationHint":
+    "Current header: {{hint}} (leave blank to keep it)",
+  "admin.mcpServers.form.accessTokenLabel": "Access token",
+  "admin.mcpServers.form.accessTokenPlaceholder": "New access token",
+  "admin.mcpServers.form.accessTokenHint":
+    "Stored token: {{hint}} (leave blank to keep it)",
+  "admin.mcpServers.form.refreshTokenLabel": "Refresh token",
+  "admin.mcpServers.form.refreshTokenPlaceholder": "New refresh token",
+  "admin.mcpServers.form.refreshTokenHint":
+    "Stored refresh token: {{hint}} (leave blank to keep it)",
+  "admin.mcpServers.form.oauthClientIdLabel": "OAuth client ID",
+  "admin.mcpServers.form.oauthClientIdPlaceholder": "Client identifier",
+  "admin.mcpServers.form.oauthClientSecretLabel": "OAuth client secret",
+  "admin.mcpServers.form.oauthClientSecretPlaceholder": "New client secret",
+  "admin.mcpServers.form.oauthClientSecretHint":
+    "Stored secret: {{hint}} (leave blank to keep it)",
+  "admin.mcpServers.form.oauthScopeLabel": "OAuth scopes",
+  "admin.mcpServers.form.oauthScopePlaceholder": "scope1 scope2",
+  "admin.mcpServers.form.oauthAuthorizationEndpointLabel":
+    "Authorization endpoint",
+  "admin.mcpServers.form.oauthAuthorizationEndpointPlaceholder":
+    "https://auth.example.com/authorize",
+  "admin.mcpServers.form.oauthTokenEndpointLabel": "Token endpoint",
+  "admin.mcpServers.form.oauthTokenEndpointPlaceholder":
+    "https://auth.example.com/token",
+  "admin.mcpServers.form.oauthRedirectUriLabel": "Redirect URI",
+  "admin.mcpServers.form.oauthRedirectUriPlaceholder": "Custom redirect URL",
+  "admin.mcpServers.form.oauthMetadataLabel": "OAuth metadata (JSON)",
+  "admin.mcpServers.form.oauthMetadataPlaceholder": "{ \"aud\": \"…\" }",
+  "admin.mcpServers.form.oauthMetadataHint":
+    "Content is stored as-is for reference and can be left empty.",
+  "admin.mcpServers.form.isActiveLabel": "Enable this server",
+  "admin.mcpServers.form.saving": "Saving…",
+  "admin.mcpServers.form.createSubmit": "Create server",
+  "admin.mcpServers.form.updateSubmit": "Save changes",
+  "admin.mcpServers.form.cancelEdit": "Cancel edit",
+  "admin.mcpServers.form.oauthButton": "Start OAuth",
+  "admin.mcpServers.form.testButton": "Test connection",
+  "admin.mcpServers.test.running": "Testing…",
+  "admin.mcpServers.test.successWithTools":
+    "Connection established ({{count}} tool(s): {{tools}}).",
+  "admin.mcpServers.test.success": "Connection established successfully.",
+  "admin.mcpServers.test.errorGeneric": "The connection test failed.",
+  "admin.mcpServers.oauth.starting": "Starting OAuth flow…",
+  "admin.mcpServers.oauth.pending": "Waiting for OAuth confirmation…",
+  "admin.mcpServers.oauth.success": "OAuth token saved.",
+  "admin.mcpServers.oauth.errorGeneric": "OAuth flow failed.",
+  "admin.mcpServers.oauth.errorWithDetail": "OAuth flow failed: {{detail}}",
+  "admin.mcpServers.oauth.errorMissingDraft":
+    "Unable to save the OAuth result: the draft configuration is incomplete.",
+  "admin.mcpServers.feedback.created": "Server “{{label}}” created.",
+  "admin.mcpServers.feedback.updated": "Server “{{label}}” updated.",
+  "admin.mcpServers.feedback.deleted": "Server “{{label}}” deleted.",
+  "admin.mcpServers.feedback.toolsRefreshed":
+    "Tool cache refreshed for “{{label}}”.",
+  "admin.mcpServers.feedback.oauthSuccess":
+    "OAuth credentials were synchronised.",
+  "admin.mcpServers.errors.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.mcpServers.errors.loadFailed":
+    "Unable to load MCP servers.",
+  "admin.mcpServers.errors.deleteFailed":
+    "Unable to delete the server.",
+  "admin.mcpServers.errors.refreshFailed":
+    "Unable to refresh the tool cache.",
+  "admin.mcpServers.errors.saveFailed":
+    "Unable to save the server.",
+  "admin.mcpServers.errors.labelRequired":
+    "Provide a label for this server.",
+  "admin.mcpServers.errors.serverUrlRequired":
+    "Provide the MCP server URL.",
+  "admin.mcpServers.errors.invalidMetadata":
+    "Metadata must be a valid JSON object.",
+  "admin.mcpServers.errors.testFailed":
+    "Unable to test the MCP connection.",
   "vectorStore.ingestion.success.document":
     "Document “{{docId}}” ingested ({{chunkCount}} segment{{pluralSuffix}}).",
 };

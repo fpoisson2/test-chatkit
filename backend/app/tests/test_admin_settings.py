@@ -16,6 +16,7 @@ if str(ROOT_DIR) not in sys.path:
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test-admin-settings.db")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
+os.environ.setdefault("APP_SETTINGS_SECRET_KEY", "app-secret-key")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 
 from backend.app import admin_settings  # noqa: E402

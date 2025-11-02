@@ -27,6 +27,7 @@ import type {
   ImageGenerationToolConfig,
   WebSearchConfig,
   WorkflowSummary,
+  LegacyMcpSseToolConfig,
   McpSseToolConfig,
 } from "../../../types";
 import {
@@ -134,7 +135,11 @@ type AgentInspectorSectionProps = {
   ) => void;
   onAgentMcpSseConfigChange: (
     nodeId: string,
-    config: McpSseToolConfig | null,
+    config: LegacyMcpSseToolConfig | null,
+  ) => void;
+  onAgentMcpServersChange?: (
+    nodeId: string,
+    configs: McpSseToolConfig[],
   ) => void;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
@@ -194,6 +199,7 @@ export const AgentInspectorSection = ({
   onAgentImageGenerationChange,
   onAgentComputerUseChange,
   onAgentMcpSseConfigChange,
+  onAgentMcpServersChange,
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
@@ -333,7 +339,8 @@ export const AgentInspectorSection = ({
 
   const { t } = useI18n();
   const handleTestMcpSseConnection = useCallback(
-    (config: McpSseToolConfig) => testMcpToolConnection(token ?? null, config),
+    (config: LegacyMcpSseToolConfig) =>
+      testMcpToolConnection(token ?? null, config),
     [token],
   );
   const handleStartMcpOAuth = useCallback(
@@ -1757,6 +1764,7 @@ export const AgentInspectorSection = ({
               }
               onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
               onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
+              onAgentMcpServersChange={onAgentMcpServersChange}
               onTestMcpSseConnection={handleTestMcpSseConnection}
               onStartMcpOAuth={handleStartMcpOAuth}
               onPollMcpOAuth={handlePollMcpOAuth}

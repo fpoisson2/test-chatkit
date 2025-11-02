@@ -10,6 +10,7 @@ import {
   useAppearanceSettings,
   type AppearanceWorkflowReference,
 } from "./features/appearance/AppearanceSettingsContext";
+import { useAppearanceSettings } from "./features/appearance/AppearanceSettingsContext";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
@@ -1038,22 +1039,6 @@ export function MyChat() {
     };
   }, [requestRefresh]);
 
-  const hasActiveThread = Boolean(control.threadId);
-  const introMessage =
-    !error && !isLoading && !hasActiveThread
-      ? [
-          appearanceSettings.start_screen_greeting,
-          appearanceSettings.start_screen_prompt,
-          appearanceSettings.start_screen_disclaimer,
-        ]
-          .map((part) => part?.trim())
-          .filter((part): part is string => Boolean(part && part.length > 0))
-          .join("\n\n") || null
-      : null;
-
-  const statusMessage =
-    error ?? (isLoading ? "Initialisation de la session…" : introMessage);
-
   const voiceStatusMessage = voiceStatus === "connected"
     ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`
     : voiceStatus === "connecting"
@@ -1062,9 +1047,15 @@ export function MyChat() {
 
   return (
     <>
-      <ChatSidebar mode={mode} setMode={setMode} onWorkflowActivated={handleWorkflowActivated} />
-      <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
-      <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
+      <ChatSidebar
+        mode={mode}
+        setMode={setMode}
+        onWorkflowActivated={handleWorkflowActivated}
+      />
+      <ChatKitHost
+        control={control}
+        chatInstanceKey={chatInstanceKey}
+      />
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",

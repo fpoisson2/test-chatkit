@@ -1,5 +1,7 @@
 import type { WorkflowSummary } from "../types/workflows";
-import type { McpSseToolConfig } from "./workflows";
+import type { LegacyMcpSseToolConfig } from "./workflows";
+
+type NullableString = string | null | undefined;
 
 const sanitizeBackendUrl = (value: string): string => value.trim();
 
@@ -179,6 +181,55 @@ export type McpTestConnectionResponse = {
   detail?: string;
   status_code?: number;
   tool_names?: string[];
+  server_id?: number;
+  allow?: { tools?: string[] };
+  tools_cache_updated_at?: string;
+};
+
+export type McpServerSummary = {
+  id: number;
+  label: string;
+  server_url: string;
+  transport: string | null;
+  is_active: boolean;
+  oauth_client_id: string | null;
+  oauth_scope: string | null;
+  oauth_authorization_endpoint: string | null;
+  oauth_token_endpoint: string | null;
+  oauth_redirect_uri: string | null;
+  oauth_metadata: Record<string, unknown> | null;
+  authorization_hint: string | null;
+  access_token_hint: string | null;
+  refresh_token_hint: string | null;
+  oauth_client_secret_hint: string | null;
+  tools_cache: Record<string, unknown> | null;
+  tools_cache_updated_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type McpServerPayload = {
+  label?: NullableString;
+  server_url?: NullableString;
+  transport?: NullableString;
+  is_active?: boolean;
+  authorization?: NullableString;
+  access_token?: NullableString;
+  refresh_token?: NullableString;
+  oauth_client_id?: NullableString;
+  oauth_client_secret?: NullableString;
+  oauth_scope?: NullableString;
+  oauth_authorization_endpoint?: NullableString;
+  oauth_token_endpoint?: NullableString;
+  oauth_redirect_uri?: NullableString;
+  oauth_metadata?: Record<string, unknown> | null;
+  refresh_tools?: boolean;
+};
+
+export type McpServerProbeRequest = {
+  serverId?: number | null;
+  url: string;
+  authorization?: NullableString;
 };
 
 export type VoiceSettings = {
@@ -418,16 +469,28 @@ export type WorkflowAppearanceUpdatePayload = AppearanceSettingsUpdatePayload & 
 
 export const testMcpToolConnection = async (
   token: string | null,
-  config: McpSseToolConfig,
+  config: LegacyMcpSseToolConfig,
 ): Promise<McpTestConnectionResponse> => {
+  const serverId = (config as { server_id?: number | null }).server_id;
+  const maybeAuthorization =
+    typeof config.authorization === "string" ? config.authorization.trim() : "";
+
+  if (typeof serverId === "number" && Number.isFinite(serverId)) {
+    return probeMcpServer(token, {
+      serverId,
+      url: config.url,
+      authorization: maybeAuthorization || null,
+    });
+  }
+
   const payload: McpTestConnectionPayload = {
     type: "mcp",
     transport: "http_sse",
     url: config.url,
   };
 
-  if (config.authorization && config.authorization.trim()) {
-    payload.authorization = config.authorization.trim();
+  if (maybeAuthorization) {
+    payload.authorization = maybeAuthorization;
   }
 
   const response = await requestWithFallback("/api/tools/mcp/test-connection", {
@@ -444,6 +507,7 @@ export type McpOAuthStartResponse = {
   state: string;
   expires_in: number;
   redirect_uri: string;
+  server_id?: number;
 };
 
 export type McpOAuthSessionStatusPending = {
@@ -467,25 +531,94 @@ export type McpOAuthSessionStatus =
   | McpOAuthSessionStatusSuccess
   | McpOAuthSessionStatusError;
 
+const normalizeOptionalString = (value: NullableString): string | null | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
+
+const buildMcpServerRequestBody = (
+  payload: McpServerPayload,
+): Record<string, unknown> => {
+  const body: Record<string, unknown> = {};
+
+  const assignString = (key: keyof McpServerPayload) => {
+    const value = payload[key];
+    const normalized = normalizeOptionalString(value);
+    if (normalized === undefined) {
+      return;
+    }
+    body[key] = normalized;
+  };
+
+  assignString("label");
+  assignString("server_url");
+  assignString("transport");
+  if (payload.is_active !== undefined && payload.is_active !== null) {
+    body.is_active = Boolean(payload.is_active);
+  }
+  assignString("authorization");
+  assignString("access_token");
+  assignString("refresh_token");
+  assignString("oauth_client_id");
+  assignString("oauth_client_secret");
+  assignString("oauth_scope");
+  assignString("oauth_authorization_endpoint");
+  assignString("oauth_token_endpoint");
+  assignString("oauth_redirect_uri");
+
+  if (payload.oauth_metadata !== undefined) {
+    body.oauth_metadata = payload.oauth_metadata;
+  }
+
+  if (payload.refresh_tools !== undefined && payload.refresh_tools !== null) {
+    body.refresh_tools = Boolean(payload.refresh_tools);
+  }
+
+  return body;
+};
+
+const mergeMcpServerPayload = (
+  base: McpServerPayload | undefined,
+  updates: McpServerPayload,
+): McpServerPayload => ({
+  ...(base ?? {}),
+  ...updates,
+});
+
+export type McpOAuthPersistencePlan = {
+  serverId?: number | null;
+  payload: McpServerPayload;
+  refreshToolsOnSuccess?: boolean;
+  storeTokenMetadata?: boolean;
+};
+
 export const startMcpOAuthNegotiation = async ({
   token,
   url,
   clientId,
   scope,
   signal,
+  persistence,
 }: {
   token: string | null | undefined;
   url: string;
   clientId?: string | null;
   scope?: string | null;
   signal?: AbortSignal;
+  persistence?: McpOAuthPersistencePlan | null;
 }): Promise<McpOAuthStartResponse> => {
   const trimmedUrl = url.trim();
   if (!trimmedUrl) {
     throw new Error("Missing OAuth provider URL");
   }
 
-  const payload: Record<string, string> = { url: trimmedUrl };
+  const payload: Record<string, string | number> = { url: trimmedUrl };
 
   const normalizedClientId = clientId?.trim();
   if (normalizedClientId) {
@@ -497,6 +630,29 @@ export const startMcpOAuthNegotiation = async ({
     payload.scope = normalizedScope;
   }
 
+  let persistedServerId: number | null = null;
+
+  if (persistence) {
+    const base: McpServerPayload = mergeMcpServerPayload(persistence.payload, {
+      server_url: persistence.payload.server_url ?? trimmedUrl,
+      oauth_client_id: persistence.payload.oauth_client_id ?? normalizedClientId ?? null,
+      oauth_scope: persistence.payload.oauth_scope ?? normalizedScope ?? null,
+      refresh_tools: false,
+    });
+
+    if (persistence.serverId != null) {
+      const result = await updateMcpServer(token ?? null, persistence.serverId, base);
+      persistedServerId = result.id;
+    } else {
+      const result = await createMcpServer(token ?? null, base);
+      persistedServerId = result.id;
+    }
+  }
+
+  if (persistedServerId != null) {
+    payload.server_id = persistedServerId;
+  }
+
   const response = await requestWithFallback("/api/tools/mcp/oauth/start", {
     method: "POST",
     headers: withAuthHeaders(token ?? null),
@@ -504,17 +660,24 @@ export const startMcpOAuthNegotiation = async ({
     signal,
   });
 
-  return response.json();
+  const result: McpOAuthStartResponse = await response.json();
+
+  if (persistedServerId != null) {
+    return { ...result, server_id: persistedServerId };
+  }
+  return result;
 };
 
 export const pollMcpOAuthSession = async ({
   token,
   state,
   signal,
+  persistence,
 }: {
   token: string | null | undefined;
   state: string;
   signal?: AbortSignal;
+  persistence?: McpOAuthPersistencePlan | null;
 }): Promise<McpOAuthSessionStatus> => {
   if (!state.trim()) {
     throw new Error("Missing OAuth session state");
@@ -528,7 +691,63 @@ export const pollMcpOAuthSession = async ({
     },
   );
 
-  return response.json();
+  const result: McpOAuthSessionStatus = await response.json();
+
+  if (
+    persistence &&
+    persistence.serverId != null &&
+    result.status === "ok" &&
+    result.token &&
+    typeof result.token === "object"
+  ) {
+    const tokenPayload = result.token as Record<string, unknown>;
+    const accessTokenRaw = tokenPayload.access_token;
+    const refreshTokenRaw = tokenPayload.refresh_token;
+    const tokenTypeRaw = tokenPayload.token_type;
+
+    const accessToken =
+      typeof accessTokenRaw === "string" ? accessTokenRaw.trim() : undefined;
+    const refreshToken =
+      typeof refreshTokenRaw === "string" ? refreshTokenRaw.trim() : undefined;
+    const tokenType =
+      typeof tokenTypeRaw === "string" ? tokenTypeRaw.trim() : undefined;
+
+    const updatePayload: McpServerPayload = mergeMcpServerPayload(
+      persistence.payload,
+      {
+        refresh_tools:
+          persistence.refreshToolsOnSuccess === undefined
+            ? true
+            : Boolean(persistence.refreshToolsOnSuccess),
+      },
+    );
+
+    if (accessToken) {
+      updatePayload.access_token = accessToken;
+      updatePayload.authorization = tokenType
+        ? `${tokenType} ${accessToken}`.trim()
+        : `Bearer ${accessToken}`;
+    }
+
+    if (refreshToken) {
+      updatePayload.refresh_token = refreshToken;
+    }
+
+    if (persistence.storeTokenMetadata) {
+      updatePayload.oauth_metadata = {
+        ...(persistence.payload.oauth_metadata ?? {}),
+        token: tokenPayload,
+      };
+    }
+
+    try {
+      await updateMcpServer(token ?? null, persistence.serverId, updatePayload);
+    } catch (error) {
+      console.error("Failed to persist MCP server after OAuth flow", error);
+    }
+  }
+
+  return result;
 };
 
 export const cancelMcpOAuthSession = async ({
@@ -612,6 +831,81 @@ export const appSettingsApi = {
   },
 };
 
+export const mcpServersApi = {
+  async list(token: string | null): Promise<McpServerSummary[]> {
+    const response = await requestWithFallback("/api/admin/mcp-servers", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async create(
+    token: string | null,
+    payload: McpServerPayload,
+  ): Promise<McpServerSummary> {
+    const body = buildMcpServerRequestBody(payload);
+    const response = await requestWithFallback("/api/admin/mcp-servers", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    serverId: number,
+    payload: McpServerPayload,
+  ): Promise<McpServerSummary> {
+    const body = buildMcpServerRequestBody(payload);
+    const response = await requestWithFallback(`/api/admin/mcp-servers/${serverId}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, serverId: number): Promise<void> {
+    const response = await requestWithFallback(`/api/admin/mcp-servers/${serverId}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    if (!response.ok && response.status !== 204) {
+      throw new ApiError("Échec de la suppression du serveur MCP", {
+        status: response.status,
+      });
+    }
+  },
+
+  async probe(
+    token: string | null,
+    payload: McpServerProbeRequest,
+  ): Promise<McpTestConnectionResponse> {
+    const body: Record<string, unknown> = {
+      type: "mcp",
+      transport: "http_sse",
+      url: payload.url.trim(),
+    };
+
+    if (payload.serverId != null) {
+      body.server_id = payload.serverId;
+    }
+
+    const authorization = normalizeOptionalString(payload.authorization);
+    if (authorization) {
+      body.authorization = authorization;
+    }
+
+    const response = await requestWithFallback("/api/tools/mcp/test-connection", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return response.json();
+  },
+};
+
 type AppearanceSettingsScope = "admin" | "public";
 
 type AppearanceSettingsGetOptions = {
@@ -648,14 +942,11 @@ export const appearanceSettingsApi = {
     token: string | null,
     payload: AppearanceSettingsUpdatePayload,
   ): Promise<AppearanceSettings> {
-    const response = await requestWithFallback(
-      "/api/admin/appearance-settings",
-      {
-        method: "PATCH",
-        headers: withAuthHeaders(token),
-        body: JSON.stringify(payload),
-      },
-    );
+    const response = await requestWithFallback("/api/admin/appearance-settings", {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
     return response.json();
   },
 
@@ -688,6 +979,10 @@ export const appearanceSettingsApi = {
     return response.json();
   },
 };
+
+const { create: createMcpServer, update: updateMcpServer } = mcpServersApi;
+
+export const probeMcpServer = mcpServersApi.probe;
 
 export const chatkitApi = {
   async getWorkflow(token: string | null): Promise<ChatKitWorkflowInfo> {

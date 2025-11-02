@@ -14,6 +14,7 @@ import type {
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
   WorkflowSummary,
+  LegacyMcpSseToolConfig,
   McpSseToolConfig,
 } from "../../../types";
 import {
@@ -67,7 +68,11 @@ type VoiceAgentInspectorSectionProps = {
   onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
   onAgentMcpSseConfigChange: (
     nodeId: string,
-    config: McpSseToolConfig | null,
+    config: LegacyMcpSseToolConfig | null,
+  ) => void;
+  onAgentMcpServersChange?: (
+    nodeId: string,
+    configs: McpSseToolConfig[],
   ) => void;
 };
 
@@ -94,10 +99,12 @@ export const VoiceAgentInspectorSection = ({
   onAgentWorkflowValidationToolChange,
   onAgentWorkflowToolToggle,
   onAgentMcpSseConfigChange,
+  onAgentMcpServersChange,
 }: VoiceAgentInspectorSectionProps) => {
   const { t } = useI18n();
   const handleTestMcpSseConnection = useCallback(
-    (config: McpSseToolConfig) => testMcpToolConnection(token ?? null, config),
+    (config: LegacyMcpSseToolConfig) =>
+      testMcpToolConnection(token ?? null, config),
     [token],
   );
   const handleStartMcpOAuth = useCallback(
@@ -364,6 +371,7 @@ export const VoiceAgentInspectorSection = ({
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
           onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
+          onAgentMcpServersChange={onAgentMcpServersChange}
           onTestMcpSseConnection={handleTestMcpSseConnection}
           onStartMcpOAuth={handleStartMcpOAuth}
           onPollMcpOAuth={handlePollMcpOAuth}

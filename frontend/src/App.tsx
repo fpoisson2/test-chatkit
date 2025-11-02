@@ -13,6 +13,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
 import { AdminAppSettingsPage } from "./pages/AdminAppSettingsPage";
 import { AdminTelephonyPage } from "./pages/AdminTelephonyPage";
+import { AdminMcpServersPage } from "./pages/AdminMcpServersPage";
 import { AdminAppearancePage } from "./pages/AdminAppearancePage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
@@ -146,6 +147,16 @@ export const App = () => (
         <RequireAdmin>
           <AppLayout>
             <AdminTelephonyPage />
+          </AppLayout>
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/mcp-servers"
+      element={
+        <RequireAdmin>
+          <AppLayout>
+            <AdminMcpServersPage />
           </AppLayout>
         </RequireAdmin>
       }

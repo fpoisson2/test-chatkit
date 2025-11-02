@@ -94,7 +94,7 @@ import {
   setAgentWorkflowTools,
   setAgentWidgetValidationToolEnabled,
   setAgentWebSearchConfig,
-  setAgentMcpSseConfig,
+  setLegacyMcpSseConfig,
   setVoiceAgentVoice,
   setVoiceAgentStartBehavior,
   setVoiceAgentStopBehavior,
@@ -142,6 +142,8 @@ import {
   getParallelSplitBranches,
   type WorkflowToolConfig,
   type McpSseToolConfig,
+  type LegacyMcpSseToolConfig,
+  setAgentMcpServers,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import CreateWorkflowModal from "./components/CreateWorkflowModal";
@@ -3492,12 +3494,30 @@ const WorkflowBuilderPage = () => {
   );
 
   const handleAgentMcpSseConfigChange = useCallback(
-    (nodeId: string, config: McpSseToolConfig | null) => {
+    (nodeId: string, config: LegacyMcpSseToolConfig | null) => {
       updateNodeData(nodeId, (data) => {
         if (!isAgentKind(data.kind) && data.kind !== "voice_agent") {
           return data;
         }
-        const nextParameters = setAgentMcpSseConfig(data.parameters, config);
+        const nextParameters = setLegacyMcpSseConfig(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentMcpServersChange = useCallback(
+    (nodeId: string, configs: McpSseToolConfig[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind) && data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setAgentMcpServers(data.parameters, configs);
         return {
           ...data,
           parameters: nextParameters,
@@ -7888,6 +7908,7 @@ const WorkflowBuilderPage = () => {
             onAgentImageGenerationChange={handleAgentImageGenerationChange}
             onAgentComputerUseChange={handleAgentComputerUseChange}
             onAgentMcpSseConfigChange={handleAgentMcpSseConfigChange}
+            onAgentMcpServersChange={handleAgentMcpServersChange}
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
             hostedWorkflows={hostedWorkflows}

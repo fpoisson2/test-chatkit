@@ -33,6 +33,11 @@ from fastapi import HTTPException, status
 from .admin_settings import resolve_model_provider_credentials
 from .config import get_settings
 from .token_sanitizer import sanitize_value
+from .tool_factory import (
+    ResolvedMcpServerContext,
+    attach_mcp_runtime_context,
+    resolve_mcp_tool_configuration,
+)
 
 logger = logging.getLogger("chatkit.realtime.runner")
 
@@ -69,6 +74,9 @@ def _normalize_realtime_tools_payload(
         "authorization",
         "name",
         "description",
+        "transport",
+        "server_id",
+        "allow",
         "require_approval",  # Allow require_approval for telephony (set to 'never')
     }
 
@@ -129,7 +137,28 @@ def _normalize_realtime_tools_payload(
                 }
 
             if tool_type == "mcp":
-                label = _derive_mcp_server_label(tool_entry)
+                try:
+                    resolved_config, context = resolve_mcp_tool_configuration(raw_entry)
+                except ValueError as exc:
+                    logger.warning(
+                        "Impossible de normaliser la configuration MCP %s : %s",
+                        raw_entry,
+                        exc,
+                    )
+                    continue
+
+                server_url = resolved_config.get("url")
+                if not isinstance(server_url, str) or not server_url.strip():
+                    logger.warning(
+                        "Configuration MCP invalide : URL manquante (%s)", raw_entry
+                    )
+                    continue
+
+                label = None
+                if isinstance(context, ResolvedMcpServerContext):
+                    label = context.label
+                if not label:
+                    label = _derive_mcp_server_label(raw_entry)
                 if not label:
                     label = f"mcp-server-{index + 1}"
                 base_label = label
@@ -137,26 +166,7 @@ def _normalize_realtime_tools_payload(
                 while label in seen_labels:
                     label = f"{base_label}-{suffix}"
                     suffix += 1
-                tool_entry["server_label"] = label
                 seen_labels.add(label)
-
-                # L'API Realtime attend le champ `server_url` au lieu de `url`.
-                server_url: str | None = None
-                raw_server_url = tool_entry.get("server_url")
-                if isinstance(raw_server_url, str) and raw_server_url.strip():
-                    server_url = raw_server_url.strip()
-                else:
-                    legacy_keys = ("url", "endpoint", "transport_url")
-                    for key in legacy_keys:
-                        value = raw_entry.get(key)
-                        if isinstance(value, str) and value.strip():
-                            server_url = value.strip()
-                            break
-
-                if server_url:
-                    tool_entry["server_url"] = server_url
-                for legacy_key in ("url", "endpoint", "transport_url"):
-                    tool_entry.pop(legacy_key, None)
 
                 tool_entry = {
                     key: value
@@ -164,52 +174,39 @@ def _normalize_realtime_tools_payload(
                     if key in mcp_allowed_keys
                 }
                 tool_entry["type"] = "mcp"
+                tool_entry["server_label"] = label
+                tool_entry["server_url"] = server_url.strip()
+                tool_entry["transport"] = resolved_config.get("transport")
 
-                # For telephony, force require_approval to 'never' to allow automatic tool use
+                authorization_header = resolved_config.get("authorization")
+                if authorization_header:
+                    tool_entry["authorization"] = authorization_header
+                elif "authorization" in tool_entry:
+                    tool_entry.pop("authorization", None)
+
+                if isinstance(context, ResolvedMcpServerContext):
+                    if context.server_id is not None:
+                        tool_entry["server_id"] = context.server_id
+                    if context.allowlist:
+                        tool_entry["allow"] = {"tools": list(context.allowlist)}
+
                 if "require_approval" not in tool_entry:
                     tool_entry["require_approval"] = "never"
 
-                if (
-                    mcp_server_configs is not None
-                    and server_url
-                ):
-                    transport = raw_entry.get("transport") or raw_entry.get(
-                        "connector_transport"
-                    )
-                    transport_value: str | None = None
-                    if isinstance(transport, str):
-                        candidate = transport.strip()
-                        if candidate:
-                            transport_value = candidate.lower()
-
-                    headers: dict[str, str] | None = None
-                    raw_headers = raw_entry.get("headers")
-                    if isinstance(raw_headers, Mapping):
-                        candidate_headers: dict[str, str] = {}
-                        for header_key, header_value in raw_headers.items():
-                            if isinstance(header_key, str) and isinstance(
-                                header_value, str
-                            ):
-                                candidate_headers[header_key] = header_value
-                        if candidate_headers:
-                            headers = candidate_headers
-
-                    authorization = raw_entry.get("authorization")
-                    authorization_value: str | None = None
-                    if isinstance(authorization, str):
-                        candidate = authorization.strip()
-                        if candidate:
-                            authorization_value = candidate
-
-                    mcp_server_configs.append(
-                        {
-                            "server_label": label,
-                            "server_url": server_url,
-                            "authorization": authorization_value,
-                            "headers": headers,
-                            "transport": transport_value,
-                        }
-                    )
+                if mcp_server_configs is not None:
+                    config_entry: dict[str, Any] = {
+                        "server_label": label,
+                        "server_url": server_url.strip(),
+                        "transport": resolved_config.get("transport"),
+                        "authorization": authorization_header,
+                        "__context__": context,
+                    }
+                    if isinstance(context, ResolvedMcpServerContext):
+                        if context.server_id is not None:
+                            config_entry["server_id"] = context.server_id
+                        if context.allowlist:
+                            config_entry["allow"] = list(context.allowlist)
+                    mcp_server_configs.append(config_entry)
 
             normalized.append(tool_entry)
         else:
@@ -367,9 +364,12 @@ async def _connect_mcp_servers(
 
     servers: list[MCPServer] = []
     for config in configs:
+        context = config.get("__context__")
         server = _create_mcp_server_from_config(config)
         if server is None:
             continue
+        if isinstance(context, ResolvedMcpServerContext):
+            attach_mcp_runtime_context(server, context)
         try:
             await server.connect()
         except Exception as exc:  # pragma: no cover - dépendances externes
@@ -403,6 +403,14 @@ async def _connect_mcp_servers(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={"error": "MCP server connection failed"},
             ) from exc
+        if isinstance(context, ResolvedMcpServerContext) and context.allowlist:
+            sanitized_allowlist = [
+                entry
+                for entry in context.allowlist
+                if isinstance(entry, str) and entry.strip()
+            ]
+            if sanitized_allowlist:
+                server._chatkit_mcp_allowlist = tuple(sanitized_allowlist)
         servers.append(server)
 
     return servers
@@ -670,13 +678,17 @@ class RealtimeVoiceSessionOrchestrator:
                     session_payload["audio"] = {}
                 if "input" not in session_payload["audio"]:
                     session_payload["audio"]["input"] = {}
-                session_payload["audio"]["input"]["turn_detection"] = dict(realtime["turn_detection"])
+                session_payload["audio"]["input"]["turn_detection"] = dict(
+                    realtime["turn_detection"]
+                )
 
             payload: dict[str, Any] = {"session": session_payload}
 
             if isinstance(realtime, Mapping):
                 # Only add non-turn_detection settings to realtime
-                realtime_filtered = {k: v for k, v in realtime.items() if k != "turn_detection"}
+                realtime_filtered = {
+                    k: v for k, v in realtime.items() if k != "turn_detection"
+                }
                 if realtime_filtered:
                     if realtime_mode == "session":
                         session_payload["realtime"] = realtime_filtered
@@ -1045,6 +1057,8 @@ class RealtimeVoiceSessionOrchestrator:
                         "server_label": config.get("server_label"),
                         "server_url": config.get("server_url"),
                         "transport": config.get("transport"),
+                        "server_id": config.get("server_id"),
+                        "allow": config.get("allow"),
                     }
                     for config in mcp_server_configs
                 ]

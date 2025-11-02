@@ -1,11 +1,44 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../../../../../../i18n";
-import type { HostedWorkflowMetadata } from "../../../../../../utils/backend";
+import type {
+  HostedWorkflowMetadata,
+  McpServerSummary,
+} from "../../../../../../utils/backend";
 import type { WorkflowSummary } from "../../../types";
 import { AgentInspectorSection } from "../AgentInspectorSection";
+
+vi.mock("../../../../../../auth", () => ({
+  useAuth: () => ({
+    token: "test-token",
+    user: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+  }),
+}));
+
+const { listMock, createMock, probeMock } = vi.hoisted(() => ({
+  listMock: vi.fn(),
+  createMock: vi.fn(),
+  probeMock: vi.fn(),
+}));
+
+vi.mock("../../../../../../utils/backend", async () => {
+  const actual = await vi.importActual<typeof import("../../../../../../utils/backend")>(
+    "../../../../../../utils/backend",
+  );
+  return {
+    ...actual,
+    mcpServersApi: {
+      ...actual.mcpServersApi,
+      list: listMock,
+      create: createMock,
+    },
+    probeMcpServer: probeMock,
+  };
+});
 
 const baseWorkflows: WorkflowSummary[] = [
   {
@@ -53,8 +86,61 @@ const baseHostedWorkflows: HostedWorkflowMetadata[] = [
   },
 ];
 
+const sampleServers: McpServerSummary[] = [
+  {
+    id: 1,
+    label: "Alpha",
+    server_url: "https://alpha.example.com",
+    transport: "http_sse",
+    is_active: true,
+    oauth_client_id: null,
+    oauth_scope: null,
+    oauth_authorization_endpoint: null,
+    oauth_token_endpoint: null,
+    oauth_redirect_uri: null,
+    oauth_metadata: null,
+    authorization_hint: "****ALPHA",
+    access_token_hint: null,
+    refresh_token_hint: null,
+    oauth_client_secret_hint: null,
+    tools_cache: { tool_names: ["alpha-tool", "beta-tool"] },
+    tools_cache_updated_at: "2024-01-01T00:00:00Z",
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  },
+  {
+    id: 2,
+    label: "Beta",
+    server_url: "https://beta.example.com",
+    transport: "http_sse",
+    is_active: true,
+    oauth_client_id: null,
+    oauth_scope: null,
+    oauth_authorization_endpoint: null,
+    oauth_token_endpoint: null,
+    oauth_redirect_uri: null,
+    oauth_metadata: null,
+    authorization_hint: null,
+    access_token_hint: null,
+    refresh_token_hint: null,
+    oauth_client_secret_hint: null,
+    tools_cache: { tool_names: ["gamma-tool"] },
+    tools_cache_updated_at: "2024-01-02T00:00:00Z",
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-02T00:00:00Z",
+  },
+];
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  listMock.mockResolvedValue([]);
+  createMock.mockResolvedValue(sampleServers[0]);
+  probeMock.mockResolvedValue({ status: "ok", tool_names: [] });
+});
+
 const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSection>[0]> = {}) => {
   const onAgentNestedWorkflowChange = vi.fn();
+  const onAgentMcpServersChange = overrides.onAgentMcpServersChange ?? vi.fn();
   render(
     <I18nProvider>
       <AgentInspectorSection
@@ -102,6 +188,7 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
         onAgentImageGenerationChange={vi.fn()}
         onAgentComputerUseChange={vi.fn()}
         onAgentMcpSseConfigChange={vi.fn()}
+        onAgentMcpServersChange={onAgentMcpServersChange}
         onAgentWeatherToolChange={vi.fn()}
         onAgentWidgetValidationToolChange={vi.fn()}
         onAgentWorkflowValidationToolChange={vi.fn()}
@@ -110,7 +197,7 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
       />
     </I18nProvider>,
   );
-  return { onAgentNestedWorkflowChange };
+  return { onAgentNestedWorkflowChange, onAgentMcpServersChange };
 };
 
 describe("AgentInspectorSection", () => {
@@ -206,6 +293,106 @@ describe("AgentInspectorSection", () => {
 
     const option = screen.getByRole("option", { name: /GPT-1/ }) as HTMLOptionElement;
     expect(option.value).toContain('"store":false');
+  });
+
+  it("selects persisted MCP servers and forwards selections", async () => {
+    listMock.mockResolvedValue(sampleServers);
+    const { onAgentMcpServersChange } = renderSection({
+      onAgentMcpServersChange: vi.fn(),
+    });
+
+    const alphaCheckbox = await screen.findByLabelText(/Alpha/);
+    await userEvent.click(alphaCheckbox);
+
+    await waitFor(() => {
+      expect(onAgentMcpServersChange).toHaveBeenLastCalledWith("agent-1", [
+        { serverId: 1, toolNames: [] },
+      ]);
+    });
+  });
+
+  it("updates allowlists when toggling MCP tool chips", async () => {
+    listMock.mockResolvedValue(sampleServers);
+    const { onAgentMcpServersChange } = renderSection({
+      onAgentMcpServersChange: vi.fn(),
+    });
+
+    const alphaCheckbox = await screen.findByLabelText(/Alpha/);
+    await userEvent.click(alphaCheckbox);
+    await waitFor(() => expect(onAgentMcpServersChange).toHaveBeenCalled());
+    onAgentMcpServersChange.mockClear();
+
+    const betaChip = screen.getByLabelText(/beta-tool/i);
+    await userEvent.click(betaChip);
+
+    await waitFor(() => {
+      expect(onAgentMcpServersChange).toHaveBeenLastCalledWith("agent-1", [
+        { serverId: 1, toolNames: ["alpha-tool"] },
+      ]);
+    });
+
+    const manualInput = screen.getByPlaceholderText(/Nom d'outil|Tool name/i);
+    await userEvent.clear(manualInput);
+    await userEvent.type(manualInput, "delta-tool");
+    const addButton = screen.getByRole("button", { name: /^(Ajouter|Add)$/i });
+    await userEvent.click(addButton);
+
+    await waitFor(() => {
+      expect(onAgentMcpServersChange).toHaveBeenLastCalledWith("agent-1", [
+        { serverId: 1, toolNames: ["alpha-tool", "delta-tool"] },
+      ]);
+    });
+  });
+
+  it("creates a new MCP server via the modal", async () => {
+    const createdServer: McpServerSummary = {
+      ...sampleServers[0],
+      id: 3,
+      label: "Gamma",
+      server_url: "https://gamma.example.com",
+    };
+    listMock.mockResolvedValueOnce(sampleServers);
+    listMock.mockResolvedValueOnce([...sampleServers, createdServer]);
+    createMock.mockResolvedValue(createdServer);
+
+    renderSection();
+
+    await screen.findByText(/Alpha/);
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: /Ajouter un serveur MCP|Add an MCP server/i,
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(
+      within(dialog).getByLabelText(/Libellé|Label/i),
+      "Gamma",
+    );
+    await userEvent.type(
+      within(dialog).getByLabelText(/URL du serveur MCP|MCP server URL/i),
+      "https://gamma.example.com",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: /Créer le serveur|Create server/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith(
+        "test-token",
+        expect.objectContaining({
+          label: "Gamma",
+          server_url: "https://gamma.example.com",
+        }),
+      );
+    });
+
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 
   it("disables the store toggle when the selected model forbids persistence", async () => {

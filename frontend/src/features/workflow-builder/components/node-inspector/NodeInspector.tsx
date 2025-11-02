@@ -49,6 +49,7 @@ import type {
   WidgetVariableAssignment,
   WorkflowSummary,
   ParallelBranch,
+  LegacyMcpSseToolConfig,
   McpSseToolConfig,
 } from "../../types";
 import { labelForKind } from "../../utils";
@@ -124,7 +125,10 @@ export type NodeInspectorProps = {
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
   onAgentImageGenerationChange: (nodeId: string, config: ImageGenerationToolConfig | null) => void;
   onAgentComputerUseChange: (nodeId: string, config: ComputerUseConfig | null) => void;
-  onAgentMcpSseConfigChange: (nodeId: string, config: McpSseToolConfig | null) => void;
+  onAgentMcpSseConfigChange: (
+    nodeId: string,
+    config: LegacyMcpSseToolConfig | null,
+  ) => void;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
   hostedWorkflows: HostedWorkflowMetadata[];
@@ -178,7 +182,14 @@ export type NodeInspectorProps = {
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
-  onAgentMcpSseConfigChange: (nodeId: string, config: McpSseToolConfig | null) => void;
+  onAgentMcpSseConfigChange: (
+    nodeId: string,
+    config: LegacyMcpSseToolConfig | null,
+  ) => void;
+  onAgentMcpServersChange?: (
+    nodeId: string,
+    configs: McpSseToolConfig[],
+  ) => void;
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
@@ -233,6 +244,7 @@ const NodeInspector = ({
   onAgentImageGenerationChange,
   onAgentComputerUseChange,
   onAgentMcpSseConfigChange,
+  onAgentMcpServersChange,
   workflows,
   currentWorkflowId,
   hostedWorkflows,
@@ -552,6 +564,7 @@ const NodeInspector = ({
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+          onAgentMcpServersChange={onAgentMcpServersChange}
         />
       ) : null}
 
@@ -579,6 +592,7 @@ const NodeInspector = ({
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
           onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
+          onAgentMcpServersChange={onAgentMcpServersChange}
         />
       ) : null}
 

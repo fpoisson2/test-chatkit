@@ -5,12 +5,17 @@ import hashlib
 import logging
 import secrets
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
+
+from ..database import SessionLocal
+from ..models import McpServer
+from ..secret_utils import decrypt_secret
 
 SESSION_TTL_SECONDS = 300
 
@@ -24,6 +29,7 @@ class OAuthSession:
     scope: str | None
     redirect_uri: str
     expires_at: float
+    server_id: int | None = None
     status: Literal["pending", "ok", "error"] = "pending"
     token: dict[str, Any] | None = None
     error: str | None = None
@@ -95,6 +101,75 @@ def _update_session(state: str, **updates: Any) -> None:
             setattr(session, key, value)
 
 
+def _resolve_token_endpoint_auth_method(
+    metadata: Mapping[str, Any] | None,
+) -> str | None:
+    if not isinstance(metadata, Mapping):
+        return None
+
+    candidate = metadata.get("token_endpoint_auth_method")
+    if isinstance(candidate, str) and candidate.strip():
+        return candidate.strip().lower()
+
+    supported = metadata.get("token_endpoint_auth_methods_supported")
+    if isinstance(supported, list | tuple | set):
+        for entry in supported:
+            if isinstance(entry, str) and entry.strip():
+                normalized = entry.strip().lower()
+                if normalized in {"client_secret_basic", "client_secret_post", "none"}:
+                    return normalized
+
+    return None
+
+
+def _extract_token_request_params(
+    metadata: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    if not isinstance(metadata, Mapping):
+        return {}
+
+    params: dict[str, str] = {}
+
+    for key in ("token_request", "token_request_params", "token_params"):
+        value = metadata.get(key)
+        if isinstance(value, Mapping):
+            for param_key, param_value in value.items():
+                if not isinstance(param_key, str):
+                    continue
+                if param_value is None:
+                    continue
+                if isinstance(param_value, str | int | float | bool):
+                    if param_key not in params:
+                        params[param_key] = str(param_value)
+
+    for extra_key in ("resource", "audience"):
+        value = metadata.get(extra_key)
+        if isinstance(value, str | int | float | bool) and extra_key not in params:
+            params[extra_key] = str(value)
+
+    return params
+
+
+def _extract_token_request_headers(
+    metadata: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    if not isinstance(metadata, Mapping):
+        return {}
+
+    headers: dict[str, str] = {}
+    for key in ("token_request_headers", "token_headers"):
+        value = metadata.get(key)
+        if isinstance(value, Mapping):
+            for header_key, header_value in value.items():
+                if (
+                    isinstance(header_key, str)
+                    and header_key.strip()
+                    and isinstance(header_value, str)
+                ):
+                    headers[header_key.strip()] = header_value.strip()
+    return headers
+
+
 def _resolve_endpoint(
     endpoint: str,
     *,
@@ -115,6 +190,7 @@ async def start_oauth_flow(
     redirect_uri: str,
     client_id: str | None = None,
     scope: str | None = None,
+    server_id: int | None = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
     """Initialise un flux OAuth2 avec PKCE et renvoie l'URL d'autorisation."""
@@ -128,10 +204,12 @@ async def start_oauth_flow(
     discovery_url = urljoin(str(base_url), "/.well-known/oauth-authorization-server")
 
     logger.info(
-        "Starting OAuth flow base_url=%s client_id_present=%s scope_present=%s",
+        "Starting OAuth flow base_url=%s client_id_present=%s scope_present=%s "
+        "server_id=%s",
         base_url,
         bool(client_id),
         bool(scope),
+        server_id,
     )
 
     close_client = False
@@ -164,7 +242,8 @@ async def start_oauth_flow(
     if not authorization_endpoint or not token_endpoint:
         raise ValueError("La découverte OAuth2 ne fournit pas les endpoints attendus.")
 
-    # Si pas de client_id fourni et qu'il y a un registration_endpoint, enregistrer dynamiquement
+    # Si pas de client_id fourni et qu'un registration_endpoint est disponible,
+    # tenter un enregistrement dynamique du client.
     effective_client_id = discovered_client_id if discovered_client_id else client_id
 
     if not effective_client_id and registration_endpoint:
@@ -220,7 +299,8 @@ async def start_oauth_flow(
         await http_client.aclose()
 
     logger.debug(
-        "OAuth configuration discovered_client_id=%s provided_client_id=%s effective_client_id=%s",
+        "OAuth configuration discovered_client_id=%s provided_client_id=%s "
+        "effective_client_id=%s",
         discovered_client_id,
         client_id,
         effective_client_id,
@@ -263,23 +343,31 @@ async def start_oauth_flow(
         scope=scope,
         redirect_uri=redirect_uri,
         expires_at=time.time() + SESSION_TTL_SECONDS,
+        server_id=server_id,
     )
     _store_session(session)
 
     logger.debug(
-        "Stored OAuth session state=%s token_endpoint=%s client_id=%s scope=%s",
+        "Stored OAuth session state=%s token_endpoint=%s client_id=%s scope=%s "
+        "server_id=%s",
         state,
         token_endpoint,
         effective_client_id,
         scope,
+        server_id,
     )
 
-    return {
+    result = {
         "authorization_url": authorization_url,
         "state": state,
         "expires_in": SESSION_TTL_SECONDS,
         "redirect_uri": redirect_uri,
     }
+
+    if server_id is not None:
+        result["server_id"] = server_id
+
+    return result
 
 
 async def complete_oauth_callback(
@@ -298,11 +386,13 @@ async def complete_oauth_callback(
         raise ValueError("Session OAuth inconnue ou expirée.")
 
     logger.info(
-        "Completing OAuth callback state=%s has_code=%s has_error=%s client_id=%s",
+        "Completing OAuth callback state=%s has_code=%s has_error=%s client_id=%s "
+        "server_id=%s",
         state,
         bool(code),
         bool(error),
         session.client_id,
+        session.server_id,
     )
 
     if error:
@@ -315,16 +405,91 @@ async def complete_oauth_callback(
             "Le paramètre 'code' est requis pour finaliser l'authentification."
         )
 
+    client_id_value = session.client_id
+    scope_value = session.scope
+    metadata: Mapping[str, Any] | None = None
+    client_secret: str | None = None
+
+    if session.server_id is not None:
+        try:
+            with SessionLocal() as db_session:
+                record = db_session.get(McpServer, session.server_id)
+            if record is not None:
+                raw_client_id = getattr(record, "oauth_client_id", None)
+                if (not client_id_value) and isinstance(raw_client_id, str):
+                    stripped_client_id = raw_client_id.strip()
+                    if stripped_client_id:
+                        client_id_value = stripped_client_id
+
+                raw_secret = decrypt_secret(
+                    getattr(record, "oauth_client_secret_encrypted", None)
+                )
+                if isinstance(raw_secret, str):
+                    stripped_secret = raw_secret.strip()
+                    if stripped_secret:
+                        client_secret = stripped_secret
+
+                record_metadata = getattr(record, "oauth_metadata", None)
+                if isinstance(record_metadata, Mapping):
+                    metadata = dict(record_metadata)
+        except Exception as exc:  # pragma: no cover - récupération best effort
+            logger.warning(
+                "Unable to load MCP server %s for OAuth state=%s: %s",
+                session.server_id,
+                state,
+                exc,
+            )
+
     data = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": session.redirect_uri,
         "code_verifier": session.code_verifier,
     }
-    if session.client_id:
-        data["client_id"] = session.client_id
-    if session.scope:
-        data["scope"] = session.scope
+    if client_id_value:
+        data["client_id"] = client_id_value
+    if scope_value:
+        data["scope"] = scope_value
+
+    headers = _extract_token_request_headers(metadata)
+
+    extra_params = _extract_token_request_params(metadata)
+    for key, value in extra_params.items():
+        if key not in data:
+            data[key] = value
+
+    auth_method = _resolve_token_endpoint_auth_method(metadata)
+
+    if client_secret:
+        logger.debug(
+            "OAuth state=%s using stored client_secret (length=%d) auth_method=%s",
+            state,
+            len(client_secret),
+            auth_method or "<default>",
+        )
+        if auth_method is None:
+            auth_method = "client_secret_basic"
+            if not client_id_value:
+                auth_method = "client_secret_post"
+
+        if auth_method == "client_secret_basic" and client_id_value:
+            basic_payload = f"{client_id_value}:{client_secret}".encode()
+            encoded = base64.b64encode(basic_payload).decode("ascii")
+            headers.setdefault("Authorization", f"Basic {encoded}")
+        elif auth_method == "client_secret_post":
+            data.setdefault("client_secret", client_secret)
+        elif auth_method == "none":
+            logger.debug(
+                "OAuth state=%s token exchange configured for public client",
+                state,
+            )
+        else:
+            if client_id_value:
+                basic_payload = f"{client_id_value}:{client_secret}".encode()
+                encoded = base64.b64encode(basic_payload).decode("ascii")
+                headers.setdefault("Authorization", f"Basic {encoded}")
+            else:
+                data.setdefault("client_secret", client_secret)
 
     close_client = False
     if http_client is None:
@@ -333,18 +498,28 @@ async def complete_oauth_callback(
 
     try:
         logger.debug(
-            "Exchanging authorization code state=%s token_endpoint=%s payload_keys=%s",
+            "Exchanging authorization code state=%s token_endpoint=%s payload_keys=%s "
+            "headers=%s",
             state,
             session.token_endpoint,
             sorted(data.keys()),
+            sorted(headers.keys()),
         )
-        response = await http_client.post(session.token_endpoint, data=data)
+        response = await http_client.post(
+            session.token_endpoint,
+            data=data,
+            headers=headers or None,
+        )
         response.raise_for_status()
         token_payload = response.json()
 
         logger.debug(
             "Token exchange successful token_keys=%s",
-            sorted(token_payload.keys()) if isinstance(token_payload, dict) else type(token_payload),
+            (
+                sorted(token_payload.keys())
+                if isinstance(token_payload, dict)
+                else type(token_payload)
+            ),
         )
     except httpx.HTTPStatusError as exc:
         error_detail: str | None = None
