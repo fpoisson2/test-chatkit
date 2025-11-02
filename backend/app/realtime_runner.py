@@ -74,7 +74,6 @@ def _normalize_realtime_tools_payload(
         "authorization",
         "name",
         "description",
-        "transport",
         "server_id",
         "allow",
         "require_approval",  # Allow require_approval for telephony (set to 'never')
@@ -176,7 +175,6 @@ def _normalize_realtime_tools_payload(
                 tool_entry["type"] = "mcp"
                 tool_entry["server_label"] = label
                 tool_entry["server_url"] = server_url.strip()
-                tool_entry["transport"] = resolved_config.get("transport")
 
                 authorization_header = resolved_config.get("authorization")
                 if authorization_header:
