@@ -1084,7 +1084,7 @@ async def auto_translate_language(
     _admin: User = Depends(require_admin)
 ):
     """
-    Traduit automatiquement une langue en utilisant l'IA via le SDK agent d'Anthropic.
+    Traduit automatiquement une langue en utilisant l'IA via OpenAI.
     """
     import os
     import re
@@ -1123,15 +1123,26 @@ async def auto_translate_language(
         if name_match:
             target_lang_name = name_match.group(1)
     
-    # Utiliser l'API d'Anthropic pour traduire
+    # Utiliser l'API OpenAI pour traduire
     try:
-        from anthropic import Anthropic
-        
-        client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        
+        from openai import AsyncOpenAI
+        from ..model_providers._shared import normalize_api_base
+
+        # Obtenir la configuration OpenAI
+        settings = get_settings()
+        api_key = settings.model_api_key
+        if not api_key:
+            raise HTTPException(
+                status_code=500,
+                detail="OpenAI API key not configured"
+            )
+
+        api_base = normalize_api_base(settings.model_api_base)
+        client = AsyncOpenAI(api_key=api_key, base_url=api_base)
+
         # Préparer le prompt pour la traduction
         translations_json = json.dumps(en_translations, ensure_ascii=False, indent=2)
-        
+
         prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {target_lang_name} ({code}).
 
 IMPORTANT RULES:
@@ -1147,16 +1158,16 @@ Source translations (English):
 
 Return the complete JSON object with all keys and their translated values in {target_lang_name}."""
 
-        message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+        response = await client.chat.completions.create(
+            model="gpt-4o",
             max_tokens=16000,
             messages=[
                 {"role": "user", "content": prompt}
             ]
         )
-        
+
         # Extraire la réponse
-        response_text = message.content[0].text
+        response_text = response.choices[0].message.content
         
         # Parser le JSON de la réponse
         # Nettoyer le texte pour extraire seulement le JSON
