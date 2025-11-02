@@ -1176,8 +1176,8 @@ Return the complete JSON object with all keys and their translated values in {na
 class AvailableModelResponse(BaseModel):
     id: int
     name: str
-    provider_id: str
-    provider_slug: str
+    provider_id: str | None
+    provider_slug: str | None
 
 
 class AvailableModelsListResponse(BaseModel):

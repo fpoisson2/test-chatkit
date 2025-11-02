@@ -25,8 +25,8 @@ type Language = {
 type AvailableModel = {
   id: number;
   name: string;
-  provider_id: string;
-  provider_slug: string;
+  provider_id: string | null;
+  provider_slug: string | null;
 };
 
 type LanguageFormState = {
@@ -361,7 +361,7 @@ export const AdminLanguagesPage = () => {
                     onChange={(e) => {
                       const selectedModel = availableModels.find(m => m.name === e.target.value);
                       handleFormChange("model", e.target.value);
-                      if (selectedModel) {
+                      if (selectedModel && selectedModel.provider_id) {
                         handleFormChange("provider_id", selectedModel.provider_id);
                       }
                     }}
@@ -371,7 +371,7 @@ export const AdminLanguagesPage = () => {
                     <option value="">{t("admin.languages.form.modelPlaceholder")}</option>
                     {availableModels.map((model) => (
                       <option key={model.id} value={model.name}>
-                        {model.name} ({model.provider_slug})
+                        {model.name}{model.provider_slug ? ` (${model.provider_slug})` : ''}
                       </option>
                     ))}
                   </select>
