@@ -29,6 +29,7 @@ export const en: TranslationDictionary = {
   "admin.tabs.telephony": "Telephony",
   "admin.tabs.settings": "General settings",
   "admin.tabs.appearance": "Appearance",
+  "admin.tabs.languages": "Languages",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Administration navigation",
   "admin.models.form.modelIdLabel": "Model identifier*",
@@ -824,7 +825,76 @@ export const en: TranslationDictionary = {
     "Metadata must be a valid JSON object.",
   "admin.mcpServers.errors.testFailed":
     "Unable to test the MCP connection.",
+  "admin.languages.page.title": "Language Management",
+  "admin.languages.page.subtitle":
+    "Configure available interface languages and automate their translation.",
+  "admin.languages.list.title": "Available Languages",
+  "admin.languages.list.subtitle":
+    "Manage interface languages and their translations.",
+  "admin.languages.list.loading": "Loading languages…",
+  "admin.languages.list.columns.code": "Code",
+  "admin.languages.list.columns.name": "Name",
+  "admin.languages.list.columns.translationFile": "Translation File",
+  "admin.languages.list.columns.keysCount": "Key Count",
+  "admin.languages.list.columns.status": "Status",
+  "admin.languages.list.columns.actions": "Actions",
+  "admin.languages.list.status.complete": "Complete",
+  "admin.languages.list.status.partial": "Partial ({{percent}}%)",
+  "admin.languages.list.status.empty": "Empty",
+  "admin.languages.list.fileExists": "✓ File exists",
+  "admin.languages.list.fileMissing": "✗ File missing",
+  "admin.languages.form.addTitle": "Add Language",
+  "admin.languages.form.codeLabel": "Language Code*",
+  "admin.languages.form.codePlaceholder": "e.g. es, de, it",
+  "admin.languages.form.codeHint":
+    "Two-letter ISO 639-1 code (e.g., es for Spanish, de for German).",
+  "admin.languages.form.nameLabel": "Language Name*",
+  "admin.languages.form.namePlaceholder": "e.g. Español, Deutsch",
+  "admin.languages.form.nameHint":
+    "Native name of the language in its own script.",
+  "admin.languages.form.submitAdd": "Add Language",
+  "admin.languages.form.cancel": "Cancel",
+  "admin.languages.form.creating": "Creating…",
+  "admin.languages.actions.autoTranslate": "Auto-translate",
+  "admin.languages.actions.translating": "Translating…",
+  "admin.languages.actions.delete": "Delete",
+  "admin.languages.actions.deleting": "Deleting…",
+  "admin.languages.actions.download": "Download file",
+  "admin.languages.confirm.delete":
+    "Delete language \"{{name}}\" ({{code}})? This will remove the corresponding translation file.",
+  "admin.languages.confirm.autoTranslate":
+    "Start automatic translation for \"{{name}}\"? This may take a few minutes and will replace existing translations.",
+  "admin.languages.feedback.created":
+    "Language \"{{name}}\" added successfully.",
+  "admin.languages.feedback.deleted":
+    "Language \"{{name}}\" deleted.",
+  "admin.languages.feedback.translationStarted":
+    "Automatic translation started for \"{{name}}\".",
+  "admin.languages.feedback.translationComplete":
+    "Automatic translation completed. {{count}} keys translated.",
+  "admin.languages.feedback.translationProgress":
+    "Translation in progress… {{current}}/{{total}} keys translated.",
+  "admin.languages.errors.loadFailed":
+    "Unable to load languages.",
+  "admin.languages.errors.createFailed":
+    "Unable to add language.",
+  "admin.languages.errors.deleteFailed":
+    "Unable to delete language.",
+  "admin.languages.errors.translationFailed":
+    "Unable to auto-translate language.",
+  "admin.languages.errors.codeRequired":
+    "Language code is required.",
+  "admin.languages.errors.nameRequired":
+    "Language name is required.",
+  "admin.languages.errors.codeInvalid":
+    "Code must be 2 lowercase letters (ISO 639-1).",
+  "admin.languages.errors.codeExists":
+    "This language already exists.",
+  "admin.languages.errors.cannotDeleteBase":
+    "Cannot delete base languages (en, fr).",
+  "admin.languages.errors.sessionExpired":
+    "Session expired, please sign in again.",
   "vectorStore.ingestion.success.document":
-    "Document “{{docId}}” ingested ({{chunkCount}} segment{{pluralSuffix}}).",
+    "Document "{{docId}}" ingested ({{chunkCount}} segment{{pluralSuffix}}).",
 };
   

@@ -829,3 +829,364 @@ async def migrate_global_sip_to_account(
             )
 
     return account
+
+
+# ============================================================================
+# Language Management Endpoints
+# ============================================================================
+
+class LanguageResponse(BaseModel):
+    code: str
+    name: str
+    translationFile: str
+    keysCount: int
+    totalKeys: int
+    fileExists: bool
+
+
+class LanguageCreateRequest(BaseModel):
+    code: str
+    name: str
+
+
+class LanguagesListResponse(BaseModel):
+    languages: list[LanguageResponse]
+
+
+@router.get("/languages", response_model=LanguagesListResponse)
+async def list_languages(_admin: User = Depends(require_admin)):
+    """
+    Liste toutes les langues disponibles dans l'interface.
+    """
+    import os
+    import json
+    from pathlib import Path
+    
+    # Chemin vers le dossier des traductions
+    i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+    
+    languages = []
+    
+    # Charger le fichier principal pour obtenir les langues définies
+    main_file = i18n_path / "translations.ts"
+    if main_file.exists():
+        content = main_file.read_text()
+        
+        # Extraire les codes de langues de AVAILABLE_LANGUAGES
+        import re
+        pattern = r'code:\s*"([a-z]{2})"'
+        codes = re.findall(pattern, content)
+        
+        # Pour chaque code, vérifier si le fichier existe
+        for code in codes:
+            translation_file = f"translations.{code}.ts"
+            file_path = i18n_path / translation_file
+            file_exists = file_path.exists()
+            
+            # Compter les clés de traduction
+            keys_count = 0
+            if file_exists:
+                file_content = file_path.read_text()
+                # Compter les lignes qui contiennent des clés de traduction (format: "key": "value")
+                keys_count = len(re.findall(r'^\s*"[^"]+"\s*:\s*', file_content, re.MULTILINE))
+            
+            # Obtenir le nom de la langue depuis le fichier de traductions
+            name = code.upper()
+            if file_exists:
+                file_content = file_path.read_text()
+                name_match = re.search(rf'"language\.name\.{code}"\s*:\s*"([^"]+)"', file_content)
+                if name_match:
+                    name = name_match.group(1)
+            
+            # Compter le total de clés (on utilise le fichier anglais comme référence)
+            total_keys = 0
+            en_file = i18n_path / "translations.en.ts"
+            if en_file.exists():
+                en_content = en_file.read_text()
+                total_keys = len(re.findall(r'^\s*"[^"]+"\s*:\s*', en_content, re.MULTILINE))
+            
+            languages.append(
+                LanguageResponse(
+                    code=code,
+                    name=name,
+                    translationFile=translation_file,
+                    keysCount=keys_count,
+                    totalKeys=total_keys,
+                    fileExists=file_exists,
+                )
+            )
+    
+    return LanguagesListResponse(languages=languages)
+
+
+@router.post("/languages", response_model=LanguageResponse)
+async def create_language(
+    request: LanguageCreateRequest,
+    _admin: User = Depends(require_admin)
+):
+    """
+    Crée une nouvelle langue dans l'interface.
+    """
+    import os
+    import re
+    from pathlib import Path
+    
+    code = request.code.strip().lower()
+    name = request.name.strip()
+    
+    # Validation
+    if not re.match(r'^[a-z]{2}$', code):
+        raise HTTPException(
+            status_code=400,
+            detail="Language code must be 2 lowercase letters (ISO 639-1)"
+        )
+    
+    if code in ["en", "fr"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot create base languages (en, fr)"
+        )
+    
+    i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+    
+    # Vérifier si la langue existe déjà
+    translation_file_path = i18n_path / f"translations.{code}.ts"
+    if translation_file_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Language {code} already exists"
+        )
+    
+    # Créer le fichier de traductions vide
+    file_content = f'''import type {{ TranslationDictionary }} from "./translations";
+
+export const {code}: TranslationDictionary = {{
+  "language.name.en": "English",
+  "language.name.fr": "French",
+  "language.name.{code}": "{name}",
+}};
+'''
+    
+    translation_file_path.write_text(file_content)
+    
+    # Mettre à jour le fichier principal translations.ts
+    main_file = i18n_path / "translations.ts"
+    main_content = main_file.read_text()
+    
+    # Ajouter le code de langue au type Language
+    lang_type_pattern = r'(export type Language = (?:"[a-z]{2}"\s*\|\s*)+)"([a-z]{2})";'
+    match = re.search(lang_type_pattern, main_content)
+    if match:
+        main_content = re.sub(
+            lang_type_pattern,
+            rf'\1"\2" | "{code}";',
+            main_content
+        )
+    
+    # Ajouter à AVAILABLE_LANGUAGES
+    available_langs_pattern = r'(export const AVAILABLE_LANGUAGES[^=]*=\s*\[(?:[^\]]+)\])'
+    match = re.search(available_langs_pattern, main_content, re.DOTALL)
+    if match:
+        langs_block = match.group(1)
+        new_langs_block = langs_block.rstrip(']').rstrip() + f',\n  {{ code: "{code}", label: "{name}" }},\n]'
+        main_content = main_content.replace(langs_block, new_langs_block)
+    
+    # Ajouter l'import
+    import_pattern = r'(import \{ [^\}]+ \} from "./translations\.[a-z]{2}";)'
+    imports = re.findall(import_pattern, main_content)
+    if imports:
+        last_import = imports[-1]
+        new_import = f'import {{ {code} }} from "./translations.{code}";'
+        main_content = main_content.replace(last_import, f'{last_import}\n{new_import}')
+    
+    # Ajouter au tableau des traductions
+    translations_pattern = r'(export const translations: Translations = \{[^\}]+)'
+    match = re.search(translations_pattern, main_content, re.DOTALL)
+    if match:
+        trans_block = match.group(1)
+        new_trans_block = trans_block.rstrip() + f',\n  {code},'
+        main_content = main_content.replace(trans_block, new_trans_block)
+    
+    main_file.write_text(main_content)
+    
+    return LanguageResponse(
+        code=code,
+        name=name,
+        translationFile=f"translations.{code}.ts",
+        keysCount=3,
+        totalKeys=0,
+        fileExists=True,
+    )
+
+
+@router.delete("/languages/{code}")
+async def delete_language(
+    code: str,
+    _admin: User = Depends(require_admin)
+):
+    """
+    Supprime une langue de l'interface.
+    """
+    import os
+    import re
+    from pathlib import Path
+    
+    code = code.strip().lower()
+    
+    # Empêcher la suppression des langues de base
+    if code in ["en", "fr"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete base languages (en, fr)"
+        )
+    
+    i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+    
+    # Supprimer le fichier de traductions
+    translation_file = i18n_path / f"translations.{code}.ts"
+    if translation_file.exists():
+        translation_file.unlink()
+    
+    # Mettre à jour le fichier principal
+    main_file = i18n_path / "translations.ts"
+    if main_file.exists():
+        main_content = main_file.read_text()
+        
+        # Retirer du type Language
+        main_content = re.sub(rf'\s*\|\s*"{code}"', '', main_content)
+        main_content = re.sub(rf'"{code}"\s*\|\s*', '', main_content)
+        
+        # Retirer de AVAILABLE_LANGUAGES
+        main_content = re.sub(
+            rf',?\s*\{{\s*code:\s*"{code}",\s*label:\s*"[^"]+"\s*\}},?',
+            '',
+            main_content
+        )
+        
+        # Retirer l'import
+        main_content = re.sub(rf'import \{{ {code} \}} from "./translations\.{code}";\n', '', main_content)
+        
+        # Retirer du tableau translations
+        main_content = re.sub(rf',?\s*{code},?\s*', '', main_content)
+        
+        # Nettoyer les virgules en trop
+        main_content = re.sub(r',(\s*[}\]])', r'\1', main_content)
+        main_content = re.sub(r'([{\[])\s*,', r'\1', main_content)
+        
+        main_file.write_text(main_content)
+    
+    return {"message": f"Language {code} deleted successfully"}
+
+
+@router.post("/languages/{code}/auto-translate")
+async def auto_translate_language(
+    code: str,
+    _admin: User = Depends(require_admin)
+):
+    """
+    Traduit automatiquement une langue en utilisant l'IA via le SDK agent d'Anthropic.
+    """
+    import os
+    import re
+    import json
+    from pathlib import Path
+    
+    code = code.strip().lower()
+    
+    i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+    
+    # Charger le fichier source (anglais)
+    en_file = i18n_path / "translations.en.ts"
+    if not en_file.exists():
+        raise HTTPException(status_code=404, detail="Source language file not found")
+    
+    target_file = i18n_path / f"translations.{code}.ts"
+    
+    # Extraire toutes les clés et valeurs du fichier anglais
+    en_content = en_file.read_text()
+    
+    # Pattern pour extraire les paires clé-valeur
+    pattern = r'"([^"]+)"\s*:\s*"([^"]*(?:\\.[^"]*)*)"'
+    matches = re.findall(pattern, en_content)
+    
+    if not matches:
+        raise HTTPException(status_code=500, detail="No translations found in source file")
+    
+    # Créer un dictionnaire des traductions anglaises
+    en_translations = {key: value for key, value in matches}
+    
+    # Obtenir le nom de la langue cible
+    target_lang_name = code.upper()
+    if target_file.exists():
+        target_content = target_file.read_text()
+        name_match = re.search(rf'"language\.name\.{code}"\s*:\s*"([^"]+)"', target_content)
+        if name_match:
+            target_lang_name = name_match.group(1)
+    
+    # Utiliser l'API d'Anthropic pour traduire
+    try:
+        from anthropic import Anthropic
+        
+        client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        
+        # Préparer le prompt pour la traduction
+        translations_json = json.dumps(en_translations, ensure_ascii=False, indent=2)
+        
+        prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {target_lang_name} ({code}).
+
+IMPORTANT RULES:
+1. Keep all keys exactly as they are (do not translate keys)
+2. Only translate the values
+3. Preserve any placeholders like {{{{variable}}}}, {{{{count}}}}, etc.
+4. Preserve any HTML tags or special formatting
+5. Maintain the same level of formality/informality as the source
+6. Return ONLY the translated JSON object, nothing else
+
+Source translations (English):
+{translations_json}
+
+Return the complete JSON object with all keys and their translated values in {target_lang_name}."""
+
+        message = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=16000,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        # Extraire la réponse
+        response_text = message.content[0].text
+        
+        # Parser le JSON de la réponse
+        # Nettoyer le texte pour extraire seulement le JSON
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if not json_match:
+            raise HTTPException(status_code=500, detail="Failed to parse AI response")
+        
+        translated_dict = json.loads(json_match.group(0))
+        
+        # Générer le fichier de traductions
+        file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {code}: TranslationDictionary = {{\n'
+        
+        for key, value in translated_dict.items():
+            # Échapper les guillemets et backslashes
+            escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
+            file_content += f'  "{key}": "{escaped_value}",\n'
+        
+        file_content += '};\n'
+        
+        # Écrire le fichier
+        target_file.write_text(file_content)
+        
+        return {
+            "message": f"Language {code} translated successfully",
+            "translated_count": len(translated_dict)
+        }
+        
+    except Exception as e:
+        logger.exception(f"Failed to auto-translate language {code}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Translation failed: {str(e)}"
+        )

@@ -29,6 +29,7 @@ export const fr: TranslationDictionary = {
   "admin.tabs.telephony": "Téléphonie",
   "admin.tabs.settings": "Paramètres généraux",
   "admin.tabs.appearance": "Apparence et thème",
+  "admin.tabs.languages": "Langues",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Navigation du panneau d'administration",
   "admin.models.form.modelIdLabel": "Identifiant du modèle*",
@@ -849,5 +850,74 @@ export const fr: TranslationDictionary = {
     "Les métadonnées doivent être un objet JSON valide.",
   "admin.mcpServers.errors.testFailed":
     "Impossible de tester la connexion MCP.",
+  "admin.languages.page.title": "Gestion des langues",
+  "admin.languages.page.subtitle":
+    "Configurez les langues disponibles dans l'interface et automatisez leur traduction.",
+  "admin.languages.list.title": "Langues disponibles",
+  "admin.languages.list.subtitle":
+    "Gérez les langues de l'interface et leurs traductions.",
+  "admin.languages.list.loading": "Chargement des langues…",
+  "admin.languages.list.columns.code": "Code",
+  "admin.languages.list.columns.name": "Nom",
+  "admin.languages.list.columns.translationFile": "Fichier de traductions",
+  "admin.languages.list.columns.keysCount": "Nombre de clés",
+  "admin.languages.list.columns.status": "Statut",
+  "admin.languages.list.columns.actions": "Actions",
+  "admin.languages.list.status.complete": "Complet",
+  "admin.languages.list.status.partial": "Partiel ({{percent}}%)",
+  "admin.languages.list.status.empty": "Vide",
+  "admin.languages.list.fileExists": "✓ Fichier existant",
+  "admin.languages.list.fileMissing": "✗ Fichier manquant",
+  "admin.languages.form.addTitle": "Ajouter une langue",
+  "admin.languages.form.codeLabel": "Code de langue*",
+  "admin.languages.form.codePlaceholder": "ex. es, de, it",
+  "admin.languages.form.codeHint":
+    "Code ISO 639-1 à deux lettres (ex: es pour espagnol, de pour allemand).",
+  "admin.languages.form.nameLabel": "Nom de la langue*",
+  "admin.languages.form.namePlaceholder": "ex. Español, Deutsch",
+  "admin.languages.form.nameHint":
+    "Nom de la langue dans sa propre langue (forme native).",
+  "admin.languages.form.submitAdd": "Ajouter la langue",
+  "admin.languages.form.cancel": "Annuler",
+  "admin.languages.form.creating": "Création…",
+  "admin.languages.actions.autoTranslate": "Traduire automatiquement",
+  "admin.languages.actions.translating": "Traduction en cours…",
+  "admin.languages.actions.delete": "Supprimer",
+  "admin.languages.actions.deleting": "Suppression…",
+  "admin.languages.actions.download": "Télécharger le fichier",
+  "admin.languages.confirm.delete":
+    "Supprimer la langue « {{name}} » ({{code}}) ? Cette action supprimera le fichier de traductions correspondant.",
+  "admin.languages.confirm.autoTranslate":
+    "Lancer la traduction automatique pour « {{name}} » ? Cela peut prendre quelques minutes et remplacera les traductions existantes.",
+  "admin.languages.feedback.created":
+    "Langue « {{name}} » ajoutée avec succès.",
+  "admin.languages.feedback.deleted":
+    "Langue « {{name}} » supprimée.",
+  "admin.languages.feedback.translationStarted":
+    "Traduction automatique lancée pour « {{name}} ».",
+  "admin.languages.feedback.translationComplete":
+    "Traduction automatique terminée. {{count}} clés traduites.",
+  "admin.languages.feedback.translationProgress":
+    "Traduction en cours… {{current}}/{{total}} clés traduites.",
+  "admin.languages.errors.loadFailed":
+    "Impossible de charger les langues.",
+  "admin.languages.errors.createFailed":
+    "Impossible d'ajouter la langue.",
+  "admin.languages.errors.deleteFailed":
+    "Impossible de supprimer la langue.",
+  "admin.languages.errors.translationFailed":
+    "Impossible de traduire automatiquement la langue.",
+  "admin.languages.errors.codeRequired":
+    "Le code de langue est obligatoire.",
+  "admin.languages.errors.nameRequired":
+    "Le nom de la langue est obligatoire.",
+  "admin.languages.errors.codeInvalid":
+    "Le code doit être composé de 2 lettres minuscules (ISO 639-1).",
+  "admin.languages.errors.codeExists":
+    "Cette langue existe déjà.",
+  "admin.languages.errors.cannotDeleteBase":
+    "Impossible de supprimer les langues de base (en, fr).",
+  "admin.languages.errors.sessionExpired":
+    "Session expirée, veuillez vous reconnecter.",
 };
   
