@@ -1312,3 +1312,166 @@ class VectorStoreDocumentSearchResult(BaseModel):
     score: float
     metadata: dict[str, Any] = Field(default_factory=dict)
     matches: list[VectorStoreSearchResult] = Field(default_factory=list)
+
+
+# LTI 1.3 Schemas
+
+
+class LTIPlatformCreate(BaseModel):
+    name: str
+    issuer: str
+    client_id: str
+    auth_login_url: str
+    auth_token_url: str
+    auth_audience: str | None = None
+    key_set_url: str
+    ags_lineitems_url: str | None = None
+    public_key: str | None = None
+    is_active: bool = True
+
+
+class LTIPlatformUpdate(BaseModel):
+    name: str | None = None
+    issuer: str | None = None
+    client_id: str | None = None
+    auth_login_url: str | None = None
+    auth_token_url: str | None = None
+    auth_audience: str | None = None
+    key_set_url: str | None = None
+    ags_lineitems_url: str | None = None
+    public_key: str | None = None
+    is_active: bool | None = None
+
+
+class LTIPlatformResponse(BaseModel):
+    id: int
+    name: str
+    issuer: str
+    client_id: str
+    auth_login_url: str
+    auth_token_url: str
+    auth_audience: str | None
+    key_set_url: str
+    ags_lineitems_url: str | None
+    is_active: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LTIDeploymentCreate(BaseModel):
+    platform_id: int
+    deployment_id: str
+    name: str | None = None
+
+
+class LTIDeploymentResponse(BaseModel):
+    id: int
+    platform_id: int
+    deployment_id: str
+    name: str | None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LTILoginRequest(BaseModel):
+    """LTI 1.3 login initiation request"""
+
+    iss: str  # Platform issuer
+    login_hint: str  # User identifier hint
+    target_link_uri: str  # Where to launch
+    lti_message_hint: str | None = None  # Optional message hint
+    client_id: str  # OAuth client ID
+    lti_deployment_id: str | None = None  # Deployment ID
+
+
+class LTILaunchData(BaseModel):
+    """Data extracted from LTI launch"""
+
+    message_type: str  # LtiResourceLinkRequest or LtiDeepLinkingRequest
+    lti_version: str
+    deployment_id: str
+    target_link_uri: str
+
+    # User claims
+    user_id: str
+    email: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
+    name: str | None = None
+    roles: list[str] = Field(default_factory=list)
+
+    # Context claims
+    context_id: str | None = None
+    context_label: str | None = None
+    context_title: str | None = None
+    context_type: list[str] = Field(default_factory=list)
+
+    # Resource link claims (for LtiResourceLinkRequest)
+    resource_link_id: str | None = None
+    resource_link_title: str | None = None
+    resource_link_description: str | None = None
+
+    # Deep linking claims (for LtiDeepLinkingRequest)
+    deep_linking_settings: dict[str, Any] | None = None
+
+    # Assignment and Grade Services (AGS)
+    ags_lineitem: str | None = None
+    ags_lineitems: str | None = None
+    ags_scope: list[str] = Field(default_factory=list)
+
+    # Custom claims
+    custom: dict[str, Any] = Field(default_factory=dict)
+
+    # Platform claims
+    platform_id: str
+    platform_name: str | None = None
+    platform_version: str | None = None
+
+
+class LTISessionResponse(BaseModel):
+    id: int
+    session_id: str
+    user_id: int
+    platform_id: int
+    deployment_id: int
+    message_type: str
+    resource_link_id: str | None
+    context_id: str | None
+    context_label: str | None
+    context_title: str | None
+    workflow_id: int | None
+    score: float | None
+    score_maximum: float
+    score_submitted: bool
+    created_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LTIDeepLinkRequest(BaseModel):
+    """Request to create a deep link to a workflow"""
+
+    workflow_id: int
+    title: str | None = None
+    description: str | None = None
+
+
+class LTIScoreUpdate(BaseModel):
+    """Update score for an LTI session"""
+
+    session_id: str
+    score: float
+    score_maximum: float = 100.0
+    comment: str | None = None
+
+
+class WorkflowLTISettings(BaseModel):
+    """LTI settings for a workflow"""
+
+    lti_enabled: bool
+    lti_title: str | None = None
+    lti_description: str | None = None

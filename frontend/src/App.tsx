@@ -17,6 +17,9 @@ import { AdminMcpServersPage } from "./pages/AdminMcpServersPage";
 import { AdminAppearancePage } from "./pages/AdminAppearancePage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
+import LTIDeepLinkPage from "./pages/LTIDeepLinkPage";
+import LTIWorkflowPage from "./pages/LTIWorkflowPage";
+import AdminLTIPlatformsPage from "./pages/AdminLTIPlatformsPage";
 
 const RequireAdmin = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
@@ -161,9 +164,22 @@ export const App = () => (
         </RequireAdmin>
       }
     />
+    <Route
+      path="/admin/lti-platforms"
+      element={
+        <RequireAdmin>
+          <AppLayout>
+            <AdminLTIPlatformsPage />
+          </AppLayout>
+        </RequireAdmin>
+      }
+    />
     <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
     <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
     <Route path="/admin/workflows" element={<Navigate to="/workflows" replace />} />
+    {/* LTI routes - no authentication required, handled via LTI JWT */}
+    <Route path="/lti/deep-link" element={<LTIDeepLinkPage />} />
+    <Route path="/lti/workflow/:workflowSlug" element={<LTIWorkflowPage />} />
     <Route
       path="*"
       element={

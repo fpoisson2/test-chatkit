@@ -52,6 +52,17 @@ class User(Base):
     )
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # LTI fields
+    is_lti_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    lti_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    lti_platform_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("lti_platforms.id", ondelete="CASCADE"), nullable=True
+    )
+    lti_given_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lti_family_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lti_roles: Mapped[dict[str, Any] | None] = mapped_column(PortableJSONB(), nullable=True)
+
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -381,6 +392,12 @@ class Workflow(Base):
     is_chatkit_default: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+
+    # LTI fields
+    lti_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    lti_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lti_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -888,6 +905,177 @@ class OutboundCall(Base):
     sip_account: Mapped[SipAccount] = relationship("SipAccount")
 
 
+# LTI 1.3 Models
+
+
+class LTIPlatform(Base):
+    """LTI 1.3 Platform (LMS) configuration"""
+
+    __tablename__ = "lti_platforms"
+    __table_args__ = (
+        UniqueConstraint("issuer", "client_id", name="uq_lti_platform_issuer_client"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
+    client_id: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # OIDC/OAuth configuration
+    auth_login_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    auth_token_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    auth_audience: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    key_set_url: Mapped[str] = mapped_column(String(512), nullable=False)
+
+    # Optional AGS (Assignment and Grade Services) endpoints
+    ags_lineitems_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    # Platform public key (JWK or PEM format)
+    public_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Our private key for this platform (generated)
+    private_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Configuration
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    # Relationships
+    deployments: Mapped[list["LTIDeployment"]] = relationship(
+        "LTIDeployment",
+        back_populates="platform",
+        cascade="all, delete-orphan",
+    )
+
+
+class LTIDeployment(Base):
+    """LTI 1.3 Deployment - represents a deployment of the tool in a platform"""
+
+    __tablename__ = "lti_deployments"
+    __table_args__ = (
+        UniqueConstraint(
+            "platform_id", "deployment_id", name="uq_lti_deployment_platform"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    platform_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("lti_platforms.id", ondelete="CASCADE"), nullable=False
+    )
+    deployment_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    # Relationships
+    platform: Mapped[LTIPlatform] = relationship("LTIPlatform", back_populates="deployments")
+
+
+class LTISession(Base):
+    """Active LTI session tracking"""
+
+    __tablename__ = "lti_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(255), unique=True, nullable=False, index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    platform_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("lti_platforms.id", ondelete="CASCADE"), nullable=False
+    )
+    deployment_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("lti_deployments.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # LTI Launch information
+    message_type: Mapped[str] = mapped_column(
+        String(128), nullable=False
+    )  # LtiResourceLinkRequest, LtiDeepLinkingRequest
+    resource_link_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    context_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    context_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    context_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    # Deep linking
+    deep_link_return_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    deep_link_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Assignment and Grade Services (AGS)
+    ags_lineitem_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ags_scope: Mapped[list[str] | None] = mapped_column(PortableJSONB(), nullable=True)
+
+    # Workflow tracking
+    workflow_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("workflows.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Score tracking
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_maximum: Mapped[float] = mapped_column(
+        Float, nullable=False, default=100.0
+    )
+    score_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    score_submitted_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Full launch data (for debugging)
+    launch_data: Mapped[dict[str, Any]] = mapped_column(
+        PortableJSONB(), nullable=False, default=dict
+    )
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
+class LTINonce(Base):
+    """Nonce storage for LTI 1.3 security"""
+
+    __tablename__ = "lti_nonces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nonce: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
+# Indexes
 Index("ix_json_documents_metadata", JsonDocument.metadata_json, postgresql_using="gin")
 Index("ix_json_chunks_metadata", JsonChunk.metadata_json, postgresql_using="gin")
 Index(
@@ -895,3 +1083,6 @@ Index(
     JsonChunk.store_id,
     JsonChunk.doc_id,
 )
+Index("ix_lti_sessions_user", LTISession.user_id)
+Index("ix_lti_sessions_workflow", LTISession.workflow_id)
+Index("ix_lti_sessions_context", LTISession.context_id)

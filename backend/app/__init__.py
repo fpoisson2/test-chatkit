@@ -8,6 +8,8 @@ from .routes import (
     admin,
     auth,
     docs,
+    lti,
+    lti_admin,
     mcp,
     model_registry,
     outbound,
@@ -43,6 +45,8 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(docs.router)
+app.include_router(lti.router)
+app.include_router(lti_admin.router)
 app.include_router(model_registry.router)
 app.include_router(mcp.router)
 if chatkit_routes and hasattr(chatkit_routes, "router"):
