@@ -865,7 +865,8 @@ async def list_languages(_admin: User = Depends(require_admin)):
 
     try:
         # Chemin vers le dossier des traductions
-        i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+        # Le frontend est monté en lecture seule dans /frontend via docker-compose
+        i18n_path = Path("/frontend/src/i18n")
 
         logger.info(f"Looking for translations at: {i18n_path}")
 
@@ -982,7 +983,8 @@ async def create_language(
             detail="Cannot create base languages (en, fr)"
         )
     
-    i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+    # Le frontend est monté en lecture seule dans /frontend via docker-compose
+    i18n_path = Path("/frontend/src/i18n")
     
     # Vérifier si la langue existe déjà
     translation_file_path = i18n_path / f"translations.{code}.ts"
@@ -1075,7 +1077,8 @@ async def delete_language(
             detail="Cannot delete base languages (en, fr)"
         )
     
-    i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+    # Le frontend est monté en lecture seule dans /frontend via docker-compose
+    i18n_path = Path("/frontend/src/i18n")
     
     # Supprimer le fichier de traductions
     translation_file = i18n_path / f"translations.{code}.ts"
@@ -1128,7 +1131,8 @@ async def auto_translate_language(
     
     code = code.strip().lower()
     
-    i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+    # Le frontend est monté en lecture seule dans /frontend via docker-compose
+    i18n_path = Path("/frontend/src/i18n")
     
     # Charger le fichier source (anglais)
     en_file = i18n_path / "translations.en.ts"
