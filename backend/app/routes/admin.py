@@ -1082,18 +1082,22 @@ async def generate_language_file(
         # Si provider_id est None mais qu'on a un provider_slug, essayer de trouver le provider dans la DB par slug
         if not provider_id_used and provider_slug:
             logger.info(f"Trying to find provider by slug '{provider_slug}' in database")
-            from sqlalchemy import select
-            from ..models import ModelProvider as ModelProviderDB
+            from ..admin_settings import get_thread_title_prompt_override
 
             with SessionLocal() as db_session:
-                db_provider = db_session.scalar(
-                    select(ModelProviderDB)
-                    .where(ModelProviderDB.provider == provider_slug)
-                    .limit(1)
-                )
-                if db_provider:
-                    provider_id_used = str(db_provider.id)
-                    logger.info(f"Found provider in database with ID: {provider_id_used}")
+                app_settings = get_thread_title_prompt_override(db_session)
+                if app_settings and app_settings.model_providers:
+                    # Parse le JSON des model_providers
+                    import json
+                    try:
+                        providers_data = json.loads(app_settings.model_providers)
+                        for provider_data in providers_data:
+                            if provider_data.get("provider", "").lower() == provider_slug.lower():
+                                provider_id_used = provider_data.get("id")
+                                logger.info(f"Found provider in database with ID: {provider_id_used}")
+                                break
+                    except (json.JSONDecodeError, AttributeError) as e:
+                        logger.warning(f"Failed to parse model_providers JSON: {e}")
 
         # Debug: afficher les providers disponibles
         settings = get_settings()
