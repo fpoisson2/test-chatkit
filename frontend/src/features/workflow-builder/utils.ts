@@ -3,7 +3,7 @@ import { MarkerType, type EdgeOptions } from "reactflow";
 
 import { getParallelSplitBranches, getParallelSplitJoinSlug, getStateAssignments } from "../../utils/workflows";
 import type { AgentParameters } from "./types";
-import type { FlowEdge, FlowNode, NodeKind } from "./types";
+import type { FlowEdge, FlowNode, NodeKind, RepeatZone } from "./types";
 
 export const NODE_COLORS: Record<NodeKind, string> = {
   start: "#2563eb",
@@ -93,7 +93,11 @@ export const supportsReasoningModel = (model: string): boolean => {
 
 export const AUTO_SAVE_DELAY_MS = 800;
 
-export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge[]) => ({
+export const buildGraphPayloadFrom = (
+  flowNodes: FlowNode[],
+  flowEdges: FlowEdge[],
+  repeatZones: RepeatZone[] = [],
+) => ({
   nodes: flowNodes.map((node, index) => ({
     slug: node.data.slug,
     kind: node.data.kind,
@@ -117,6 +121,16 @@ export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge
     metadata: {
       ...edge.data?.metadata,
       label: edge.label ?? "",
+      order: index + 1,
+    },
+  })),
+  repeat_zones: repeatZones.map((zone, index) => ({
+    id: zone.id,
+    label: zone.label ?? null,
+    bounds: zone.bounds,
+    node_slugs: [...zone.nodeSlugs],
+    metadata: {
+      ...zone.metadata,
       order: index + 1,
     },
   })),

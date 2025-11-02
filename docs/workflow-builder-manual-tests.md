@@ -18,3 +18,7 @@
 5. (Optionnel) Exécuter le workflow afin de s'assurer que la requête utilise bien les identifiants du fournisseur sélectionné.
 
 **Résultat attendu :** chaque agent mémorise le fournisseur et le modèle choisis, et l'exécution du workflow s'appuie sur les informations d'authentification correspondantes.
+
+## Boucles dans les workflows
+
+Les cycles explicites sont désormais autorisés dans les graphes de workflow. Lors des tests manuels, vérifiez qu'un chemin de sortie (nœud **End**) reste accessible et qu'une condition de sortie réaliste met fin à l'exécution. Le moteur d'exécution applique une limite de 1000 itérations consécutives lors du parcours d'un workflow, ce qui garantit qu'une boucle sans issue n'entraîne pas de blocage infini.

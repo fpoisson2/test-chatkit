@@ -46,6 +46,29 @@ export type ApiWorkflowEdge = {
   metadata: Record<string, unknown> | null;
 };
 
+export type RepeatZoneBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type ApiRepeatZone = {
+  id: string;
+  label: string | null;
+  bounds: RepeatZoneBounds;
+  node_slugs: string[];
+  metadata: Record<string, unknown> | null;
+};
+
+export type RepeatZone = {
+  id: string;
+  label: string | null;
+  bounds: RepeatZoneBounds;
+  nodeSlugs: string[];
+  metadata: Record<string, unknown>;
+};
+
 export type WorkflowVersionResponse = {
   id: number;
   workflow_id: number;
@@ -58,6 +81,7 @@ export type WorkflowVersionResponse = {
   graph: {
     nodes: ApiWorkflowNode[];
     edges: ApiWorkflowEdge[];
+    repeat_zones?: ApiRepeatZone[];
   };
   steps: Array<{
     id: number;
