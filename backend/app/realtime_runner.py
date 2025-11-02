@@ -67,6 +67,7 @@ def _normalize_realtime_tools_payload(
     seen_labels: set[str] = set()
 
     disallowed_tool_keys = {"agent", "function", "metadata"}
+    # Only include parameters that are supported by OpenAI Realtime API
     mcp_allowed_keys = {
         "type",
         "server_label",
@@ -74,9 +75,7 @@ def _normalize_realtime_tools_payload(
         "authorization",
         "name",
         "description",
-        "server_id",
         "allow",
-        "require_approval",  # Allow require_approval for telephony (set to 'never')
     }
 
     for index, entry in enumerate(source_entries):
@@ -183,13 +182,11 @@ def _normalize_realtime_tools_payload(
                     tool_entry.pop("authorization", None)
 
                 if isinstance(context, ResolvedMcpServerContext):
-                    if context.server_id is not None:
-                        tool_entry["server_id"] = context.server_id
+                    # server_id is internal only, not sent to OpenAI API
                     if context.allowlist:
                         tool_entry["allow"] = {"tools": list(context.allowlist)}
 
-                if "require_approval" not in tool_entry:
-                    tool_entry["require_approval"] = "never"
+                # require_approval is internal only, not sent to OpenAI API
 
                 if mcp_server_configs is not None:
                     config_entry: dict[str, Any] = {
