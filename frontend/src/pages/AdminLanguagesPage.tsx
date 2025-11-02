@@ -29,6 +29,12 @@ type AvailableModel = {
   provider_slug: string | null;
 };
 
+type Provider = {
+  id: string;
+  provider: string;
+  label: string;
+};
+
 type LanguageFormState = {
   code: string;
   name: string;
@@ -60,6 +66,7 @@ export const AdminLanguagesPage = () => {
   const [instructions, setInstructions] = useState<string | null>(null);
 
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<Provider[]>([]);
   const [defaultPrompt, setDefaultPrompt] = useState<string>("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);
 
@@ -150,11 +157,39 @@ export const AdminLanguagesPage = () => {
     }
   }, [token, logout]);
 
+  const loadAvailableProviders = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/admin/languages/providers", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (isUnauthorizedError(response.status)) {
+          logout();
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setAvailableProviders(data.providers || []);
+    } catch (err) {
+      console.error("Failed to load available providers:", err);
+    }
+  }, [token, logout]);
+
   useEffect(() => {
     void loadLanguages();
     void loadAvailableModels();
     void loadDefaultPrompt();
-  }, [loadLanguages, loadAvailableModels, loadDefaultPrompt]);
+    void loadAvailableProviders();
+  }, [loadLanguages, loadAvailableModels, loadDefaultPrompt, loadAvailableProviders]);
 
   const handleFormChange = (field: keyof LanguageFormState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -359,11 +394,7 @@ export const AdminLanguagesPage = () => {
                     id="model-select"
                     value={formState.model}
                     onChange={(e) => {
-                      const selectedModel = availableModels.find(m => m.name === e.target.value);
                       handleFormChange("model", e.target.value);
-                      if (selectedModel && selectedModel.provider_id) {
-                        handleFormChange("provider_id", selectedModel.provider_id);
-                      }
                     }}
                     disabled={submitting}
                     className="form-input"
@@ -377,6 +408,29 @@ export const AdminLanguagesPage = () => {
                   </select>
                   <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
                     {t("admin.languages.form.modelHint")}
+                  </small>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="provider-select" className="form-label">
+                    {t("admin.languages.form.providerLabel")}
+                  </label>
+                  <select
+                    id="provider-select"
+                    value={formState.provider_id}
+                    onChange={(e) => handleFormChange("provider_id", e.target.value)}
+                    disabled={submitting}
+                    className="form-input"
+                  >
+                    <option value="">{t("admin.languages.form.providerPlaceholder")}</option>
+                    {availableProviders.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                    {t("admin.languages.form.providerHint")}
                   </small>
                 </div>
 

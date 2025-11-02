@@ -884,6 +884,10 @@ export const fr: TranslationDictionary = {
   "admin.languages.form.modelPlaceholder": "Utiliser le modèle par défaut",
   "admin.languages.form.modelHint":
     "Sélectionner un modèle spécifique pour la traduction (optionnel).",
+  "admin.languages.form.providerLabel": "Provider",
+  "admin.languages.form.providerPlaceholder": "Utiliser le provider par défaut",
+  "admin.languages.form.providerHint":
+    "Sélectionner le provider à utiliser pour la traduction (optionnel).",
   "admin.languages.form.promptLabel": "Prompt de traduction",
   "admin.languages.form.showPrompt": "Personnaliser le prompt",
   "admin.languages.form.hidePrompt": "Masquer le prompt",

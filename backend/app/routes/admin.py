@@ -1033,8 +1033,6 @@ async def generate_language_file(
             if model_name:
                 # Si un modèle spécifique est demandé, le chercher
                 query = select(AvailableModel).where(AvailableModel.name == model_name)
-                if provider_id:
-                    query = query.where(AvailableModel.provider_id == provider_id)
                 available_model = session.scalar(query)
 
                 if not available_model:
@@ -1057,19 +1055,22 @@ async def generate_language_file(
                     )
 
             model_name = available_model.name
-            provider_id_used = available_model.provider_id
+
+            # Utiliser le provider_id fourni dans le formulaire en priorité
+            # Sinon, utiliser celui du modèle dans la base de données
+            if provider_id:
+                provider_id_used = provider_id
+                logger.info(f"Using provider_id from form: {provider_id}")
+            else:
+                provider_id_used = available_model.provider_id
+                logger.info(f"Using provider_id from model in database: {provider_id_used}")
+
             provider_slug = available_model.provider_slug
 
-            logger.info(f"Using model {model_name} from provider {provider_slug} for translation")
-            print(f"CHECKPOINT 1: About to exit session context manager")
-
-        print(f"CHECKPOINT 2: Exited session, provider_id_used={provider_id_used}, provider_slug={provider_slug}")
+            logger.info(f"Using model {model_name} with provider_id={provider_id_used}, provider_slug={provider_slug}")
 
         # Obtenir le provider binding
-        print(f"CHECKPOINT 3: About to get provider binding")
         logger.info(f"Getting provider binding for provider_id={provider_id_used}, provider_slug={provider_slug}")
-
-        print(f"CHECKPOINT 4: Calling get_agent_provider_binding")
         provider_binding = get_agent_provider_binding(provider_id_used, provider_slug)
 
         print(f"CHECKPOINT 5: Got provider binding result")
@@ -1277,6 +1278,66 @@ async def list_available_models(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to list available models: {str(e)}"
+        )
+
+
+class ProviderResponse(BaseModel):
+    id: str
+    provider: str
+    label: str
+
+
+class ProvidersListResponse(BaseModel):
+    providers: list[ProviderResponse]
+
+
+@router.get("/api/admin/languages/providers", response_model=ProvidersListResponse)
+async def list_available_providers(
+    _admin: User = Depends(require_admin)
+):
+    """
+    Liste tous les providers configurés pour la génération de traductions.
+    """
+    try:
+        from ..admin_settings import resolve_model_provider_credentials
+        from sqlalchemy import select
+        from ..models import ModelProvider as ModelProviderDB
+
+        providers = []
+        seen_ids = set()
+
+        # Charger les providers depuis la base de données admin_settings
+        with SessionLocal() as session:
+            db_providers = session.scalars(select(ModelProviderDB)).all()
+            for db_provider in db_providers:
+                provider_id = str(db_provider.id)
+                if provider_id not in seen_ids:
+                    providers.append(ProviderResponse(
+                        id=provider_id,
+                        provider=db_provider.provider,
+                        label=f"{db_provider.provider} (DB: {db_provider.id})"
+                    ))
+                    seen_ids.add(provider_id)
+
+        # Ajouter aussi les providers depuis la configuration (settings)
+        settings = get_settings()
+        for idx, provider_config in enumerate(settings.model_providers):
+            provider_id = provider_config.id if hasattr(provider_config, 'id') and provider_config.id else f"config_{idx}"
+            if provider_id not in seen_ids:
+                providers.append(ProviderResponse(
+                    id=provider_id,
+                    provider=provider_config.provider,
+                    label=f"{provider_config.provider} (Config)"
+                ))
+                seen_ids.add(provider_id)
+
+        return ProvidersListResponse(providers=providers)
+
+    except Exception as e:
+        logger.exception(f"Failed to list available providers: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list available providers: {str(e)}"
         )
 
 
