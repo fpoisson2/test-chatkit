@@ -2575,6 +2575,108 @@ def _run_ad_hoc_migrations() -> None:
                     "device_type ajouté avec nouvelle contrainte unique"
                 )
 
+    # Nettoyer les serveurs MCP en doublon dans les workflows
+    _cleanup_duplicate_mcp_servers()
+
+
+def _cleanup_duplicate_mcp_servers() -> None:
+    """Remove duplicate MCP servers from workflow tools (legacy duplicates)."""
+    import json
+
+    logger.info("Nettoyage des serveurs MCP en doublon dans les workflows...")
+
+    with SessionLocal() as session:
+        # Trouver tous les steps de type voice-agent avec des outils
+        result = session.execute(
+            text("""
+                SELECT ws.id, ws.slug, ws.parameters
+                FROM workflow_steps ws
+                JOIN workflow_definitions wd ON ws.definition_id = wd.id
+                WHERE wd.is_active = true
+                  AND ws.kind IN ('voice-agent', 'agent')
+                  AND ws.parameters IS NOT NULL
+                  AND ws.parameters::text LIKE '%"type"%:%"mcp"%'
+            """)
+        )
+
+        updated_count = 0
+        removed_count = 0
+
+        for row in result:
+            step_id, slug, parameters_json = row
+
+            if not parameters_json:
+                continue
+
+            parameters = dict(parameters_json) if isinstance(parameters_json, dict) else parameters_json
+            tools = parameters.get('tools', [])
+
+            if not tools:
+                continue
+
+            # Identifier les serveurs MCP et dédupliquer par URL
+            seen_urls: dict[str, dict] = {}
+            new_tools = []
+
+            for tool in tools:
+                if isinstance(tool, dict) and tool.get('type') == 'mcp':
+                    url = (tool.get('server_url') or tool.get('url') or '').strip()
+                    if not url:
+                        new_tools.append(tool)
+                        continue
+
+                    if url in seen_urls:
+                        # Doublon détecté - garder le plus complet (avec allowlist)
+                        existing = seen_urls[url]
+                        has_allowlist = 'allow' in tool or 'allowlist' in tool
+                        existing_has_allowlist = 'allow' in existing or 'allowlist' in existing
+
+                        if has_allowlist and not existing_has_allowlist:
+                            # Remplacer l'ancien par le nouveau (plus complet)
+                            idx = new_tools.index(existing)
+                            new_tools[idx] = tool
+                            seen_urls[url] = tool
+                            logger.debug(
+                                "Step '%s': Remplacement serveur MCP %s (ajout allowlist)",
+                                slug, url
+                            )
+                        else:
+                            # Garder l'existant, ignorer le nouveau
+                            logger.debug(
+                                "Step '%s': Ignoré serveur MCP en doublon: %s",
+                                slug, url
+                            )
+                        removed_count += 1
+                    else:
+                        seen_urls[url] = tool
+                        new_tools.append(tool)
+                else:
+                    new_tools.append(tool)
+
+            # Mettre à jour si des doublons ont été supprimés
+            if len(new_tools) < len(tools):
+                new_parameters = dict(parameters)
+                new_parameters['tools'] = new_tools
+
+                session.execute(
+                    text("UPDATE workflow_steps SET parameters = :params WHERE id = :id"),
+                    {"params": json.dumps(new_parameters), "id": step_id}
+                )
+                updated_count += 1
+                logger.info(
+                    "Step '%s' nettoyé: %d outils → %d outils (%d doublons retirés)",
+                    slug, len(tools), len(new_tools), len(tools) - len(new_tools)
+                )
+
+        if updated_count > 0:
+            session.commit()
+            logger.info(
+                "Nettoyage terminé: %d workflow step(s) mis à jour, %d serveur(s) MCP en doublon retirés",
+                updated_count, removed_count
+            )
+        else:
+            logger.info("Aucun serveur MCP en doublon trouvé")
+
 
 def _ensure_protected_vector_store() -> None:
     """Crée le vector store réservé aux workflows s'il est absent."""
