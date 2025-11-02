@@ -853,7 +853,7 @@ class LanguagesListResponse(BaseModel):
     languages: list[LanguageResponse]
 
 
-@router.get("/languages", response_model=LanguagesListResponse)
+@router.get("/api/admin/languages", response_model=LanguagesListResponse)
 async def list_languages(_admin: User = Depends(require_admin)):
     """
     Liste toutes les langues disponibles dans l'interface.
@@ -954,7 +954,7 @@ async def list_languages(_admin: User = Depends(require_admin)):
         )
 
 
-@router.post("/languages", response_model=LanguageResponse)
+@router.post("/api/admin/languages", response_model=LanguageResponse)
 async def create_language(
     request: LanguageCreateRequest,
     _admin: User = Depends(require_admin)
@@ -1054,7 +1054,7 @@ export const {code}: TranslationDictionary = {{
     )
 
 
-@router.delete("/languages/{code}")
+@router.delete("/api/admin/languages/{code}")
 async def delete_language(
     code: str,
     _admin: User = Depends(require_admin)
@@ -1113,7 +1113,7 @@ async def delete_language(
     return {"message": f"Language {code} deleted successfully"}
 
 
-@router.post("/languages/{code}/auto-translate")
+@router.post("/api/admin/languages/{code}/auto-translate")
 async def auto_translate_language(
     code: str,
     _admin: User = Depends(require_admin)
