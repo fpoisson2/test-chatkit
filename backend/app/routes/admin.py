@@ -1097,17 +1097,17 @@ Source translations (English):
 Return the complete JSON object with all keys and their translated values in {name}."""
 
         logger.info(f"Using agent SDK for translation to {name}")
+        logger.info(f"About to create agent with model={model_name}, provider={provider_binding.provider_slug}")
 
         # Créer l'agent avec le provider
         try:
-            logger.debug(f"Creating agent with model={model_name}, provider={provider_binding.provider_slug}")
             agent = Agent(
                 name="Language Translator",
                 model=model_name,
                 instructions=prompt,
                 provider=provider_binding.provider
             )
-            logger.debug("Agent created successfully")
+            logger.info("Agent created successfully")
         except Exception as e:
             logger.exception(f"Failed to create agent: {e}")
             raise HTTPException(
@@ -1117,10 +1117,10 @@ Return the complete JSON object with all keys and their translated values in {na
 
         # Exécuter l'agent
         try:
-            logger.debug("Starting agent execution")
+            logger.info("Starting agent execution")
             runner = Runner(agent=agent)
             result = await runner.run("Translate the provided JSON to the target language.")
-            logger.debug(f"Agent execution completed, result type: {type(result)}")
+            logger.info(f"Agent execution completed, result type: {type(result)}")
         except Exception as e:
             logger.exception(f"Failed to run agent: {e}")
             raise HTTPException(
@@ -1130,8 +1130,9 @@ Return the complete JSON object with all keys and their translated values in {na
 
         # Extraire la réponse
         try:
+            logger.info("Extracting response from agent result")
             response_text = result.output if hasattr(result, 'output') else str(result)
-            logger.debug(f"Response text length: {len(response_text)} characters")
+            logger.info(f"Response text length: {len(response_text)} characters")
         except Exception as e:
             logger.exception(f"Failed to extract response: {e}")
             raise HTTPException(
