@@ -1061,10 +1061,18 @@ async def generate_language_file(
             provider_slug = available_model.provider_slug
 
             logger.info(f"Using model {model_name} from provider {provider_slug} for translation")
+            print(f"CHECKPOINT 1: About to exit session context manager")
+
+        print(f"CHECKPOINT 2: Exited session, provider_id_used={provider_id_used}, provider_slug={provider_slug}")
 
         # Obtenir le provider binding
+        print(f"CHECKPOINT 3: About to get provider binding")
         logger.info(f"Getting provider binding for provider_id={provider_id_used}, provider_slug={provider_slug}")
+
+        print(f"CHECKPOINT 4: Calling get_agent_provider_binding")
         provider_binding = get_agent_provider_binding(provider_id_used, provider_slug)
+
+        print(f"CHECKPOINT 5: Got provider binding result")
         logger.info(f"Provider binding result: {provider_binding}")
 
         if not provider_binding:
