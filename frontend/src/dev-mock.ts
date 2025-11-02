@@ -2,10 +2,14 @@
 // Ce fichier configure un utilisateur admin mock et intercepte les appels API
 
 import type {
+  AppearanceSettings,
   AvailableModel,
   WidgetTemplate,
   WidgetTemplateSummary,
-  VectorStoreSummary
+  VectorStoreSummary,
+  WorkflowAppearance,
+  WorkflowAppearanceOverride,
+  WorkflowAppearanceUpdatePayload
 } from './utils/backend';
 
 // Données mockées pour le développement
@@ -88,6 +92,198 @@ const MOCK_VECTOR_STORES: VectorStoreSummary[] = [
   },
 ];
 
+const MOCK_APPEARANCE_TIMESTAMP = new Date().toISOString();
+
+const MOCK_APPEARANCE: AppearanceSettings = {
+  color_scheme: 'system',
+  accent_color: '#2563eb',
+  use_custom_surface_colors: false,
+  surface_hue: 222,
+  surface_tint: 92,
+  surface_shade: 16,
+  heading_font: '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif',
+  body_font: '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif',
+  start_screen_greeting: '',
+  start_screen_prompt: '',
+  start_screen_placeholder: 'Posez votre question...',
+  start_screen_disclaimer: '',
+  created_at: MOCK_APPEARANCE_TIMESTAMP,
+  updated_at: MOCK_APPEARANCE_TIMESTAMP,
+};
+
+type WorkflowAppearanceRecord = {
+  metadata: {
+    kind: 'local' | 'hosted';
+    slug: string;
+    label: string;
+    workflowId: number | null;
+    remoteWorkflowId: string | null;
+  };
+  override: WorkflowAppearanceOverride | null;
+};
+
+const workflowAppearanceState = new Map<string, WorkflowAppearanceRecord>();
+
+const ensureWorkflowAppearanceRecord = (reference: string): WorkflowAppearanceRecord => {
+  const normalized = reference.trim();
+  const existing = workflowAppearanceState.get(normalized);
+  if (existing) {
+    return existing;
+  }
+
+  const numericId = Number(normalized);
+  const isNumeric = Number.isFinite(numericId) && normalized !== '';
+  const record: WorkflowAppearanceRecord = {
+    metadata: {
+      kind: isNumeric ? 'local' : 'hosted',
+      slug: isNumeric ? 'demo-workflow' : normalized,
+      label: isNumeric ? 'Demo Workflow' : normalized,
+      workflowId: isNumeric ? numericId : null,
+      remoteWorkflowId: isNumeric ? null : normalized,
+    },
+    override: null,
+  };
+
+  workflowAppearanceState.set(normalized, record);
+  return record;
+};
+
+const mergeAppearanceSettings = (
+  override: WorkflowAppearanceOverride | null,
+): AppearanceSettings => ({
+  ...MOCK_APPEARANCE,
+  ...(override
+    ? {
+        color_scheme: override.color_scheme ?? MOCK_APPEARANCE.color_scheme,
+        accent_color: override.accent_color ?? MOCK_APPEARANCE.accent_color,
+        use_custom_surface_colors:
+          override.use_custom_surface_colors ?? MOCK_APPEARANCE.use_custom_surface_colors,
+        surface_hue: override.surface_hue ?? MOCK_APPEARANCE.surface_hue,
+        surface_tint: override.surface_tint ?? MOCK_APPEARANCE.surface_tint,
+        surface_shade: override.surface_shade ?? MOCK_APPEARANCE.surface_shade,
+        heading_font: override.heading_font ?? MOCK_APPEARANCE.heading_font,
+        body_font: override.body_font ?? MOCK_APPEARANCE.body_font,
+        start_screen_greeting: override.start_screen_greeting ?? '',
+        start_screen_prompt: override.start_screen_prompt ?? '',
+        start_screen_placeholder:
+          override.start_screen_placeholder ?? MOCK_APPEARANCE.start_screen_placeholder,
+        start_screen_disclaimer: override.start_screen_disclaimer ?? '',
+      }
+    : {}),
+});
+
+const hasAppearanceOverrides = (override: WorkflowAppearanceOverride): boolean =>
+  [
+    override.color_scheme,
+    override.accent_color,
+    override.use_custom_surface_colors,
+    override.surface_hue,
+    override.surface_tint,
+    override.surface_shade,
+    override.heading_font,
+    override.body_font,
+    override.start_screen_greeting,
+    override.start_screen_prompt,
+    override.start_screen_placeholder,
+    override.start_screen_disclaimer,
+  ].some((value) => value !== null && value !== undefined);
+
+const buildWorkflowAppearancePayload = (
+  reference: string,
+  record: WorkflowAppearanceRecord,
+): WorkflowAppearance => ({
+  target_kind: record.metadata.kind,
+  workflow_id: record.metadata.workflowId,
+  workflow_slug: record.metadata.slug,
+  label: record.metadata.label,
+  remote_workflow_id: record.metadata.remoteWorkflowId,
+  override: record.override,
+  effective: mergeAppearanceSettings(record.override),
+  inherited_from_global: record.override == null,
+});
+
+const applyWorkflowAppearanceUpdate = (
+  reference: string,
+  payload: WorkflowAppearanceUpdatePayload,
+): WorkflowAppearance => {
+  const record = ensureWorkflowAppearanceRecord(reference);
+
+  if (payload.inherit_from_global) {
+    record.override = null;
+    return buildWorkflowAppearancePayload(reference, record);
+  }
+
+  const now = new Date().toISOString();
+  const base: WorkflowAppearanceOverride =
+    record.override ?? {
+      color_scheme: null,
+      accent_color: null,
+      use_custom_surface_colors: null,
+      surface_hue: null,
+      surface_tint: null,
+      surface_shade: null,
+      heading_font: null,
+      body_font: null,
+      start_screen_greeting: null,
+      start_screen_prompt: null,
+      start_screen_placeholder: null,
+      start_screen_disclaimer: null,
+      created_at: now,
+      updated_at: now,
+    };
+
+  const next: WorkflowAppearanceOverride = {
+    ...base,
+    updated_at: now,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'color_scheme')) {
+    next.color_scheme = payload.color_scheme ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'accent_color')) {
+    next.accent_color = payload.accent_color ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'use_custom_surface_colors')) {
+    next.use_custom_surface_colors = payload.use_custom_surface_colors ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'surface_hue')) {
+    next.surface_hue = payload.surface_hue ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'surface_tint')) {
+    next.surface_tint = payload.surface_tint ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'surface_shade')) {
+    next.surface_shade = payload.surface_shade ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'heading_font')) {
+    next.heading_font = payload.heading_font ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'body_font')) {
+    next.body_font = payload.body_font ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'start_screen_greeting')) {
+    next.start_screen_greeting = payload.start_screen_greeting ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'start_screen_prompt')) {
+    next.start_screen_prompt = payload.start_screen_prompt ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'start_screen_placeholder')) {
+    next.start_screen_placeholder = payload.start_screen_placeholder ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'start_screen_disclaimer')) {
+    next.start_screen_disclaimer = payload.start_screen_disclaimer ?? null;
+  }
+
+  if (!hasAppearanceOverrides(next)) {
+    record.override = null;
+  } else {
+    next.created_at = base.created_at ?? now;
+    record.override = next;
+  }
+
+  return buildWorkflowAppearancePayload(reference, record);
+};
+
 // Configuration de l'utilisateur admin mock
 export const setupMockAuth = () => {
   const mockUser = {
@@ -156,6 +352,58 @@ export const setupMockApi = () => {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method?.toUpperCase() || 'GET';
+    const resolvedUrl = new URL(url, window.location.origin);
+    const path = resolvedUrl.pathname;
+
+    if (path === '/api/appearance-settings') {
+      console.log('🔧 Mock API: GET /api/appearance-settings');
+      const workflowReference = resolvedUrl.searchParams.get('workflow_id');
+      if (workflowReference) {
+        const record = ensureWorkflowAppearanceRecord(workflowReference);
+        const payload = buildWorkflowAppearancePayload(workflowReference, record);
+        return new Response(JSON.stringify(payload.effective), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify(MOCK_APPEARANCE), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const workflowAppearanceMatch = path.match(/^\/api\/workflows\/([^/]+)\/appearance$/);
+    if (workflowAppearanceMatch) {
+      const reference = decodeURIComponent(workflowAppearanceMatch[1]);
+      if (method === 'GET') {
+        console.log(`🔧 Mock API: GET ${path}`);
+        const record = ensureWorkflowAppearanceRecord(reference);
+        const payload = buildWorkflowAppearancePayload(reference, record);
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (method === 'PATCH') {
+        console.log(`🔧 Mock API: PATCH ${path}`);
+        let parsedBody: WorkflowAppearanceUpdatePayload = {};
+        if (init?.body) {
+          if (typeof init.body === 'string') {
+            parsedBody = JSON.parse(init.body || '{}');
+          } else if (init.body instanceof Blob) {
+            parsedBody = JSON.parse(await init.body.text() || '{}');
+          }
+        }
+
+        const payload = applyWorkflowAppearanceUpdate(reference, parsedBody);
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     // Mock /api/chatkit/workflow (GET)
     if (url.includes('/api/chatkit/workflow') || url.includes('/api/chatkit')) {

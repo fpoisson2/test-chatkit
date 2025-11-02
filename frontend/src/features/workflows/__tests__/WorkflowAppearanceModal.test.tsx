@@ -55,6 +55,62 @@ describe("WorkflowAppearanceModal", () => {
     mockedUpdateForWorkflow.mockReset();
   });
 
+  it("keeps hook order stable when toggling visibility", async () => {
+    mockedGetForWorkflow.mockResolvedValueOnce({
+      target_kind: "local",
+      workflow_id: LOCAL_TARGET.workflowId,
+      workflow_slug: LOCAL_TARGET.slug,
+      label: LOCAL_TARGET.label,
+      remote_workflow_id: null,
+      override: null,
+      effective: BASE_APPEARANCE,
+      inherited_from_global: true,
+    } as any);
+
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const onClose = vi.fn();
+
+    try {
+      const view = render(
+        <I18nProvider>
+          <WorkflowAppearanceModal
+            token="token"
+            isOpen={false}
+            target={null}
+            onClose={onClose}
+          />
+        </I18nProvider>,
+      );
+
+      view.rerender(
+        <I18nProvider>
+          <WorkflowAppearanceModal
+            token="token"
+            isOpen
+            target={LOCAL_TARGET}
+            onClose={onClose}
+          />
+        </I18nProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockedGetForWorkflow).toHaveBeenCalledWith("token", 42);
+      });
+
+      const hookOrderError = consoleError.mock.calls.some((call) =>
+        typeof call[0] === "string" &&
+        call[0].includes("React has detected a change in the order of Hooks"),
+      );
+
+      expect(hookOrderError).toBe(false);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("loads current appearance, submits updates and supports reset", async () => {
     mockedGetForWorkflow.mockResolvedValueOnce({
       target_kind: "local",

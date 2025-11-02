@@ -181,22 +181,7 @@ export const WorkflowAppearanceModal = ({
     }
   }, [token, workflowReference, t]);
 
-  if (!isOpen || !target) {
-    return null;
-  }
-
   const inherited = snapshot?.inherited_from_global ?? true;
-  const title = target
-    ? t("workflowAppearance.modal.title", { label: target.label })
-    : t("workflowAppearance.modal.defaultTitle");
-
-  const helpMessage = inherited
-    ? t("workflowAppearance.modal.inherited", {
-        label: target.label,
-      })
-    : t("workflowAppearance.modal.customized", {
-        label: target.label,
-      });
 
   const formFooter = useCallback(
     ({ isBusy: formBusy }: { isBusy: boolean }) => (
@@ -224,6 +209,22 @@ export const WorkflowAppearanceModal = ({
     ),
     [handleReset, inherited, onClose, t],
   );
+
+  if (!isOpen || !target) {
+    return null;
+  }
+
+  const title = target
+    ? t("workflowAppearance.modal.title", { label: target.label })
+    : t("workflowAppearance.modal.defaultTitle");
+
+  const helpMessage = inherited
+    ? t("workflowAppearance.modal.inherited", {
+        label: target.label,
+      })
+    : t("workflowAppearance.modal.customized", {
+        label: target.label,
+      });
 
   return (
     <Modal title={title} onClose={onClose} size="lg">
