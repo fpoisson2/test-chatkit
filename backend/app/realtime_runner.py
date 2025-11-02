@@ -65,6 +65,7 @@ def _normalize_realtime_tools_payload(
 
     normalized: list[Any] = []
     seen_labels: set[str] = set()
+    seen_mcp_urls: dict[str, int] = {}  # URL -> index in normalized list
 
     disallowed_tool_keys = {"agent", "function", "metadata"}
     # Only include parameters that are supported by OpenAI Realtime API
@@ -188,6 +189,28 @@ def _normalize_realtime_tools_payload(
 
                 # require_approval is internal only, not sent to OpenAI API
 
+                # Deduplicate MCP servers by URL - keep the most complete one (with allowlist)
+                normalized_url = server_url.strip()
+                if normalized_url in seen_mcp_urls:
+                    existing_index = seen_mcp_urls[normalized_url]
+                    existing_entry = normalized[existing_index]
+                    # Replace with new entry if it has allowlist and existing doesn't
+                    if "allow" in tool_entry and "allow" not in existing_entry:
+                        logger.info(
+                            "Replacing MCP server at %s (no allowlist) with version that has allowlist",
+                            normalized_url,
+                        )
+                        normalized[existing_index] = tool_entry
+                    else:
+                        logger.info(
+                            "Skipping duplicate MCP server at %s",
+                            normalized_url,
+                        )
+                    continue
+
+                seen_mcp_urls[normalized_url] = len(normalized)
+
+                # Add to mcp_server_configs only if not a duplicate
                 if mcp_server_configs is not None:
                     config_entry: dict[str, Any] = {
                         "server_label": label,
