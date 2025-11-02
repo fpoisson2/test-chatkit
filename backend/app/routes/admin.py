@@ -860,36 +860,61 @@ async def list_languages(_admin: User = Depends(require_admin)):
     """
     import os
     import json
+    import re
     from pathlib import Path
-    
-    # Chemin vers le dossier des traductions
-    i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
-    
-    languages = []
-    
-    # Charger le fichier principal pour obtenir les langues définies
-    main_file = i18n_path / "translations.ts"
-    if main_file.exists():
+
+    try:
+        # Chemin vers le dossier des traductions
+        i18n_path = Path(__file__).parent.parent.parent.parent / "frontend" / "src" / "i18n"
+
+        logger.info(f"Looking for translations at: {i18n_path}")
+
+        if not i18n_path.exists():
+            logger.error(f"i18n directory does not exist at {i18n_path}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Translation directory not found at {i18n_path}"
+            )
+
+        languages = []
+
+        # Charger le fichier principal pour obtenir les langues définies
+        main_file = i18n_path / "translations.ts"
+
+        if not main_file.exists():
+            logger.error(f"Main translations file does not exist at {main_file}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Main translations file not found at {main_file}"
+            )
+
         content = main_file.read_text()
-        
+        logger.debug(f"Read {len(content)} characters from translations.ts")
+
         # Extraire les codes de langues de AVAILABLE_LANGUAGES
-        import re
         pattern = r'code:\s*"([a-z]{2})"'
         codes = re.findall(pattern, content)
-        
+
+        logger.info(f"Found language codes: {codes}")
+
+        if not codes:
+            logger.warning("No language codes found in translations.ts")
+
         # Pour chaque code, vérifier si le fichier existe
         for code in codes:
             translation_file = f"translations.{code}.ts"
             file_path = i18n_path / translation_file
             file_exists = file_path.exists()
-            
+
+            logger.debug(f"Checking {translation_file}: exists={file_exists}")
+
             # Compter les clés de traduction
             keys_count = 0
             if file_exists:
                 file_content = file_path.read_text()
                 # Compter les lignes qui contiennent des clés de traduction (format: "key": "value")
                 keys_count = len(re.findall(r'^\s*"[^"]+"\s*:\s*', file_content, re.MULTILINE))
-            
+
             # Obtenir le nom de la langue depuis le fichier de traductions
             name = code.upper()
             if file_exists:
@@ -897,14 +922,14 @@ async def list_languages(_admin: User = Depends(require_admin)):
                 name_match = re.search(rf'"language\.name\.{code}"\s*:\s*"([^"]+)"', file_content)
                 if name_match:
                     name = name_match.group(1)
-            
+
             # Compter le total de clés (on utilise le fichier anglais comme référence)
             total_keys = 0
             en_file = i18n_path / "translations.en.ts"
             if en_file.exists():
                 en_content = en_file.read_text()
                 total_keys = len(re.findall(r'^\s*"[^"]+"\s*:\s*', en_content, re.MULTILINE))
-            
+
             languages.append(
                 LanguageResponse(
                     code=code,
@@ -915,8 +940,18 @@ async def list_languages(_admin: User = Depends(require_admin)):
                     fileExists=file_exists,
                 )
             )
-    
-    return LanguagesListResponse(languages=languages)
+
+        logger.info(f"Returning {len(languages)} languages")
+        return LanguagesListResponse(languages=languages)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to list languages: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list languages: {str(e)}"
+        )
 
 
 @router.post("/languages", response_model=LanguageResponse)
