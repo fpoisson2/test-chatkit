@@ -23,11 +23,45 @@ async def probe_mcp_connection(
     server = build_mcp_tool(config)
     context = get_mcp_runtime_context(server)
 
+    params: Mapping[str, Any] | None = getattr(server, "params", None)
+    headers_preview: dict[str, str] | None = None
+    timeout_preview: dict[str, Any] = {}
+    if isinstance(params, Mapping):
+        if "headers" in params:
+            headers_preview = _format_headers_for_logging(params.get("headers"))
+        if "timeout" in params:
+            timeout_preview["timeout"] = params.get("timeout")
+        if "sse_read_timeout" in params:
+            timeout_preview["sse_read_timeout"] = params.get("sse_read_timeout")
+        if "client_session_timeout_seconds" in params:
+            timeout_preview["client_session_timeout_seconds"] = params.get(
+                "client_session_timeout_seconds"
+            )
+
+    logger.debug(
+        (
+            "Préparation d'une connexion MCP | url=%s transport=%s server_id=%s "
+            "has_authorization=%s headers=%s timeouts=%s"
+        ),
+        _safe_url(server),
+        context.transport if context else "<inconnu>",
+        context.server_id if context else None,
+        bool(context and context.authorization),
+        headers_preview,
+        timeout_preview or None,
+    )
+
     tools: list[Any]
 
     try:
         await server.connect()
         tools = await server.list_tools()
+        logger.debug(
+            "Connexion MCP réussie | url=%s outils=%d allowlist=%s",
+            _safe_url(server),
+            len(tools),
+            context.allowlist if context else None,
+        )
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code
         if status_code == 401:
@@ -39,10 +73,17 @@ async def probe_mcp_connection(
         else:
             status_label = "http_error"
             detail = f"Le serveur MCP a renvoyé le statut HTTP {status_code}."
+        response_headers = _format_headers_for_logging(exc.response.headers)
+        response_body = _preview_response_text(exc.response)
         logger.warning(
-            "Test de connexion MCP échoué (HTTP %s) pour %s",
+            (
+                "Test de connexion MCP échoué (HTTP %s) pour %s | "
+                "response_headers=%s | body=%s"
+            ),
             status_code,
             _safe_url(server),
+            response_headers,
+            response_body,
         )
         return {
             "status": status_label,
@@ -108,3 +149,52 @@ async def probe_mcp_connection(
 def _safe_url(server: MCPServerSse) -> str:
     params = getattr(server, "params", {})
     return params.get("url", "<inconnu>")
+
+
+_SENSITIVE_HEADER_MARKERS = (
+    "authorization",
+    "token",
+    "secret",
+    "key",
+    "cookie",
+)
+
+
+def _mask_sensitive_value(value: Any) -> str:
+    string_value = str(value)
+    if not string_value:
+        return "<vide>"
+    if len(string_value) <= 8:
+        return "***"
+    return f"{string_value[:3]}…{string_value[-3:]}"
+
+
+def _format_headers_for_logging(headers: Any) -> dict[str, str] | None:
+    if not isinstance(headers, Mapping):
+        return None
+
+    sanitized: dict[str, str] = {}
+    for raw_key, raw_value in headers.items():
+        key = str(raw_key)
+        value = str(raw_value)
+        lower_key = key.lower()
+        if any(marker in lower_key for marker in _SENSITIVE_HEADER_MARKERS):
+            sanitized[key] = _mask_sensitive_value(value)
+        else:
+            sanitized[key] = value
+    return sanitized or None
+
+
+def _preview_response_text(response: httpx.Response) -> str:
+    try:
+        text = response.text
+    except Exception:  # pragma: no cover - lecture défensive
+        return "<non disponible>"
+
+    return _trim_preview(text)
+
+
+def _trim_preview(payload: str, *, limit: int = 512) -> str:
+    if len(payload) <= limit:
+        return payload
+    return f"{payload[:limit]}…"
