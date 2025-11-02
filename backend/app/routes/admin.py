@@ -1099,19 +1099,45 @@ Return the complete JSON object with all keys and their translated values in {na
         logger.info(f"Using agent SDK for translation to {name}")
 
         # Créer l'agent avec le provider
-        agent = Agent(
-            name="Language Translator",
-            model=model_name,
-            instructions=prompt,
-            provider=provider_binding.provider
-        )
+        try:
+            logger.debug(f"Creating agent with model={model_name}, provider={provider_binding.provider_slug}")
+            agent = Agent(
+                name="Language Translator",
+                model=model_name,
+                instructions=prompt,
+                provider=provider_binding.provider
+            )
+            logger.debug("Agent created successfully")
+        except Exception as e:
+            logger.exception(f"Failed to create agent: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create translation agent: {str(e)}"
+            )
 
         # Exécuter l'agent
-        runner = Runner(agent=agent)
-        result = await runner.run("Translate the provided JSON to the target language.")
+        try:
+            logger.debug("Starting agent execution")
+            runner = Runner(agent=agent)
+            result = await runner.run("Translate the provided JSON to the target language.")
+            logger.debug(f"Agent execution completed, result type: {type(result)}")
+        except Exception as e:
+            logger.exception(f"Failed to run agent: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Translation execution failed: {str(e)}"
+            )
 
         # Extraire la réponse
-        response_text = result.output if hasattr(result, 'output') else str(result)
+        try:
+            response_text = result.output if hasattr(result, 'output') else str(result)
+            logger.debug(f"Response text length: {len(response_text)} characters")
+        except Exception as e:
+            logger.exception(f"Failed to extract response: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to extract translation response: {str(e)}"
+            )
         
         # Parser le JSON de la réponse
         # Nettoyer le texte pour extraire seulement le JSON
