@@ -9,7 +9,7 @@ services:
       uvicorn server:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
-      - ./frontend:/frontend:ro
+      - ./frontend:/frontend
     environment:
       MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
       MODEL_API_BASE: ${MODEL_API_BASE:-}
