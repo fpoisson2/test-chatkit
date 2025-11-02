@@ -11,6 +11,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlparse
 
@@ -27,7 +28,7 @@ from .config import (
     set_runtime_settings_overrides,
 )
 from .database import SessionLocal
-from .models import AppSettings
+from .models import AppSettings, WorkflowAppearance
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,8 @@ DEFAULT_APPEARANCE_SURFACE_HUE = 222.0
 DEFAULT_APPEARANCE_SURFACE_TINT = 92.0
 DEFAULT_APPEARANCE_SURFACE_SHADE = 16.0
 DEFAULT_APPEARANCE_BODY_FONT = (
-    '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif'
+    '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, '
+    '"Helvetica Neue", sans-serif'
 )
 DEFAULT_APPEARANCE_HEADING_FONT = DEFAULT_APPEARANCE_BODY_FONT
 DEFAULT_APPEARANCE_GREETING = ""
@@ -784,7 +786,10 @@ def apply_appearance_update(
         changed = True
 
     if start_screen_greeting is not _UNSET:
-        if start_screen_greeting is not None and not isinstance(start_screen_greeting, str):
+        if (
+            start_screen_greeting is not None
+            and not isinstance(start_screen_greeting, str)
+        ):
             raise ValueError("Le message de bienvenue doit être une chaîne.")
         target.appearance_start_greeting = _normalize_optional_string(
             start_screen_greeting
@@ -792,7 +797,10 @@ def apply_appearance_update(
         changed = True
 
     if start_screen_prompt is not _UNSET:
-        if start_screen_prompt is not None and not isinstance(start_screen_prompt, str):
+        if (
+            start_screen_prompt is not None
+            and not isinstance(start_screen_prompt, str)
+        ):
             raise ValueError("La phrase d'accroche doit être une chaîne.")
         target.appearance_start_prompt = _normalize_optional_string(
             start_screen_prompt
@@ -800,7 +808,10 @@ def apply_appearance_update(
         changed = True
 
     if start_screen_placeholder is not _UNSET:
-        if start_screen_placeholder is not None and not isinstance(start_screen_placeholder, str):
+        if (
+            start_screen_placeholder is not None
+            and not isinstance(start_screen_placeholder, str)
+        ):
             raise ValueError("Le placeholder doit être une chaîne.")
         target.appearance_input_placeholder = _normalize_optional_string(
             start_screen_placeholder
@@ -808,7 +819,10 @@ def apply_appearance_update(
         changed = True
 
     if start_screen_disclaimer is not _UNSET:
-        if start_screen_disclaimer is not None and not isinstance(start_screen_disclaimer, str):
+        if (
+            start_screen_disclaimer is not None
+            and not isinstance(start_screen_disclaimer, str)
+        ):
             raise ValueError("L'avertissement doit être une chaîne.")
         target.appearance_disclaimer = _normalize_optional_string(
             start_screen_disclaimer
