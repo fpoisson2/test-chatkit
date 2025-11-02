@@ -76,6 +76,90 @@ const extractToolNames = (server: McpServerSummary): string[] => {
   return rawNames.filter((name): name is string => typeof name === "string" && !!name);
 };
 
+const extractStringFromTokenPayload = (
+  payload: unknown,
+  candidateKeys: string[],
+): string | null => {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const normalizeKey = (key: string): string => key.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const normalizedCandidates = candidateKeys
+    .map((key) => normalizeKey(key))
+    .filter((key) => key.length > 0)
+    .sort((a, b) => b.length - a.length);
+
+  const visited = new Set<object>();
+  type StackEntry = { value: unknown; matchedCandidate: string | null };
+  const stack: StackEntry[] = [{ value: payload, matchedCandidate: null }];
+
+  while (stack.length > 0) {
+    const { value, matchedCandidate } = stack.pop()!;
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed && matchedCandidate) {
+        return trimmed;
+      }
+      continue;
+    }
+
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+
+    if (visited.has(value as object)) {
+      continue;
+    }
+    visited.add(value as object);
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        stack.push({ value: item, matchedCandidate });
+      }
+      continue;
+    }
+
+    const record = value as Record<string, unknown>;
+    for (const [rawKey, child] of Object.entries(record)) {
+      if (!rawKey) {
+        stack.push({ value: child, matchedCandidate });
+        continue;
+      }
+
+      const normalizedKey = normalizeKey(rawKey);
+      const candidateMatch = normalizedCandidates.find((candidate) => {
+        if (candidate === normalizedKey) {
+          return true;
+        }
+        if (!normalizedKey || !candidate) {
+          return false;
+        }
+        if (normalizedKey.length > candidate.length) {
+          return normalizedKey.includes(candidate);
+        }
+        return candidate.includes(normalizedKey);
+      });
+
+      const nextMatch = candidateMatch ?? matchedCandidate;
+
+      if (typeof child === "string") {
+        const trimmed = child.trim();
+        if (trimmed && nextMatch) {
+          return trimmed;
+        }
+        continue;
+      }
+
+      stack.push({ value: child, matchedCandidate: nextMatch });
+    }
+  }
+
+  return null;
+};
+
 const buildPayloadFromForm = (
   form: McpServerFormState,
   current: McpServerSummary | null,
@@ -98,13 +182,10 @@ const buildPayloadFromForm = (
   const assignOptionalSecret = (
     key: "authorization" | "access_token" | "refresh_token" | "oauth_client_secret",
     value: string,
-    hint: string | null | undefined,
   ) => {
     const trimmed = value.trim();
     if (trimmed) {
       payload[key] = trimmed;
-    } else if (current && hint) {
-      payload[key] = null;
     }
   };
 
@@ -126,14 +207,10 @@ const buildPayloadFromForm = (
     }
   };
 
-  assignOptionalSecret("authorization", form.authorization, current?.authorization_hint);
-  assignOptionalSecret("access_token", form.accessToken, current?.access_token_hint);
-  assignOptionalSecret("refresh_token", form.refreshToken, current?.refresh_token_hint);
-  assignOptionalSecret(
-    "oauth_client_secret",
-    form.oauthClientSecret,
-    current?.oauth_client_secret_hint,
-  );
+  assignOptionalSecret("authorization", form.authorization);
+  assignOptionalSecret("access_token", form.accessToken);
+  assignOptionalSecret("refresh_token", form.refreshToken);
+  assignOptionalSecret("oauth_client_secret", form.oauthClientSecret);
 
   assignOptionalField("oauth_client_id", form.oauthClientId, current?.oauth_client_id);
   assignOptionalField("oauth_scope", form.oauthScope, current?.oauth_scope);
@@ -274,36 +351,222 @@ export const AdminMcpServersPage = () => {
     };
   }, [token]);
 
-  useEffect(() => {
-    if (oauthFeedback.status !== "pending" || !oauthFeedback.stateId) {
-      return undefined;
-    }
+  const persistOAuthTokens = useCallback(
+    async ({
+      serverId,
+      tokenPayload,
+      plan,
+    }: {
+      serverId: number | null;
+      tokenPayload: Record<string, unknown>;
+      plan: McpOAuthPersistencePlan | null;
+    }): Promise<
+      | { ok: true; server: McpServerSummary | null }
+      | { ok: false; message: string }
+    > => {
+      if (!token) {
+        return { ok: false, message: t("admin.mcpServers.errors.sessionExpired") };
+      }
 
-    let cancelled = false;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+      const planPayload: McpServerPayload = { ...(plan?.payload ?? {}) };
+      const existingServer =
+        serverId != null ? servers.find((item) => item.id === serverId) ?? null : null;
 
-    const handleOAuthResult = (result: McpOAuthSessionStatus) => {
+      if (!planPayload.label && existingServer?.label) {
+        planPayload.label = existingServer.label;
+      }
+      if (!planPayload.server_url && existingServer?.server_url) {
+        planPayload.server_url = existingServer.server_url;
+      }
+      if (planPayload.is_active === undefined && existingServer) {
+        planPayload.is_active = Boolean(existingServer.is_active);
+      }
+      if (!planPayload.transport && existingServer?.transport) {
+        planPayload.transport = existingServer.transport ?? undefined;
+      }
+
+      const resolvedLabel =
+        typeof planPayload.label === "string" ? planPayload.label.trim() : "";
+      const resolvedUrl =
+        typeof planPayload.server_url === "string" ? planPayload.server_url.trim() : "";
+
+      if (!resolvedLabel || !resolvedUrl) {
+        return {
+          ok: false,
+          message: t("admin.mcpServers.oauth.errorMissingDraft"),
+        };
+      }
+
+      const accessToken =
+        extractStringFromTokenPayload(tokenPayload, ["access_token", "accesstoken", "access-token"]) || "";
+      const refreshToken =
+        extractStringFromTokenPayload(tokenPayload, ["refresh_token", "refreshtoken", "refresh-token"]) || "";
+      const tokenType =
+        extractStringFromTokenPayload(tokenPayload, ["token_type", "tokentype", "type"]) || "";
+      const explicitAuthorization =
+        extractStringFromTokenPayload(tokenPayload, [
+          "authorization",
+          "authorization_header",
+          "authorizationheader",
+        ]) || "";
+
+      const shouldRefreshTools =
+        plan?.refreshToolsOnSuccess === undefined
+          ? true
+          : Boolean(plan.refreshToolsOnSuccess);
+
+      const payload: McpServerPayload = {
+        ...planPayload,
+        label: resolvedLabel,
+        server_url: resolvedUrl,
+        refresh_tools: shouldRefreshTools,
+      };
+
+      if (accessToken) {
+        payload.access_token = accessToken;
+      }
+
+      const resolvedAuthorization = (() => {
+        if (explicitAuthorization) {
+          return explicitAuthorization;
+        }
+        if (!accessToken) {
+          return "";
+        }
+        const scheme = tokenType || "Bearer";
+        return `${scheme} ${accessToken}`.trim();
+      })();
+
+      if (resolvedAuthorization) {
+        payload.authorization = resolvedAuthorization;
+      }
+
+      if (refreshToken) {
+        payload.refresh_token = refreshToken;
+      }
+
+      const shouldStoreMetadata = plan?.storeTokenMetadata ?? true;
+      const planMetadata = planPayload.oauth_metadata;
+
+      if (shouldStoreMetadata) {
+        const existingMetadata = existingServer?.oauth_metadata;
+        const baseMetadata = (() => {
+          if (planMetadata && typeof planMetadata === "object" && !Array.isArray(planMetadata)) {
+            return planMetadata;
+          }
+          if (
+            existingMetadata &&
+            typeof existingMetadata === "object" &&
+            !Array.isArray(existingMetadata)
+          ) {
+            return existingMetadata;
+          }
+          return undefined;
+        })();
+
+        payload.oauth_metadata = {
+          ...(baseMetadata ?? {}),
+          token: tokenPayload,
+        };
+      } else if (planMetadata !== undefined) {
+        payload.oauth_metadata = planMetadata ?? null;
+      }
+
+      try {
+        let persisted: McpServerSummary | null = null;
+
+        if (serverId != null) {
+          const updated = await mcpServersApi.update(token, serverId, payload);
+          persisted = updated;
+          setServers((prev) =>
+            prev.map((item) => (item.id === updated.id ? updated : item)),
+          );
+          if (editingId === serverId) {
+            applyServerToForm(updated);
+          }
+        } else {
+          const created = await mcpServersApi.create(token, payload);
+          persisted = created;
+          setServers((prev) => {
+            const others = prev.filter((item) => item.id !== created.id);
+            return [...others, created].sort((a, b) =>
+              a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+            );
+          });
+          setEditingId(created.id);
+          applyServerToForm(created);
+        }
+
+        return { ok: true, server: persisted };
+      } catch (err) {
+        if (isUnauthorizedError(err)) {
+          logout();
+          return { ok: false, message: t("admin.mcpServers.errors.sessionExpired") };
+        }
+        const message =
+          err instanceof Error
+            ? err.message
+            : t("admin.mcpServers.oauth.errorGeneric");
+        return { ok: false, message };
+      }
+    },
+    [
+      applyServerToForm,
+      editingId,
+      logout,
+      servers,
+      setEditingId,
+      t,
+      token,
+    ],
+  );
+
+  const handleOAuthResult = useCallback(
+    async (result: McpOAuthSessionStatus) => {
       if (result.status === "pending") {
-        timeoutHandle = setTimeout(() => {
-          timeoutHandle = null;
-          void poll();
-        }, 1500);
         return;
       }
 
       pendingStateRef.current = null;
 
       if (result.status === "ok") {
+        const plan = oauthPlanRef.current;
+        const fallbackServerId = plan?.serverId ?? oauthFeedback.serverId ?? null;
+        let persistedServerId: number | null = fallbackServerId;
+
+        if (result.token && typeof result.token === "object") {
+          const outcome = await persistOAuthTokens({
+            serverId: fallbackServerId,
+            tokenPayload: result.token as Record<string, unknown>,
+            plan: plan ?? null,
+          });
+
+          if (!outcome.ok) {
+            const message = outcome.message;
+            setOauthFeedback({
+              status: "error",
+              message,
+              stateId: null,
+              serverId: fallbackServerId,
+            });
+            setError(message);
+            return;
+          }
+
+          persistedServerId = outcome.server?.id ?? fallbackServerId ?? null;
+        }
+
         setOauthFeedback({
           status: "success",
           message: t("admin.mcpServers.oauth.success"),
           stateId: null,
-          serverId: oauthFeedback.serverId ?? null,
+          serverId: persistedServerId,
         });
         setSuccess(t("admin.mcpServers.feedback.oauthSuccess"));
         setError(null);
         setProbeFeedback(null);
         setProbeError(null);
+        oauthPlanRef.current = null;
         void loadServers();
       } else {
         const detail =
@@ -323,7 +586,22 @@ export const AdminMcpServersPage = () => {
           setError(message);
         }
       }
-    };
+    },
+    [
+      loadServers,
+      oauthFeedback.serverId,
+      persistOAuthTokens,
+      t,
+    ],
+  );
+
+  useEffect(() => {
+    if (oauthFeedback.status !== "pending" || !oauthFeedback.stateId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
       if (!token) {
@@ -341,7 +619,14 @@ export const AdminMcpServersPage = () => {
         if (cancelled) {
           return;
         }
-        handleOAuthResult(result);
+        if (result.status === "pending") {
+          timeoutHandle = setTimeout(() => {
+            timeoutHandle = null;
+            void poll();
+          }, 1500);
+          return;
+        }
+        await handleOAuthResult(result);
       } catch (err) {
         if (cancelled) {
           return;
@@ -372,7 +657,13 @@ export const AdminMcpServersPage = () => {
         clearTimeout(timeoutHandle);
       }
     };
-  }, [logout, oauthFeedback, t, token, loadServers]);
+  }, [
+    handleOAuthResult,
+    logout,
+    oauthFeedback,
+    t,
+    token,
+  ]);
 
   const handleCreate = useCallback(() => {
     resetForm();

@@ -81,7 +81,10 @@ def test_build_mcp_tool_constructs_server(monkeypatch: pytest.MonkeyPatch) -> No
     assert isinstance(server, _StubServer)
     params = created["params"]
     assert params["url"] == "https://example.com/mcp"
-    assert params["headers"]["Authorization"] == "Bearer token"
+    headers = params["headers"]
+    assert headers["Authorization"] == "Bearer token"
+    assert headers["Accept"] == "text/event-stream"
+    assert headers["Cache-Control"] == "no-cache"
     assert params["timeout"] == 12
     assert params["sse_read_timeout"] == 34
     assert created["cache_tools_list"] is True
@@ -110,7 +113,10 @@ def test_build_mcp_tool_adds_bearer_prefix(monkeypatch: pytest.MonkeyPatch) -> N
 
     assert isinstance(server, _StubServer)
     params = captured["params"]
-    assert params["headers"]["Authorization"] == "Bearer token-value"
+    headers = params["headers"]
+    assert headers["Authorization"] == "Bearer token-value"
+    assert headers["Accept"] == "text/event-stream"
+    assert headers["Cache-Control"] == "no-cache"
 
 
 def test_build_mcp_tool_supports_legacy_payload(
@@ -137,7 +143,10 @@ def test_build_mcp_tool_supports_legacy_payload(
     assert isinstance(server, _StubServer)
     params = captured["params"]
     assert params["url"] == "https://legacy.example/mcp"
-    assert params["headers"]["Authorization"] == "Bearer legacy-token"
+    headers = params["headers"]
+    assert headers["Authorization"] == "Bearer legacy-token"
+    assert headers["Accept"] == "text/event-stream"
+    assert headers["Cache-Control"] == "no-cache"
 
 
 def test_build_mcp_tool_rejects_empty_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,6 +205,8 @@ def test_build_mcp_tool_supports_server_id(monkeypatch: pytest.MonkeyPatch) -> N
     headers = params.get("headers")
     assert isinstance(headers, dict)
     assert headers.get("Authorization") == "Bearer stored-token"
+    assert headers.get("Accept") == "text/event-stream"
+    assert headers.get("Cache-Control") == "no-cache"
 
     context = tool_factory_module.get_mcp_runtime_context(server)
     assert context is not None
@@ -550,8 +561,16 @@ class _MockAsyncClient:
             content=json.dumps(self._discovery).encode("utf-8"),
         )
 
-    async def post(self, url: str, data: dict[str, Any]) -> httpx.Response:
-        payload = {"url": url, "data": data}
+    async def post(
+        self,
+        url: str,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        payload = {"url": url, "data": data, "headers": headers}
+        if kwargs:
+            payload["extra"] = kwargs
         self._calls.append(("POST", payload))
         return httpx.Response(
             status_code=self._token_status,
@@ -602,6 +621,87 @@ def test_mcp_oauth_flow_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert callback_response.status_code == 200
     assert "Authentification terminée" in callback_response.text
+
+    status_response = test_client.get(f"/api/tools/mcp/oauth/session/{state}")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["status"] == "ok"
+    assert status_payload["token"] == token_payload
+
+
+@pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
+def test_mcp_oauth_flow_uses_client_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert FastAPI is not None and TestClient is not None and tools_routes is not None
+
+    oauth_module._sessions.clear()
+
+    with SessionLocal() as session:
+        record = McpServer(
+            label="OAuth Server",
+            server_url="https://auth.example",
+            transport="http_sse",
+            is_active=True,
+            oauth_client_id="stored-client",
+            oauth_client_secret_encrypted=encrypt_secret("super-secret"),
+            oauth_metadata={
+                "token_endpoint_auth_method": "client_secret_basic",
+                "token_request_params": {
+                    "resource": "https://api.example/resource",
+                    "custom_param": "custom-value",
+                },
+            },
+        )
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+
+    app = FastAPI()
+    app.include_router(tools_routes.router)
+
+    discovery = {
+        "authorization_endpoint": "https://auth.example/authorize",
+        "token_endpoint": "https://auth.example/token",
+    }
+    token_payload = {"access_token": "abc", "token_type": "Bearer"}
+
+    client_stub = _MockAsyncClient(discovery=discovery, token=token_payload)
+    monkeypatch.setattr(
+        tools_routes.httpx, "AsyncClient", lambda *args, **kwargs: client_stub
+    )
+
+    test_client = TestClient(app)
+    start_response = test_client.post(
+        "/api/tools/mcp/oauth/start",
+        json={
+            "url": "https://auth.example",
+            "client_id": "explicit-client",
+            "scope": "profile",
+            "server_id": record.id,
+        },
+    )
+
+    assert start_response.status_code == 200
+    start_payload = start_response.json()
+    state = start_payload["state"]
+    assert start_payload["server_id"] == record.id
+
+    callback_response = test_client.get(
+        "/api/tools/mcp/oauth/callback",
+        params={"state": state, "code": "auth-code"},
+    )
+
+    assert callback_response.status_code == 200
+    assert "Authentification terminée" in callback_response.text
+
+    post_calls = [payload for method, payload in client_stub._calls if method == "POST"]
+    assert post_calls
+    token_call = post_calls[0]
+    headers = token_call.get("headers") or {}
+    assert headers.get("Authorization", "").startswith("Basic ")
+    data = token_call.get("data") or {}
+    assert "client_secret" not in data
+    assert data.get("resource") == "https://api.example/resource"
+    assert data.get("custom_param") == "custom-value"
 
     status_response = test_client.get(f"/api/tools/mcp/oauth/session/{state}")
     assert status_response.status_code == 200

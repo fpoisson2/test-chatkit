@@ -71,6 +71,43 @@ _WEATHER_FUNCTION_TOOL_ALIASES = {"fetch_weather", "get_weather"}
 _WORKFLOW_TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
+_SENSITIVE_HEADER_MARKERS = (
+    "authorization",
+    "token",
+    "secret",
+    "key",
+    "cookie",
+)
+
+
+def _mask_sensitive_header_value(value: Any) -> str:
+    string_value = str(value)
+    if not string_value:
+        return "<vide>"
+    if len(string_value) <= 8:
+        return "***"
+    return f"{string_value[:3]}…{string_value[-3:]}"
+
+
+def _headers_preview_for_logging(
+    headers: Mapping[str, Any] | None,
+) -> dict[str, str] | None:
+    if not headers:
+        return None
+
+    sanitized: dict[str, str] = {}
+    for raw_key, raw_value in headers.items():
+        key = str(raw_key)
+        value = str(raw_value)
+        lower_key = key.lower()
+        if any(marker in lower_key for marker in _SENSITIVE_HEADER_MARKERS):
+            sanitized[key] = _mask_sensitive_header_value(value)
+        else:
+            sanitized[key] = value
+
+    return sanitized or None
+
+
 @dataclass(slots=True)
 class ResolvedMcpServerContext:
     """Runtime metadata extracted while building an MCP tool."""
@@ -1122,13 +1159,15 @@ def _resolve_mcp_configuration(
         raw_authorization = decrypt_secret(resolved_server.authorization_encrypted)
         if raw_authorization:
             logger.debug(
-                "Authorization récupérée depuis la BDD pour server_id=%d (longueur: %d)",
+                "Authorization récupérée depuis la BDD pour server_id=%d "
+                "(longueur: %d)",
                 resolved_server.id,
                 len(raw_authorization),
             )
         else:
             logger.warning(
-                "Aucune authorization trouvée dans la BDD pour server_id=%d (authorization_encrypted=%s)",
+                "Aucune authorization trouvée dans la BDD pour server_id=%d "
+                "(authorization_encrypted=%s)",
                 resolved_server.id,
                 "présent" if resolved_server.authorization_encrypted else "absent",
             )
@@ -1259,8 +1298,19 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
 
     params: dict[str, Any] = {"url": normalized_config["url"]}
     headers = normalized_config.get("headers")
+    normalized_headers: dict[str, str] | None = None
     if isinstance(headers, Mapping) and headers:
-        params["headers"] = dict(headers)
+        normalized_headers = {str(key): str(value) for key, value in headers.items()}
+    if normalized_headers is None:
+        normalized_headers = {}
+
+    normalized_headers.setdefault("Accept", "text/event-stream")
+    normalized_headers.setdefault("Cache-Control", "no-cache")
+
+    headers_preview = _headers_preview_for_logging(normalized_headers)
+
+    if normalized_headers:
+        params["headers"] = normalized_headers
 
     timeout = normalized_config.get("timeout")
     if isinstance(timeout, int | float):
@@ -1289,6 +1339,8 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
         sorted(params.keys()),
         "headers" in params,
     )
+    if headers_preview:
+        logger.debug("MCP SSE headers=%s", headers_preview)
 
     kwargs: dict[str, Any] = {
         "params": params,

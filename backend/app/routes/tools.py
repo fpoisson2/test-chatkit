@@ -74,6 +74,11 @@ class MCPOAuthStartPayload(BaseModel):
         min_length=1,
         description="Portée optionnelle demandée au fournisseur OAuth2.",
     )
+    server_id: int | None = Field(
+        None,
+        ge=1,
+        description="Identifiant du serveur MCP associé pour récupérer les secrets.",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -139,6 +144,7 @@ async def post_mcp_oauth_start(
                 redirect_uri=redirect_uri,
                 client_id=payload.client_id,
                 scope=payload.scope,
+                server_id=payload.server_id,
                 http_client=client,
             )
     except ValueError as exc:
