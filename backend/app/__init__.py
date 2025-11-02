@@ -12,15 +12,21 @@ if os.getenv("CHATKIT_CALL_TRACKER_ONLY", "false").lower() in ("true", "1", "yes
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
 
-    # Couper TOUT par défaut
+    # Couper TOUT par défaut - désactiver le root logger
     logging.basicConfig(level=logging.CRITICAL, handlers=[])
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.CRITICAL)
+    root_logger.handlers = []
 
-    # Désactiver tous les loggers bruyants
-    for name in ['chatkit.telephony.pjsua', 'chatkit.server', 'chatkit.telephony.voice_bridge',
+    # Désactiver tous les loggers bruyants (inclure aussi 'app' et '')
+    for name in ['', 'app', 'chatkit', 'chatkit.telephony', 'chatkit.telephony.pjsua',
+                 'chatkit.server', 'chatkit.telephony.voice_bridge',
                  'chatkit.realtime', 'httpcore', 'httpx', 'mcp', 'openai', 'uvicorn',
-                 'uvicorn.access', 'uvicorn.error']:
-        logging.getLogger(name).setLevel(logging.CRITICAL)
-        logging.getLogger(name).propagate = False
+                 'uvicorn.access', 'uvicorn.error', 'fastapi', 'sqlalchemy']:
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.CRITICAL)
+        logger.handlers = []
+        logger.propagate = False
 
     # Activer UNIQUEMENT le call tracker
     call_tracker = logging.getLogger('chatkit.telephony.call_tracker')
