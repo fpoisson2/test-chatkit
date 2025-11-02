@@ -19,7 +19,7 @@ from ..admin_settings import (
     update_appearance_settings,
 )
 from ..config import get_settings
-from ..database import get_session
+from ..database import get_session, SessionLocal
 from ..dependencies import require_admin
 from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
