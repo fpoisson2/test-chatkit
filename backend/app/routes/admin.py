@@ -1076,9 +1076,17 @@ async def generate_language_file(
         logger.info(f"Provider binding result: {provider_binding}")
 
         if not provider_binding:
+            error_msg = (
+                f"Failed to get provider binding for model '{model_name}'. "
+                f"Provider ID: {provider_id_used}, Provider slug: {provider_slug}. "
+                f"Please ensure the model has a valid provider_id in the database or that "
+                f"a provider with slug '{provider_slug}' is configured in your settings."
+            )
+            print(f"ERROR: {error_msg}")
+            logger.error(error_msg)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to get provider binding for model {model_name}"
+                detail=error_msg
             )
 
         logger.info(f"Provider binding obtained successfully: id={provider_binding.provider_id}, slug={provider_binding.provider_slug}")
