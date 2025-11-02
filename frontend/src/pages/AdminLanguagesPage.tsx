@@ -43,6 +43,7 @@ type LanguageFormState = {
   model: string;
   provider_value: string; // Combined value "id|slug"
   custom_prompt: string;
+  save_to_db: boolean;
 };
 
 const initialFormState: LanguageFormState = {
@@ -51,6 +52,26 @@ const initialFormState: LanguageFormState = {
   model: "",
   provider_value: "",
   custom_prompt: "",
+  save_to_db: false,
+};
+
+type TaskStatus = {
+  task_id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  progress: number;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+  language_id: number | null;
+  can_download: boolean;
+};
+
+type StoredLanguage = {
+  id: number;
+  code: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export const AdminLanguagesPage = () => {
@@ -70,6 +91,14 @@ export const AdminLanguagesPage = () => {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [defaultPrompt, setDefaultPrompt] = useState<string>("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);
+
+  // Task tracking
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
+
+  // Stored languages
+  const [storedLanguages, setStoredLanguages] = useState<StoredLanguage[]>([]);
+  const [loadingStored, setLoadingStored] = useState(false);
 
   const loadLanguages = useCallback(async () => {
     if (!token) {
@@ -158,6 +187,170 @@ export const AdminLanguagesPage = () => {
     }
   }, [token, logout]);
 
+  const loadStoredLanguages = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    setLoadingStored(true);
+
+    try {
+      const response = await fetch("/api/admin/languages/stored", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (isUnauthorizedError(response.status)) {
+          logout();
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setStoredLanguages(data.languages || []);
+    } catch (err) {
+      console.error("Failed to load stored languages:", err);
+    } finally {
+      setLoadingStored(false);
+    }
+  }, [token, logout]);
+
+  const pollTaskStatus = useCallback(async (taskId: string) => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/languages/tasks/${taskId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (isUnauthorizedError(response.status)) {
+          logout();
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data: TaskStatus = await response.json();
+      setTaskStatus(data);
+
+      // Si la tâche est terminée, recharger les langues stockées
+      if (data.status === "completed" || data.status === "failed") {
+        setCurrentTaskId(null);
+        if (data.status === "completed") {
+          setSuccess(t("admin.languages.feedback.created", { name: formState.name }));
+          await loadStoredLanguages();
+        } else if (data.error_message) {
+          setFormError(data.error_message);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to poll task status:", err);
+    }
+  }, [token, logout, loadStoredLanguages, formState.name, t]);
+
+  const downloadTaskResult = useCallback(async (taskId: string) => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/languages/tasks/${taskId}/download`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const contentDisposition = response.headers.get("Content-Disposition");
+      const filename = contentDisposition?.match(/filename="(.+)"/)?.[1] || "translation.ts";
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Failed to download task result:", err);
+      setFormError(t("admin.languages.errors.downloadFailed"));
+    }
+  }, [token, t]);
+
+  const downloadStoredLanguage = useCallback(async (id: number) => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/languages/stored/${id}/download`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const contentDisposition = response.headers.get("Content-Disposition");
+      const filename = contentDisposition?.match(/filename="(.+)"/)?.[1] || "translation.ts";
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Failed to download stored language:", err);
+      setError(t("admin.languages.errors.downloadFailed"));
+    }
+  }, [token, t]);
+
+  const deleteStoredLanguage = useCallback(async (id: number) => {
+    if (!token) {
+      return;
+    }
+
+    if (!confirm(t("admin.languages.confirm.delete"))) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/languages/stored/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      setSuccess(t("admin.languages.feedback.deleted"));
+      await loadStoredLanguages();
+    } catch (err) {
+      console.error("Failed to delete stored language:", err);
+      setError(t("admin.languages.errors.deleteFailed"));
+    }
+  }, [token, loadStoredLanguages, t]);
+
   // Extract unique providers from available models
   const availableProviders = useMemo(() => {
     const seen = new Set<string>();
@@ -195,9 +388,26 @@ export const AdminLanguagesPage = () => {
     void loadLanguages();
     void loadAvailableModels();
     void loadDefaultPrompt();
-  }, [loadLanguages, loadAvailableModels, loadDefaultPrompt]);
+    void loadStoredLanguages();
+  }, [loadLanguages, loadAvailableModels, loadDefaultPrompt, loadStoredLanguages]);
 
-  const handleFormChange = (field: keyof LanguageFormState, value: string) => {
+  // Polling pour le statut de la tâche
+  useEffect(() => {
+    if (!currentTaskId) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      void pollTaskStatus(currentTaskId);
+    }, 2000); // Poll toutes les 2 secondes
+
+    // Premier poll immédiat
+    void pollTaskStatus(currentTaskId);
+
+    return () => clearInterval(interval);
+  }, [currentTaskId, pollTaskStatus]);
+
+  const handleFormChange = (field: keyof LanguageFormState, value: string | boolean) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
     setFormError(null);
   };
@@ -207,6 +417,7 @@ export const AdminLanguagesPage = () => {
     setFormError(null);
     setSuccess(null);
     setInstructions(null);
+    setTaskStatus(null);
 
     if (!formState.code.trim()) {
       setFormError(t("admin.languages.errors.codeRequired"));
@@ -233,9 +444,11 @@ export const AdminLanguagesPage = () => {
         provider_id?: string;
         provider_slug?: string;
         custom_prompt?: string;
+        save_to_db: boolean;
       } = {
         code: formState.code.trim().toLowerCase(),
         name: formState.name.trim(),
+        save_to_db: formState.save_to_db,
       };
 
       // Ajouter les paramètres optionnels s'ils sont fournis
@@ -286,21 +499,10 @@ export const AdminLanguagesPage = () => {
 
       const data = await response.json();
 
-      // Télécharger le fichier généré
-      const blob = new Blob([data.content], { type: "text/typescript" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = data.filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      setSuccess(t("admin.languages.feedback.created", { name: formState.name }));
-      setInstructions(data.instructions);
+      // L'API retourne maintenant un task_id
+      setCurrentTaskId(data.task_id);
+      setSuccess(t("admin.languages.feedback.taskStarted"));
       setFormState(initialFormState);
-      await loadLanguages();
     } catch (err) {
       console.error("Failed to generate language:", err);
       setFormError(t("admin.languages.errors.createFailed"));
@@ -490,10 +692,59 @@ export const AdminLanguagesPage = () => {
                   )}
                 </div>
 
+                <div className="form-group">
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={formState.save_to_db}
+                      onChange={(e) => handleFormChange("save_to_db", e.target.checked)}
+                      disabled={submitting}
+                    />
+                    <span>Save to database</span>
+                  </label>
+                  <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                    Store the generated translation in the database for later reuse
+                  </small>
+                </div>
+
+                {/* Progress bar */}
+                {taskStatus && (
+                  <div className="alert alert--info" style={{ marginTop: "1rem" }}>
+                    <div style={{ marginBottom: "0.5rem" }}>
+                      <strong>Status:</strong> {taskStatus.status} ({taskStatus.progress}%)
+                    </div>
+                    <div style={{ height: "8px", background: "var(--surface-2)", borderRadius: "4px", overflow: "hidden" }}>
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${taskStatus.progress}%`,
+                          background: taskStatus.status === "failed" ? "var(--color-danger)" : "var(--color-primary)",
+                          transition: "width 0.3s ease"
+                        }}
+                      />
+                    </div>
+                    {taskStatus.error_message && (
+                      <div style={{ marginTop: "0.5rem", color: "var(--color-danger)" }}>
+                        <strong>Error:</strong> {taskStatus.error_message}
+                      </div>
+                    )}
+                    {taskStatus.can_download && (
+                      <button
+                        type="button"
+                        onClick={() => downloadTaskResult(taskStatus.task_id)}
+                        className="button button--sm button--secondary"
+                        style={{ marginTop: "0.5rem" }}
+                      >
+                        Download Result
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: "flex", gap: "0.75rem" }}>
                   <button
                     type="submit"
-                    disabled={submitting}
+                    disabled={submitting || !!currentTaskId}
                     className="button button--primary"
                   >
                     {submitting
@@ -568,6 +819,70 @@ export const AdminLanguagesPage = () => {
                             {lang.keysCount} / {lang.totalKeys}
                           </td>
                           <td>{getStatusLabel(lang)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            {/* Stored Languages */}
+            <section className="admin-card">
+              <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                Stored Languages
+              </h2>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
+                Languages saved in the database
+              </p>
+
+              {loadingStored ? (
+                <p style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+                  Loading stored languages...
+                </p>
+              ) : storedLanguages.length === 0 ? (
+                <p style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+                  No stored languages yet. Enable "Save to database" when generating a language.
+                </p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Created At</th>
+                        <th>Updated At</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {storedLanguages.map((lang) => (
+                        <tr key={lang.id}>
+                          <td>
+                            <code>{lang.code}</code>
+                          </td>
+                          <td>{lang.name}</td>
+                          <td>{new Date(lang.created_at).toLocaleDateString()}</td>
+                          <td>{new Date(lang.updated_at).toLocaleDateString()}</td>
+                          <td>
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                              <button
+                                type="button"
+                                onClick={() => downloadStoredLanguage(lang.id)}
+                                className="button button--sm button--secondary"
+                              >
+                                Download
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteStoredLanguage(lang.id)}
+                                className="button button--sm button--danger"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
