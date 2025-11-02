@@ -308,6 +308,38 @@ class AppearanceSettingsUpdateRequest(BaseModel):
     )
 
 
+class WorkflowAppearanceOverride(BaseModel):
+    color_scheme: Literal["system", "light", "dark"] | None = None
+    accent_color: constr(pattern=r"^#[0-9a-fA-F]{6}$") | None = None
+    use_custom_surface_colors: bool | None = None
+    surface_hue: float | None = None
+    surface_tint: float | None = None
+    surface_shade: float | None = None
+    heading_font: str | None = None
+    body_font: str | None = None
+    start_screen_greeting: str | None = None
+    start_screen_prompt: str | None = None
+    start_screen_placeholder: str | None = None
+    start_screen_disclaimer: str | None = None
+    created_at: datetime.datetime | None = None
+    updated_at: datetime.datetime | None = None
+
+
+class WorkflowAppearanceResponse(BaseModel):
+    target_kind: Literal["local", "hosted"]
+    workflow_id: int | None = None
+    workflow_slug: str
+    label: str
+    remote_workflow_id: str | None = None
+    override: WorkflowAppearanceOverride | None = None
+    effective: AppearanceSettingsResponse
+    inherited_from_global: bool
+
+
+class WorkflowAppearanceUpdateRequest(AppearanceSettingsUpdateRequest):
+    inherit_from_global: bool | None = Field(default=None)
+
+
 class AppSettingsResponse(BaseModel):
     thread_title_prompt: str
     default_thread_title_prompt: str

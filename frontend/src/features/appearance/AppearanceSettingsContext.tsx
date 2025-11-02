@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -44,11 +45,18 @@ const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   updated_at: null,
 };
 
+export type AppearanceWorkflowReference =
+  | { kind: "local"; id: number }
+  | { kind: "hosted"; slug: string }
+  | null;
+
 type AppearanceSettingsContextValue = {
   settings: AppearanceSettings;
   isLoading: boolean;
   refresh: () => Promise<void>;
   applySnapshot: (next: AppearanceSettings) => void;
+  setActiveWorkflow: (reference: AppearanceWorkflowReference) => Promise<void>;
+  activeWorkflow: AppearanceWorkflowReference;
 };
 
 const AppearanceSettingsContext = createContext<
@@ -285,6 +293,10 @@ export const AppearanceSettingsProvider = ({
     DEFAULT_APPEARANCE_SETTINGS,
   );
   const [isLoading, setLoading] = useState(true);
+  const [activeWorkflow, setActiveWorkflowState] =
+    useState<AppearanceWorkflowReference>(null);
+  const workflowReferenceRef = useRef<number | string | null>(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     applyDocumentTheme(settings);
@@ -295,29 +307,70 @@ export const AppearanceSettingsProvider = ({
   }, []);
 
   const refresh = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setLoading(true);
     try {
       const snapshot = await appearanceSettingsApi.get(null, {
         scope: "public",
+        workflowId:
+          workflowReferenceRef.current != null
+            ? workflowReferenceRef.current
+            : undefined,
       });
-      setSettings(mergeAppearance(snapshot));
+      if (requestIdRef.current === requestId) {
+        setSettings(mergeAppearance(snapshot));
+      }
     } catch (error) {
       if (import.meta.env.DEV) {
         console.warn("Failed to load appearance settings", error);
       }
-      setSettings(DEFAULT_APPEARANCE_SETTINGS);
+      if (requestIdRef.current === requestId) {
+        setSettings(DEFAULT_APPEARANCE_SETTINGS);
+      }
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, []);
+
+  const setActiveWorkflow = useCallback(
+    async (reference: AppearanceWorkflowReference) => {
+      setActiveWorkflowState(reference);
+      if (!reference) {
+        workflowReferenceRef.current = null;
+      } else if (reference.kind === "local") {
+        workflowReferenceRef.current = reference.id;
+      } else {
+        workflowReferenceRef.current = reference.slug;
+      }
+      await refresh();
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   const value = useMemo<AppearanceSettingsContextValue>(
-    () => ({ settings, isLoading, refresh, applySnapshot }),
-    [applySnapshot, isLoading, refresh, settings],
+    () => ({
+      settings,
+      isLoading,
+      refresh,
+      applySnapshot,
+      setActiveWorkflow,
+      activeWorkflow,
+    }),
+    [
+      activeWorkflow,
+      applySnapshot,
+      isLoading,
+      refresh,
+      setActiveWorkflow,
+      settings,
+    ],
   );
 
   return (

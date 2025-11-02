@@ -41,6 +41,7 @@ from .models import (
     AppSettings,
     AvailableModel,
     Base,
+    WorkflowAppearance,
     McpServer,
     SipAccount,
     TelephonyRoute,
@@ -1438,6 +1439,34 @@ def _run_ad_hoc_migrations() -> None:
             logger.info("Création de la table voice_settings manquante")
             VoiceSettings.__table__.create(bind=connection)
             table_names.add("voice_settings")
+
+        if "workflow_appearances" not in table_names:
+            logger.info("Création de la table workflow_appearances manquante")
+            WorkflowAppearance.__table__.create(bind=connection)
+            table_names.add("workflow_appearances")
+
+        if "hosted_workflows" in table_names:
+            hosted_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("hosted_workflows")
+            }
+            if "remote_workflow_id" not in hosted_columns:
+                logger.info(
+                    "Migration du schéma hosted_workflows : ajout de la colonne "
+                    "remote_workflow_id",
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE hosted_workflows ADD COLUMN "
+                        "remote_workflow_id VARCHAR(128)"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "UPDATE hosted_workflows SET remote_workflow_id = slug "
+                        "WHERE remote_workflow_id IS NULL"
+                    )
+                )
 
         if "voice_settings" in table_names:
             voice_settings_columns = {

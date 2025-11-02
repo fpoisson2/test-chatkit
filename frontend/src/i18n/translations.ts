@@ -582,6 +582,7 @@ const fr: TranslationDictionary = {
   "workflowBuilder.hostedSection.loading": "Chargement des workflows hébergés…",
   "workflowBuilder.hostedSection.empty":
     "Aucun workflow hébergé géré depuis l'interface n'est disponible pour le moment.",
+  "workflowBuilder.hostedSection.customizeAction": "Personnaliser",
   "workflowBuilder.hostedSection.deleteAction": "Supprimer",
   "workflowBuilder.hostedSection.openActions": "Actions pour {label}",
   "workflowBuilder.hostedSection.deleting": "Suppression du workflow hébergé…",
@@ -593,10 +594,33 @@ const fr: TranslationDictionary = {
     "Impossible de charger les workflows hébergés.",
   "workflowBuilder.hostedSection.confirmDelete":
     "Supprimer le workflow hébergé \"{label}\" ? Cette action est irréversible.",
+  "workflowAppearance.modal.title":
+    "Personnaliser l'apparence de \"{label}\"",
+  "workflowAppearance.modal.defaultTitle": "Personnaliser l'apparence",
+  "workflowAppearance.modal.inherited":
+    "\"{label}\" utilise actuellement l'apparence globale.",
+  "workflowAppearance.modal.customized":
+    "\"{label}\" utilise une apparence personnalisée.",
+  "workflowAppearance.actions.save": "Enregistrer",
+  "workflowAppearance.actions.cancel": "Annuler",
+  "workflowAppearance.actions.reset": "Revenir aux paramètres globaux",
+  "workflowAppearance.feedback.saved":
+    "Apparence du workflow mise à jour.",
+  "workflowAppearance.feedback.reset":
+    "Apparence du workflow réinitialisée sur les paramètres globaux.",
+  "workflowAppearance.errors.missingReference":
+    "Impossible de déterminer le workflow à personnaliser.",
+  "workflowAppearance.errors.loadFailed":
+    "Impossible de charger l'apparence du workflow.",
+  "workflowAppearance.errors.saveFailed":
+    "Impossible d'enregistrer l'apparence du workflow.",
+  "workflowAppearance.errors.resetFailed":
+    "Impossible de réinitialiser l'apparence du workflow.",
   "workflowBuilder.save.autoSaveSuccess": "Modifications enregistrées automatiquement.",
   "workflowBuilder.save.draftDisplayName": "Brouillon",
   "workflowBuilder.save.failure": "Impossible d'enregistrer le workflow.",
   "workflowBuilder.save.failureWithStatus": "Échec de l'enregistrement ({{status}}).",
+  "workflowBuilder.localSection.customizeAction": "Personnaliser",
   "workflowBuilder.actions.exportJson": "Exporter en JSON",
   "workflowBuilder.export.preparing": "Préparation de l'export…",
   "workflowBuilder.export.success": "Export JSON téléchargé.",
@@ -1382,6 +1406,7 @@ const en: TranslationDictionary = {
   "workflowBuilder.hostedSection.loading": "Loading hosted workflows…",
   "workflowBuilder.hostedSection.empty":
     "No hosted workflow managed from the interface yet.",
+  "workflowBuilder.hostedSection.customizeAction": "Customize appearance",
   "workflowBuilder.hostedSection.deleteAction": "Delete",
   "workflowBuilder.hostedSection.openActions": "Actions for {label}",
   "workflowBuilder.hostedSection.deleting": "Deleting hosted workflow…",
@@ -1393,10 +1418,32 @@ const en: TranslationDictionary = {
     "Unable to load hosted workflows.",
   "workflowBuilder.hostedSection.confirmDelete":
     "Delete hosted workflow \"{label}\"? This action cannot be undone.",
+  "workflowAppearance.modal.title":
+    "Customize appearance for \"{label}\"",
+  "workflowAppearance.modal.defaultTitle": "Customize appearance",
+  "workflowAppearance.modal.inherited":
+    "\"{label}\" currently uses the global appearance.",
+  "workflowAppearance.modal.customized":
+    "\"{label}\" uses a custom appearance.",
+  "workflowAppearance.actions.save": "Save",
+  "workflowAppearance.actions.cancel": "Cancel",
+  "workflowAppearance.actions.reset": "Reset to global",
+  "workflowAppearance.feedback.saved": "Workflow appearance updated.",
+  "workflowAppearance.feedback.reset":
+    "Workflow appearance reset to the global settings.",
+  "workflowAppearance.errors.missingReference":
+    "Unable to determine the workflow to customize.",
+  "workflowAppearance.errors.loadFailed":
+    "Unable to load the workflow appearance.",
+  "workflowAppearance.errors.saveFailed":
+    "Unable to save the workflow appearance.",
+  "workflowAppearance.errors.resetFailed":
+    "Unable to reset the workflow appearance.",
   "workflowBuilder.save.autoSaveSuccess": "Changes saved automatically.",
   "workflowBuilder.save.draftDisplayName": "Draft",
   "workflowBuilder.save.failure": "Unable to save the workflow.",
   "workflowBuilder.save.failureWithStatus": "Save failed (status {{status}}).",
+  "workflowBuilder.localSection.customizeAction": "Customize appearance",
   "workflowBuilder.actions.exportJson": "Export as JSON",
   "workflowBuilder.export.preparing": "Preparing export…",
   "workflowBuilder.export.success": "JSON export downloaded.",

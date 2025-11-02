@@ -124,9 +124,10 @@ router = APIRouter()
     "/api/appearance-settings", response_model=AppearanceSettingsResponse
 )
 async def get_public_appearance_settings(
+    workflow_id: str | None = None,
     session: Session = Depends(get_session),
 ):
-    payload = resolve_appearance_settings(session)
+    payload = resolve_appearance_settings(session, workflow_reference=workflow_id)
     return AppearanceSettingsResponse.model_validate(payload)
 
 

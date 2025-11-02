@@ -377,6 +377,7 @@ export type HostedWorkflowMetadata = {
   description: string | null;
   available: boolean;
   managed: boolean;
+  remoteWorkflowId: string | null;
 };
 
 const coerceHostedWorkflowId = (entry: HostedWorkflowApiEntry): string => {
@@ -416,7 +417,54 @@ export const normalizeHostedWorkflowMetadata = (
     description: rawDescription ? String(rawDescription) : null,
     available: Boolean(entry.available),
     managed: Boolean(entry.managed),
+    remoteWorkflowId: (() => {
+      const candidate =
+        entry.remote_workflow_id ?? entry.remoteWorkflowId ?? entry.workflow_id ?? entry.workflowId;
+      if (candidate == null) {
+        return null;
+      }
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        return trimmed || null;
+      }
+      if (typeof candidate === "number" && Number.isFinite(candidate)) {
+        return String(candidate);
+      }
+      return String(candidate) || null;
+    })(),
   };
+};
+
+export type WorkflowAppearanceOverride = {
+  color_scheme: "system" | "light" | "dark" | null;
+  accent_color: string | null;
+  use_custom_surface_colors: boolean | null;
+  surface_hue: number | null;
+  surface_tint: number | null;
+  surface_shade: number | null;
+  heading_font: string | null;
+  body_font: string | null;
+  start_screen_greeting: string | null;
+  start_screen_prompt: string | null;
+  start_screen_placeholder: string | null;
+  start_screen_disclaimer: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type WorkflowAppearance = {
+  target_kind: "local" | "hosted";
+  workflow_id: number | null;
+  workflow_slug: string;
+  label: string;
+  remote_workflow_id: string | null;
+  override: WorkflowAppearanceOverride | null;
+  effective: AppearanceSettings;
+  inherited_from_global: boolean;
+};
+
+export type WorkflowAppearanceUpdatePayload = AppearanceSettingsUpdatePayload & {
+  inherit_from_global?: boolean | null;
 };
 
 export const testMcpToolConnection = async (
@@ -860,20 +908,28 @@ export const mcpServersApi = {
 
 type AppearanceSettingsScope = "admin" | "public";
 
+type AppearanceSettingsGetOptions = {
+  scope?: AppearanceSettingsScope;
+  workflowId?: number | string | null;
+};
+
 export const appearanceSettingsApi = {
   async get(
     token: string | null,
-    options: { scope?: AppearanceSettingsScope } = {},
+    options: AppearanceSettingsGetOptions = {},
   ): Promise<AppearanceSettings> {
     const scope: AppearanceSettingsScope = options.scope
       ? options.scope
       : token
       ? "admin"
       : "public";
-    const url =
+    let url =
       scope === "admin"
         ? "/api/admin/appearance-settings"
         : "/api/appearance-settings";
+    if (scope !== "admin" && options.workflowId != null) {
+      url = `${url}?workflow_id=${encodeURIComponent(String(options.workflowId))}`;
+    }
     const init: RequestInit = {};
     if (scope === "admin") {
       init.headers = withAuthHeaders(token);
@@ -891,6 +947,35 @@ export const appearanceSettingsApi = {
       headers: withAuthHeaders(token),
       body: JSON.stringify(payload),
     });
+    return response.json();
+  },
+
+  async getForWorkflow(
+    token: string | null,
+    reference: number | string,
+  ): Promise<WorkflowAppearance> {
+    const response = await requestWithFallback(
+      `/api/workflows/${encodeURIComponent(String(reference))}/appearance`,
+      {
+        headers: withAuthHeaders(token),
+      },
+    );
+    return response.json();
+  },
+
+  async updateForWorkflow(
+    token: string | null,
+    reference: number | string,
+    payload: WorkflowAppearanceUpdatePayload,
+  ): Promise<WorkflowAppearance> {
+    const response = await requestWithFallback(
+      `/api/workflows/${encodeURIComponent(String(reference))}/appearance`,
+      {
+        method: "PATCH",
+        headers: withAuthHeaders(token),
+        body: JSON.stringify(payload),
+      },
+    );
     return response.json();
   },
 };

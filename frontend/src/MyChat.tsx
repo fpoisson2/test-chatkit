@@ -5,6 +5,11 @@ import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
+import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
+import {
+  useAppearanceSettings,
+  type AppearanceWorkflowReference,
+} from "./features/appearance/AppearanceSettingsContext";
 import { useAppearanceSettings } from "./features/appearance/AppearanceSettingsContext";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
@@ -246,7 +251,11 @@ const parseStartScreenPrompts = (
 
 export function MyChat() {
   const { token, user } = useAuth();
-  const { settings: appearanceSettings } = useAppearanceSettings();
+  const {
+    settings: appearanceSettings,
+    setActiveWorkflow: setAppearanceWorkflow,
+    activeWorkflow: activeAppearanceWorkflow,
+  } = useAppearanceSettings();
   const { openSidebar } = useAppLayout();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
@@ -262,6 +271,12 @@ export function MyChat() {
     workflowSelection.kind === "local"
       ? workflowSelection.workflow?.slug ?? null
       : workflowSelection.slug;
+  const activeWorkflowId =
+    workflowSelection.kind === "local"
+      ? workflowSelection.workflow?.id ?? null
+      : null;
+  const hostedWorkflowSlug =
+    workflowSelection.kind === "hosted" ? workflowSelection.slug : null;
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
@@ -285,6 +300,39 @@ export function MyChat() {
   const { mode, setMode, hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
     onDisable: handleHostedFlowDisabled,
   });
+
+  const appearanceWorkflowReference = useMemo<AppearanceWorkflowReference>(() => {
+    if (mode === "hosted") {
+      return hostedWorkflowSlug ? { kind: "hosted", slug: hostedWorkflowSlug } : null;
+    }
+    if (activeWorkflowId != null) {
+      return { kind: "local", id: activeWorkflowId };
+    }
+    return null;
+  }, [activeWorkflowId, hostedWorkflowSlug, mode]);
+
+  useEffect(() => {
+    const desired = appearanceWorkflowReference;
+    const current = activeAppearanceWorkflow;
+    const isSame =
+      (!desired && !current) ||
+      (desired?.kind === "local" &&
+        current?.kind === "local" &&
+        desired.id === current.id) ||
+      (desired?.kind === "hosted" &&
+        current?.kind === "hosted" &&
+        desired.slug === current.slug);
+
+    if (isSame) {
+      return;
+    }
+
+    void setAppearanceWorkflow(desired);
+  }, [
+    activeAppearanceWorkflow,
+    appearanceWorkflowReference,
+    setAppearanceWorkflow,
+  ]);
 
   const persistenceSlug = resolvePersistenceSlug(mode, workflowSelection);
   const sessionStorageKey = buildSessionStorageKey(sessionOwner, persistenceSlug);

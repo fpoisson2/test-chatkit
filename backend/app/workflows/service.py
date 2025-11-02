@@ -6,12 +6,17 @@ import math
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
+from ..admin_settings import (
+    apply_appearance_update,
+    get_thread_title_prompt_override,
+    serialize_appearance_settings,
+)
 from ..config import Settings, WorkflowDefaults, get_settings
 from ..database import SessionLocal
 from ..model_capabilities import (
@@ -23,6 +28,7 @@ from ..models import (
     AvailableModel,
     HostedWorkflow,
     Workflow,
+    WorkflowAppearance,
     WorkflowDefinition,
     WorkflowStep,
     WorkflowTransition,
@@ -49,6 +55,21 @@ _LEGACY_STATE_SLUGS = frozenset({"maj-etat-triage", "maj-etat-validation"})
 _AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 
 _HOSTED_WORKFLOW_SLUG_INVALID_CHARS = re.compile(r"[^0-9a-z_-]+")
+
+_APPEARANCE_ATTRIBUTE_NAMES = (
+    "appearance_color_scheme",
+    "appearance_accent_color",
+    "appearance_use_custom_surface",
+    "appearance_surface_hue",
+    "appearance_surface_tint",
+    "appearance_surface_shade",
+    "appearance_heading_font",
+    "appearance_body_font",
+    "appearance_start_greeting",
+    "appearance_start_prompt",
+    "appearance_input_placeholder",
+    "appearance_disclaimer",
+)
 
 
 def _sanitize_workflow_reference_for_serialization(
@@ -570,6 +591,15 @@ class NormalizedEdge:
     metadata: dict[str, Any]
 
 
+@dataclass(slots=True, frozen=True)
+class WorkflowAppearanceTarget:
+    kind: Literal["local", "hosted"]
+    workflow_id: int | None
+    slug: str
+    label: str
+    remote_workflow_id: str | None = None
+
+
 class WorkflowValidationError(ValueError):
     """Exception de validation pour la configuration du workflow."""
 
@@ -581,7 +611,7 @@ class WorkflowValidationError(ValueError):
 class WorkflowNotFoundError(LookupError):
     """Signale qu'un workflow n'a pas pu être localisé."""
 
-    def __init__(self, workflow_id: int) -> None:
+    def __init__(self, workflow_id: int | str) -> None:
         super().__init__(f"Workflow introuvable ({workflow_id})")
         self.workflow_id = workflow_id
 
@@ -675,6 +705,132 @@ class WorkflowService:
         if session is not None:
             return session, False
         return self._session_factory(), True
+
+    def _resolve_workflow_appearance_target(
+        self, reference: int | str, session: Session
+    ) -> WorkflowAppearanceTarget:
+        if isinstance(reference, int):
+            workflow = session.get(Workflow, reference)
+            if workflow is None:
+                raise WorkflowNotFoundError(reference)
+            return WorkflowAppearanceTarget(
+                kind="local",
+                workflow_id=workflow.id,
+                slug=workflow.slug,
+                label=workflow.display_name,
+            )
+
+        trimmed = str(reference).strip()
+        if not trimmed:
+            raise WorkflowNotFoundError(reference)
+
+        try:
+            numeric_id = int(trimmed)
+        except ValueError:
+            numeric_id = None
+
+        if numeric_id is not None:
+            workflow = session.get(Workflow, numeric_id)
+            if workflow is not None:
+                return WorkflowAppearanceTarget(
+                    kind="local",
+                    workflow_id=workflow.id,
+                    slug=workflow.slug,
+                    label=workflow.display_name,
+                )
+
+        normalized_slug = trimmed.lower()
+        workflow = session.scalar(
+            select(Workflow).where(func.lower(Workflow.slug) == normalized_slug)
+        )
+        if workflow is not None:
+            return WorkflowAppearanceTarget(
+                kind="local",
+                workflow_id=workflow.id,
+                slug=workflow.slug,
+                label=workflow.display_name,
+            )
+
+        normalized_hosted_slug = _normalize_hosted_workflow_slug(trimmed)
+        if normalized_hosted_slug:
+            hosted = session.scalar(
+                select(HostedWorkflow).where(
+                    HostedWorkflow.slug == normalized_hosted_slug
+                )
+            )
+            if hosted is not None:
+                return WorkflowAppearanceTarget(
+                    kind="hosted",
+                    workflow_id=None,
+                    slug=hosted.slug,
+                    label=hosted.label or hosted.slug,
+                    remote_workflow_id=hosted.remote_workflow_id,
+                )
+
+        hosted_by_remote = session.scalar(
+            select(HostedWorkflow).where(
+                HostedWorkflow.remote_workflow_id == trimmed
+            )
+        )
+        if hosted_by_remote is not None:
+            return WorkflowAppearanceTarget(
+                kind="hosted",
+                workflow_id=None,
+                slug=hosted_by_remote.slug,
+                label=hosted_by_remote.label or hosted_by_remote.slug,
+                remote_workflow_id=hosted_by_remote.remote_workflow_id,
+            )
+
+        raise WorkflowNotFoundError(reference)
+
+    def _get_workflow_appearance_entry(
+        self, session: Session, target: WorkflowAppearanceTarget
+    ) -> WorkflowAppearance | None:
+        if target.kind == "local" and target.workflow_id is not None:
+            return session.scalar(
+                select(WorkflowAppearance).where(
+                    WorkflowAppearance.workflow_id == target.workflow_id
+                )
+            )
+
+        normalized_slug = target.slug.strip().lower()
+        return session.scalar(
+            select(WorkflowAppearance).where(
+                WorkflowAppearance.hosted_workflow_slug == normalized_slug
+            )
+        )
+
+    @staticmethod
+    def _has_appearance_override_values(
+        override: WorkflowAppearance,
+    ) -> bool:
+        return any(
+            getattr(override, attribute, None) is not None
+            for attribute in _APPEARANCE_ATTRIBUTE_NAMES
+        )
+
+    @staticmethod
+    def _serialize_workflow_appearance_override(
+        override: WorkflowAppearance | None,
+    ) -> dict[str, Any] | None:
+        if override is None:
+            return None
+        return {
+            "color_scheme": override.appearance_color_scheme,
+            "accent_color": override.appearance_accent_color,
+            "use_custom_surface_colors": override.appearance_use_custom_surface,
+            "surface_hue": override.appearance_surface_hue,
+            "surface_tint": override.appearance_surface_tint,
+            "surface_shade": override.appearance_surface_shade,
+            "heading_font": override.appearance_heading_font,
+            "body_font": override.appearance_body_font,
+            "start_screen_greeting": override.appearance_start_greeting,
+            "start_screen_prompt": override.appearance_start_prompt,
+            "start_screen_placeholder": override.appearance_input_placeholder,
+            "start_screen_disclaimer": override.appearance_disclaimer,
+            "created_at": override.created_at,
+            "updated_at": override.updated_at,
+        }
 
     def get_available_model_capabilities(
         self, session: Session | None = None
@@ -1560,6 +1716,103 @@ class WorkflowService:
 
             db.delete(entry)
             db.commit()
+        finally:
+            if owns_session:
+                db.close()
+
+    def get_workflow_appearance(
+        self,
+        reference: int | str,
+        *,
+        session: Session | None = None,
+    ) -> dict[str, Any]:
+        db, owns_session = self._get_session(session)
+        try:
+            target = self._resolve_workflow_appearance_target(reference, db)
+            override = self._get_workflow_appearance_entry(db, target)
+            admin_settings = get_thread_title_prompt_override(db)
+            effective = serialize_appearance_settings(admin_settings, override)
+            return {
+                "target_kind": target.kind,
+                "workflow_id": target.workflow_id,
+                "workflow_slug": target.slug,
+                "label": target.label,
+                "remote_workflow_id": target.remote_workflow_id
+                if target.kind == "hosted"
+                else None,
+                "override": self._serialize_workflow_appearance_override(override),
+                "effective": effective,
+                "inherited_from_global": override is None,
+            }
+        finally:
+            if owns_session:
+                db.close()
+
+    def update_workflow_appearance(
+        self,
+        reference: int | str,
+        values: Mapping[str, Any],
+        *,
+        session: Session | None = None,
+    ) -> dict[str, Any]:
+        db, owns_session = self._get_session(session)
+        try:
+            target = self._resolve_workflow_appearance_target(reference, db)
+            override = self._get_workflow_appearance_entry(db, target)
+
+            inherit = bool(values.get("inherit_from_global"))
+            update_kwargs = {
+                key: values[key]
+                for key in (
+                    "color_scheme",
+                    "accent_color",
+                    "use_custom_surface_colors",
+                    "surface_hue",
+                    "surface_tint",
+                    "surface_shade",
+                    "heading_font",
+                    "body_font",
+                    "start_screen_greeting",
+                    "start_screen_prompt",
+                    "start_screen_placeholder",
+                    "start_screen_disclaimer",
+                )
+                if key in values
+            }
+
+            if inherit:
+                if override is not None:
+                    db.delete(override)
+                    db.commit()
+                return self.get_workflow_appearance(reference, session=db)
+
+            if not update_kwargs and override is None:
+                return self.get_workflow_appearance(reference, session=db)
+
+            if override is None:
+                override = WorkflowAppearance()
+                db.add(override)
+
+            if target.kind == "local":
+                override.workflow_id = target.workflow_id
+                override.hosted_workflow_slug = None
+            else:
+                override.workflow_id = None
+                override.hosted_workflow_slug = target.slug
+
+            if update_kwargs:
+                changed = apply_appearance_update(override, **update_kwargs)
+                if changed:
+                    override.updated_at = datetime.datetime.now(datetime.UTC)
+
+            if not self._has_appearance_override_values(override):
+                db.delete(override)
+                db.commit()
+                return self.get_workflow_appearance(reference, session=db)
+
+            db.commit()
+            db.refresh(override)
+            return self.get_workflow_appearance(reference, session=db)
         finally:
             if owns_session:
                 db.close()

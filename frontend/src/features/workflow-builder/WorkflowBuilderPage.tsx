@@ -148,6 +148,9 @@ import {
 import EdgeInspector from "./components/EdgeInspector";
 import CreateWorkflowModal from "./components/CreateWorkflowModal";
 import NodeInspector from "./components/NodeInspector";
+import WorkflowAppearanceModal, {
+  type WorkflowAppearanceTarget,
+} from "../workflows/WorkflowAppearanceModal";
 import {
   parseWorkflowImport,
   WorkflowImportError,
@@ -485,6 +488,10 @@ const WorkflowBuilderPage = () => {
   const hasLoadedWorkflowsRef = useRef(false);
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
+  const [isAppearanceModalOpen, setAppearanceModalOpen] = useState(false);
+  const [appearanceModalTarget, setAppearanceModalTarget] =
+    useState<WorkflowAppearanceTarget | null>(null);
+  const appearanceModalTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(() => {
@@ -583,6 +590,33 @@ const WorkflowBuilderPage = () => {
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("up");
   }, []);
+  const handleCloseAppearanceModal = useCallback(() => {
+    setAppearanceModalOpen(false);
+    setAppearanceModalTarget(null);
+    const trigger = appearanceModalTriggerRef.current;
+    appearanceModalTriggerRef.current = null;
+    if (trigger) {
+      if (
+        typeof window !== "undefined" &&
+        typeof window.requestAnimationFrame === "function"
+      ) {
+        window.requestAnimationFrame(() => {
+          trigger.focus();
+        });
+      } else {
+        trigger.focus();
+      }
+    }
+  }, []);
+  const openAppearanceModal = useCallback(
+    (target: WorkflowAppearanceTarget, trigger?: HTMLButtonElement | null) => {
+      closeWorkflowMenu();
+      setAppearanceModalTarget(target);
+      setAppearanceModalOpen(true);
+      appearanceModalTriggerRef.current = trigger ?? null;
+    },
+    [closeWorkflowMenu],
+  );
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
@@ -7102,6 +7136,26 @@ const WorkflowBuilderPage = () => {
                 >
                   <button
                     type="button"
+                    onClick={(event) =>
+                      openAppearanceModal(
+                        {
+                          kind: "hosted",
+                          slug: hosted.slug,
+                          label: hosted.label,
+                          remoteWorkflowId: hosted.remoteWorkflowId ?? null,
+                        },
+                        event.currentTarget,
+                      )
+                    }
+                    disabled={hostedLoading}
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled: hostedLoading,
+                    })}
+                  >
+                    {t("workflowBuilder.hostedSection.customizeAction")}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void handleDeleteHostedWorkflow(hosted.slug)}
                     disabled={hostedLoading}
                     style={getActionMenuItemStyle(isMobileLayout, {
@@ -7248,6 +7302,24 @@ const WorkflowBuilderPage = () => {
                   style={getActionMenuItemStyle(isMobileLayout, { disabled: loading })}
                 >
                   {t("workflowBuilder.localSection.exportAction")}
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) =>
+                    openAppearanceModal(
+                      {
+                        kind: "local",
+                        workflowId: workflow.id,
+                        slug: workflow.slug,
+                        label: workflow.display_name,
+                      },
+                      event.currentTarget,
+                    )
+                  }
+                  disabled={loading}
+                  style={getActionMenuItemStyle(isMobileLayout, { disabled: loading })}
+                >
+                  {t("workflowBuilder.localSection.customizeAction")}
                 </button>
                 <button
                   type="button"
@@ -8281,6 +8353,12 @@ const WorkflowBuilderPage = () => {
               {saveMessage}
             </div>
           ) : null}
+        <WorkflowAppearanceModal
+          token={token ?? null}
+          isOpen={isAppearanceModalOpen}
+          target={appearanceModalTarget}
+          onClose={handleCloseAppearanceModal}
+        />
         <CreateWorkflowModal
           isOpen={isCreateModalOpen}
           kind={createWorkflowKind}

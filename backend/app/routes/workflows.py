@@ -9,6 +9,8 @@ from ..database import get_session
 from ..dependencies import get_current_user
 from ..models import User
 from ..schemas import (
+    WorkflowAppearanceResponse,
+    WorkflowAppearanceUpdateRequest,
     WorkflowChatKitUpdate,
     WorkflowCreateRequest,
     WorkflowDefinitionResponse,
@@ -24,6 +26,7 @@ from ..schemas import (
     WorkflowViewportReplaceRequest,
 )
 from ..workflows import (
+    HostedWorkflowNotFoundError,
     WorkflowNotFoundError,
     WorkflowService,
     WorkflowValidationError,
@@ -403,3 +406,54 @@ async def set_chatkit_workflow(
             status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
         ) from exc
     return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
+
+
+@router.get(
+    "/api/workflows/{workflow_reference}/appearance",
+    response_model=WorkflowAppearanceResponse,
+)
+async def get_workflow_appearance(
+    workflow_reference: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowAppearanceResponse:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    try:
+        reference: int | str = int(workflow_reference)
+    except ValueError:
+        reference = workflow_reference
+    try:
+        payload = service.get_workflow_appearance(reference, session=session)
+    except (WorkflowNotFoundError, HostedWorkflowNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    return WorkflowAppearanceResponse.model_validate(payload)
+
+
+@router.patch(
+    "/api/workflows/{workflow_reference}/appearance",
+    response_model=WorkflowAppearanceResponse,
+)
+async def update_workflow_appearance(
+    workflow_reference: str,
+    payload: WorkflowAppearanceUpdateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowAppearanceResponse:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    try:
+        reference: int | str = int(workflow_reference)
+    except ValueError:
+        reference = workflow_reference
+    try:
+        data = service.update_workflow_appearance(
+            reference, payload.model_dump(exclude_unset=True), session=session
+        )
+    except (WorkflowNotFoundError, HostedWorkflowNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    return WorkflowAppearanceResponse.model_validate(data)

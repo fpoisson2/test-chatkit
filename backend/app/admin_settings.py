@@ -8,6 +8,8 @@ import os
 import re
 import uuid
 from dataclasses import dataclass
+from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlparse
 
@@ -23,6 +25,7 @@ from .config import (
     set_runtime_settings_overrides,
 )
 from .database import SessionLocal
+from .models import AppSettings, WorkflowAppearance
 from .models import AppSettings
 from .secret_utils import decrypt_secret as _decrypt_secret
 from .secret_utils import encrypt_secret as _encrypt_secret
@@ -77,7 +80,8 @@ DEFAULT_APPEARANCE_SURFACE_HUE = 222.0
 DEFAULT_APPEARANCE_SURFACE_TINT = 92.0
 DEFAULT_APPEARANCE_SURFACE_SHADE = 16.0
 DEFAULT_APPEARANCE_BODY_FONT = (
-    '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif'
+    '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, '
+    '"Helvetica Neue", sans-serif'
 )
 DEFAULT_APPEARANCE_HEADING_FONT = DEFAULT_APPEARANCE_BODY_FONT
 DEFAULT_APPEARANCE_GREETING = ""
@@ -516,50 +520,90 @@ def _compute_model_overrides(settings: AppSettings | None) -> dict[str, Any]:
     return overrides
 
 
-def _resolve_appearance_settings(settings: AppSettings | None) -> dict[str, Any]:
+_APPEARANCE_ATTRIBUTE_NAMES = (
+    "appearance_color_scheme",
+    "appearance_accent_color",
+    "appearance_use_custom_surface",
+    "appearance_surface_hue",
+    "appearance_surface_tint",
+    "appearance_surface_shade",
+    "appearance_heading_font",
+    "appearance_body_font",
+    "appearance_start_greeting",
+    "appearance_start_prompt",
+    "appearance_input_placeholder",
+    "appearance_disclaimer",
+)
+
+
+def _combine_appearance_sources(
+    base: AppSettings | None, workflow_override: WorkflowAppearance | None
+) -> AppSettings | WorkflowAppearance | SimpleNamespace | None:
+    if workflow_override is None:
+        return base
+
+    combined = SimpleNamespace()
+    for attribute in _APPEARANCE_ATTRIBUTE_NAMES:
+        if hasattr(workflow_override, attribute):
+            override_value = getattr(workflow_override, attribute)
+            if override_value is not None:
+                setattr(combined, attribute, override_value)
+                continue
+        if base is not None and hasattr(base, attribute):
+            setattr(combined, attribute, getattr(base, attribute))
+        else:
+            setattr(combined, attribute, None)
+    return combined
+
+
+def _resolve_appearance_settings(
+    settings: AppSettings | None,
+    workflow_override: WorkflowAppearance | None = None,
+) -> dict[str, Any]:
+    source = _combine_appearance_sources(settings, workflow_override)
     return {
-        "color_scheme": _resolve_color_scheme(settings),
-        "accent_color": _resolve_accent_color(settings),
+        "color_scheme": _resolve_color_scheme(source),
+        "accent_color": _resolve_accent_color(source),
         "use_custom_surface_colors": bool(
-            getattr(settings, "appearance_use_custom_surface", False)
+            getattr(source, "appearance_use_custom_surface", False)
         ),
         "surface_hue": _resolve_surface_value(
-            getattr(settings, "appearance_surface_hue", None),
+            getattr(source, "appearance_surface_hue", None),
             DEFAULT_APPEARANCE_SURFACE_HUE,
             minimum=0.0,
             maximum=360.0,
         ),
         "surface_tint": _resolve_surface_value(
-            getattr(settings, "appearance_surface_tint", None),
+            getattr(source, "appearance_surface_tint", None),
             DEFAULT_APPEARANCE_SURFACE_TINT,
             minimum=0.0,
             maximum=100.0,
         ),
         "surface_shade": _resolve_surface_value(
-            getattr(settings, "appearance_surface_shade", None),
+            getattr(source, "appearance_surface_shade", None),
             DEFAULT_APPEARANCE_SURFACE_SHADE,
             minimum=0.0,
             maximum=100.0,
         ),
         "heading_font": _resolve_font(
-            getattr(settings, "appearance_heading_font", None),
+            getattr(source, "appearance_heading_font", None),
             DEFAULT_APPEARANCE_HEADING_FONT,
         ),
         "body_font": _resolve_font(
-            getattr(settings, "appearance_body_font", None),
+            getattr(source, "appearance_body_font", None),
             DEFAULT_APPEARANCE_BODY_FONT,
         ),
         "start_screen_greeting": _resolve_optional_text(
-            getattr(settings, "appearance_start_greeting", None)
+            getattr(source, "appearance_start_greeting", None)
         ),
         "start_screen_prompt": _resolve_optional_text(
-            getattr(settings, "appearance_start_prompt", None)
+            getattr(source, "appearance_start_prompt", None)
         ),
         "start_screen_placeholder": _resolve_placeholder(
-            getattr(settings, "appearance_input_placeholder", None)
+            getattr(source, "appearance_input_placeholder", None)
         ),
         "start_screen_disclaimer": _resolve_optional_text(
-            getattr(settings, "appearance_disclaimer", None)
+            getattr(source, "appearance_disclaimer", None)
         ),
     }
 
@@ -621,6 +665,134 @@ def _resolved_sip_values(
     )
 
 
+def apply_appearance_update(
+    target: Any,
+    *,
+    color_scheme: str | None | object = _UNSET,
+    accent_color: str | None | object = _UNSET,
+    use_custom_surface_colors: bool | None | object = _UNSET,
+    surface_hue: float | int | str | None | object = _UNSET,
+    surface_tint: float | int | str | None | object = _UNSET,
+    surface_shade: float | int | str | None | object = _UNSET,
+    heading_font: str | None | object = _UNSET,
+    body_font: str | None | object = _UNSET,
+    start_screen_greeting: str | None | object = _UNSET,
+    start_screen_prompt: str | None | object = _UNSET,
+    start_screen_placeholder: str | None | object = _UNSET,
+    start_screen_disclaimer: str | None | object = _UNSET,
+) -> bool:
+    changed = False
+
+    if color_scheme is not _UNSET:
+        if color_scheme is not None and not isinstance(color_scheme, str):
+            raise ValueError(
+                "Le mode de couleur doit être une chaîne de caractères."
+            )
+        target.appearance_color_scheme = _sanitize_color_scheme(color_scheme)
+        changed = True
+
+    if accent_color is not _UNSET:
+        if accent_color is not None and not isinstance(accent_color, str):
+            raise ValueError(
+                "La couleur d'accent doit être une chaîne au format #RRGGBB."
+            )
+        target.appearance_accent_color = _sanitize_accent_color(accent_color)
+        changed = True
+
+    if use_custom_surface_colors is not _UNSET:
+        target.appearance_use_custom_surface = bool(use_custom_surface_colors)
+        changed = True
+
+    if surface_hue is not _UNSET:
+        target.appearance_surface_hue = _sanitize_surface_value(
+            "surface_hue",
+            surface_hue,
+            minimum=0.0,
+            maximum=360.0,
+        )
+        changed = True
+
+    if surface_tint is not _UNSET:
+        target.appearance_surface_tint = _sanitize_surface_value(
+            "surface_tint",
+            surface_tint,
+            minimum=0.0,
+            maximum=100.0,
+        )
+        changed = True
+
+    if surface_shade is not _UNSET:
+        target.appearance_surface_shade = _sanitize_surface_value(
+            "surface_shade",
+            surface_shade,
+            minimum=0.0,
+            maximum=100.0,
+        )
+        changed = True
+
+    if heading_font is not _UNSET:
+        if heading_font is not None and not isinstance(heading_font, str):
+            raise ValueError("La police des titres doit être une chaîne.")
+        target.appearance_heading_font = _sanitize_font(
+            heading_font, DEFAULT_APPEARANCE_HEADING_FONT
+        )
+        changed = True
+
+    if body_font is not _UNSET:
+        if body_font is not None and not isinstance(body_font, str):
+            raise ValueError("La police principale doit être une chaîne.")
+        target.appearance_body_font = _sanitize_font(
+            body_font, DEFAULT_APPEARANCE_BODY_FONT
+        )
+        changed = True
+
+    if start_screen_greeting is not _UNSET:
+        if (
+            start_screen_greeting is not None
+            and not isinstance(start_screen_greeting, str)
+        ):
+            raise ValueError("Le message de bienvenue doit être une chaîne.")
+        target.appearance_start_greeting = _normalize_optional_string(
+            start_screen_greeting
+        )
+        changed = True
+
+    if start_screen_prompt is not _UNSET:
+        if (
+            start_screen_prompt is not None
+            and not isinstance(start_screen_prompt, str)
+        ):
+            raise ValueError("La phrase d'accroche doit être une chaîne.")
+        target.appearance_start_prompt = _normalize_optional_string(
+            start_screen_prompt
+        )
+        changed = True
+
+    if start_screen_placeholder is not _UNSET:
+        if (
+            start_screen_placeholder is not None
+            and not isinstance(start_screen_placeholder, str)
+        ):
+            raise ValueError("Le placeholder doit être une chaîne.")
+        target.appearance_input_placeholder = _normalize_optional_string(
+            start_screen_placeholder
+        )
+        changed = True
+
+    if start_screen_disclaimer is not _UNSET:
+        if (
+            start_screen_disclaimer is not None
+            and not isinstance(start_screen_disclaimer, str)
+        ):
+            raise ValueError("L'avertissement doit être une chaîne.")
+        target.appearance_disclaimer = _normalize_optional_string(
+            start_screen_disclaimer
+        )
+        changed = True
+
+    return changed
+
+
 def update_appearance_settings(
     session: Session,
     *,
@@ -645,104 +817,21 @@ def update_appearance_settings(
             thread_title_model=_default_thread_title_model(),
         )
 
-    changed = False
-
-    if color_scheme is not _UNSET:
-        if color_scheme is not None and not isinstance(color_scheme, str):
-            raise ValueError(
-                "Le mode de couleur doit être une chaîne de caractères."
-            )
-        settings.appearance_color_scheme = _sanitize_color_scheme(
-            color_scheme
-        )
-        changed = True
-
-    if accent_color is not _UNSET:
-        if accent_color is not None and not isinstance(accent_color, str):
-            raise ValueError(
-                "La couleur d'accent doit être une chaîne au format #RRGGBB."
-            )
-        settings.appearance_accent_color = _sanitize_accent_color(accent_color)
-        changed = True
-
-    if use_custom_surface_colors is not _UNSET:
-        settings.appearance_use_custom_surface = bool(use_custom_surface_colors)
-        changed = True
-
-    if surface_hue is not _UNSET:
-        settings.appearance_surface_hue = _sanitize_surface_value(
-            "surface_hue",
-            surface_hue,
-            minimum=0.0,
-            maximum=360.0,
-        )
-        changed = True
-
-    if surface_tint is not _UNSET:
-        settings.appearance_surface_tint = _sanitize_surface_value(
-            "surface_tint",
-            surface_tint,
-            minimum=0.0,
-            maximum=100.0,
-        )
-        changed = True
-
-    if surface_shade is not _UNSET:
-        settings.appearance_surface_shade = _sanitize_surface_value(
-            "surface_shade",
-            surface_shade,
-            minimum=0.0,
-            maximum=100.0,
-        )
-        changed = True
-
-    if heading_font is not _UNSET:
-        if heading_font is not None and not isinstance(heading_font, str):
-            raise ValueError("La police des titres doit être une chaîne.")
-        settings.appearance_heading_font = _sanitize_font(
-            heading_font, DEFAULT_APPEARANCE_HEADING_FONT
-        )
-        changed = True
-
-    if body_font is not _UNSET:
-        if body_font is not None and not isinstance(body_font, str):
-            raise ValueError("La police principale doit être une chaîne.")
-        settings.appearance_body_font = _sanitize_font(
-            body_font, DEFAULT_APPEARANCE_BODY_FONT
-        )
-        changed = True
-
-    if start_screen_greeting is not _UNSET:
-        if start_screen_greeting is not None and not isinstance(start_screen_greeting, str):
-            raise ValueError("Le message de bienvenue doit être une chaîne.")
-        settings.appearance_start_greeting = _normalize_optional_string(
-            start_screen_greeting
-        )
-        changed = True
-
-    if start_screen_prompt is not _UNSET:
-        if start_screen_prompt is not None and not isinstance(start_screen_prompt, str):
-            raise ValueError("La phrase d'accroche doit être une chaîne.")
-        settings.appearance_start_prompt = _normalize_optional_string(
-            start_screen_prompt
-        )
-        changed = True
-
-    if start_screen_placeholder is not _UNSET:
-        if start_screen_placeholder is not None and not isinstance(start_screen_placeholder, str):
-            raise ValueError("Le placeholder doit être une chaîne.")
-        settings.appearance_input_placeholder = _normalize_optional_string(
-            start_screen_placeholder
-        )
-        changed = True
-
-    if start_screen_disclaimer is not _UNSET:
-        if start_screen_disclaimer is not None and not isinstance(start_screen_disclaimer, str):
-            raise ValueError("L'avertissement doit être une chaîne.")
-        settings.appearance_disclaimer = _normalize_optional_string(
-            start_screen_disclaimer
-        )
-        changed = True
+    changed = apply_appearance_update(
+        settings,
+        color_scheme=color_scheme,
+        accent_color=accent_color,
+        use_custom_surface_colors=use_custom_surface_colors,
+        surface_hue=surface_hue,
+        surface_tint=surface_tint,
+        surface_shade=surface_shade,
+        heading_font=heading_font,
+        body_font=body_font,
+        start_screen_greeting=start_screen_greeting,
+        start_screen_prompt=start_screen_prompt,
+        start_screen_placeholder=start_screen_placeholder,
+        start_screen_disclaimer=start_screen_disclaimer,
+    )
 
     if not changed:
         return settings
@@ -1095,16 +1184,69 @@ def resolve_thread_title_model(session: Session | None = None) -> str:
     return default_model
 
 
-def resolve_appearance_settings(session: Session | None = None) -> dict[str, Any]:
+def _load_workflow_appearance_override(
+    session: Session, reference: int | str | None
+) -> WorkflowAppearance | None:
+    if reference is None:
+        return None
+
+    workflow_id: int | None = None
+    slug_candidate: str | None = None
+
+    if isinstance(reference, int):
+        workflow_id = reference
+        slug_candidate = str(reference)
+    else:
+        trimmed = str(reference).strip()
+        if not trimmed:
+            return None
+        try:
+            workflow_id = int(trimmed)
+            slug_candidate = trimmed
+        except ValueError:
+            slug_candidate = trimmed
+
+    if workflow_id is not None:
+        override = session.scalar(
+            select(WorkflowAppearance).where(
+                WorkflowAppearance.workflow_id == workflow_id
+            )
+        )
+        if override is not None:
+            return override
+
+    if slug_candidate:
+        normalized_slug = slug_candidate.strip().lower()
+        if not normalized_slug:
+            return None
+        return session.scalar(
+            select(WorkflowAppearance).where(
+                WorkflowAppearance.hosted_workflow_slug == normalized_slug
+            )
+        )
+
+    return None
+
+
+def resolve_appearance_settings(
+    session: Session | None = None,
+    workflow_reference: int | str | None = None,
+) -> dict[str, Any]:
     try:
         if session is not None:
             override = get_thread_title_prompt_override(session)
-            return serialize_appearance_settings(override)
+            workflow_override = _load_workflow_appearance_override(
+                session, workflow_reference
+            )
+            return serialize_appearance_settings(override, workflow_override)
         with SessionLocal() as owned_session:
             override = get_thread_title_prompt_override(owned_session)
-            return serialize_appearance_settings(override)
+            workflow_override = _load_workflow_appearance_override(
+                owned_session, workflow_reference
+            )
+            return serialize_appearance_settings(override, workflow_override)
     except Exception:  # pragma: no cover - fallback
-        return serialize_appearance_settings(None)
+        return serialize_appearance_settings(None, None)
 
 
 def serialize_admin_settings(
@@ -1184,8 +1326,19 @@ def serialize_admin_settings(
     }
 
 
-def serialize_appearance_settings(settings: AppSettings | None) -> dict[str, Any]:
-    resolved = _resolve_appearance_settings(settings)
-    resolved["created_at"] = settings.created_at if settings else None
-    resolved["updated_at"] = settings.updated_at if settings else None
+def serialize_appearance_settings(
+    settings: AppSettings | None,
+    workflow_override: WorkflowAppearance | None = None,
+) -> dict[str, Any]:
+    resolved = _resolve_appearance_settings(settings, workflow_override)
+    created_at = None
+    updated_at = None
+    if workflow_override is not None:
+        created_at = workflow_override.created_at
+        updated_at = workflow_override.updated_at
+    elif settings is not None:
+        created_at = settings.created_at
+        updated_at = settings.updated_at
+    resolved["created_at"] = created_at
+    resolved["updated_at"] = updated_at
     return resolved
