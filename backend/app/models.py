@@ -914,6 +914,41 @@ class Language(Base):
     )
 
 
+class LanguageGenerationTask(Base):
+    """Tâches de génération de langues en background."""
+
+    __tablename__ = "language_generation_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_id: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    code: Mapped[str] = mapped_column(String(2), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True
+    )  # pending, running, completed, failed
+    progress: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )  # 0-100
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    language_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("languages.id"), nullable=True
+    )
+    file_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relations
+    language: Mapped[Language | None] = relationship("Language")
+
+
 Index("ix_json_documents_metadata", JsonDocument.metadata_json, postgresql_using="gin")
 Index("ix_json_chunks_metadata", JsonChunk.metadata_json, postgresql_using="gin")
 Index(
