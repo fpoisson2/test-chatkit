@@ -349,11 +349,18 @@ def _extract_http_status_error(
 
 async def _connect_mcp_servers(
     configs: Sequence[Mapping[str, Any]],
+    *,
+    existing_tool_names: set[str] | None = None,
 ) -> list[MCPServer]:
-    """Crée et connecte les serveurs MCP définis dans la configuration."""
+    """Crée et connecte les serveurs MCP définis dans la configuration.
+
+    Args:
+        configs: Configurations des serveurs MCP à connecter
+        existing_tool_names: Noms d'outils déjà existants (ex: FunctionTools) pour détecter les doublons
+    """
 
     servers: list[MCPServer] = []
-    seen_tool_names: set[str] = set()
+    seen_tool_names: set[str] = set(existing_tool_names) if existing_tool_names else set()
 
     for config in configs:
         context = config.get("__context__")
@@ -415,7 +422,7 @@ async def _connect_mcp_servers(
             if duplicate_tools:
                 server_label = getattr(server, "name", None) or config.get("server_label", "unknown")
                 logger.warning(
-                    "Serveur MCP '%s': %d outils en double ignorés: %s",
+                    "Serveur MCP '%s': %d outils en double ignorés (conflit avec FunctionTools ou autres serveurs MCP): %s",
                     server_label,
                     len(duplicate_tools),
                     duplicate_tools[:10]  # Log first 10
@@ -1034,11 +1041,28 @@ class RealtimeVoiceSessionOrchestrator:
             tools, mcp_server_configs=mcp_server_configs
         )
 
+        # Extract existing tool names from FunctionTools to detect duplicates with MCP servers
+        existing_tool_names: set[str] = set()
+        for tool in agent_tools:
+            if isinstance(tool, FunctionTool):
+                tool_name = getattr(tool, "name", None)
+                if tool_name:
+                    existing_tool_names.add(tool_name)
+
+        if existing_tool_names:
+            logger.info(
+                "FunctionTools détectés (%d): %s - les outils MCP avec les mêmes noms seront filtrés",
+                len(existing_tool_names),
+                list(existing_tool_names)[:5]  # Show first 5
+            )
+
         agent_mcp_servers: list[MCPServer] = []
         handle: VoiceSessionHandle | None = None
 
         try:
-            agent_mcp_servers = await _connect_mcp_servers(mcp_server_configs)
+            agent_mcp_servers = await _connect_mcp_servers(
+                mcp_server_configs, existing_tool_names=existing_tool_names
+            )
 
             agent = self._base_agent.clone(
                 instructions=instructions,
