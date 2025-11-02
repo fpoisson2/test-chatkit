@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { buildGraphPayloadFrom, prepareNodeParametersForSave, resolveSelectionAfterLoad } from "./utils";
 import { getParallelSplitBranches, getParallelSplitJoinSlug, resolveParallelSplitParameters } from "../../utils/workflows";
-import type { FlowEdge, FlowNode } from "./types";
+import type { FlowEdge, FlowNode, RepeatZone } from "./types";
 
 describe("resolveSelectionAfterLoad", () => {
   test("conserve la sélection du nœud lors d'un rafraîchissement en arrière-plan", () => {
@@ -177,5 +177,47 @@ describe("parallel split serialization", () => {
         { slug: "branch-b" },
       ],
     });
+  });
+});
+
+describe("repeat zone serialization", () => {
+  test("inclut la zone de répétition et conserve les métadonnées", () => {
+    const node: FlowNode = {
+      id: "agent",
+      position: { x: 120, y: 240 },
+      data: {
+        slug: "agent",
+        kind: "agent",
+        displayName: "Agent",
+        label: "Agent",
+        isEnabled: true,
+        agentKey: "writer",
+        parameters: {},
+        parametersText: "{}",
+        parametersError: null,
+        metadata: { foo: "bar" },
+      },
+      draggable: true,
+    } satisfies FlowNode;
+
+    const zone: RepeatZone = {
+      id: "loop-a",
+      label: "Boucle",
+      bounds: { x: 100, y: 200, width: 300, height: 180 },
+      nodeSlugs: ["agent"],
+      metadata: { max_iterations: 4 },
+    };
+
+    const payload = buildGraphPayloadFrom([node], [], [zone]);
+
+    expect(payload.repeat_zones).toEqual([
+      {
+        id: "loop-a",
+        label: "Boucle",
+        bounds: { x: 100, y: 200, width: 300, height: 180 },
+        node_slugs: ["agent"],
+        metadata: { max_iterations: 4, order: 1 },
+      },
+    ]);
   });
 });

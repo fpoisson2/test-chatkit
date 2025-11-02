@@ -26,7 +26,7 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { ChevronDown, Copy, PenSquare, Redo2, Star, Trash2, Undo2 } from "lucide-react";
+import { ChevronDown, Copy, PenSquare, Redo2, Repeat2, Star, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -148,6 +148,7 @@ import {
 import EdgeInspector from "./components/EdgeInspector";
 import CreateWorkflowModal from "./components/CreateWorkflowModal";
 import NodeInspector from "./components/NodeInspector";
+import RepeatZoneOverlay from "./components/RepeatZoneOverlay";
 import WorkflowAppearanceModal, {
   type WorkflowAppearanceTarget,
 } from "../workflows/WorkflowAppearanceModal";
@@ -167,6 +168,8 @@ import type {
   FlowNode,
   FlowNodeData,
   NodeKind,
+  RepeatZone,
+  RepeatZoneBounds,
   SaveState,
   StateAssignment,
   StateAssignmentScope,
@@ -400,12 +403,36 @@ const useMediaQuery = (query: string) => {
   return matches;
 };
 
+const MIN_REPEAT_ZONE_SIZE = 24;
+const FALLBACK_NODE_WIDTH = 160;
+const FALLBACK_NODE_HEIGHT = 80;
+
+type RepeatZonePoint = { x: number; y: number };
+
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
   const { t } = useI18n();
   const autoSaveSuccessMessage = t("workflowBuilder.save.autoSaveSuccess");
   const draftDisplayName = t("workflowBuilder.save.draftDisplayName");
   const saveFailureMessage = t("workflowBuilder.save.failure");
+  const repeatZoneLabels = useMemo(
+    () => ({
+      zoneTitle: t("workflowBuilder.repeatZone.zoneLabel"),
+      remove: t("workflowBuilder.repeatZone.remove"),
+      drawing: t("workflowBuilder.repeatZone.drawingHint"),
+      resize: {
+        n: t("workflowBuilder.repeatZone.resize.north"),
+        s: t("workflowBuilder.repeatZone.resize.south"),
+        e: t("workflowBuilder.repeatZone.resize.east"),
+        w: t("workflowBuilder.repeatZone.resize.west"),
+        ne: t("workflowBuilder.repeatZone.resize.northEast"),
+        nw: t("workflowBuilder.repeatZone.resize.northWest"),
+        se: t("workflowBuilder.repeatZone.resize.southEast"),
+        sw: t("workflowBuilder.repeatZone.resize.southWest"),
+      },
+    }),
+    [t],
+  );
   const formatSaveFailureWithStatus = useCallback(
     (status: number) => t("workflowBuilder.save.failureWithStatus", { status }),
     [t],
@@ -452,6 +479,139 @@ const WorkflowBuilderPage = () => {
     (list: FlowNode[]): FlowNode[] => list.map(decorateNode),
     [decorateNode],
   );
+
+  const normalizeRepeatZoneBounds = useCallback(
+    (start: RepeatZonePoint, end: RepeatZonePoint): RepeatZoneBounds => {
+      const minX = Math.min(start.x, end.x);
+      const minY = Math.min(start.y, end.y);
+      const width = Math.abs(end.x - start.x);
+      const height = Math.abs(end.y - start.y);
+      return { x: minX, y: minY, width, height };
+    },
+    [],
+  );
+
+  const computeNodeSlugsWithinBounds = useCallback(
+    (bounds: RepeatZoneBounds): string[] => {
+      const instance = reactFlowInstanceRef.current;
+      if (!instance) {
+        return [];
+      }
+      const members: string[] = [];
+      const nodesWithMetrics = instance.getNodes();
+      for (const node of nodesWithMetrics) {
+        const position = node.positionAbsolute ?? node.position ?? null;
+        if (!position) {
+          continue;
+        }
+        const measured = node as unknown as {
+          width?: number;
+          height?: number;
+          measured?: { width?: number; height?: number };
+        };
+        const width =
+          typeof measured.width === "number"
+            ? measured.width
+            : typeof measured.measured?.width === "number"
+              ? measured.measured.width
+              : FALLBACK_NODE_WIDTH;
+        const height =
+          typeof measured.height === "number"
+            ? measured.height
+            : typeof measured.measured?.height === "number"
+              ? measured.measured.height
+              : FALLBACK_NODE_HEIGHT;
+        const centerX = position.x + width / 2;
+        const centerY = position.y + height / 2;
+        if (
+          centerX >= bounds.x &&
+          centerX <= bounds.x + bounds.width &&
+          centerY >= bounds.y &&
+          centerY <= bounds.y + bounds.height
+        ) {
+          members.push(node.id);
+        }
+      }
+      return [...new Set(members)].sort();
+    },
+    [],
+  );
+
+  const commitRepeatZoneBounds = useCallback(
+    (bounds: RepeatZoneBounds) => {
+      const normalized: RepeatZoneBounds = {
+        x: bounds.x,
+        y: bounds.y,
+        width: Math.max(bounds.width, MIN_REPEAT_ZONE_SIZE),
+        height: Math.max(bounds.height, MIN_REPEAT_ZONE_SIZE),
+      };
+      const nodeSlugs = computeNodeSlugsWithinBounds(normalized);
+      setRepeatZone((previous) => ({
+        id: previous?.id ?? "repeat-zone",
+        label: previous?.label ?? null,
+        bounds: normalized,
+        nodeSlugs,
+        metadata: previous?.metadata ?? {},
+      }));
+    },
+    [computeNodeSlugsWithinBounds],
+  );
+
+  const handleRepeatZoneDrawStart = useCallback((point: RepeatZonePoint) => {
+    repeatZoneStartRef.current = point;
+    setRepeatZoneDraft({ x: point.x, y: point.y, width: 0, height: 0 });
+  }, []);
+
+  const handleRepeatZoneDrawUpdate = useCallback(
+    (point: RepeatZonePoint) => {
+      const start = repeatZoneStartRef.current;
+      if (!start) {
+        return;
+      }
+      setRepeatZoneDraft(normalizeRepeatZoneBounds(start, point));
+    },
+    [normalizeRepeatZoneBounds],
+  );
+
+  const handleRepeatZoneDrawEnd = useCallback(
+    (point: RepeatZonePoint) => {
+      const start = repeatZoneStartRef.current;
+      if (!start) {
+        return;
+      }
+      const bounds = normalizeRepeatZoneBounds(start, point);
+      repeatZoneStartRef.current = null;
+      setRepeatZoneDraft(null);
+      if (bounds.width < MIN_REPEAT_ZONE_SIZE || bounds.height < MIN_REPEAT_ZONE_SIZE) {
+        setIsRepeatZoneDrawing(false);
+        return;
+      }
+      commitRepeatZoneBounds(bounds);
+      setIsRepeatZoneDrawing(false);
+    },
+    [commitRepeatZoneBounds, normalizeRepeatZoneBounds],
+  );
+
+  const handleRepeatZoneMove = useCallback(
+    (bounds: RepeatZoneBounds) => {
+      commitRepeatZoneBounds(bounds);
+    },
+    [commitRepeatZoneBounds],
+  );
+
+  const handleRepeatZoneResize = useCallback(
+    (bounds: RepeatZoneBounds) => {
+      commitRepeatZoneBounds(bounds);
+    },
+    [commitRepeatZoneBounds],
+  );
+
+  const handleRepeatZoneRemove = useCallback(() => {
+    setRepeatZone(null);
+    setRepeatZoneDraft(null);
+    setIsRepeatZoneDrawing(false);
+    repeatZoneStartRef.current = null;
+  }, []);
   const initialSidebarCacheRef = useRef(readWorkflowSidebarCache());
   const initialStoredSelectionRef = useRef(readStoredWorkflowSelection());
   const initialSidebarCache = initialSidebarCacheRef.current;
@@ -463,6 +623,9 @@ const WorkflowBuilderPage = () => {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
+  const [repeatZone, setRepeatZone] = useState<RepeatZone | null>(null);
+  const [repeatZoneDraft, setRepeatZoneDraft] = useState<RepeatZoneBounds | null>(null);
+  const [isRepeatZoneDrawing, setIsRepeatZoneDrawing] = useState(false);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -630,6 +793,8 @@ const WorkflowBuilderPage = () => {
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const repeatZoneStartRef = useRef<RepeatZonePoint | null>(null);
+  const repeatZoneRef = useRef<RepeatZone | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
   const viewportMemoryRef = useRef(new Map<string, Viewport>());
   const viewportKeyRef = useRef<string | null>(null);
@@ -1053,6 +1218,25 @@ const WorkflowBuilderPage = () => {
   }, [edges]);
 
   useEffect(() => {
+    repeatZoneRef.current = repeatZone;
+  }, [repeatZone]);
+
+  useEffect(() => {
+    if (!repeatZone) {
+      return;
+    }
+    const nodeSlugs = computeNodeSlugsWithinBounds(repeatZone.bounds);
+    const hasChanged =
+      nodeSlugs.length !== repeatZone.nodeSlugs.length ||
+      nodeSlugs.some((slug, index) => slug !== repeatZone.nodeSlugs[index]);
+    if (hasChanged) {
+      setRepeatZone((previous) =>
+        previous ? { ...previous, nodeSlugs } : previous,
+      );
+    }
+  }, [computeNodeSlugsWithinBounds, nodes, repeatZone]);
+
+  useEffect(() => {
     versionsRef.current = versions;
   }, [versions]);
 
@@ -1366,6 +1550,20 @@ const WorkflowBuilderPage = () => {
       </div>
     ) : null;
 
+  const handleToggleRepeatZoneMode = useCallback(() => {
+    setIsRepeatZoneDrawing((previous) => {
+      const next = !previous;
+      if (!next) {
+        repeatZoneStartRef.current = null;
+        setRepeatZoneDraft(null);
+      } else {
+        repeatZoneStartRef.current = null;
+        setRepeatZoneDraft(null);
+      }
+      return next;
+    });
+  }, []);
+
   const renderHeaderControls = () => {
     const importDisabled = loading || isImporting;
     const exportDisabled =
@@ -1378,6 +1576,11 @@ const WorkflowBuilderPage = () => {
     const exportLabel = isExporting
       ? t("workflowBuilder.export.preparing")
       : t("workflowBuilder.actions.exportJson");
+    const repeatZoneButtonLabel = isRepeatZoneDrawing
+      ? t("workflowBuilder.repeatZone.cancel")
+      : repeatZone
+        ? t("workflowBuilder.repeatZone.edit")
+        : t("workflowBuilder.repeatZone.create");
     const versionSelect = (
       <div style={getHeaderLayoutStyle(isMobileLayout)}>
         <div style={getHeaderGroupStyle(isMobileLayout)}>
@@ -1511,6 +1714,18 @@ const WorkflowBuilderPage = () => {
                       type="button"
                       role="menuitem"
                       onClick={() => {
+                        handleToggleRepeatZoneMode();
+                        closeMobileActions();
+                      }}
+                      aria-pressed={isRepeatZoneDrawing}
+                      style={getMobileActionButtonStyle({ disabled: false })}
+                    >
+                      {repeatZoneButtonLabel}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
                         handleTriggerImport();
                         closeMobileActions();
                       }}
@@ -1556,14 +1771,23 @@ const WorkflowBuilderPage = () => {
     }
 
     return (
-      <>
-        {versionSelect}
-        <div style={getHeaderActionAreaStyle(false)}>
-          <button
-            type="button"
-            onClick={handleTriggerImport}
-            disabled={importDisabled}
-            aria-busy={isImporting}
+        <>
+          {versionSelect}
+          <div style={getHeaderActionAreaStyle(false)}>
+            <button
+              type="button"
+              onClick={handleToggleRepeatZoneMode}
+              className={styles.repeatZoneToolButton}
+              aria-pressed={isRepeatZoneDrawing}
+            >
+              <Repeat2 aria-hidden="true" size={16} />
+              <span>{repeatZoneButtonLabel}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleTriggerImport}
+              disabled={importDisabled}
+              aria-busy={isImporting}
             style={getDeployButtonStyle(false, {
               disabled: importDisabled,
             })}
@@ -1862,7 +2086,25 @@ const WorkflowBuilderPage = () => {
               : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
             style: buildEdgeStyle({ isSelected: false }),
           }));
-          const nextSnapshot = JSON.stringify(buildGraphPayloadFrom(flowNodes, flowEdges));
+          const rawRepeatZone = data.graph.repeat_zones?.[0] ?? null;
+          const loadedRepeatZone: RepeatZone | null = rawRepeatZone
+            ? {
+                id: rawRepeatZone.id,
+                label: rawRepeatZone.label ?? null,
+                bounds: rawRepeatZone.bounds,
+                nodeSlugs: Array.isArray(rawRepeatZone.node_slugs)
+                  ? [...new Set(rawRepeatZone.node_slugs.map((slug) => String(slug)))].sort()
+                  : [],
+                metadata: rawRepeatZone.metadata ?? {},
+              }
+            : null;
+          const nextSnapshot = JSON.stringify(
+            buildGraphPayloadFrom(
+              flowNodes,
+              flowEdges,
+              loadedRepeatZone ? [loadedRepeatZone] : [],
+            ),
+          );
           isHydratingRef.current = true;
           lastSavedSnapshotRef.current = nextSnapshot;
           updateHasPendingChanges(false);
@@ -1875,6 +2117,9 @@ const WorkflowBuilderPage = () => {
           }
           setNodes(flowNodes);
           setEdges(flowEdges);
+          setRepeatZone(loadedRepeatZone);
+          setRepeatZoneDraft(null);
+          setIsRepeatZoneDrawing(false);
           // Reset isHydrating after a short delay to allow viewport restoration
           setTimeout(() => {
             isHydratingRef.current = false;
@@ -1958,7 +2203,10 @@ const WorkflowBuilderPage = () => {
       persistViewportMemory,
       resetHistory,
       restoreViewport,
+      setIsRepeatZoneDrawing,
       setEdges,
+      setRepeatZone,
+      setRepeatZoneDraft,
       updateHasPendingChanges,
       setNodes,
     ],
@@ -4778,7 +5026,11 @@ const WorkflowBuilderPage = () => {
             (edge) => nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target),
           );
 
-      const payload = buildGraphPayloadFrom(nodesToCopy, edgesToCopy);
+      const payload = buildGraphPayloadFrom(
+        nodesToCopy,
+        edgesToCopy,
+        includeEntireGraph && repeatZone ? [repeatZone] : [],
+      );
       const serialized = JSON.stringify(payload, null, 2);
 
       const writeText = async () => {
@@ -4833,7 +5085,7 @@ const WorkflowBuilderPage = () => {
         resetCopySequence();
       }
     },
-    [resetCopySequence, setSaveMessage, setSaveState, t],
+    [repeatZone, resetCopySequence, setSaveMessage, setSaveState, t],
   );
 
   const pasteClipboardGraph = useCallback(async () => {
@@ -5104,6 +5356,23 @@ const WorkflowBuilderPage = () => {
       historyRef.current.pendingSnapshot = null;
       setNodes(flowNodes);
       setEdges(flowEdges);
+      const snapshotZone = parsed.graph.repeat_zones?.[0] ?? null;
+      if (snapshotZone) {
+        const slugList = Array.isArray(snapshotZone.node_slugs)
+          ? [...new Set(snapshotZone.node_slugs.map((slug) => String(slug)))].sort()
+          : [];
+        setRepeatZone({
+          id: snapshotZone.id,
+          label: snapshotZone.label ?? null,
+          bounds: snapshotZone.bounds,
+          nodeSlugs: slugList,
+          metadata: snapshotZone.metadata ?? {},
+        });
+      } else {
+        setRepeatZone(null);
+      }
+      setRepeatZoneDraft(null);
+      setIsRepeatZoneDrawing(false);
       selectedNodeIdsRef.current = new Set();
       selectedEdgeIdsRef.current = new Set();
       setSelectedNodeId(null);
@@ -5112,7 +5381,7 @@ const WorkflowBuilderPage = () => {
       selectedEdgeIdRef.current = null;
       return true;
     },
-    [setEdges, setNodes, setSelectedEdgeId, setSelectedNodeId],
+    [setEdges, setIsRepeatZoneDrawing, setNodes, setRepeatZone, setRepeatZoneDraft, setSelectedEdgeId, setSelectedNodeId],
   );
 
   const undoHistory = useCallback((): boolean => {
@@ -5619,8 +5888,8 @@ const WorkflowBuilderPage = () => {
   );
 
   const buildGraphPayload = useCallback(
-    () => buildGraphPayloadFrom(nodes, edges),
-    [edges, nodes],
+    () => buildGraphPayloadFrom(nodes, edges, repeatZone ? [repeatZone] : []),
+    [edges, nodes, repeatZone],
   );
 
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
@@ -8188,6 +8457,19 @@ const WorkflowBuilderPage = () => {
                       }}
                     >
                       <Background gap={18} size={1} />
+                      <RepeatZoneOverlay
+                        repeatZone={repeatZone}
+                        draftBounds={repeatZoneDraft}
+                        drawing={isRepeatZoneDrawing}
+                        onDrawStart={handleRepeatZoneDrawStart}
+                        onDrawUpdate={handleRepeatZoneDrawUpdate}
+                        onDrawEnd={handleRepeatZoneDrawEnd}
+                        onMove={handleRepeatZoneMove}
+                        onResize={handleRepeatZoneResize}
+                        onRemove={handleRepeatZoneRemove}
+                        labels={repeatZoneLabels}
+                        testId="repeat-zone-overlay"
+                      />
                       {!isMobileLayout ? (
                         <MiniMap
                           nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}

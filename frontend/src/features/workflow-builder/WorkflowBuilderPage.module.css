@@ -415,3 +415,207 @@
 .flowNode {
   transition: opacity 0.2s ease, filter 0.2s ease;
 }
+
+.repeatZoneLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.repeatZoneCanvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.repeatZoneCanvas[data-drawing="true"] {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.repeatZoneViewport {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.repeatZoneBox {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.75rem 1rem;
+  border: 2px solid var(--primary-color);
+  border-radius: 0.75rem;
+  background: rgba(59, 130, 246, 0.12);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
+  pointer-events: auto;
+}
+
+.repeatZoneHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.repeatZoneLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.18);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+}
+
+.repeatZoneRemoveButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--primary-color);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.repeatZoneRemoveButton:hover {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.repeatZoneRemoveButton:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.repeatZoneHandle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--primary-color);
+  border-radius: 50%;
+  background: var(--surface-strong);
+  pointer-events: auto;
+  cursor: grab;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.repeatZoneHandle:hover {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.repeatZoneHandle:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.repeatZoneHandleN {
+  top: -8px;
+  left: 50%;
+  transform: translate(-50%, 0);
+  cursor: ns-resize;
+}
+
+.repeatZoneHandleS {
+  bottom: -8px;
+  left: 50%;
+  transform: translate(-50%, 0);
+  cursor: ns-resize;
+}
+
+.repeatZoneHandleE {
+  right: -8px;
+  top: 50%;
+  transform: translate(0, -50%);
+  cursor: ew-resize;
+}
+
+.repeatZoneHandleW {
+  left: -8px;
+  top: 50%;
+  transform: translate(0, -50%);
+  cursor: ew-resize;
+}
+
+.repeatZoneHandleNE {
+  top: -8px;
+  right: -8px;
+  cursor: nesw-resize;
+}
+
+.repeatZoneHandleNW {
+  top: -8px;
+  left: -8px;
+  cursor: nwse-resize;
+}
+
+.repeatZoneHandleSE {
+  bottom: -8px;
+  right: -8px;
+  cursor: nwse-resize;
+}
+
+.repeatZoneHandleSW {
+  bottom: -8px;
+  left: -8px;
+  cursor: nesw-resize;
+}
+
+.repeatZoneDraft {
+  position: absolute;
+  border: 2px dashed var(--primary-color);
+  border-radius: 0.75rem;
+  background: rgba(59, 130, 246, 0.1);
+  pointer-events: none;
+}
+
+.repeatZoneDrawingHint {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.75);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.repeatZoneToolButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+  color: var(--text-color);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.repeatZoneToolButton:hover {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.repeatZoneToolButton:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.repeatZoneToolButton[aria-pressed="true"] {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.15);
+}

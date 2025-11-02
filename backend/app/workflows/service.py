@@ -2992,22 +2992,16 @@ class WorkflowService:
                     )
 
         visited: set[str] = set()
-        stack: set[str] = set()
-
-        def dfs(slug: str) -> None:
-            if slug in stack:
-                raise WorkflowValidationError(
-                    "Une boucle a été détectée dans la configuration du workflow."
-                )
+        frontier: list[str] = [start_nodes[0]]
+        while frontier:
+            slug = frontier.pop()
             if slug in visited:
-                return
-            stack.add(slug)
-            for edge in adjacency.get(slug, []):
-                dfs(edge.target_slug)
-            stack.remove(slug)
+                continue
             visited.add(slug)
-
-        dfs(start_nodes[0])
+            for edge in adjacency.get(slug, []):
+                target = edge.target_slug
+                if target not in visited:
+                    frontier.append(target)
 
         for end_slug in end_nodes:
             if end_slug not in visited:

@@ -37,6 +37,15 @@ type WorkflowImportEdge = {
 type WorkflowImportGraph = {
   nodes: WorkflowImportNode[];
   edges: WorkflowImportEdge[];
+  repeat_zones?: WorkflowImportRepeatZone[];
+};
+
+type WorkflowImportRepeatZone = {
+  id: string;
+  label: string | null;
+  bounds: { x: number; y: number; width: number; height: number };
+  node_slugs: string[];
+  metadata: JsonRecord;
 };
 
 export type ParsedWorkflowImport = {
@@ -57,6 +66,42 @@ const sanitizeRecord = (value: unknown): JsonRecord => {
     return {};
   }
   return { ...value };
+};
+
+const sanitizeNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+};
+
+const sanitizeBounds = (value: unknown): { x: number; y: number; width: number; height: number } => {
+  if (!isRecord(value)) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+  const width = sanitizeNumber(value.width, 0);
+  const height = sanitizeNumber(value.height, 0);
+  return {
+    x: sanitizeNumber(value.x, 0),
+    y: sanitizeNumber(value.y, 0),
+    width: width < 0 ? 0 : width,
+    height: height < 0 ? 0 : height,
+  };
+};
+
+const sanitizeStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => toTrimmedStringOrNull(entry))
+    .filter((entry): entry is string => entry !== null);
 };
 
 const toTrimmedStringOrNull = (value: unknown): string | null => {
@@ -101,6 +146,28 @@ export const parseWorkflowImport = (input: string): ParsedWorkflowImport => {
   if (!Array.isArray(rawEdges)) {
     throw new WorkflowImportError("invalid_graph");
   }
+
+  const rawRepeatZones = graphCandidate.repeat_zones;
+  const repeatZones: WorkflowImportRepeatZone[] = Array.isArray(rawRepeatZones)
+    ? rawRepeatZones
+        .map((entry) => {
+          if (!isRecord(entry)) {
+            return null;
+          }
+          const id = toTrimmedStringOrNull(entry.id);
+          if (!id) {
+            return null;
+          }
+          return {
+            id,
+            label: toTrimmedStringOrNull(entry.label),
+            bounds: sanitizeBounds(entry.bounds),
+            node_slugs: sanitizeStringArray(entry.node_slugs),
+            metadata: sanitizeRecord(entry.metadata),
+          } satisfies WorkflowImportRepeatZone;
+        })
+        .filter((zone): zone is WorkflowImportRepeatZone => zone !== null)
+    : [];
 
   const nodes = rawNodes.map((entry) => {
     if (!isRecord(entry)) {
@@ -156,7 +223,7 @@ export const parseWorkflowImport = (input: string): ParsedWorkflowImport => {
       : Boolean(raw.mark_as_active);
 
   return {
-    graph: { nodes, edges },
+    graph: { nodes, edges, repeat_zones: repeatZones },
     workflowId,
     slug,
     displayName,
