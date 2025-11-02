@@ -1061,10 +1061,19 @@ async def generate_language_file(
 
             # Utiliser le provider_id et provider_slug fournis dans le formulaire en priorité
             # Sinon, utiliser ceux du modèle dans la base de données
-            provider_id_used = provider_id if provider_id else available_model.provider_id
-            provider_slug_used = provider_slug_from_request if provider_slug_from_request else available_model.provider_slug
-
-            logger.info(f"Using provider_id={provider_id_used}, provider_slug={provider_slug_used} (from form={provider_id is not None or provider_slug_from_request is not None})")
+            # IMPORTANT: Ne pas utiliser provider_id du modèle si aucun provider n'est sélectionné
+            # car les providers configurés via .env n'ont pas d'ID, seulement un slug
+            if provider_id or provider_slug_from_request:
+                # Utilisateur a sélectionné explicitement un provider dans le formulaire
+                provider_id_used = provider_id
+                provider_slug_used = provider_slug_from_request
+                logger.info(f"Using provider from form: provider_id={provider_id_used}, provider_slug={provider_slug_used}")
+            else:
+                # Aucun provider sélectionné dans le formulaire, utiliser celui du modèle
+                # Ne PAS utiliser provider_id car il pourrait ne pas exister (providers .env n'ont pas d'ID)
+                provider_id_used = None
+                provider_slug_used = available_model.provider_slug
+                logger.info(f"No provider selected in form, using model's provider_slug={provider_slug_used} (ignoring provider_id)")
 
         # Obtenir le provider binding - la fonction get_agent_provider_binding gère la résolution
         logger.info(f"Calling get_agent_provider_binding with provider_id={provider_id_used}, provider_slug={provider_slug_used}")
@@ -1072,7 +1081,7 @@ async def generate_language_file(
         # Debug: afficher les providers disponibles dans les settings
         from ..config import get_settings
         settings = get_settings()
-        logger.info(f"Available providers in runtime settings: {[(p.provider, getattr(p, 'id', 'no-id'), getattr(p, 'api_key', 'no-key')[:10] if hasattr(p, 'api_key') else 'no-key') for p in settings.model_providers]}")
+        logger.info(f"Available providers in runtime settings: {[(p.provider, getattr(p, 'id', None)) for p in settings.model_providers]}")
 
         provider_binding = get_agent_provider_binding(provider_id_used, provider_slug_used)
 
