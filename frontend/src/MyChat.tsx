@@ -10,7 +10,6 @@ import {
   useAppearanceSettings,
   type AppearanceWorkflowReference,
 } from "./features/appearance/AppearanceSettingsContext";
-import { useAppearanceSettings } from "./features/appearance/AppearanceSettingsContext";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
