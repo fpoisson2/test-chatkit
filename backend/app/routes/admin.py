@@ -1079,6 +1079,22 @@ async def generate_language_file(
         # Obtenir le provider binding
         logger.info(f"Getting provider binding for provider_id={provider_id_used}, provider_slug={provider_slug}")
 
+        # Si provider_id est None mais qu'on a un provider_slug, essayer de trouver le provider dans la DB par slug
+        if not provider_id_used and provider_slug:
+            logger.info(f"Trying to find provider by slug '{provider_slug}' in database")
+            from sqlalchemy import select
+            from ..models import ModelProvider as ModelProviderDB
+
+            with SessionLocal() as db_session:
+                db_provider = db_session.scalar(
+                    select(ModelProviderDB)
+                    .where(ModelProviderDB.provider == provider_slug)
+                    .limit(1)
+                )
+                if db_provider:
+                    provider_id_used = str(db_provider.id)
+                    logger.info(f"Found provider in database with ID: {provider_id_used}")
+
         # Debug: afficher les providers disponibles
         settings = get_settings()
         logger.info(f"Available providers in settings: {[(p.provider, p.id if hasattr(p, 'id') else 'no-id') for p in settings.model_providers]}")
