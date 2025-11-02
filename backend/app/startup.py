@@ -2606,10 +2606,13 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
         """Gère un appel entrant PJSUA."""
         from .telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
 
+        # Logger dédié pour le tracking des appels (filtrable via config logging)
+        call_tracker = logging.getLogger("chatkit.telephony.call_tracker")
+
         pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
         call_id = str(uuid.uuid4())
 
-        logger.info(
+        logger.debug(
             "Appel PJSUA entrant: call_id=%s, remote_uri=%s",
             call_id,
             call_info.remoteUri if hasattr(call_info, 'remoteUri') else '<unknown>',
@@ -2625,7 +2628,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
         match = re.search(r"sip:([^@>;]+)@", remote_uri, flags=re.IGNORECASE)
         if match:
             incoming_number = match.group(1)
-            logger.info("Numéro entrant extrait: %s", incoming_number)
+            logger.debug("Numéro entrant extrait: %s", incoming_number)
 
         try:
             # Résoudre le workflow
@@ -2806,39 +2809,39 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             telephony_tools.append(transfer_tool_config)
 
             # 📊 LOG DÉTAILLÉ: Configuration des tools pour l'appel
-            logger.info("=" * 80)
-            logger.info("📞 CONFIGURATION APPEL ENTRANT (call_id=%s)", call_id)
-            logger.info("=" * 80)
-            logger.info("📍 Numéro entrant: %s", incoming_number or "<inconnu>")
-            logger.info("🤖 Modèle: %s", voice_model)
-            logger.info("🎤 Voix: %s", voice_name)
-            logger.info("🔧 Provider: %s (id=%s)", voice_provider_slug, voice_provider_id)
-            logger.info("💬 Speak first: %s", speak_first)
-            logger.info("⏱️  Ring timeout: %ss", ring_timeout_seconds)
-            logger.info("")
-            logger.info("🛠️  TOOLS CONFIGURÉS (%d tools):", len(telephony_tools))
+            call_tracker.info("=" * 80)
+            call_tracker.info("📞 CONFIGURATION APPEL ENTRANT (call_id=%s)", call_id)
+            call_tracker.info("=" * 80)
+            call_tracker.info("📍 Numéro entrant: %s", incoming_number or "<inconnu>")
+            call_tracker.info("🤖 Modèle: %s", voice_model)
+            call_tracker.info("🎤 Voix: %s", voice_name)
+            call_tracker.info("🔧 Provider: %s (id=%s)", voice_provider_slug, voice_provider_id)
+            call_tracker.info("💬 Speak first: %s", speak_first)
+            call_tracker.info("⏱️  Ring timeout: %ss", ring_timeout_seconds)
+            call_tracker.info("")
+            call_tracker.info("🛠️  TOOLS CONFIGURÉS (%d tools):", len(telephony_tools))
             for idx, tool in enumerate(telephony_tools, 1):
                 if isinstance(tool, dict):
                     tool_type = tool.get("type", "unknown")
                     tool_name = tool.get("name", tool.get("server_label", "<unnamed>"))
-                    logger.info("  %d. [%s] %s", idx, tool_type, tool_name)
+                    call_tracker.info("  %d. [%s] %s", idx, tool_type, tool_name)
                     if tool_type == "mcp":
-                        logger.info("      └─ URL: %s", tool.get("server_url", "<no-url>"))
+                        call_tracker.info("      └─ URL: %s", tool.get("server_url", "<no-url>"))
                         if tool.get("allow"):
-                            logger.info("      └─ Allowlist: %s", tool.get("allow"))
+                            call_tracker.info("      └─ Allowlist: %s", tool.get("allow"))
                 else:
-                    logger.info("  %d. %s", idx, type(tool).__name__)
+                    call_tracker.info("  %d. %s", idx, type(tool).__name__)
 
             if voice_handoffs:
-                logger.info("🔄 HANDOFFS CONFIGURÉS (%d):", len(voice_handoffs))
+                call_tracker.info("🔄 HANDOFFS CONFIGURÉS (%d):", len(voice_handoffs))
                 for idx, handoff in enumerate(voice_handoffs, 1):
-                    logger.info("  %d. %s", idx, handoff)
+                    call_tracker.info("  %d. %s", idx, handoff)
             else:
-                logger.info("🔄 Aucun handoff configuré")
+                call_tracker.info("🔄 Aucun handoff configuré")
 
-            logger.info("=" * 80)
+            call_tracker.info("=" * 80)
 
-            logger.info("🔐 Création de la session vocale...")
+            call_tracker.info("🔐 Création de la session vocale...")
             session_handle = await open_voice_session(
                 user_id=f"pjsua:{call_id}",
                 model=voice_model,
@@ -2862,32 +2865,32 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 raise ValueError(f"Client secret introuvable pour l'appel {call_id}")
 
             # 📊 LOG DÉTAILLÉ: Session créée avec succès
-            logger.info("=" * 80)
-            logger.info("✅ SESSION VOCALE CRÉÉE AVEC SUCCÈS")
-            logger.info("=" * 80)
-            logger.info("🆔 Session ID: %s", session_handle.session_id)
-            logger.info("🔑 Client secret: %s***", client_secret[:10] if client_secret else "<none>")
-            logger.info("🏃 Runner: %s", type(session_handle.runner).__name__)
-            logger.info("🤖 Agent: %s", type(session_handle.agent).__name__)
-            logger.info("🌐 Serveurs MCP connectés: %d", len(session_handle.mcp_servers))
+            call_tracker.info("=" * 80)
+            call_tracker.info("✅ SESSION VOCALE CRÉÉE AVEC SUCCÈS")
+            call_tracker.info("=" * 80)
+            call_tracker.info("🆔 Session ID: %s", session_handle.session_id)
+            call_tracker.info("🔑 Client secret: %s***", client_secret[:10] if client_secret else "<none>")
+            call_tracker.info("🏃 Runner: %s", type(session_handle.runner).__name__)
+            call_tracker.info("🤖 Agent: %s", type(session_handle.agent).__name__)
+            call_tracker.info("🌐 Serveurs MCP connectés: %d", len(session_handle.mcp_servers))
             for idx, mcp_server in enumerate(session_handle.mcp_servers, 1):
                 server_name = getattr(mcp_server, "name", None) or f"<server-{idx}>"
-                logger.info("  %d. %s", idx, server_name)
+                call_tracker.info("  %d. %s", idx, server_name)
                 # Log allowlist if present
                 allowlist = getattr(mcp_server, "_chatkit_mcp_allowlist", None)
                 if allowlist:
-                    logger.info("      └─ Allowlist actif: %d outils", len(allowlist))
-                    logger.info("      └─ Outils: %s", list(allowlist)[:5])  # First 5
+                    call_tracker.info("      └─ Allowlist actif: %d outils", len(allowlist))
+                    call_tracker.info("      └─ Outils: %s", list(allowlist)[:5])  # First 5
 
             metadata = session_handle.metadata
             if metadata:
-                logger.info("📋 Metadata:")
+                call_tracker.info("📋 Metadata:")
                 for key, value in metadata.items():
                     if key not in ("tools", "sdk_tools", "sdk_handoffs", "mcp_servers"):
-                        logger.info("  • %s: %s", key, value)
+                        call_tracker.info("  • %s: %s", key, value)
 
-            logger.info("=" * 80)
-            logger.info("")
+            call_tracker.info("=" * 80)
+            call_tracker.info("")
 
             # Créer les hooks pour le voice bridge
             async def close_dialog_hook() -> None:
@@ -3034,29 +3037,29 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     await asyncio.sleep(ring_timeout_seconds)
 
             # Répondre à l'appel (200 OK)
-            logger.info("📞 Réponse à l'appel PJSUA avec 200 OK (call_id=%s)", call_id)
+            logger.debug("Réponse à l'appel PJSUA avec 200 OK (call_id=%s)", call_id)
             await pjsua_adapter.answer_call(call, code=200)
 
             # 📊 LOG DÉTAILLÉ: Appel accepté et prêt
-            logger.info("=" * 80)
-            logger.info("✅ APPEL ACCEPTÉ - EN ATTENTE DE MÉDIA ACTIF")
-            logger.info("=" * 80)
-            logger.info("📞 Call ID: %s", call_id)
-            logger.info("📍 Depuis: %s", incoming_number or "<inconnu>")
-            logger.info("🎯 Prochaine étape: Attente callback on_media_active_callback")
-            logger.info("   ↳ Initialisation jitter buffer (50ms)")
-            logger.info("   ↳ Attente onFrameRequested de PJSUA")
-            logger.info("   ↳ Déblocage audio et démarrage VoiceBridge")
+            call_tracker.info("=" * 80)
+            call_tracker.info("✅ APPEL ACCEPTÉ - EN ATTENTE DE MÉDIA ACTIF")
+            call_tracker.info("=" * 80)
+            call_tracker.info("📞 Call ID: %s", call_id)
+            call_tracker.info("📍 Depuis: %s", incoming_number or "<inconnu>")
+            call_tracker.info("🎯 Prochaine étape: Attente callback on_media_active_callback")
+            call_tracker.info("   ↳ Initialisation jitter buffer (50ms)")
+            call_tracker.info("   ↳ Attente onFrameRequested de PJSUA")
+            call_tracker.info("   ↳ Déblocage audio et démarrage VoiceBridge")
             if speak_first:
-                logger.info("🗣️  Mode speak_first actif - l'assistant parlera en premier")
+                call_tracker.info("🗣️  Mode speak_first actif - l'assistant parlera en premier")
             if preinit_session:
-                logger.info("⚡ Session OpenAI pré-initialisée pendant la sonnerie (latence réduite)")
-            logger.info("=" * 80)
-            logger.info("")
+                call_tracker.info("⚡ Session OpenAI pré-initialisée pendant la sonnerie (latence réduite)")
+            call_tracker.info("=" * 80)
+            call_tracker.info("")
 
             # L'audio sera débloqué automatiquement par le callback on_media_active_callback
             # quand PJSUA appellera onCallMediaState et créera le port audio
-            logger.info("⏳ Attente que le média devienne actif pour envoyer l'audio... (call_id=%s)", call_id)
+            logger.debug("Attente que le média devienne actif pour envoyer l'audio (call_id=%s)", call_id)
 
             # Attendre la fin du voice bridge
             try:
@@ -3078,26 +3081,26 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
         except Exception as e:
             # 📊 LOG DÉTAILLÉ: Erreur lors du traitement de l'appel
-            logger.error("=" * 80)
-            logger.error("❌ ERREUR TRAITEMENT APPEL ENTRANT")
-            logger.error("=" * 80)
-            logger.error("📞 Call ID: %s", call_id)
-            logger.error("📍 Numéro: %s", incoming_number or "<inconnu>")
-            logger.error("⚠️  Type d'erreur: %s", type(e).__name__)
-            logger.error("💬 Message: %s", str(e))
+            call_tracker.error("=" * 80)
+            call_tracker.error("❌ ERREUR TRAITEMENT APPEL ENTRANT")
+            call_tracker.error("=" * 80)
+            call_tracker.error("📞 Call ID: %s", call_id)
+            call_tracker.error("📍 Numéro: %s", incoming_number or "<inconnu>")
+            call_tracker.error("⚠️  Type d'erreur: %s", type(e).__name__)
+            call_tracker.error("💬 Message: %s", str(e))
 
             # Essayer d'extraire plus de détails si c'est une HTTPException
             if hasattr(e, 'detail'):
-                logger.error("📋 Détails: %s", e.detail)
+                call_tracker.error("📋 Détails: %s", e.detail)
 
-            logger.error("=" * 80)
-            logger.exception("Stack trace complète:")
+            call_tracker.error("=" * 80)
+            call_tracker.exception("Stack trace complète:")
 
             try:
                 await pjsua_adapter.hangup_call(call)
-                logger.info("📞 Appel raccroché suite à l'erreur (call_id=%s)", call_id)
+                call_tracker.info("📞 Appel raccroché suite à l'erreur (call_id=%s)", call_id)
             except Exception as hangup_err:
-                logger.warning("Impossible de raccrocher l'appel: %s", hangup_err)
+                logger.debug("Impossible de raccrocher l'appel: %s", hangup_err)
 
     return _handle_pjsua_incoming_call
 
