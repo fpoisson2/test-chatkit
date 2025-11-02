@@ -1281,66 +1281,6 @@ async def list_available_models(
         )
 
 
-class ProviderResponse(BaseModel):
-    id: str
-    provider: str
-    label: str
-
-
-class ProvidersListResponse(BaseModel):
-    providers: list[ProviderResponse]
-
-
-@router.get("/api/admin/languages/providers", response_model=ProvidersListResponse)
-async def list_available_providers(
-    _admin: User = Depends(require_admin)
-):
-    """
-    Liste tous les providers configurés pour la génération de traductions.
-    """
-    try:
-        from ..admin_settings import resolve_model_provider_credentials
-        from sqlalchemy import select
-        from ..models import ModelProvider as ModelProviderDB
-
-        providers = []
-        seen_ids = set()
-
-        # Charger les providers depuis la base de données admin_settings
-        with SessionLocal() as session:
-            db_providers = session.scalars(select(ModelProviderDB)).all()
-            for db_provider in db_providers:
-                provider_id = str(db_provider.id)
-                if provider_id not in seen_ids:
-                    providers.append(ProviderResponse(
-                        id=provider_id,
-                        provider=db_provider.provider,
-                        label=f"{db_provider.provider} (DB: {db_provider.id})"
-                    ))
-                    seen_ids.add(provider_id)
-
-        # Ajouter aussi les providers depuis la configuration (settings)
-        settings = get_settings()
-        for idx, provider_config in enumerate(settings.model_providers):
-            provider_id = provider_config.id if hasattr(provider_config, 'id') and provider_config.id else f"config_{idx}"
-            if provider_id not in seen_ids:
-                providers.append(ProviderResponse(
-                    id=provider_id,
-                    provider=provider_config.provider,
-                    label=f"{provider_config.provider} (Config)"
-                ))
-                seen_ids.add(provider_id)
-
-        return ProvidersListResponse(providers=providers)
-
-    except Exception as e:
-        logger.exception(f"Failed to list available providers: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list available providers: {str(e)}"
-        )
-
-
 @router.get("/api/admin/languages/default-prompt", response_model=DefaultPromptResponse)
 async def get_default_translation_prompt(
     _admin: User = Depends(require_admin)

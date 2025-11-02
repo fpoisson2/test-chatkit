@@ -2,6 +2,7 @@ import {
   FormEvent,
   useCallback,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -66,7 +67,6 @@ export const AdminLanguagesPage = () => {
   const [instructions, setInstructions] = useState<string | null>(null);
 
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
-  const [availableProviders, setAvailableProviders] = useState<Provider[]>([]);
   const [defaultPrompt, setDefaultPrompt] = useState<string>("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);
 
@@ -157,39 +157,43 @@ export const AdminLanguagesPage = () => {
     }
   }, [token, logout]);
 
-  const loadAvailableProviders = useCallback(async () => {
-    if (!token) {
-      return;
-    }
+  // Extract unique providers from available models
+  const availableProviders = useMemo(() => {
+    const seen = new Set<string>();
+    const providers: Provider[] = [];
 
-    try {
-      const response = await fetch("/api/admin/languages/providers", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+    for (const model of availableModels) {
+      const slug = model.provider_slug?.trim().toLowerCase() ?? "";
+      const id = model.provider_id?.trim() ?? "";
 
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-        throw new Error(`HTTP ${response.status}`);
+      if (!slug && !id) {
+        continue;
       }
 
-      const data = await response.json();
-      setAvailableProviders(data.providers || []);
-    } catch (err) {
-      console.error("Failed to load available providers:", err);
+      const key = `${id}|${slug}`;
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      const baseLabel = slug || id || "provider";
+      const label = slug && id ? `${slug} (${id})` : baseLabel;
+
+      providers.push({
+        id: id || slug || key,
+        provider: slug || id || "",
+        label
+      });
     }
-  }, [token, logout]);
+
+    return providers.sort((a, b) => a.label.localeCompare(b.label));
+  }, [availableModels]);
 
   useEffect(() => {
     void loadLanguages();
     void loadAvailableModels();
     void loadDefaultPrompt();
-    void loadAvailableProviders();
-  }, [loadLanguages, loadAvailableModels, loadDefaultPrompt, loadAvailableProviders]);
+  }, [loadLanguages, loadAvailableModels, loadDefaultPrompt]);
 
   const handleFormChange = (field: keyof LanguageFormState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
