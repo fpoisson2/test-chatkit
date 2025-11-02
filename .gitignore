@@ -3,6 +3,7 @@
 /__pycache__
 .env
 /.npm-cache
+**/.npm-cache
 /node_modules
 ..env.swp
 /.vite
