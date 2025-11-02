@@ -1057,65 +1057,34 @@ async def generate_language_file(
                     )
 
             model_name = available_model.name
+            logger.info(f"Found model in database: name={model_name}, provider_id={available_model.provider_id}, provider_slug={available_model.provider_slug}")
 
             # Utiliser le provider_id et provider_slug fournis dans le formulaire en priorité
             # Sinon, utiliser ceux du modèle dans la base de données
-            if provider_id:
-                provider_id_used = provider_id
-                logger.info(f"Using provider_id from form: {provider_id}")
-            else:
-                provider_id_used = available_model.provider_id
-                logger.info(f"Using provider_id from model in database: {provider_id_used}")
+            provider_id_used = provider_id if provider_id else available_model.provider_id
+            provider_slug_used = provider_slug_from_request if provider_slug_from_request else available_model.provider_slug
 
-            if provider_slug_from_request:
-                provider_slug = provider_slug_from_request
-                logger.info(f"Using provider_slug from form: {provider_slug}")
-            else:
-                provider_slug = available_model.provider_slug
-                logger.info(f"Using provider_slug from model in database: {provider_slug}")
+            logger.info(f"Using provider_id={provider_id_used}, provider_slug={provider_slug_used} (from form={provider_id is not None or provider_slug_from_request is not None})")
 
-            logger.info(f"Using model {model_name} with provider_id={provider_id_used}, provider_slug={provider_slug}")
+        # Obtenir le provider binding - la fonction get_agent_provider_binding gère la résolution
+        logger.info(f"Calling get_agent_provider_binding with provider_id={provider_id_used}, provider_slug={provider_slug_used}")
 
-        # Obtenir le provider binding
-        logger.info(f"Getting provider binding for provider_id={provider_id_used}, provider_slug={provider_slug}")
-
-        # Si provider_id est None mais qu'on a un provider_slug, essayer de trouver le provider dans la DB par slug
-        if not provider_id_used and provider_slug:
-            logger.info(f"Trying to find provider by slug '{provider_slug}' in database")
-            from ..admin_settings import get_thread_title_prompt_override
-
-            with SessionLocal() as db_session:
-                app_settings = get_thread_title_prompt_override(db_session)
-                if app_settings and app_settings.model_provider_configs:
-                    # Parse le JSON des model_provider_configs
-                    import json
-                    try:
-                        providers_data = json.loads(app_settings.model_provider_configs)
-                        for provider_data in providers_data:
-                            if provider_data.get("provider", "").lower() == provider_slug.lower():
-                                provider_id_used = provider_data.get("id")
-                                logger.info(f"Found provider in database with ID: {provider_id_used}")
-                                break
-                    except (json.JSONDecodeError, AttributeError) as e:
-                        logger.warning(f"Failed to parse model_provider_configs JSON: {e}")
-
-        # Debug: afficher les providers disponibles
+        # Debug: afficher les providers disponibles dans les settings
+        from ..config import get_settings
         settings = get_settings()
-        logger.info(f"Available providers in settings: {[(p.provider, p.id if hasattr(p, 'id') else 'no-id') for p in settings.model_providers]}")
+        logger.info(f"Available providers in runtime settings: {[(p.provider, getattr(p, 'id', 'no-id'), getattr(p, 'api_key', 'no-key')[:10] if hasattr(p, 'api_key') else 'no-key') for p in settings.model_providers]}")
 
-        provider_binding = get_agent_provider_binding(provider_id_used, provider_slug)
+        provider_binding = get_agent_provider_binding(provider_id_used, provider_slug_used)
 
-        print(f"CHECKPOINT 5: Got provider binding result")
         logger.info(f"Provider binding result: {provider_binding}")
 
         if not provider_binding:
             error_msg = (
                 f"Failed to get provider binding for model '{model_name}'. "
-                f"Provider ID: {provider_id_used}, Provider slug: {provider_slug}. "
+                f"Provider ID: {provider_id_used}, Provider slug: {provider_slug_used}. "
                 f"Please ensure the model has a valid provider_id in the database or that "
-                f"a provider with slug '{provider_slug}' is configured in your settings."
+                f"a provider with slug '{provider_slug_used}' is configured in your settings."
             )
-            print(f"ERROR: {error_msg}")
             logger.error(error_msg)
             raise HTTPException(
                 status_code=500,
