@@ -26,13 +26,6 @@ export type McpSseToolConfig = {
   authorizationOverride?: string;
 };
 
-export type LegacyMcpSseToolConfig = {
-  url: string;
-  authorization: string;
-  oauth_client_id?: string;
-  oauth_scope?: string;
-};
-
 export type WorkflowToolConfig = {
   slug: string;
   name?: string;
@@ -2805,55 +2798,6 @@ const sanitizeComputerUseConfig = (
   return payload;
 };
 
-const isLegacyMcpTool = (value: unknown): value is Record<string, unknown> => {
-  if (!isPlainRecord(value)) {
-    return false;
-  }
-  const type = value.type;
-  if (typeof type !== "string" || type.trim().toLowerCase() !== "mcp") {
-    return false;
-  }
-  const transport = value.transport;
-  if (typeof transport !== "string" || transport.trim().toLowerCase() !== "http_sse") {
-    return false;
-  }
-  return typeof value.url === "string";
-};
-
-const sanitizeLegacyMcpConfig = (
-  config: Partial<LegacyMcpSseToolConfig> | null | undefined,
-): LegacyMcpSseToolConfig | null => {
-  if (!config) {
-    return null;
-  }
-
-  const url = typeof config.url === "string" ? config.url.trim() : "";
-  if (!url) {
-    return null;
-  }
-
-  const authorization =
-    typeof config.authorization === "string" ? config.authorization.trim() : "";
-
-  return { url, authorization };
-};
-
-const buildLegacyMcpToolEntry = (
-  config: LegacyMcpSseToolConfig,
-): Record<string, unknown> => {
-  const entry: Record<string, unknown> = {
-    type: "mcp",
-    transport: "http_sse",
-    url: config.url,
-  };
-
-  if (config.authorization) {
-    entry.authorization = config.authorization;
-  }
-
-  return entry;
-};
-
 const coerceServerId = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isInteger(value) && value > 0) {
     return value;
@@ -3690,37 +3634,6 @@ export const getAgentComputerUseConfig = (
   return null;
 };
 
-export const getLegacyMcpSseConfig = (
-  parameters: AgentParameters | null | undefined,
-): LegacyMcpSseToolConfig | null => {
-  if (!parameters) {
-    return null;
-  }
-
-  const tools = (parameters as Record<string, unknown>).tools;
-  if (!Array.isArray(tools)) {
-    return null;
-  }
-
-  for (const tool of tools) {
-    if (!isLegacyMcpTool(tool)) {
-      continue;
-    }
-
-    const url = typeof tool.url === "string" ? tool.url.trim() : "";
-    if (!url) {
-      continue;
-    }
-
-    const authorization =
-      typeof tool.authorization === "string" ? tool.authorization.trim() : "";
-
-    return { url, authorization };
-  }
-
-  return null;
-};
-
 export const getAgentImageGenerationConfig = (
   parameters: AgentParameters | null | undefined,
 ): ImageGenerationToolConfig | null => {
@@ -3890,28 +3803,6 @@ export const getAgentMcpServers = (
   }
 
   return Array.from(normalized.values());
-};
-
-export const setLegacyMcpSseConfig = (
-  parameters: AgentParameters,
-  config: LegacyMcpSseToolConfig | null,
-): AgentParameters => {
-  const next = { ...parameters } as AgentParameters;
-  const sanitized = sanitizeLegacyMcpConfig(config);
-  const tools = Array.isArray(next.tools)
-    ? (next.tools as unknown[]).filter((tool) => !isLegacyMcpTool(tool))
-    : [];
-
-  if (!sanitized) {
-    if (tools.length === 0) {
-      const { tools: _ignored, ...rest } = next as Record<string, unknown>;
-      return stripEmpty(rest);
-    }
-    return { ...next, tools };
-  }
-
-  const entry = buildLegacyMcpToolEntry(sanitized);
-  return { ...next, tools: [...tools, entry] };
 };
 
 export const setAgentMcpServers = (

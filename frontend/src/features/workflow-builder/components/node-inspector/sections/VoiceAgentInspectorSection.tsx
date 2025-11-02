@@ -2,7 +2,6 @@ import { useCallback, useMemo } from "react";
 
 import { useI18n } from "../../../../../i18n";
 import {
-  testMcpToolConnection,
   startMcpOAuthNegotiation,
   pollMcpOAuthSession,
   cancelMcpOAuthSession,
@@ -14,7 +13,6 @@ import type {
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
   WorkflowSummary,
-  LegacyMcpSseToolConfig,
   McpSseToolConfig,
 } from "../../../types";
 import {
@@ -66,10 +64,6 @@ type VoiceAgentInspectorSectionProps = {
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
-  onAgentMcpSseConfigChange: (
-    nodeId: string,
-    config: LegacyMcpSseToolConfig | null,
-  ) => void;
   onAgentMcpServersChange?: (
     nodeId: string,
     configs: McpSseToolConfig[],
@@ -98,15 +92,9 @@ export const VoiceAgentInspectorSection = ({
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
   onAgentWorkflowToolToggle,
-  onAgentMcpSseConfigChange,
   onAgentMcpServersChange,
 }: VoiceAgentInspectorSectionProps) => {
   const { t } = useI18n();
-  const handleTestMcpSseConnection = useCallback(
-    (config: LegacyMcpSseToolConfig) =>
-      testMcpToolConnection(token ?? null, config),
-    [token],
-  );
   const handleStartMcpOAuth = useCallback(
     (payload: { url: string; clientId: string | null; scope: string | null }) =>
       startMcpOAuthNegotiation({
@@ -370,9 +358,7 @@ export const VoiceAgentInspectorSection = ({
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
-          onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
           onAgentMcpServersChange={onAgentMcpServersChange}
-          onTestMcpSseConnection={handleTestMcpSseConnection}
           onStartMcpOAuth={handleStartMcpOAuth}
           onPollMcpOAuth={handlePollMcpOAuth}
           onCancelMcpOAuth={handleCancelMcpOAuth}

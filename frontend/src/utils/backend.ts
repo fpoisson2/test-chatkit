@@ -1,5 +1,4 @@
 import type { WorkflowSummary } from "../types/workflows";
-import type { LegacyMcpSseToolConfig } from "./workflows";
 
 type NullableString = string | null | undefined;
 
@@ -465,41 +464,6 @@ export type WorkflowAppearance = {
 
 export type WorkflowAppearanceUpdatePayload = AppearanceSettingsUpdatePayload & {
   inherit_from_global?: boolean | null;
-};
-
-export const testMcpToolConnection = async (
-  token: string | null,
-  config: LegacyMcpSseToolConfig,
-): Promise<McpTestConnectionResponse> => {
-  const serverId = (config as { server_id?: number | null }).server_id;
-  const maybeAuthorization =
-    typeof config.authorization === "string" ? config.authorization.trim() : "";
-
-  if (typeof serverId === "number" && Number.isFinite(serverId)) {
-    return probeMcpServer(token, {
-      serverId,
-      url: config.url,
-      authorization: maybeAuthorization || null,
-    });
-  }
-
-  const payload: McpTestConnectionPayload = {
-    type: "mcp",
-    transport: "http_sse",
-    url: config.url,
-  };
-
-  if (maybeAuthorization) {
-    payload.authorization = maybeAuthorization;
-  }
-
-  const response = await requestWithFallback("/api/tools/mcp/test-connection", {
-    method: "POST",
-    headers: withAuthHeaders(token),
-    body: JSON.stringify(payload),
-  });
-
-  return response.json();
 };
 
 export type McpOAuthStartResponse = {

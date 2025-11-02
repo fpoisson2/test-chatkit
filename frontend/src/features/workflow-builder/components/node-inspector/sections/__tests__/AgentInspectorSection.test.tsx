@@ -187,7 +187,6 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
         onAgentFileSearchChange={vi.fn()}
         onAgentImageGenerationChange={vi.fn()}
         onAgentComputerUseChange={vi.fn()}
-        onAgentMcpSseConfigChange={vi.fn()}
         onAgentMcpServersChange={onAgentMcpServersChange}
         onAgentWeatherToolChange={vi.fn()}
         onAgentWidgetValidationToolChange={vi.fn()}
