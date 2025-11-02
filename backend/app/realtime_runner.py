@@ -74,8 +74,6 @@ def _normalize_realtime_tools_payload(
         "authorization",
         "name",
         "description",
-        "server_id",
-        "allow",
         "require_approval",  # Allow require_approval for telephony (set to 'never')
     }
 
@@ -181,12 +179,6 @@ def _normalize_realtime_tools_payload(
                     tool_entry["authorization"] = authorization_header
                 elif "authorization" in tool_entry:
                     tool_entry.pop("authorization", None)
-
-                if isinstance(context, ResolvedMcpServerContext):
-                    if context.server_id is not None:
-                        tool_entry["server_id"] = context.server_id
-                    if context.allowlist:
-                        tool_entry["allow"] = {"tools": list(context.allowlist)}
 
                 if "require_approval" not in tool_entry:
                     tool_entry["require_approval"] = "never"
