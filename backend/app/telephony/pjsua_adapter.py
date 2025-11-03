@@ -933,28 +933,42 @@ class PJSUAAdapter:
                         audio_media.stopTransmit(audio_port)
                         logger.debug("✅ Déconnexion call→port réussie (call_id=%s)", call_id)
                     except Exception as e:
-                        err_str = str(e)
-                        # Ignorer les erreurs attendues lors du nettoyage
-                        if "EINVAL" in err_str or "70004" in err_str:
-                            logger.debug("Port déjà déconnecté call→port (EINVAL ignoré)")
-                        elif "ESESSIONTERMINATED" in err_str or "171140" in err_str:
-                            logger.debug("Session déjà terminée call→port (ESESSIONTERMINATED ignoré)")
+                        # Convertir l'exception en string pour détecter le type d'erreur
+                        err_str = str(e).upper()
+                        err_repr = repr(e).upper()
+
+                        # Détecter les erreurs attendues lors du nettoyage
+                        # PJ_EINVAL/EINVAL (70004) = port déjà déconnecté
+                        # ESESSIONTERMINATED (171140) = session déjà terminée
+                        is_expected = any(pattern in err_str or pattern in err_repr
+                                        for pattern in ["EINVAL", "70004", "ESESSIONTERMINATED", "171140"])
+
+                        if is_expected:
+                            logger.debug("Port déjà déconnecté call→port (erreur attendue ignorée: %s)", e)
                         else:
-                            logger.warning("Erreur stopTransmit call→port (call_id=%s): %s", call_id, e)
+                            # Si c'est une erreur inattendue, logger en WARNING avec détails complets
+                            logger.warning("Erreur inattendue stopTransmit call→port (call_id=%s): %s (repr=%s)",
+                                         call_id, e, repr(e))
 
                     # Déconnexion port → call
                     try:
                         audio_port.stopTransmit(audio_media)
                         logger.debug("✅ Déconnexion port→call réussie (call_id=%s)", call_id)
                     except Exception as e:
-                        err_str = str(e)
-                        # Ignorer les erreurs attendues lors du nettoyage
-                        if "EINVAL" in err_str or "70004" in err_str:
-                            logger.debug("Port déjà déconnecté port→call (EINVAL ignoré)")
-                        elif "ESESSIONTERMINATED" in err_str or "171140" in err_str:
-                            logger.debug("Session déjà terminée port→call (ESESSIONTERMINATED ignoré)")
+                        # Convertir l'exception en string pour détecter le type d'erreur
+                        err_str = str(e).upper()
+                        err_repr = repr(e).upper()
+
+                        # Détecter les erreurs attendues lors du nettoyage
+                        is_expected = any(pattern in err_str or pattern in err_repr
+                                        for pattern in ["EINVAL", "70004", "ESESSIONTERMINATED", "171140"])
+
+                        if is_expected:
+                            logger.debug("Port déjà déconnecté port→call (erreur attendue ignorée: %s)", e)
                         else:
-                            logger.warning("Erreur stopTransmit port→call (call_id=%s): %s", call_id, e)
+                            # Si c'est une erreur inattendue, logger en WARNING avec détails complets
+                            logger.warning("Erreur inattendue stopTransmit port→call (call_id=%s): %s (repr=%s)",
+                                         call_id, e, repr(e))
 
                     logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
             except Exception as e:
