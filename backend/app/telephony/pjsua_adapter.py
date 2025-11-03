@@ -144,6 +144,7 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self.channels = 1
         self.samples_per_frame = 160  # 20ms @ 8kHz
         self.bits_per_sample = 16
+        self.frame_size_bytes = self.samples_per_frame * 2  # 320 bytes
 
         # Files pour l'audio
         # Buffer de 1000 frames = 20 secondes @ 20ms/frame
@@ -316,36 +317,49 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
     def send_audio(self, audio_data: bytes) -> None:
         """Envoie de l'audio vers le téléphone (appelé depuis l'async loop)."""
+        dropped = 0
+        queued_chunks = 0
+
         try:
-            self._outgoing_audio_queue.put_nowait(audio_data)
+            chunk_size = self.frame_size_bytes
+            # Découper le flux entrant en frames 20ms pour éviter la troncature côté onFrameRequested
+            for offset in range(0, len(audio_data), chunk_size):
+                chunk = audio_data[offset:offset + chunk_size]
+                if len(chunk) < chunk_size:
+                    # padding avec silence pour compléter la frame
+                    chunk = chunk + b'\x00' * (chunk_size - len(chunk))
 
-            # Log des premières fois pour confirmer que l'audio arrive
-            queue_size = self._outgoing_audio_queue.qsize()
-            if self._audio_frame_count < 5:
-                # Vérifier si c'est du silence
-                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
-                logger.info("📥 send_audio: %d bytes ajoutés à queue (taille: %d) - %s",
-                           len(audio_data), queue_size,
-                           "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
-
-            # Éviter qu'un burst massif n'ajoute trop de latence: si la file dépasse la limite,
-            # supprimer les frames les plus anciennes jusqu'à revenir sous la limite.
-            if queue_size > self._max_outgoing_frames:
-                dropped = 0
-                try:
-                    while self._outgoing_audio_queue.qsize() > self._max_outgoing_frames:
+                # S'assurer que la file ne dépasse pas la limite avant ajout
+                while self._outgoing_audio_queue.qsize() >= self._max_outgoing_frames:
+                    try:
                         self._outgoing_audio_queue.get_nowait()
                         dropped += 1
-                except queue.Empty:
-                    pass
-                if dropped:
-                    logger.warning(
-                        "⚠️ Latence audio trop élevée - %d frames obsolètes supprimées (queue:%d)",
-                        dropped,
-                        self._outgoing_audio_queue.qsize(),
-                    )
+                    except queue.Empty:
+                        break
+
+                self._outgoing_audio_queue.put_nowait(chunk)
+                queued_chunks += 1
+
+            # Log des premières fois pour confirmer que l'audio arrive
+            if queued_chunks and self._audio_frame_count < 5:
+                first_chunk = audio_data[:min(20, len(audio_data))]
+                is_silence = all(b == 0 for b in first_chunk)
+                logger.info(
+                    "📥 send_audio: %d bytes découpés en %d frames (queue: %d) - %s",
+                    len(audio_data),
+                    queued_chunks,
+                    self._outgoing_audio_queue.qsize(),
+                    "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(first_chunk)})",
+                )
+
+            if dropped:
+                logger.warning(
+                    "⚠️ Latence audio trop élevée - %d frames obsolètes supprimées (queue:%d)",
+                    dropped,
+                    self._outgoing_audio_queue.qsize(),
+                )
         except queue.Full:
-            logger.warning("⚠️ Queue audio sortante pleine, frame ignorée")
+            logger.warning("⚠️ Queue audio sortante pleine, frames ignorées")
 
     async def get_audio(self) -> bytes | None:
         """Récupère l'audio reçu du téléphone (appelé depuis l'async loop)."""
