@@ -868,16 +868,38 @@ class TelephonyVoiceBridge:
                 audio_task = asyncio.create_task(forward_audio())
                 events_task = asyncio.create_task(handle_events())
                 try:
-                    await asyncio.gather(audio_task, events_task)
+                    # Utiliser wait() avec FIRST_COMPLETED au lieu de gather()
+                    # Cela permet d'annuler la tâche restante dès que l'une se termine
+                    done, pending = await asyncio.wait(
+                        {audio_task, events_task},
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+
+                    # Si une tâche se termine, arrêter l'autre
+                    await request_stop()
+                    for task in pending:
+                        task.cancel()
+
+                    # Attendre que la tâche annulée se termine proprement
+                    if pending:
+                        await asyncio.wait(pending)
+
+                    # Vérifier si une des tâches terminées a levé une exception
+                    for task in done:
+                        if task.exception() is not None:
+                            error = task.exception()
+                            logger.error("Erreur dans tâche: %s", error)
+
                 except Exception as exc:
+                    error = exc
                     await request_stop()
                     for task in (audio_task, events_task):
                         if not task.done():
                             task.cancel()
+                    # Attendre que les tâches annulées se terminent
                     await asyncio.gather(
                         audio_task, events_task, return_exceptions=True
                     )
-                    error = exc
                 # Le context manager ferme automatiquement la session ici, proprement depuis la même tâche
                 logger.debug("Session SDK fermée automatiquement par le context manager")
         except Exception as exc:
