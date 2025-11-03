@@ -35,9 +35,9 @@ class PJSUAAudioBridge:
 
     # Optimized parameters (Point 1, 3)
     SILENCE_THRESHOLD = 4  # Amplitude minimale pour considérer comme non-silence (PCM16)
-    MAX_TX_FRAMES = 200  # Buffer max: 200 frames = ~4s (large buffer pour production rapide OpenAI)
-    HIGH_WATERMARK = 160  # Arrête production si queue >= 160 frames (~3.2s)
-    LOW_WATERMARK = 80   # Reprend production si queue <= 80 frames (~1.6s)
+    MAX_TX_FRAMES = 2000  # Buffer max: 2000 frames = ~40s (OpenAI peut envoyer jusqu'à 30s d'audio à la fois)
+    HIGH_WATERMARK = 1600  # Arrête production si queue >= 1600 frames (~32s)
+    LOW_WATERMARK = 800   # Reprend production si queue <= 800 frames (~16s)
 
     def __init__(self, call: PJSUACall) -> None:
         """Initialize the audio bridge for a specific call.
