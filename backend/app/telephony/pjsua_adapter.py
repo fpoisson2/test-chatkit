@@ -907,7 +907,18 @@ class PJSUAAdapter:
             except Exception as e:
                 logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_id, e)
 
-            # ÉTAPE 3: Détruire explicitement le port pour libérer le slot du conference bridge
+            # ÉTAPE 3A: Nettoyer les références dans call AVANT de détruire le port
+            # CRITIQUE: Faire ça AVANT la destruction pour éviter les double-free et callbacks sur objet détruit
+            logger.info("🧹 Nettoyage des références call (call_id=%s)", call_id)
+            call._audio_port = None
+            call._audio_media = None
+
+            # CRITIQUE: Nettoyer aussi la référence globale AVANT destruction
+            if hasattr(call, 'adapter') and hasattr(call.adapter, '_global_audio_port'):
+                call.adapter._global_audio_port = None
+                logger.info("🧹 Référence globale _global_audio_port nettoyée (call_id=%s)", call_id)
+
+            # ÉTAPE 3B: Détruire explicitement le port pour libérer le slot du conference bridge
             try:
                 logger.info("🗑️  Destruction du port audio (call_id=%s)", call_id)
 
@@ -963,15 +974,6 @@ class PJSUAAdapter:
                 logger.info("✅ Echo Canceller réinitialisé (call_id=%s)", call_id)
         except Exception as e:
             logger.warning("Erreur reset EC (call_id=%s): %s", call_id, e)
-
-        # Nettoyer les références locales du call ET la référence globale de l'adaptateur
-        call._audio_port = None
-        call._audio_media = None
-
-        # CRITIQUE: Nettoyer aussi la référence globale pour éviter les références fantômes
-        if hasattr(call, 'adapter') and hasattr(call.adapter, '_global_audio_port'):
-            call.adapter._global_audio_port = None
-            logger.info("🧹 Référence globale _global_audio_port nettoyée (call_id=%s)", call_id)
 
         logger.info("✅ Ressources audio complètement nettoyées (call_id=%s)", call_id)
 
