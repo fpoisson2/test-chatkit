@@ -611,9 +611,10 @@ class PJSUAAdapter:
         self._frame_requested_event: asyncio.Event | None = None
 
         # Lock threading pour synchroniser le teardown et éviter les race conditions
-        # Utilisé dans les callbacks PJSUA (thread séparé) donc threading.Lock pas asyncio.Lock
+        # Utilisé dans les callbacks PJSUA (thread séparé) donc threading.RLock pas asyncio.Lock
+        # CRITIQUE: RLock (réentrant) pour permettre au même thread d'acquérir plusieurs fois
         import threading
-        self._teardown_lock = threading.Lock()
+        self._teardown_lock = threading.RLock()
 
         # Callbacks
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
