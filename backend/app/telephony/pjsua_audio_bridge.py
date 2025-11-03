@@ -33,6 +33,10 @@ class PJSUAAudioBridge:
     BYTES_PER_SAMPLE = 2  # PCM16 = 16-bit = 2 bytes
     CHANNELS = 1  # Mono
 
+    # Optimized parameters (Point 1, 3)
+    SILENCE_THRESHOLD = 4  # Amplitude minimale pour considérer comme non-silence (PCM16)
+    MAX_TX_FRAMES = 7  # Buffer max: 7 frames = ~140ms (drop-tail si pleine)
+
     def __init__(self, call: PJSUACall) -> None:
         """Initialize the audio bridge for a specific call.
 
@@ -207,6 +211,8 @@ class PJSUAAudioBridge:
         # 20ms @ 24kHz = 24000 samples/sec × 0.020 sec = 480 samples × 2 bytes = 960 bytes
         FRAME_SIZE_24KHZ = 960
         frames_enqueued = 0
+        frames_dropped_silence = 0
+        frames_dropped_full = 0
 
         try:
             for i in range(0, len(audio_24khz), FRAME_SIZE_24KHZ):
@@ -236,28 +242,36 @@ class PJSUAAudioBridge:
                 # ÉTAPE 3: Amplification dynamique pour garantir audibilité
                 try:
                     max_amplitude = audioop.max(frame_8khz, self.BYTES_PER_SAMPLE)
-                    if max_amplitude == 0:
-                        # Silence complet
-                        frame_8khz = bytes(len(frame_8khz))
-                    else:
-                        # Boost si amplitude trop faible
-                        min_target_amplitude = 6000
-                        max_gain = 12.0
-                        if max_amplitude < min_target_amplitude:
-                            gain = min(min_target_amplitude / max_amplitude, max_gain)
-                            try:
-                                frame_8khz = audioop.mul(frame_8khz, self.BYTES_PER_SAMPLE, gain)
-                            except audioop.error:
-                                pass  # Garder l'audio original si overflow
+
+                    # CRITIQUE: Ne jamais enqueuer du silence (Point 1)
+                    if max_amplitude <= self.SILENCE_THRESHOLD:
+                        frames_dropped_silence += 1
+                        if self._send_to_peer_call_count <= 3 and frames_dropped_silence <= 3:
+                            logger.debug("🔇 Frame silence droppée (max_amp=%d <= %d)",
+                                       max_amplitude, self.SILENCE_THRESHOLD)
+                        continue
+
+                    # Boost si amplitude trop faible
+                    min_target_amplitude = 6000
+                    max_gain = 12.0
+                    if max_amplitude < min_target_amplitude:
+                        gain = min(min_target_amplitude / max_amplitude, max_gain)
+                        try:
+                            frame_8khz = audioop.mul(frame_8khz, self.BYTES_PER_SAMPLE, gain)
+                        except audioop.error:
+                            pass  # Garder l'audio original si overflow
                 except audioop.error as e:
                     logger.warning("Audio processing error: %s", e)
 
-                # ÉTAPE 4: Ajouter à la queue TX avec back-pressure
-                # Si queue pleine (15 frames), deque drop automatiquement le plus vieux (maxlen=15)
-                # Log si on va drop (queue déjà pleine)
-                if len(self._tx_queue) >= 15:
-                    if frames_enqueued == 0:  # Log seulement une fois par appel
-                        logger.warning("⚠️ TX queue pleine (15 frames = 300ms), dropping oldest frames")
+                # ÉTAPE 4: Ajouter à la queue TX avec DROP-TAIL (Point 3)
+                # Si queue pleine (MAX_TX_FRAMES = 7 frames = ~140ms), on DROP le nouveau paquet (drop-tail)
+                # au lieu de dropper les vieux (drop-oldest). Cela préserve "Allô"/"Oui".
+                if len(self._tx_queue) >= self.MAX_TX_FRAMES:
+                    frames_dropped_full += 1
+                    if frames_dropped_full == 1:  # Log seulement au premier drop
+                        logger.warning("⚠️ TX queue pleine (%d frames = %d ms), dropping NEW frames (drop-tail)",
+                                     self.MAX_TX_FRAMES, self.MAX_TX_FRAMES * 20)
+                    continue  # Drop-tail: on n'ajoute pas ce frame
 
                 self._tx_queue.append(frame_8khz)
                 frames_enqueued += 1
@@ -265,8 +279,9 @@ class PJSUAAudioBridge:
             # Log périodique pour monitoring
             if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
                 queue_size = len(self._tx_queue)
-                logger.info("✅ send_to_peer #%d: %d frames enfilées (queue: %d frames, %d ms buffered)",
-                           self._send_to_peer_call_count, frames_enqueued, queue_size, queue_size * 20)
+                logger.info("✅ send_to_peer #%d: %d frames enfilées, %d silence droppées, %d full-drop (queue: %d frames, %d ms)",
+                           self._send_to_peer_call_count, frames_enqueued, frames_dropped_silence,
+                           frames_dropped_full, queue_size, queue_size * 20)
 
         except Exception as e:
             logger.warning("Failed to process audio: %s", e)
