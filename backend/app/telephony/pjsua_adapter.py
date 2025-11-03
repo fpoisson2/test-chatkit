@@ -174,6 +174,7 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._frame_count = 0
         self._audio_frame_count = 0
         self._silence_frame_count = 0
+        self._frame_received_count = 0
 
         # Flag pour arrêter le traitement après la déconnexion de l'appel
         self._active = True
@@ -380,7 +381,7 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         return count
 
-    def deactivate(self) -> None:
+    def deactivate(self, *, destroy_port: bool = True) -> None:
         """Désactive le port audio et vide les queues (appelé quand l'appel se termine).
 
         Cela empêche PJSUA de continuer à envoyer de l'audio depuis ce port même après
@@ -415,13 +416,44 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             )
 
         # Détruire explicitement le port si l'API pjsua2 expose destroyPort().
-        destroy_port = getattr(self, "destroyPort", None)
-        if callable(destroy_port):
+        destroy_port_fn = getattr(self, "destroyPort", None)
+        if destroy_port and callable(destroy_port_fn):
             try:
-                destroy_port()
+                destroy_port_fn()
                 logger.debug("🗑️  Port audio détruit (destroyPort)")
             except Exception as exc:  # pragma: no cover - dépend du backend C++
                 logger.debug("Ignorer erreur destroyPort: %s", exc)
+
+    def prepare_for_pool(self) -> None:
+        """Stop activity but keep the port alive for future reuse."""
+
+        self.deactivate(destroy_port=False)
+        self._frame_requested_event = None
+
+    def prepare_for_new_call(
+        self, frame_requested_event: asyncio.Event | None
+    ) -> None:
+        """Reset counters and state before reusing the port."""
+
+        self._frame_requested_event = frame_requested_event
+        self._frame_count = 0
+        self._audio_frame_count = 0
+        self._silence_frame_count = 0
+        self._frame_received_count = 0
+        self._active = True
+
+        # S'assurer que les queues sont bien vides avant de repartir
+        try:
+            while True:
+                self._incoming_audio_queue.get_nowait()
+        except queue.Empty:
+            pass
+
+        try:
+            while True:
+                self._outgoing_audio_queue.get_nowait()
+        except queue.Empty:
+            pass
 
 
 class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
@@ -571,16 +603,19 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                         )
                         try:
                             self._disconnect_conference_bridge(ci.id)
+                        except Exception as e:
+                            logger.warning("Erreur désactivation ancien port: %s", e)
+                        finally:
                             old_port = self._audio_port
                             self._audio_port = None
                             if old_port is not None:
-                                old_port.deactivate()
-                        except Exception as e:
-                            logger.warning("Erreur désactivation ancien port: %s", e)
+                                self.adapter.release_audio_port(old_port)
 
-                    logger.info("🔧 Création du AudioMediaPort pour call_id=%s", ci.id)
                     self._conference_connected = False
-                    self._audio_port = AudioMediaPort(self.adapter, self._frame_requested_event)
+                    self._audio_port = self.adapter.acquire_audio_port(
+                        self._frame_requested_event,
+                        call_id=ci.id,
+                    )
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
@@ -667,14 +702,16 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
             logger.warning("⚠️ Média désactivé mais port audio encore actif (call_id=%s) - nettoyage", ci.id)
             try:
                 self._disconnect_conference_bridge(ci.id)
-                self._audio_port.deactivate()
+                port = self._audio_port
+                self._audio_port = None
+                if port is not None:
+                    self.adapter.release_audio_port(port)
                 logger.info("✅ Port audio zombie désactivé (call_id=%s)", ci.id)
             except Exception as e:
                 logger.warning("Erreur désactivation port audio zombie: %s", e)
             finally:
-                # Ne pas mettre à None ici car _on_call_state le fera
-                # self._audio_port = None
-                pass
+                if self._audio_port is None:
+                    self._conference_connected = False
 
 
 class PJSUAAdapter:
@@ -692,6 +729,7 @@ class PJSUAAdapter:
         self._active_calls: dict[int, PJSUACall] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
+        self._audio_port_pool: list[AudioMediaPort] = []
 
         # Callbacks
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
@@ -847,6 +885,8 @@ class PJSUAAdapter:
             except Exception as e:
                 logger.exception("Erreur lors du nettoyage de l'appel %s: %s", call_id, e)
 
+        self._drain_audio_port_pool()
+
         # Détruire le compte
         if self._account:
             try:
@@ -918,17 +958,19 @@ class PJSUAAdapter:
             # IMPORTANT: Nettoyer le port audio pour éviter les fuites
             # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
             if call._audio_port:
+                port = call._audio_port
+                call._audio_port = None
                 try:
                     call._disconnect_conference_bridge(call_info.id)
-
-                    # Désactiver le port pour arrêter le traitement des frames
-                    # Cela empêche l'envoi continu de silence après la fin de l'appel
-                    call._audio_port.deactivate()
-                    logger.info("✅ Port audio désactivé (call_id=%s)", call_info.id)
                 except Exception as e:
-                    logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_info.id, e)
+                    logger.warning(
+                        "Erreur désactivation port audio (call_id=%s): %s",
+                        call_info.id,
+                        e,
+                    )
                 finally:
-                    call._audio_port = None
+                    self.release_audio_port(port)
+                    logger.info("✅ Port audio désactivé (call_id=%s)", call_info.id)
 
         if self._call_state_callback:
             await self._call_state_callback(call, call_info)
@@ -1017,14 +1059,19 @@ class PJSUAAdapter:
 
             # Désactiver le port audio
             if call._audio_port:
+                port = call._audio_port
+                call._audio_port = None
                 try:
                     call._disconnect_conference_bridge(call_id)
-                    logger.info("🛑 Désactivation du port audio (call_id=%s)", call_id)
-                    call._audio_port.deactivate()
                 except Exception as e:
-                    logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_id, e)
+                    logger.warning(
+                        "Erreur désactivation port audio (call_id=%s): %s",
+                        call_id,
+                        e,
+                    )
                 finally:
-                    call._audio_port = None
+                    self.release_audio_port(port)
+                    logger.info("🛑 Désactivation du port audio (call_id=%s)", call_id)
 
             # Vérifier l'état avant de hangup
             if call and self._is_call_valid(call):
@@ -1127,6 +1174,56 @@ class PJSUAAdapter:
         if call._audio_port:
             return call._audio_port.clear_outgoing_audio_queue()
         return 0
+
+    def acquire_audio_port(
+        self,
+        frame_requested_event: asyncio.Event | None,
+        *,
+        call_id: int | None = None,
+    ) -> AudioMediaPort:
+        """Retourne un port audio prêt pour un nouvel appel."""
+
+        if self._audio_port_pool:
+            port = self._audio_port_pool.pop()
+            logger.info(
+                "♻️ Réutilisation d'un AudioMediaPort depuis le pool%s",
+                f" (call_id={call_id})" if call_id is not None else "",
+            )
+            port.prepare_for_new_call(frame_requested_event)
+            return port
+
+        logger.info(
+            "🔧 Création d'un nouvel AudioMediaPort%s",
+            f" (call_id={call_id})" if call_id is not None else "",
+        )
+        return AudioMediaPort(self, frame_requested_event)
+
+    def release_audio_port(
+        self, port: AudioMediaPort, *, destroy: bool = False
+    ) -> None:
+        """Remet le port dans le pool ou le détruit définitivement."""
+
+        try:
+            if destroy:
+                port.deactivate(destroy_port=True)
+            else:
+                port.prepare_for_pool()
+        except Exception as exc:  # pragma: no cover - nettoyage défensif
+            logger.debug("Erreur lors du recyclage du port audio: %s", exc)
+            destroy = True
+
+        if not destroy:
+            self._audio_port_pool.append(port)
+
+    def _drain_audio_port_pool(self) -> None:
+        """Détruit tous les ports présents dans le pool (arrêt complet)."""
+
+        while self._audio_port_pool:
+            port = self._audio_port_pool.pop()
+            try:
+                port.deactivate(destroy_port=True)
+            except Exception as exc:  # pragma: no cover - nettoyage défensif
+                logger.debug("Erreur destruction port audio du pool: %s", exc)
 
     def set_audio_callback(
         self, callback: Callable[[bytes], Awaitable[None]]
