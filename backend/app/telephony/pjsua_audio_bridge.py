@@ -256,7 +256,10 @@ class PJSUAAudioBridge:
                     self._partial_chunk_buffer = combined_buffer
                     
                     if frames_sent > 0:
-                        q_size = self._adapter.get_call_audio_queue_size(self._call)
+                        # Get queue size from the audio port
+                        q_size = 0
+                        if self._call._audio_port and hasattr(self._call._audio_port, '_outgoing_audio_queue'):
+                            q_size = self._call._audio_port._outgoing_audio_queue.qsize()
                         logger.debug("✅ send_to_peer: %d frames enfilées (queue: %d frames, %.0f ms)",
                                      frames_sent, q_size, q_size * 20.0)
                     elif self._partial_chunk_buffer:
