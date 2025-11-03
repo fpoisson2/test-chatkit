@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger("chatkit.telephony.pjsua")
-logger.setLevel(logging.DEBUG)  # Force DEBUG pour diagnostiquer l'audio
+logger.setLevel(logging.WARNING)  # Réduire la verbosité des logs SIP
 
 # Import conditionnel de pjsua2
 PJSUA_AVAILABLE = False
@@ -526,8 +526,8 @@ class PJSUAAdapter:
 
         # Configuration de l'endpoint
         ep_cfg = pj.EpConfig()
-        ep_cfg.logConfig.level = 4  # INFO level
-        ep_cfg.logConfig.consoleLevel = 4
+        ep_cfg.logConfig.level = 2  # WARNING level (réduire verbosité)
+        ep_cfg.logConfig.consoleLevel = 2
 
         # Initialiser l'endpoint
         self._ep.libInit(ep_cfg)
