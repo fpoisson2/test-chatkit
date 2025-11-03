@@ -488,57 +488,46 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     self._media_active = True
                     logger.info("✅ Média audio actif pour call_id=%s, index=%d", ci.id, mi.index)
 
-                    # Détruire l'ancien port et en créer un nouveau pour nettoyer l'état PJSUA
-                    if hasattr(self.adapter, '_global_audio_port') and self.adapter._global_audio_port is not None:
+                    # CRITIQUE: NE PAS détruire/recréer le port!
+                    # PJSUA réutilise toujours le même slot (slot 2) dans le conference bridge.
+                    # Détruire/recréer le port sur le même slot corrompt l'état interne après 2-3 cycles.
+                    # Solution: Créer le port UNE FOIS et le réutiliser en réinitialisant juste son état.
+
+                    if not hasattr(self.adapter, '_global_audio_port') or self.adapter._global_audio_port is None:
+                        logger.info("🔧 Création du AudioMediaPort UNIQUE (première fois)")
+                        self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name="chatkit_audio")
+                        logger.info("✅ Port audio créé avec le nom: chatkit_audio (sera réutilisé pour tous les appels)")
+                    else:
+                        logger.info("♻️ Réutilisation du AudioMediaPort existant (sans destruction)")
+                        # Réinitialiser UNIQUEMENT l'état Python, pas l'objet PJSUA C++
+                        self.adapter._global_audio_port._frame_count = 0
+                        self.adapter._global_audio_port._audio_frame_count = 0
+                        self.adapter._global_audio_port._silence_frame_count = 0
+                        if hasattr(self.adapter._global_audio_port, '_frame_received_count'):
+                            self.adapter._global_audio_port._frame_received_count = 0
+
+                        # Vider les queues audio
+                        incoming_cleared = 0
+                        outgoing_cleared = 0
                         try:
-                            logger.info("🗑️  Destruction de l'ancien AudioMediaPort pour nettoyer l'état PJSUA")
-                            old_port = self.adapter._global_audio_port
+                            while not self.adapter._global_audio_port._incoming_audio_queue.empty():
+                                self.adapter._global_audio_port._incoming_audio_queue.get_nowait()
+                                incoming_cleared += 1
+                        except Exception:
+                            pass
+                        try:
+                            while not self.adapter._global_audio_port._outgoing_audio_queue.empty():
+                                self.adapter._global_audio_port._outgoing_audio_queue.get_nowait()
+                                outgoing_cleared += 1
+                        except Exception:
+                            pass
 
-                            # Désactiver le port
-                            old_port.deactivate()
+                        # Réactiver le port
+                        self.adapter._global_audio_port._active = True
+                        logger.info("✅ Port réinitialisé: compteurs remis à zéro, %d frames entrantes et %d sortantes vidées",
+                                   incoming_cleared, outgoing_cleared)
 
-                            # CRITIQUE: Forcer la destruction explicite de l'objet PJSUA C++
-                            # unregisterMediaPort() libère le slot dans le conference bridge
-                            try:
-                                # Tenter d'enregistrer le port pour pouvoir le désenregistrer
-                                if hasattr(old_port, 'unregisterMediaPort'):
-                                    old_port.unregisterMediaPort()
-                                    logger.info("✅ Port désenregistré du conference bridge")
-                            except Exception as e:
-                                logger.debug("Note: unregisterMediaPort non disponible ou déjà fait: %s", e)
-
-                            # Forcer le garbage collection de l'objet Python
-                            self.adapter._global_audio_port = None
-                            del old_port
-
-                            # Forcer le garbage collector Python à nettoyer immédiatement
-                            import gc
-                            gc.collect()
-
-                            # Pause pour laisser PJSUA libérer les ressources C++
-                            import time
-                            time.sleep(0.1)  # 100ms pour être sûr
-
-                            logger.info("✅ Ancien port détruit et GC forcé")
-                        except Exception as e:
-                            logger.warning("⚠️ Erreur destruction ancien port: %s", e)
-
-                    # Logger l'état du conference bridge AVANT création
-                    try:
-                        ep = self.adapter._ep
-                        if ep:
-                            # Compter les ports actifs dans le conference bridge
-                            # Note: pas d'API directe pour lister les ports, mais on peut logger
-                            logger.info("📊 Création du nouveau port (appel #%d depuis démarrage)",
-                                       len(self.adapter._active_calls) + 1)
-                    except Exception as e:
-                        logger.debug("Info conference bridge non disponible: %s", e)
-
-                    # Créer un nouveau port avec le même nom
-                    logger.info("🔧 Création d'un nouveau AudioMediaPort (nom: chatkit_audio)")
-                    self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name="chatkit_audio")
                     self._audio_port = self.adapter._global_audio_port
-                    logger.info("✅ Nouveau port créé et prêt")
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
