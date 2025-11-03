@@ -44,7 +44,9 @@ class PJSUAAudioBridge:
         self._timestamp = 0
 
         # Audio buffer for outgoing audio (from VoiceBridge to phone)
-        self._outgoing_audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1000)
+        self._outgoing_audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue(
+            maxsize=1000
+        )
 
         # Event qui se déclenche quand on reçoit le premier paquet audio du téléphone
         # Cela confirme que le flux audio bidirectionnel est établi
@@ -58,6 +60,12 @@ class PJSUAAudioBridge:
 
         # Counter for send_to_peer calls (for pacing diagnostics)
         self._send_to_peer_call_count = 0
+
+        # Background task responsible for pacing audio sent to PJSUA
+        loop = asyncio.get_running_loop()
+        self._audio_sender_task: asyncio.Task[None] | None = loop.create_task(
+            self._audio_sender_loop(), name="pjsua-audio-sender"
+        )
 
     async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).
@@ -219,26 +227,32 @@ class PJSUAAudioBridge:
 
         # Send to PJSUA in chunks of 320 bytes (20ms @ 8kHz, 16-bit, mono)
         # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes
-        # Cadence the output at 20ms intervals to reduce jitter and improve quality
+        # Cadencing is handled by a background task to avoid blocking the caller
         chunk_size = 320
         chunks_sent = 0
         try:
             for i in range(0, len(audio_8khz), chunk_size):
                 chunk = audio_8khz[i:i + chunk_size]
-                self._adapter.send_audio_to_call(self._call, chunk)
+                await self._outgoing_audio_queue.put(chunk)
                 chunks_sent += 1
-                # Sleep 20ms to pace the output (wall-clock timing)
-                # This spreads bursts over time instead of flooding the queue
-                await asyncio.sleep(0.020)
 
-            # Calculate total pacing duration for monitoring
+            # Calculate total pacing duration for monitoring (20ms per chunk)
             pacing_duration_ms = chunks_sent * 20
             if self._send_to_peer_call_count <= 5:
-                logger.info("✅ send_to_peer #%d: Envoyé %d chunks @ 8kHz vers PJSUA (total: %d bytes, cadencé sur %d ms)",
-                           self._send_to_peer_call_count, chunks_sent, len(audio_8khz), pacing_duration_ms)
+                logger.info(
+                    "✅ send_to_peer #%d: Enqueued %d chunks @ 8kHz vers PJSUA (total: %d bytes, cadencé sur %d ms)",
+                    self._send_to_peer_call_count,
+                    chunks_sent,
+                    len(audio_8khz),
+                    pacing_duration_ms,
+                )
             else:
-                logger.debug("✅ Envoyé %d chunks @ 8kHz vers PJSUA (total: %d bytes, cadencé sur %d ms)",
-                            chunks_sent, len(audio_8khz), pacing_duration_ms)
+                logger.debug(
+                    "✅ Enqueued %d chunks @ 8kHz vers PJSUA (total: %d bytes, cadencé sur %d ms)",
+                    chunks_sent,
+                    len(audio_8khz),
+                    pacing_duration_ms,
+                )
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
@@ -249,14 +263,67 @@ class PJSUAAudioBridge:
             Number of frames cleared
         """
         cleared = self._adapter.clear_call_audio_queue(self._call)
+
+        # Vider également la file d'attente utilisée pour le pacing asynchrone
+        drained = 0
+        while not self._outgoing_audio_queue.empty():
+            try:
+                self._outgoing_audio_queue.get_nowait()
+                self._outgoing_audio_queue.task_done()
+                drained += 1
+            except asyncio.QueueEmpty:  # pragma: no cover - race condition
+                break
+
+        if drained:
+            logger.debug("Cleared %d pending chunks from pacing queue", drained)
+
         self._send_to_peer_state = None  # Réinitialiser l'état de resampling pour éviter des artefacts
-        return cleared
+        return cleared + drained
 
     def stop(self) -> None:
         """Stop the audio bridge."""
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
+        if self._audio_sender_task and not self._audio_sender_task.done():
+            self._audio_sender_task.cancel()
+        try:
+            self._outgoing_audio_queue.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
         self._send_to_peer_state = None
+
+    async def _audio_sender_loop(self) -> None:
+        """Background task responsible for pacing audio frames sent to PJSUA."""
+        pacing_interval = 0.020  # 20ms between frames
+        try:
+            while True:
+                chunk = await self._outgoing_audio_queue.get()
+                if chunk is None:
+                    self._outgoing_audio_queue.task_done()
+                    break
+
+                try:
+                    self._adapter.send_audio_to_call(self._call, chunk)
+                finally:
+                    self._outgoing_audio_queue.task_done()
+
+                await asyncio.sleep(pacing_interval)
+        except asyncio.CancelledError:
+            logger.debug("Audio sender task cancelled")
+            raise
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.exception("Error while pacing audio towards PJSUA: %s", exc)
+        finally:
+            while not self._outgoing_audio_queue.empty():
+                try:
+                    item = self._outgoing_audio_queue.get_nowait()
+                except asyncio.QueueEmpty:  # pragma: no cover - race condition
+                    break
+                else:
+                    self._outgoing_audio_queue.task_done()
+                    if item is None:
+                        continue
+            logger.debug("Audio sender task terminated")
 
     @property
     def is_stopped(self) -> bool:
