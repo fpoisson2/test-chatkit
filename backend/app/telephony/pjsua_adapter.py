@@ -905,6 +905,7 @@ class PJSUAAdapter:
 
     def _do_teardown_call_resources(self, call: PJSUACall, call_id: int) -> None:
         """Implémentation réelle du teardown - appelée avec le lock acquis."""
+
         # Arrêter le bridge audio en priorité pour stopper toute activité async
         if hasattr(call, "_audio_bridge") and call._audio_bridge:
             try:
@@ -915,84 +916,15 @@ class PJSUAAdapter:
             finally:
                 call._audio_bridge = None
 
-        # Déconnecter et détruire le port audio personnalisé si présent
+        # Récupérer le port audio personnalisé
         audio_port = getattr(call, "_audio_port", None)
-        audio_media = getattr(call, "_audio_media", None)
 
         if audio_port:
-            # ÉTAPE 1: Déconnecter le conference bridge dans les 2 sens
-            # CRITIQUE: Toujours tenter la déconnexion, même si on rencontre PJSIP_ESESSIONTERMINATED
-            # Car le conference bridge peut avoir des connexions actives qui doivent être nettoyées
-            try:
-                if audio_media is not None:
-                    logger.info("🔌 Déconnexion conference bridge (call_id=%s)", call_id)
-
-                    # Déconnexion call → port
-                    # On tente toujours, même si getInfo() échouerait avec ESESSIONTERMINATED
-                    try:
-                        audio_media.stopTransmit(audio_port)
-                        logger.debug("✅ Déconnexion call→port réussie (call_id=%s)", call_id)
-                    except Exception as e:
-                        # Convertir l'exception en string pour détecter le type d'erreur
-                        err_str = str(e).upper()
-                        err_repr = repr(e).upper()
-                        err_type = type(e).__name__.upper()
-
-                        # Détecter les erreurs attendues lors du nettoyage
-                        # PJ_EINVAL/EINVAL (70004) = port déjà déconnecté
-                        # ESESSIONTERMINATED (171140) = session déjà terminée
-                        # "Invalid value or argument" = message typique de PJ_EINVAL
-                        error_patterns = [
-                            "EINVAL", "70004",  # Code d'erreur PJSUA
-                            "ESESSIONTERMINATED", "171140",  # Session terminée
-                            "INVALID VALUE", "INVALID ARGUMENT",  # Message d'erreur textuel
-                        ]
-
-                        is_expected = any(
-                            pattern in err_str or pattern in err_repr or pattern in err_type
-                            for pattern in error_patterns
-                        )
-
-                        if is_expected:
-                            logger.debug("Port déjà déconnecté call→port (erreur attendue ignorée: %s)", e)
-                        else:
-                            # Si c'est une erreur inattendue, logger en WARNING avec détails complets
-                            # pour pouvoir améliorer la détection
-                            logger.warning("Erreur stopTransmit call→port (call_id=%s): type=%s, str=%s, repr=%s",
-                                         call_id, type(e).__name__, str(e), repr(e))
-
-                    # Déconnexion port → call
-                    try:
-                        audio_port.stopTransmit(audio_media)
-                        logger.debug("✅ Déconnexion port→call réussie (call_id=%s)", call_id)
-                    except Exception as e:
-                        # Convertir l'exception en string pour détecter le type d'erreur
-                        err_str = str(e).upper()
-                        err_repr = repr(e).upper()
-                        err_type = type(e).__name__.upper()
-
-                        # Détecter les erreurs attendues lors du nettoyage (mêmes patterns que call→port)
-                        error_patterns = [
-                            "EINVAL", "70004",  # Code d'erreur PJSUA
-                            "ESESSIONTERMINATED", "171140",  # Session terminée
-                            "INVALID VALUE", "INVALID ARGUMENT",  # Message d'erreur textuel
-                        ]
-
-                        is_expected = any(
-                            pattern in err_str or pattern in err_repr or pattern in err_type
-                            for pattern in error_patterns
-                        )
-
-                        if is_expected:
-                            logger.debug("Port déjà déconnecté port→call (erreur attendue ignorée: %s)", e)
-                        else:
-                            # Si c'est une erreur inattendue, logger en WARNING avec détails complets
-                            logger.warning("Erreur stopTransmit port→call (call_id=%s): type=%s, str=%s, repr=%s",
-                                         call_id, type(e).__name__, str(e), repr(e))
-
-                    logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
-            except Exception as e:
-                logger.warning("Erreur déconnexion conference bridge (call_id=%s): %s", call_id, e)
+            # ÉTAPE 1: (SUPPRIMÉE) Les appels stopTransmit() sont retirés.
+            # PJSUA gère la déconnexion de son propre média (audio_media)
+            # lorsque l'appel passe à DISCONNECTED. Tenter de le faire ici
+            # cause la race condition PJ_EINVAL.
+            logger.info("🔌 Nettoyage du port audio personnalisé (call_id=%s)", call_id)
 
             # ÉTAPE 2: Désactiver le port pour stopper le traitement des frames
             try:
@@ -1002,36 +934,23 @@ class PJSUAAdapter:
                 logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_id, e)
 
             # ÉTAPE 3A: Nettoyer les références dans call AVANT de détruire le port
-            # CRITIQUE: Faire ça AVANT la destruction pour éviter les double-free et callbacks sur objet détruit
             logger.info("🧹 Nettoyage des références call (call_id=%s)", call_id)
             call._audio_port = None
-            call._audio_media = None
+            call._audio_media = None # Nettoyer aussi la référence à l'ancien média
 
             # CRITIQUE: Nettoyer aussi la référence globale AVANT destruction
             if hasattr(call, 'adapter') and hasattr(call.adapter, '_global_audio_port'):
-                call.adapter._global_audio_port = None
-                logger.info("🧹 Référence globale _global_audio_port nettoyée (call_id=%s)", call_id)
+                # S'assurer qu'on ne nettoie pas le port d'un *autre* appel
+                if call.adapter._global_audio_port == audio_port:
+                    call.adapter._global_audio_port = None
+                    logger.info("🧹 Référence globale _global_audio_port nettoyée (call_id=%s)", call_id)
+                else:
+                    logger.debug("🧹 Référence globale _global_audio_port (non-concordante) préservée (call_id=%s)", call_id)
+
 
             # ÉTAPE 3B: Détruire explicitement le port pour libérer le slot du conference bridge
             try:
                 logger.info("🗑️  Destruction du port audio (call_id=%s)", call_id)
-
-                # Obtenir l'info du port AVANT destruction pour logger
-                try:
-                    port_info = audio_port.getPortInfo()
-                    logger.debug("Port à détruire: slot=%d, name=%s", port_info.portId, port_info.name)
-                except Exception:
-                    pass
-
-                # PJSUA2 Python: appeler unregisterMediaPort() pour retirer du conference bridge
-                # puis laisser Python garbage-collect l'objet
-                try:
-                    # Tenter de retirer explicitement du conference bridge si méthode disponible
-                    if hasattr(audio_port, 'unregisterMediaPort'):
-                        audio_port.unregisterMediaPort()
-                        logger.debug("✅ unregisterMediaPort() appelé")
-                except Exception as e:
-                    logger.debug("unregisterMediaPort non disponible: %s", e)
 
                 # Forcer la destruction de l'objet C++ sous-jacent
                 if hasattr(audio_port, '__del__'):
@@ -1056,15 +975,12 @@ class PJSUAAdapter:
         except Exception as e:
             logger.warning("Erreur GC (call_id=%s): %s", call_id, e)
 
-        # ÉTAPE 5: Reset de l'Echo Canceller pour purger les états audio résiduels
-        # RÉACTIVÉ avec RLock pour éviter deadlock
+        # ÉTAPE 5: Reset de l'Echo Canceller
         try:
             if self._ep:
                 logger.debug("🔄 Reset Echo Canceller (call_id=%s)", call_id)
-                # Désactiver EC temporairement pour vider l'état
-                self._ep.audDevManager().setEcOptions(0, 0)
-                # Réactiver EC avec 200ms tail length (valeur standard pour téléphonie)
-                self._ep.audDevManager().setEcOptions(200, 0)
+                self._ep.audDevManager().setEcOptions(0, 0) # Désactiver
+                self._ep.audDevManager().setEcOptions(200, 0) # Réactiver avec 200ms
                 logger.info("✅ Echo Canceller réinitialisé (call_id=%s)", call_id)
         except Exception as e:
             logger.warning("Erreur reset EC (call_id=%s): %s", call_id, e)
