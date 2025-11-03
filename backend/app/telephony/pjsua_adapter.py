@@ -522,8 +522,12 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                             except Exception as e:
                                 logger.warning("Erreur destruction ancien port: %s", e)
 
-                        logger.info("🔧 Création d'un NOUVEAU port global AudioMediaPort")
-                        self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name="chatkit_audio")
+                        # Incrémenter le compteur et créer un nom unique
+                        self.adapter._port_counter += 1
+                        port_name = f"chatkit_audio_{self.adapter._port_counter}"
+
+                        logger.info("🔧 Création d'un NOUVEAU port global AudioMediaPort (%s)", port_name)
+                        self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name=port_name)
                         self._audio_port = self.adapter._global_audio_port
                         logger.info("✅ Port audio créé: %s (slot sera réutilisé après nettoyage)", self._audio_port._port_name)
 
@@ -620,6 +624,10 @@ class PJSUAAdapter:
         # CRITIQUE: RLock (réentrant) pour permettre au même thread d'acquérir plusieurs fois
         import threading
         self._teardown_lock = threading.RLock()
+
+        # Compteur pour générer des noms uniques de ports audio
+        # Évite que PJSUA réutilise l'objet C++ d'un ancien port
+        self._port_counter = 0
 
         # Callbacks
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
