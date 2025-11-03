@@ -542,8 +542,6 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
         voice_tools = metadata.get("voice_tools") or []
         voice_handoffs = metadata.get("voice_handoffs") or []
         speak_first = metadata.get("speak_first", False)
-        preinit_response_create_sent = metadata.get("preinit_response_create_sent", False)
-        preinit_session = metadata.get("preinit_session")
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
 
@@ -634,102 +632,81 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             voice_provider_slug or voice_provider_id or "<défaut>",
         )
 
-        # Vérifier si une session a été pré-initialisée pendant le ring timeout
-        preinit_session_handle = metadata.pop("preinit_session_handle", None)
-        client_secret = metadata.get("client_secret")
+        # Créer une nouvelle session Realtime
+        logger.info(
+            "Création d'une nouvelle session Realtime (Call-ID=%s)",
+            session.call_id,
+        )
+        metadata_extras: dict[str, Any] = {}
+        thread_identifier = metadata.get("thread_id")
+        if isinstance(thread_identifier, str) and thread_identifier.strip():
+            metadata_extras["thread_id"] = thread_identifier.strip()
 
-        if preinit_session_handle is not None:
-            # Utiliser la session pré-initialisée
-            session_handle = preinit_session_handle
-            logger.info(
-                "🚀 Utilisation de la session Realtime pré-initialisée "
-                "(Call-ID=%s, session_id=%s) - AUCUN DÉLAI",
-                session.call_id,
-                metadata.get("realtime_session_id"),
-            )
-        elif client_secret is None:
-            # Pas de session pré-initialisée, créer une nouvelle session
-            logger.info(
-                "Création d'une nouvelle session Realtime (Call-ID=%s)",
-                session.call_id,
-            )
-            metadata_extras: dict[str, Any] = {}
-            thread_identifier = metadata.get("thread_id")
-            if isinstance(thread_identifier, str) and thread_identifier.strip():
-                metadata_extras["thread_id"] = thread_identifier.strip()
-
-            # Ajouter automatiquement le tool de transfert d'appel pour la téléphonie
-            telephony_tools = list(voice_tools) if voice_tools else []
-            transfer_tool_config = {
-                "type": "function",
-                "name": "transfer_call",
-                "description": (
-                    "Transfère l'appel en cours vers un autre numéro de téléphone. "
-                    "Utilisez cette fonction lorsque l'appelant demande à être "
-                    "transféré vers un service spécifique, un département, ou une personne."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "phone_number": {
-                            "type": "string",
-                            "description": (
-                                "Le numéro de téléphone vers lequel transférer l'appel. "
-                                "Format recommandé: E.164 (ex: +33123456789)"
-                            ),
-                        },
-                        "announcement": {
-                            "type": "string",
-                            "description": (
-                                "Message optionnel à annoncer à l'appelant avant le transfert"
-                            ),
-                        },
+        # Ajouter automatiquement le tool de transfert d'appel pour la téléphonie
+        telephony_tools = list(voice_tools) if voice_tools else []
+        transfer_tool_config = {
+            "type": "function",
+            "name": "transfer_call",
+            "description": (
+                "Transfère l'appel en cours vers un autre numéro de téléphone. "
+                "Utilisez cette fonction lorsque l'appelant demande à être "
+                "transféré vers un service spécifique, un département, ou une personne."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone_number": {
+                        "type": "string",
+                        "description": (
+                            "Le numéro de téléphone vers lequel transférer l'appel. "
+                            "Format recommandé: E.164 (ex: +33123456789)"
+                        ),
                     },
-                    "required": ["phone_number"],
+                    "announcement": {
+                        "type": "string",
+                        "description": (
+                            "Message optionnel à annoncer à l'appelant avant le transfert"
+                        ),
+                    },
                 },
-            }
-            telephony_tools.append(transfer_tool_config)
-            logger.info(
-                "Ajout du tool de transfert d'appel (total tools: %d)",
-                len(telephony_tools),
-            )
+                "required": ["phone_number"],
+            },
+        }
+        telephony_tools.append(transfer_tool_config)
+        logger.info(
+            "Ajout du tool de transfert d'appel (total tools: %d)",
+            len(telephony_tools),
+        )
 
-            session_handle = await open_voice_session(
-                user_id=f"sip:{session.call_id}",
-                model=voice_model,
-                instructions=instructions,
-                voice=voice_name,
-                provider_id=voice_provider_id,
-                provider_slug=voice_provider_slug,
-                tools=telephony_tools or None,
-                handoffs=voice_handoffs or None,
-                realtime={
-                    # Start WITHOUT turn_detection to avoid "buffer too small" error
-                    # It will be enabled dynamically after sending initial audio
-                },
-                metadata=metadata_extras or None,
-            )
-            secret_payload = session_handle.payload
-            parsed_secret = session_secret_parser.parse(secret_payload)
-            client_secret = parsed_secret.as_text()
-            if not client_secret:
-                logger.error(
-                    "Client secret Realtime introuvable pour Call-ID=%s",
-                    session.call_id,
-                )
-                return
-            metadata["client_secret"] = client_secret
-            metadata["client_secret_expires_at"] = (
-                parsed_secret.expires_at_isoformat()
-            )
-            metadata["realtime_session_id"] = session_handle.session_id
-        else:
-            # Session déjà créée (fallback pour compatibilité)
-            logger.warning(
-                "Session Realtime déjà créée pour Call-ID=%s, session_handle introuvable",
+        session_handle = await open_voice_session(
+            user_id=f"sip:{session.call_id}",
+            model=voice_model,
+            instructions=instructions,
+            voice=voice_name,
+            provider_id=voice_provider_id,
+            provider_slug=voice_provider_slug,
+            tools=telephony_tools or None,
+            handoffs=voice_handoffs or None,
+            realtime={
+                # Start WITHOUT turn_detection to avoid "buffer too small" error
+                # It will be enabled dynamically after sending initial audio
+            },
+            metadata=metadata_extras or None,
+        )
+        secret_payload = session_handle.payload
+        parsed_secret = session_secret_parser.parse(secret_payload)
+        client_secret = parsed_secret.as_text()
+        if not client_secret:
+            logger.error(
+                "Client secret Realtime introuvable pour Call-ID=%s",
                 session.call_id,
             )
             return
+        metadata["client_secret"] = client_secret
+        metadata["client_secret_expires_at"] = (
+            parsed_secret.expires_at_isoformat()
+        )
+        metadata["realtime_session_id"] = session_handle.session_id
 
         # Créer un wait_state pour que le frontend puisse détecter la session vocale
         if store is not None and thread_id:
@@ -816,8 +793,6 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 tools=voice_tools,
                 handoffs=voice_handoffs,
                 speak_first=speak_first,
-                preinit_response_create_sent=preinit_response_create_sent,
-                preinit_session=preinit_session,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
@@ -1090,215 +1065,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             voice_handoffs = telephony_meta.get("voice_handoffs") or []
             speak_first = telephony_meta.get("speak_first", False)
 
-            if voice_model and instructions:
-                logger.info(
-                    "Pré-initialisation de la session Realtime pendant le ring timeout "
-                    "(Call-ID=%s)",
-                    call_id,
-                )
-
-                async def _preinit_realtime_session():
-                    """Initialise la session Realtime pendant que le téléphone sonne."""
-                    try:
-                        # Créer un nouveau thread pour cet appel
-                        thread_id = str(uuid.uuid4())
-
-                        # Ajouter les informations de l'appel SIP aux métadonnées du thread
-                        sip_metadata = {
-                            "sip_caller_number": telephony_meta.get("normalized_number") or telephony_meta.get("original_number"),
-                            "sip_original_number": telephony_meta.get("original_number"),
-                            "sip_call_id": session.call_id,
-                        }
-
-                        thread = ThreadMetadata(
-                            id=thread_id,
-                            created_at=datetime.datetime.now(datetime.UTC),
-                            metadata=sip_metadata,
-                        )
-
-                        # Sauvegarder le thread dans le store ChatKit
-                        server = get_chatkit_server()
-                        store = getattr(server, "store", None)
-                        if store is not None:
-                            chatkit_context = ChatKitRequestContext(
-                                user_id=f"sip:{session.call_id}",
-                                email=None,
-                                authorization=None,
-                                public_base_url=settings.backend_public_base_url,
-                                voice_model=voice_model,
-                                voice_instructions=instructions,
-                                voice_voice=voice_name,
-                                voice_prompt_variables=telephony_meta.get("voice_prompt_variables"),
-                            )
-                            await store.save_thread(thread, chatkit_context)
-                            telephony_meta["thread_id"] = thread_id
-                            logger.info(
-                                "Thread pré-créé pendant le ring (Call-ID=%s, thread_id=%s)",
-                                session.call_id,
-                                thread_id,
-                            )
-
-                        # Ajouter automatiquement le tool de transfert d'appel
-                        telephony_tools = list(voice_tools) if voice_tools else []
-                        transfer_tool_config = {
-                            "type": "function",
-                            "name": "transfer_call",
-                            "description": (
-                                "Transfère l'appel en cours vers un autre numéro de téléphone. "
-                                "Utilisez cette fonction lorsque l'appelant demande à être "
-                                "transféré vers un service spécifique, un département, ou une personne."
-                            ),
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "phone_number": {
-                                        "type": "string",
-                                        "description": (
-                                            "Le numéro de téléphone vers lequel transférer l'appel. "
-                                            "Format recommandé: E.164 (ex: +33123456789)"
-                                        ),
-                                    },
-                                    "announcement": {
-                                        "type": "string",
-                                        "description": (
-                                            "Message optionnel à annoncer à l'appelant avant le transfert"
-                                        ),
-                                    },
-                                },
-                                "required": ["phone_number"],
-                            },
-                        }
-                        telephony_tools.append(transfer_tool_config)
-
-                        metadata_extras: dict[str, Any] = {}
-                        if thread_id:
-                            metadata_extras["thread_id"] = thread_id
-
-                        # Ouvrir la session Realtime
-                        session_handle = await open_voice_session(
-                            user_id=f"sip:{session.call_id}",
-                            model=voice_model,
-                            instructions=instructions,
-                            voice=voice_name,
-                            provider_id=voice_provider_id,
-                            provider_slug=voice_provider_slug,
-                            tools=telephony_tools or None,
-                            handoffs=voice_handoffs or None,
-                            realtime={
-                                # Start WITHOUT turn_detection to avoid "buffer too small" error
-                                # It will be enabled dynamically after sending initial audio
-                            },
-                            metadata=metadata_extras or None,
-                        )
-
-                        # Stocker le session handle dans les métadonnées
-                        telephony_meta["preinit_session_handle"] = session_handle
-
-                        secret_payload = session_handle.payload
-                        parsed_secret = session_secret_parser.parse(secret_payload)
-                        client_secret = parsed_secret.as_text()
-                        if client_secret:
-                            telephony_meta["client_secret"] = client_secret
-                            telephony_meta["client_secret_expires_at"] = (
-                                parsed_secret.expires_at_isoformat()
-                            )
-                            telephony_meta["realtime_session_id"] = session_handle.session_id
-                            logger.info(
-                                "✅ Session Realtime pré-initialisée pendant le ring "
-                                "(Call-ID=%s, session_id=%s)",
-                                session.call_id,
-                                session_handle.session_id,
-                            )
-
-                            # Si speak_first est activé, démarrer la session websocket et pré-générer l'audio
-                            if speak_first:
-                                try:
-                                    runner = session_handle.runner
-                                    if runner:
-                                        logger.info(
-                                            "🎯 Démarrage complet de la session pour pré-génération audio "
-                                            "(speak_first activé, Call-ID=%s)",
-                                            session.call_id,
-                                        )
-
-                                        # Créer la config du modèle (format dictionnaire comme voice_bridge.py)
-                                        from app.telephony.voice_bridge import TelephonyPlaybackTracker
-
-                                        # Créer un playback tracker avec gestion des interruptions (comme dans voice_bridge.py)
-                                        # Note: on ne peut pas utiliser le callback d'interruption ici car on n'a pas encore
-                                        # de référence au mécanisme de blocage audio
-                                        preinit_playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=None)
-
-                                        model_settings: dict[str, Any] = {
-                                            "model_name": voice_model,
-                                            "modalities": ["audio"],
-                                            "input_audio_format": "pcm16",
-                                            "output_audio_format": "pcm16",
-                                            # Activer turn_detection avec create_response pour réponse automatique
-                                            "input_audio_transcription": {"model": "whisper-1"},
-                                            "turn_detection": {
-                                                "type": "semantic_vad",
-                                                "create_response": True,
-                                                "interrupt_response": True,
-                                            },
-                                        }
-                                        if voice_name:
-                                            model_settings["voice"] = voice_name
-
-                                        model_config: dict[str, Any] = {
-                                            "api_key": client_secret,
-                                            "initial_model_settings": model_settings,
-                                            "playback_tracker": preinit_playback_tracker,
-                                        }
-
-                                        # Démarrer la session complète (établit la connexion websocket)
-                                        preinit_session = await runner.run(model_config=model_config)
-                                        await preinit_session.__aenter__()
-                                        telephony_meta["preinit_session"] = preinit_session
-
-                                        logger.info(
-                                            "✅ Session websocket connectée pendant la sonnerie (Call-ID=%s)",
-                                            session.call_id,
-                                        )
-
-                                        # Envoyer response.create maintenant pour pré-générer l'audio
-                                        # L'audio sera bufferisé jusqu'à ce que le téléphone soit prêt
-                                        from agents.realtime.model_inputs import (
-                                            RealtimeModelRawClientMessage,
-                                            RealtimeModelSendRawMessage,
-                                        )
-                                        await preinit_session._model.send_event(
-                                            RealtimeModelSendRawMessage(
-                                                message=RealtimeModelRawClientMessage(
-                                                    type="response.create",
-                                                    other_data={},
-                                                )
-                                            )
-                                        )
-                                        telephony_meta["preinit_response_create_sent"] = True
-                                        logger.info(
-                                            "✅ response.create pré-envoyé pendant la sonnerie - "
-                                            "audio en cours de génération (Call-ID=%s)",
-                                            session.call_id,
-                                        )
-                                except Exception as exc:
-                                    logger.warning(
-                                        "Impossible de pré-générer l'audio (Call-ID=%s): %s",
-                                        session.call_id,
-                                        exc,
-                                    )
-                    except Exception as exc:
-                        logger.exception(
-                            "Erreur lors de la pré-initialisation de la session Realtime "
-                            "(Call-ID=%s)",
-                            session.call_id,
-                            exc_info=exc,
-                        )
-
-                # Démarrer la pré-initialisation en arrière-plan
-                session_init_task = asyncio.create_task(_preinit_realtime_session())
-
-        # Maintenant envoyer le 200 OK (avec le ring timeout)
+        # Envoyer le 200 OK (avec le ring timeout)
         try:
             await handle_incoming_invite(
                 dialog,
@@ -1312,8 +1079,6 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             await rtp_server.send_silence_packet()
         except InviteHandlingError as exc:
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
-            if session_init_task:
-                session_init_task.cancel()
             await rtp_server.stop()
             return
         except Exception as exc:  # pragma: no cover - dépend de aiosip
@@ -1321,8 +1086,6 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 "Erreur inattendue lors du traitement d'un INVITE",
                 exc_info=exc,
             )
-            if session_init_task:
-                session_init_task.cancel()
             await rtp_server.stop()
             with contextlib.suppress(Exception):
                 await send_sip_reply(
@@ -1332,23 +1095,6 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                     contact_uri=contact_uri,
                 )
             return
-
-        # Attendre que la pré-initialisation se termine (si elle était lancée)
-        if session_init_task:
-            try:
-                await session_init_task
-                logger.info(
-                    "Pré-initialisation de la session Realtime terminée avant réponse "
-                    "(Call-ID=%s)",
-                    call_id,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "La pré-initialisation a échoué, la session sera créée normalement "
-                    "(Call-ID=%s): %s",
-                    call_id,
-                    exc,
-                )
 
         # Démarrer la session RTP immédiatement après le 200 OK
         # Le téléphone commence déjà à envoyer de l'audio, pas besoin d'attendre l'ACK
@@ -3021,10 +2767,6 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Le voice bridge ne doit démarrer QU'APRÈS que le média soit actif et l'audio débloqué
             voice_bridge_start_event = asyncio.Event()
 
-            # Variables pour la session pré-initialisée (seront remplies pendant la sonnerie)
-            preinit_session = None
-            preinit_response_create_sent = False
-
             async def run_voice_bridge():
                 """Tâche pour exécuter le voice bridge."""
                 # Attendre que le média soit actif et l'audio débloqué
@@ -3046,8 +2788,6 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         tools=telephony_tools,
                         handoffs=voice_handoffs,
                         speak_first=speak_first,  # speak_first sera traité par VoiceBridge au bon moment
-                        preinit_session=preinit_session,  # Session pré-initialisée pendant la sonnerie
-                        preinit_response_create_sent=preinit_response_create_sent,  # response.create déjà envoyé pendant sonnerie
                     )
                     logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
                 except Exception as e:
@@ -3056,73 +2796,14 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Créer la tâche mais elle attendra l'event avant de démarrer
             voice_bridge_task = asyncio.create_task(run_voice_bridge())
 
-            # PRÉ-INITIALISATION PENDANT LA SONNERIE pour réduire la latence
-            # Profiter des 3 secondes de sonnerie pour créer la session OpenAI et générer le premier audio
+            # Attendre le ring timeout avant de répondre à l'appel
             if ring_timeout_seconds > 0:
                 logger.info(
-                    "⏰ Sonnerie de %.2f secondes - pré-initialisation de la session OpenAI (call_id=%s)",
+                    "⏰ Sonnerie de %.2f secondes avant de répondre (call_id=%s)",
                     ring_timeout_seconds,
                     call_id,
                 )
-
-                try:
-                    # Créer la session OpenAI PENDANT la sonnerie pour gagner du temps
-                    from agents.realtime.model_inputs import (
-                        RealtimeModelRawClientMessage,
-                        RealtimeModelSendRawMessage,
-                    )
-
-                    logger.info("🚀 Création session OpenAI pendant la sonnerie (call_id=%s)", call_id)
-
-                    # Build model config
-                    model_settings: dict[str, Any] = {
-                        "model_name": voice_model,
-                        "modalities": ["audio"],
-                        "output_modalities": ["audio"],
-                        "input_audio_format": "pcm16",
-                        "output_audio_format": "pcm16",
-                    }
-                    if voice_name:
-                        model_settings["voice"] = voice_name
-
-                    # Create playback tracker for preinit session
-                    from chatkit.telephony.voice_bridge import TelephonyPlaybackTracker
-                    preinit_playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=None)
-
-                    model_config: dict[str, Any] = {
-                        "api_key": client_secret,
-                        "initial_model_settings": model_settings,
-                        "playback_tracker": preinit_playback_tracker,
-                    }
-
-                    # Démarrer la session OpenAI
-                    preinit_session = await session_handle.runner.run(model_config=model_config)
-                    await preinit_session.__aenter__()
-                    logger.info("✅ Session OpenAI pré-initialisée (call_id=%s)", call_id)
-
-                    # Si speak_first, générer le premier audio MAINTENANT pendant la sonnerie
-                    if speak_first:
-                        logger.info("🎙️ Génération du premier 'Allô!' pendant la sonnerie (call_id=%s)", call_id)
-                        await preinit_session._model.send_event(
-                            RealtimeModelSendRawMessage(
-                                message=RealtimeModelRawClientMessage(
-                                    type="response.create",
-                                    other_data={},
-                                )
-                            )
-                        )
-                        preinit_response_create_sent = True
-                        logger.info("✅ Génération audio démarrée - sera prêt quand l'appel sera répondu (call_id=%s)", call_id)
-
-                    # Attendre le reste du temps de sonnerie
-                    await asyncio.sleep(ring_timeout_seconds)
-
-                except Exception as e:
-                    logger.warning("⚠️ Erreur pendant pré-initialisation: %s - continuera sans preinit (call_id=%s)", e, call_id)
-                    preinit_session = None
-                    preinit_response_create_sent = False
-                    # Attendre quand même le temps de sonnerie
-                    await asyncio.sleep(ring_timeout_seconds)
+                await asyncio.sleep(ring_timeout_seconds)
 
             # Répondre à l'appel (200 OK)
             logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)

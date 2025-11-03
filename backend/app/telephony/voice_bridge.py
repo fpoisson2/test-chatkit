@@ -84,7 +84,7 @@ class TelephonyPlaybackTracker(RealtimePlaybackTracker):
         logger.debug("TelephonyPlaybackTracker: audio format set to %s", format)
 
     def set_interrupt_callback(self, callback: callable | None) -> None:
-        """Update the interrupt callback (useful when reusing preinit session)."""
+        """Update the interrupt callback."""
         self._on_interrupt_callback = callback
         logger.debug("TelephonyPlaybackTracker: interrupt callback updated")
 
@@ -282,8 +282,6 @@ class TelephonyVoiceBridge:
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
         speak_first: bool = False,
-        preinit_response_create_sent: bool = False,
-        preinit_session: Any | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -362,9 +360,9 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create (immédiatement ou pendant preinit),
+                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
                         # l'envoyer maintenant comme fallback (mais normalement c'est déjà fait immédiatement après le démarrage de la session)
-                        if speak_first and not preinit_response_create_sent and not response_create_sent_immediately and not response_create_sent_on_ready:
+                        if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             logger.warning("⚠️ FALLBACK: Premier paquet RTP reçu - envoi de response.create (devrait être déjà fait immédiatement !)")
                             try:
                                 from agents.realtime.model_inputs import (
@@ -826,33 +824,14 @@ class TelephonyVoiceBridge:
             }
 
             # Create session using the SDK runner (this is what enables tool calls!)
-            # OU utiliser la session pré-connectée si elle existe
-            if preinit_session is not None:
-                logger.info("Utilisation de la session pré-connectée (déjà démarrée pendant la sonnerie)")
-                session = preinit_session
+            logger.info("Démarrage session SDK avec runner")
+            session = await runner.run(model_config=model_config)
+            await session.__aenter__()
+            logger.info("Session SDK démarrée avec succès")
 
-                # Récupérer le playback_tracker de la session pré-initialisée
-                # et mettre à jour son callback d'interruption
-                try:
-                    preinit_playback_tracker = session._model._playback_tracker
-                    if isinstance(preinit_playback_tracker, TelephonyPlaybackTracker):
-                        preinit_playback_tracker.set_interrupt_callback(on_playback_interrupted)
-                        playback_tracker = preinit_playback_tracker
-                        logger.info("✅ Playback tracker pré-initialisé réutilisé avec callback d'interruption mis à jour")
-                    else:
-                        logger.warning("Playback tracker pré-initialisé n'est pas un TelephonyPlaybackTracker, création d'un nouveau")
-                except (AttributeError, TypeError) as e:
-                    logger.warning("Impossible de récupérer le playback tracker pré-initialisé: %s", e)
-            else:
-                logger.info("Démarrage session SDK avec runner")
-                session = await runner.run(model_config=model_config)
-                await session.__aenter__()
-                logger.info("Session SDK démarrée avec succès")
-
-            # Si speak_first est activé et qu'on n'a pas déjà envoyé response.create pendant preinit,
-            # attendre que PJSUA soit prêt à consommer l'audio AVANT d'envoyer response.create
+            # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio AVANT d'envoyer response.create
             # Cela garantit que le premier "Allô!" sera bien consommé et entendu
-            if speak_first and not preinit_response_create_sent:
+            if speak_first:
                 if pjsua_ready_to_consume is not None:
                     logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
                     try:
