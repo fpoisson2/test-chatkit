@@ -921,50 +921,42 @@ class PJSUAAdapter:
 
         if audio_port:
             # ÉTAPE 1: Déconnecter le conference bridge dans les 2 sens
+            # CRITIQUE: Toujours tenter la déconnexion, même si on rencontre PJSIP_ESESSIONTERMINATED
+            # Car le conference bridge peut avoir des connexions actives qui doivent être nettoyées
             try:
                 if audio_media is not None:
                     logger.info("🔌 Déconnexion conference bridge (call_id=%s)", call_id)
 
-                    # CRITIQUE: Vérifier que le call est encore valide avant de déconnecter
-                    # Si le call est déjà détruit (DISCONNECTED rapide), getInfo() échouera
-                    call_still_valid = False
+                    # Déconnexion call → port
+                    # On tente toujours, même si getInfo() échouerait avec ESESSIONTERMINATED
                     try:
-                        call_info = call.getInfo()
-                        # Même si DISCONNECTED, le call peut encore avoir des connexions actives
-                        call_still_valid = True
-                        logger.debug("Call encore valide pour déconnexion (state=%s)", call_info.state)
+                        audio_media.stopTransmit(audio_port)
+                        logger.debug("✅ Déconnexion call→port réussie (call_id=%s)", call_id)
                     except Exception as e:
-                        logger.debug("Call déjà invalide, skip déconnexion bridge: %s", e)
-                        # Si getInfo() échoue, le call est déjà détruit par PJSUA
-                        # Pas besoin de déconnecter, le bridge a déjà été nettoyé
-                        call_still_valid = False
+                        err_str = str(e)
+                        # Ignorer les erreurs attendues lors du nettoyage
+                        if "EINVAL" in err_str or "70004" in err_str:
+                            logger.debug("Port déjà déconnecté call→port (EINVAL ignoré)")
+                        elif "ESESSIONTERMINATED" in err_str or "171140" in err_str:
+                            logger.debug("Session déjà terminée call→port (ESESSIONTERMINATED ignoré)")
+                        else:
+                            logger.warning("Erreur stopTransmit call→port (call_id=%s): %s", call_id, e)
 
-                    if call_still_valid:
-                        # Déconnexion call → port
-                        try:
-                            audio_media.stopTransmit(audio_port)
-                            logger.debug("✅ Déconnexion call→port réussie (call_id=%s)", call_id)
-                        except Exception as e:
-                            err_str = str(e)
-                            if "EINVAL" in err_str or "70004" in err_str:
-                                logger.debug("Port déjà déconnecté call→port (EINVAL ignoré)")
-                            else:
-                                logger.warning("Erreur stopTransmit call→port (call_id=%s): %s", call_id, e)
+                    # Déconnexion port → call
+                    try:
+                        audio_port.stopTransmit(audio_media)
+                        logger.debug("✅ Déconnexion port→call réussie (call_id=%s)", call_id)
+                    except Exception as e:
+                        err_str = str(e)
+                        # Ignorer les erreurs attendues lors du nettoyage
+                        if "EINVAL" in err_str or "70004" in err_str:
+                            logger.debug("Port déjà déconnecté port→call (EINVAL ignoré)")
+                        elif "ESESSIONTERMINATED" in err_str or "171140" in err_str:
+                            logger.debug("Session déjà terminée port→call (ESESSIONTERMINATED ignoré)")
+                        else:
+                            logger.warning("Erreur stopTransmit port→call (call_id=%s): %s", call_id, e)
 
-                        # Déconnexion port → call
-                        try:
-                            audio_port.stopTransmit(audio_media)
-                            logger.debug("✅ Déconnexion port→call réussie (call_id=%s)", call_id)
-                        except Exception as e:
-                            err_str = str(e)
-                            if "EINVAL" in err_str or "70004" in err_str:
-                                logger.debug("Port déjà déconnecté port→call (EINVAL ignoré)")
-                            else:
-                                logger.warning("Erreur stopTransmit port→call (call_id=%s): %s", call_id, e)
-
-                        logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
-                    else:
-                        logger.info("⏭️  Déconnexion bridge skippée - call déjà détruit par PJSUA (call_id=%s)", call_id)
+                    logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
             except Exception as e:
                 logger.warning("Erreur déconnexion conference bridge (call_id=%s): %s", call_id, e)
 
