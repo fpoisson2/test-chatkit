@@ -354,10 +354,14 @@ class TelephonyVoiceBridge:
             # Utilise le même seuil que pour l'audio sortant (ligne 57)
             silence_threshold = 250
 
-            # Si speak_first est activé, ignorer l'audio entrant pendant les 500 premières ms
-            # pour laisser l'agent parler sans être interrompu par du bruit de connexion
-            initial_silence_duration_ms = 500 if speak_first else 0
-            # À 24kHz PCM16: 20ms = 960 bytes, donc 500ms = 25 paquets
+            # Seuil plus élevé pour détecter une vraie parole de l'utilisateur (pas du bruit de fond)
+            speech_threshold = 800
+
+            # Si speak_first est activé, ignorer l'audio entrant pendant les 200 premières ms
+            # pour laisser l'agent commencer à parler sans être interrompu par du bruit de connexion
+            # 200ms est suffisant pour que OpenAI commence à générer l'audio sans trop de lag
+            initial_silence_duration_ms = 200 if speak_first else 0
+            # À 24kHz PCM16: 20ms = 960 bytes, donc 200ms = 10 paquets
             packets_to_silence = int(initial_silence_duration_ms / 20) if speak_first else 0
 
             try:
@@ -401,9 +405,22 @@ class TelephonyVoiceBridge:
                     except audioop.error:
                         max_amplitude = 0
 
+                    # DÉTECTION LOCALE: Si on détecte une vraie parole (amplitude élevée),
+                    # vider immédiatement la queue audio pour éviter le lag
+                    # Cela fonctionne même pendant la période de silence forcé
+                    if max_amplitude > speech_threshold:
+                        if clear_audio_queue and speak_first and packet_count <= packets_to_silence:
+                            frames_cleared = clear_audio_queue()
+                            if frames_cleared > 0:
+                                logger.info("🎤 Parole détectée localement (paquet #%d, amplitude=%d) - queue vidée: %d frames",
+                                          packet_count, max_amplitude, frames_cleared)
+                                # Débloquer l'audio immédiatement pour que l'agent puisse répondre
+                                block_audio_send_ref[0] = False
+
                     # Si speak_first est activé, remplacer les premiers paquets par du silence
                     # pour garantir que l'agent puisse parler sans interruption
-                    if speak_first and packet_count <= packets_to_silence:
+                    # SAUF si on a détecté une vraie parole (amplitude > speech_threshold)
+                    if speak_first and packet_count <= packets_to_silence and max_amplitude <= speech_threshold:
                         if packet_count == 1:
                             logger.info("🔇 speak_first activé: envoi de silence pendant %dms (%d paquets) pour laisser l'agent parler",
                                       initial_silence_duration_ms, packets_to_silence)
