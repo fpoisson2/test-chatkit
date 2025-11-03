@@ -526,8 +526,10 @@ class PJSUAAdapter:
 
         # Configuration de l'endpoint
         ep_cfg = pj.EpConfig()
-        ep_cfg.logConfig.level = 2  # WARNING level (réduire verbosité)
-        ep_cfg.logConfig.consoleLevel = 2
+        # Niveau 1 = ERROR only (ne pas afficher les warnings "already terminated")
+        # Ces "erreurs" sont normales quand on raccroche un appel déjà terminé
+        ep_cfg.logConfig.level = 1  # ERROR level only
+        ep_cfg.logConfig.consoleLevel = 1
 
         # Initialiser l'endpoint
         self._ep.libInit(ep_cfg)
