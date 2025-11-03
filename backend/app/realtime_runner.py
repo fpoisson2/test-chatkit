@@ -1091,7 +1091,8 @@ class RealtimeVoiceSessionOrchestrator:
             )
 
             await self._registry.register(handle)
-            logger.debug("Session Realtime enregistrée : %s", handle.summary())
+            logger.debug("Session Realtime enregistrée : session_id=%s, user_id=%s",
+                        handle.session_id, metadata_payload.get('user_id', 'unknown'))
             try:  # pragma: no cover - le gateway peut ne pas être initialisé
                 from .realtime_gateway import get_realtime_gateway
 
@@ -1128,7 +1129,7 @@ class RealtimeVoiceSessionOrchestrator:
             )
             return False
 
-        logger.debug("Session Realtime supprimée : %s", handle.summary())
+        logger.debug("Session Realtime supprimée : session_id=%s", session_id)
         try:  # pragma: no cover - le gateway peut ne pas être initialisé
             from .realtime_gateway import get_realtime_gateway
 
