@@ -54,7 +54,7 @@ class PJSUAAudioBridge:
         self._send_to_peer_state: Any = None
 
         # Silence gate to avoid amplifying background noise
-        self._silence_threshold = 250
+        self._silence_threshold = 40
 
         # Counter for send_to_peer calls (for pacing diagnostics)
         self._send_to_peer_call_count = 0
@@ -202,17 +202,17 @@ class PJSUAAudioBridge:
         # OpenAI envoie parfois un audio très faible (amplitude ~7) qui est inaudible
         try:
             max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
-            if max_amplitude < self._silence_threshold:
+            rms_amplitude = audioop.rms(audio_8khz, self.BYTES_PER_SAMPLE)
+            # Ne considérer comme silence que si pic ET RMS sont très faibles (bruit de fond)
+            if max_amplitude <= self._silence_threshold and rms_amplitude <= (self._silence_threshold / 2):
                 audio_8khz = bytes(len(audio_8khz))
                 max_amplitude = 0
-                gain = 0.0
-            else:
-                gain = 1.0
-            if max_amplitude > 0:
-                # Garantir une amplitude minimale de 2000 (audible au téléphone)
-                min_target_amplitude = 1800
+            elif max_amplitude > 0:
+                # Garantir un niveau minimal suffisamment audible tout en limitant la saturation
+                min_target_amplitude = 5000
+                max_gain = 12.0
                 if max_amplitude < min_target_amplitude:
-                    gain = min(min_target_amplitude / max_amplitude, 6.0)  # Limiter pour éviter saturation
+                    gain = min(min_target_amplitude / max_amplitude, max_gain)
                     audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
         except audioop.error as e:
             logger.warning("Audio processing error: %s", e)
