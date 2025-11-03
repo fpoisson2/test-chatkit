@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import datetime
+import json
 import logging
+import re
+import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
@@ -996,26 +999,24 @@ async def list_languages(_admin: User = Depends(require_admin)):
 
 
 
-@router.post("/api/admin/languages/generate", response_model=GeneratedFileResponse)
+@router.post("/api/admin/languages/generate", response_model=TaskStartedResponse)
 async def generate_language_file(
     request: LanguageGenerateRequest,
+    session: Session = Depends(get_session),
     _admin: User = Depends(require_admin)
 ):
     """
-    Génère un fichier de traductions traduit automatiquement par IA.
-    Retourne le contenu du fichier au lieu de l'écrire sur le disque.
-    L'administrateur peut ensuite télécharger et ajouter manuellement le fichier.
+    Lance la génération de traduction en background avec Celery et retourne task_id immédiatement.
     """
-    import re
-    import json
-    from pathlib import Path
-    
+    from ..tasks.language_generation import generate_language_task
+
     code = request.code.strip().lower()
     name = request.name.strip()
     model_name = request.model.strip() if request.model else None
     provider_id = request.provider_id.strip() if request.provider_id else None
-    provider_slug_from_request = request.provider_slug.strip() if request.provider_slug else None
+    provider_slug = request.provider_slug.strip() if request.provider_slug else None
     custom_prompt = request.custom_prompt.strip() if request.custom_prompt else None
+    save_to_db = request.save_to_db
 
     # Validation
     if not re.match(r'^[a-z]{2}$', code):
@@ -1029,258 +1030,313 @@ async def generate_language_file(
             status_code=400,
             detail="Cannot generate base languages (en, fr) - they already exist"
         )
-    
-    # Le frontend est monté en lecture seule dans /frontend via docker-compose
+
+    # Vérifier que le fichier source existe
     i18n_path = Path("/frontend/src/i18n")
-    
-    # Charger le fichier source (anglais)
     en_file = i18n_path / "translations.en.ts"
     if not en_file.exists():
         raise HTTPException(status_code=404, detail="Source language file (English) not found")
-    
-    # Extraire toutes les clés et valeurs du fichier anglais
-    en_content = en_file.read_text()
-    
-    # Pattern pour extraire les paires clé-valeur
-    pattern = r'"([^"]+)"\s*:\s*"([^"]*(?:\\.[^"]*)*)"'
-    matches = re.findall(pattern, en_content)
-    
-    if not matches:
-        raise HTTPException(status_code=500, detail="No translations found in source file")
-    
-    # Créer un dictionnaire des traductions anglaises
-    en_translations = {key: value for key, value in matches}
-    
-    logger.info(f"Generating translation file for {code} ({name}) with {len(en_translations)} keys")
-    
-    # Utiliser le SDK Agent pour traduire
-    try:
-        from agents import Agent, Runner
-        from sqlalchemy import select
-        from ..models import AvailableModel
-        from ..chatkit.agent_registry import get_agent_provider_binding
 
-        # Charger le modèle depuis la base de données
-        with SessionLocal() as session:
-            if model_name:
-                # Si un modèle spécifique est demandé, le chercher
-                query = select(AvailableModel).where(AvailableModel.name == model_name)
-                available_model = session.scalar(query)
+    # Créer la tâche en BD
+    task_id = str(uuid.uuid4())
+    task = LanguageGenerationTask(
+        task_id=task_id,
+        code=code,
+        name=name,
+        status="pending",
+        progress=0
+    )
+    session.add(task)
+    session.commit()
 
-                if not available_model:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Model '{model_name}' not found in database"
-                    )
-            else:
-                # Sinon, prendre le premier modèle disponible
-                available_model = session.scalar(
-                    select(AvailableModel)
-                    .order_by(AvailableModel.id)
-                    .limit(1)
-                )
+    logger.info(f"Created task {task_id} for language {code} ({name})")
 
-                if not available_model:
-                    raise HTTPException(
-                        status_code=500,
-                        detail="No models configured in the database. Please add a model first."
-                    )
+    # Lancer la génération avec Celery
+    # La tâche Celery s'exécutera dans un worker séparé
+    generate_language_task.delay(
+        task_id=task_id,
+        code=code,
+        name=name,
+        model_name=model_name,
+        provider_id=provider_id,
+        provider_slug=provider_slug,
+        custom_prompt=custom_prompt,
+        save_to_db=save_to_db
+    )
 
-            model_name = available_model.name
-            logger.info(f"Found model in database: name={model_name}, provider_id={available_model.provider_id}, provider_slug={available_model.provider_slug}")
+    return TaskStartedResponse(
+        task_id=task_id,
+        status="pending",
+        message=f"Language generation started for {code} ({name})"
+    )
 
-            # Utiliser le provider_id et provider_slug fournis dans le formulaire en priorité
-            # Sinon, utiliser ceux du modèle dans la base de données
-            # IMPORTANT: Ne pas utiliser provider_id du modèle si aucun provider n'est sélectionné
-            # car les providers configurés via .env n'ont pas d'ID, seulement un slug
-            if provider_id or provider_slug_from_request:
-                # Utilisateur a sélectionné explicitement un provider dans le formulaire
-                provider_id_used = provider_id
-                provider_slug_used = provider_slug_from_request
-                logger.info(f"Using provider from form: provider_id={provider_id_used}, provider_slug={provider_slug_used}")
-            else:
-                # Aucun provider sélectionné dans le formulaire, utiliser celui du modèle
-                # Ne PAS utiliser provider_id car il pourrait ne pas exister (providers .env n'ont pas d'ID)
-                provider_id_used = None
-                provider_slug_used = available_model.provider_slug
-                logger.info(f"No provider selected in form, using model's provider_slug={provider_slug_used} (ignoring provider_id)")
 
-        # Obtenir le provider binding - la fonction get_agent_provider_binding gère la résolution
-        logger.info(f"Calling get_agent_provider_binding with provider_id={provider_id_used}, provider_slug={provider_slug_used}")
-
-        # Debug: afficher les providers disponibles dans les settings
-        from ..config import get_settings
-        settings = get_settings()
-        logger.info(f"Available providers in runtime settings: {[(p.provider, getattr(p, 'id', None)) for p in settings.model_providers]}")
-
-        provider_binding = get_agent_provider_binding(provider_id_used, provider_slug_used)
-
-        logger.info(f"Provider binding result: {provider_binding}")
-
-        if not provider_binding:
-            error_msg = (
-                f"Failed to get provider binding for model '{model_name}'. "
-                f"Provider ID: {provider_id_used}, Provider slug: {provider_slug_used}. "
-                f"Please ensure the model has a valid provider_id in the database or that "
-                f"a provider with slug '{provider_slug_used}' is configured in your settings."
-            )
-            logger.error(error_msg)
-            raise HTTPException(
-                status_code=500,
-                detail=error_msg
-            )
-
-        logger.info(f"Provider binding obtained successfully: id={provider_binding.provider_id}, slug={provider_binding.provider_slug}")
-
-        # Préparer le prompt pour la traduction
-        logger.info("Preparing translation prompt")
-        translations_json = json.dumps(en_translations, ensure_ascii=False, indent=2)
-
-        # Utiliser le prompt personnalisé ou le prompt par défaut
-        if custom_prompt:
-            # Remplacer les variables dans le prompt personnalisé
-            prompt = custom_prompt.replace("{{language_name}}", name)
-            prompt = prompt.replace("{{language_code}}", code)
-            prompt = prompt.replace("{{translations_json}}", translations_json)
-        else:
-            # Prompt par défaut
-            prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {name} ({code}).
-
-IMPORTANT RULES:
-1. Keep all keys exactly as they are (do not translate keys)
-2. Only translate the values
-3. Preserve any placeholders like {{{{variable}}}}, {{{{count}}}}, etc.
-4. Preserve any HTML tags or special formatting
-5. Maintain the same level of formality/informality as the source
-6. Return ONLY the translated JSON object, nothing else
-
-Source translations (English):
-{translations_json}
-
-Return the complete JSON object with all keys and their translated values in {name}."""
-
-        logger.info(f"Using agent SDK for translation to {name}")
-        logger.info(f"About to create agent with model={model_name}")
-
-        # Créer l'agent (sans passer le provider directement)
-        try:
-            agent = Agent(
-                name="Language Translator",
-                model=model_name,
-                instructions=prompt,
-            )
-            # Attacher le provider_binding à l'agent (pattern utilisé par _build_thread_title_agent)
-            agent._chatkit_provider_binding = provider_binding
-            logger.info("Agent created successfully")
-        except Exception as e:
-            logger.exception(f"Failed to create agent: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create translation agent: {str(e)}"
-            )
-
-        # Exécuter l'agent avec le provider dans RunConfig
-        try:
-            logger.info("Starting agent execution")
-            from agents import RunConfig
-
-            run_config_kwargs = {}
-            if provider_binding is not None:
-                run_config_kwargs["model_provider"] = provider_binding.provider
-
-            try:
-                run_config = RunConfig(**run_config_kwargs)
-            except TypeError:  # pragma: no cover - compatibilité SDK
-                run_config_kwargs.pop("model_provider", None)
-                run_config = RunConfig(**run_config_kwargs)
-
-            result = await Runner.run(
-                agent,
-                input="Translate the provided JSON to the target language.",
-                run_config=run_config
-            )
-            logger.info(f"Agent execution completed, result type: {type(result)}")
-        except Exception as e:
-            logger.exception(f"Failed to run agent: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Translation execution failed: {str(e)}"
-            )
-
-        # Extraire la réponse
-        try:
-            logger.info("Extracting response from agent result")
-            response_text = result.output if hasattr(result, 'output') else str(result)
-            logger.info(f"Response text length: {len(response_text)} characters")
-        except Exception as e:
-            logger.exception(f"Failed to extract response: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to extract translation response: {str(e)}"
-            )
-        
-        # Parser le JSON de la réponse
-        # Nettoyer le texte pour extraire seulement le JSON
-        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-        if not json_match:
-            logger.error("Failed to extract JSON from AI response")
-            raise HTTPException(status_code=500, detail="Failed to parse AI response")
-        
-        translated_dict = json.loads(json_match.group(0))
-        logger.info(f"Successfully translated {len(translated_dict)} keys")
-        
-        # Générer le fichier de traductions
-        file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {code}: TranslationDictionary = {{\n'
-        
-        for key, value in translated_dict.items():
-            # Échapper les guillemets et backslashes
-            escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
-            file_content += f'  "{key}": "{escaped_value}",\n'
-        
-        file_content += '};\n'
-        
-        # Instructions pour l'administrateur
-        instructions = f"""# How to add this language to your application
-
-1. Save this file as `frontend/src/i18n/translations.{code}.ts`
-
-2. Edit `frontend/src/i18n/translations.ts` and add:
-
-   a) Add to the Language type:
-      export type Language = "en" | "fr" | "{code}";
-   
-   b) Add to AVAILABLE_LANGUAGES array:
-      {{ code: "{code}", label: "{name}" }},
-   
-   c) Add the import:
-      import {{ {code} }} from "./translations.{code}";
-   
-   d) Add to translations object:
-      {code},
-
-3. Restart the frontend development server
-
-4. The new language will appear in the language switcher
-"""
-        
-        return GeneratedFileResponse(
-            filename=f"translations.{code}.ts",
-            content=file_content,
-            instructions=instructions
+@router.get("/api/admin/languages/tasks/{task_id}", response_model=TaskStatusResponse)
+async def get_task_status(
+    task_id: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin)
+):
+    """
+    Récupère le statut d'une tâche de génération de langue.
+    """
+    task = session.scalar(
+        select(LanguageGenerationTask).where(LanguageGenerationTask.task_id == task_id)
+    )
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task {task_id} not found"
         )
-        
+
+    return TaskStatusResponse(
+        task_id=task.task_id,
+        status=task.status,
+        progress=task.progress,
+        error_message=task.error_message,
+        created_at=task.created_at.isoformat(),
+        completed_at=task.completed_at.isoformat() if task.completed_at else None,
+        language_id=task.language_id,
+        can_download=(task.status == "completed" and task.file_content is not None)
+    )
+
+
+@router.get("/api/admin/languages/tasks/{task_id}/download")
+async def download_task_result(
+    task_id: str,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin)
+):
+    """
+    Télécharge le fichier de traduction généré par une tâche.
+    """
+    task = session.scalar(
+        select(LanguageGenerationTask).where(LanguageGenerationTask.task_id == task_id)
+    )
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task {task_id} not found"
+        )
+
+    if task.status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task is not completed (status: {task.status})"
+        )
+
+    if not task.file_content:
+        raise HTTPException(
+            status_code=404,
+            detail="No file content available for this task"
+        )
+
+    return Response(
+        content=task.file_content,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f'attachment; filename="translations.{task.code}.ts"'
+        }
+    )
+
+
+@router.get("/api/admin/languages/stored", response_model=StoredLanguagesListResponse)
+async def list_stored_languages(
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin)
+):
+    """
+    Liste toutes les langues stockées en base de données.
+    """
+    languages = session.scalars(
+        select(Language).order_by(Language.code.asc())
+    ).all()
+
+    return StoredLanguagesListResponse(
+        languages=[
+            StoredLanguageResponse(
+                id=lang.id,
+                code=lang.code,
+                name=lang.name,
+                created_at=lang.created_at.isoformat(),
+                updated_at=lang.updated_at.isoformat()
+            )
+            for lang in languages
+        ]
+    )
+
+
+@router.get("/api/admin/languages/stored/{id}/download")
+async def download_stored_language(
+    id: int,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin)
+):
+    """
+    Télécharge le fichier de traduction d'une langue stockée en BD.
+    """
+    language = session.get(Language, id)
+    if not language:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Language with id {id} not found"
+        )
+
+    # Générer le fichier .ts depuis language.translations
+    file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {language.code}: TranslationDictionary = {{\n'
+    for key, value in language.translations.items():
+        escaped_value = str(value).replace('\\', '\\\\').replace('"', '\\"')
+        file_content += f'  "{key}": "{escaped_value}",\n'
+    file_content += '};\n'
+
+    return Response(
+        content=file_content,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f'attachment; filename="translations.{language.code}.ts"'
+        }
+    )
+
+
+@router.delete("/api/admin/languages/stored/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_stored_language(
+    id: int,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin)
+):
+    """
+    Supprime une langue stockée en base de données.
+    """
+    language = session.get(Language, id)
+    if not language:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Language with id {id} not found"
+        )
+
+    session.delete(language)
+    session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/api/admin/languages/stored/{id}/activate")
+async def activate_stored_language(
+    id: int,
+    session: Session = Depends(get_session),
+    _admin: User = Depends(require_admin)
+):
+    """
+    Active une langue stockée en BD en l'ajoutant au système de traduction.
+
+    Cette fonction :
+    1. Récupère la langue depuis la BD
+    2. Écrit le fichier translations.{code}.ts avec le nom de la langue
+    3. Ajoute le nom de la langue dans tous les fichiers existants
+    4. Met à jour translations.ts pour ajouter la langue à AVAILABLE_LANGUAGES
+    """
+    language = session.get(Language, id)
+    if not language:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Language with id {id} not found"
+        )
+
+    i18n_path = Path("/frontend/src/i18n")
+
+    # 1. Générer et écrire le fichier de traduction
+    translation_file = i18n_path / f"translations.{language.code}.ts"
+
+    file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {language.code}: TranslationDictionary = {{\n'
+    for key, value in language.translations.items():
+        escaped_value = str(value).replace('\\', '\\\\').replace('"', '\\"')
+        file_content += f'  "{key}": "{escaped_value}",\n'
+    file_content += '};\n'
+
+    try:
+        translation_file.write_text(file_content, encoding='utf-8')
+        logger.info(f"Written translation file: {translation_file}")
+    except Exception as e:
+        logger.exception(f"Failed to write translation file: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to write translation file: {str(e)}"
+        )
+
+    # 2. Mettre à jour translations.ts
+    main_file = i18n_path / "translations.ts"
+
+    try:
+        content = main_file.read_text(encoding='utf-8')
+
+        # Vérifier si la langue existe déjà
+        if f'"{language.code}"' in content.split('\n')[0]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Language {language.code} is already activated"
+            )
+
+        # Modifier la ligne du type Language
+        lines = content.split('\n')
+
+        # 1. Modifier la première ligne pour ajouter le code
+        if lines[0].startswith('export type Language = '):
+            # Extraire les codes existants
+            match = re.search(r'= (.+);', lines[0])
+            if match:
+                existing_codes = match.group(1)
+                # Ajouter le nouveau code
+                new_codes = f'{existing_codes.rstrip(";")} | "{language.code}";'
+                lines[0] = f'export type Language = {new_codes}'
+
+        # 2. Ajouter dans AVAILABLE_LANGUAGES (après la ligne avec "fr")
+        for i, line in enumerate(lines):
+            if '{ code: "fr"' in line:
+                # Trouver l'indentation
+                indent = '  '
+                # Insérer après cette ligne
+                lines.insert(i + 1, f'{indent}{{ code: "{language.code}", label: "{language.name}" }},')
+                break
+
+        # 3. Ajouter l'import (après les imports existants)
+        import_line = f'import {{ {language.code} }} from "./translations.{language.code}";'
+        for i, line in enumerate(lines):
+            if line.startswith('import { en }'):
+                lines.insert(i + 1, import_line)
+                break
+
+        # 4. Ajouter dans l'objet translations (avant la ligne avec "fr,")
+        for i, line in enumerate(lines):
+            if line.strip() == 'fr,':
+                indent = '  '
+                lines.insert(i + 1, f'{indent}{language.code},')
+                break
+
+        # Écrire le fichier modifié
+        new_content = '\n'.join(lines)
+        main_file.write_text(new_content, encoding='utf-8')
+        logger.info(f"Updated translations.ts to include {language.code}")
+
+        return {
+            "success": True,
+            "message": f"Language {language.code} ({language.name}) has been activated",
+            "code": language.code,
+            "name": language.name
+        }
+
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        error_msg = f"Failed to generate translation for {code}: {e}"
-        traceback_str = traceback.format_exc()
-        print(f"ERROR: {error_msg}")
-        print(f"TRACEBACK: {traceback_str}")
-        logger.exception(error_msg)
+        logger.exception(f"Failed to update translations.ts: {e}")
+        # Essayer de supprimer le fichier de traduction si on a échoué
+        try:
+            if translation_file.exists():
+                translation_file.unlink()
+        except:
+            pass
         raise HTTPException(
             status_code=500,
-            detail=f"Translation generation failed: {str(e)}"
+            detail=f"Failed to update translations.ts: {str(e)}"
         )
 
 

@@ -933,7 +933,7 @@ class LanguageGenerationTask(Base):
     )  # 0-100
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     language_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("languages.id"), nullable=True
+        Integer, ForeignKey("languages.id", ondelete="SET NULL"), nullable=True
     )
     file_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
