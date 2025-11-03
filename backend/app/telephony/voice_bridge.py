@@ -473,9 +473,9 @@ class TelephonyVoiceBridge:
 
                     event_type = type(event).__name__
 
-                    # Debug: log ALL audio and agent events
-                    if 'audio' in event_type.lower() or 'agent' in event_type.lower():
-                        logger.debug("📡 Event: %s", event_type)
+                    # Logging audio events is too verbose - disabled
+                    # if 'audio' in event_type.lower() or 'agent' in event_type.lower():
+                    #     logger.debug("📡 Event: %s", event_type)
 
                     # Debug: log ALL events to trace MCP tool calls
                     if 'tool' in event_type.lower() or 'function' in event_type.lower():
@@ -643,9 +643,7 @@ class TelephonyVoiceBridge:
                         # Only unblock audio if user is not currently speaking
                         if not user_speech_detected:
                             block_audio_send_ref[0] = False
-                            logger.debug("Agent arrête de parler - déblocage audio")
-                        else:
-                            logger.debug("Agent arrête de parler mais user parle encore - audio reste bloqué")
+                        # else: audio reste bloqué car user parle encore
 
                         # Tool call handling is now done immediately when detected (see history processing)
                         # No need for a delayed confirmation check here
@@ -705,7 +703,6 @@ class TelephonyVoiceBridge:
 
                     # Handle audio end
                     if isinstance(event, RealtimeAudioEnd):
-                        logger.debug("Agent a fini de parler")
                         continue
 
                     # Handle history updates (contains transcripts)

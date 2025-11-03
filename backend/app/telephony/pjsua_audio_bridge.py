@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from .pjsua_adapter import PJSUACall
 
 logger = logging.getLogger("chatkit.telephony.pjsua_audio_bridge")
-logger.setLevel(logging.DEBUG)  # Force DEBUG pour diagnostiquer l'audio
 
 
 class PJSUAAudioBridge:
@@ -90,8 +89,6 @@ class PJSUAAudioBridge:
                 if audio_8khz is None:
                     # No audio available, wait a bit
                     none_count += 1
-                    if none_count <= 10 or none_count % 100 == 0:
-                        logger.info("⏳ Attente audio: receive_audio_from_call retourne None (count=%d)", none_count)
                     await asyncio.sleep(0.01)  # 10ms
                     continue
 
@@ -107,10 +104,9 @@ class PJSUAAudioBridge:
                     logger.info("📥 Premier paquet audio reçu du téléphone - flux bidirectionnel confirmé (après %d None)", none_count)
                     self._first_packet_received.set()
 
-                # Log TOUS les paquets avec leur amplitude pour diagnostiquer le bruit
-                # Après les 50 premiers, on log seulement tous les 50 paquets
-                if packet_count < 50 or packet_count % 50 == 0:
-                    logger.info("📥 RTP stream #%d: reçu %d bytes @ 8kHz depuis PJSUA (max_amplitude=%d)",
+                # Log périodiquement pour monitoring
+                if packet_count < 5 or packet_count % 500 == 0:
+                    logger.debug("📥 RTP stream #%d: reçu %d bytes @ 8kHz depuis PJSUA (max_amplitude=%d)",
                                packet_count, len(audio_8khz), max_amplitude)
 
                 # Resample 8kHz → 24kHz
@@ -212,7 +208,7 @@ class PJSUAAudioBridge:
                 if max_amplitude < min_target_amplitude:
                     gain = min(min_target_amplitude / max_amplitude, 6.0)  # Limiter pour éviter saturation
                     audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
-                    logger.info("🔊 Audio amplifié (max=%d → %d, gain=%.1fx)",
+                    logger.debug("🔊 Audio amplifié (max=%d → %d, gain=%.1fx)",
                                max_amplitude, int(max_amplitude * gain), gain)
                 else:
                     gain = 1.0  # Pas d'amplification nécessaire
