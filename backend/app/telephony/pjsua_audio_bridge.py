@@ -171,8 +171,6 @@ class PJSUAAudioBridge:
         if len(audio_24khz) == 0:
             return
 
-        logger.debug("🔊 send_to_peer reçu %d bytes @ 24kHz depuis OpenAI", len(audio_24khz))
-
         # Resample 24kHz → 8kHz
         try:
             # ratecv renvoie également un état qui permet de préserver la continuité entre les chunks.
@@ -185,7 +183,6 @@ class PJSUAAudioBridge:
                 self.PJSUA_SAMPLE_RATE,
                 self._send_to_peer_state,
             )
-            logger.debug("✅ Resamplé à %d bytes @ 8kHz", len(audio_8khz))
         except audioop.error as e:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
             self._send_to_peer_state = None
@@ -196,7 +193,6 @@ class PJSUAAudioBridge:
         try:
             max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
             if max_amplitude < self._silence_threshold:
-                logger.debug("🔇 Audio sous le seuil de silence (max=%d), envoi silence", max_amplitude)
                 audio_8khz = bytes(len(audio_8khz))
                 max_amplitude = 0
                 gain = 0.0
@@ -208,12 +204,6 @@ class PJSUAAudioBridge:
                 if max_amplitude < min_target_amplitude:
                     gain = min(min_target_amplitude / max_amplitude, 6.0)  # Limiter pour éviter saturation
                     audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
-                    logger.debug("🔊 Audio amplifié (max=%d → %d, gain=%.1fx)",
-                               max_amplitude, int(max_amplitude * gain), gain)
-                else:
-                    gain = 1.0  # Pas d'amplification nécessaire
-                    logger.debug("🔊 Audio transmis sans amplification (max=%d, gain=%.1fx)",
-                               max_amplitude, gain)
         except audioop.error as e:
             logger.warning("Audio processing error: %s", e)
 
@@ -224,7 +214,6 @@ class PJSUAAudioBridge:
             for i in range(0, len(audio_8khz), chunk_size):
                 chunk = audio_8khz[i:i + chunk_size]
                 self._adapter.send_audio_to_call(self._call, chunk)
-                logger.debug("📤 Chunk %d bytes envoyé vers PJSUA queue", len(chunk))
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
