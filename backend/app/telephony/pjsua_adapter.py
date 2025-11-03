@@ -167,6 +167,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._audio_frame_count = 0
         self._silence_frame_count = 0
 
+        # CRITIQUE: Initialiser explicitement les compteurs de callbacks PJSUA
+        # Si on ne fait pas ça, PJSUA peut réutiliser l'objet C++ et les compteurs persistent entre appels
+        self._frame_requested_count = 0
+        self._frame_received_count = 0
+
         # Flag pour arrêter le traitement après la déconnexion de l'appel
         self._active = True
 
