@@ -943,9 +943,15 @@ class PJSUAAdapter:
         except Exception as e:
             logger.debug("Erreur reset EC (call_id=%s): %s", call_id, e)
 
-        # Nettoyer les références locales du call
+        # Nettoyer les références locales du call ET la référence globale de l'adaptateur
         call._audio_port = None
         call._audio_media = None
+
+        # CRITIQUE: Nettoyer aussi la référence globale pour éviter les références fantômes
+        if hasattr(call, 'adapter') and hasattr(call.adapter, '_global_audio_port'):
+            call.adapter._global_audio_port = None
+            logger.debug("🧹 Référence globale _global_audio_port nettoyée")
+
         logger.info("✅ Ressources audio complètement nettoyées (call_id=%s)", call_id)
 
     def _dispose_call_object(self, call: PJSUACall, call_id: int) -> None:
