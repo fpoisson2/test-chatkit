@@ -93,12 +93,24 @@ export const AdminLanguagesPage = () => {
   const [showPromptEditor, setShowPromptEditor] = useState(false);
 
   // Task tracking
-  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(() => {
+    // Restore task ID from localStorage on page load
+    return localStorage.getItem('languageGenerationTaskId');
+  });
   const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
 
   // Stored languages
   const [storedLanguages, setStoredLanguages] = useState<StoredLanguage[]>([]);
   const [loadingStored, setLoadingStored] = useState(false);
+
+  // Persist currentTaskId to localStorage
+  useEffect(() => {
+    if (currentTaskId) {
+      localStorage.setItem('languageGenerationTaskId', currentTaskId);
+    } else {
+      localStorage.removeItem('languageGenerationTaskId');
+    }
+  }, [currentTaskId]);
 
   const loadLanguages = useCallback(async () => {
     if (!token) {
@@ -422,9 +434,21 @@ export const AdminLanguagesPage = () => {
     void loadStoredLanguages();
   }, [loadLanguages, loadAvailableModels, loadDefaultPrompt, loadStoredLanguages]);
 
+  // Load task status on mount if a task ID exists
+  useEffect(() => {
+    if (currentTaskId && !taskStatus) {
+      void pollTaskStatus(currentTaskId);
+    }
+  }, [currentTaskId, taskStatus, pollTaskStatus]);
+
   // Polling pour le statut de la tâche
   useEffect(() => {
     if (!currentTaskId) {
+      return;
+    }
+
+    // Don't poll if task is already completed or failed
+    if (taskStatus && (taskStatus.status === 'completed' || taskStatus.status === 'failed')) {
       return;
     }
 
@@ -436,7 +460,7 @@ export const AdminLanguagesPage = () => {
     void pollTaskStatus(currentTaskId);
 
     return () => clearInterval(interval);
-  }, [currentTaskId, pollTaskStatus]);
+  }, [currentTaskId, taskStatus, pollTaskStatus]);
 
   const handleFormChange = (field: keyof LanguageFormState, value: string | boolean) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
