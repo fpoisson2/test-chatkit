@@ -751,10 +751,15 @@ class TelephonyVoiceBridge:
                                 logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone (découpé en chunks de %d bytes)",
                                            len(pcm_data), CHUNK_SIZE)
 
-                                # Découper et envoyer en petits morceaux
-                                for i in range(0, len(pcm_data), CHUNK_SIZE):
-                                    chunk = pcm_data[i:i + CHUNK_SIZE]
+                                # Découper et envoyer en petits morceaux avec délai entre chunks
+                                # pour laisser PJSUA consommer progressivement (éviter queue overflow)
+                                chunks = [pcm_data[i:i + CHUNK_SIZE] for i in range(0, len(pcm_data), CHUNK_SIZE)]
+                                for idx, chunk in enumerate(chunks):
                                     await send_to_peer(chunk)
+                                    # Attendre 60ms entre chunks (3 frames) pour laisser PJSUA pull
+                                    # Sauf pour le dernier chunk où on n'attend pas
+                                    if idx < len(chunks) - 1:
+                                        await asyncio.sleep(0.06)  # 60ms = 3 frames @ 20ms
 
                                 # Now update the playback tracker so OpenAI knows when audio was played
                                 # This is critical for proper interruption handling!
