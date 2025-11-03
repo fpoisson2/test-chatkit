@@ -350,6 +350,16 @@ class TelephonyVoiceBridge:
             # Track if we've sent response.create when phone became ready
             response_create_sent_on_ready = False
 
+            # Seuil d'amplitude pour détecter du vrai audio (pas du bruit/silence)
+            # Utilise le même seuil que pour l'audio sortant (ligne 57)
+            silence_threshold = 250
+
+            # Si speak_first est activé, ignorer l'audio entrant pendant les 500 premières ms
+            # pour laisser l'agent parler sans être interrompu par du bruit de connexion
+            initial_silence_duration_ms = 500 if speak_first else 0
+            # À 24kHz PCM16: 20ms = 960 bytes, donc 500ms = 25 paquets
+            packets_to_silence = int(initial_silence_duration_ms / 20) if speak_first else 0
+
             try:
                 async for packet in rtp_stream:
                     packet_count += 1
@@ -383,6 +393,30 @@ class TelephonyVoiceBridge:
                                 logger.info("✅ response.create envoyé en fallback")
                             except Exception as exc:
                                 logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
+
+                    # Filtrer le bruit/silence pour éviter de déclencher le VAD à tort
+                    # Calculer l'amplitude max du paquet
+                    try:
+                        max_amplitude = audioop.max(pcm, 2)  # 2 = bytes per sample (PCM16)
+                    except audioop.error:
+                        max_amplitude = 0
+
+                    # Si speak_first est activé, remplacer les premiers paquets par du silence
+                    # pour garantir que l'agent puisse parler sans interruption
+                    if speak_first and packet_count <= packets_to_silence:
+                        if packet_count == 1:
+                            logger.info("🔇 speak_first activé: envoi de silence pendant %dms (%d paquets) pour laisser l'agent parler",
+                                      initial_silence_duration_ms, packets_to_silence)
+                        # Remplacer par du vrai silence (tous les bytes à 0)
+                        pcm = bytes(len(pcm))
+                        max_amplitude = 0
+                    # Sinon, si l'amplitude est trop faible, remplacer par du silence
+                    elif max_amplitude < silence_threshold:
+                        # Remplacer par du vrai silence pour ne pas déclencher le VAD
+                        pcm = bytes(len(pcm))
+                        if packet_count <= 10:  # Log seulement pour les 10 premiers paquets
+                            logger.debug("🔇 Paquet #%d silencé (amplitude=%d < threshold=%d)",
+                                       packet_count, max_amplitude, silence_threshold)
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
