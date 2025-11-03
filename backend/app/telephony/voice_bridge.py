@@ -7,6 +7,7 @@ import audioop
 import base64
 import json
 import logging
+import random
 import struct
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
@@ -398,21 +399,32 @@ class TelephonyVoiceBridge:
                         # que le canal bidirectionnel est confirmé
                         if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             try:
-                                # 1. D'abord, envoyer des frames de silence pour amorcer le pipeline audio
+                                # 1. D'abord, envoyer des frames de comfort noise pour amorcer le pipeline audio
                                 # Cela évite que les premières millisecondes d'audio réel soient perdues
                                 # et permet au jitter buffer du téléphone de se stabiliser
+                                # Le comfort noise est préférable au silence pur car certains codecs/jitter buffers
+                                # le gèrent mieux et les algorithmes VAD peuvent mieux se calibrer
                                 silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
                                 num_silence_frames = 30  # 30 frames = 600ms pour stabiliser le jitter buffer et le chemin RTP
-                                silence_frame = b'\x00' * silence_frame_size
+                                # Générer du comfort noise (bruit de faible amplitude) au lieu du silence pur
+                                # Amplitude typique pour comfort noise: -60 dBFS à -50 dBFS
+                                # Pour PCM16: max = 32767, donc -60 dBFS ≈ amplitude de 32
+                                comfort_noise_amplitude = 32
+                                # PCM16 = 16-bit signed integers, little-endian
+                                num_samples = silence_frame_size // 2  # 2 bytes per sample
+                                silence_frame = struct.pack(
+                                    f'<{num_samples}h',  # little-endian signed shorts
+                                    *[random.randint(-comfort_noise_amplitude, comfort_noise_amplitude) for _ in range(num_samples)]
+                                )
 
-                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence pour amorcer", num_silence_frames)
+                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de comfort noise pour amorcer", num_silence_frames)
                                 for i in range(num_silence_frames):
                                     await send_to_peer(silence_frame)
                                     # Pas de délai - envoyer rapidement pour saturer le buffer
                                     if i % 3 == 2:  # Petit yield tous les 3 frames pour ne pas bloquer
                                         await asyncio.sleep(0.001)
 
-                                logger.info("✅ Pipeline audio amorcé avec %d frames de silence", num_silence_frames)
+                                logger.info("✅ Pipeline audio amorcé avec %d frames de comfort noise", num_silence_frames)
 
                                 # 2. PUIS, envoyer response.create maintenant que le canal est amorcé
                                 from agents.realtime.model_inputs import (
