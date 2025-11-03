@@ -380,6 +380,7 @@ class TelephonyVoiceBridge:
             nonlocal inbound_audio_bytes, response_create_sent_immediately
             packet_count = 0
             silence_count = 0
+            stabilization_logged = False
             # Note: turn_detection est déjà activé dans la configuration initiale de session (_build_session_update)
             # Track if we've sent response.create when phone became ready
             response_create_sent_on_ready = False
@@ -405,9 +406,10 @@ class TelephonyVoiceBridge:
                         continue
 
                     # Si on arrive ici avec un vrai audio après avoir ignoré du silence
-                    if silence_count > 0:
+                    if silence_count > 0 and not stabilization_logged:
                         logger.info("✅ Conference bridge stabilisé après %d paquets de silence - début envoi audio à OpenAI",
                                    silence_count)
+                        stabilization_logged = True
 
                     inbound_audio_bytes += len(pcm)
 
