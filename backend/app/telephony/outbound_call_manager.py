@@ -362,7 +362,7 @@ class OutboundCallManager:
 
             # Démarrer la session vocale (similaire au code existant)
             await self._run_voice_session_pjsua(
-                db, session, call_db_id, rtp_stream, send_to_peer_blocked, clear_queue, pjsua_ready_event
+                db, session, call_db_id, rtp_stream, send_to_peer_blocked, clear_queue, first_packet_event, pjsua_ready_event
             )
 
         except Exception as e:
@@ -421,6 +421,7 @@ class OutboundCallManager:
         rtp_stream: Any,
         send_to_peer: Any,
         clear_queue: Any,
+        first_packet_event: asyncio.Event,
         pjsua_ready_event: asyncio.Event,
     ) -> None:
         """Exécute la session vocale avec PJSUA audio bridge."""

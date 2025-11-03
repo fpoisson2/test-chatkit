@@ -150,17 +150,16 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self.frame_size_bytes = self.samples_per_frame * 2  # 320 bytes
 
         # Files pour l'audio
-        # Buffer de 1000 frames = 20 secondes @ 20ms/frame
-        # Grande capacité nécessaire:
-        # - OpenAI envoie en très gros bursts (plusieurs centaines de ms d'audio d'un coup)
-        # - PJSUA consomme à taux fixe (20ms/frame)
-        # - Queue absorbe les bursts sans perdre de paquets
-        # - Préférer latence plutôt que perte audio (coupures audibles)
-        # - Tests montrent que 1000 frames évite les "⚠️ Queue audio sortante pleine"
+        # Buffer de 1000 frames = 20 secondes @ 20ms/frame (capacité physique)
+        # Mais limitation active via _max_outgoing_frames et _burst_limit
         self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
-        self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone - buffer large
-        # Limite soft de latence : 120 frames ≈ 2.4 secondes (20 ms par frame)
-        self._max_outgoing_frames = 120
+        self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone - capacité physique
+
+        # Limites de latence pour éviter l'accumulation excessive d'audio:
+        # - Limite max : 10-12 frames ≈ 200-240ms (après onFrameRequested)
+        # - Limite burst : 6-8 frames ≈ 120-160ms (avant onFrameRequested)
+        self._max_outgoing_frames = 12  # Limite après que PJSUA soit prêt
+        self._burst_limit = 8  # Limite avant le premier onFrameRequested
 
         # Compteurs pour diagnostics
         self._frame_count = 0
@@ -357,7 +356,12 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 logger.warning("⚠️ Frame reçue mais type=%s ou buf vide", frame.type)
 
     def send_audio(self, audio_data: bytes) -> None:
-        """Envoie de l'audio vers le téléphone (appelé depuis l'async loop)."""
+        """Envoie de l'audio vers le téléphone (appelé depuis l'async loop).
+
+        Cette méthode implémente une stratégie de bufferisation adaptative :
+        - AVANT onFrameRequested : burst initial limité (6-8 frames) puis drop
+        - APRÈS onFrameRequested : bufferisation normale (10-12 frames max)
+        """
         if not self._active:
             return
 
@@ -373,8 +377,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                     # padding avec silence pour compléter la frame
                     chunk = chunk + b'\x00' * (chunk_size - len(chunk))
 
+                # Déterminer la limite active basée sur si PJSUA a commencé à consommer
+                current_limit = self._burst_limit if self._frame_requested_count == 0 else self._max_outgoing_frames
+
                 # Maintenir une latence faible en limitant la taille de la file
-                while self._outgoing_audio_queue.qsize() >= self._max_outgoing_frames:
+                while self._outgoing_audio_queue.qsize() >= current_limit:
                     try:
                         self._outgoing_audio_queue.get_nowait()
                         dropped_frames += 1
@@ -388,15 +395,21 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             if queued_chunks and self._audio_frame_count < 5:
                 first_chunk = audio_data[:min(20, len(audio_data))]
                 is_silence = all(b == 0 for b in first_chunk)
+                current_limit = self._burst_limit if self._frame_requested_count == 0 else self._max_outgoing_frames
                 logger.info(
-                    "📥 send_audio: %d bytes découpés en %d frames (queue: %d) - %s",
+                    "📥 send_audio: %d bytes découpés en %d frames (queue: %d, limite: %d, pjsua_ready: %s) - %s",
                     len(audio_data),
                     queued_chunks,
                     self._outgoing_audio_queue.qsize(),
+                    current_limit,
+                    "oui" if self._frame_requested_count > 0 else "non",
                     "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(first_chunk)})",
                 )
             if dropped_frames:
-                logger.warning("⚠️ Queue audio sortante saturée, %d frame(s) abandonnée(s) pour réduire la latence", dropped_frames)
+                current_limit = self._burst_limit if self._frame_requested_count == 0 else self._max_outgoing_frames
+                logger.warning("⚠️ Queue audio saturée (%s), %d frame(s) droppée(s) (limite: %d frames)",
+                             "avant onFrameRequested" if self._frame_requested_count == 0 else "après onFrameRequested",
+                             dropped_frames, current_limit)
         except queue.Full:
             logger.warning("⚠️ Queue audio sortante pleine, frames ignorées")
 
