@@ -685,6 +685,7 @@ class TelephonyVoiceBridge:
                         if not block_audio_send_ref[0]:
                             if pcm_data:
                                 outbound_audio_bytes += len(pcm_data)
+                                logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
                                 # Send audio and wait until it's actually sent via RTP
                                 await send_to_peer(pcm_data)
                                 # Now update the playback tracker so OpenAI knows when audio was played
@@ -694,6 +695,8 @@ class TelephonyVoiceBridge:
                                     event.content_index,
                                     pcm_data
                                 )
+                        else:
+                            logger.debug("🛑 Audio bloqué (block_audio_send=%s)", block_audio_send_ref[0])
                         continue
 
                     # Handle audio end

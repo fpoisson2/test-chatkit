@@ -171,6 +171,8 @@ class PJSUAAudioBridge:
         if len(audio_24khz) == 0:
             return
 
+        logger.debug("📤 send_to_peer appelé avec %d bytes @ 24kHz", len(audio_24khz))
+
         # Resample 24kHz → 8kHz
         try:
             # ratecv renvoie également un état qui permet de préserver la continuité entre les chunks.
@@ -210,10 +212,13 @@ class PJSUAAudioBridge:
         # Send to PJSUA in chunks of 320 bytes (20ms @ 8kHz, 16-bit, mono)
         # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes
         chunk_size = 320
+        chunks_sent = 0
         try:
             for i in range(0, len(audio_8khz), chunk_size):
                 chunk = audio_8khz[i:i + chunk_size]
                 self._adapter.send_audio_to_call(self._call, chunk)
+                chunks_sent += 1
+            logger.debug("✅ Envoyé %d chunks @ 8kHz vers PJSUA (total: %d bytes)", chunks_sent, len(audio_8khz))
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
