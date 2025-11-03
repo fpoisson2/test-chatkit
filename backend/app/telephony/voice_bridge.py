@@ -394,26 +394,12 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                        # Si speak_first est activé, amorcer le canal et envoyer response.create MAINTENANT
+                        # Si speak_first est activé, envoyer response.create MAINTENANT
                         # que le canal bidirectionnel est confirmé
                         if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             try:
-                                # 1. D'abord, envoyer des frames de silence pour amorcer le pipeline audio
-                                # Cela évite que les premières millisecondes d'audio réel soient perdues
-                                silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
-                                num_silence_frames = 6  # ~120ms suffit pour stabiliser le pipeline
-                                silence_frame = b'\x00' * silence_frame_size
-
-                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence pour amorcer", num_silence_frames)
-                                for i in range(num_silence_frames):
-                                    await send_to_peer(silence_frame)
-                                    # Pas de délai - envoyer rapidement pour saturer le buffer
-                                    if i % 3 == 2:  # Petit yield tous les 3 frames pour ne pas bloquer
-                                        await asyncio.sleep(0.001)
-
-                                logger.info("✅ Pipeline audio amorcé avec %d frames de silence", num_silence_frames)
-
-                                # 2. PUIS, envoyer response.create maintenant que le canal est amorcé
+                                # Envoi direct de response.create sans amorçage par silence
+                                # (amorçage retiré car causait du lag au 2ème appel)
                                 from agents.realtime.model_inputs import (
                                     RealtimeModelRawClientMessage,
                                     RealtimeModelSendRawMessage,
@@ -427,9 +413,9 @@ class TelephonyVoiceBridge:
                                     )
                                 )
                                 response_create_sent_on_ready = True
-                                logger.info("✅ response.create envoyé après amorçage du canal - l'assistant génère l'audio")
+                                logger.info("✅ response.create envoyé directement - l'assistant génère l'audio")
                             except Exception as exc:
-                                logger.warning("⚠️ Erreur lors de l'amorçage et envoi response.create: %s", exc)
+                                logger.warning("⚠️ Erreur lors de l'envoi response.create: %s", exc)
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
