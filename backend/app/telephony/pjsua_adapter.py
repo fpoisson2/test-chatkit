@@ -378,7 +378,8 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                     chunk = chunk + b'\x00' * (chunk_size - len(chunk))
 
                 # Déterminer la limite active basée sur si PJSUA a commencé à consommer
-                current_limit = self._burst_limit if self._frame_requested_count == 0 else self._max_outgoing_frames
+                # Utilise _frame_count (incrémenté dans onFrameRequested) pas _frame_requested_count
+                current_limit = self._burst_limit if self._frame_count == 0 else self._max_outgoing_frames
 
                 # Maintenir une latence faible en limitant la taille de la file
                 while self._outgoing_audio_queue.qsize() >= current_limit:
@@ -395,20 +396,20 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             if queued_chunks and self._audio_frame_count < 5:
                 first_chunk = audio_data[:min(20, len(audio_data))]
                 is_silence = all(b == 0 for b in first_chunk)
-                current_limit = self._burst_limit if self._frame_requested_count == 0 else self._max_outgoing_frames
+                current_limit = self._burst_limit if self._frame_count == 0 else self._max_outgoing_frames
                 logger.info(
                     "📥 send_audio: %d bytes découpés en %d frames (queue: %d, limite: %d, pjsua_ready: %s) - %s",
                     len(audio_data),
                     queued_chunks,
                     self._outgoing_audio_queue.qsize(),
                     current_limit,
-                    "oui" if self._frame_requested_count > 0 else "non",
+                    "oui" if self._frame_count > 0 else "non",
                     "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(first_chunk)})",
                 )
             if dropped_frames:
-                current_limit = self._burst_limit if self._frame_requested_count == 0 else self._max_outgoing_frames
+                current_limit = self._burst_limit if self._frame_count == 0 else self._max_outgoing_frames
                 logger.warning("⚠️ Queue audio saturée (%s), %d frame(s) droppée(s) (limite: %d frames)",
-                             "avant onFrameRequested" if self._frame_requested_count == 0 else "après onFrameRequested",
+                             "avant onFrameRequested" if self._frame_count == 0 else "après onFrameRequested",
                              dropped_frames, current_limit)
         except queue.Full:
             logger.warning("⚠️ Queue audio sortante pleine, frames ignorées")
