@@ -643,12 +643,16 @@ class PJSUAAdapter:
         """Arrête proprement PJSUA."""
         self._running = False
 
-        # Terminer tous les appels actifs
-        for call in list(self._active_calls.values()):
+        # Terminer tous les appels actifs avec nettoyage complet
+        call_ids = list(self._active_calls.keys())
+        logger.info("Arrêt de %d appel(s) actif(s)", len(call_ids))
+
+        for call_id in call_ids:
             try:
-                await self.hangup_call(call)
+                # Utiliser cleanup_call pour un nettoyage complet
+                await self.cleanup_call(call_id)
             except Exception as e:
-                logger.exception("Erreur lors de la terminaison de l'appel: %s", e)
+                logger.exception("Erreur lors du nettoyage de l'appel %s: %s", call_id, e)
 
         # Détruire le compte
         if self._account:
@@ -696,9 +700,16 @@ class PJSUAAdapter:
             await self._incoming_call_callback(call, call_info)
 
     async def _on_call_state(self, call: PJSUACall, call_info: Any) -> None:
-        """Callback interne pour les changements d'état d'appel."""
+        """Callback interne pour les changements d'état d'appel.
+
+        Note: Ce callback est appelé quand PJSUA signale un changement d'état.
+        Pour DISCONNECTED, on fait un nettoyage immédiat sans délai car PJSUA
+        a déjà terminé son propre nettoyage interne.
+        """
         # Nettoyer les appels terminés
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+            logger.info("📞 Appel DISCONNECTED détecté - nettoyage immédiat (call_id=%s)", call_info.id)
+
             self._active_calls.pop(call_info.id, None)
 
             # IMPORTANT: Arrêter l'audio bridge d'abord pour stopper le RTP stream
@@ -707,7 +718,7 @@ class PJSUAAdapter:
                     logger.info("🛑 Arrêt de l'audio bridge (call_id=%s)", call_info.id)
                     call._audio_bridge.stop()
                 except Exception as e:
-                    logger.warning("Erreur arrêt audio bridge: %s", e)
+                    logger.warning("Erreur arrêt audio bridge (call_id=%s): %s", call_info.id, e)
                 finally:
                     call._audio_bridge = None
 
@@ -723,7 +734,7 @@ class PJSUAAdapter:
                     # Note: stopTransmit() nécessiterait l'audio_media comme argument
                     # et de toute façon le port sera détruit, donc pas nécessaire
                 except Exception as e:
-                    logger.warning("Erreur désactivation port audio: %s", e)
+                    logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_info.id, e)
                 finally:
                     call._audio_port = None
 
@@ -780,6 +791,82 @@ class PJSUAAdapter:
             else:
                 # Réemettre l'exception si c'est une autre erreur
                 raise
+
+    async def cleanup_call(self, call_id: int) -> None:
+        """Nettoie proprement une session d'appel PJSUA.
+
+        Attend un délai avant de nettoyer pour laisser PJSUA terminer proprement,
+        puis nettoie les ressources audio et raccroche l'appel si nécessaire.
+
+        Args:
+            call_id: ID de l'appel à nettoyer
+        """
+        try:
+            # Attendre un peu avant de nettoyer pour laisser PJSUA terminer
+            await asyncio.sleep(0.5)
+
+            # Récupérer l'appel depuis active_calls
+            call = self._active_calls.get(call_id)
+            if not call:
+                logger.debug("Appel %s déjà nettoyé ou introuvable", call_id)
+                return
+
+            logger.info("🧹 Début nettoyage appel (call_id=%s)", call_id)
+
+            # Arrêter l'audio bridge d'abord (si attaché dynamiquement à l'appel)
+            if hasattr(call, '_audio_bridge') and call._audio_bridge:
+                try:
+                    logger.info("🛑 Arrêt de l'audio bridge (call_id=%s)", call_id)
+                    call._audio_bridge.stop()
+                except Exception as e:
+                    logger.warning("Erreur arrêt audio bridge (call_id=%s): %s", call_id, e)
+                finally:
+                    call._audio_bridge = None
+
+            # Désactiver le port audio
+            if call._audio_port:
+                try:
+                    logger.info("🛑 Désactivation du port audio (call_id=%s)", call_id)
+                    call._audio_port.deactivate()
+                except Exception as e:
+                    logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_id, e)
+                finally:
+                    call._audio_port = None
+
+            # Vérifier l'état avant de hangup
+            if call and self._is_call_valid(call):
+                try:
+                    logger.info("📞 Hangup de l'appel (call_id=%s)", call_id)
+                    await self.hangup_call(call)
+                except Exception as e:
+                    logger.warning("Erreur hangup (call_id=%s): %s", call_id, e)
+
+            # Retirer de active_calls
+            self._active_calls.pop(call_id, None)
+            logger.info("✅ Nettoyage terminé (call_id=%s)", call_id)
+
+        except Exception as e:
+            logger.warning("Erreur cleanup (call_id=%s): %s", call_id, e)
+
+    def _is_call_valid(self, call: PJSUACall) -> bool:
+        """Vérifie si un appel est toujours valide et peut être raccroché.
+
+        Args:
+            call: L'appel PJSUA à vérifier
+
+        Returns:
+            True si l'appel est valide et peut être raccroché, False sinon
+        """
+        if not PJSUA_AVAILABLE or not call:
+            return False
+
+        try:
+            ci = call.getInfo()
+            # Vérifier si l'appel n'est pas déjà terminé
+            return ci.state != pj.PJSIP_INV_STATE_DISCONNECTED
+        except Exception:
+            # Si getInfo() échoue, l'appel n'est pas valide
+            return False
 
     async def make_call(self, dest_uri: str) -> PJSUACall:
         """Initie un appel sortant."""

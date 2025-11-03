@@ -384,24 +384,37 @@ class OutboundCallManager:
                 failure_reason=str(e),
             )
         finally:
-            # Nettoyer
-            # 1. Arrêter l'audio bridge d'abord
+            # Nettoyer les ressources de la session
+            logger.info("🧹 Début nettoyage session appel %s", session.call_id)
+
+            # 1. Arrêter l'audio bridge de la session d'abord
             if hasattr(session, '_audio_bridge') and session._audio_bridge:
                 try:
-                    logger.info("Stopping audio bridge for call %s", session.call_id)
+                    logger.info("🛑 Arrêt audio bridge session (call_id=%s)", session.call_id)
                     session._audio_bridge.stop()
                 except Exception as e:
-                    logger.warning("Error stopping audio bridge: %s", e)
+                    logger.warning("Erreur arrêt audio bridge session (call_id=%s): %s", session.call_id, e)
+                finally:
+                    session._audio_bridge = None
 
-            # 2. Raccrocher l'appel PJSUA
+            # 2. Nettoyer l'appel PJSUA avec la méthode dédiée
             if session._pjsua_call:
                 try:
-                    await self._pjsua_adapter.hangup_call(session._pjsua_call)
+                    # Récupérer l'ID de l'appel PJSUA
+                    call_info = session._pjsua_call.getInfo()
+                    pjsua_call_id = call_info.id
+                    logger.info("🧹 Nettoyage appel PJSUA (call_id=%s, pjsua_id=%s)", session.call_id, pjsua_call_id)
+                    await self._pjsua_adapter.cleanup_call(pjsua_call_id)
                 except Exception as e:
-                    logger.warning("Error hanging up PJSUA call: %s", e)
+                    logger.warning("Erreur nettoyage appel PJSUA (call_id=%s): %s", session.call_id, e)
+                finally:
+                    session._pjsua_call = None
 
+            # 3. Marquer la session comme terminée
             session.mark_complete()
             self.active_calls.pop(session.call_id, None)
+
+            logger.info("✅ Nettoyage session terminé (call_id=%s)", session.call_id)
 
     async def _run_voice_session_pjsua(
         self,
