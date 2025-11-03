@@ -327,9 +327,24 @@ class TelephonyVoiceBridge:
                 )
                 return True
 
+        # Flag pour s'assurer que request_stop() n'est appelé qu'une seule fois
+        stop_requested = [False]
+
         async def request_stop() -> None:
             """Request immediate stop of both audio forwarding and event handling."""
+            # Éviter les nettoyages multiples
+            if stop_requested[0]:
+                logger.debug("request_stop() déjà appelé, ignorer")
+                return
+            stop_requested[0] = True
+
             stop_event.set()
+
+            # Si la session n'est pas encore créée, ne rien faire
+            if session is None:
+                logger.debug("Session non créée, ignorer request_stop()")
+                return
+
             # Annuler toute réponse en cours pour éviter le "saignement" audio entre sessions
             try:
                 from agents.realtime.model_inputs import RealtimeModelSendRawMessage
@@ -339,8 +354,11 @@ class TelephonyVoiceBridge:
                     )
                 )
                 logger.debug("✅ Réponse en cours annulée avant fermeture")
+            except asyncio.CancelledError:
+                logger.debug("response.cancel annulé (task en cours d'annulation)")
             except Exception as e:
                 logger.debug("response.cancel échoué (peut-être pas de réponse active): %s", e)
+
             # Vider le buffer audio d'entrée pour éviter des données résiduelles
             try:
                 from agents.realtime.model_inputs import RealtimeModelSendRawMessage
@@ -350,6 +368,8 @@ class TelephonyVoiceBridge:
                     )
                 )
                 logger.debug("✅ Buffer audio d'entrée vidé avant fermeture")
+            except asyncio.CancelledError:
+                logger.debug("input_audio_buffer.clear annulé (task en cours d'annulation)")
             except Exception as e:
                 logger.debug("input_audio_buffer.clear échoué: %s", e)
             # Note: Ne pas fermer la session ici car __aexit__ doit être appelé depuis la même tâche que __aenter__
@@ -915,15 +935,23 @@ class TelephonyVoiceBridge:
                     for task in pending:
                         task.cancel()
 
-                    # Attendre que la tâche annulée se termine proprement
+                    # Attendre que les tâches annulées se terminent proprement (ignorer CancelledError)
                     if pending:
-                        await asyncio.wait(pending)
+                        try:
+                            await asyncio.gather(*pending, return_exceptions=True)
+                        except Exception as gather_exc:
+                            logger.debug("Erreur lors de l'attente des tâches annulées: %s", gather_exc)
 
                     # Vérifier si une des tâches terminées a levé une exception
                     for task in done:
-                        if task.exception() is not None:
-                            error = task.exception()
-                            logger.error("Erreur dans tâche: %s", error)
+                        try:
+                            exc = task.exception()
+                            if exc is not None:
+                                error = exc
+                                logger.error("Erreur dans tâche: %s", error)
+                        except asyncio.CancelledError:
+                            # Tâche annulée, c'est normal
+                            pass
 
                 except Exception as exc:
                     error = exc
@@ -932,9 +960,12 @@ class TelephonyVoiceBridge:
                         if not task.done():
                             task.cancel()
                     # Attendre que les tâches annulées se terminent
-                    await asyncio.gather(
-                        audio_task, events_task, return_exceptions=True
-                    )
+                    try:
+                        await asyncio.gather(
+                            audio_task, events_task, return_exceptions=True
+                        )
+                    except Exception as gather_exc:
+                        logger.debug("Erreur lors de l'attente des tâches annulées: %s", gather_exc)
                 # Le context manager ferme automatiquement la session ici, proprement depuis la même tâche
                 logger.debug("Session SDK fermée automatiquement par le context manager")
         except Exception as exc:

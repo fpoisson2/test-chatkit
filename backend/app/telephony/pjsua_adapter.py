@@ -751,9 +751,28 @@ class PJSUAAdapter:
         if not PJSUA_AVAILABLE:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
-        prm = pj.CallOpParam()
-        call.hangup(prm)
-        logger.info("Appel terminé")
+        # Vérifier si l'appel est déjà terminé pour éviter les erreurs "INVITE session already terminated"
+        try:
+            ci = call.getInfo()
+            if ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+                logger.debug("Appel déjà terminé (call_id=%s), ignorer hangup", ci.id)
+                return
+        except Exception as e:
+            logger.debug("Impossible de vérifier l'état de l'appel: %s", e)
+            # Si on ne peut pas vérifier l'état, on essaie quand même
+
+        try:
+            prm = pj.CallOpParam()
+            call.hangup(prm)
+            logger.info("Appel terminé")
+        except Exception as e:
+            # Ignorer les erreurs si l'appel est déjà terminé
+            error_str = str(e).lower()
+            if "already terminated" in error_str or "esessionterminated" in error_str:
+                logger.debug("Appel déjà terminé, erreur ignorée: %s", e)
+            else:
+                # Réemettre l'exception si c'est une autre erreur
+                raise
 
     async def make_call(self, dest_uri: str) -> PJSUACall:
         """Initie un appel sortant."""
