@@ -357,9 +357,22 @@ class PJSUAAudioBridge:
                     frames_enqueued += 1
                     total_frames_enqueued += 1
 
-                # CRITIQUE: Yield à l'event loop entre chaque chunk
-                # Permet à onFrameRequested() de s'exécuter régulièrement
-                await asyncio.sleep(0)
+                # CRITIQUE: Throttling adaptatif pour éviter l'inondation du buffer
+                # Si la queue est déjà grande, attendre un peu pour laisser le consommateur rattraper
+                current_queue_size = len(self._tx_queue)
+
+                if current_queue_size > 50:
+                    # Queue très pleine (> 1 seconde): attendre 20ms pour laisser consommer
+                    await asyncio.sleep(0.020)
+                elif current_queue_size > 25:
+                    # Queue moyennement pleine (> 500ms): attendre 10ms
+                    await asyncio.sleep(0.010)
+                elif current_queue_size > 10:
+                    # Queue commence à se remplir (> 200ms): attendre 5ms
+                    await asyncio.sleep(0.005)
+                else:
+                    # Queue normale: juste yield à l'event loop
+                    await asyncio.sleep(0)
 
             # Log périodique pour monitoring
             if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
