@@ -878,41 +878,38 @@ class TelephonyVoiceBridge:
 
             # Create session using the SDK runner (this is what enables tool calls!)
             # OU utiliser la session pré-connectée si elle existe
+            # CRITIQUE: Ne JAMAIS réutiliser preinit_session car son itérateur est épuisé par consume_task
+            # À la place, récupérer l'audio bufferisé, fermer la session, et créer une nouvelle session propre
+            preinit_audio_buffer = []
             if preinit_session is not None:
-                logger.info("Utilisation de la session pré-connectée (déjà démarrée pendant la sonnerie)")
-                session = preinit_session
-
-                # Récupérer le playback_tracker de la session pré-initialisée
-                # et mettre à jour son callback d'interruption
-                try:
-                    preinit_playback_tracker = session._model._playback_tracker
-                    if isinstance(preinit_playback_tracker, TelephonyPlaybackTracker):
-                        preinit_playback_tracker.set_interrupt_callback(on_playback_interrupted)
-                        playback_tracker = preinit_playback_tracker
-                        logger.info("✅ Playback tracker pré-initialisé réutilisé avec callback d'interruption mis à jour")
-                    else:
-                        logger.warning("Playback tracker pré-initialisé n'est pas un TelephonyPlaybackTracker, création d'un nouveau")
-                except (AttributeError, TypeError) as e:
-                    logger.warning("Impossible de récupérer le playback tracker pré-initialisé: %s", e)
-
-                # Injecter l'audio pré-généré dans PJSUA
+                logger.info("Audio pré-généré disponible - récupération buffer et fermeture preinit session")
                 preinit_audio_buffer = getattr(preinit_session, '_preinit_audio_buffer', [])
-                if preinit_audio_buffer:
-                    logger.info("📦 Injection de %d chunks audio pré-générés dans PJSUA", len(preinit_audio_buffer))
-                    try:
-                        for idx, pcm_data in enumerate(preinit_audio_buffer):
-                            await send_to_peer(pcm_data)
-                            if idx < 5:
-                                logger.info("  ✅ Chunk #%d injecté: %d bytes", idx + 1, len(pcm_data))
-                        outbound_audio_bytes += sum(len(chunk) for chunk in preinit_audio_buffer)
-                        logger.info("✅ Audio pré-généré injecté avec succès - prêt à jouer immédiatement")
-                    except Exception as e:
-                        logger.warning("⚠️ Erreur injection audio pré-généré: %s", e)
-            else:
-                logger.info("Démarrage session SDK avec runner")
-                session = await runner.run(model_config=model_config)
-                await session.__aenter__()
-                logger.info("Session SDK démarrée avec succès")
+                # Fermer preinit_session (son itérateur est épuisé, on ne peut pas la réutiliser)
+                try:
+                    await preinit_session.close()
+                    logger.info("✅ Preinit session fermée (itérateur épuisé)")
+                except Exception as e:
+                    logger.debug("Erreur fermeture preinit_session: %s", e)
+                preinit_session = None
+
+            # Toujours créer une NOUVELLE session propre
+            logger.info("Démarrage session SDK avec runner")
+            session = await runner.run(model_config=model_config)
+            await session.__aenter__()
+            logger.info("Session SDK démarrée avec succès")
+
+            # Si audio pré-généré, l'injecter maintenant
+            if preinit_audio_buffer:
+                logger.info("📦 Injection de %d chunks audio pré-générés dans PJSUA", len(preinit_audio_buffer))
+                try:
+                    for idx, pcm_data in enumerate(preinit_audio_buffer):
+                        await send_to_peer(pcm_data)
+                        if idx < 5:
+                            logger.info("  ✅ Chunk #%d injecté: %d bytes", idx + 1, len(pcm_data))
+                    outbound_audio_bytes += sum(len(chunk) for chunk in preinit_audio_buffer)
+                    logger.info("✅ Audio pré-généré injecté avec succès")
+                except Exception as e:
+                    logger.warning("⚠️ Erreur injection audio: %s", e)
 
             # Si speak_first est activé et qu'on n'a pas déjà envoyé response.create pendant preinit,
             # attendre que PJSUA soit prêt à consommer l'audio AVANT d'envoyer response.create
