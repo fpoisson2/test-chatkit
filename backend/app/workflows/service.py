@@ -1942,21 +1942,7 @@ class WorkflowService:
                     WorkflowViewport.id.desc(),
                 )
             ).all()
-            logger.info(
-                "Loaded %s viewport(s) for user %s: %s",
-                len(viewports),
-                user_id,
-                [
-                    {
-                        "workflow_id": viewport.workflow_id,
-                        "version_id": viewport.version_id,
-                        "x": viewport.x,
-                        "y": viewport.y,
-                        "zoom": viewport.zoom,
-                    }
-                    for viewport in viewports
-                ],
-            )
+            logger.info("Loaded %s viewport(s) for user %s", len(viewports), user_id)
             return viewports
         finally:
             if owns_session:
@@ -1973,9 +1959,9 @@ class WorkflowService:
         try:
             viewport_entries = list(viewports)
             logger.info(
-                "Replacing workflow viewports for user %s with payload: %s",
+                "Replacing workflow viewports for user %s (%s entries)",
                 user_id,
-                viewport_entries,
+                len(viewport_entries),
             )
             normalized: dict[
                 tuple[int, int | None, str], tuple[float, float, float]
@@ -2091,31 +2077,15 @@ class WorkflowService:
 
             if skipped_entries:
                 logger.info(
-                    "Skipped %s viewport entrie(s) for user %s: %s",
+                    "Skipped %s viewport entrie(s) for user %s",
                     len(skipped_entries),
                     user_id,
-                    skipped_entries,
                 )
 
             logger.info(
-                "Normalized %s viewport(s) for user %s: %s",
+                "Normalized %s viewport(s) for user %s",
                 len(normalized),
                 user_id,
-                [
-                    {
-                        "workflow_id": workflow_id,
-                        "version_id": version_id,
-                        "device_type": device_type,
-                        "x": x,
-                        "y": y,
-                        "zoom": zoom,
-                    }
-                    for (
-                        workflow_id,
-                        version_id,
-                        device_type,
-                    ), (x, y, zoom) in normalized.items()
-                ],
             )
 
             existing = {
@@ -2198,24 +2168,21 @@ class WorkflowService:
             db.commit()
             if created_viewports:
                 logger.info(
-                    "Created %s viewport(s) for user %s: %s",
+                    "Created %s viewport(s) for user %s",
                     len(created_viewports),
                     user_id,
-                    created_viewports,
                 )
             if updated_viewports:
                 logger.info(
-                    "Updated %s viewport(s) for user %s: %s",
+                    "Updated %s viewport(s) for user %s",
                     len(updated_viewports),
                     user_id,
-                    updated_viewports,
                 )
             if removed_keys:
                 logger.info(
-                    "Removed %s viewport(s) for user %s: %s",
+                    "Removed %s viewport(s) for user %s",
                     len(removed_keys),
                     user_id,
-                    removed_keys,
                 )
 
             persisted = self.list_user_viewports(user_id, session=db)
