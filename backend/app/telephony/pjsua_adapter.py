@@ -416,6 +416,38 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             logger.info("🗑️  Queues audio vidées: %d frames entrantes, %d frames sortantes",
                        incoming_cleared, outgoing_cleared)
 
+    def reset(self) -> None:
+        """Réinitialise complètement le port pour réutilisation.
+
+        Cette méthode doit être appelée avant de réutiliser le port pour un nouvel appel.
+        Elle réinitialise tous les compteurs et vide les queues audio.
+        """
+        logger.info("🔄 Réinitialisation complète du port audio")
+
+        # Réinitialiser les compteurs
+        self._frame_count = 0
+        self._audio_frame_count = 0
+        self._silence_frame_count = 0
+        if hasattr(self, '_frame_received_count'):
+            self._frame_received_count = 0
+
+        # Vider complètement les queues
+        while not self._incoming_audio_queue.empty():
+            try:
+                self._incoming_audio_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        while not self._outgoing_audio_queue.empty():
+            try:
+                self._outgoing_audio_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        # Réactiver le port
+        self._active = True
+        logger.info("✅ Port audio réinitialisé et réactivé")
+
 
 class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
     """Callback pour un appel PJSUA."""
@@ -479,26 +511,26 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     logger.info("✅ Média audio actif pour call_id=%s, index=%d", ci.id, mi.index)
 
                     # Créer et connecter le port audio personnalisé
-                    # IMPORTANT: Toujours recréer le port car PJSUA peut détruire et recréer
-                    # le stream audio lors des UPDATE SIP (changement de codec)
-                    if self._audio_port is not None:
-                        logger.info("🔄 Port audio existe déjà, déconnexion conference bridge avant recréation (call_id=%s)", ci.id)
+                    # IMPORTANT: Réutiliser le même port partagé pour tous les appels
+                    # pour éviter les connexions fantômes dans le conference bridge
+                    if self.adapter._shared_audio_port is not None:
+                        logger.info("🔄 Port audio partagé existe déjà, déconnexion conference bridge avant réutilisation (call_id=%s)", ci.id)
                         try:
-                            # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
-                            # pour éviter les connexions fantômes qui causent du silence au 3e appel
+                            # CRITIQUE: Déconnecter proprement du conference bridge avant de réutiliser
+                            # pour éviter les connexions fantômes qui causent du silence
                             if hasattr(self, '_audio_media') and self._audio_media is not None:
                                 try:
                                     # Arrêter les transmissions bidirectionnelles
                                     # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
                                     try:
-                                        self._audio_media.stopTransmit(self._audio_port)
+                                        self._audio_media.stopTransmit(self.adapter._shared_audio_port)
                                         logger.debug("✅ Déconnexion call → port réussie (call_id=%s)", ci.id)
                                     except Exception as e:
                                         if "EINVAL" not in str(e) and "70004" not in str(e):
                                             logger.warning("Erreur stopTransmit call→port: %s", e)
 
                                     try:
-                                        self._audio_port.stopTransmit(self._audio_media)
+                                        self.adapter._shared_audio_port.stopTransmit(self._audio_media)
                                         logger.debug("✅ Déconnexion port → call réussie (call_id=%s)", ci.id)
                                     except Exception as e:
                                         if "EINVAL" not in str(e) and "70004" not in str(e):
@@ -507,12 +539,16 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                     logger.info("✅ Conference bridge déconnecté (call_id=%s)", ci.id)
                                 except Exception as e:
                                     logger.warning("Erreur déconnexion conference bridge: %s", e)
-                            self._audio_port.deactivate()
+                            # Réinitialiser le port au lieu de le détruire et en créer un nouveau
+                            self.adapter._shared_audio_port.reset()
                         except Exception as e:
-                            logger.warning("Erreur désactivation ancien port: %s", e)
+                            logger.warning("Erreur réinitialisation ancien port: %s", e)
+                    else:
+                        logger.info("🔧 Création du AudioMediaPort partagé pour call_id=%s", ci.id)
+                        self.adapter._shared_audio_port = AudioMediaPort(self.adapter)
 
-                    logger.info("🔧 Création du AudioMediaPort pour call_id=%s", ci.id)
-                    self._audio_port = AudioMediaPort(self.adapter)
+                    # Stocker une référence locale pour faciliter l'accès
+                    self._audio_port = self.adapter._shared_audio_port
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
@@ -625,6 +661,9 @@ class PJSUAAdapter:
         self._active_calls: dict[int, PJSUACall] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
+
+        # Port audio partagé entre tous les appels pour éviter les connexions fantômes
+        self._shared_audio_port: AudioMediaPort | None = None
 
         # Event qui se déclenche quand PJSUA commence à consommer l'audio (onFrameRequested appelé)
         self._frame_requested_event: asyncio.Event | None = None
@@ -903,9 +942,11 @@ class PJSUAAdapter:
             except Exception as e:
                 logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_id, e)
 
-        # Nettoyer les références pour accélérer le GC et éviter les accès futurs
+        # Nettoyer uniquement les références locales du call
+        # Le port partagé reste dans self.adapter._shared_audio_port pour réutilisation
         call._audio_port = None
         call._audio_media = None
+        logger.info("✅ Références audio locales nettoyées (call_id=%s), port partagé conservé pour réutilisation", call_id)
 
     def _dispose_call_object(self, call: PJSUACall, call_id: int) -> None:
         """Détruit explicitement l'objet Call sous-jacent si possible."""
