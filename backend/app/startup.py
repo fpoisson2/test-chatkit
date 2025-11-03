@@ -2579,10 +2579,8 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             logger.info("Création de l'audio bridge PJSUA AVANT la réponse (call_id=%s)", call_id)
             rtp_stream, send_to_peer_raw, clear_queue, first_packet_event, pjsua_ready_event, audio_bridge = await create_pjsua_audio_bridge(call, media_active_event)
 
-            # Reset l'event frame_requested pour cet appel (partagé entre tous les appels)
-            if pjsua_adapter._frame_requested_event:
-                pjsua_adapter._frame_requested_event.clear()
-                logger.info("🔄 Event frame_requested réinitialisé pour le nouvel appel (call_id=%s)", call_id)
+            # pjsua_ready_event est maintenant un event spécifique à cet appel (pas partagé)
+            # Plus besoin de clear() car chaque appel a son propre event frais
 
             # Callback pour débloquer l'audio quand le média est actif
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
@@ -2599,9 +2597,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     # Attendre que PJSUA commence à consommer l'audio (onFrameRequested appelé)
                     # C'est CRITIQUE: si on démarre OpenAI avant, il va envoyer de l'audio
                     # alors que personne ne le consomme, et la queue va déborder
-                    if pjsua_adapter._frame_requested_event:
+                    # Utiliser l'event spécifique à cet appel (pas un event partagé)
+                    if pjsua_ready_event:
                         logger.info("⏱️ Attente que PJSUA soit prêt à consommer l'audio... (call_id=%s)", call_id)
-                        await pjsua_adapter._frame_requested_event.wait()
+                        await pjsua_ready_event.wait()
                         logger.info("✅ PJSUA prêt - onFrameRequested appelé (call_id=%s)", call_id)
 
                     # Débloquer l'audio pour que les paquets OpenAI soient transmis immédiatement
