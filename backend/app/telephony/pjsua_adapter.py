@@ -944,24 +944,28 @@ class PJSUAAdapter:
                 logger.warning("Erreur destruction port audio (call_id=%s): %s", call_id, e)
 
         # ÉTAPE 4: Forcer le garbage collection Python pour libérer les objets C++
-        try:
-            import gc
-            gc.collect()
-            logger.debug("🧹 Garbage collection forcé (call_id=%s)", call_id)
-        except Exception as e:
-            logger.debug("Erreur GC (call_id=%s): %s", call_id, e)
+        # TEMPORAIREMENT DÉSACTIVÉ : gc.collect() peut bloquer pendant le teardown
+        # try:
+        #     import gc
+        #     gc.collect()
+        #     logger.debug("🧹 Garbage collection forcé (call_id=%s)", call_id)
+        # except Exception as e:
+        #     logger.debug("Erreur GC (call_id=%s): %s", call_id, e)
+        logger.info("⏭️  GC désactivé temporairement (call_id=%s)", call_id)
 
         # ÉTAPE 5: Reset de l'Echo Canceller pour purger les états audio résiduels
-        try:
-            if self._ep:
-                logger.debug("🔄 Reset Echo Canceller (call_id=%s)", call_id)
-                # Désactiver EC temporairement pour vider l'état
-                self._ep.audDevManager().setEcOptions(0, 0)
-                # Réactiver EC avec 200ms tail length (valeur standard pour téléphonie)
-                self._ep.audDevManager().setEcOptions(200, 0)
-                logger.debug("✅ Echo Canceller réinitialisé (call_id=%s)", call_id)
-        except Exception as e:
-            logger.debug("Erreur reset EC (call_id=%s): %s", call_id, e)
+        # TEMPORAIREMENT DÉSACTIVÉ : setEcOptions() peut bloquer pendant le teardown
+        # try:
+        #     if self._ep:
+        #         logger.debug("🔄 Reset Echo Canceller (call_id=%s)", call_id)
+        #         # Désactiver EC temporairement pour vider l'état
+        #         self._ep.audDevManager().setEcOptions(0, 0)
+        #         # Réactiver EC avec 200ms tail length (valeur standard pour téléphonie)
+        #         self._ep.audDevManager().setEcOptions(200, 0)
+        #         logger.debug("✅ Echo Canceller réinitialisé (call_id=%s)", call_id)
+        # except Exception as e:
+        #     logger.debug("Erreur reset EC (call_id=%s): %s", call_id, e)
+        logger.info("⏭️  Reset EC désactivé temporairement (call_id=%s)", call_id)
 
         # Nettoyer les références locales du call ET la référence globale de l'adaptateur
         call._audio_port = None
