@@ -74,6 +74,10 @@ class PJSUAAudioBridge:
         # État de rééchantillonnage 24kHz → 8kHz (préserve continuité entre chunks)
         self._resample_state_24_to_8: Any = None
 
+        # Buffer pour bytes incomplets (< 320B @ 8kHz) entre appels send_to_peer
+        # CRITIQUE: Ne jamais perdre ces bytes sinon les fins de phrases sont coupées!
+        self._incomplete_audio_buffer: bytes = b""
+
         # Lock pour protéger l'état pendant le traitement concurrent
         self._processing_lock = asyncio.Lock()
 
@@ -299,20 +303,26 @@ class PJSUAAudioBridge:
                 return
 
             # ÉTAPE 2: Découper en frames de 320B @ 8kHz (20ms)
+            # CRITIQUE: Ajouter les bytes incomplets du chunk précédent au début!
+            # Sinon les fins de phrases sont coupées
             FRAME_SIZE = 320  # 20ms @ 8kHz PCM16
+            audio_8khz_with_prefix = self._incomplete_audio_buffer + audio_8khz
+
             frames_to_enqueue = []
             offset = 0
 
-            while offset + FRAME_SIZE <= len(audio_8khz):
-                frame = audio_8khz[offset:offset + FRAME_SIZE]
+            while offset + FRAME_SIZE <= len(audio_8khz_with_prefix):
+                frame = audio_8khz_with_prefix[offset:offset + FRAME_SIZE]
                 frames_to_enqueue.append(frame)
                 offset += FRAME_SIZE
 
-            # S'il reste des bytes incomplets, on les ignore (seront dans le prochain chunk)
-            # Note: avec le resampling state, la continuité est préservée
-            if offset < len(audio_8khz):
-                logger.debug("⚠️ %d bytes incomplets ignorés (seront dans prochain chunk)",
-                           len(audio_8khz) - offset)
+            # Sauvegarder les bytes restants (< 320B) pour le prochain appel
+            # CRUCIAL: Ne jamais perdre ces bytes!
+            self._incomplete_audio_buffer = audio_8khz_with_prefix[offset:]
+
+            if len(self._incomplete_audio_buffer) > 0 and self._send_to_peer_call_count <= 3:
+                logger.debug("💾 %d bytes incomplets sauvegardés pour prochain chunk",
+                           len(self._incomplete_audio_buffer))
 
             # ÉTAPE 3: Enqueuer chaque frame avec HYSTERESIS BACKPRESSURE
             frames_enqueued = 0
@@ -370,7 +380,18 @@ class PJSUAAudioBridge:
         # Réinitialiser le flag de production bloquée
         self._production_blocked = False
 
-        logger.info("🧹 Audio queue cleared: %d frames", tx_cleared)
+        # Vider le buffer de bytes incomplets et réinitialiser l'état de rééchantillonnage
+        # Important pour éviter artefacts audio lors de la reprise après interruption
+        incomplete_bytes = len(self._incomplete_audio_buffer)
+        self._incomplete_audio_buffer = b""
+        self._resample_state_24_to_8 = None
+
+        if incomplete_bytes > 0:
+            logger.info("🧹 Audio queue cleared: %d frames, %d bytes incomplets vidés",
+                       tx_cleared, incomplete_bytes)
+        else:
+            logger.info("🧹 Audio queue cleared: %d frames", tx_cleared)
+
         return tx_cleared
 
     def stop(self) -> None:
