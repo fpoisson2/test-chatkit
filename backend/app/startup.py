@@ -3083,7 +3083,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         model_settings["voice"] = voice_name
 
                     # Create playback tracker for preinit session
-                    from chatkit.telephony.voice_bridge import TelephonyPlaybackTracker
+                    from .telephony.voice_bridge import TelephonyPlaybackTracker
                     preinit_playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=None)
 
                     model_config: dict[str, Any] = {
