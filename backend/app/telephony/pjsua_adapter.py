@@ -488,35 +488,29 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     self._media_active = True
                     logger.info("✅ Média audio actif pour call_id=%s, index=%d", ci.id, mi.index)
 
-                    # Réutiliser le port existant ou en créer un nouveau
-                    # IMPORTANT: Un seul port pour éviter les corruptions mémoire PJSUA
-                    if not hasattr(self.adapter, '_global_audio_port') or self.adapter._global_audio_port is None:
-                        logger.info("🔧 Création du AudioMediaPort global (première fois)")
-                        self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name="chatkit_audio")
-                    else:
-                        logger.info("♻️ Réutilisation du AudioMediaPort global existant")
-                        # Réinitialiser les compteurs pour le nouvel appel
-                        self.adapter._global_audio_port._frame_count = 0
-                        self.adapter._global_audio_port._audio_frame_count = 0
-                        self.adapter._global_audio_port._silence_frame_count = 0
-                        if hasattr(self.adapter._global_audio_port, '_frame_received_count'):
-                            self.adapter._global_audio_port._frame_received_count = 0
-                        # Vider les queues
-                        while not self.adapter._global_audio_port._incoming_audio_queue.empty():
-                            try:
-                                self.adapter._global_audio_port._incoming_audio_queue.get_nowait()
-                            except Exception:
-                                break
-                        while not self.adapter._global_audio_port._outgoing_audio_queue.empty():
-                            try:
-                                self.adapter._global_audio_port._outgoing_audio_queue.get_nowait()
-                            except Exception:
-                                break
-                        # Réactiver le port
-                        self.adapter._global_audio_port._active = True
-                        logger.info("✅ Port audio global réinitialisé pour le nouvel appel")
+                    # Détruire l'ancien port et en créer un nouveau pour nettoyer l'état PJSUA
+                    # CRITIQUE: Réutiliser le MÊME nom pour éviter l'accumulation dans le conference bridge
+                    if hasattr(self.adapter, '_global_audio_port') and self.adapter._global_audio_port is not None:
+                        try:
+                            logger.info("🗑️  Destruction de l'ancien AudioMediaPort pour nettoyer l'état PJSUA")
+                            old_port = self.adapter._global_audio_port
+                            # S'assurer que le port est désactivé avant destruction
+                            old_port.deactivate()
+                            # Détruire explicitement le port (libère les ressources PJSUA)
+                            # Note: pas besoin d'appeler delete() car Python le fera via __del__
+                            self.adapter._global_audio_port = None
+                            # Petite pause pour laisser PJSUA nettoyer
+                            import time
+                            time.sleep(0.05)  # 50ms
+                            logger.info("✅ Ancien port détruit, état PJSUA nettoyé")
+                        except Exception as e:
+                            logger.warning("⚠️ Erreur destruction ancien port: %s", e)
 
+                    # Créer un nouveau port avec le même nom
+                    logger.info("🔧 Création d'un nouveau AudioMediaPort (nom réutilisé: chatkit_audio)")
+                    self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name="chatkit_audio")
                     self._audio_port = self.adapter._global_audio_port
+                    logger.info("✅ Nouveau port créé et prêt")
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
