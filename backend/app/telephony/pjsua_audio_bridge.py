@@ -267,15 +267,14 @@ class PJSUAAudioBridge:
     async def send_to_peer(self, audio_24khz: bytes) -> None:
         """Send audio from VoiceBridge to PJSUA (24kHz → 8kHz).
 
-        NOUVELLE APPROCHE AVEC ASYNCIO.TO_THREAD + HYSTERESIS:
-        1. Reçoit audio @ 24kHz (taille variable, généralement ~960B = 20ms)
-        2. Déplace traitement CPU (ratecv/max/mul) dans thread séparé via asyncio.to_thread()
-        3. Découpe en frames de 320B @ 8kHz (20ms)
-        4. Hysteresis: si queue >= HW, bloque production jusqu'à queue <= LW
-        5. Pas de boucles d'attente, juste drop immédiat si production bloquée
+        OPTIMISATION ANTI-STUTTERING:
+        1. Découpe les GROS chunks en petits morceaux de 1920B (20ms @ 24kHz)
+        2. Traite chaque morceau séparément avec asyncio.to_thread()
+        3. Yield à l'event loop entre chaque morceau (await asyncio.sleep(0))
+        4. Permet à onFrameRequested() de s'exécuter régulièrement (toutes les 20ms)
 
         Args:
-            audio_24khz: PCM16 audio at 24kHz (variable size, typically ~960 bytes = 20ms)
+            audio_24khz: PCM16 audio at 24kHz (variable size, peut être 7200-12000 bytes!)
         """
         if len(audio_24khz) == 0:
             return
@@ -287,82 +286,86 @@ class PJSUAAudioBridge:
             logger.info("📤 send_to_peer #%d: reçu %d bytes @ 24kHz",
                        self._send_to_peer_call_count, len(audio_24khz))
 
+        # CRITIQUE: Découper en petits chunks pour ne pas bloquer l'event loop
+        # OpenAI peut envoyer jusqu'à 12000 bytes d'un coup → découper en morceaux de 1920B (20ms)
+        CHUNK_SIZE = 1920  # 20ms @ 24kHz PCM16 = 24000 samples/sec * 0.02s * 2 bytes/sample
+        total_frames_enqueued = 0
+
         try:
-            # ÉTAPE 1: Traitement CPU dans thread séparé (non-bloquant pour event loop)
-            # Le lock protège _resample_state_24_to_8 en cas d'appels concurrents
-            async with self._processing_lock:
-                audio_8khz = await asyncio.to_thread(
-                    self._process_audio_sync,
-                    audio_24khz
-                )
+            # Traiter par petits morceaux pour permettre à l'event loop de respirer
+            for chunk_offset in range(0, len(audio_24khz), CHUNK_SIZE):
+                chunk_24khz = audio_24khz[chunk_offset:chunk_offset + CHUNK_SIZE]
 
-            # Si _process_audio_sync retourne None, c'est du silence → dropper
-            if audio_8khz is None:
-                if self._send_to_peer_call_count <= 3:
-                    logger.debug("🔇 Audio silence droppé après traitement")
-                return
+                # ÉTAPE 1: Traitement CPU dans thread séparé (non-bloquant pour event loop)
+                # Le lock protège _resample_state_24_to_8 en cas d'appels concurrents
+                async with self._processing_lock:
+                    audio_8khz = await asyncio.to_thread(
+                        self._process_audio_sync,
+                        chunk_24khz
+                    )
 
-            # ÉTAPE 2: Découper en frames de 320B @ 8kHz (20ms)
-            # CRITIQUE: Ajouter les bytes incomplets du chunk précédent au début!
-            # Sinon les fins de phrases sont coupées
-            FRAME_SIZE = 320  # 20ms @ 8kHz PCM16
-            audio_8khz_with_prefix = self._incomplete_audio_buffer + audio_8khz
+                # Si _process_audio_sync retourne None, c'est du silence → dropper ce chunk
+                if audio_8khz is None:
+                    continue
 
-            frames_to_enqueue = []
-            offset = 0
+                # ÉTAPE 2: Découper en frames de 320B @ 8kHz (20ms)
+                # CRITIQUE: Ajouter les bytes incomplets du chunk précédent au début!
+                FRAME_SIZE = 320  # 20ms @ 8kHz PCM16
+                audio_8khz_with_prefix = self._incomplete_audio_buffer + audio_8khz
 
-            while offset + FRAME_SIZE <= len(audio_8khz_with_prefix):
-                frame = audio_8khz_with_prefix[offset:offset + FRAME_SIZE]
-                frames_to_enqueue.append(frame)
-                offset += FRAME_SIZE
+                frames_to_enqueue = []
+                offset = 0
 
-            # Sauvegarder les bytes restants (< 320B) pour le prochain appel
-            # CRUCIAL: Ne jamais perdre ces bytes!
-            self._incomplete_audio_buffer = audio_8khz_with_prefix[offset:]
+                while offset + FRAME_SIZE <= len(audio_8khz_with_prefix):
+                    frame = audio_8khz_with_prefix[offset:offset + FRAME_SIZE]
+                    frames_to_enqueue.append(frame)
+                    offset += FRAME_SIZE
 
-            if len(self._incomplete_audio_buffer) > 0 and self._send_to_peer_call_count <= 3:
-                logger.debug("💾 %d bytes incomplets sauvegardés pour prochain chunk",
-                           len(self._incomplete_audio_buffer))
+                # Sauvegarder les bytes restants (< 320B) pour le prochain appel
+                self._incomplete_audio_buffer = audio_8khz_with_prefix[offset:]
 
-            # ÉTAPE 3: Enqueuer chaque frame avec HYSTERESIS BACKPRESSURE
-            frames_enqueued = 0
-            for frame_8khz in frames_to_enqueue:
-                queue_len = len(self._tx_queue)
+                # ÉTAPE 3: Enqueuer chaque frame avec HYSTERESIS BACKPRESSURE
+                frames_enqueued = 0
+                for frame_8khz in frames_to_enqueue:
+                    queue_len = len(self._tx_queue)
 
-                # Hysteresis: vérifier état actuel AVANT la condition
-                # Si production NON bloquée ET queue >= HW: bloquer
-                if not self._production_blocked and queue_len >= self.HIGH_WATERMARK:
-                    self._production_blocked = True
-                    logger.info("🛑 Production BLOQUÉE: queue atteint HW (%d >= %d frames)",
-                               queue_len, self.HIGH_WATERMARK)
+                    # Hysteresis: vérifier état actuel AVANT la condition
+                    if not self._production_blocked and queue_len >= self.HIGH_WATERMARK:
+                        self._production_blocked = True
+                        logger.info("🛑 Production BLOQUÉE: queue atteint HW (%d >= %d frames)",
+                                   queue_len, self.HIGH_WATERMARK)
 
-                # Si production BLOQUÉE ET queue <= LW: débloquer
-                elif self._production_blocked and queue_len <= self.LOW_WATERMARK:
-                    self._production_blocked = False
-                    logger.info("✅ Production REPRISE: queue sous LW (%d <= %d frames)",
-                               queue_len, self.LOW_WATERMARK)
+                    elif self._production_blocked and queue_len <= self.LOW_WATERMARK:
+                        self._production_blocked = False
+                        logger.info("✅ Production REPRISE: queue sous LW (%d <= %d frames)",
+                                   queue_len, self.LOW_WATERMARK)
 
-                # Si production bloquée, dropper immédiatement (pas de boucle d'attente)
-                if self._production_blocked:
-                    if frames_enqueued == 0 and self._send_to_peer_call_count % 50 == 0:
-                        logger.debug("⏸️  Frames droppées: production bloquée (queue=%d frames)", queue_len)
-                    break  # Dropper le reste des frames de ce chunk
+                    # Si production bloquée, dropper immédiatement
+                    if self._production_blocked:
+                        if frames_enqueued == 0 and self._send_to_peer_call_count % 50 == 0:
+                            logger.debug("⏸️  Frames droppées: production bloquée (queue=%d frames)", queue_len)
+                        break
 
-                # Sécurité: ne jamais dépasser MAX_TX_FRAMES même si production active
-                if queue_len >= self.MAX_TX_FRAMES:
-                    logger.warning("⚠️ Queue pleine (%d >= %d), dropping remaining frames",
-                                 queue_len, self.MAX_TX_FRAMES)
-                    break
+                    # Sécurité: ne jamais dépasser MAX_TX_FRAMES
+                    if queue_len >= self.MAX_TX_FRAMES:
+                        logger.warning("⚠️ Queue pleine (%d >= %d), dropping remaining frames",
+                                     queue_len, self.MAX_TX_FRAMES)
+                        break
 
-                # Enqueuer la frame
-                self._tx_queue.append(frame_8khz)
-                frames_enqueued += 1
+                    # Enqueuer la frame
+                    self._tx_queue.append(frame_8khz)
+                    frames_enqueued += 1
+                    total_frames_enqueued += 1
+
+                # CRITIQUE: Yield à l'event loop entre chaque chunk
+                # Permet à onFrameRequested() de s'exécuter régulièrement
+                await asyncio.sleep(0)
 
             # Log périodique pour monitoring
             if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
                 queue_size = len(self._tx_queue)
                 logger.info("✅ send_to_peer #%d: %d frames enfilées (queue: %d frames, %d ms)",
-                           self._send_to_peer_call_count, frames_enqueued, queue_size, queue_size * 20)
+                           self._send_to_peer_call_count, total_frames_enqueued, queue_size, queue_size * 20)
 
         except Exception as e:
             logger.warning("Failed to process audio: %s", e)
