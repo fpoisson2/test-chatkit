@@ -18,7 +18,7 @@ from ..models import AvailableModel, Language, LanguageGenerationTask
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(bind=True, name="app.tasks.language_generation.generate_language")
+@celery_app.task(bind=True)
 def generate_language_task(
     self,
     task_id: str,
