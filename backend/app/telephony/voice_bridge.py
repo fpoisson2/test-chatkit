@@ -379,22 +379,10 @@ class TelephonyVoiceBridge:
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes, response_create_sent_immediately
             packet_count = 0
+            silence_count = 0
             # Note: turn_detection est déjà activé dans la configuration initiale de session (_build_session_update)
             # Track if we've sent response.create when phone became ready
             response_create_sent_on_ready = False
-
-            # CRITIQUE: Attendre que le flux bidirectionnel soit confirmé avant d'envoyer audio à OpenAI
-            # Cela confirme que le conference bridge est complètement stabilisé et fonctionnel
-            if first_packet_received_event is not None:
-                logger.info("⏳ Attente du flux bidirectionnel confirmé avant d'envoyer audio à OpenAI...")
-                try:
-                    await asyncio.wait_for(first_packet_received_event.wait(), timeout=5.0)
-                    logger.info("✅ Flux bidirectionnel confirmé - délai de stabilisation du conference bridge...")
-                    # Délai pour laisser le conference bridge PJSUA se stabiliser complètement
-                    await asyncio.sleep(0.2)  # 200ms
-                    logger.info("✅ Délai de stabilisation terminé - début envoi audio à OpenAI")
-                except asyncio.TimeoutError:
-                    logger.warning("⚠️ Timeout en attendant flux bidirectionnel - envoi quand même")
 
             try:
                 async for packet in rtp_stream:
@@ -403,10 +391,29 @@ class TelephonyVoiceBridge:
                     if not pcm:
                         logger.debug("Paquet RTP #%d: décodage vide, ignoré", packet_count)
                         continue
+
+                    # CRITIQUE: Ignorer les paquets de silence au début pour laisser
+                    # le conference bridge se stabiliser
+                    max_amplitude = audioop.max(pcm, 2) if len(pcm) > 0 else 0
+                    is_silence = max_amplitude < 100  # Seuil très bas pour détecter quasi-silence
+
+                    if is_silence and packet_count <= 50:  # Ignorer silence pendant ~1 seconde max
+                        silence_count += 1
+                        if silence_count <= 5 or silence_count % 10 == 0:
+                            logger.debug("Paquet #%d ignoré (silence, amp=%d) - attente stabilisation conference bridge",
+                                       packet_count, max_amplitude)
+                        continue
+
+                    # Si on arrive ici avec un vrai audio après avoir ignoré du silence
+                    if silence_count > 0:
+                        logger.info("✅ Conference bridge stabilisé après %d paquets de silence - début envoi audio à OpenAI",
+                                   silence_count)
+
                     inbound_audio_bytes += len(pcm)
 
-                    if packet_count == 1:
-                        logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
+                    if packet_count == 1 or (packet_count - silence_count == 1):
+                        logger.info("Premier paquet audio VALIDE reçu: %d bytes PCM (paquet #%d, après %d silence)",
+                                   len(pcm), packet_count, silence_count)
 
                         # Si speak_first est activé, envoyer response.create MAINTENANT
                         # que le canal bidirectionnel est confirmé
