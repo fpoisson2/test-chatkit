@@ -327,20 +327,11 @@ class TelephonyVoiceBridge:
                 )
                 return True
 
-        session_closing = [False]  # Track if we're already closing the session
-
         async def request_stop() -> None:
             """Request immediate stop of both audio forwarding and event handling."""
             stop_event.set()
-            # Close the session to unblock handle_events from 'async for event in session'
-            if not session_closing[0]:
-                session_closing[0] = True
-                try:
-                    logger.debug("request_stop: fermeture immédiate de la session pour débloquer handle_events")
-                    # Utiliser __aexit__ pour fermer proprement le context manager
-                    await session.__aexit__(None, None, None)
-                except Exception as e:
-                    logger.debug("Erreur lors de la fermeture anticipée de session: %s", e)
+            # Note: Ne pas fermer la session ici car __aexit__ doit être appelé depuis la même tâche que __aenter__
+            # La session sera fermée automatiquement par le context manager 'async with'
 
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes, response_create_sent_immediately
@@ -844,67 +835,57 @@ class TelephonyVoiceBridge:
 
             # Create session using the SDK runner (this is what enables tool calls!)
             logger.info("Démarrage session SDK avec runner")
-            session = await runner.run(model_config=model_config)
-            await session.__aenter__()
-            logger.info("Session SDK démarrée avec succès")
+            # Utiliser async with pour gérer proprement le context manager et éviter les erreurs de cancel scope
+            async with await runner.run(model_config=model_config) as session:
+                logger.info("Session SDK démarrée avec succès")
 
-            # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
-            # NOTE: Le response.create() sera envoyé APRÈS la réception du premier paquet RTP
-            # et l'envoi des frames de silence (voir forward_audio() plus bas)
-            # Cela garantit que le canal bidirectionnel est établi et amorcé avant de commencer la génération
-            if speak_first:
-                if pjsua_ready_to_consume is not None:
-                    logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
-                    try:
-                        await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
-                        logger.info("✅ PJSUA prêt - attente du premier paquet RTP pour amorcer le canal")
-                    except asyncio.TimeoutError:
-                        logger.warning("⚠️ Timeout en attendant PJSUA")
-                else:
-                    logger.info("⏳ Mode speak_first activé - response.create sera envoyé après amorçage du canal")
+                # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
+                # NOTE: Le response.create() sera envoyé APRÈS la réception du premier paquet RTP
+                # et l'envoi des frames de silence (voir forward_audio() plus bas)
+                # Cela garantit que le canal bidirectionnel est établi et amorcé avant de commencer la génération
+                if speak_first:
+                    if pjsua_ready_to_consume is not None:
+                        logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
+                        try:
+                            await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
+                            logger.info("✅ PJSUA prêt - attente du premier paquet RTP pour amorcer le canal")
+                        except asyncio.TimeoutError:
+                            logger.warning("⚠️ Timeout en attendant PJSUA")
+                    else:
+                        logger.info("⏳ Mode speak_first activé - response.create sera envoyé après amorçage du canal")
 
-            # Log available tools
-            try:
-                agent = session._current_agent
-                tools_list = await agent.get_all_tools(session._context_wrapper)
-                logger.info("Outils disponibles dans l'agent : %d outils", len(tools_list))
-                for tool in tools_list[:5]:  # Log first 5 tools
-                    tool_name = getattr(tool, 'name', '<unknown>')
-                    logger.info("  - Outil : %s", tool_name)
-            except Exception as e:
-                logger.warning("Impossible de lister les outils : %s", e)
+                # Log available tools
+                try:
+                    agent = session._current_agent
+                    tools_list = await agent.get_all_tools(session._context_wrapper)
+                    logger.info("Outils disponibles dans l'agent : %d outils", len(tools_list))
+                    for tool in tools_list[:5]:  # Log first 5 tools
+                        tool_name = getattr(tool, 'name', '<unknown>')
+                        logger.info("  - Outil : %s", tool_name)
+                except Exception as e:
+                    logger.warning("Impossible de lister les outils : %s", e)
 
-            audio_task = asyncio.create_task(forward_audio())
-            events_task = asyncio.create_task(handle_events())
-            try:
-                await asyncio.gather(audio_task, events_task)
-            except Exception as exc:
-                await request_stop()
-                for task in (audio_task, events_task):
-                    if not task.done():
-                        task.cancel()
-                await asyncio.gather(
-                    audio_task, events_task, return_exceptions=True
-                )
-                error = exc
+                audio_task = asyncio.create_task(forward_audio())
+                events_task = asyncio.create_task(handle_events())
+                try:
+                    await asyncio.gather(audio_task, events_task)
+                except Exception as exc:
+                    await request_stop()
+                    for task in (audio_task, events_task):
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(
+                        audio_task, events_task, return_exceptions=True
+                    )
+                    error = exc
+                # Le context manager ferme automatiquement la session ici, proprement depuis la même tâche
+                logger.debug("Session SDK fermée automatiquement par le context manager")
         except Exception as exc:
             error = exc
             logger.error("Session voix Realtime interrompue : %s", exc)
         finally:
-            if session is not None and not session_closing[0]:
-                try:
-                    session_closing[0] = True
-                    # Utiliser __aexit__ pour fermer proprement le context manager
-                    # et éviter l'erreur "Attempted to exit cancel scope in a different task"
-                    await session.__aexit__(None, None, None)
-                    logger.debug("Session SDK fermée proprement via __aexit__")
-                except Exception as e:  # pragma: no cover - fermeture best effort
-                    logger.debug(
-                        "Fermeture session SDK en erreur: %s",
-                        e,
-                        exc_info=True,
-                    )
-
+            # Le nettoyage de la session est géré par async with
+            # Il nous reste juste à enregistrer les stats
             duration = time.monotonic() - start_time
             stats = VoiceBridgeStats(
                 duration_seconds=duration,
