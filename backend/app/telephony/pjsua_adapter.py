@@ -488,46 +488,14 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     self._media_active = True
                     logger.info("✅ Média audio actif pour call_id=%s, index=%d", ci.id, mi.index)
 
-                    # CRITIQUE: NE PAS détruire/recréer le port!
-                    # PJSUA réutilise toujours le même slot (slot 2) dans le conference bridge.
-                    # Détruire/recréer le port sur le même slot corrompt l'état interne après 2-3 cycles.
-                    # Solution: Créer le port UNE FOIS et le réutiliser en réinitialisant juste son état.
+                    # NOUVEAU DESIGN: Créer un NOUVEAU port audio pour chaque appel
+                    # La réutilisation du même port causait des états résiduels dans le conference bridge
+                    # qui produisaient du silence sur les appels suivants.
+                    # Chaque port a un nom unique pour éviter les conflits.
 
-                    if not hasattr(self.adapter, '_global_audio_port') or self.adapter._global_audio_port is None:
-                        logger.info("🔧 Création du AudioMediaPort UNIQUE (première fois)")
-                        self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name="chatkit_audio")
-                        logger.info("✅ Port audio créé avec le nom: chatkit_audio (sera réutilisé pour tous les appels)")
-                    else:
-                        logger.info("♻️ Réutilisation du AudioMediaPort existant (sans destruction)")
-                        # Réinitialiser UNIQUEMENT l'état Python, pas l'objet PJSUA C++
-                        self.adapter._global_audio_port._frame_count = 0
-                        self.adapter._global_audio_port._audio_frame_count = 0
-                        self.adapter._global_audio_port._silence_frame_count = 0
-                        if hasattr(self.adapter._global_audio_port, '_frame_received_count'):
-                            self.adapter._global_audio_port._frame_received_count = 0
-
-                        # Vider les queues audio
-                        incoming_cleared = 0
-                        outgoing_cleared = 0
-                        try:
-                            while not self.adapter._global_audio_port._incoming_audio_queue.empty():
-                                self.adapter._global_audio_port._incoming_audio_queue.get_nowait()
-                                incoming_cleared += 1
-                        except Exception:
-                            pass
-                        try:
-                            while not self.adapter._global_audio_port._outgoing_audio_queue.empty():
-                                self.adapter._global_audio_port._outgoing_audio_queue.get_nowait()
-                                outgoing_cleared += 1
-                        except Exception:
-                            pass
-
-                        # Réactiver le port
-                        self.adapter._global_audio_port._active = True
-                        logger.info("✅ Port réinitialisé: compteurs remis à zéro, %d frames entrantes et %d sortantes vidées",
-                                   incoming_cleared, outgoing_cleared)
-
-                    self._audio_port = self.adapter._global_audio_port
+                    logger.info("🔧 Création d'un NOUVEAU AudioMediaPort pour cet appel")
+                    self._audio_port = AudioMediaPort(self.adapter)
+                    logger.info("✅ Port audio créé: %s", self._audio_port._port_name)
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
@@ -588,41 +556,12 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                         except Exception as e:
                             logger.exception("Erreur dans onCallMediaState callback: %s", e)
 
-        # IMPORTANT: Si le média n'est plus actif et qu'on a un port audio, le désactiver
+        # IMPORTANT: Si le média n'est plus actif et qu'on a un port audio, faire un teardown complet
         # Cela évite les "ports zombies" qui continuent d'envoyer du silence après la fin de l'appel
         if not media_is_active and self._audio_port is not None:
-            logger.warning("⚠️ Média désactivé mais port audio encore actif (call_id=%s) - nettoyage", ci.id)
-            try:
-                # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
-                if self._audio_media is not None:
-                    try:
-                        # Arrêter les transmissions bidirectionnelles
-                        # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
-                        try:
-                            self._audio_media.stopTransmit(self._audio_port)
-                        except Exception as e:
-                            if "EINVAL" not in str(e) and "70004" not in str(e):
-                                logger.warning("Erreur stopTransmit call→port: %s", e)
-
-                        try:
-                            self._audio_port.stopTransmit(self._audio_media)
-                        except Exception as e:
-                            if "EINVAL" not in str(e) and "70004" not in str(e):
-                                logger.warning("Erreur stopTransmit port→call: %s", e)
-
-                        logger.info("✅ Conference bridge déconnecté (call_id=%s)", ci.id)
-                    except Exception as e:
-                        logger.warning("Erreur déconnexion conference bridge: %s", e)
-                    finally:
-                        self._audio_media = None
-                self._audio_port.deactivate()
-                logger.info("✅ Port audio zombie désactivé (call_id=%s)", ci.id)
-            except Exception as e:
-                logger.warning("Erreur désactivation port audio zombie: %s", e)
-            finally:
-                # Ne pas mettre à None ici car _on_call_state le fera
-                # self._audio_port = None
-                pass
+            logger.warning("⚠️ Média désactivé mais port audio encore actif (call_id=%s) - teardown immédiat", ci.id)
+            # Utiliser la fonction de teardown centralisée pour garantir la cohérence
+            self.adapter._teardown_call_resources(self, ci.id)
 
 
 class PJSUAAdapter:
@@ -880,7 +819,7 @@ class PJSUAAdapter:
             await self._incoming_call_callback(call, call_info)
 
     def _teardown_call_resources(self, call: PJSUACall, call_id: int) -> None:
-        """Libère les ressources média associées à un appel."""
+        """Libère les ressources média associées à un appel avec teardown strict."""
         # Arrêter le bridge audio en priorité pour stopper toute activité async
         if hasattr(call, "_audio_bridge") and call._audio_bridge:
             try:
@@ -891,38 +830,68 @@ class PJSUAAdapter:
             finally:
                 call._audio_bridge = None
 
-        # Déconnecter et désactiver le port audio personnalisé si présent
+        # Déconnecter et détruire le port audio personnalisé si présent
         audio_port = getattr(call, "_audio_port", None)
         audio_media = getattr(call, "_audio_media", None)
 
         if audio_port:
+            # ÉTAPE 1: Déconnecter le conference bridge dans les 2 sens
             try:
                 if audio_media is not None:
+                    logger.info("🔌 Déconnexion conference bridge (call_id=%s)", call_id)
+                    # Déconnexion call → port
                     try:
                         audio_media.stopTransmit(audio_port)
+                        logger.debug("✅ Déconnexion call→port réussie (call_id=%s)", call_id)
                     except Exception as e:
                         if "EINVAL" not in str(e) and "70004" not in str(e):
                             logger.warning("Erreur stopTransmit call→port (call_id=%s): %s", call_id, e)
+
+                    # Déconnexion port → call
                     try:
                         audio_port.stopTransmit(audio_media)
+                        logger.debug("✅ Déconnexion port→call réussie (call_id=%s)", call_id)
                     except Exception as e:
                         if "EINVAL" not in str(e) and "70004" not in str(e):
                             logger.warning("Erreur stopTransmit port→call (call_id=%s): %s", call_id, e)
+
                     logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
             except Exception as e:
                 logger.warning("Erreur déconnexion conference bridge (call_id=%s): %s", call_id, e)
 
+            # ÉTAPE 2: Désactiver le port pour stopper le traitement des frames
             try:
                 logger.info("🛑 Désactivation du port audio (call_id=%s)", call_id)
                 audio_port.deactivate()
             except Exception as e:
                 logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_id, e)
 
+            # ÉTAPE 3: Détruire explicitement le port pour libérer le slot du conference bridge
+            try:
+                logger.info("🗑️  Destruction du port audio (call_id=%s)", call_id)
+                # En Python, delete() sur un objet PJSUA2 détruit l'objet C++ sous-jacent
+                if hasattr(audio_port, 'delete'):
+                    audio_port.delete()
+                    logger.info("✅ Port audio détruit (call_id=%s)", call_id)
+            except Exception as e:
+                logger.warning("Erreur destruction port audio (call_id=%s): %s", call_id, e)
+
+        # ÉTAPE 4: Reset de l'Echo Canceller pour purger les états audio résiduels
+        try:
+            if self._ep:
+                logger.debug("🔄 Reset Echo Canceller (call_id=%s)", call_id)
+                # Désactiver EC temporairement pour vider l'état
+                self._ep.audDevManager().setEcOptions(0, 0)
+                # Réactiver EC avec 200ms tail length (valeur standard pour téléphonie)
+                self._ep.audDevManager().setEcOptions(200, 0)
+                logger.debug("✅ Echo Canceller réinitialisé (call_id=%s)", call_id)
+        except Exception as e:
+            logger.debug("Erreur reset EC (call_id=%s): %s", call_id, e)
+
         # Nettoyer les références locales du call
-        # Le port sera recréé au prochain appel avec un nom unique
         call._audio_port = None
         call._audio_media = None
-        logger.info("✅ Références audio nettoyées (call_id=%s), nouveau port sera créé au prochain appel", call_id)
+        logger.info("✅ Ressources audio complètement nettoyées (call_id=%s)", call_id)
 
     def _dispose_call_object(self, call: PJSUACall, call_id: int) -> None:
         """Détruit explicitement l'objet Call sous-jacent si possible."""
