@@ -867,19 +867,17 @@ class RealtimeVoiceSessionOrchestrator:
                     realtime_mode = realtime_modes[realtime_index]
                     payload = _build_payload(voice_mode, realtime_mode)
 
-                    sanitized_request, removed_request = sanitize_value(payload)
-                    if removed_request:
-                        logger.debug(
-                            "Champs sensibles retirés de la requête Realtime "
-                            "client_secret",
-                        )
+                    # Log a concise summary instead of the full payload
                     if logger.isEnabledFor(logging.DEBUG):
+                        tool_count = len(payload.get("session", {}).get("tools", []))
+                        has_handoffs = bool(payload.get("session", {}).get("handoffs"))
                         logger.debug(
-                            "Requête Realtime client_secret (sanitisée, voix=%s, "
-                            "realtime=%s) : %s",
+                            "Requête client_secret: voix=%s, realtime=%s, model=%s, tools=%d, handoffs=%s",
                             voice_mode,
                             realtime_mode,
-                            sanitized_request,
+                            model,
+                            tool_count,
+                            has_handoffs,
                         )
 
                     response = await client.post(
@@ -890,20 +888,13 @@ class RealtimeVoiceSessionOrchestrator:
 
                     if response.status_code < 400:
                         raw_payload = response.json()
-                        sanitized_response, removed_response = sanitize_value(
-                            raw_payload
-                        )
-                        if removed_response:
-                            logger.debug(
-                                "Champs sensibles retirés de la réponse Realtime "
-                                "client_secret",
-                            )
+                        # Log success without dumping the entire response
                         if logger.isEnabledFor(logging.DEBUG):
                             logger.debug(
-                                "Réponse Realtime client_secret (sanitisée) : %s",
-                                sanitized_response,
+                                "Client_secret obtenu avec succès (status=%d)",
+                                response.status_code,
                             )
-                        return sanitized_response
+                        return raw_payload
 
                     last_status = response.status_code
                     try:
