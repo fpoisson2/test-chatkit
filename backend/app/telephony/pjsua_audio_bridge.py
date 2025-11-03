@@ -260,94 +260,99 @@ class PJSUAAudioBridge:
             logger.warning("Erreur traitement audio (max/mul): %s", e)
             return None
 
-    async def send_to_peer(self, audio_8khz: bytes) -> None:
-        """Send audio from VoiceBridge to PJSUA (already at 8kHz).
+    async def send_to_peer(self, audio_24khz: bytes) -> None:
+        """Send audio from VoiceBridge to PJSUA (24kHz → 8kHz).
 
-        NOUVELLE APPROCHE AVEC HYSTERESIS BACKPRESSURE:
-        1. Reçoit UNE frame de 320B @ 8kHz (déjà rééchantillonnée par voice_bridge.py)
-        2. Filtre silence (max_amp <= 4)
-        3. Hysteresis: si queue >= HW, bloque production jusqu'à queue <= LW
-        4. Pas de boucles d'attente, juste drop immédiat si production bloquée
+        NOUVELLE APPROCHE AVEC ASYNCIO.TO_THREAD + HYSTERESIS:
+        1. Reçoit audio @ 24kHz (taille variable, généralement ~960B = 20ms)
+        2. Déplace traitement CPU (ratecv/max/mul) dans thread séparé via asyncio.to_thread()
+        3. Découpe en frames de 320B @ 8kHz (20ms)
+        4. Hysteresis: si queue >= HW, bloque production jusqu'à queue <= LW
+        5. Pas de boucles d'attente, juste drop immédiat si production bloquée
 
         Args:
-            audio_8khz: SINGLE frame of PCM16 audio at 8kHz (320 bytes = 20ms)
+            audio_24khz: PCM16 audio at 24kHz (variable size, typically ~960 bytes = 20ms)
         """
-        if len(audio_8khz) == 0:
+        if len(audio_24khz) == 0:
             return
 
         self._send_to_peer_call_count += 1
 
         # Log moins verbeux: tous les 100 appels
         if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
-            logger.info("📤 send_to_peer #%d: reçu %d bytes @ 8kHz",
-                       self._send_to_peer_call_count, len(audio_8khz))
-
-        # Vérifier que c'est bien une frame complète de 320B @ 8kHz
-        if len(audio_8khz) != 320:
-            logger.warning("⚠️ Frame non-standard reçue: %d bytes (attendu 320)", len(audio_8khz))
-            # Continuer quand même, mais ça peut causer des artifacts
+            logger.info("📤 send_to_peer #%d: reçu %d bytes @ 24kHz",
+                       self._send_to_peer_call_count, len(audio_24khz))
 
         try:
-            # ÉTAPE 1: Filtrage silence et amplification
-            try:
-                max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
+            # ÉTAPE 1: Traitement CPU dans thread séparé (non-bloquant pour event loop)
+            # Le lock protège _resample_state_24_to_8 en cas d'appels concurrents
+            async with self._processing_lock:
+                audio_8khz = await asyncio.to_thread(
+                    self._process_audio_sync,
+                    audio_24khz
+                )
 
-                # CRITIQUE: Ne jamais enqueuer du silence (Point 1)
-                if max_amplitude <= self.SILENCE_THRESHOLD:
-                    if self._send_to_peer_call_count <= 3:
-                        logger.debug("🔇 Frame silence droppée (max_amp=%d <= %d)",
-                                   max_amplitude, self.SILENCE_THRESHOLD)
-                    return
-
-                # Boost si amplitude trop faible
-                frame_8khz = audio_8khz
-                min_target_amplitude = 6000
-                max_gain = 12.0
-                if max_amplitude < min_target_amplitude:
-                    gain = min(min_target_amplitude / max_amplitude, max_gain)
-                    try:
-                        frame_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
-                    except audioop.error:
-                        pass  # Garder l'audio original si overflow
-            except audioop.error as e:
-                logger.warning("Audio processing error: %s", e)
+            # Si _process_audio_sync retourne None, c'est du silence → dropper
+            if audio_8khz is None:
+                if self._send_to_peer_call_count <= 3:
+                    logger.debug("🔇 Audio silence droppé après traitement")
                 return
 
-            # ÉTAPE 2: HYSTERESIS BACKPRESSURE (HW/LW)
-            queue_len = len(self._tx_queue)
+            # ÉTAPE 2: Découper en frames de 320B @ 8kHz (20ms)
+            FRAME_SIZE = 320  # 20ms @ 8kHz PCM16
+            frames_to_enqueue = []
+            offset = 0
 
-            # Hysteresis: vérifier état actuel AVANT la condition
-            # Si production NON bloquée ET queue >= HW: bloquer
-            if not self._production_blocked and queue_len >= self.HIGH_WATERMARK:
-                self._production_blocked = True
-                logger.info("🛑 Production BLOQUÉE: queue atteint HW (%d >= %d frames)",
-                           queue_len, self.HIGH_WATERMARK)
+            while offset + FRAME_SIZE <= len(audio_8khz):
+                frame = audio_8khz[offset:offset + FRAME_SIZE]
+                frames_to_enqueue.append(frame)
+                offset += FRAME_SIZE
 
-            # Si production BLOQUÉE ET queue <= LW: débloquer
-            elif self._production_blocked and queue_len <= self.LOW_WATERMARK:
-                self._production_blocked = False
-                logger.info("✅ Production REPRISE: queue sous LW (%d <= %d frames)",
-                           queue_len, self.LOW_WATERMARK)
+            # S'il reste des bytes incomplets, on les ignore (seront dans le prochain chunk)
+            # Note: avec le resampling state, la continuité est préservée
+            if offset < len(audio_8khz):
+                logger.debug("⚠️ %d bytes incomplets ignorés (seront dans prochain chunk)",
+                           len(audio_8khz) - offset)
 
-            # Si production bloquée, dropper immédiatement (pas de boucle d'attente)
-            if self._production_blocked:
-                if self._send_to_peer_call_count % 50 == 0:
-                    logger.debug("⏸️  Frame droppée: production bloquée (queue=%d frames)", queue_len)
-                return
+            # ÉTAPE 3: Enqueuer chaque frame avec HYSTERESIS BACKPRESSURE
+            frames_enqueued = 0
+            for frame_8khz in frames_to_enqueue:
+                queue_len = len(self._tx_queue)
 
-            # Sécurité: ne jamais dépasser MAX_TX_FRAMES même si production active
-            if queue_len >= self.MAX_TX_FRAMES:
-                logger.warning("⚠️ Queue pleine (%d >= %d), dropping frame", queue_len, self.MAX_TX_FRAMES)
-                return
+                # Hysteresis: vérifier état actuel AVANT la condition
+                # Si production NON bloquée ET queue >= HW: bloquer
+                if not self._production_blocked and queue_len >= self.HIGH_WATERMARK:
+                    self._production_blocked = True
+                    logger.info("🛑 Production BLOQUÉE: queue atteint HW (%d >= %d frames)",
+                               queue_len, self.HIGH_WATERMARK)
 
-            # Enqueuer la frame
-            self._tx_queue.append(frame_8khz)
+                # Si production BLOQUÉE ET queue <= LW: débloquer
+                elif self._production_blocked and queue_len <= self.LOW_WATERMARK:
+                    self._production_blocked = False
+                    logger.info("✅ Production REPRISE: queue sous LW (%d <= %d frames)",
+                               queue_len, self.LOW_WATERMARK)
+
+                # Si production bloquée, dropper immédiatement (pas de boucle d'attente)
+                if self._production_blocked:
+                    if frames_enqueued == 0 and self._send_to_peer_call_count % 50 == 0:
+                        logger.debug("⏸️  Frames droppées: production bloquée (queue=%d frames)", queue_len)
+                    break  # Dropper le reste des frames de ce chunk
+
+                # Sécurité: ne jamais dépasser MAX_TX_FRAMES même si production active
+                if queue_len >= self.MAX_TX_FRAMES:
+                    logger.warning("⚠️ Queue pleine (%d >= %d), dropping remaining frames",
+                                 queue_len, self.MAX_TX_FRAMES)
+                    break
+
+                # Enqueuer la frame
+                self._tx_queue.append(frame_8khz)
+                frames_enqueued += 1
 
             # Log périodique pour monitoring
             if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
                 queue_size = len(self._tx_queue)
-                logger.info("✅ send_to_peer #%d: frame enfilée (queue: %d frames, %d ms)",
-                           self._send_to_peer_call_count, queue_size, queue_size * 20)
+                logger.info("✅ send_to_peer #%d: %d frames enfilées (queue: %d frames, %d ms)",
+                           self._send_to_peer_call_count, frames_enqueued, queue_size, queue_size * 20)
 
         except Exception as e:
             logger.warning("Failed to process audio: %s", e)
