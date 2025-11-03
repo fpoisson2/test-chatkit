@@ -683,7 +683,6 @@ class TelephonyVoiceBridge:
 
                         audio_event = event.audio
                         pcm_data = audio_event.data
-                        logger.debug("🎵 RealtimeAudio reçu: %d bytes, bloqué=%s", len(pcm_data) if pcm_data else 0, block_audio_send_ref[0])
 
                         if not block_audio_send_ref[0]:
                             if pcm_data:
@@ -697,8 +696,6 @@ class TelephonyVoiceBridge:
                                     event.content_index,
                                     pcm_data
                                 )
-                        else:
-                            logger.debug("❌ Audio bloqué - pas envoyé à send_to_peer")
                         continue
 
                     # Handle audio end
