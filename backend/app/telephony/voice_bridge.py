@@ -383,6 +383,19 @@ class TelephonyVoiceBridge:
             # Track if we've sent response.create when phone became ready
             response_create_sent_on_ready = False
 
+            # CRITIQUE: Attendre que le flux bidirectionnel soit confirmé avant d'envoyer audio à OpenAI
+            # Cela confirme que le conference bridge est complètement stabilisé et fonctionnel
+            if first_packet_received_event is not None:
+                logger.info("⏳ Attente du flux bidirectionnel confirmé avant d'envoyer audio à OpenAI...")
+                try:
+                    await asyncio.wait_for(first_packet_received_event.wait(), timeout=5.0)
+                    logger.info("✅ Flux bidirectionnel confirmé - délai de stabilisation du conference bridge...")
+                    # Délai pour laisser le conference bridge PJSUA se stabiliser complètement
+                    await asyncio.sleep(0.2)  # 200ms
+                    logger.info("✅ Délai de stabilisation terminé - début envoi audio à OpenAI")
+                except asyncio.TimeoutError:
+                    logger.warning("⚠️ Timeout en attendant flux bidirectionnel - envoi quand même")
+
             try:
                 async for packet in rtp_stream:
                     packet_count += 1
@@ -861,20 +874,6 @@ class TelephonyVoiceBridge:
                 "initial_model_settings": model_settings,
                 "playback_tracker": playback_tracker,  # Track audio playback for interruptions
             }
-
-            # CRITIQUE: Attendre que le flux bidirectionnel soit confirmé AVANT de démarrer la session Realtime
-            # Cela signifie attendre que le premier paquet audio soit reçu du téléphone,
-            # ce qui confirme que le conference bridge est complètement stabilisé et fonctionnel
-            if first_packet_received_event is not None:
-                logger.info("⏳ Attente du flux bidirectionnel confirmé avant de démarrer la session Realtime...")
-                try:
-                    await asyncio.wait_for(first_packet_received_event.wait(), timeout=5.0)
-                    logger.info("✅ Flux bidirectionnel confirmé - délai de stabilisation du conference bridge...")
-                    # Délai pour laisser le conference bridge PJSUA se stabiliser complètement
-                    await asyncio.sleep(0.2)  # 200ms
-                    logger.info("✅ Délai de stabilisation terminé - démarrage de la session Realtime")
-                except asyncio.TimeoutError:
-                    logger.warning("⚠️ Timeout en attendant flux bidirectionnel - démarrage quand même")
 
             # Create session using the SDK runner (this is what enables tool calls!)
             logger.info("Démarrage session SDK avec runner")
