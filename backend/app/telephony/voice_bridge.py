@@ -524,7 +524,7 @@ class TelephonyVoiceBridge:
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task, audio_received_after_user_speech, response_started_after_user_speech
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task, audio_received_after_user_speech, response_started_after_user_speech, incomplete_audio_buffer
             try:
                 async for event in session:
                     if not should_continue():
