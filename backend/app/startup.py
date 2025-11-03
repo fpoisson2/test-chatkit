@@ -98,6 +98,9 @@ for noisy_logger in (
     # n'a été appliquée par l'utilisateur.
     "websockets.client",
     "websockets.asyncio.client",
+    # Le client MCP génère des logs DEBUG très verbeux avec les payloads complets
+    # des événements SSE et des messages serveur. On réduit le niveau de log.
+    "mcp.client.sse",
 ):
     logger_instance = logging.getLogger(noisy_logger)
     if logger_instance.level == logging.NOTSET:
