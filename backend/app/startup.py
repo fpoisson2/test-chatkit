@@ -2712,27 +2712,57 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             }
             telephony_tools.append(transfer_tool_config)
 
-            session_handle = await open_voice_session(
-                user_id=f"pjsua:{call_id}",
-                model=voice_model,
-                instructions=instructions,
-                voice=voice_name,
-                provider_id=voice_provider_id,
-                provider_slug=voice_provider_slug,
-                tools=telephony_tools,
-                handoffs=voice_handoffs,
-                realtime={},
-                metadata={
-                    "pjsua_call_id": call_id,
-                    "incoming_number": incoming_number,
-                },
-            )
+            # Ouvrir la session avec un timeout pour éviter les blocages
+            try:
+                session_handle = await asyncio.wait_for(
+                    open_voice_session(
+                        user_id=f"pjsua:{call_id}",
+                        model=voice_model,
+                        instructions=instructions,
+                        voice=voice_name,
+                        provider_id=voice_provider_id,
+                        provider_slug=voice_provider_slug,
+                        tools=telephony_tools,
+                        handoffs=voice_handoffs,
+                        realtime={},
+                        metadata={
+                            "pjsua_call_id": call_id,
+                            "incoming_number": incoming_number,
+                        },
+                    ),
+                    timeout=10.0,  # Timeout de 10 secondes
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    "⏱️ Timeout lors de la création de session Realtime (call_id=%s) - "
+                    "OpenAI ne répond pas",
+                    call_id,
+                )
+                await pjsua_adapter.hangup_call(call)
+                return
+            except Exception as e:
+                logger.exception(
+                    "❌ Erreur lors de la création de session Realtime (call_id=%s)",
+                    call_id,
+                    exc_info=e,
+                )
+                await pjsua_adapter.hangup_call(call)
+                return
 
             # Récupérer le client secret
             client_secret = session_handle.client_secret
 
             if not client_secret:
-                raise ValueError(f"Client secret introuvable pour l'appel {call_id}")
+                logger.error(
+                    "Client secret introuvable pour l'appel %s - fermeture session",
+                    call_id,
+                )
+                try:
+                    await close_voice_session(session_id=session_handle.session_id)
+                except Exception:
+                    pass
+                await pjsua_adapter.hangup_call(call)
+                return
 
             logger.info("Session vocale créée (session_id=%s)", session_handle.session_id)
 
@@ -2831,6 +2861,17 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     await pjsua_adapter.hangup_call(call)
                 except Exception:
                     pass
+            finally:
+                # Garantir la fermeture de la session Realtime
+                try:
+                    await close_voice_session(session_id=session_handle.session_id)
+                    logger.info("🔒 Session Realtime fermée explicitement (call_id=%s)", call_id)
+                except Exception as cleanup_error:
+                    logger.warning(
+                        "Erreur lors du nettoyage de session Realtime (call_id=%s): %s",
+                        call_id,
+                        cleanup_error,
+                    )
 
         except Exception as e:
             logger.exception("Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
