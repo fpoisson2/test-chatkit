@@ -330,6 +330,28 @@ class TelephonyVoiceBridge:
         async def request_stop() -> None:
             """Request immediate stop of both audio forwarding and event handling."""
             stop_event.set()
+            # Annuler toute réponse en cours pour éviter le "saignement" audio entre sessions
+            try:
+                from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                await session._model.send_event(
+                    RealtimeModelSendRawMessage(
+                        message={"type": "response.cancel"}
+                    )
+                )
+                logger.debug("✅ Réponse en cours annulée avant fermeture")
+            except Exception as e:
+                logger.debug("response.cancel échoué (peut-être pas de réponse active): %s", e)
+            # Vider le buffer audio d'entrée pour éviter des données résiduelles
+            try:
+                from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                await session._model.send_event(
+                    RealtimeModelSendRawMessage(
+                        message={"type": "input_audio_buffer.clear"}
+                    )
+                )
+                logger.debug("✅ Buffer audio d'entrée vidé avant fermeture")
+            except Exception as e:
+                logger.debug("input_audio_buffer.clear échoué: %s", e)
             # Note: Ne pas fermer la session ici car __aexit__ doit être appelé depuis la même tâche que __aenter__
             # La session sera fermée automatiquement par le context manager 'async with'
 
@@ -838,6 +860,19 @@ class TelephonyVoiceBridge:
             # Utiliser async with pour gérer proprement le context manager et éviter les erreurs de cancel scope
             async with await runner.run(model_config=model_config) as session:
                 logger.info("Session SDK démarrée avec succès")
+
+                # Vider le buffer audio d'entrée au début de la session pour éviter des données résiduelles
+                # de sessions précédentes
+                try:
+                    from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                    await session._model.send_event(
+                        RealtimeModelSendRawMessage(
+                            message={"type": "input_audio_buffer.clear"}
+                        )
+                    )
+                    logger.debug("✅ Buffer audio d'entrée vidé au début de la session")
+                except Exception as e:
+                    logger.warning("input_audio_buffer.clear échoué au début: %s", e)
 
                 # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
                 # NOTE: Le response.create() sera envoyé APRÈS la réception du premier paquet RTP
