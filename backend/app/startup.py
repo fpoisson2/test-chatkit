@@ -3021,6 +3021,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Variables pour la session pré-initialisée (seront remplies pendant la sonnerie)
             preinit_session = None
             preinit_response_create_sent = False
+            consume_task = None  # Task pour consommer les events pendant la sonnerie
 
             async def run_voice_bridge():
                 """Tâche pour exécuter le voice bridge."""
@@ -3161,6 +3162,14 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                 except Exception as e:
                     logger.warning("⚠️ Erreur pendant pré-initialisation: %s - continuera sans preinit (call_id=%s)", e, call_id)
+                    # IMPORTANT: Annuler consume_task si elle existe
+                    if consume_task is not None and not consume_task.done():
+                        logger.info("🧹 Annulation consume_task suite à erreur (call_id=%s)", call_id)
+                        consume_task.cancel()
+                        try:
+                            await consume_task
+                        except asyncio.CancelledError:
+                            pass
                     # IMPORTANT: Fermer la session preinit en cas d'erreur
                     if preinit_session is not None:
                         try:
@@ -3206,6 +3215,18 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             except Exception:
                 pass
         finally:
+            # CRITIQUE: Toujours annuler consume_task si elle existe encore
+            # Cela évite l'accumulation de tasks qui consomment les events en arrière-plan
+            if consume_task is not None and not consume_task.done():
+                try:
+                    logger.info("🧹 Nettoyage final: annulation consume_task (call_id=%s)", call_id)
+                    consume_task.cancel()
+                    await consume_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as cleanup_error:
+                    logger.debug("Erreur annulation consume_task en finally: %s", cleanup_error)
+
             # CRITIQUE: Toujours fermer preinit_session si elle existe encore
             # Cela garantit qu'elle est fermée même si l'utilisateur raccroche pendant la sonnerie
             if preinit_session is not None:
