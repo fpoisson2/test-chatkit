@@ -758,8 +758,13 @@ class PJSUAAdapter:
                 logger.debug("Appel déjà terminé (call_id=%s), ignorer hangup", ci.id)
                 return
         except Exception as e:
+            # Si getInfo() échoue avec "already terminated", l'appel est déjà terminé
+            error_str = str(e).lower()
+            if "already terminated" in error_str or "esessionterminated" in error_str:
+                logger.debug("Appel déjà terminé (getInfo échoué), ignorer hangup: %s", e)
+                return
+            # Sinon, logger l'erreur mais continuer pour essayer le hangup
             logger.debug("Impossible de vérifier l'état de l'appel: %s", e)
-            # Si on ne peut pas vérifier l'état, on essaie quand même
 
         try:
             prm = pj.CallOpParam()

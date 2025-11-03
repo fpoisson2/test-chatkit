@@ -12,4 +12,23 @@ logging.basicConfig(
     format="%(levelname)s:%(name)s:%(message)s",
 )
 
+
+# Filtre pour supprimer les erreurs de cancel scope du SDK OpenAI
+# Ces erreurs sont internes au SDK et n'affectent pas le fonctionnement
+class OpenAICancelScopeFilter(logging.Filter):
+    """Filtre les erreurs de cancel scope du SDK OpenAI lors du nettoyage."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Supprimer les messages d'erreur "Attempted to exit cancel scope in a different task"
+        if record.levelno == logging.ERROR:
+            message = record.getMessage()
+            if "cancel scope" in message.lower() and "different task" in message.lower():
+                return False
+        return True
+
+
+# Appliquer le filtre au logger openai.agents
+openai_agents_logger = logging.getLogger("openai.agents")
+openai_agents_logger.addFilter(OpenAICancelScopeFilter())
+
 app = fastapi_app
