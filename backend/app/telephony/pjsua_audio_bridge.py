@@ -71,6 +71,12 @@ class PJSUAAudioBridge:
         # Hysteresis backpressure: flag pour bloquer production quand queue >= HW
         self._production_blocked = False
 
+        # État de rééchantillonnage 24kHz → 8kHz (préserve continuité entre chunks)
+        self._resample_state_24_to_8: Any = None
+
+        # Lock pour protéger l'état pendant le traitement concurrent
+        self._processing_lock = asyncio.Lock()
+
     async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).
 
@@ -198,6 +204,61 @@ class PJSUAAudioBridge:
         if queue_len > 0:
             return self._tx_queue.popleft()
         return None
+
+    def _process_audio_sync(self, audio_24khz: bytes) -> bytes | None:
+        """Traitement audio synchrone: rééchantillonnage 24kHz → 8kHz + normalisation.
+
+        Cette fonction est CPU-intensive et doit être exécutée dans un thread séparé
+        via asyncio.to_thread() pour ne pas bloquer l'event loop.
+
+        Args:
+            audio_24khz: PCM16 audio at 24kHz (peut être de taille variable)
+
+        Returns:
+            PCM16 audio at 8kHz, or None if silent audio should be dropped
+        """
+        if len(audio_24khz) == 0:
+            return None
+
+        try:
+            # ÉTAPE 1: Rééchantillonnage 24kHz → 8kHz avec préservation d'état
+            # Cela garantit une conversion fluide sans artefacts entre chunks
+            audio_8khz, self._resample_state_24_to_8 = audioop.ratecv(
+                audio_24khz,
+                self.BYTES_PER_SAMPLE,
+                self.CHANNELS,
+                self.VOICE_BRIDGE_SAMPLE_RATE,
+                self.PJSUA_SAMPLE_RATE,
+                self._resample_state_24_to_8,  # Préserve l'état entre appels
+            )
+        except audioop.error as e:
+            logger.warning("Erreur rééchantillonnage 24kHz→8kHz: %s", e)
+            self._resample_state_24_to_8 = None  # Reset état en cas d'erreur
+            return None
+
+        try:
+            # ÉTAPE 2: Analyse d'amplitude pour filtrage silence
+            max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
+
+            # CRITIQUE: Ne jamais enqueuer du silence (évite bruit de fond)
+            if max_amplitude <= self.SILENCE_THRESHOLD:
+                return None  # Signal au caller de dropper ce chunk
+
+            # ÉTAPE 3: Amplification si amplitude trop faible
+            min_target_amplitude = 6000
+            max_gain = 12.0
+            if max_amplitude < min_target_amplitude:
+                gain = min(min_target_amplitude / max_amplitude, max_gain)
+                try:
+                    audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
+                except audioop.error:
+                    pass  # Garder l'audio original si overflow
+
+            return audio_8khz
+
+        except audioop.error as e:
+            logger.warning("Erreur traitement audio (max/mul): %s", e)
+            return None
 
     async def send_to_peer(self, audio_8khz: bytes) -> None:
         """Send audio from VoiceBridge to PJSUA (already at 8kHz).
