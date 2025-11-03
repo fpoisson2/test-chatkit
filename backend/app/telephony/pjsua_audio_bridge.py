@@ -311,8 +311,9 @@ async def create_pjsua_audio_bridge(
         ```
     """
     bridge = PJSUAAudioBridge(call)
-    # Récupérer l'event frame_requested de l'adaptateur pour savoir quand PJSUA est prêt à consommer
-    pjsua_ready_event = call.adapter._frame_requested_event
+    # Récupérer l'event frame_requested de CET appel (pas de l'adaptateur global)
+    # CRITIQUE: Chaque appel a son propre event pour éviter les problèmes de timing sur les appels successifs
+    pjsua_ready_event = call._frame_requested_event
     return bridge.rtp_stream(media_active_event), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, pjsua_ready_event, bridge
 
 

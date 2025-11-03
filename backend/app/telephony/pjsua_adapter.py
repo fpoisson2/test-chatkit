@@ -133,13 +133,14 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
 class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
     """Port audio personnalisé pour capturer et injecter l'audio."""
 
-    def __init__(self, adapter: PJSUAAdapter):
+    def __init__(self, adapter: PJSUAAdapter, frame_requested_event: asyncio.Event | None = None):
         if not PJSUA_AVAILABLE:
             return
 
         # Configuration du port audio
         # PJSUA utilise 8kHz, 16-bit, mono pour la téléphonie
         self.adapter = adapter
+        self._frame_requested_event = frame_requested_event  # Event spécifique à cet appel
         self.sample_rate = 8000
         self.channels = 1
         self.samples_per_frame = 160  # 20ms @ 8kHz
@@ -198,9 +199,10 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._frame_count += 1
 
         # Au premier appel, signaler que PJSUA est prêt à consommer l'audio
-        if self._frame_count == 1 and self.adapter._frame_requested_event and not self.adapter._frame_requested_event.is_set():
+        # CRITIQUE: Utiliser l'event spécifique à cet appel, pas un event global
+        if self._frame_count == 1 and self._frame_requested_event and not self._frame_requested_event.is_set():
             logger.info("🎬 Premier onFrameRequested - PJSUA est prêt à consommer l'audio")
-            self.adapter._frame_requested_event.set()
+            self._frame_requested_event.set()
 
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
 
@@ -286,10 +288,17 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                                len(audio_pcm), list(audio_pcm[:10]) if len(audio_pcm) >= 10 else list(audio_pcm),
                                max_amplitude, "⚠️ SILENCE!" if is_silence else "✅ AUDIO VALIDE")
 
-                # Si on reçoit que du silence pendant les premières frames, c'est un problème
-                if self._frame_received_count <= 20 and is_silence:
-                    logger.warning("⚠️ Frame #%d contient du SILENCE (conference bridge peut-être mal connecté)",
-                                 self._frame_received_count)
+                # Silence au début de l'appel est NORMAL (téléphone n'envoie pas encore de parole)
+                # Ne warning que si on détecte du silence après avoir reçu du vrai audio
+                if self._frame_received_count > 50 and is_silence:
+                    if not hasattr(self, '_silence_after_audio_count'):
+                        self._silence_after_audio_count = 0
+                    self._silence_after_audio_count += 1
+                    if self._silence_after_audio_count > 100:  # Plus de 2 secondes de silence
+                        logger.warning("⚠️ Silence prolongé détecté après %d frames audio",
+                                     self._frame_received_count)
+                elif not is_silence and hasattr(self, '_silence_after_audio_count'):
+                    self._silence_after_audio_count = 0
 
                 # Ajouter l'audio PCM à la queue pour traitement async
                 self._incoming_audio_queue.put_nowait(audio_pcm)
@@ -400,6 +409,10 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         self._audio_port: AudioMediaPort | None = None
         self._audio_media: Any = None  # Référence au AudioMedia pour stopTransmit()
 
+        # CRITIQUE: Chaque appel doit avoir son propre event pour savoir quand PJSUA est prêt
+        # Utiliser un event partagé cause des problèmes sur les 2e/3e appels
+        self._frame_requested_event = asyncio.Event() if adapter._loop else None
+
     def onCallState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état d'appel."""
         if not PJSUA_AVAILABLE:
@@ -477,7 +490,7 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                             logger.warning("Erreur désactivation ancien port: %s", e)
 
                     logger.info("🔧 Création du AudioMediaPort pour call_id=%s", ci.id)
-                    self._audio_port = AudioMediaPort(self.adapter)
+                    self._audio_port = AudioMediaPort(self.adapter, self._frame_requested_event)
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
@@ -591,9 +604,6 @@ class PJSUAAdapter:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
 
-        # Event qui se déclenche quand PJSUA commence à consommer l'audio (onFrameRequested appelé)
-        self._frame_requested_event: asyncio.Event | None = None
-
         # Callbacks
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._call_state_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
@@ -610,7 +620,6 @@ class PJSUAAdapter:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
         self._loop = asyncio.get_running_loop()
-        self._frame_requested_event = asyncio.Event()
 
         # Créer l'endpoint PJSUA
         self._ep = pj.Endpoint()
