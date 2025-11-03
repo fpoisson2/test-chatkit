@@ -398,6 +398,7 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         self.adapter = adapter
         self._media_active = False
         self._audio_port: AudioMediaPort | None = None
+        self._audio_media: Any = None  # Référence au AudioMedia pour stopTransmit()
 
     def onCallState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état d'appel."""
@@ -446,8 +447,18 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     # IMPORTANT: Toujours recréer le port car PJSUA peut détruire et recréer
                     # le stream audio lors des UPDATE SIP (changement de codec)
                     if self._audio_port is not None:
-                        logger.info("🔄 Port audio existe déjà, destruction avant recréation (call_id=%s)", ci.id)
+                        logger.info("🔄 Port audio existe déjà, déconnexion conference bridge avant recréation (call_id=%s)", ci.id)
                         try:
+                            # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
+                            # pour éviter les connexions fantômes qui causent du silence au 3e appel
+                            if hasattr(self, '_audio_media') and self._audio_media is not None:
+                                try:
+                                    # Arrêter les transmissions bidirectionnelles
+                                    self._audio_media.stopTransmit(self._audio_port)
+                                    self._audio_port.stopTransmit(self._audio_media)
+                                    logger.info("✅ Conference bridge déconnecté (call_id=%s)", ci.id)
+                                except Exception as e:
+                                    logger.warning("Erreur déconnexion conference bridge: %s", e)
                             self._audio_port.deactivate()
                         except Exception as e:
                             logger.warning("Erreur désactivation ancien port: %s", e)
@@ -458,6 +469,9 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
                     audio_media = pj.AudioMedia.typecastFromMedia(call_media)
+
+                    # Sauvegarder la référence pour pouvoir déconnecter plus tard
+                    self._audio_media = audio_media
 
                     # CRITIQUE: Avec null sound device, le conference mixer n'est PAS automatiquement armé
                     # Il faut EXPLICITEMENT connecter les slots de conférence pour activer le traitement audio
@@ -516,6 +530,17 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         if not media_is_active and self._audio_port is not None:
             logger.warning("⚠️ Média désactivé mais port audio encore actif (call_id=%s) - nettoyage", ci.id)
             try:
+                # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
+                if self._audio_media is not None:
+                    try:
+                        # Arrêter les transmissions bidirectionnelles
+                        self._audio_media.stopTransmit(self._audio_port)
+                        self._audio_port.stopTransmit(self._audio_media)
+                        logger.info("✅ Conference bridge déconnecté (call_id=%s)", ci.id)
+                    except Exception as e:
+                        logger.warning("Erreur déconnexion conference bridge: %s", e)
+                    finally:
+                        self._audio_media = None
                 self._audio_port.deactivate()
                 logger.info("✅ Port audio zombie désactivé (call_id=%s)", ci.id)
             except Exception as e:
@@ -769,13 +794,23 @@ class PJSUAAdapter:
             # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
             if call._audio_port:
                 try:
+                    # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
+                    # pour éviter les connexions fantômes qui causent du silence au 3e appel
+                    if call._audio_media is not None:
+                        try:
+                            # Arrêter les transmissions bidirectionnelles
+                            call._audio_media.stopTransmit(call._audio_port)
+                            call._audio_port.stopTransmit(call._audio_media)
+                            logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_info.id)
+                        except Exception as e:
+                            logger.warning("Erreur déconnexion conference bridge (call_id=%s): %s", call_info.id, e)
+                        finally:
+                            call._audio_media = None
+
                     # Désactiver le port pour arrêter le traitement des frames
                     # Cela empêche l'envoi continu de silence après la fin de l'appel
                     call._audio_port.deactivate()
                     logger.info("✅ Port audio désactivé (call_id=%s)", call_info.id)
-
-                    # Note: stopTransmit() nécessiterait l'audio_media comme argument
-                    # et de toute façon le port sera détruit, donc pas nécessaire
                 except Exception as e:
                     logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_info.id, e)
                 finally:
@@ -869,6 +904,19 @@ class PJSUAAdapter:
             # Désactiver le port audio
             if call._audio_port:
                 try:
+                    # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
+                    # pour éviter les connexions fantômes qui causent du silence au 3e appel
+                    if call._audio_media is not None:
+                        try:
+                            # Arrêter les transmissions bidirectionnelles
+                            call._audio_media.stopTransmit(call._audio_port)
+                            call._audio_port.stopTransmit(call._audio_media)
+                            logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
+                        except Exception as e:
+                            logger.warning("Erreur déconnexion conference bridge (call_id=%s): %s", call_id, e)
+                        finally:
+                            call._audio_media = None
+
                     logger.info("🛑 Désactivation du port audio (call_id=%s)", call_id)
                     call._audio_port.deactivate()
                 except Exception as e:
