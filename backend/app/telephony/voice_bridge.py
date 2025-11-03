@@ -278,6 +278,7 @@ class TelephonyVoiceBridge:
         send_to_peer: Callable[[bytes], Awaitable[None]],
         clear_audio_queue: Callable[[], int] | None = None,
         pjsua_ready_to_consume: asyncio.Event | None = None,
+        first_packet_received_event: asyncio.Event | None = None,
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
@@ -861,6 +862,20 @@ class TelephonyVoiceBridge:
                 "playback_tracker": playback_tracker,  # Track audio playback for interruptions
             }
 
+            # CRITIQUE: Attendre que le flux bidirectionnel soit confirmé AVANT de démarrer la session Realtime
+            # Cela signifie attendre que le premier paquet audio soit reçu du téléphone,
+            # ce qui confirme que le conference bridge est complètement stabilisé et fonctionnel
+            if first_packet_received_event is not None:
+                logger.info("⏳ Attente du flux bidirectionnel confirmé avant de démarrer la session Realtime...")
+                try:
+                    await asyncio.wait_for(first_packet_received_event.wait(), timeout=5.0)
+                    logger.info("✅ Flux bidirectionnel confirmé - délai de stabilisation du conference bridge...")
+                    # Délai pour laisser le conference bridge PJSUA se stabiliser complètement
+                    await asyncio.sleep(0.2)  # 200ms
+                    logger.info("✅ Délai de stabilisation terminé - démarrage de la session Realtime")
+                except asyncio.TimeoutError:
+                    logger.warning("⚠️ Timeout en attendant flux bidirectionnel - démarrage quand même")
+
             # Create session using the SDK runner (this is what enables tool calls!)
             logger.info("Démarrage session SDK avec runner")
             # Utiliser async with pour gérer proprement le context manager et éviter les erreurs de cancel scope
@@ -880,25 +895,6 @@ class TelephonyVoiceBridge:
                 except Exception as e:
                     logger.warning("input_audio_buffer.clear échoué au début: %s", e)
 
-                # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
-                # NOTE: Le response.create() sera envoyé APRÈS la réception du premier paquet RTP
-                # et l'envoi des frames de silence (voir forward_audio() plus bas)
-                # Cela garantit que le canal bidirectionnel est établi et amorcé avant de commencer la génération
-                if speak_first:
-                    if pjsua_ready_to_consume is not None:
-                        logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
-                        try:
-                            await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
-                            logger.info("✅ PJSUA prêt - délai de stabilisation du conference bridge...")
-                            # Délai pour laisser le conference bridge PJSUA se stabiliser complètement
-                            # avant de commencer le traitement audio avec la session Realtime
-                            await asyncio.sleep(0.2)  # 200ms
-                            logger.info("✅ Délai de stabilisation terminé - attente du premier paquet RTP pour amorcer le canal")
-                        except asyncio.TimeoutError:
-                            logger.warning("⚠️ Timeout en attendant PJSUA")
-                    else:
-                        logger.info("⏳ Mode speak_first activé - response.create sera envoyé après amorçage du canal")
-
                 # Log available tools
                 try:
                     agent = session._current_agent
@@ -909,19 +905,6 @@ class TelephonyVoiceBridge:
                         logger.info("  - Outil : %s", tool_name)
                 except Exception as e:
                     logger.warning("Impossible de lister les outils : %s", e)
-
-                # Pour les appels PJSUA (speak_first=False), attendre aussi que PJSUA soit prêt
-                # avant de commencer le traitement audio
-                if not speak_first and pjsua_ready_to_consume is not None:
-                    logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio...")
-                    try:
-                        await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
-                        logger.info("✅ PJSUA prêt - délai de stabilisation du conference bridge...")
-                        # Délai pour laisser le conference bridge PJSUA se stabiliser complètement
-                        await asyncio.sleep(0.2)  # 200ms
-                        logger.info("✅ Délai de stabilisation terminé - démarrage du traitement audio")
-                    except asyncio.TimeoutError:
-                        logger.warning("⚠️ Timeout en attendant PJSUA")
 
                 audio_task = asyncio.create_task(forward_audio())
                 events_task = asyncio.create_task(handle_events())

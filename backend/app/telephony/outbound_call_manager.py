@@ -578,6 +578,7 @@ class OutboundCallManager:
                     send_to_peer=send_to_peer,  # PJSUA audio bridge callback (wrapped pour bloquer)
                     clear_audio_queue=clear_queue,  # Permet d'interrompre l'audio
                     pjsua_ready_to_consume=pjsua_ready_event,  # Attend que PJSUA soit prêt avant speak_first
+                    first_packet_received_event=first_packet_event,  # Attend flux bidirectionnel confirmé
                     api_base=realtime_api_base,
                     tools=voice_tools,
                     handoffs=voice_handoffs,
