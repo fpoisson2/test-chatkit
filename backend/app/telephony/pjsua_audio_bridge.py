@@ -403,6 +403,10 @@ class PJSUAAudioBridge:
         self._tx_queue.clear()
         self._production_blocked = False
 
+        # Nettoyer le buffer incomplet et l'état de rééchantillonnage
+        self._incomplete_audio_buffer = b""
+        self._resample_state_24_to_8 = None
+
     @property
     def is_stopped(self) -> bool:
         """Check if the bridge has been stopped."""
