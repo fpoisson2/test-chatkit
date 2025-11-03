@@ -381,6 +381,8 @@ class TelephonyVoiceBridge:
             # Note: turn_detection est déjà activé dans la configuration initiale de session (_build_session_update)
             # Track if we've sent response.create when phone became ready (after stabilization)
             response_create_sent_on_ready = False
+            # Track if user spoke in the first 5 packets (before speak_first trigger)
+            user_spoke_early = False
 
             try:
                 async for packet in rtp_stream:

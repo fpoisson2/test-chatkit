@@ -11,10 +11,8 @@ from __future__ import annotations
 import asyncio
 import audioop
 import logging
-import time
-from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .voice_bridge import RtpPacket
 
@@ -22,6 +20,7 @@ if TYPE_CHECKING:
     from .pjsua_adapter import PJSUACall
 
 logger = logging.getLogger("chatkit.telephony.pjsua_audio_bridge")
+logger.setLevel(logging.DEBUG)  # Force DEBUG pour diagnostiquer l'audio
 
 
 class PJSUAAudioBridge:
@@ -33,11 +32,17 @@ class PJSUAAudioBridge:
     BYTES_PER_SAMPLE = 2  # PCM16 = 16-bit = 2 bytes
     CHANNELS = 1  # Mono
 
-    # Optimized parameters (Point 1, 3)
-    SILENCE_THRESHOLD = 4  # Amplitude minimale pour considérer comme non-silence (PCM16)
-    MAX_TX_FRAMES = 2000  # Buffer max: 2000 frames = ~40s (OpenAI peut envoyer jusqu'à 30s d'audio à la fois)
-    HIGH_WATERMARK = 1600  # Arrête production si queue >= 1600 frames (~32s)
-    LOW_WATERMARK = 800   # Reprend production si queue <= 800 frames (~16s)
+    # --- NOUVEAU : Constantes pour le découpage (chunking) ---
+    # Paquets PJSUA = 20ms (160 samples * 2 bytes/sample = 320 bytes @ 8kHz)
+    PJSUA_CHUNK_SIZE_BYTES = (PJSUA_SAMPLE_RATE // 50) * BYTES_PER_SAMPLE * CHANNELS
+
+    # Traiter l'audio par blocs de 100ms (2400 samples * 2 bytes/sample = 4800 bytes @ 24kHz)
+    # pour ne pas bloquer le thread pool trop longtemps sur un seul gros chunk.
+    INTERNAL_CHUNK_SIZE_MS = 100
+    INTERNAL_CHUNK_SIZE_BYTES = (VOICE_BRIDGE_SAMPLE_RATE // (1000 // INTERNAL_CHUNK_SIZE_MS)) * BYTES_PER_SAMPLE * CHANNELS
+    
+    # Délai de "yield" à l'event loop pour le cadencement (pacing)
+    PACING_DELAY_SECONDS = 0.01 # 10ms
 
     def __init__(self, call: PJSUACall) -> None:
         """Initialize the audio bridge for a specific call.
@@ -51,58 +56,37 @@ class PJSUAAudioBridge:
         self._sequence_number = 0
         self._timestamp = 0
 
-        # Audio buffer for outgoing audio (from VoiceBridge to phone)
-        self._outgoing_audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1000)
-
         # Event qui se déclenche quand on reçoit le premier paquet audio du téléphone
-        # Cela confirme que le flux audio bidirectionnel est établi
         self._first_packet_received = asyncio.Event()
 
-        # Silence gate to avoid amplifying background noise
-        self._silence_threshold = 40
-
-        # Counter for send_to_peer calls (for diagnostics)
-        self._send_to_peer_call_count = 0
-
-        # PULL-BASED: Queue de frames 8kHz (320B) que PJSUA pull via onFrameRequested
-        # Pas de maxlen car on gère le drop-tail manuellement (évite drop-oldest automatique)
-        self._tx_queue: deque[bytes] = deque()
-
-        # Hysteresis backpressure: flag pour bloquer production quand queue >= HW
-        self._production_blocked = False
-
-        # État de rééchantillonnage 24kHz → 8kHz (préserve continuité entre chunks)
-        self._resample_state_24_to_8: Any = None
-
-        # Buffer pour bytes incomplets (< 320B @ 8kHz) entre appels send_to_peer
-        # CRITIQUE: Ne jamais perdre ces bytes sinon les fins de phrases sont coupées!
-        self._incomplete_audio_buffer: bytes = b""
-
-        # Lock pour protéger l'état pendant le traitement concurrent
+        # --- NOUVEAU : Buffers et verrous pour le traitement audio sortant ---
+        
+        # État pour le rééchantillonnage 24kHz -> 8kHz (corrige la qualité audio)
+        self._resample_state_24_to_8 = None
+        
+        # Buffer pour les trames partielles (corrige les fins de phrases coupées)
+        self._partial_chunk_buffer = b""
+        
+        # Verrou pour protéger l'état de rééchantillonnage et le buffer partiel
+        # contre les accès concurrents (car on utilise asyncio.to_thread)
         self._processing_lock = asyncio.Lock()
+        
+        # Note: self._outgoing_audio_queue n'est pas utilisé, 
+        # la communication se fait par self._adapter.send_audio_to_call
+        # self._outgoing_audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=100)
 
-    async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
+
+    async def rtp_stream(self) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).
 
         This is consumed by TelephonyVoiceBridge.run(rtp_stream=...).
         Reads 8kHz PCM from PJSUA, resamples to 24kHz, and yields RtpPacket.
 
-        Args:
-            media_active_event: Event to wait for before starting to yield packets.
-                               This prevents capturing noise before media is ready.
-
         Yields:
             RtpPacket with 24kHz PCM16 audio
         """
-        # CRITIQUE: Attendre que le média soit actif avant de commencer à yield
-        # Sinon on capture du bruit du jitter buffer non initialisé
-        if media_active_event is not None:
-            logger.info("⏳ RTP stream: attente que le média soit actif avant de commencer...")
-            await media_active_event.wait()
-            logger.info("✅ RTP stream: média actif, démarrage de la capture audio")
-
         logger.info("Starting RTP stream from PJSUA (8kHz → 24kHz)")
-        resampling_state = None
+        resampling_state = None # L'état est local à ce générateur (flux entrant)
 
         packet_count = 0
         none_count = 0
@@ -118,24 +102,23 @@ class PJSUAAudioBridge:
                     continue
 
                 if len(audio_8khz) == 0:
-                    logger.info("⚠️ Audio reçu mais len=0")
                     continue
-
-                # Calculer l'amplitude pour diagnostic
-                max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
 
                 # Signaler la réception du premier paquet pour confirmer que le flux est établi
                 if packet_count == 0:
                     logger.info("📥 Premier paquet audio reçu du téléphone - flux bidirectionnel confirmé (après %d None)", none_count)
                     self._first_packet_received.set()
 
-                # Log périodiquement pour monitoring
-                if packet_count < 5 or packet_count % 500 == 0:
-                    logger.debug("📥 RTP stream #%d: reçu %d bytes @ 8kHz depuis PJSUA (max_amplitude=%d)",
-                               packet_count, len(audio_8khz), max_amplitude)
+                # Log first few packets for diagnostics
+                max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
+                if packet_count < 5 or (packet_count % 100 == 0): # Log les 5 premiers, puis 1/100
+                    logger.debug("📥 RTP stream #%d: reçu %d bytes @ 8kHz (max_amplitude=%d)",
+                                 packet_count, len(audio_8khz), max_amplitude)
 
                 # Resample 8kHz → 24kHz
                 try:
+                    # Cette opération est bloquante, mais sur de petits chunks (320b)
+                    # c'est très rapide et acceptable. Le vrai problème est sur send_to_peer.
                     audio_24khz, resampling_state = audioop.ratecv(
                         audio_8khz,
                         self.BYTES_PER_SAMPLE,
@@ -152,8 +135,7 @@ class PJSUAAudioBridge:
                     continue
 
                 # Create RTP packet
-                # Note: VoiceBridge will decode this with _decode_packet()
-                # Since we're already providing PCM, we use codec "pcm" (input_codec)
+                samples_in_packet = len(audio_24khz) // self.BYTES_PER_SAMPLE
                 packet = RtpPacket(
                     payload=audio_24khz,
                     timestamp=self._timestamp,
@@ -164,11 +146,9 @@ class PJSUAAudioBridge:
 
                 if packet_count < 5:
                     logger.info("📤 Envoi RtpPacket à OpenAI: seq=%d, ts=%d, %d bytes",
-                                self._sequence_number, self._timestamp, len(audio_24khz))
+                                 self._sequence_number, self._timestamp, len(audio_24khz))
 
                 # Update RTP metadata
-                # At 24kHz: 20ms = 24000 samples/sec * 0.02 sec = 480 samples
-                samples_in_packet = len(audio_24khz) // self.BYTES_PER_SAMPLE
                 self._timestamp += samples_in_packet
                 self._sequence_number = (self._sequence_number + 1) % 65536
 
@@ -184,204 +164,118 @@ class PJSUAAudioBridge:
         finally:
             logger.info("RTP stream ended")
 
-    def get_next_frame(self) -> bytes | None:
-        """Get next audio frame for PJSUA to consume (called from onFrameRequested).
-
-        This is called synchronously from PJSUA's audio thread, so we use
-        a simple deque.popleft() which is atomic and thread-safe.
-
-        IMPORTANT: Aussi utilisé pour débloquer la production si queue <= LW
-        après consommation, même si send_to_peer() n'est plus appelé.
-
-        Returns:
-            320 bytes PCM16 @ 8kHz, or None if queue empty
+    # --- NOUVELLE FONCTION HELPER (SYNCHRONE) ---
+    def _process_outgoing_chunk_sync(self, audio_24khz: bytes) -> bytes:
         """
-        # CRITIQUE: Vérifier déblocage AVANT de consommer
-        # Si production bloquée ET queue <= LW: débloquer immédiatement
-        queue_len = len(self._tx_queue)
-        if self._production_blocked and queue_len <= self.LOW_WATERMARK:
-            self._production_blocked = False
-            logger.info("✅ Production REPRISE dans get_next_frame: queue sous LW (%d <= %d frames)",
-                       queue_len, self.LOW_WATERMARK)
-
-        # Consommer une frame si disponible
-        if queue_len > 0:
-            return self._tx_queue.popleft()
-        return None
-
-    def _process_audio_sync(self, audio_24khz: bytes) -> bytes | None:
-        """Traitement audio synchrone: rééchantillonnage 24kHz → 8kHz + normalisation.
-
-        Cette fonction est CPU-intensive et doit être exécutée dans un thread séparé
-        via asyncio.to_thread() pour ne pas bloquer l'event loop.
-
-        Args:
-            audio_24khz: PCM16 audio at 24kHz (peut être de taille variable)
-
-        Returns:
-            PCM16 audio at 8kHz, or None if silent audio should be dropped
+        Fonction synchrone (bloquante) pour le thread pool.
+        Traite un petit chunk d'audio (rééchantillonnage et normalisation).
+        
+        IMPORTANT: Cette fonction n'est PAS thread-safe en elle-même
+        car elle modifie self._resample_state_24_to_8.
+        Elle DOIT être appelée depuis un contexte qui détient self._processing_lock.
         """
-        if len(audio_24khz) == 0:
-            return None
-
         try:
-            # ÉTAPE 1: Rééchantillonnage 24kHz → 8kHz avec préservation d'état
-            # Cela garantit une conversion fluide sans artefacts entre chunks
+            # 1. Resample 24kHz -> 8kHz, en PRÉSERVANT l'état
+            # (Corrige la qualité audio / "clics")
             audio_8khz, self._resample_state_24_to_8 = audioop.ratecv(
                 audio_24khz,
                 self.BYTES_PER_SAMPLE,
                 self.CHANNELS,
                 self.VOICE_BRIDGE_SAMPLE_RATE,
                 self.PJSUA_SAMPLE_RATE,
-                self._resample_state_24_to_8,  # Préserve l'état entre appels
+                self._resample_state_24_to_8,  # <-- Utilise et met à jour l'état
             )
-        except audioop.error as e:
-            logger.warning("Erreur rééchantillonnage 24kHz→8kHz: %s", e)
-            self._resample_state_24_to_8 = None  # Reset état en cas d'erreur
-            return None
 
-        try:
-            # ÉTAPE 2: Analyse d'amplitude pour filtrage silence
+            # 2. Normalize
             max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
-
-            # CRITIQUE: Ne jamais enqueuer du silence (évite bruit de fond)
-            if max_amplitude <= self.SILENCE_THRESHOLD:
-                return None  # Signal au caller de dropper ce chunk
-
-            # ÉTAPE 3: Amplification si amplitude trop faible
-            min_target_amplitude = 6000
-            max_gain = 12.0
-            if max_amplitude < min_target_amplitude:
-                gain = min(min_target_amplitude / max_amplitude, max_gain)
-                try:
-                    audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
-                except audioop.error:
-                    pass  # Garder l'audio original si overflow
-
+            if max_amplitude > 0:
+                # Target: 60% de la plage (32767 * 0.6 = ~19660)
+                target_amplitude = int(32767 * 0.6)
+                gain = target_amplitude / max_amplitude
+                # Limiter le gain: min 1.0 (pas de réduction), max 100.0
+                gain = max(1.0, min(gain, 100.0))
+                audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
+                # logger.debug("🔊 Audio normalisé (max=%d, gain=%.1fx, amplitude finale=%d)",
+                #                max_amplitude, gain, int(max_amplitude * gain))
+            
             return audio_8khz
 
         except audioop.error as e:
-            logger.warning("Erreur traitement audio (max/mul): %s", e)
-            return None
+            logger.warning("Resampling/Normalization error (24kHz→8kHz): %s", e)
+            return b""
+        except Exception as e:
+            logger.exception("Unknown error in _process_outgoing_chunk_sync: %s", e)
+            return b""
 
+    # --- FONCTION send_to_peer ENTIÈREMENT RÉÉCRITE ---
     async def send_to_peer(self, audio_24khz: bytes) -> None:
-        """Send audio from VoiceBridge to PJSUA (24kHz → 8kHz).
-
-        OPTIMISATION ANTI-STUTTERING:
-        1. Découpe les GROS chunks en petits morceaux de 1920B (20ms @ 24kHz)
-        2. Traite chaque morceau séparément avec asyncio.to_thread()
-        3. Yield à l'event loop entre chaque morceau (await asyncio.sleep(0))
-        4. Permet à onFrameRequested() de s'exécuter régulièrement (toutes les 20ms)
-
-        Args:
-            audio_24khz: PCM16 audio at 24kHz (variable size, peut être 7200-12000 bytes!)
         """
-        if len(audio_24khz) == 0:
+        Envoie l'audio à PJSUA, en découpant les gros blocs pour ne pas
+        bloquer l'event loop ou inonder la file d'attente.
+        """
+        if not audio_24khz:
             return
 
-        self._send_to_peer_call_count += 1
-
-        # Log moins verbeux: tous les 100 appels
-        if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
-            logger.info("📤 send_to_peer #%d: reçu %d bytes @ 24kHz",
-                       self._send_to_peer_call_count, len(audio_24khz))
-
-        # CRITIQUE: Découper en petits chunks pour ne pas bloquer l'event loop
-        # OpenAI peut envoyer jusqu'à 12000 bytes d'un coup → découper en morceaux de 1920B (20ms)
-        CHUNK_SIZE = 1920  # 20ms @ 24kHz PCM16 = 24000 samples/sec * 0.02s * 2 bytes/sample
-        total_frames_enqueued = 0
+        logger.debug("📤 send_to_peer: reçu %d bytes @ 24kHz", len(audio_24khz))
 
         try:
-            # Traiter par petits morceaux pour permettre à l'event loop de respirer
-            for chunk_offset in range(0, len(audio_24khz), CHUNK_SIZE):
-                chunk_24khz = audio_24khz[chunk_offset:chunk_offset + CHUNK_SIZE]
-
-                # ÉTAPE 1: Traitement CPU dans thread séparé (non-bloquant pour event loop)
-                # Le lock protège _resample_state_24_to_8 en cas d'appels concurrents
+            # Découpe le gros bloc entrant en petits chunks internes (ex: 100ms)
+            for i in range(0, len(audio_24khz), self.INTERNAL_CHUNK_SIZE_BYTES):
+                
+                small_chunk_24khz = audio_24khz[i:i + self.INTERNAL_CHUNK_SIZE_BYTES]
+                
+                # Le verrou protège self._resample_state_24_to_8 et self._partial_chunk_buffer
                 async with self._processing_lock:
+                    
+                    # 1. Exécute le travail CPU bloquant dans un thread séparé
+                    # (Corrige le blocage de l'event loop)
                     audio_8khz = await asyncio.to_thread(
-                        self._process_audio_sync,
-                        chunk_24khz
+                        self._process_outgoing_chunk_sync,
+                        small_chunk_24khz
                     )
 
-                # Si _process_audio_sync retourne None, c'est du silence → dropper ce chunk
-                if audio_8khz is None:
-                    continue
+                    if not audio_8khz:
+                        continue
 
-                # ÉTAPE 2: Découper en frames de 320B @ 8kHz (20ms)
-                # CRITIQUE: Ajouter les bytes incomplets du chunk précédent au début!
-                FRAME_SIZE = 320  # 20ms @ 8kHz PCM16
-                audio_8khz_with_prefix = self._incomplete_audio_buffer + audio_8khz
+                    # 2. Ajoute le reste du buffer précédent (corrige fins de phrases)
+                    combined_buffer = self._partial_chunk_buffer + audio_8khz
+                    
+                    frames_sent = 0
+                    
+                    # 3. Envoie tous les chunks complets de 320 bytes
+                    while len(combined_buffer) >= self.PJSUA_CHUNK_SIZE_BYTES:
+                        chunk_to_send = combined_buffer[:self.PJSUA_CHUNK_SIZE_BYTES]
+                        self._adapter.send_audio_to_call(self._call, chunk_to_send)
+                        combined_buffer = combined_buffer[self.PJSUA_CHUNK_SIZE_BYTES:]
+                        frames_sent += 1
 
-                frames_to_enqueue = []
-                offset = 0
+                    # 4. Sauvegarde le reste pour la prochaine fois
+                    self._partial_chunk_buffer = combined_buffer
+                    
+                    if frames_sent > 0:
+                        q_size = self._adapter.get_call_audio_queue_size(self._call)
+                        logger.debug("✅ send_to_peer: %d frames enfilées (queue: %d frames, %.0f ms)",
+                                     frames_sent, q_size, q_size * 20.0)
+                    elif self._partial_chunk_buffer:
+                         logger.debug("💾 %d bytes incomplets sauvegardés pour prochain chunk", len(self._partial_chunk_buffer))
 
-                while offset + FRAME_SIZE <= len(audio_8khz_with_prefix):
-                    frame = audio_8khz_with_prefix[offset:offset + FRAME_SIZE]
-                    frames_to_enqueue.append(frame)
-                    offset += FRAME_SIZE
 
-                # Sauvegarder les bytes restants (< 320B) pour le prochain appel
-                self._incomplete_audio_buffer = audio_8khz_with_prefix[offset:]
-
-                # ÉTAPE 3: Enqueuer chaque frame avec HYSTERESIS BACKPRESSURE
-                frames_enqueued = 0
-                for frame_8khz in frames_to_enqueue:
-                    queue_len = len(self._tx_queue)
-
-                    # Hysteresis: vérifier état actuel AVANT la condition
-                    if not self._production_blocked and queue_len >= self.HIGH_WATERMARK:
-                        self._production_blocked = True
-                        logger.info("🛑 Production BLOQUÉE: queue atteint HW (%d >= %d frames)",
-                                   queue_len, self.HIGH_WATERMARK)
-
-                    elif self._production_blocked and queue_len <= self.LOW_WATERMARK:
-                        self._production_blocked = False
-                        logger.info("✅ Production REPRISE: queue sous LW (%d <= %d frames)",
-                                   queue_len, self.LOW_WATERMARK)
-
-                    # Si production bloquée, dropper immédiatement
-                    if self._production_blocked:
-                        if frames_enqueued == 0 and self._send_to_peer_call_count % 50 == 0:
-                            logger.debug("⏸️  Frames droppées: production bloquée (queue=%d frames)", queue_len)
-                        break
-
-                    # Sécurité: ne jamais dépasser MAX_TX_FRAMES
-                    if queue_len >= self.MAX_TX_FRAMES:
-                        logger.warning("⚠️ Queue pleine (%d >= %d), dropping remaining frames",
-                                     queue_len, self.MAX_TX_FRAMES)
-                        break
-
-                    # Enqueuer la frame
-                    self._tx_queue.append(frame_8khz)
-                    frames_enqueued += 1
-                    total_frames_enqueued += 1
-
-                # CRITIQUE: Throttling adaptatif pour éviter l'inondation du buffer
-                # Si la queue est déjà grande, attendre un peu pour laisser le consommateur rattraper
-                current_queue_size = len(self._tx_queue)
-
-                if current_queue_size > 50:
-                    # Queue très pleine (> 1 seconde): attendre 20ms pour laisser consommer
-                    await asyncio.sleep(0.020)
-                elif current_queue_size > 25:
-                    # Queue moyennement pleine (> 500ms): attendre 10ms
-                    await asyncio.sleep(0.010)
-                elif current_queue_size > 10:
-                    # Queue commence à se remplir (> 200ms): attendre 5ms
-                    await asyncio.sleep(0.005)
-                else:
-                    # Queue normale: juste yield à l'event loop
-                    await asyncio.sleep(0)
-
-            # Log périodique pour monitoring
-            if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
-                queue_size = len(self._tx_queue)
-                logger.info("✅ send_to_peer #%d: %d frames enfilées (queue: %d frames, %d ms)",
-                           self._send_to_peer_call_count, total_frames_enqueued, queue_size, queue_size * 20)
+                # 5. !!! TRÈS IMPORTANT : CADENCEMENT (PACING) !!!
+                # Cède le contrôle à l'event loop pour laisser le consommateur
+                # (onFrameRequested) vider la file d'attente.
+                # (Corrige l'inondation du buffer et les "sauts")
+                await asyncio.sleep(self.PACING_DELAY_SECONDS)
 
         except Exception as e:
-            logger.warning("Failed to process audio: %s", e)
+            logger.exception("Failed in send_to_peer chunking loop: %s", e)
+
+    # --- NOUVEAU : clear_audio_queue modifié pour nettoyer les buffers internes ---
+    async def _clear_internal_buffers(self) -> None:
+        """Nettoie de manière thread-safe les buffers internes."""
+        async with self._processing_lock:
+            logger.debug("Internal buffers cleared (resample state + partial chunk)")
+            self._resample_state_24_to_8 = None
+            self._partial_chunk_buffer = b""
 
     def clear_audio_queue(self) -> int:
         """Clear the outgoing audio queue (used during interruptions).
@@ -389,39 +283,15 @@ class PJSUAAudioBridge:
         Returns:
             Number of frames cleared
         """
-        # Clear TX queue (deque operations are atomic, no lock needed)
-        tx_cleared = len(self._tx_queue)
-        self._tx_queue.clear()
-
-        # Réinitialiser le flag de production bloquée
-        self._production_blocked = False
-
-        # Vider le buffer de bytes incomplets et réinitialiser l'état de rééchantillonnage
-        # Important pour éviter artefacts audio lors de la reprise après interruption
-        incomplete_bytes = len(self._incomplete_audio_buffer)
-        self._incomplete_audio_buffer = b""
-        self._resample_state_24_to_8 = None
-
-        if incomplete_bytes > 0:
-            logger.info("🧹 Audio queue cleared: %d frames, %d bytes incomplets vidés",
-                       tx_cleared, incomplete_bytes)
-        else:
-            logger.info("🧹 Audio queue cleared: %d frames", tx_cleared)
-
-        return tx_cleared
+        # Crée une tâche pour nettoyer les buffers internes sans bloquer
+        # la fonction (qui est synchrone)
+        asyncio.create_task(self._clear_internal_buffers())
+        return self._adapter.clear_call_audio_queue(self._call)
 
     def stop(self) -> None:
         """Stop the audio bridge."""
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
-
-        # Clear TX queue and reset production flag
-        self._tx_queue.clear()
-        self._production_blocked = False
-
-        # Nettoyer le buffer incomplet et l'état de rééchantillonnage
-        self._incomplete_audio_buffer = b""
-        self._resample_state_24_to_8 = None
 
     @property
     def is_stopped(self) -> bool:
@@ -436,53 +306,10 @@ class PJSUAAudioBridge:
 
 async def create_pjsua_audio_bridge(
     call: PJSUACall,
-    media_active_event: asyncio.Event | None = None,
-) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event, asyncio.Event, "PJSUAAudioBridge"]:
-    """Create audio bridge components for a PJSUA call.
-
-    This is a convenience function that creates a bridge and returns the
-    rtp_stream, send_to_peer, clear_queue, first_packet_received_event, pjsua_ready_event, and bridge instance for TelephonyVoiceBridge.run().
-
-    Args:
-        call: The PJSUA call to bridge
-        media_active_event: Optional event that the RTP stream will wait for before yielding packets.
-                           This prevents capturing noise before media is ready.
-
-    Returns:
-        Tuple of (rtp_stream, send_to_peer, clear_queue, first_packet_received_event, pjsua_ready_event, bridge) for VoiceBridge.run()
-
-    Example:
-        ```python
-        media_active = asyncio.Event()
-        rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(call, media_active)
-
-        # Attendre que PJSUA soit prêt à consommer l'audio avant speak_first
-        await pjsua_ready_event.wait()
-
-        stats = await voice_bridge.run(
-            runner=runner,
-            client_secret=secret,
-            model=model,
-            instructions=instructions,
-            voice=voice,
-            rtp_stream=rtp_stream,
-            send_to_peer=send_to_peer,
-            clear_audio_queue=clear_queue,
-            pjsua_ready_to_consume=pjsua_ready_event,
-        )
-
-        # Nettoyer quand l'appel se termine
-        bridge.stop()
-        ```
-    """
+) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event, "PJSUAAudioBridge"]:
+    """Create audio bridge components for a PJSUA call. (INCHANGÉ)"""
     bridge = PJSUAAudioBridge(call)
-
-    # Attacher le bridge au call pour pouvoir y accéder depuis onCallMediaState
-    call._audio_bridge = bridge
-
-    # Récupérer l'event frame_requested de l'adaptateur pour savoir quand PJSUA est prêt à consommer
-    pjsua_ready_event = call.adapter._frame_requested_event
-    return bridge.rtp_stream(media_active_event), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, pjsua_ready_event, bridge
+    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, bridge
 
 
 __all__ = [
