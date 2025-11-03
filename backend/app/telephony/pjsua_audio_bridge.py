@@ -180,10 +180,22 @@ class PJSUAAudioBridge:
         This is called synchronously from PJSUA's audio thread, so we use
         a simple deque.popleft() which is atomic and thread-safe.
 
+        IMPORTANT: Aussi utilisé pour débloquer la production si queue <= LW
+        après consommation, même si send_to_peer() n'est plus appelé.
+
         Returns:
             320 bytes PCM16 @ 8kHz, or None if queue empty
         """
-        if len(self._tx_queue) > 0:
+        # CRITIQUE: Vérifier déblocage AVANT de consommer
+        # Si production bloquée ET queue <= LW: débloquer immédiatement
+        queue_len = len(self._tx_queue)
+        if self._production_blocked and queue_len <= self.LOW_WATERMARK:
+            self._production_blocked = False
+            logger.info("✅ Production REPRISE dans get_next_frame: queue sous LW (%d <= %d frames)",
+                       queue_len, self.LOW_WATERMARK)
+
+        # Consommer une frame si disponible
+        if queue_len > 0:
             return self._tx_queue.popleft()
         return None
 
