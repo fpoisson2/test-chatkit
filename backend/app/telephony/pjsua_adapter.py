@@ -633,6 +633,8 @@ class PJSUAAdapter:
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._call_state_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._media_active_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
+        self._call_state_listeners: list[Callable[[PJSUACall, Any], Awaitable[None]]] = []
+        self._media_active_listeners: list[Callable[[PJSUACall, Any], Awaitable[None]]] = []
 
     async def initialize(self, config: PJSUAConfig | None = None, *, port: int = 5060) -> None:
         """Initialise l'endpoint PJSUA et optionnellement crée le compte SIP.
@@ -809,11 +811,47 @@ class PJSUAAdapter:
         """Définit le callback pour les changements d'état d'appel."""
         self._call_state_callback = callback
 
+    def add_call_state_listener(
+        self, callback: Callable[[PJSUACall, Any], Awaitable[None]]
+    ) -> Callable[[], None]:
+        """Ajoute un listener supplémentaire pour les changements d'état d'appel.
+
+        Returns:
+            Fonction à appeler pour retirer le listener.
+        """
+        self._call_state_listeners.append(callback)
+
+        def remove() -> None:
+            try:
+                self._call_state_listeners.remove(callback)
+            except ValueError:
+                pass
+
+        return remove
+
     def set_media_active_callback(
         self, callback: Callable[[PJSUACall, Any], Awaitable[None]]
     ) -> None:
         """Définit le callback pour l'activation du média."""
         self._media_active_callback = callback
+
+    def add_media_active_listener(
+        self, callback: Callable[[PJSUACall, Any], Awaitable[None]]
+    ) -> Callable[[], None]:
+        """Ajoute un listener supplémentaire pour l'activation du média.
+
+        Returns:
+            Fonction à appeler pour retirer le listener.
+        """
+        self._media_active_listeners.append(callback)
+
+        def remove() -> None:
+            try:
+                self._media_active_listeners.remove(callback)
+            except ValueError:
+                pass
+
+        return remove
 
     async def _on_reg_state(self, is_active: bool) -> None:
         """Callback interne pour les changements d'état d'enregistrement."""
@@ -904,6 +942,12 @@ class PJSUAAdapter:
         if self._call_state_callback:
             await self._call_state_callback(call, call_info)
 
+        for listener in list(self._call_state_listeners):
+            try:
+                await listener(call, call_info)
+            except Exception as e:
+                logger.warning("Erreur dans call_state listener: %s", e)
+
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
             # Détruire explicitement l'objet Call maintenant que le callback utilisateur a été appelé
             self._dispose_call_object(call, call_info.id)
@@ -912,6 +956,12 @@ class PJSUAAdapter:
         """Callback interne pour l'activation du média."""
         if self._media_active_callback:
             await self._media_active_callback(call, media_info)
+
+        for listener in list(self._media_active_listeners):
+            try:
+                await listener(call, media_info)
+            except Exception as e:
+                logger.warning("Erreur dans media_active listener: %s", e)
 
     async def answer_call(self, call: PJSUACall, code: int = 200) -> None:
         """Répond à un appel entrant."""

@@ -8,7 +8,7 @@ import os
 import uuid
 import random
 from datetime import datetime, UTC
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
@@ -200,6 +200,9 @@ class OutboundCallManager:
         self, db: Session, session: OutboundCallSession, call_db_id: int
     ) -> None:
         """Exécute l'appel sortant avec PJSUA."""
+        media_listener_remove: Callable[[], None] | None = None
+        call_state_listener_remove: Callable[[], None] | None = None
+
         try:
             # Récupérer le compte SIP
             sip_account = db.query(SipAccount).filter_by(
@@ -267,24 +270,13 @@ class OutboundCallManager:
                 media_active_event.set()
 
             # Enregistrer le callback média
-            self._pjsua_adapter.set_media_active_callback(on_media_active_callback_outbound)
+            media_listener_remove = self._pjsua_adapter.add_media_active_listener(on_media_active_callback_outbound)
 
             # Callback pour nettoyer les ressources quand l'appel se termine
             cleanup_done = asyncio.Event()
 
-            # Sauvegarder le callback précédent s'il existe
-            previous_call_state_callback = getattr(self._pjsua_adapter, '_call_state_callback', None)
-
             async def on_call_state_callback_outbound(active_call: Any, call_info: Any) -> None:
                 """Appelé quand l'état de l'appel change."""
-                # D'abord, appeler le callback précédent s'il existe
-                if previous_call_state_callback:
-                    try:
-                        await previous_call_state_callback(active_call, call_info)
-                    except Exception as e:
-                        logger.warning("Erreur dans callback précédent: %s", e)
-
-                # Ensuite, gérer notre propre nettoyage
                 if pjsua_call_ref[0] and active_call == pjsua_call_ref[0]:
                     # Si l'appel est déconnecté, nettoyer les ressources
                     if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
@@ -302,7 +294,7 @@ class OutboundCallManager:
                             cleanup_done.set()
 
             # Enregistrer le callback de changement d'état
-            self._pjsua_adapter.set_call_state_callback(on_call_state_callback_outbound)
+            call_state_listener_remove = self._pjsua_adapter.add_call_state_listener(on_call_state_callback_outbound)
 
             # CRITIQUE: Maintenant on initie l'appel APRÈS avoir enregistré les callbacks
             logger.info("📞 Initiation de l'appel PJSUA vers %s (call_id=%s)", to_uri, session.call_id)
@@ -386,6 +378,11 @@ class OutboundCallManager:
         finally:
             # Nettoyer les ressources de la session
             logger.info("🧹 Début nettoyage session appel %s", session.call_id)
+
+            if call_state_listener_remove:
+                call_state_listener_remove()
+            if media_listener_remove:
+                media_listener_remove()
 
             # 1. Arrêter l'audio bridge de la session d'abord
             if hasattr(session, '_audio_bridge') and session._audio_bridge:

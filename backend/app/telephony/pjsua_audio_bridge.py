@@ -210,17 +210,17 @@ class PJSUAAudioBridge:
                 audio_8khz = bytes(len(audio_8khz))
             else:
                 # Garantir un niveau minimal suffisamment audible tout en limitant la saturation.
-                # On n'écrase plus les signaux très faibles : on les amplifie quand l'énergie RMS
-                # laisse penser qu'il s'agit d'une parole et non de simple bruit de fond.
-                min_target_amplitude = 5000
+                # On booste systématiquement les signaux faibles (max_amplitude < min_target) afin
+                # que l'appelant entende bien le préambule, même si l'audio démarre très bas.
+                min_target_amplitude = 6000
                 max_gain = 12.0
-                should_boost = (
-                    max_amplitude < min_target_amplitude
-                    and rms_amplitude >= (self._silence_threshold / 2)
-                )
-                if should_boost and max_amplitude > 0:
+                if max_amplitude < min_target_amplitude:
                     gain = min(min_target_amplitude / max_amplitude, max_gain)
-                    audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
+                    try:
+                        audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
+                    except audioop.error:
+                        # Si l'amplification échoue (overflow), réinitialiser à l'audio d'origine
+                        audio_8khz = audio_8khz
         except audioop.error as e:
             logger.warning("Audio processing error: %s", e)
 

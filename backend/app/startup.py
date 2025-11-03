@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import FastAPI
 from sqlalchemy import String, inspect, select, text
@@ -2524,6 +2524,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             incoming_number = match.group(1)
             logger.info("Numéro entrant extrait: %s", incoming_number)
 
+        session_handle: Any | None = None
+        media_active_listener_remove: Callable[[], None] | None = None
+        call_state_listener_remove: Callable[[], None] | None = None
+
         try:
             # Résoudre le workflow
             with SessionLocal() as db_session:
@@ -2615,25 +2619,14 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     voice_bridge_start_event.set()
 
             # Enregistrer le callback média avant de démarrer
-            pjsua_adapter.set_media_active_callback(on_media_active_callback)
+            media_active_listener_remove = pjsua_adapter.add_media_active_listener(on_media_active_callback)
 
             # Callback pour nettoyer les ressources quand l'appel se termine
             bridge_ref: list[Any] = [audio_bridge]  # Stocker la référence au bridge
             cleanup_done = asyncio.Event()
 
-            # Sauvegarder le callback précédent s'il existe
-            previous_call_state_callback = getattr(pjsua_adapter, '_call_state_callback', None)
-
             async def on_call_state_callback(active_call: Any, call_info: Any) -> None:
                 """Appelé quand l'état de l'appel change."""
-                # D'abord, appeler le callback précédent s'il existe
-                if previous_call_state_callback:
-                    try:
-                        await previous_call_state_callback(active_call, call_info)
-                    except Exception as e:
-                        logger.warning("Erreur dans callback précédent: %s", e)
-
-                # Ensuite, gérer notre propre nettoyage
                 if active_call == call:
                     # Si l'appel est déconnecté, nettoyer les ressources
                     if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
@@ -2659,7 +2652,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                             cleanup_done.set()
 
             # Enregistrer le callback de changement d'état
-            pjsua_adapter.set_call_state_callback(on_call_state_callback)
+            call_state_listener_remove = pjsua_adapter.add_call_state_listener(on_call_state_callback)
 
             # Wrapper send_to_peer pour bloquer l'audio jusqu'à ce que le média soit actif
             async def send_to_peer_blocked(audio: bytes) -> None:
@@ -2869,15 +2862,16 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     pass
             finally:
                 # Garantir la fermeture de la session Realtime
-                try:
-                    await close_voice_session(session_id=session_handle.session_id)
-                    logger.info("🔒 Session Realtime fermée explicitement (call_id=%s)", call_id)
-                except Exception as cleanup_error:
-                    logger.warning(
-                        "Erreur lors du nettoyage de session Realtime (call_id=%s): %s",
-                        call_id,
-                        cleanup_error,
-                    )
+                if session_handle is not None:
+                    try:
+                        await close_voice_session(session_id=session_handle.session_id)
+                        logger.info("🔒 Session Realtime fermée explicitement (call_id=%s)", call_id)
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            "Erreur lors du nettoyage de session Realtime (call_id=%s): %s",
+                            call_id,
+                            cleanup_error,
+                        )
 
         except Exception as e:
             logger.exception("Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
@@ -2885,6 +2879,11 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 await pjsua_adapter.hangup_call(call)
             except Exception:
                 pass
+        finally:
+            if call_state_listener_remove:
+                call_state_listener_remove()
+            if media_active_listener_remove:
+                media_active_listener_remove()
 
     return _handle_pjsua_incoming_call
 
