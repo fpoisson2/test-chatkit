@@ -337,7 +337,8 @@ class TelephonyVoiceBridge:
                 session_closing[0] = True
                 try:
                     logger.debug("request_stop: fermeture immédiate de la session pour débloquer handle_events")
-                    await session.close()
+                    # Utiliser __aexit__ pour fermer proprement le context manager
+                    await session.__aexit__(None, None, None)
                 except Exception as e:
                     logger.debug("Erreur lors de la fermeture anticipée de session: %s", e)
 
@@ -893,10 +894,14 @@ class TelephonyVoiceBridge:
             if session is not None and not session_closing[0]:
                 try:
                     session_closing[0] = True
-                    await session.close()
-                except Exception:  # pragma: no cover - fermeture best effort
+                    # Utiliser __aexit__ pour fermer proprement le context manager
+                    # et éviter l'erreur "Attempted to exit cancel scope in a different task"
+                    await session.__aexit__(None, None, None)
+                    logger.debug("Session SDK fermée proprement via __aexit__")
+                except Exception as e:  # pragma: no cover - fermeture best effort
                     logger.debug(
-                        "Fermeture session SDK en erreur",
+                        "Fermeture session SDK en erreur: %s",
+                        e,
                         exc_info=True,
                     )
 
