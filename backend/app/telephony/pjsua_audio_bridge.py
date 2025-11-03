@@ -42,7 +42,8 @@ class PJSUAAudioBridge:
     INTERNAL_CHUNK_SIZE_BYTES = (VOICE_BRIDGE_SAMPLE_RATE // (1000 // INTERNAL_CHUNK_SIZE_MS)) * BYTES_PER_SAMPLE * CHANNELS
     
     # Délai de "yield" à l'event loop pour le cadencement (pacing)
-    PACING_DELAY_SECONDS = 0.01 # 10ms
+    # Réduit à 0 car asyncio.to_thread() empêche déjà le blocage de l'event loop
+    PACING_DELAY_SECONDS = 0 # Juste yield, pas de délai artificiel
 
     def __init__(self, call: PJSUACall) -> None:
         """Initialize the audio bridge for a specific call.
