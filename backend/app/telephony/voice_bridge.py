@@ -360,13 +360,14 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                        # Envoyer des frames de silence pour amorcer le canal audio MAINTENANT que le canal bidirectionnel est confirmé
-                        # Cela évite que les premières millisecondes d'audio réel soient perdues
-                        if speak_first and response_create_sent_immediately:
+                        # Si speak_first est activé, amorcer le canal et envoyer response.create MAINTENANT
+                        # que le canal bidirectionnel est confirmé
+                        if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             try:
-                                # Calculer la taille d'une frame de 20ms en PCM16 à 24kHz
+                                # 1. D'abord, envoyer des frames de silence pour amorcer le pipeline audio
+                                # Cela évite que les premières millisecondes d'audio réel soient perdues
                                 silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
-                                num_silence_frames = 10  # Augmenté à 10 frames (200ms) pour bien saturer le pipeline
+                                num_silence_frames = 10  # 10 frames = 200ms pour bien saturer le pipeline
                                 silence_frame = b'\x00' * silence_frame_size
 
                                 logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence pour amorcer", num_silence_frames)
@@ -377,14 +378,8 @@ class TelephonyVoiceBridge:
                                         await asyncio.sleep(0.001)
 
                                 logger.info("✅ Pipeline audio amorcé avec %d frames de silence", num_silence_frames)
-                            except Exception as exc:
-                                logger.warning("⚠️ Erreur lors de l'amorçage du pipeline: %s", exc)
 
-                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
-                        # l'envoyer maintenant comme fallback (mais normalement c'est déjà fait immédiatement après le démarrage de la session)
-                        if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
-                            logger.warning("⚠️ FALLBACK: Premier paquet RTP reçu - envoi de response.create (devrait être déjà fait immédiatement !)")
-                            try:
+                                # 2. PUIS, envoyer response.create maintenant que le canal est amorcé
                                 from agents.realtime.model_inputs import (
                                     RealtimeModelRawClientMessage,
                                     RealtimeModelSendRawMessage,
@@ -398,9 +393,9 @@ class TelephonyVoiceBridge:
                                     )
                                 )
                                 response_create_sent_on_ready = True
-                                logger.info("✅ response.create envoyé en fallback")
+                                logger.info("✅ response.create envoyé après amorçage du canal - l'assistant génère l'audio")
                             except Exception as exc:
-                                logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
+                                logger.warning("⚠️ Erreur lors de l'amorçage et envoi response.create: %s", exc)
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
@@ -852,38 +847,20 @@ class TelephonyVoiceBridge:
             await session.__aenter__()
             logger.info("Session SDK démarrée avec succès")
 
-            # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio AVANT d'envoyer response.create
-            # Cela garantit que le premier "Allô!" sera bien consommé et entendu
-            # NOTE: Les frames de silence seront envoyées APRÈS la réception du premier paquet RTP
-            # (voir forward_audio() plus bas) pour garantir que le canal bidirectionnel est établi
+            # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
+            # NOTE: Le response.create() sera envoyé APRÈS la réception du premier paquet RTP
+            # et l'envoi des frames de silence (voir forward_audio() plus bas)
+            # Cela garantit que le canal bidirectionnel est établi et amorcé avant de commencer la génération
             if speak_first:
                 if pjsua_ready_to_consume is not None:
                     logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
                     try:
                         await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
-                        logger.info("✅ PJSUA prêt à consommer - envoi de response.create maintenant")
+                        logger.info("✅ PJSUA prêt - attente du premier paquet RTP pour amorcer le canal")
                     except asyncio.TimeoutError:
-                        logger.warning("⚠️ Timeout en attendant PJSUA - envoi de response.create quand même")
+                        logger.warning("⚠️ Timeout en attendant PJSUA")
                 else:
-                    logger.info("🚀 Envoi IMMÉDIAT de response.create pour speak_first (pas d'attente PJSUA)")
-
-                try:
-                    from agents.realtime.model_inputs import (
-                        RealtimeModelRawClientMessage,
-                        RealtimeModelSendRawMessage,
-                    )
-                    await session._model.send_event(
-                        RealtimeModelSendRawMessage(
-                            message=RealtimeModelRawClientMessage(
-                                type="response.create",
-                                other_data={},
-                            )
-                        )
-                    )
-                    response_create_sent_immediately = True
-                    logger.info("✅ response.create envoyé - l'assistant génère l'audio")
-                except Exception as exc:
-                    logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
+                    logger.info("⏳ Mode speak_first activé - response.create sera envoyé après amorçage du canal")
 
             # Log available tools
             try:
