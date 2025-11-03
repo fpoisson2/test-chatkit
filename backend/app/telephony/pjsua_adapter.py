@@ -494,29 +494,35 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     # 2. Forcer un GC pour libérer les objets C++
                     # 3. Créer un nouveau port qui prendra le slot 2 (maintenant nettoyé)
 
-                    if hasattr(self.adapter, '_global_audio_port') and self.adapter._global_audio_port is not None:
-                        logger.info("🗑️  Destruction de l'ancien port global avant création du nouveau")
-                        old_port = self.adapter._global_audio_port
-                        try:
-                            # Désactiver l'ancien port
-                            old_port.deactivate()
-                            # Forcer la destruction
-                            if hasattr(old_port, '__del__'):
-                                old_port.__del__()
-                            # Supprimer la référence
-                            self.adapter._global_audio_port = None
-                            del old_port
-                            # Forcer le GC immédiatement
-                            import gc
-                            gc.collect()
-                            logger.info("✅ Ancien port global détruit et GC forcé")
-                        except Exception as e:
-                            logger.warning("Erreur destruction ancien port: %s", e)
+                    # CRITIQUE: Acquérir le lock pour éviter race condition avec le teardown
+                    with self.adapter._teardown_lock:
+                        logger.debug("🔒 Lock teardown acquis pour création port (call_id=%s)", ci.id)
 
-                    logger.info("🔧 Création d'un NOUVEAU port global AudioMediaPort")
-                    self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name="chatkit_audio")
-                    self._audio_port = self.adapter._global_audio_port
-                    logger.info("✅ Port audio créé: %s (slot sera réutilisé après nettoyage)", self._audio_port._port_name)
+                        if hasattr(self.adapter, '_global_audio_port') and self.adapter._global_audio_port is not None:
+                            logger.info("🗑️  Destruction de l'ancien port global avant création du nouveau")
+                            old_port = self.adapter._global_audio_port
+                            try:
+                                # Désactiver l'ancien port
+                                old_port.deactivate()
+                                # Forcer la destruction
+                                if hasattr(old_port, '__del__'):
+                                    old_port.__del__()
+                                # Supprimer la référence
+                                self.adapter._global_audio_port = None
+                                del old_port
+                                # Forcer le GC immédiatement
+                                import gc
+                                gc.collect()
+                                logger.info("✅ Ancien port global détruit et GC forcé")
+                            except Exception as e:
+                                logger.warning("Erreur destruction ancien port: %s", e)
+
+                        logger.info("🔧 Création d'un NOUVEAU port global AudioMediaPort")
+                        self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name="chatkit_audio")
+                        self._audio_port = self.adapter._global_audio_port
+                        logger.info("✅ Port audio créé: %s (slot sera réutilisé après nettoyage)", self._audio_port._port_name)
+
+                        logger.debug("🔓 Lock teardown libéré après création port (call_id=%s)", ci.id)
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
@@ -603,6 +609,11 @@ class PJSUAAdapter:
 
         # Event qui se déclenche quand PJSUA commence à consommer l'audio (onFrameRequested appelé)
         self._frame_requested_event: asyncio.Event | None = None
+
+        # Lock threading pour synchroniser le teardown et éviter les race conditions
+        # Utilisé dans les callbacks PJSUA (thread séparé) donc threading.Lock pas asyncio.Lock
+        import threading
+        self._teardown_lock = threading.Lock()
 
         # Callbacks
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
@@ -841,6 +852,14 @@ class PJSUAAdapter:
 
     def _teardown_call_resources(self, call: PJSUACall, call_id: int) -> None:
         """Libère les ressources média associées à un appel avec teardown strict."""
+        # CRITIQUE: Acquérir le lock pour éviter les race conditions entre teardown et création de nouvel appel
+        with self._teardown_lock:
+            logger.debug("🔒 Lock teardown acquis pour call_id=%s", call_id)
+            self._do_teardown_call_resources(call, call_id)
+            logger.debug("🔓 Lock teardown libéré pour call_id=%s", call_id)
+
+    def _do_teardown_call_resources(self, call: PJSUACall, call_id: int) -> None:
+        """Implémentation réelle du teardown - appelée avec le lock acquis."""
         # Arrêter le bridge audio en priorité pour stopper toute activité async
         if hasattr(call, "_audio_bridge") and call._audio_bridge:
             try:
@@ -950,7 +969,7 @@ class PJSUAAdapter:
         # CRITIQUE: Nettoyer aussi la référence globale pour éviter les références fantômes
         if hasattr(call, 'adapter') and hasattr(call.adapter, '_global_audio_port'):
             call.adapter._global_audio_port = None
-            logger.debug("🧹 Référence globale _global_audio_port nettoyée")
+            logger.info("🧹 Référence globale _global_audio_port nettoyée (call_id=%s)", call_id)
 
         logger.info("✅ Ressources audio complètement nettoyées (call_id=%s)", call_id)
 
