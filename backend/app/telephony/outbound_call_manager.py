@@ -237,13 +237,14 @@ class OutboundCallManager:
             # Variable pour stocker pjsua_ready_event (sera rempli après création du bridge)
             pjsua_ready_event_ref: list[asyncio.Event | None] = [None]
 
+            # Callback pour nettoyer les ressources quand l'appel se termine
+            cleanup_done = asyncio.Event()
+
             # Callback pour débloquer l'audio quand le média est actif
             # IMPORTANT: Définir AVANT make_call pour capturer onCallMediaState
             async def on_media_active_callback_outbound(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
-                if pjsua_call_ref[0] is None or active_call != pjsua_call_ref[0]:
-                    return
-
+                # Pas besoin de vérifier active_call car le callback est spécifique à ce call_id
                 logger.info("🎵 Média actif détecté pour appel sortant (call_id=%s)", session.call_id)
 
                 # Attendre que le jitter buffer soit initialisé
@@ -266,51 +267,46 @@ class OutboundCallManager:
                 logger.info("PJSUA call %s answered, média ready", session.call_id)
                 media_active_event.set()
 
-            # Enregistrer le callback média
-            self._pjsua_adapter.set_media_active_callback(on_media_active_callback_outbound)
-
-            # Callback pour nettoyer les ressources quand l'appel se termine
-            cleanup_done = asyncio.Event()
-
-            # Sauvegarder le callback précédent s'il existe
-            previous_call_state_callback = getattr(self._pjsua_adapter, '_call_state_callback', None)
-
             async def on_call_state_callback_outbound(active_call: Any, call_info: Any) -> None:
                 """Appelé quand l'état de l'appel change."""
-                # D'abord, appeler le callback précédent s'il existe
-                if previous_call_state_callback:
-                    try:
-                        await previous_call_state_callback(active_call, call_info)
-                    except Exception as e:
-                        logger.warning("Erreur dans callback précédent: %s", e)
+                # Pas besoin de vérifier active_call car le callback est spécifique à ce call_id
+                # Si l'appel est déconnecté, nettoyer les ressources
+                if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
+                    if not cleanup_done.is_set():
+                        logger.info("📞 Appel sortant déconnecté - nettoyage des ressources (call_id=%s)", session.call_id)
 
-                # Ensuite, gérer notre propre nettoyage
-                if pjsua_call_ref[0] and active_call == pjsua_call_ref[0]:
-                    # Si l'appel est déconnecté, nettoyer les ressources
-                    if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
-                        if not cleanup_done.is_set():
-                            logger.info("📞 Appel sortant déconnecté - nettoyage des ressources (call_id=%s)", session.call_id)
+                        # Arrêter le bridge audio
+                        if session._audio_bridge:
+                            try:
+                                session._audio_bridge.stop()
+                                logger.info("✅ Bridge audio arrêté (call_id=%s)", session.call_id)
+                            except Exception as e:
+                                logger.warning("Erreur arrêt bridge audio: %s", e)
 
-                            # Arrêter le bridge audio
-                            if session._audio_bridge:
-                                try:
-                                    session._audio_bridge.stop()
-                                    logger.info("✅ Bridge audio arrêté (call_id=%s)", session.call_id)
-                                except Exception as e:
-                                    logger.warning("Erreur arrêt bridge audio: %s", e)
+                        cleanup_done.set()
 
-                            cleanup_done.set()
-
-            # Enregistrer le callback de changement d'état
-            self._pjsua_adapter.set_call_state_callback(on_call_state_callback_outbound)
-
-            # CRITIQUE: Maintenant on initie l'appel APRÈS avoir enregistré les callbacks
+            # CRITIQUE: Initier l'appel AVANT d'enregistrer les callbacks
+            # car on a besoin du call_info.id pour l'enregistrement
             logger.info("📞 Initiation de l'appel PJSUA vers %s (call_id=%s)", to_uri, session.call_id)
             pjsua_call = await self._pjsua_adapter.make_call(to_uri)
 
             # Remplir la référence pour que les callbacks puissent l'utiliser
             pjsua_call_ref[0] = pjsua_call
             session._pjsua_call = pjsua_call
+
+            # Maintenant enregistrer les callbacks spécifiques pour CET appel (évite l'accumulation entre appels)
+            # Obtenir le call_info.id pour l'enregistrement
+            try:
+                outbound_call_info = pjsua_call.getInfo()
+                outbound_call_id = outbound_call_info.id
+                logger.info("📞 Appel PJSUA créé avec call_id=%s (our_id=%s)", outbound_call_id, session.call_id)
+            except Exception as e:
+                logger.error("Impossible d'obtenir call_info pour l'appel sortant: %s", e)
+                raise
+
+            # Enregistrer les callbacks pour CET appel spécifique (évite l'accumulation entre appels)
+            self._pjsua_adapter.register_media_active_callback(outbound_call_id, on_media_active_callback_outbound)
+            self._pjsua_adapter.register_call_state_callback(outbound_call_id, on_call_state_callback_outbound)
 
             logger.info("✅ Appel PJSUA initié, création de l'audio bridge (call_id=%s)", session.call_id)
 

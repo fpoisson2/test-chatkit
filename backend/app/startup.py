@@ -2587,79 +2587,68 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Callback pour débloquer l'audio quand le média est actif
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
-                if active_call == call:
-                    logger.info("🎵 Média actif détecté (call_id=%s)", call_id)
+                # Pas besoin de vérifier active_call == call car le callback est spécifique à ce call_id
+                logger.info("🎵 Média actif détecté (call_id=%s, pjsua_call_id=%s)", call_id, call_info.id)
 
-                    # Attendre que le jitter buffer soit initialisé
-                    # Le jitter buffer est "reset" au premier paquet
-                    # On attend 50ms pour qu'il soit prêt
-                    logger.info("⏱️ Attente 50ms pour initialisation jitter buffer... (call_id=%s)", call_id)
-                    await asyncio.sleep(0.05)  # 50ms
+                # Attendre que le jitter buffer soit initialisé
+                # Le jitter buffer est "reset" au premier paquet
+                # On attend 50ms pour qu'il soit prêt
+                logger.info("⏱️ Attente 50ms pour initialisation jitter buffer... (call_id=%s)", call_id)
+                await asyncio.sleep(0.05)  # 50ms
 
-                    # Attendre que PJSUA commence à consommer l'audio (onFrameRequested appelé)
-                    # C'est CRITIQUE: si on démarre OpenAI avant, il va envoyer de l'audio
-                    # alors que personne ne le consomme, et la queue va déborder
-                    if pjsua_adapter._frame_requested_event:
-                        logger.info("⏱️ Attente que PJSUA soit prêt à consommer l'audio... (call_id=%s)", call_id)
-                        await pjsua_adapter._frame_requested_event.wait()
-                        logger.info("✅ PJSUA prêt - onFrameRequested appelé (call_id=%s)", call_id)
+                # Attendre que PJSUA commence à consommer l'audio (onFrameRequested appelé)
+                # C'est CRITIQUE: si on démarre OpenAI avant, il va envoyer de l'audio
+                # alors que personne ne le consomme, et la queue va déborder
+                if pjsua_adapter._frame_requested_event:
+                    logger.info("⏱️ Attente que PJSUA soit prêt à consommer l'audio... (call_id=%s)", call_id)
+                    await pjsua_adapter._frame_requested_event.wait()
+                    logger.info("✅ PJSUA prêt - onFrameRequested appelé (call_id=%s)", call_id)
 
-                    # Débloquer l'audio pour que les paquets OpenAI soient transmis immédiatement
-                    logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
-                    media_active_event.set()
+                # Débloquer l'audio pour que les paquets OpenAI soient transmis immédiatement
+                logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
+                media_active_event.set()
 
-                    # Démarrer le voice bridge MAINTENANT
-                    # La connexion OpenAI sera établie et speak_first sera traité automatiquement
-                    # Le RTP stream démarrera et consommera les paquets du téléphone
-                    logger.info("🚀 Démarrage de la connexion OpenAI (call_id=%s)", call_id)
-                    voice_bridge_start_event.set()
+                # Démarrer le voice bridge MAINTENANT
+                # La connexion OpenAI sera établie et speak_first sera traité automatiquement
+                # Le RTP stream démarrera et consommera les paquets du téléphone
+                logger.info("🚀 Démarrage de la connexion OpenAI (call_id=%s)", call_id)
+                voice_bridge_start_event.set()
 
-            # Enregistrer le callback média avant de démarrer
-            pjsua_adapter.set_media_active_callback(on_media_active_callback)
+            # Enregistrer le callback média pour CET appel spécifique (évite l'accumulation entre appels)
+            pjsua_adapter.register_media_active_callback(call_info.id, on_media_active_callback)
 
             # Callback pour nettoyer les ressources quand l'appel se termine
             bridge_ref: list[Any] = [audio_bridge]  # Stocker la référence au bridge
             cleanup_done = asyncio.Event()
 
-            # Sauvegarder le callback précédent s'il existe
-            previous_call_state_callback = getattr(pjsua_adapter, '_call_state_callback', None)
-
-            async def on_call_state_callback(active_call: Any, call_info: Any) -> None:
+            async def on_call_state_callback(active_call: Any, state_info: Any) -> None:
                 """Appelé quand l'état de l'appel change."""
-                # D'abord, appeler le callback précédent s'il existe
-                if previous_call_state_callback:
-                    try:
-                        await previous_call_state_callback(active_call, call_info)
-                    except Exception as e:
-                        logger.warning("Erreur dans callback précédent: %s", e)
+                # Pas besoin de vérifier active_call == call car le callback est spécifique à ce call_id
+                # Si l'appel est déconnecté, nettoyer les ressources
+                if state_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
+                    if not cleanup_done.is_set():
+                        logger.info("📞 Appel déconnecté - nettoyage des ressources (call_id=%s, pjsua_call_id=%s)", call_id, call_info.id)
 
-                # Ensuite, gérer notre propre nettoyage
-                if active_call == call:
-                    # Si l'appel est déconnecté, nettoyer les ressources
-                    if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
-                        if not cleanup_done.is_set():
-                            logger.info("📞 Appel déconnecté - nettoyage des ressources (call_id=%s)", call_id)
-
-                            # Arrêter le bridge audio
-                            if bridge_ref:
-                                try:
-                                    bridge_ref[0].stop()
-                                    logger.info("✅ Bridge audio arrêté (call_id=%s)", call_id)
-                                except Exception as e:
-                                    logger.warning("Erreur arrêt bridge audio: %s", e)
-
-                            # Fermer la session vocale
+                        # Arrêter le bridge audio
+                        if bridge_ref:
                             try:
-                                if session_handle:
-                                    await close_voice_session(session_id=session_handle.session_id)
-                                    logger.info("✅ Session vocale fermée (call_id=%s)", call_id)
+                                bridge_ref[0].stop()
+                                logger.info("✅ Bridge audio arrêté (call_id=%s)", call_id)
                             except Exception as e:
-                                logger.warning("Erreur fermeture session vocale: %s", e)
+                                logger.warning("Erreur arrêt bridge audio: %s", e)
 
-                            cleanup_done.set()
+                        # Fermer la session vocale
+                        try:
+                            if session_handle:
+                                await close_voice_session(session_id=session_handle.session_id)
+                                logger.info("✅ Session vocale fermée (call_id=%s)", call_id)
+                        except Exception as e:
+                            logger.warning("Erreur fermeture session vocale: %s", e)
 
-            # Enregistrer le callback de changement d'état
-            pjsua_adapter.set_call_state_callback(on_call_state_callback)
+                        cleanup_done.set()
+
+            # Enregistrer le callback de changement d'état pour CET appel spécifique (évite l'accumulation entre appels)
+            pjsua_adapter.register_call_state_callback(call_info.id, on_call_state_callback)
 
             # Wrapper send_to_peer pour bloquer l'audio jusqu'à ce que le média soit actif
             async def send_to_peer_blocked(audio: bytes) -> None:

@@ -545,10 +545,14 @@ class PJSUAAdapter:
         # Event qui se déclenche quand PJSUA commence à consommer l'audio (onFrameRequested appelé)
         self._frame_requested_event: asyncio.Event | None = None
 
-        # Callbacks
+        # Callbacks globaux (legacy)
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._call_state_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._media_active_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
+
+        # Callbacks par call_id (pour éviter l'accumulation entre appels rapprochés)
+        self._call_state_callbacks: dict[int, Callable[[PJSUACall, Any], Awaitable[None]]] = {}
+        self._media_active_callbacks: dict[int, Callable[[PJSUACall, Any], Awaitable[None]]] = {}
 
     async def initialize(self, config: PJSUAConfig | None = None, *, port: int = 5060) -> None:
         """Initialise l'endpoint PJSUA et optionnellement crée le compte SIP.
@@ -728,8 +732,42 @@ class PJSUAAdapter:
     def set_media_active_callback(
         self, callback: Callable[[PJSUACall, Any], Awaitable[None]]
     ) -> None:
-        """Définit le callback pour l'activation du média."""
+        """Définit le callback pour l'activation du média (legacy - utiliser register_call_*_callback à la place)."""
         self._media_active_callback = callback
+
+    def register_call_state_callback(
+        self, call_id: int, callback: Callable[[PJSUACall, Any], Awaitable[None]]
+    ) -> None:
+        """Enregistre un callback pour les changements d'état d'un appel spécifique.
+
+        Ce callback sera automatiquement retiré quand l'appel se termine (DISCONNECTED).
+        Utiliser cette méthode au lieu de set_call_state_callback pour éviter l'accumulation
+        de callbacks entre appels rapprochés.
+        """
+        self._call_state_callbacks[call_id] = callback
+        logger.debug("📞 Callback d'état enregistré pour call_id=%s", call_id)
+
+    def unregister_call_state_callback(self, call_id: int) -> None:
+        """Retire le callback d'état pour un appel spécifique."""
+        self._call_state_callbacks.pop(call_id, None)
+        logger.debug("📞 Callback d'état retiré pour call_id=%s", call_id)
+
+    def register_media_active_callback(
+        self, call_id: int, callback: Callable[[PJSUACall, Any], Awaitable[None]]
+    ) -> None:
+        """Enregistre un callback pour l'activation du média d'un appel spécifique.
+
+        Ce callback sera automatiquement retiré quand l'appel se termine (DISCONNECTED).
+        Utiliser cette méthode au lieu de set_media_active_callback pour éviter l'accumulation
+        de callbacks entre appels rapprochés.
+        """
+        self._media_active_callbacks[call_id] = callback
+        logger.debug("🎵 Callback média enregistré pour call_id=%s", call_id)
+
+    def unregister_media_active_callback(self, call_id: int) -> None:
+        """Retire le callback média pour un appel spécifique."""
+        self._media_active_callbacks.pop(call_id, None)
+        logger.debug("🎵 Callback média retiré pour call_id=%s", call_id)
 
     async def _on_reg_state(self, is_active: bool) -> None:
         """Callback interne pour les changements d'état d'enregistrement."""
@@ -749,11 +787,25 @@ class PJSUAAdapter:
         Pour DISCONNECTED, on fait un nettoyage immédiat sans délai car PJSUA
         a déjà terminé son propre nettoyage interne.
         """
+        # Appeler le callback spécifique à cet appel EN PREMIER
+        # (avant le nettoyage pour permettre au callback de faire son propre cleanup)
+        call_specific_callback = self._call_state_callbacks.get(call_info.id)
+        if call_specific_callback:
+            try:
+                await call_specific_callback(call, call_info)
+            except Exception as e:
+                logger.exception("Erreur dans callback d'état spécifique (call_id=%s): %s", call_info.id, e)
+
         # Nettoyer les appels terminés
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
             logger.info("📞 Appel DISCONNECTED détecté - nettoyage immédiat (call_id=%s)", call_info.id)
 
             self._active_calls.pop(call_info.id, None)
+
+            # IMPORTANT: Nettoyer les callbacks pour cet appel (éviter accumulation)
+            self._call_state_callbacks.pop(call_info.id, None)
+            self._media_active_callbacks.pop(call_info.id, None)
+            logger.debug("🧹 Callbacks nettoyés pour call_id=%s", call_info.id)
 
             # IMPORTANT: Arrêter l'audio bridge d'abord pour stopper le RTP stream
             if hasattr(call, '_audio_bridge') and call._audio_bridge:
@@ -781,13 +833,37 @@ class PJSUAAdapter:
                 finally:
                     call._audio_port = None
 
+        # Appeler le callback global (legacy) si défini
         if self._call_state_callback:
-            await self._call_state_callback(call, call_info)
+            try:
+                await self._call_state_callback(call, call_info)
+            except Exception as e:
+                logger.exception("Erreur dans callback d'état global: %s", e)
 
     async def _on_media_active(self, call: PJSUACall, media_info: Any) -> None:
         """Callback interne pour l'activation du média."""
+        # Obtenir le call_id pour le callback spécifique
+        try:
+            call_info = call.getInfo()
+            call_id = call_info.id
+        except Exception:
+            call_id = None
+
+        # Appeler le callback spécifique à cet appel EN PREMIER
+        if call_id is not None:
+            call_specific_callback = self._media_active_callbacks.get(call_id)
+            if call_specific_callback:
+                try:
+                    await call_specific_callback(call, media_info)
+                except Exception as e:
+                    logger.exception("Erreur dans callback média spécifique (call_id=%s): %s", call_id, e)
+
+        # Appeler le callback global (legacy) si défini
         if self._media_active_callback:
-            await self._media_active_callback(call, media_info)
+            try:
+                await self._media_active_callback(call, media_info)
+            except Exception as e:
+                logger.exception("Erreur dans callback média global: %s", e)
 
     async def answer_call(self, call: PJSUACall, code: int = 200) -> None:
         """Répond à un appel entrant."""
