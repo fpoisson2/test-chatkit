@@ -35,7 +35,9 @@ class PJSUAAudioBridge:
 
     # Optimized parameters (Point 1, 3)
     SILENCE_THRESHOLD = 4  # Amplitude minimale pour considérer comme non-silence (PCM16)
-    MAX_TX_FRAMES = 7  # Buffer max: 7 frames = ~140ms (drop-tail si pleine)
+    MAX_TX_FRAMES = 15  # Buffer max: 15 frames = ~300ms
+    HIGH_WATERMARK = 12  # Arrête production si queue >= 12 frames
+    LOW_WATERMARK = 6   # Reprend production si queue <= 6 frames
 
     def __init__(self, call: PJSUACall) -> None:
         """Initialize the audio bridge for a specific call.
@@ -56,9 +58,6 @@ class PJSUAAudioBridge:
         # Cela confirme que le flux audio bidirectionnel est établi
         self._first_packet_received = asyncio.Event()
 
-        # State used to preserve resampling continuity from 24kHz → 8kHz
-        self._send_to_peer_state: Any = None
-
         # Silence gate to avoid amplifying background noise
         self._silence_threshold = 40
 
@@ -68,6 +67,9 @@ class PJSUAAudioBridge:
         # PULL-BASED: Queue de frames 8kHz (320B) que PJSUA pull via onFrameRequested
         # Pas de maxlen car on gère le drop-tail manuellement (évite drop-oldest automatique)
         self._tx_queue: deque[bytes] = deque()
+
+        # Hysteresis backpressure: flag pour bloquer production quand queue >= HW
+        self._production_blocked = False
 
     async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).
@@ -185,52 +187,37 @@ class PJSUAAudioBridge:
             return self._tx_queue.popleft()
         return None
 
-    async def send_to_peer(self, audio_24khz: bytes) -> None:
-        """Send audio from VoiceBridge to PJSUA (24kHz → 8kHz).
+    async def send_to_peer(self, audio_8khz: bytes) -> None:
+        """Send audio from VoiceBridge to PJSUA (already at 8kHz).
 
-        NOUVELLE APPROCHE AVEC BACKPRESSURE DOUX:
-        1. Reçoit UNE frame de 960B @ 24kHz (déjà découpée par voice_bridge.py)
-        2. Resample vers 8kHz (320B)
-        3. Filtre silence (max_amp <= 4)
-        4. Backpressure doux: si queue >= MAX_TX_FRAMES, attendre 10-20ms et réessayer
+        NOUVELLE APPROCHE AVEC HYSTERESIS BACKPRESSURE:
+        1. Reçoit UNE frame de 320B @ 8kHz (déjà rééchantillonnée par voice_bridge.py)
+        2. Filtre silence (max_amp <= 4)
+        3. Hysteresis: si queue >= HW, bloque production jusqu'à queue <= LW
+        4. Pas de boucles d'attente, juste drop immédiat si production bloquée
 
         Args:
-            audio_24khz: SINGLE frame of PCM16 audio at 24kHz (960 bytes = 20ms)
+            audio_8khz: SINGLE frame of PCM16 audio at 8kHz (320 bytes = 20ms)
         """
-        if len(audio_24khz) == 0:
+        if len(audio_8khz) == 0:
             return
 
         self._send_to_peer_call_count += 1
 
-        # Log moins verbeux: tous les 100 appels au lieu de 5
+        # Log moins verbeux: tous les 100 appels
         if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
-            logger.info("📤 send_to_peer #%d: reçu %d bytes @ 24kHz",
-                       self._send_to_peer_call_count, len(audio_24khz))
+            logger.info("📤 send_to_peer #%d: reçu %d bytes @ 8kHz",
+                       self._send_to_peer_call_count, len(audio_8khz))
 
-        # Vérifier que c'est bien une frame complète de 960B
-        if len(audio_24khz) != 960:
-            logger.warning("⚠️ Frame non-standard reçue: %d bytes (attendu 960)", len(audio_24khz))
+        # Vérifier que c'est bien une frame complète de 320B @ 8kHz
+        if len(audio_8khz) != 320:
+            logger.warning("⚠️ Frame non-standard reçue: %d bytes (attendu 320)", len(audio_8khz))
             # Continuer quand même, mais ça peut causer des artifacts
 
         try:
-            # ÉTAPE 1: Resample vers 8kHz (320 bytes)
+            # ÉTAPE 1: Filtrage silence et amplification
             try:
-                frame_8khz, self._send_to_peer_state = audioop.ratecv(
-                    audio_24khz,
-                    self.BYTES_PER_SAMPLE,
-                    self.CHANNELS,
-                    self.VOICE_BRIDGE_SAMPLE_RATE,
-                    self.PJSUA_SAMPLE_RATE,
-                    self._send_to_peer_state,
-                )
-            except audioop.error as e:
-                logger.warning("Resampling error (24kHz→8kHz): %s", e)
-                self._send_to_peer_state = None
-                return
-
-            # ÉTAPE 2: Filtrage silence et amplification
-            try:
-                max_amplitude = audioop.max(frame_8khz, self.BYTES_PER_SAMPLE)
+                max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
 
                 # CRITIQUE: Ne jamais enqueuer du silence (Point 1)
                 if max_amplitude <= self.SILENCE_THRESHOLD:
@@ -240,36 +227,46 @@ class PJSUAAudioBridge:
                     return
 
                 # Boost si amplitude trop faible
+                frame_8khz = audio_8khz
                 min_target_amplitude = 6000
                 max_gain = 12.0
                 if max_amplitude < min_target_amplitude:
                     gain = min(min_target_amplitude / max_amplitude, max_gain)
                     try:
-                        frame_8khz = audioop.mul(frame_8khz, self.BYTES_PER_SAMPLE, gain)
+                        frame_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
                     except audioop.error:
                         pass  # Garder l'audio original si overflow
             except audioop.error as e:
                 logger.warning("Audio processing error: %s", e)
                 return
 
-            # ÉTAPE 3: BACKPRESSURE DOUX au lieu de drop-tail
-            # Si queue >= MAX_TX_FRAMES, attendre 10-20ms pour laisser PJSUA consommer
-            backpressure_wait_count = 0
-            while len(self._tx_queue) >= self.MAX_TX_FRAMES:
-                backpressure_wait_count += 1
-                if backpressure_wait_count == 1:
-                    logger.debug("⏳ Backpressure: queue pleine (%d frames), attente...", self.MAX_TX_FRAMES)
+            # ÉTAPE 2: HYSTERESIS BACKPRESSURE (HW/LW)
+            queue_len = len(self._tx_queue)
 
-                # Attendre 15ms (compromise entre 10-20ms)
-                await asyncio.sleep(0.015)
+            # Vérifier high watermark: bloquer production si queue >= HW
+            if queue_len >= self.HIGH_WATERMARK:
+                if not self._production_blocked:
+                    self._production_blocked = True
+                    logger.info("🛑 Production BLOQUÉE: queue atteint HW (%d >= %d frames)",
+                               queue_len, self.HIGH_WATERMARK)
 
-                # Limite de sécurité: max 10 itérations (150ms) pour éviter blocage infini
-                if backpressure_wait_count >= 10:
-                    logger.warning("⚠️ Backpressure timeout après 150ms, dropping frame")
-                    return
+            # Vérifier low watermark: reprendre production si queue <= LW
+            elif queue_len <= self.LOW_WATERMARK:
+                if self._production_blocked:
+                    self._production_blocked = False
+                    logger.info("✅ Production REPRISE: queue sous LW (%d <= %d frames)",
+                               queue_len, self.LOW_WATERMARK)
 
-            if backpressure_wait_count > 0:
-                logger.debug("✅ Backpressure résolu après %d ms", backpressure_wait_count * 15)
+            # Si production bloquée, dropper immédiatement (pas de boucle d'attente)
+            if self._production_blocked:
+                if self._send_to_peer_call_count % 50 == 0:
+                    logger.debug("⏸️  Frame droppée: production bloquée (queue=%d frames)", queue_len)
+                return
+
+            # Sécurité: ne jamais dépasser MAX_TX_FRAMES même si production active
+            if queue_len >= self.MAX_TX_FRAMES:
+                logger.warning("⚠️ Queue pleine (%d >= %d), dropping frame", queue_len, self.MAX_TX_FRAMES)
+                return
 
             # Enqueuer la frame
             self._tx_queue.append(frame_8khz)
@@ -293,8 +290,8 @@ class PJSUAAudioBridge:
         tx_cleared = len(self._tx_queue)
         self._tx_queue.clear()
 
-        # Réinitialiser l'état de resampling pour éviter des artefacts
-        self._send_to_peer_state = None
+        # Réinitialiser le flag de production bloquée
+        self._production_blocked = False
 
         logger.info("🧹 Audio queue cleared: %d frames", tx_cleared)
         return tx_cleared
@@ -303,10 +300,10 @@ class PJSUAAudioBridge:
         """Stop the audio bridge."""
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
-        self._send_to_peer_state = None
 
-        # Clear TX queue
+        # Clear TX queue and reset production flag
         self._tx_queue.clear()
+        self._production_blocked = False
 
     @property
     def is_stopped(self) -> bool:

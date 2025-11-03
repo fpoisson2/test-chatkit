@@ -300,8 +300,12 @@ class TelephonyVoiceBridge:
         session: Any | None = None
         stop_event = asyncio.Event()
 
-        # Buffer pour les bytes incomplets (< 960B @ 24kHz) entre appels
+        # Buffer pour les bytes incomplets (< 320B @ 8kHz) entre appels
+        # IMPORTANT: On resample 24kHz→8kHz AVANT de buffer pour réduire le débit d'un facteur 3
         incomplete_audio_buffer = b""
+
+        # État de rééchantillonnage 24kHz → 8kHz (préserve continuité entre chunks)
+        resampling_state_24to8: Any = None
 
         # Track if we've sent response.create immediately (for speak_first optimization)
         response_create_sent_immediately = False
@@ -524,7 +528,7 @@ class TelephonyVoiceBridge:
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task, audio_received_after_user_speech, response_started_after_user_speech, incomplete_audio_buffer
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task, audio_received_after_user_speech, response_started_after_user_speech, incomplete_audio_buffer, resampling_state_24to8
             try:
                 async for event in session:
                     if not should_continue():
@@ -592,10 +596,11 @@ class TelephonyVoiceBridge:
                                             if frames_cleared > 0:
                                                 logger.info("🗑️  Audio queue vidée: %d frames supprimées pour interruption rapide", frames_cleared)
 
-                                        # Vider aussi le buffer d'audio incomplet
+                                        # Vider aussi le buffer d'audio incomplet et réinitialiser l'état de resampling
                                         if len(incomplete_audio_buffer) > 0:
                                             logger.debug("🗑️  Buffer incomplet vidé: %d bytes supprimés", len(incomplete_audio_buffer))
                                             incomplete_audio_buffer = b""
+                                            resampling_state_24to8 = None
 
                                         # Reset tool call tracking when user speaks
                                         # (no need for confirmation if user moved on)
@@ -752,27 +757,44 @@ class TelephonyVoiceBridge:
                             if pcm_data:
                                 outbound_audio_bytes += len(pcm_data)
 
-                                # Ajouter les nouveaux bytes au buffer
-                                incomplete_audio_buffer += pcm_data
+                                # ÉTAPE 1: RESAMPLE 24kHz → 8kHz IMMÉDIATEMENT
+                                # Cela réduit le débit d'un facteur 3 (960B → 320B par 20ms)
+                                # et diminue la charge CPU + copies mémoire
+                                try:
+                                    pcm_8khz, resampling_state_24to8 = audioop.ratecv(
+                                        pcm_data,
+                                        2,  # BYTES_PER_SAMPLE (PCM16)
+                                        1,  # CHANNELS (mono)
+                                        24000,  # VOICE_BRIDGE_SAMPLE_RATE
+                                        8000,   # PJSUA_SAMPLE_RATE
+                                        resampling_state_24to8,
+                                    )
+                                except audioop.error as e:
+                                    logger.warning("Erreur resampling 24kHz→8kHz: %s", e)
+                                    resampling_state_24to8 = None
+                                    continue
 
-                                # Découper en frames complètes de 960B @ 24kHz (20ms)
+                                # ÉTAPE 2: Ajouter au buffer @ 8kHz
+                                incomplete_audio_buffer += pcm_8khz
+
+                                # ÉTAPE 3: Découper en frames complètes de 320B @ 8kHz (20ms)
                                 # et envoyer chaque frame individuellement
-                                FRAME_SIZE = 960  # 20ms @ 24kHz
+                                FRAME_SIZE = 320  # 20ms @ 8kHz
                                 frames_sent = 0
 
                                 while len(incomplete_audio_buffer) >= FRAME_SIZE:
-                                    frame = incomplete_audio_buffer[:FRAME_SIZE]
+                                    frame_8khz = incomplete_audio_buffer[:FRAME_SIZE]
                                     incomplete_audio_buffer = incomplete_audio_buffer[FRAME_SIZE:]
 
                                     # Envoyer cette frame à send_to_peer qui va:
-                                    # 1. Resample 960B@24kHz → 320B@8kHz
-                                    # 2. Filtrer silence (si max_amp <= 4)
-                                    # 3. Enqueuer avec backpressure (attendre si queue pleine)
-                                    await send_to_peer(frame)
+                                    # 1. Filtrer silence (si max_amp <= 4)
+                                    # 2. Hysteresis backpressure (HW/LW)
+                                    # 3. Enqueuer (pas de boucle d'attente)
+                                    await send_to_peer(frame_8khz)
                                     frames_sent += 1
 
                                 if frames_sent > 0:
-                                    logger.debug("🎵 Envoyé %d frames (960B@24kHz chacune), reste %d bytes en buffer",
+                                    logger.debug("🎵 Envoyé %d frames (320B@8kHz chacune), reste %d bytes en buffer",
                                                frames_sent, len(incomplete_audio_buffer))
 
                                 # Now update the playback tracker so OpenAI knows when audio was played
