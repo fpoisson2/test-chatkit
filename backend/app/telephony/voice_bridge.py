@@ -401,7 +401,7 @@ class TelephonyVoiceBridge:
                                 # 1. D'abord, envoyer des frames de silence pour amorcer le pipeline audio
                                 # Cela évite que les premières millisecondes d'audio réel soient perdues
                                 silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
-                                num_silence_frames = 10  # 10 frames = 200ms pour bien saturer le pipeline
+                                num_silence_frames = 6  # ~120ms suffit pour stabiliser le pipeline
                                 silence_frame = b'\x00' * silence_frame_size
 
                                 logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence pour amorcer", num_silence_frames)

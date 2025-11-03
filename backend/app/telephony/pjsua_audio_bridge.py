@@ -52,6 +52,8 @@ class PJSUAAudioBridge:
 
         # State used to preserve resampling continuity from 24kHz → 8kHz
         self._send_to_peer_state: Any = None
+        # Horloge de cadence partagée entre les envois pour éviter l'accumulation de retard
+        self._next_chunk_deadline: float | None = None
 
         # Silence gate to avoid amplifying background noise
         self._silence_threshold = 40
@@ -222,23 +224,41 @@ class PJSUAAudioBridge:
         # Cadence the output at 20ms intervals to reduce jitter and improve quality
         chunk_size = 320
         chunks_sent = 0
+        loop = asyncio.get_running_loop()
         try:
             for i in range(0, len(audio_8khz), chunk_size):
                 chunk = audio_8khz[i:i + chunk_size]
+
+                # Durée réelle du chunk (≈20ms pour 320 bytes)
+                chunk_duration = len(chunk) / (self.BYTES_PER_SAMPLE * self.PJSUA_SAMPLE_RATE)
+                if chunk_duration <= 0:
+                    chunk_duration = chunk_size / (self.BYTES_PER_SAMPLE * self.PJSUA_SAMPLE_RATE)
+
+                now = loop.time()
+                if self._next_chunk_deadline is None or now > self._next_chunk_deadline:
+                    # Si nous sommes en retard (ou première itération), repartir de maintenant
+                    self._next_chunk_deadline = now
+
+                sleep_time = self._next_chunk_deadline - now
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+
                 self._adapter.send_audio_to_call(self._call, chunk)
                 chunks_sent += 1
-                # Sleep 20ms to pace the output (wall-clock timing)
-                # This spreads bursts over time instead of flooding the queue
-                await asyncio.sleep(0.020)
+
+                # Programmer l'échéance du prochain chunk
+                self._next_chunk_deadline += chunk_duration
 
             # Calculate total pacing duration for monitoring
-            pacing_duration_ms = chunks_sent * 20
+            total_audio_ms = int(
+                (len(audio_8khz) / (self.BYTES_PER_SAMPLE * self.PJSUA_SAMPLE_RATE)) * 1000
+            )
             if self._send_to_peer_call_count <= 5:
                 logger.info("✅ send_to_peer #%d: Envoyé %d chunks @ 8kHz vers PJSUA (total: %d bytes, cadencé sur %d ms)",
-                           self._send_to_peer_call_count, chunks_sent, len(audio_8khz), pacing_duration_ms)
+                           self._send_to_peer_call_count, chunks_sent, len(audio_8khz), total_audio_ms)
             else:
                 logger.debug("✅ Envoyé %d chunks @ 8kHz vers PJSUA (total: %d bytes, cadencé sur %d ms)",
-                            chunks_sent, len(audio_8khz), pacing_duration_ms)
+                            chunks_sent, len(audio_8khz), total_audio_ms)
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
@@ -250,6 +270,7 @@ class PJSUAAudioBridge:
         """
         cleared = self._adapter.clear_call_audio_queue(self._call)
         self._send_to_peer_state = None  # Réinitialiser l'état de resampling pour éviter des artefacts
+        self._next_chunk_deadline = None
         return cleared
 
     def stop(self) -> None:
@@ -257,6 +278,7 @@ class PJSUAAudioBridge:
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
         self._send_to_peer_state = None
+        self._next_chunk_deadline = None
 
     @property
     def is_stopped(self) -> bool:
