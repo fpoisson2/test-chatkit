@@ -58,17 +58,12 @@ class PJSUAAudioBridge:
         # Silence gate to avoid amplifying background noise
         self._silence_threshold = 40
 
-        # Counter for send_to_peer calls (for pacing diagnostics)
+        # Counter for send_to_peer calls (for diagnostics)
         self._send_to_peer_call_count = 0
 
-        # HARD REAL-TIME PACING: Queue de frames 8kHz (320B) prêtes à envoyer
+        # PULL-BASED: Queue de frames 8kHz (320B) que PJSUA pull via onFrameRequested
         # Back-pressure: max 15 frames (300ms buffer) pour éviter les bursts
         self._tx_queue: deque[bytes] = deque(maxlen=15)
-        self._tx_queue_lock = asyncio.Lock()
-
-        # Task de pacing qui envoie 1 frame toutes les 20ms strict
-        self._pacer_task: asyncio.Task | None = None
-        self._pacer_frames_sent = 0
 
     async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).
@@ -173,84 +168,33 @@ class PJSUAAudioBridge:
         finally:
             logger.info("RTP stream ended")
 
-    async def _pacer_loop(self) -> None:
-        """Hard real-time pacing loop: envoie 1 frame (320B @ 8kHz) toutes les 20ms strict.
+    def get_next_frame(self) -> bytes | None:
+        """Get next audio frame for PJSUA to consume (called from onFrameRequested).
 
-        Utilise time.monotonic() pour garantir un timing précis indépendant des drifts système.
-        Stop proprement quand self._stop_event est set.
+        This is called synchronously from PJSUA's audio thread, so we use
+        a simple deque.popleft() which is atomic and thread-safe.
+
+        Returns:
+            320 bytes PCM16 @ 8kHz, or None if queue empty
         """
-        logger.info("🚀 Démarrage de la boucle de pacing (1 frame/20ms @ 8kHz)")
-
-        FRAME_DURATION = 0.020  # 20ms entre chaque frame
-        next_send_time = time.monotonic()
-
-        try:
-            while not self._stop_event.is_set():
-                now = time.monotonic()
-
-                # Si on est en retard, rattraper mais sans burst (max 1 frame/tick)
-                if now > next_send_time:
-                    next_send_time = now
-
-                # Récupérer 1 frame de la queue TX
-                frame: bytes | None = None
-                async with self._tx_queue_lock:
-                    if len(self._tx_queue) > 0:
-                        frame = self._tx_queue.popleft()
-
-                if frame is not None:
-                    # Envoyer immédiatement vers PJSUA
-                    try:
-                        self._adapter.send_audio_to_call(self._call, frame)
-                        self._pacer_frames_sent += 1
-
-                        # Log périodique (tous les 100 frames = 2 secondes)
-                        if self._pacer_frames_sent % 100 == 0:
-                            async with self._tx_queue_lock:
-                                queue_size = len(self._tx_queue)
-                            logger.debug("📤 Pacer: envoyé %d frames (queue: %d frames, %d ms buffered)",
-                                       self._pacer_frames_sent, queue_size, queue_size * 20)
-                    except Exception as e:
-                        logger.warning("Erreur envoi frame vers PJSUA: %s", e)
-
-                # Programmer prochaine deadline
-                next_send_time += FRAME_DURATION
-
-                # Sleep jusqu'à la prochaine deadline
-                sleep_duration = next_send_time - time.monotonic()
-                if sleep_duration > 0:
-                    await asyncio.sleep(sleep_duration)
-                else:
-                    # On est en retard, yield pour éviter de bloquer la loop
-                    await asyncio.sleep(0)
-
-        except asyncio.CancelledError:
-            logger.info("🛑 Pacer loop cancelled")
-            raise
-        except Exception as e:
-            logger.exception("❌ Erreur dans pacer loop: %s", e)
-        finally:
-            logger.info("🛑 Pacer loop terminé (frames envoyés: %d)", self._pacer_frames_sent)
+        if len(self._tx_queue) > 0:
+            return self._tx_queue.popleft()
+        return None
 
     async def send_to_peer(self, audio_24khz: bytes) -> None:
         """Send audio from VoiceBridge to PJSUA (24kHz → 8kHz).
 
-        HARD REAL-TIME APPROACH:
+        PULL-BASED APPROACH:
         1. Découpe audio_24khz en frames de 20ms (960B @ 24kHz) AVANT resample
         2. Resample chaque frame individuellement vers 8kHz (320B)
         3. Enfile dans _tx_queue avec back-pressure (max 15 frames)
-        4. La pacer loop (_pacer_loop) envoie 1 frame/20ms strict
+        4. PJSUA pull directement depuis la queue via onFrameRequested (pas de pacer)
 
         Args:
             audio_24khz: PCM16 audio at 24kHz from OpenAI
         """
         if len(audio_24khz) == 0:
             return
-
-        # Démarrer la pacer task si pas déjà lancée
-        if self._pacer_task is None or self._pacer_task.done():
-            self._pacer_task = asyncio.create_task(self._pacer_loop())
-            logger.info("🚀 Pacer task créée")
 
         self._send_to_peer_call_count += 1
 
@@ -310,19 +254,17 @@ class PJSUAAudioBridge:
 
                 # ÉTAPE 4: Ajouter à la queue TX avec back-pressure
                 # Si queue pleine (15 frames), deque drop automatiquement le plus vieux (maxlen=15)
-                async with self._tx_queue_lock:
-                    # Log si on va drop (queue déjà pleine)
-                    if len(self._tx_queue) >= 15:
-                        if frames_enqueued == 0:  # Log seulement une fois par appel
-                            logger.warning("⚠️ TX queue pleine (15 frames = 300ms), dropping oldest frames")
+                # Log si on va drop (queue déjà pleine)
+                if len(self._tx_queue) >= 15:
+                    if frames_enqueued == 0:  # Log seulement une fois par appel
+                        logger.warning("⚠️ TX queue pleine (15 frames = 300ms), dropping oldest frames")
 
-                    self._tx_queue.append(frame_8khz)
-                    frames_enqueued += 1
+                self._tx_queue.append(frame_8khz)
+                frames_enqueued += 1
 
             # Log périodique pour monitoring
             if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
-                async with self._tx_queue_lock:
-                    queue_size = len(self._tx_queue)
+                queue_size = len(self._tx_queue)
                 logger.info("✅ send_to_peer #%d: %d frames enfilées (queue: %d frames, %d ms buffered)",
                            self._send_to_peer_call_count, frames_enqueued, queue_size, queue_size * 20)
 
@@ -335,46 +277,24 @@ class PJSUAAudioBridge:
         Returns:
             Number of frames cleared
         """
-        # Clear adapter queue
-        cleared = self._adapter.clear_call_audio_queue(self._call)
-
-        # Clear TX queue (synchronously - we're in sync context)
-        # Use asyncio.run_coroutine_threadsafe if called from sync thread
-        try:
-            loop = asyncio.get_running_loop()
-            # Dans async context
-            async def _clear():
-                async with self._tx_queue_lock:
-                    tx_cleared = len(self._tx_queue)
-                    self._tx_queue.clear()
-                    return tx_cleared
-            # Schedule and wait
-            future = asyncio.ensure_future(_clear())
-            tx_cleared = loop.run_until_complete(future)
-            cleared += tx_cleared
-        except RuntimeError:
-            # Pas de loop running, on est dans un contexte sync
-            # Clear directement (pas de lock nécessaire)
-            tx_cleared = len(self._tx_queue)
-            self._tx_queue.clear()
-            cleared += tx_cleared
+        # Clear TX queue (deque operations are atomic, no lock needed)
+        tx_cleared = len(self._tx_queue)
+        self._tx_queue.clear()
 
         # Réinitialiser l'état de resampling pour éviter des artefacts
         self._send_to_peer_state = None
 
-        logger.info("🧹 Audio queue cleared: %d frames", cleared)
-        return cleared
+        logger.info("🧹 Audio queue cleared: %d frames", tx_cleared)
+        return tx_cleared
 
     def stop(self) -> None:
-        """Stop the audio bridge and pacer task."""
+        """Stop the audio bridge."""
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
         self._send_to_peer_state = None
 
-        # Cancel pacer task si elle tourne
-        if self._pacer_task is not None and not self._pacer_task.done():
-            self._pacer_task.cancel()
-            logger.info("🛑 Pacer task cancelled")
+        # Clear TX queue
+        self._tx_queue.clear()
 
     @property
     def is_stopped(self) -> bool:
@@ -429,6 +349,10 @@ async def create_pjsua_audio_bridge(
         ```
     """
     bridge = PJSUAAudioBridge(call)
+
+    # Attacher le bridge au call pour pouvoir y accéder depuis onCallMediaState
+    call._audio_bridge = bridge
+
     # Récupérer l'event frame_requested de l'adaptateur pour savoir quand PJSUA est prêt à consommer
     pjsua_ready_event = call.adapter._frame_requested_event
     return bridge.rtp_stream(media_active_event), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, pjsua_ready_event, bridge

@@ -175,6 +175,9 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         # Flag pour arrêter le traitement après la déconnexion de l'appel
         self._active = True
 
+        # Référence au bridge audio (sera set après création du bridge)
+        self._audio_bridge = None
+
         # Initialiser le port
         super().__init__()
 
@@ -222,9 +225,23 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
 
-        try:
-            # Récupérer l'audio de la queue (non-bloquant)
-            audio_data = self._outgoing_audio_queue.get_nowait()
+        audio_data = None
+
+        # PRIORITÉ 1: Pull depuis le bridge si disponible (approche pull-based)
+        if self._audio_bridge is not None:
+            try:
+                audio_data = self._audio_bridge.get_next_frame()
+            except Exception as e:
+                logger.warning("Erreur pull bridge: %s", e)
+
+        # FALLBACK: Si pas de bridge ou queue vide, essayer la queue classique
+        if audio_data is None:
+            try:
+                audio_data = self._outgoing_audio_queue.get_nowait()
+            except queue.Empty:
+                pass  # On gérera le silence après
+
+        if audio_data is not None:
             self._audio_frame_count += 1
 
             # Vérifier si c'est vraiment de l'audio (pas du silence)
@@ -251,7 +268,7 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             frame.size = len(audio_data)
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
-        except queue.Empty:
+        else:
             # Pas d'audio disponible, envoyer du silence PCM (0x00)
             self._silence_frame_count += 1
 
@@ -530,6 +547,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                         self.adapter._global_audio_port = AudioMediaPort(self.adapter, port_name=port_name)
                         self._audio_port = self.adapter._global_audio_port
                         logger.info("✅ Port audio créé: %s (slot sera réutilisé après nettoyage)", self._audio_port._port_name)
+
+                        # Attacher le bridge au port pour permettre pull direct depuis onFrameRequested
+                        if hasattr(self, '_audio_bridge') and self._audio_bridge:
+                            self._audio_port._audio_bridge = self._audio_bridge
+                            logger.info("🔗 Bridge attaché au port pour pull direct")
 
                         logger.debug("🔓 Lock teardown libéré après création port (call_id=%s)", ci.id)
 
