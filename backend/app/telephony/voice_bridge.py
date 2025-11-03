@@ -395,6 +395,31 @@ class TelephonyVoiceBridge:
                     max_amplitude = audioop.max(pcm, 2) if len(pcm) > 0 else 0
                     is_silence = max_amplitude < 100  # Seuil très bas pour détecter quasi-silence
 
+                    # CRITIQUE: Pour speak_first, envoyer response.create dès que le bridge est stable
+                    # Ne PAS attendre l'audio valide de l'utilisateur (il peut ne rien dire au début!)
+                    # On envoie après 5 paquets (100ms) pour confirmer que le bridge fonctionne
+                    if speak_first and not response_create_sent_on_ready and packet_count >= 5:
+                        try:
+                            # Envoi de response.create APRÈS 5 paquets (100ms de stabilisation)
+                            # Même si c'est du silence, cela confirme que le conference bridge fonctionne
+                            from agents.realtime.model_inputs import (
+                                RealtimeModelRawClientMessage,
+                                RealtimeModelSendRawMessage,
+                            )
+                            await session._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    message=RealtimeModelRawClientMessage(
+                                        type="response.create",
+                                        other_data={},
+                                    )
+                                )
+                            )
+                            response_create_sent_on_ready = True
+                            logger.info("✅ response.create envoyé après %d paquets (%dms stabilisation) - l'assistant génère l'audio",
+                                      packet_count, packet_count * 20)
+                        except Exception as exc:
+                            logger.warning("⚠️ Erreur lors de l'envoi response.create: %s", exc)
+
                     if is_silence and packet_count <= 8:  # Ignorer silence pendant ~160ms max
                         silence_count += 1
                         if silence_count <= 5 or silence_count % 10 == 0:
@@ -409,34 +434,6 @@ class TelephonyVoiceBridge:
                         stabilization_logged = True
 
                     inbound_audio_bytes += len(pcm)
-
-                    if packet_count == 1 or (packet_count - silence_count == 1):
-                        logger.info("Premier paquet audio VALIDE reçu: %d bytes PCM (paquet #%d, après %d silence)",
-                                   len(pcm), packet_count, silence_count)
-
-                        # Si speak_first est activé, envoyer response.create MAINTENANT
-                        # que le canal bidirectionnel est confirmé ET le conference bridge stabilisé
-                        if speak_first and not response_create_sent_on_ready:
-                            try:
-                                # Envoi de response.create APRÈS stabilisation du conference bridge
-                                # (après avoir reçu le premier paquet audio valide)
-                                # Cela évite le lag et les problèmes de synchronisation
-                                from agents.realtime.model_inputs import (
-                                    RealtimeModelRawClientMessage,
-                                    RealtimeModelSendRawMessage,
-                                )
-                                await session._model.send_event(
-                                    RealtimeModelSendRawMessage(
-                                        message=RealtimeModelRawClientMessage(
-                                            type="response.create",
-                                            other_data={},
-                                        )
-                                    )
-                                )
-                                response_create_sent_on_ready = True
-                                logger.info("✅ response.create envoyé après stabilisation du conference bridge - l'assistant génère l'audio")
-                            except Exception as exc:
-                                logger.warning("⚠️ Erreur lors de l'envoi response.create: %s", exc)
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
