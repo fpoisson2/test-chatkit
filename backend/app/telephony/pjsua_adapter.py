@@ -156,10 +156,13 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone - capacité physique
 
         # Limites de latence pour éviter l'accumulation excessive d'audio:
-        # - Limite max : 10-12 frames ≈ 200-240ms (après onFrameRequested)
-        # - Limite burst : 6-8 frames ≈ 120-160ms (avant onFrameRequested)
-        self._max_outgoing_frames = 12  # Limite après que PJSUA soit prêt
+        # - Limite burst initial : 8 frames ≈ 160ms (avant onFrameRequested)
+        # - Limite normale : 35 frames ≈ 700ms (après onFrameRequested)
+        #   La limite normale doit être assez grande pour absorber les bursts d'OpenAI
+        #   (typiquement 12000 bytes @ 24kHz → ~12-13 frames @ 8kHz par burst)
+        #   Sans accumuler excessivement (35 frames = latence acceptable)
         self._burst_limit = 8  # Limite avant le premier onFrameRequested
+        self._max_outgoing_frames = 35  # Limite après que PJSUA soit prêt
 
         # Compteurs pour diagnostics
         self._frame_count = 0
