@@ -943,6 +943,27 @@ class TelephonyVoiceBridge:
                 except Exception as e:
                     logger.warning("Impossible de lister les outils : %s", e)
 
+                # Si speak_first est activé, envoyer response.create IMMÉDIATEMENT
+                # dès que le média est actif, sans attendre le premier paquet audio
+                if speak_first:
+                    try:
+                        from agents.realtime.model_inputs import (
+                            RealtimeModelRawClientMessage,
+                            RealtimeModelSendRawMessage,
+                        )
+                        await session._model.send_event(
+                            RealtimeModelSendRawMessage(
+                                message=RealtimeModelRawClientMessage(
+                                    type="response.create",
+                                    other_data={},
+                                )
+                            )
+                        )
+                        response_create_sent_immediately = True
+                        logger.info("✅ response.create envoyé immédiatement au démarrage de la session (speak_first)")
+                    except Exception as exc:
+                        logger.warning("⚠️ Erreur lors de l'envoi immédiat de response.create: %s", exc)
+
                 audio_task = asyncio.create_task(forward_audio())
                 events_task = asyncio.create_task(handle_events())
                 try:
