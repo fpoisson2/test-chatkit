@@ -300,9 +300,6 @@ class TelephonyVoiceBridge:
         session: Any | None = None
         stop_event = asyncio.Event()
 
-        # Track if we've sent response.create immediately (for speak_first optimization)
-        response_create_sent_immediately = False
-
         # Use a list to create a mutable reference for block_audio_send
         block_audio_send_ref = [False]
 
@@ -377,12 +374,12 @@ class TelephonyVoiceBridge:
             # La session sera fermée automatiquement par le context manager 'async with'
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes, response_create_sent_immediately
+            nonlocal inbound_audio_bytes
             packet_count = 0
             silence_count = 0
             stabilization_logged = False
             # Note: turn_detection est déjà activé dans la configuration initiale de session (_build_session_update)
-            # Track if we've sent response.create when phone became ready
+            # Track if we've sent response.create when phone became ready (after stabilization)
             response_create_sent_on_ready = False
 
             try:
@@ -418,11 +415,12 @@ class TelephonyVoiceBridge:
                                    len(pcm), packet_count, silence_count)
 
                         # Si speak_first est activé, envoyer response.create MAINTENANT
-                        # que le canal bidirectionnel est confirmé
-                        if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
+                        # que le canal bidirectionnel est confirmé ET le conference bridge stabilisé
+                        if speak_first and not response_create_sent_on_ready:
                             try:
-                                # Envoi direct de response.create sans amorçage par silence
-                                # (amorçage retiré car causait du lag au 2ème appel)
+                                # Envoi de response.create APRÈS stabilisation du conference bridge
+                                # (après avoir reçu le premier paquet audio valide)
+                                # Cela évite le lag et les problèmes de synchronisation
                                 from agents.realtime.model_inputs import (
                                     RealtimeModelRawClientMessage,
                                     RealtimeModelSendRawMessage,
@@ -436,7 +434,7 @@ class TelephonyVoiceBridge:
                                     )
                                 )
                                 response_create_sent_on_ready = True
-                                logger.info("✅ response.create envoyé directement - l'assistant génère l'audio")
+                                logger.info("✅ response.create envoyé après stabilisation du conference bridge - l'assistant génère l'audio")
                             except Exception as exc:
                                 logger.warning("⚠️ Erreur lors de l'envoi response.create: %s", exc)
 
@@ -921,26 +919,11 @@ class TelephonyVoiceBridge:
                 except Exception as e:
                     logger.warning("Impossible de lister les outils : %s", e)
 
-                # Si speak_first est activé, envoyer response.create IMMÉDIATEMENT
-                # dès que le média est actif, sans attendre le premier paquet audio
-                if speak_first:
-                    try:
-                        from agents.realtime.model_inputs import (
-                            RealtimeModelRawClientMessage,
-                            RealtimeModelSendRawMessage,
-                        )
-                        await session._model.send_event(
-                            RealtimeModelSendRawMessage(
-                                message=RealtimeModelRawClientMessage(
-                                    type="response.create",
-                                    other_data={},
-                                )
-                            )
-                        )
-                        response_create_sent_immediately = True
-                        logger.info("✅ response.create envoyé immédiatement au démarrage de la session (speak_first)")
-                    except Exception as exc:
-                        logger.warning("⚠️ Erreur lors de l'envoi immédiat de response.create: %s", exc)
+                # CRITIQUE: Ne PAS envoyer response.create immédiatement ici!
+                # Il faut attendre que le conference bridge soit stabilisé (premier paquet audio valide).
+                # L'envoi de response.create se fait maintenant dans forward_audio() après stabilisation.
+                # Si on envoie trop tôt, cela cause du lag et des problèmes de synchronisation.
+                logger.info("⏳ Attente de stabilisation du conference bridge avant response.create (speak_first=%s)", speak_first)
 
                 audio_task = asyncio.create_task(forward_audio())
                 events_task = asyncio.create_task(handle_events())
