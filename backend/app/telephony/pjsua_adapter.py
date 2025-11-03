@@ -17,8 +17,6 @@ import asyncio
 import audioop
 import logging
 import queue
-import struct
-import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -35,6 +33,21 @@ try:
 except ImportError as e:
     logger.warning("pjsua2 n'est pas disponible: %s", e)
     pj = None  # type: ignore
+
+
+def _is_invalid_conference_disconnect_error(error: Exception) -> bool:
+    """Return True if the exception represents a benign PJ_EINVAL error."""
+
+    message = str(error) if error else ""
+    if "EINVAL" in message or "70004" in message:
+        return True
+
+    if PJSUA_AVAILABLE and isinstance(error, pj.Error):  # type: ignore[has-type]
+        status = getattr(error, "status", None)
+        if status in {getattr(pj, "PJ_EINVAL", 70004), 70004}:
+            return True
+
+    return False
 
 
 @dataclass
@@ -412,6 +425,7 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         self._media_active = False
         self._audio_port: AudioMediaPort | None = None
         self._audio_media: Any = None  # Référence au AudioMedia pour stopTransmit()
+        self._conference_connected = False
 
         # CRITIQUE: Chaque appel doit avoir son propre event pour savoir quand PJSUA est prêt
         # Utiliser un event partagé cause des problèmes sur les 2e/3e appels
@@ -441,6 +455,50 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
             except Exception as e:
                 logger.exception("Erreur dans onCallState callback: %s", e)
 
+    def _disconnect_conference_bridge(self, call_id: int) -> None:
+        """Disconnect the conference bridge if it is still active."""
+
+        if self._audio_port is None or self._audio_media is None:
+            self._conference_connected = False
+            self._audio_media = None
+            return
+
+        if not self._conference_connected:
+            logger.debug(
+                "Conference bridge déjà déconnecté (call_id=%s) — aucun stopTransmit nécessaire",
+                call_id,
+            )
+            self._audio_media = None
+            return
+
+        try:
+            try:
+                self._audio_media.stopTransmit(self._audio_port)
+                logger.debug("✅ Déconnexion call → port réussie (call_id=%s)", call_id)
+            except Exception as error:
+                if not _is_invalid_conference_disconnect_error(error):
+                    logger.warning(
+                        "Erreur stopTransmit call→port (call_id=%s): %s",
+                        call_id,
+                        error,
+                    )
+
+            try:
+                self._audio_port.stopTransmit(self._audio_media)
+                logger.debug("✅ Déconnexion port → call réussie (call_id=%s)", call_id)
+            except Exception as error:
+                if not _is_invalid_conference_disconnect_error(error):
+                    logger.warning(
+                        "Erreur stopTransmit port→call (call_id=%s): %s",
+                        call_id,
+                        error,
+                    )
+
+            logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
+        finally:
+            self._conference_connected = False
+            self._audio_media = None
+
     def onCallMediaState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état média."""
         if not PJSUA_AVAILABLE:
@@ -464,36 +522,21 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     # IMPORTANT: Toujours recréer le port car PJSUA peut détruire et recréer
                     # le stream audio lors des UPDATE SIP (changement de codec)
                     if self._audio_port is not None:
-                        logger.info("🔄 Port audio existe déjà, déconnexion conference bridge avant recréation (call_id=%s)", ci.id)
+                        logger.info(
+                            "🔄 Port audio existe déjà, déconnexion conference bridge avant recréation (call_id=%s)",
+                            ci.id,
+                        )
                         try:
-                            # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
-                            # pour éviter les connexions fantômes qui causent du silence au 3e appel
-                            if hasattr(self, '_audio_media') and self._audio_media is not None:
-                                try:
-                                    # Arrêter les transmissions bidirectionnelles
-                                    # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
-                                    try:
-                                        self._audio_media.stopTransmit(self._audio_port)
-                                        logger.debug("✅ Déconnexion call → port réussie (call_id=%s)", ci.id)
-                                    except Exception as e:
-                                        if "EINVAL" not in str(e) and "70004" not in str(e):
-                                            logger.warning("Erreur stopTransmit call→port: %s", e)
-
-                                    try:
-                                        self._audio_port.stopTransmit(self._audio_media)
-                                        logger.debug("✅ Déconnexion port → call réussie (call_id=%s)", ci.id)
-                                    except Exception as e:
-                                        if "EINVAL" not in str(e) and "70004" not in str(e):
-                                            logger.warning("Erreur stopTransmit port→call: %s", e)
-
-                                    logger.info("✅ Conference bridge déconnecté (call_id=%s)", ci.id)
-                                except Exception as e:
-                                    logger.warning("Erreur déconnexion conference bridge: %s", e)
-                            self._audio_port.deactivate()
+                            self._disconnect_conference_bridge(ci.id)
+                            old_port = self._audio_port
+                            self._audio_port = None
+                            if old_port is not None:
+                                old_port.deactivate()
                         except Exception as e:
                             logger.warning("Erreur désactivation ancien port: %s", e)
 
                     logger.info("🔧 Création du AudioMediaPort pour call_id=%s", ci.id)
+                    self._conference_connected = False
                     self._audio_port = AudioMediaPort(self.adapter, self._frame_requested_event)
 
                     # Obtenir le média audio de l'appel
@@ -518,17 +561,27 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
                     # Connecter : téléphone -> notre port (pour recevoir/capturer l'audio)
                     # Ceci active onFrameReceived() sur notre port
-                    audio_media.startTransmit(self._audio_port)
-                    logger.info("✅ Connexion conference bridge: call (slot %d) → custom port (slot %d)",
-                               call_port_info.portId if 'call_port_info' in locals() else -1,
-                               custom_port_info.portId if 'custom_port_info' in locals() else -1)
+                    try:
+                        audio_media.startTransmit(self._audio_port)
+                        logger.info(
+                            "✅ Connexion conference bridge: call (slot %d) → custom port (slot %d)",
+                            call_port_info.portId if 'call_port_info' in locals() else -1,
+                            custom_port_info.portId if 'custom_port_info' in locals() else -1,
+                        )
 
-                    # Connecter : notre port -> téléphone (pour envoyer/lecture l'audio)
-                    # Ceci permet à onFrameRequested() d'envoyer l'audio au téléphone
-                    self._audio_port.startTransmit(audio_media)
-                    logger.info("✅ Connexion conference bridge: custom port (slot %d) → call (slot %d)",
-                               custom_port_info.portId if 'custom_port_info' in locals() else -1,
-                               call_port_info.portId if 'call_port_info' in locals() else -1)
+                        # Connecter : notre port -> téléphone (pour envoyer/lecture l'audio)
+                        # Ceci permet à onFrameRequested() d'envoyer l'audio au téléphone
+                        self._audio_port.startTransmit(audio_media)
+                        logger.info(
+                            "✅ Connexion conference bridge: custom port (slot %d) → call (slot %d)",
+                            custom_port_info.portId if 'custom_port_info' in locals() else -1,
+                            call_port_info.portId if 'call_port_info' in locals() else -1,
+                        )
+                        self._conference_connected = True
+                    except Exception as exc:
+                        self._conference_connected = False
+                        logger.warning("Erreur lors de la connexion du conference bridge: %s", exc)
+                        raise
 
                     # Vérifier que les connexions sont établies au niveau du conference bridge
                     # Avec null sound device, c'est CRITIQUE - sinon on obtient du silence
@@ -560,28 +613,7 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         if not media_is_active and self._audio_port is not None:
             logger.warning("⚠️ Média désactivé mais port audio encore actif (call_id=%s) - nettoyage", ci.id)
             try:
-                # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
-                if self._audio_media is not None:
-                    try:
-                        # Arrêter les transmissions bidirectionnelles
-                        # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
-                        try:
-                            self._audio_media.stopTransmit(self._audio_port)
-                        except Exception as e:
-                            if "EINVAL" not in str(e) and "70004" not in str(e):
-                                logger.warning("Erreur stopTransmit call→port: %s", e)
-
-                        try:
-                            self._audio_port.stopTransmit(self._audio_media)
-                        except Exception as e:
-                            if "EINVAL" not in str(e) and "70004" not in str(e):
-                                logger.warning("Erreur stopTransmit port→call: %s", e)
-
-                        logger.info("✅ Conference bridge déconnecté (call_id=%s)", ci.id)
-                    except Exception as e:
-                        logger.warning("Erreur déconnexion conference bridge: %s", e)
-                    finally:
-                        self._audio_media = None
+                self._disconnect_conference_bridge(ci.id)
                 self._audio_port.deactivate()
                 logger.info("✅ Port audio zombie désactivé (call_id=%s)", ci.id)
             except Exception as e:
@@ -831,29 +863,7 @@ class PJSUAAdapter:
             # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
             if call._audio_port:
                 try:
-                    # CRITIQUE: Déconnecter proprement du conference bridge avant de détruire
-                    # pour éviter les connexions fantômes qui causent du silence au 3e appel
-                    if call._audio_media is not None:
-                        try:
-                            # Arrêter les transmissions bidirectionnelles
-                            # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
-                            try:
-                                call._audio_media.stopTransmit(call._audio_port)
-                            except Exception as e:
-                                if "EINVAL" not in str(e) and "70004" not in str(e):
-                                    logger.warning("Erreur stopTransmit call→port (call_id=%s): %s", call_info.id, e)
-
-                            try:
-                                call._audio_port.stopTransmit(call._audio_media)
-                            except Exception as e:
-                                if "EINVAL" not in str(e) and "70004" not in str(e):
-                                    logger.warning("Erreur stopTransmit port→call (call_id=%s): %s", call_info.id, e)
-
-                            logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_info.id)
-                        except Exception as e:
-                            logger.warning("Erreur déconnexion conference bridge (call_id=%s): %s", call_info.id, e)
-                        finally:
-                            call._audio_media = None
+                    call._disconnect_conference_bridge(call_info.id)
 
                     # Désactiver le port pour arrêter le traitement des frames
                     # Cela empêche l'envoi continu de silence après la fin de l'appel
