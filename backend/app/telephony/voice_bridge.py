@@ -360,6 +360,26 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
+                        # Envoyer des frames de silence pour amorcer le canal audio MAINTENANT que le canal bidirectionnel est confirmé
+                        # Cela évite que les premières millisecondes d'audio réel soient perdues
+                        if speak_first and response_create_sent_immediately:
+                            try:
+                                # Calculer la taille d'une frame de 20ms en PCM16 à 24kHz
+                                silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
+                                num_silence_frames = 10  # Augmenté à 10 frames (200ms) pour bien saturer le pipeline
+                                silence_frame = b'\x00' * silence_frame_size
+
+                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence pour amorcer", num_silence_frames)
+                                for i in range(num_silence_frames):
+                                    await send_to_peer(silence_frame)
+                                    # Pas de délai - envoyer rapidement pour saturer le buffer
+                                    if i % 3 == 2:  # Petit yield tous les 3 frames pour ne pas bloquer
+                                        await asyncio.sleep(0.001)
+
+                                logger.info("✅ Pipeline audio amorcé avec %d frames de silence", num_silence_frames)
+                            except Exception as exc:
+                                logger.warning("⚠️ Erreur lors de l'amorçage du pipeline: %s", exc)
+
                         # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
                         # l'envoyer maintenant comme fallback (mais normalement c'est déjà fait immédiatement après le démarrage de la session)
                         if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
@@ -834,6 +854,8 @@ class TelephonyVoiceBridge:
 
             # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio AVANT d'envoyer response.create
             # Cela garantit que le premier "Allô!" sera bien consommé et entendu
+            # NOTE: Les frames de silence seront envoyées APRÈS la réception du premier paquet RTP
+            # (voir forward_audio() plus bas) pour garantir que le canal bidirectionnel est établi
             if speak_first:
                 if pjsua_ready_to_consume is not None:
                     logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
@@ -844,26 +866,6 @@ class TelephonyVoiceBridge:
                         logger.warning("⚠️ Timeout en attendant PJSUA - envoi de response.create quand même")
                 else:
                     logger.info("🚀 Envoi IMMÉDIAT de response.create pour speak_first (pas d'attente PJSUA)")
-
-                # Envoyer quelques frames de silence pour "amorcer" le canal audio avant le premier response.create
-                # Cela aide à préparer le pipeline RTP et éviter la perte des premiers millisecondes d'audio
-                try:
-                    # Calculer la taille d'une frame de 20ms en PCM16 à 24kHz
-                    # 24000 samples/sec * 0.020 sec = 480 samples
-                    # 480 samples * 2 bytes/sample (PCM16) = 960 bytes
-                    silence_frame_size = 960
-                    num_silence_frames = 3  # Envoyer 3 frames de 20ms = 60ms de silence
-                    silence_frame = b'\x00' * silence_frame_size
-
-                    logger.info("🔇 Envoi de %d frames de silence pour amorcer le canal audio", num_silence_frames)
-                    for i in range(num_silence_frames):
-                        await send_to_peer(silence_frame)
-                        # Petit délai entre les frames pour simuler le timing RTP réel
-                        await asyncio.sleep(0.020)  # 20ms entre chaque frame
-
-                    logger.info("✅ Canal audio amorcé avec %d frames de silence", num_silence_frames)
-                except Exception as exc:
-                    logger.warning("⚠️ Erreur lors de l'amorçage du canal avec frames de silence: %s", exc)
 
                 try:
                     from agents.realtime.model_inputs import (
