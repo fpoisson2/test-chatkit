@@ -585,6 +585,9 @@ class RealtimeVoiceSessionOrchestrator:
         # Agent de base cloné pour chaque session.
         self._base_agent = RealtimeAgent(name="chatkit-voice", instructions=None)
         self._registry = RealtimeVoiceSessionRegistry()
+        # Track active sessions by thread_id to prevent SSE connection leaks
+        self._sessions_by_thread: dict[str, str] = {}  # thread_id -> session_id
+        self._thread_lock = asyncio.Lock()
 
     @staticmethod
     def _clean_voice(value: Any) -> str:
@@ -620,6 +623,18 @@ class RealtimeVoiceSessionOrchestrator:
 
     @staticmethod
     def _clean_secret(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+        return None
+
+    @staticmethod
+    def _extract_thread_id(metadata: Mapping[str, Any] | None) -> str | None:
+        """Extract thread_id from metadata if present."""
+        if not isinstance(metadata, Mapping):
+            return None
+        value = metadata.get("thread_id")
         if isinstance(value, str):
             candidate = value.strip()
             if candidate:
@@ -982,6 +997,21 @@ class RealtimeVoiceSessionOrchestrator:
         handoffs: Sequence[Any] | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> VoiceSessionHandle:
+        # Close any existing session for the same thread to prevent SSE connection leaks
+        thread_id = self._extract_thread_id(metadata)
+        if thread_id:
+            async with self._thread_lock:
+                existing_session_id = self._sessions_by_thread.get(thread_id)
+                if existing_session_id:
+                    logger.info(
+                        "Closing existing voice session %s for thread %s before creating new one",
+                        existing_session_id,
+                        thread_id,
+                    )
+                    # Close the existing session to free SSE connections
+                    await self.close_voice_session(session_id=existing_session_id)
+                    self._sessions_by_thread.pop(thread_id, None)
+
         agent_tools = _filter_agent_tools_for_clone(tools)
         agent_handoffs = _filter_agent_handoffs_for_clone(handoffs)
 
@@ -1085,8 +1115,14 @@ class RealtimeVoiceSessionOrchestrator:
             )
 
             await self._registry.register(handle)
-            logger.debug("Session Realtime enregistrée : session_id=%s, user_id=%s",
-                        handle.session_id, metadata_payload.get('user_id', 'unknown'))
+
+            # Track session by thread_id to prevent SSE connection leaks
+            if thread_id:
+                async with self._thread_lock:
+                    self._sessions_by_thread[thread_id] = handle.session_id
+
+            logger.debug("Session Realtime enregistrée : session_id=%s, user_id=%s, thread_id=%s",
+                        handle.session_id, metadata_payload.get('user_id', 'unknown'), thread_id or 'none')
             try:  # pragma: no cover - le gateway peut ne pas être initialisé
                 from .realtime_gateway import get_realtime_gateway
 
@@ -1102,6 +1138,11 @@ class RealtimeVoiceSessionOrchestrator:
             if handle is not None:
                 await self._registry.remove(session_id=handle.session_id)
                 await _cleanup_mcp_servers(handle.mcp_servers)
+                # Clean up thread tracking on error
+                if thread_id:
+                    async with self._thread_lock:
+                        if self._sessions_by_thread.get(thread_id) == handle.session_id:
+                            self._sessions_by_thread.pop(thread_id, None)
             else:
                 await _cleanup_mcp_servers(agent_mcp_servers)
             raise
@@ -1135,6 +1176,14 @@ class RealtimeVoiceSessionOrchestrator:
             await gateway.unregister_session(handle=handle)
 
         await _cleanup_mcp_servers(handle.mcp_servers)
+
+        # Clean up thread tracking to allow new sessions
+        thread_id = self._extract_thread_id(handle.metadata)
+        if thread_id:
+            async with self._thread_lock:
+                if self._sessions_by_thread.get(thread_id) == handle.session_id:
+                    self._sessions_by_thread.pop(thread_id, None)
+                    logger.debug("Removed thread tracking for thread_id=%s", thread_id)
 
         return True
 
