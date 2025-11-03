@@ -845,6 +845,26 @@ class TelephonyVoiceBridge:
                 else:
                     logger.info("🚀 Envoi IMMÉDIAT de response.create pour speak_first (pas d'attente PJSUA)")
 
+                # Envoyer quelques frames de silence pour "amorcer" le canal audio avant le premier response.create
+                # Cela aide à préparer le pipeline RTP et éviter la perte des premiers millisecondes d'audio
+                try:
+                    # Calculer la taille d'une frame de 20ms en PCM16 à 24kHz
+                    # 24000 samples/sec * 0.020 sec = 480 samples
+                    # 480 samples * 2 bytes/sample (PCM16) = 960 bytes
+                    silence_frame_size = 960
+                    num_silence_frames = 3  # Envoyer 3 frames de 20ms = 60ms de silence
+                    silence_frame = b'\x00' * silence_frame_size
+
+                    logger.info("🔇 Envoi de %d frames de silence pour amorcer le canal audio", num_silence_frames)
+                    for i in range(num_silence_frames):
+                        await send_to_peer(silence_frame)
+                        # Petit délai entre les frames pour simuler le timing RTP réel
+                        await asyncio.sleep(0.020)  # 20ms entre chaque frame
+
+                    logger.info("✅ Canal audio amorcé avec %d frames de silence", num_silence_frames)
+                except Exception as exc:
+                    logger.warning("⚠️ Erreur lors de l'amorçage du canal avec frames de silence: %s", exc)
+
                 try:
                     from agents.realtime.model_inputs import (
                         RealtimeModelRawClientMessage,
