@@ -125,7 +125,11 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
             return
 
         call = PJSUACall(self.adapter, call_id=prm.callId)
-        call_info = call.getInfo()
+        call_info = call._safe_get_info()
+
+        if call_info is None:
+            logger.warning("Appel entrant mais session déjà terminée, ignoré")
+            return
 
         logger.info(
             "Appel SIP entrant de %s",
@@ -507,7 +511,12 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         if not PJSUA_AVAILABLE:
             return
 
-        ci = self.getInfo()
+        # Utiliser le wrapper sûr pour éviter les erreurs si la session est déjà terminée
+        ci = self._safe_get_info()
+        if ci is None:
+            logger.debug("onCallState appelé mais session déjà terminée, ignoré")
+            return
+
         logger.info(
             "📞 onCallState - call_id=%s, state=%d (%s), remote=%s",
             ci.id,
@@ -604,7 +613,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         if not PJSUA_AVAILABLE:
             return
 
-        ci = self.getInfo()
+        # Utiliser le wrapper sûr pour éviter les erreurs si la session est déjà terminée
+        ci = self._safe_get_info()
+        if ci is None:
+            logger.debug("onCallMediaState appelé mais session déjà terminée, ignoré")
+            return
 
         logger.info("🎵 onCallMediaState appelé pour call_id=%s, state=%s", ci.id, ci.state)
 
@@ -1195,10 +1208,13 @@ class PJSUAAdapter:
         call.makeCall(dest_uri, prm)
 
         # Récupérer l'info de l'appel pour obtenir l'ID
-        ci = call.getInfo()
+        ci = call._safe_get_info()
+        if ci is None:
+            raise RuntimeError("Impossible d'obtenir les infos de l'appel sortant")
+
         self._active_calls[ci.id] = call
 
-        logger.info("Appel sortant initié vers %s", dest_uri)
+        logger.info("Appel sortant initié vers %s (call_id=%s)", dest_uri, ci.id)
         return call
 
     def get_call_info(self, call: PJSUACall) -> CallInfo | None:
