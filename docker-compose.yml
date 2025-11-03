@@ -90,6 +90,7 @@ services:
       - ./backend:/app
       - ./frontend:/frontend
     environment:
+      # Model & AI Configuration
       MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
       MODEL_API_BASE: ${MODEL_API_BASE:-}
       MODEL_API_KEY_ENV: ${MODEL_API_KEY_ENV:-}
@@ -97,10 +98,29 @@ services:
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       CHATKIT_API_BASE: ${CHATKIT_API_BASE:-https://api.openai.com}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CHATKIT_WORKFLOW_ID: ${CHATKIT_WORKFLOW_ID:-}
+      # Database
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+      # Celery
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
+      # Auth (required by app initialization)
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # CORS & API
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5183}
+      # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # SIP (if needed by app initialization)
+      CHATKIT_HOSTED_BROWSER_HEADLESS: ${CHATKIT_HOSTED_BROWSER_HEADLESS:-}
+      CHATKIT_HOSTED_BROWSER_DEBUG_HOST: ${CHATKIT_HOSTED_BROWSER_DEBUG_HOST:-127.0.0.1}
+      CHATKIT_HOSTED_BROWSER_DEBUG_PORT: ${CHATKIT_HOSTED_BROWSER_DEBUG_PORT:-}
+      SIP_BIND_HOST: ${SIP_BIND_HOST:-0.0.0.0}
+      SIP_BIND_PORT: ${SIP_BIND_PORT:-40118}
+      SIP_CONTACT_HOST: ${SIP_CONTACT_HOST:-192.168.1.116}
+      SIP_TRANSPORT: ${SIP_TRANSPORT:-udp}
     depends_on:
       - db
       - redis
