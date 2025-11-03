@@ -206,14 +206,19 @@ class PJSUAAudioBridge:
             max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
             rms_amplitude = audioop.rms(audio_8khz, self.BYTES_PER_SAMPLE)
             # Ne considérer comme silence que si pic ET RMS sont très faibles (bruit de fond)
-            if max_amplitude <= self._silence_threshold and rms_amplitude <= (self._silence_threshold / 2):
+            if max_amplitude == 0:
                 audio_8khz = bytes(len(audio_8khz))
-                max_amplitude = 0
-            elif max_amplitude > 0:
-                # Garantir un niveau minimal suffisamment audible tout en limitant la saturation
+            else:
+                # Garantir un niveau minimal suffisamment audible tout en limitant la saturation.
+                # On n'écrase plus les signaux très faibles : on les amplifie quand l'énergie RMS
+                # laisse penser qu'il s'agit d'une parole et non de simple bruit de fond.
                 min_target_amplitude = 5000
                 max_gain = 12.0
-                if max_amplitude < min_target_amplitude:
+                should_boost = (
+                    max_amplitude < min_target_amplitude
+                    and rms_amplitude >= (self._silence_threshold / 2)
+                )
+                if should_boost and max_amplitude > 0:
                     gain = min(min_target_amplitude / max_amplitude, max_gain)
                     audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
         except audioop.error as e:

@@ -156,8 +156,8 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         # - Tests montrent que 1000 frames évite les "⚠️ Queue audio sortante pleine"
         self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
         self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone - buffer large
-        # Limite soft pour la latence (nombre de frames 20ms chacune). 80 ≈ 1.6s max.
-        self._max_outgoing_frames = 80
+        # Limite soft de latence : 120 frames ≈ 2.4 secondes (20 ms par frame)
+        self._max_outgoing_frames = 120
 
         # Compteurs pour diagnostics
         self._frame_count = 0
@@ -317,8 +317,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
     def send_audio(self, audio_data: bytes) -> None:
         """Envoie de l'audio vers le téléphone (appelé depuis l'async loop)."""
-        dropped = 0
+        if not self._active:
+            return
+
         queued_chunks = 0
+        dropped_frames = 0
 
         try:
             chunk_size = self.frame_size_bytes
@@ -329,11 +332,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                     # padding avec silence pour compléter la frame
                     chunk = chunk + b'\x00' * (chunk_size - len(chunk))
 
-                # S'assurer que la file ne dépasse pas la limite avant ajout
+                # Maintenir une latence faible en limitant la taille de la file
                 while self._outgoing_audio_queue.qsize() >= self._max_outgoing_frames:
                     try:
                         self._outgoing_audio_queue.get_nowait()
-                        dropped += 1
+                        dropped_frames += 1
                     except queue.Empty:
                         break
 
@@ -351,13 +354,8 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                     self._outgoing_audio_queue.qsize(),
                     "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(first_chunk)})",
                 )
-
-            if dropped:
-                logger.warning(
-                    "⚠️ Latence audio trop élevée - %d frames obsolètes supprimées (queue:%d)",
-                    dropped,
-                    self._outgoing_audio_queue.qsize(),
-                )
+            if dropped_frames:
+                logger.warning("⚠️ Queue audio sortante saturée, %d frame(s) abandonnée(s) pour réduire la latence", dropped_frames)
         except queue.Full:
             logger.warning("⚠️ Queue audio sortante pleine, frames ignorées")
 
