@@ -24,6 +24,11 @@ export type RealtimeSessionHandlers = {
   onHistoryUpdated?: (sessionId: string, history: unknown[]) => void;
   onHistoryDelta?: (sessionId: string, item: unknown) => void;
   onAudioChunk?: (sessionId: string, chunk: Int16Array) => void;
+  onSniffAudioChunk?: (
+    sessionId: string,
+    chunk: Int16Array,
+    direction: string,
+  ) => void;
   onAgentStart?: (sessionId: string) => void;
   onAgentEnd?: (sessionId: string) => void;
   onSessionFinalized?: (event: SessionFinalizedEvent) => void;
@@ -123,6 +128,7 @@ type ConnectionRecord = {
   audioContext: AudioContext | null;
   playbackTime: number;
   activeSources: Set<AudioBufferSourceNode>;
+  sniffSources: Map<string, Set<AudioBufferSourceNode>>;
   token: string | null;
 };
 
@@ -194,10 +200,8 @@ const ensureAudioContextForRecord = async (
 };
 
 const stopPlayback = (record: ConnectionRecord) => {
-  if (!record.activeSources.size) {
-    return;
-  }
   const context = record.audioContext;
+
   record.activeSources.forEach((source) => {
     try {
       source.stop();
@@ -206,6 +210,18 @@ const stopPlayback = (record: ConnectionRecord) => {
     }
   });
   record.activeSources.clear();
+
+  record.sniffSources.forEach((sources) => {
+    sources.forEach((source) => {
+      try {
+        source.stop();
+      } catch {
+        /* noop */
+      }
+    });
+    sources.clear();
+  });
+
   if (context) {
     record.playbackTime = context.currentTime;
   } else {
@@ -261,6 +277,49 @@ const playAudioChunk = (
       console.warn("Failed to play realtime audio chunk", error);
     }
     record.activeSources.delete(source);
+  }
+};
+
+const playSniffAudioChunk = (
+  record: ConnectionRecord,
+  context: AudioContext,
+  chunk: Int16Array,
+  direction: string,
+) => {
+  if (chunk.length === 0) {
+    return;
+  }
+  const floatBuffer = new Float32Array(chunk.length);
+  for (let i = 0; i < chunk.length; i += 1) {
+    floatBuffer[i] = chunk[i] / 0x8000;
+  }
+
+  const buffer = context.createBuffer(1, floatBuffer.length, SAMPLE_RATE);
+  buffer.copyToChannel(floatBuffer, 0);
+
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.connect(context.destination);
+
+  const key = direction.trim() || "unknown";
+  let bucket = record.sniffSources.get(key);
+  if (!bucket) {
+    bucket = new Set();
+    record.sniffSources.set(key, bucket);
+  }
+  const targetBucket = bucket;
+  targetBucket.add(source);
+  source.onended = () => {
+    targetBucket.delete(source);
+  };
+
+  try {
+    source.start(context.currentTime);
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("Failed to play sniff audio chunk", error);
+    }
+    targetBucket.delete(source);
   }
 };
 
@@ -331,6 +390,28 @@ const handleMessageForRecord = async (
       }
       broadcast(record, (handlers) => {
         handlers.onAudioChunk?.(sessionId, chunk);
+      });
+      break;
+    }
+    case "audio_sniff": {
+      if (!sessionId) {
+        break;
+      }
+      const data = (typed as { data?: unknown }).data;
+      if (typeof data !== "string" || data.length === 0) {
+        break;
+      }
+      const direction =
+        typeof (typed as { direction?: unknown }).direction === "string"
+          ? (typed as { direction: string }).direction
+          : "unknown";
+      const chunk = decodePcm16(data);
+      const context = await ensureAudioContextForRecord(record);
+      if (context) {
+        playSniffAudioChunk(record, context, chunk, direction);
+      }
+      broadcast(record, (handlers) => {
+        handlers.onSniffAudioChunk?.(sessionId, chunk, direction);
       });
       break;
     }
@@ -560,6 +641,7 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
           audioContext: null,
           playbackTime: 0,
           activeSources: new Set(),
+          sniffSources: new Map(),
           token,
         };
         connectionPool.set(gatewayUrl, record);
@@ -567,6 +649,9 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
         record.token = token;
         if (!record.activeSources) {
           record.activeSources = new Set();
+        }
+        if (!record.sniffSources) {
+          record.sniffSources = new Map();
         }
       }
 

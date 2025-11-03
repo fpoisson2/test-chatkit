@@ -3418,12 +3418,34 @@ async def run_workflow(
                     from_number = "unknown"
 
                 # Préparer les métadonnées
+                owner_user_id: str | None = None
+                if agent_context is not None:
+                    request_context = getattr(agent_context, "request_context", None)
+                    owner_user_id = getattr(request_context, "user_id", None)
+                    if isinstance(owner_user_id, str):
+                        owner_user_id = owner_user_id.strip() or None
+                    if owner_user_id is None:
+                        thread_metadata = getattr(agent_context.thread, "metadata", None)
+                        if isinstance(thread_metadata, Mapping):
+                            candidate = thread_metadata.get("user_id") or thread_metadata.get(
+                                "owner_id"
+                            )
+                            if isinstance(candidate, str) and candidate.strip():
+                                owner_user_id = candidate.strip()
+
+                thread_id = agent_context.thread.id if agent_context else None
+
                 metadata = {
                     "triggered_by_workflow_id": workflow_definition.id if workflow_definition else None,
-                    "triggered_by_session_id": agent_context.thread.id if agent_context else None,
+                    "triggered_by_session_id": thread_id,
                     "trigger_node_slug": current_node.slug,
                     "trigger_context": params.get("metadata", {}),
                 }
+
+                if owner_user_id:
+                    metadata["user_id"] = owner_user_id
+                if thread_id:
+                    metadata["thread_id"] = thread_id
 
                 # Initier l'appel
                 outbound_manager = get_outbound_call_manager()
