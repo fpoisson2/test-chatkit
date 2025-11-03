@@ -56,6 +56,9 @@ class PJSUAAudioBridge:
         # Silence gate to avoid amplifying background noise
         self._silence_threshold = 250
 
+        # Counter for send_to_peer calls (for pacing diagnostics)
+        self._send_to_peer_call_count = 0
+
     async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).
 
@@ -171,7 +174,12 @@ class PJSUAAudioBridge:
         if len(audio_24khz) == 0:
             return
 
-        logger.debug("📤 send_to_peer appelé avec %d bytes @ 24kHz", len(audio_24khz))
+        self._send_to_peer_call_count += 1
+        if self._send_to_peer_call_count <= 5:
+            logger.info("📤 send_to_peer #%d appelé avec %d bytes @ 24kHz (cadençage activé)",
+                       self._send_to_peer_call_count, len(audio_24khz))
+        else:
+            logger.debug("📤 send_to_peer appelé avec %d bytes @ 24kHz", len(audio_24khz))
 
         # Resample 24kHz → 8kHz
         try:
@@ -211,6 +219,7 @@ class PJSUAAudioBridge:
 
         # Send to PJSUA in chunks of 320 bytes (20ms @ 8kHz, 16-bit, mono)
         # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes
+        # Cadence the output at 20ms intervals to reduce jitter and improve quality
         chunk_size = 320
         chunks_sent = 0
         try:
@@ -218,7 +227,18 @@ class PJSUAAudioBridge:
                 chunk = audio_8khz[i:i + chunk_size]
                 self._adapter.send_audio_to_call(self._call, chunk)
                 chunks_sent += 1
-            logger.debug("✅ Envoyé %d chunks @ 8kHz vers PJSUA (total: %d bytes)", chunks_sent, len(audio_8khz))
+                # Sleep 20ms to pace the output (wall-clock timing)
+                # This spreads bursts over time instead of flooding the queue
+                await asyncio.sleep(0.020)
+
+            # Calculate total pacing duration for monitoring
+            pacing_duration_ms = chunks_sent * 20
+            if self._send_to_peer_call_count <= 5:
+                logger.info("✅ send_to_peer #%d: Envoyé %d chunks @ 8kHz vers PJSUA (total: %d bytes, cadencé sur %d ms)",
+                           self._send_to_peer_call_count, chunks_sent, len(audio_8khz), pacing_duration_ms)
+            else:
+                logger.debug("✅ Envoyé %d chunks @ 8kHz vers PJSUA (total: %d bytes, cadencé sur %d ms)",
+                            chunks_sent, len(audio_8khz), pacing_duration_ms)
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
