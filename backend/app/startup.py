@@ -2820,6 +2820,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         send_to_peer=send_to_peer,
                         clear_audio_queue=clear_queue,
                         pjsua_ready_to_consume=pjsua_ready_event,  # Attendre que PJSUA soit prêt avant speak_first
+                        first_packet_received_event=first_packet_event,  # Attendre flux bidirectionnel confirmé
                         api_base=realtime_api_base,
                         tools=telephony_tools,
                         handoffs=voice_handoffs,
