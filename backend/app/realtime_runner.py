@@ -747,11 +747,14 @@ class RealtimeVoiceSessionOrchestrator:
 
         # Optimisation : pour OpenAI, le paramètre voice n'est pas supporté dans
         # l'API client_secrets, donc on évite les tentatives inutiles
+        # La voix sera configurée plus tard via session.update dans la WebSocket
         is_openai = normalized_provider_slug == "openai"
 
         if voice_value:
             if is_openai:
-                voice_modes = ["top_level", "session", "none"]
+                # Pour OpenAI : ne pas envoyer voice dans client_secret (cause des 400)
+                # La voix sera définie lors de la session WebSocket via initial_model_settings
+                voice_modes = ["none"]
             else:
                 # Pour les providers non-OpenAI, essayer d'abord les modes moins verbeux
                 voice_modes = ["none", "session", "top_level"]
