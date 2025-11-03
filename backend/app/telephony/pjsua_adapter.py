@@ -314,7 +314,8 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 # DIAGNOSTIC: Vérifier si c'est du silence ou du vrai audio
                 # Avec conference bridge mal connecté, on recevra du silence (tous les bytes = 0)
                 max_amplitude = audioop.max(audio_pcm, 2) if len(audio_pcm) > 0 else 0
-                is_silence = max_amplitude == 0
+                SILENCE_THRESHOLD = 4  # Même seuil que dans pjsua_audio_bridge.py
+                is_silence = max_amplitude <= SILENCE_THRESHOLD
 
                 if self._frame_received_count <= 5:
                     logger.info("✅ Audio PCM extrait: %d bytes, premiers bytes: %s, max_amplitude=%d %s",
@@ -325,6 +326,13 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 if self._frame_received_count <= 20 and is_silence:
                     logger.warning("⚠️ Frame #%d contient du SILENCE (conference bridge peut-être mal connecté)",
                                  self._frame_received_count)
+
+                # Point 1: Ne jamais enqueuer du silence - dropper les frames silence
+                if is_silence:
+                    if self._frame_received_count <= 5:
+                        logger.debug("🔇 Frame silence droppée dans onFrameReceived (max_amp=%d <= %d)",
+                                   max_amplitude, SILENCE_THRESHOLD)
+                    return  # Ne pas ajouter à la queue
 
                 # Ajouter l'audio PCM à la queue pour traitement async
                 self._incoming_audio_queue.put_nowait(audio_pcm)

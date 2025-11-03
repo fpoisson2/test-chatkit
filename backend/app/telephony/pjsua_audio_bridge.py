@@ -66,8 +66,8 @@ class PJSUAAudioBridge:
         self._send_to_peer_call_count = 0
 
         # PULL-BASED: Queue de frames 8kHz (320B) que PJSUA pull via onFrameRequested
-        # Large buffer pour absorber les bursts OpenAI: 2000 frames = 40 secondes
-        self._tx_queue: deque[bytes] = deque(maxlen=2000)
+        # Pas de maxlen car on gère le drop-tail manuellement (évite drop-oldest automatique)
+        self._tx_queue: deque[bytes] = deque()
 
     async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).

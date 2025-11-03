@@ -394,11 +394,11 @@ class TelephonyVoiceBridge:
                         continue
 
                     # CRITIQUE: Ignorer les paquets de silence au début pour laisser
-                    # le conference bridge se stabiliser
+                    # le conference bridge se stabiliser (Point 2: STABILIZE_SILENT_PKTS = 8)
                     max_amplitude = audioop.max(pcm, 2) if len(pcm) > 0 else 0
                     is_silence = max_amplitude < 100  # Seuil très bas pour détecter quasi-silence
 
-                    if is_silence and packet_count <= 50:  # Ignorer silence pendant ~1 seconde max
+                    if is_silence and packet_count <= 8:  # Ignorer silence pendant ~160ms max
                         silence_count += 1
                         if silence_count <= 5 or silence_count % 10 == 0:
                             logger.debug("Paquet #%d ignoré (silence, amp=%d) - attente stabilisation conference bridge",
@@ -743,9 +743,19 @@ class TelephonyVoiceBridge:
                         if not block_audio_send_ref[0]:
                             if pcm_data:
                                 outbound_audio_bytes += len(pcm_data)
-                                logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
-                                # Send audio and wait until it's actually sent via RTP
-                                await send_to_peer(pcm_data)
+
+                                # Point 4: Découper en petites rafales (CHUNK_TARGET_FRAMES = 4)
+                                # 4 frames @ 24kHz = 4 * 960 bytes = 3840 bytes
+                                CHUNK_SIZE = 3840  # 4 frames de 20ms @ 24kHz
+
+                                logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone (découpé en chunks de %d bytes)",
+                                           len(pcm_data), CHUNK_SIZE)
+
+                                # Découper et envoyer en petits morceaux
+                                for i in range(0, len(pcm_data), CHUNK_SIZE):
+                                    chunk = pcm_data[i:i + CHUNK_SIZE]
+                                    await send_to_peer(chunk)
+
                                 # Now update the playback tracker so OpenAI knows when audio was played
                                 # This is critical for proper interruption handling!
                                 playback_tracker.on_play_bytes(
