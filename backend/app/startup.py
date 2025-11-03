@@ -2575,6 +2575,52 @@ def _run_ad_hoc_migrations() -> None:
                     "device_type ajouté avec nouvelle contrainte unique"
                 )
 
+        # Migration de la contrainte FK pour language_generation_tasks.language_id
+        if "language_generation_tasks" in table_names and "languages" in table_names:
+            # Vérifier si la contrainte a besoin d'être mise à jour
+            fk_constraints = inspector.get_foreign_keys("language_generation_tasks")
+            needs_migration = True
+
+            for fk in fk_constraints:
+                if fk.get("name") == "language_generation_tasks_language_id_fkey":
+                    # La contrainte existe - vérifier si elle a ON DELETE SET NULL
+                    # Note: SQLAlchemy inspector ne retourne pas toujours les options ON DELETE
+                    # On va vérifier directement dans PostgreSQL
+                    if dialect == "postgresql":
+                        result = connection.execute(
+                            text("""
+                                SELECT confdeltype
+                                FROM pg_constraint
+                                WHERE conname = 'language_generation_tasks_language_id_fkey'
+                            """)
+                        )
+                        row = result.fetchone()
+                        if row and row[0] == 'n':  # 'n' = SET NULL
+                            needs_migration = False
+                            logger.info("Migration language_generation_tasks FK : déjà appliquée")
+
+            if needs_migration:
+                logger.info(
+                    "Migration language_generation_tasks : mise à jour FK "
+                    "pour permettre suppression de langues"
+                )
+                connection.execute(
+                    text("""
+                        ALTER TABLE language_generation_tasks
+                        DROP CONSTRAINT IF EXISTS language_generation_tasks_language_id_fkey;
+
+                        ALTER TABLE language_generation_tasks
+                        ADD CONSTRAINT language_generation_tasks_language_id_fkey
+                        FOREIGN KEY (language_id)
+                        REFERENCES languages(id)
+                        ON DELETE SET NULL;
+                    """)
+                )
+                logger.info(
+                    "Migration language_generation_tasks FK terminée : "
+                    "ON DELETE SET NULL appliqué"
+                )
+
     # Nettoyer les serveurs MCP en doublon dans les workflows
     _cleanup_duplicate_mcp_servers()
 
