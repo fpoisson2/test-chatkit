@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger("chatkit.telephony.pjsua")
-logger.setLevel(logging.WARNING)  # Réduire la verbosité des logs SIP
+logger.setLevel(logging.INFO)  # Niveau INFO pour diagnostics du conference bridge
 
 # Import conditionnel de pjsua2
 PJSUA_AVAILABLE = False
@@ -454,8 +454,21 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                             if hasattr(self, '_audio_media') and self._audio_media is not None:
                                 try:
                                     # Arrêter les transmissions bidirectionnelles
-                                    self._audio_media.stopTransmit(self._audio_port)
-                                    self._audio_port.stopTransmit(self._audio_media)
+                                    # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
+                                    try:
+                                        self._audio_media.stopTransmit(self._audio_port)
+                                        logger.debug("✅ Déconnexion call → port réussie (call_id=%s)", ci.id)
+                                    except Exception as e:
+                                        if "EINVAL" not in str(e) and "70004" not in str(e):
+                                            logger.warning("Erreur stopTransmit call→port: %s", e)
+
+                                    try:
+                                        self._audio_port.stopTransmit(self._audio_media)
+                                        logger.debug("✅ Déconnexion port → call réussie (call_id=%s)", ci.id)
+                                    except Exception as e:
+                                        if "EINVAL" not in str(e) and "70004" not in str(e):
+                                            logger.warning("Erreur stopTransmit port→call: %s", e)
+
                                     logger.info("✅ Conference bridge déconnecté (call_id=%s)", ci.id)
                                 except Exception as e:
                                     logger.warning("Erreur déconnexion conference bridge: %s", e)
@@ -534,8 +547,19 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                 if self._audio_media is not None:
                     try:
                         # Arrêter les transmissions bidirectionnelles
-                        self._audio_media.stopTransmit(self._audio_port)
-                        self._audio_port.stopTransmit(self._audio_media)
+                        # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
+                        try:
+                            self._audio_media.stopTransmit(self._audio_port)
+                        except Exception as e:
+                            if "EINVAL" not in str(e) and "70004" not in str(e):
+                                logger.warning("Erreur stopTransmit call→port: %s", e)
+
+                        try:
+                            self._audio_port.stopTransmit(self._audio_media)
+                        except Exception as e:
+                            if "EINVAL" not in str(e) and "70004" not in str(e):
+                                logger.warning("Erreur stopTransmit port→call: %s", e)
+
                         logger.info("✅ Conference bridge déconnecté (call_id=%s)", ci.id)
                     except Exception as e:
                         logger.warning("Erreur déconnexion conference bridge: %s", e)
@@ -799,8 +823,19 @@ class PJSUAAdapter:
                     if call._audio_media is not None:
                         try:
                             # Arrêter les transmissions bidirectionnelles
-                            call._audio_media.stopTransmit(call._audio_port)
-                            call._audio_port.stopTransmit(call._audio_media)
+                            # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
+                            try:
+                                call._audio_media.stopTransmit(call._audio_port)
+                            except Exception as e:
+                                if "EINVAL" not in str(e) and "70004" not in str(e):
+                                    logger.warning("Erreur stopTransmit call→port (call_id=%s): %s", call_info.id, e)
+
+                            try:
+                                call._audio_port.stopTransmit(call._audio_media)
+                            except Exception as e:
+                                if "EINVAL" not in str(e) and "70004" not in str(e):
+                                    logger.warning("Erreur stopTransmit port→call (call_id=%s): %s", call_info.id, e)
+
                             logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_info.id)
                         except Exception as e:
                             logger.warning("Erreur déconnexion conference bridge (call_id=%s): %s", call_info.id, e)
@@ -909,8 +944,19 @@ class PJSUAAdapter:
                     if call._audio_media is not None:
                         try:
                             # Arrêter les transmissions bidirectionnelles
-                            call._audio_media.stopTransmit(call._audio_port)
-                            call._audio_port.stopTransmit(call._audio_media)
+                            # Ignorer les erreurs PJ_EINVAL qui indiquent que les ports sont déjà déconnectés
+                            try:
+                                call._audio_media.stopTransmit(call._audio_port)
+                            except Exception as e:
+                                if "EINVAL" not in str(e) and "70004" not in str(e):
+                                    logger.warning("Erreur stopTransmit call→port (call_id=%s): %s", call_id, e)
+
+                            try:
+                                call._audio_port.stopTransmit(call._audio_media)
+                            except Exception as e:
+                                if "EINVAL" not in str(e) and "70004" not in str(e):
+                                    logger.warning("Erreur stopTransmit port→call (call_id=%s): %s", call_id, e)
+
                             logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
                         except Exception as e:
                             logger.warning("Erreur déconnexion conference bridge (call_id=%s): %s", call_id, e)
