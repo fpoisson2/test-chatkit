@@ -2678,16 +2678,9 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 )
                 await asyncio.sleep(ring_timeout_seconds)
 
-            # Répondre à l'appel (200 OK)
-            logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)
-            await pjsua_adapter.answer_call(call, code=200)
-
-            # L'audio sera débloqué automatiquement par le callback on_media_active_callback
-            # quand PJSUA appellera onCallMediaState et créera le port audio
-            logger.info("⏳ Attente que le média devienne actif pour envoyer l'audio... (call_id=%s)", call_id)
-
-            # Maintenant créer la session vocale APRÈS avoir répondu à l'appel
-            logger.info("Ouverture session vocale PJSUA APRÈS la réponse (call_id=%s)", call_id)
+            # Créer la session vocale APRÈS la sonnerie mais AVANT de répondre à l'appel
+            # Cela permet d'avoir la session prête quand l'audio commence à arriver
+            logger.info("Ouverture session vocale PJSUA après sonnerie (call_id=%s)", call_id)
 
             # Ajouter le tool de transfert d'appel
             telephony_tools = list(voice_tools) if voice_tools else []
@@ -2812,6 +2805,14 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             # Créer la tâche mais elle attendra l'event avant de démarrer
             voice_bridge_task = asyncio.create_task(run_voice_bridge())
+
+            # Maintenant répondre à l'appel (200 OK)
+            logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)
+            await pjsua_adapter.answer_call(call, code=200)
+
+            # L'audio sera débloqué automatiquement par le callback on_media_active_callback
+            # quand PJSUA appellera onCallMediaState et créera le port audio
+            logger.info("⏳ Attente que le média devienne actif pour envoyer l'audio... (call_id=%s)", call_id)
 
             # Attendre la fin du voice bridge
             try:
