@@ -89,14 +89,6 @@ class PJSUAAudioBridge:
             RtpPacket with 24kHz PCM16 audio
         """
         logger.info("Starting RTP stream from PJSUA (8kHz → 24kHz)")
-
-        # CRITIQUE: Attendre que le média PJSUA soit actif avant de capturer l'audio
-        # Sinon l'audio du début de l'appel est perdu
-        if self._media_active_event:
-            logger.info("⏳ Attente activation du média PJSUA avant de capturer l'audio...")
-            await self._media_active_event.wait()
-            logger.info("✅ Média PJSUA actif - début de la capture audio")
-
         resampling_state = None # L'état est local à ce générateur (flux entrant)
 
         packet_count = 0
