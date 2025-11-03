@@ -3161,6 +3161,13 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                 except Exception as e:
                     logger.warning("⚠️ Erreur pendant pré-initialisation: %s - continuera sans preinit (call_id=%s)", e, call_id)
+                    # IMPORTANT: Fermer la session preinit en cas d'erreur
+                    if preinit_session is not None:
+                        try:
+                            logger.info("🧹 Fermeture session preinit suite à erreur (call_id=%s)", call_id)
+                            await preinit_session.close()
+                        except Exception as cleanup_error:
+                            logger.debug("Erreur fermeture preinit_session: %s", cleanup_error)
                     preinit_session = None
                     preinit_response_create_sent = False
                     # Attendre quand même le temps de sonnerie
@@ -3198,6 +3205,15 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 await pjsua_adapter.hangup_call(call)
             except Exception:
                 pass
+        finally:
+            # CRITIQUE: Toujours fermer preinit_session si elle existe encore
+            # Cela garantit qu'elle est fermée même si l'utilisateur raccroche pendant la sonnerie
+            if preinit_session is not None:
+                try:
+                    logger.info("🧹 Nettoyage final: fermeture preinit_session (call_id=%s)", call_id)
+                    await preinit_session.close()
+                except Exception as cleanup_error:
+                    logger.debug("Erreur fermeture preinit_session en finally: %s", cleanup_error)
 
     return _handle_pjsua_incoming_call
 
