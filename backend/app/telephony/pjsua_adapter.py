@@ -645,23 +645,31 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
                     # Connecter : téléphone -> notre port (pour recevoir/capturer l'audio)
                     # Ceci active onFrameReceived() sur notre port
+                    # IMPORTANT: Vérifier qu'on n'est pas déjà connecté pour éviter les chemins multiples
+                    # qui causent l'augmentation du buffering au fil des appels
                     try:
-                        audio_media.startTransmit(self._audio_port)
-                        logger.info(
-                            "✅ Connexion conference bridge: call (slot %d) → custom port (slot %d)",
-                            call_port_info.portId if 'call_port_info' in locals() else -1,
-                            custom_port_info.portId if 'custom_port_info' in locals() else -1,
-                        )
+                        if not self._conference_connected:
+                            audio_media.startTransmit(self._audio_port)
+                            logger.info(
+                                "✅ Connexion conference bridge: call (slot %d) → custom port (slot %d)",
+                                call_port_info.portId if 'call_port_info' in locals() else -1,
+                                custom_port_info.portId if 'custom_port_info' in locals() else -1,
+                            )
 
-                        # Connecter : notre port -> téléphone (pour envoyer/lecture l'audio)
-                        # Ceci permet à onFrameRequested() d'envoyer l'audio au téléphone
-                        self._audio_port.startTransmit(audio_media)
-                        logger.info(
-                            "✅ Connexion conference bridge: custom port (slot %d) → call (slot %d)",
-                            custom_port_info.portId if 'custom_port_info' in locals() else -1,
-                            call_port_info.portId if 'call_port_info' in locals() else -1,
-                        )
-                        self._conference_connected = True
+                            # Connecter : notre port -> téléphone (pour envoyer/lecture l'audio)
+                            # Ceci permet à onFrameRequested() d'envoyer l'audio au téléphone
+                            self._audio_port.startTransmit(audio_media)
+                            logger.info(
+                                "✅ Connexion conference bridge: custom port (slot %d) → call (slot %d)",
+                                custom_port_info.portId if 'custom_port_info' in locals() else -1,
+                                call_port_info.portId if 'call_port_info' in locals() else -1,
+                            )
+                            self._conference_connected = True
+                        else:
+                            logger.warning(
+                                "⚠️ Bridge déjà connecté, skip startTransmit pour éviter chemins dupliqués (call_id=%s)",
+                                ci.id
+                            )
                     except Exception as exc:
                         self._conference_connected = False
                         logger.warning("Erreur lors de la connexion du conference bridge: %s", exc)
@@ -758,6 +766,23 @@ class PJSUAAdapter:
         # Ces "erreurs" sont normales quand on raccroche un appel déjà terminé
         ep_cfg.logConfig.level = 1  # ERROR level only
         ep_cfg.logConfig.consoleLevel = 1
+
+        # Configuration du jitter buffer pour éviter l'accumulation de latence
+        # Les paramètres par défaut (jb_max=200 frames = 4s) peuvent gonfler au fil des appels
+        # On durcit le buffer pour maintenir une latence stable:
+        # - jb_init=1: démarrer à 1 frame (20ms)
+        # - jb_min_pre=1: minimum 1 frame en précharge
+        # - jb_max=10: maximum 10 frames (200ms) au lieu de 4 secondes
+        media_cfg = ep_cfg.medConfig
+        media_cfg.jb_init = 1
+        media_cfg.jb_min_pre = 1
+        media_cfg.jb_max = 10
+        logger.info(
+            "Jitter buffer configuré: init=%d, min_pre=%d, max=%d frames",
+            media_cfg.jb_init,
+            media_cfg.jb_min_pre,
+            media_cfg.jb_max,
+        )
 
         # Initialiser l'endpoint
         self._ep.libInit(ep_cfg)
