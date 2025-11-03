@@ -322,10 +322,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                                len(audio_pcm), list(audio_pcm[:10]) if len(audio_pcm) >= 10 else list(audio_pcm),
                                max_amplitude, "⚠️ SILENCE!" if is_silence else "✅ AUDIO VALIDE")
 
-                # Si on reçoit que du silence pendant les premières frames, c'est un problème
-                if self._frame_received_count <= 20 and is_silence:
-                    logger.warning("⚠️ Frame #%d contient du SILENCE (conference bridge peut-être mal connecté)",
-                                 self._frame_received_count)
+                # IMPORTANT: Les 15-20 premières frames de silence sont NORMALES
+                # Le jitter buffer PJSUA a besoin de 300-400ms pour se remplir après startTransmit
+                # On warning seulement si TROP de silence (>30 frames = 600ms)
+                if self._frame_received_count == 30 and is_silence:
+                    logger.warning("⚠️ Toujours du SILENCE après 30 frames (600ms) - conference bridge peut-être mal connecté")
 
                 # Point 1: Ne jamais enqueuer du silence - dropper les frames silence
                 if is_silence:
