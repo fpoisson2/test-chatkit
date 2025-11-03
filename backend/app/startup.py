@@ -3109,10 +3109,55 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                             )
                         )
                         preinit_response_create_sent = True
-                        logger.info("✅ Génération audio démarrée - sera prêt quand l'appel sera répondu (call_id=%s)", call_id)
+                        logger.info("✅ response.create envoyé - consommation des events pendant la sonnerie (call_id=%s)", call_id)
 
-                    # Attendre le reste du temps de sonnerie
-                    await asyncio.sleep(ring_timeout_seconds)
+                        # Buffer temporaire pour stocker l'audio généré pendant la sonnerie
+                        preinit_audio_buffer = []
+
+                        # Consommer les events pendant la sonnerie pour capturer l'audio
+                        async def consume_preinit_events():
+                            """Consomme les events OpenAI pendant la sonnerie et buffer l'audio."""
+                            from agents.realtime.events import RealtimeAudio
+                            try:
+                                # Consommer les events pendant maximum ring_timeout_seconds
+                                async for event in preinit_session:
+                                    if isinstance(event, RealtimeAudio):
+                                        audio_event = event.audio
+                                        pcm_data = audio_event.data
+                                        if pcm_data:
+                                            preinit_audio_buffer.append(pcm_data)
+                                            if len(preinit_audio_buffer) <= 5:
+                                                logger.info("📦 Audio buffered pendant sonnerie: %d bytes (total: %d chunks)",
+                                                          len(pcm_data), len(preinit_audio_buffer))
+                                    # Limiter la consommation au temps de sonnerie (break si timeout)
+                                    # La task sera cancelled après ring_timeout_seconds
+                            except asyncio.CancelledError:
+                                logger.info("✅ Consommation events terminée: %d chunks audio bufferisés (call_id=%s)",
+                                          len(preinit_audio_buffer), call_id)
+                            except Exception as e:
+                                logger.warning("⚠️ Erreur consommation events preinit: %s (call_id=%s)", e, call_id)
+
+                        # Démarrer la consommation en arrière-plan
+                        consume_task = asyncio.create_task(consume_preinit_events())
+
+                        # Attendre le reste du temps de sonnerie (ou que l'audio soit généré)
+                        try:
+                            await asyncio.wait_for(consume_task, timeout=ring_timeout_seconds)
+                        except asyncio.TimeoutError:
+                            # Timeout normal - l'audio n'est peut-être pas complètement généré
+                            consume_task.cancel()
+                            try:
+                                await consume_task
+                            except asyncio.CancelledError:
+                                pass
+                            logger.info("⏱️ Sonnerie terminée - %d chunks audio bufferisés (call_id=%s)",
+                                      len(preinit_audio_buffer), call_id)
+
+                        # Stocker le buffer pour l'utiliser après avoir répondu
+                        preinit_session._preinit_audio_buffer = preinit_audio_buffer
+                    else:
+                        # Pas de speak_first, juste attendre la sonnerie
+                        await asyncio.sleep(ring_timeout_seconds)
 
                 except Exception as e:
                     logger.warning("⚠️ Erreur pendant pré-initialisation: %s - continuera sans preinit (call_id=%s)", e, call_id)

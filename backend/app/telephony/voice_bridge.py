@@ -894,6 +894,20 @@ class TelephonyVoiceBridge:
                         logger.warning("Playback tracker pré-initialisé n'est pas un TelephonyPlaybackTracker, création d'un nouveau")
                 except (AttributeError, TypeError) as e:
                     logger.warning("Impossible de récupérer le playback tracker pré-initialisé: %s", e)
+
+                # Injecter l'audio pré-généré dans PJSUA
+                preinit_audio_buffer = getattr(preinit_session, '_preinit_audio_buffer', [])
+                if preinit_audio_buffer:
+                    logger.info("📦 Injection de %d chunks audio pré-générés dans PJSUA", len(preinit_audio_buffer))
+                    try:
+                        for idx, pcm_data in enumerate(preinit_audio_buffer):
+                            await send_to_peer(pcm_data)
+                            if idx < 5:
+                                logger.info("  ✅ Chunk #%d injecté: %d bytes", idx + 1, len(pcm_data))
+                        outbound_audio_bytes += sum(len(chunk) for chunk in preinit_audio_buffer)
+                        logger.info("✅ Audio pré-généré injecté avec succès - prêt à jouer immédiatement")
+                    except Exception as e:
+                        logger.warning("⚠️ Erreur injection audio pré-généré: %s", e)
             else:
                 logger.info("Démarrage session SDK avec runner")
                 session = await runner.run(model_config=model_config)
