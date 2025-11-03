@@ -243,19 +243,18 @@ class PJSUAAudioBridge:
             # ÉTAPE 2: HYSTERESIS BACKPRESSURE (HW/LW)
             queue_len = len(self._tx_queue)
 
-            # Vérifier high watermark: bloquer production si queue >= HW
-            if queue_len >= self.HIGH_WATERMARK:
-                if not self._production_blocked:
-                    self._production_blocked = True
-                    logger.info("🛑 Production BLOQUÉE: queue atteint HW (%d >= %d frames)",
-                               queue_len, self.HIGH_WATERMARK)
+            # Hysteresis: vérifier état actuel AVANT la condition
+            # Si production NON bloquée ET queue >= HW: bloquer
+            if not self._production_blocked and queue_len >= self.HIGH_WATERMARK:
+                self._production_blocked = True
+                logger.info("🛑 Production BLOQUÉE: queue atteint HW (%d >= %d frames)",
+                           queue_len, self.HIGH_WATERMARK)
 
-            # Vérifier low watermark: reprendre production si queue <= LW
-            elif queue_len <= self.LOW_WATERMARK:
-                if self._production_blocked:
-                    self._production_blocked = False
-                    logger.info("✅ Production REPRISE: queue sous LW (%d <= %d frames)",
-                               queue_len, self.LOW_WATERMARK)
+            # Si production BLOQUÉE ET queue <= LW: débloquer
+            elif self._production_blocked and queue_len <= self.LOW_WATERMARK:
+                self._production_blocked = False
+                logger.info("✅ Production REPRISE: queue sous LW (%d <= %d frames)",
+                           queue_len, self.LOW_WATERMARK)
 
             # Si production bloquée, dropper immédiatement (pas de boucle d'attente)
             if self._production_blocked:
