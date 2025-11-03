@@ -14,6 +14,7 @@ l'implémentation par rapport à une solution séparée.
 from __future__ import annotations
 
 import asyncio
+import audioop
 import logging
 import queue
 import struct
@@ -252,6 +253,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         Note: PJSUA gère automatiquement le décodage du codec (PCMU → PCM).
         Ce callback reçoit déjà du PCM linéaire 16-bit décodé.
+
+        CRITIQUE: Avec null sound device, ce callback N'EST APPELÉ QUE SI:
+        - Les connexions conference bridge sont établies (startTransmit)
+        - Le slot de l'appel est connecté à notre port custom
+        Si on reçoit du silence ici, c'est que le conference mixer n'est pas armé!
         """
         if not PJSUA_AVAILABLE:
             return
@@ -270,9 +276,20 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 # Récupérer l'audio PCM déjà décodé par PJSUA
                 audio_pcm = bytes(frame.buf[:frame.size])
 
+                # DIAGNOSTIC: Vérifier si c'est du silence ou du vrai audio
+                # Avec conference bridge mal connecté, on recevra du silence (tous les bytes = 0)
+                max_amplitude = audioop.max(audio_pcm, 2) if len(audio_pcm) > 0 else 0
+                is_silence = max_amplitude == 0
+
                 if self._frame_received_count <= 5:
-                    logger.info("✅ Audio PCM extrait: %d bytes, premiers bytes: %s",
-                               len(audio_pcm), list(audio_pcm[:10]) if len(audio_pcm) >= 10 else list(audio_pcm))
+                    logger.info("✅ Audio PCM extrait: %d bytes, premiers bytes: %s, max_amplitude=%d %s",
+                               len(audio_pcm), list(audio_pcm[:10]) if len(audio_pcm) >= 10 else list(audio_pcm),
+                               max_amplitude, "⚠️ SILENCE!" if is_silence else "✅ AUDIO VALIDE")
+
+                # Si on reçoit que du silence pendant les premières frames, c'est un problème
+                if self._frame_received_count <= 20 and is_silence:
+                    logger.warning("⚠️ Frame #%d contient du SILENCE (conference bridge peut-être mal connecté)",
+                                 self._frame_received_count)
 
                 # Ajouter l'audio PCM à la queue pour traitement async
                 self._incoming_audio_queue.put_nowait(audio_pcm)
@@ -442,21 +459,47 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     call_media = self.getMedia(mi.index)
                     audio_media = pj.AudioMedia.typecastFromMedia(call_media)
 
-                    # Connecter : téléphone -> notre port (pour recevoir)
-                    audio_media.startTransmit(self._audio_port)
-                    logger.info("✅ Connexion téléphone → port audio établie (call_id=%s)", ci.id)
+                    # CRITIQUE: Avec null sound device, le conference mixer n'est PAS automatiquement armé
+                    # Il faut EXPLICITEMENT connecter les slots de conférence pour activer le traitement audio
 
-                    # Connecter : notre port -> téléphone (pour envoyer)
-                    self._audio_port.startTransmit(audio_media)
-                    logger.info("✅ Connexion port audio → téléphone établie (call_id=%s)", ci.id)
-
-                    # Log info du port (éviter clockRate qui n'existe pas sur ConfPortInfo)
+                    # Log des slots de conférence AVANT connexion
                     try:
-                        port_info = audio_media.getPortInfo()
-                        logger.info("🎵 Port audio connecté bidirectionnellement (call_id=%s) - Port: name=%s",
-                                   ci.id, port_info.name)
+                        call_port_info = audio_media.getPortInfo()
+                        custom_port_info = self._audio_port.getPortInfo()
+                        logger.info("🔍 Slots de conférence AVANT connexion:")
+                        logger.info("   - Call audio slot: %d (name=%s)", call_port_info.portId, call_port_info.name)
+                        logger.info("   - Custom port slot: %d (name=%s)", custom_port_info.portId, custom_port_info.name)
                     except Exception as e:
-                        logger.debug("Erreur lecture info port (ignorée): %s", e)
+                        logger.warning("⚠️ Impossible de lire les infos de port: %s", e)
+
+                    # Connecter : téléphone -> notre port (pour recevoir/capturer l'audio)
+                    # Ceci active onFrameReceived() sur notre port
+                    audio_media.startTransmit(self._audio_port)
+                    logger.info("✅ Connexion conference bridge: call (slot %d) → custom port (slot %d)",
+                               call_port_info.portId if 'call_port_info' in locals() else -1,
+                               custom_port_info.portId if 'custom_port_info' in locals() else -1)
+
+                    # Connecter : notre port -> téléphone (pour envoyer/lecture l'audio)
+                    # Ceci permet à onFrameRequested() d'envoyer l'audio au téléphone
+                    self._audio_port.startTransmit(audio_media)
+                    logger.info("✅ Connexion conference bridge: custom port (slot %d) → call (slot %d)",
+                               custom_port_info.portId if 'custom_port_info' in locals() else -1,
+                               call_port_info.portId if 'call_port_info' in locals() else -1)
+
+                    # Vérifier que les connexions sont établies au niveau du conference bridge
+                    # Avec null sound device, c'est CRITIQUE - sinon on obtient du silence
+                    try:
+                        # Récupérer les infos après connexion pour vérifier
+                        call_port_info_after = audio_media.getPortInfo()
+                        custom_port_info_after = self._audio_port.getPortInfo()
+                        logger.info("🎵 Connexions conference bridge établies (call_id=%s):", ci.id)
+                        logger.info("   - Call audio: slot=%d, name=%s",
+                                   call_port_info_after.portId, call_port_info_after.name)
+                        logger.info("   - Custom port: slot=%d, name=%s",
+                                   custom_port_info_after.portId, custom_port_info_after.name)
+                        logger.info("✅ Null sound device + conference bridge correctement armé")
+                    except Exception as e:
+                        logger.warning("⚠️ Impossible de vérifier les connexions conference bridge: %s", e)
 
                     # Notifier l'adaptateur que le média est prêt
                     if hasattr(self.adapter, '_on_media_active'):
