@@ -889,7 +889,11 @@ class TelephonyVoiceBridge:
                         logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
                         try:
                             await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
-                            logger.info("✅ PJSUA prêt - attente du premier paquet RTP pour amorcer le canal")
+                            logger.info("✅ PJSUA prêt - délai de stabilisation du conference bridge...")
+                            # Délai pour laisser le conference bridge PJSUA se stabiliser complètement
+                            # avant de commencer le traitement audio avec la session Realtime
+                            await asyncio.sleep(0.2)  # 200ms
+                            logger.info("✅ Délai de stabilisation terminé - attente du premier paquet RTP pour amorcer le canal")
                         except asyncio.TimeoutError:
                             logger.warning("⚠️ Timeout en attendant PJSUA")
                     else:
@@ -905,6 +909,19 @@ class TelephonyVoiceBridge:
                         logger.info("  - Outil : %s", tool_name)
                 except Exception as e:
                     logger.warning("Impossible de lister les outils : %s", e)
+
+                # Pour les appels PJSUA (speak_first=False), attendre aussi que PJSUA soit prêt
+                # avant de commencer le traitement audio
+                if not speak_first and pjsua_ready_to_consume is not None:
+                    logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio...")
+                    try:
+                        await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
+                        logger.info("✅ PJSUA prêt - délai de stabilisation du conference bridge...")
+                        # Délai pour laisser le conference bridge PJSUA se stabiliser complètement
+                        await asyncio.sleep(0.2)  # 200ms
+                        logger.info("✅ Délai de stabilisation terminé - démarrage du traitement audio")
+                    except asyncio.TimeoutError:
+                        logger.warning("⚠️ Timeout en attendant PJSUA")
 
                 audio_task = asyncio.create_task(forward_audio())
                 events_task = asyncio.create_task(handle_events())
