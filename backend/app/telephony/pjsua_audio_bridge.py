@@ -188,14 +188,14 @@ class PJSUAAudioBridge:
     async def send_to_peer(self, audio_24khz: bytes) -> None:
         """Send audio from VoiceBridge to PJSUA (24kHz → 8kHz).
 
-        PULL-BASED APPROACH:
-        1. Découpe audio_24khz en frames de 20ms (960B @ 24kHz) AVANT resample
-        2. Resample chaque frame individuellement vers 8kHz (320B)
-        3. Enfile dans _tx_queue avec back-pressure (max 15 frames)
-        4. PJSUA pull directement depuis la queue via onFrameRequested (pas de pacer)
+        NOUVELLE APPROCHE AVEC BACKPRESSURE DOUX:
+        1. Reçoit UNE frame de 960B @ 24kHz (déjà découpée par voice_bridge.py)
+        2. Resample vers 8kHz (320B)
+        3. Filtre silence (max_amp <= 4)
+        4. Backpressure doux: si queue >= MAX_TX_FRAMES, attendre 10-20ms et réessayer
 
         Args:
-            audio_24khz: PCM16 audio at 24kHz from OpenAI
+            audio_24khz: SINGLE frame of PCM16 audio at 24kHz (960 bytes = 20ms)
         """
         if len(audio_24khz) == 0:
             return
@@ -207,81 +207,78 @@ class PJSUAAudioBridge:
             logger.info("📤 send_to_peer #%d: reçu %d bytes @ 24kHz",
                        self._send_to_peer_call_count, len(audio_24khz))
 
-        # ÉTAPE 1: Découper en frames de 20ms @ 24kHz (960 bytes)
-        # 20ms @ 24kHz = 24000 samples/sec × 0.020 sec = 480 samples × 2 bytes = 960 bytes
-        FRAME_SIZE_24KHZ = 960
-        frames_enqueued = 0
-        frames_dropped_silence = 0
-        frames_dropped_full = 0
+        # Vérifier que c'est bien une frame complète de 960B
+        if len(audio_24khz) != 960:
+            logger.warning("⚠️ Frame non-standard reçue: %d bytes (attendu 960)", len(audio_24khz))
+            # Continuer quand même, mais ça peut causer des artifacts
 
         try:
-            for i in range(0, len(audio_24khz), FRAME_SIZE_24KHZ):
-                frame_24khz = audio_24khz[i:i + FRAME_SIZE_24KHZ]
+            # ÉTAPE 1: Resample vers 8kHz (320 bytes)
+            try:
+                frame_8khz, self._send_to_peer_state = audioop.ratecv(
+                    audio_24khz,
+                    self.BYTES_PER_SAMPLE,
+                    self.CHANNELS,
+                    self.VOICE_BRIDGE_SAMPLE_RATE,
+                    self.PJSUA_SAMPLE_RATE,
+                    self._send_to_peer_state,
+                )
+            except audioop.error as e:
+                logger.warning("Resampling error (24kHz→8kHz): %s", e)
+                self._send_to_peer_state = None
+                return
 
-                # Si frame incomplète, skip (on ne veut que des frames complètes de 20ms)
-                if len(frame_24khz) < FRAME_SIZE_24KHZ:
+            # ÉTAPE 2: Filtrage silence et amplification
+            try:
+                max_amplitude = audioop.max(frame_8khz, self.BYTES_PER_SAMPLE)
+
+                # CRITIQUE: Ne jamais enqueuer du silence (Point 1)
+                if max_amplitude <= self.SILENCE_THRESHOLD:
                     if self._send_to_peer_call_count <= 3:
-                        logger.debug("⚠️ Frame incomplète ignorée: %d bytes", len(frame_24khz))
-                    continue
+                        logger.debug("🔇 Frame silence droppée (max_amp=%d <= %d)",
+                                   max_amplitude, self.SILENCE_THRESHOLD)
+                    return
 
-                # ÉTAPE 2: Resample cette frame vers 8kHz (320 bytes)
-                try:
-                    frame_8khz, self._send_to_peer_state = audioop.ratecv(
-                        frame_24khz,
-                        self.BYTES_PER_SAMPLE,
-                        self.CHANNELS,
-                        self.VOICE_BRIDGE_SAMPLE_RATE,
-                        self.PJSUA_SAMPLE_RATE,
-                        self._send_to_peer_state,
-                    )
-                except audioop.error as e:
-                    logger.warning("Resampling error (24kHz→8kHz): %s", e)
-                    self._send_to_peer_state = None
-                    continue
+                # Boost si amplitude trop faible
+                min_target_amplitude = 6000
+                max_gain = 12.0
+                if max_amplitude < min_target_amplitude:
+                    gain = min(min_target_amplitude / max_amplitude, max_gain)
+                    try:
+                        frame_8khz = audioop.mul(frame_8khz, self.BYTES_PER_SAMPLE, gain)
+                    except audioop.error:
+                        pass  # Garder l'audio original si overflow
+            except audioop.error as e:
+                logger.warning("Audio processing error: %s", e)
+                return
 
-                # ÉTAPE 3: Amplification dynamique pour garantir audibilité
-                try:
-                    max_amplitude = audioop.max(frame_8khz, self.BYTES_PER_SAMPLE)
+            # ÉTAPE 3: BACKPRESSURE DOUX au lieu de drop-tail
+            # Si queue >= MAX_TX_FRAMES, attendre 10-20ms pour laisser PJSUA consommer
+            backpressure_wait_count = 0
+            while len(self._tx_queue) >= self.MAX_TX_FRAMES:
+                backpressure_wait_count += 1
+                if backpressure_wait_count == 1:
+                    logger.debug("⏳ Backpressure: queue pleine (%d frames), attente...", self.MAX_TX_FRAMES)
 
-                    # CRITIQUE: Ne jamais enqueuer du silence (Point 1)
-                    if max_amplitude <= self.SILENCE_THRESHOLD:
-                        frames_dropped_silence += 1
-                        if self._send_to_peer_call_count <= 3 and frames_dropped_silence <= 3:
-                            logger.debug("🔇 Frame silence droppée (max_amp=%d <= %d)",
-                                       max_amplitude, self.SILENCE_THRESHOLD)
-                        continue
+                # Attendre 15ms (compromise entre 10-20ms)
+                await asyncio.sleep(0.015)
 
-                    # Boost si amplitude trop faible
-                    min_target_amplitude = 6000
-                    max_gain = 12.0
-                    if max_amplitude < min_target_amplitude:
-                        gain = min(min_target_amplitude / max_amplitude, max_gain)
-                        try:
-                            frame_8khz = audioop.mul(frame_8khz, self.BYTES_PER_SAMPLE, gain)
-                        except audioop.error:
-                            pass  # Garder l'audio original si overflow
-                except audioop.error as e:
-                    logger.warning("Audio processing error: %s", e)
+                # Limite de sécurité: max 10 itérations (150ms) pour éviter blocage infini
+                if backpressure_wait_count >= 10:
+                    logger.warning("⚠️ Backpressure timeout après 150ms, dropping frame")
+                    return
 
-                # ÉTAPE 4: Ajouter à la queue TX avec DROP-TAIL (Point 3)
-                # Si queue pleine (MAX_TX_FRAMES = 7 frames = ~140ms), on DROP le nouveau paquet (drop-tail)
-                # au lieu de dropper les vieux (drop-oldest). Cela préserve "Allô"/"Oui".
-                if len(self._tx_queue) >= self.MAX_TX_FRAMES:
-                    frames_dropped_full += 1
-                    if frames_dropped_full == 1:  # Log seulement au premier drop
-                        logger.warning("⚠️ TX queue pleine (%d frames = %d ms), dropping NEW frames (drop-tail)",
-                                     self.MAX_TX_FRAMES, self.MAX_TX_FRAMES * 20)
-                    continue  # Drop-tail: on n'ajoute pas ce frame
+            if backpressure_wait_count > 0:
+                logger.debug("✅ Backpressure résolu après %d ms", backpressure_wait_count * 15)
 
-                self._tx_queue.append(frame_8khz)
-                frames_enqueued += 1
+            # Enqueuer la frame
+            self._tx_queue.append(frame_8khz)
 
             # Log périodique pour monitoring
             if self._send_to_peer_call_count <= 3 or self._send_to_peer_call_count % 100 == 0:
                 queue_size = len(self._tx_queue)
-                logger.info("✅ send_to_peer #%d: %d frames enfilées, %d silence droppées, %d full-drop (queue: %d frames, %d ms)",
-                           self._send_to_peer_call_count, frames_enqueued, frames_dropped_silence,
-                           frames_dropped_full, queue_size, queue_size * 20)
+                logger.info("✅ send_to_peer #%d: frame enfilée (queue: %d frames, %d ms)",
+                           self._send_to_peer_call_count, queue_size, queue_size * 20)
 
         except Exception as e:
             logger.warning("Failed to process audio: %s", e)

@@ -300,6 +300,9 @@ class TelephonyVoiceBridge:
         session: Any | None = None
         stop_event = asyncio.Event()
 
+        # Buffer pour les bytes incomplets (< 960B @ 24kHz) entre appels
+        incomplete_audio_buffer = b""
+
         # Track if we've sent response.create immediately (for speak_first optimization)
         response_create_sent_immediately = False
 
@@ -589,6 +592,11 @@ class TelephonyVoiceBridge:
                                             if frames_cleared > 0:
                                                 logger.info("🗑️  Audio queue vidée: %d frames supprimées pour interruption rapide", frames_cleared)
 
+                                        # Vider aussi le buffer d'audio incomplet
+                                        if len(incomplete_audio_buffer) > 0:
+                                            logger.debug("🗑️  Buffer incomplet vidé: %d bytes supprimés", len(incomplete_audio_buffer))
+                                            incomplete_audio_buffer = b""
+
                                         # Reset tool call tracking when user speaks
                                         # (no need for confirmation if user moved on)
                                         if tool_call_detected:
@@ -744,22 +752,28 @@ class TelephonyVoiceBridge:
                             if pcm_data:
                                 outbound_audio_bytes += len(pcm_data)
 
-                                # Point 4: Découper en petites rafales (CHUNK_TARGET_FRAMES = 4)
-                                # 4 frames @ 24kHz = 4 * 960 bytes = 3840 bytes
-                                CHUNK_SIZE = 3840  # 4 frames de 20ms @ 24kHz
+                                # Ajouter les nouveaux bytes au buffer
+                                incomplete_audio_buffer += pcm_data
 
-                                logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone (découpé en chunks de %d bytes)",
-                                           len(pcm_data), CHUNK_SIZE)
+                                # Découper en frames complètes de 960B @ 24kHz (20ms)
+                                # et envoyer chaque frame individuellement
+                                FRAME_SIZE = 960  # 20ms @ 24kHz
+                                frames_sent = 0
 
-                                # Découper et envoyer en petits morceaux avec délai entre chunks
-                                # pour laisser PJSUA consommer progressivement (éviter queue overflow)
-                                chunks = [pcm_data[i:i + CHUNK_SIZE] for i in range(0, len(pcm_data), CHUNK_SIZE)]
-                                for idx, chunk in enumerate(chunks):
-                                    await send_to_peer(chunk)
-                                    # Attendre 60ms entre chunks (3 frames) pour laisser PJSUA pull
-                                    # Sauf pour le dernier chunk où on n'attend pas
-                                    if idx < len(chunks) - 1:
-                                        await asyncio.sleep(0.06)  # 60ms = 3 frames @ 20ms
+                                while len(incomplete_audio_buffer) >= FRAME_SIZE:
+                                    frame = incomplete_audio_buffer[:FRAME_SIZE]
+                                    incomplete_audio_buffer = incomplete_audio_buffer[FRAME_SIZE:]
+
+                                    # Envoyer cette frame à send_to_peer qui va:
+                                    # 1. Resample 960B@24kHz → 320B@8kHz
+                                    # 2. Filtrer silence (si max_amp <= 4)
+                                    # 3. Enqueuer avec backpressure (attendre si queue pleine)
+                                    await send_to_peer(frame)
+                                    frames_sent += 1
+
+                                if frames_sent > 0:
+                                    logger.debug("🎵 Envoyé %d frames (960B@24kHz chacune), reste %d bytes en buffer",
+                                               frames_sent, len(incomplete_audio_buffer))
 
                                 # Now update the playback tracker so OpenAI knows when audio was played
                                 # This is critical for proper interruption handling!
