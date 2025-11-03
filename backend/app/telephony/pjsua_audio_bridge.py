@@ -236,18 +236,18 @@ class PJSUAAudioBridge:
 
                 now = loop.time()
                 if self._next_chunk_deadline is None or now > self._next_chunk_deadline:
-                    # Si nous sommes en retard (ou première itération), repartir de maintenant
+                    # Repartir du temps courant si on est en retard ou première itération
                     self._next_chunk_deadline = now
 
-                sleep_time = self._next_chunk_deadline - now
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
-
+                # Envoyer immédiatement pour que PJSUA ait de la donnée disponible
                 self._adapter.send_audio_to_call(self._call, chunk)
                 chunks_sent += 1
 
-                # Programmer l'échéance du prochain chunk
+                # Programmer l'échéance du prochain chunk et attendre avant la boucle suivante
                 self._next_chunk_deadline += chunk_duration
+                sleep_time = self._next_chunk_deadline - loop.time()
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
 
             # Calculate total pacing duration for monitoring
             total_audio_ms = int(
