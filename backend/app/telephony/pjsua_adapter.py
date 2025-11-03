@@ -526,8 +526,10 @@ class PJSUAAdapter:
 
         # Configuration de l'endpoint
         ep_cfg = pj.EpConfig()
-        ep_cfg.logConfig.level = 2  # WARNING level (réduire verbosité)
-        ep_cfg.logConfig.consoleLevel = 2
+        # Niveau 1 = ERROR only (ne pas afficher les warnings "already terminated")
+        # Ces "erreurs" sont normales quand on raccroche un appel déjà terminé
+        ep_cfg.logConfig.level = 1  # ERROR level only
+        ep_cfg.logConfig.consoleLevel = 1
 
         # Initialiser l'endpoint
         self._ep.libInit(ep_cfg)
@@ -751,9 +753,33 @@ class PJSUAAdapter:
         if not PJSUA_AVAILABLE:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
-        prm = pj.CallOpParam()
-        call.hangup(prm)
-        logger.info("Appel terminé")
+        # Vérifier si l'appel est déjà terminé pour éviter les erreurs "INVITE session already terminated"
+        try:
+            ci = call.getInfo()
+            if ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+                logger.debug("Appel déjà terminé (call_id=%s), ignorer hangup", ci.id)
+                return
+        except Exception as e:
+            # Si getInfo() échoue avec "already terminated", l'appel est déjà terminé
+            error_str = str(e).lower()
+            if "already terminated" in error_str or "esessionterminated" in error_str:
+                logger.debug("Appel déjà terminé (getInfo échoué), ignorer hangup: %s", e)
+                return
+            # Sinon, logger l'erreur mais continuer pour essayer le hangup
+            logger.debug("Impossible de vérifier l'état de l'appel: %s", e)
+
+        try:
+            prm = pj.CallOpParam()
+            call.hangup(prm)
+            logger.info("Appel terminé")
+        except Exception as e:
+            # Ignorer les erreurs si l'appel est déjà terminé
+            error_str = str(e).lower()
+            if "already terminated" in error_str or "esessionterminated" in error_str:
+                logger.debug("Appel déjà terminé, erreur ignorée: %s", e)
+            else:
+                # Réemettre l'exception si c'est une autre erreur
+                raise
 
     async def make_call(self, dest_uri: str) -> PJSUACall:
         """Initie un appel sortant."""

@@ -2773,7 +2773,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     await pjsua_adapter.hangup_call(call)
                     logger.info("Appel PJSUA terminé (call_id=%s)", call_id)
                 except Exception as e:
-                    logger.warning("Erreur fermeture appel PJSUA: %s", e)
+                    # Ignorer les erreurs "already terminated" (appel déjà raccroché)
+                    error_str = str(e).lower()
+                    if "already terminated" not in error_str and "esessionterminated" not in error_str:
+                        logger.warning("Erreur fermeture appel PJSUA: %s", e)
 
             async def clear_voice_state_hook() -> None:
                 """Nettoie l'état vocal."""
@@ -2853,7 +2856,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     await pjsua_adapter.hangup_call(call)
                     logger.info("📞 Appel PJSUA raccroché (call_id=%s)", call_id)
                 except Exception as hangup_error:
-                    logger.warning("Erreur fermeture appel PJSUA: %s", hangup_error)
+                    # Ignorer les erreurs "already terminated" (appel déjà raccroché)
+                    error_str = str(hangup_error).lower()
+                    if "already terminated" not in error_str and "esessionterminated" not in error_str:
+                        logger.warning("Erreur fermeture appel PJSUA: %s", hangup_error)
             except Exception as e:
                 logger.exception("Erreur d'attente du voice bridge (call_id=%s): %s", call_id, e)
                 # En cas d'erreur, aussi raccrocher
