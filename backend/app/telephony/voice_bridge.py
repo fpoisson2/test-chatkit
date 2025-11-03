@@ -397,10 +397,18 @@ class TelephonyVoiceBridge:
                     max_amplitude = audioop.max(pcm, 2) if len(pcm) > 0 else 0
                     is_silence = max_amplitude < 100  # Seuil très bas pour détecter quasi-silence
 
+                    # Détecter si l'utilisateur parle dès le début (avant les 5 premiers paquets)
+                    # Seuil plus élevé (500) pour distinguer la parole du bruit de fond
+                    if packet_count <= 5 and not is_silence and max_amplitude > 500:
+                        user_spoke_early = True
+                        logger.info("🎤 Utilisateur parle dès le début (paquet #%d, amp=%d) - skip speak_first",
+                                  packet_count, max_amplitude)
+
                     # CRITIQUE: Pour speak_first, envoyer response.create dès que le bridge est stable
                     # Ne PAS attendre l'audio valide de l'utilisateur (il peut ne rien dire au début!)
                     # On envoie après 5 paquets (100ms) pour confirmer que le bridge fonctionne
-                    if speak_first and not response_create_sent_on_ready and packet_count >= 5:
+                    # MAIS on ne l'envoie PAS si l'utilisateur a déjà parlé dans les 5 premiers paquets
+                    if speak_first and not response_create_sent_on_ready and not user_spoke_early and packet_count >= 5:
                         try:
                             # Envoi de response.create APRÈS 5 paquets (100ms de stabilisation)
                             # Même si c'est du silence, cela confirme que le conference bridge fonctionne

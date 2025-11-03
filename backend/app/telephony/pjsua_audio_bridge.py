@@ -59,6 +59,9 @@ class PJSUAAudioBridge:
         # Event qui se déclenche quand on reçoit le premier paquet audio du téléphone
         self._first_packet_received = asyncio.Event()
 
+        # Event qui se déclenche quand le média PJSUA est actif (set par create_pjsua_audio_bridge)
+        self._media_active_event: asyncio.Event | None = None
+
         # --- NOUVEAU : Buffers et verrous pour le traitement audio sortant ---
         
         # État pour le rééchantillonnage 24kHz -> 8kHz (corrige la qualité audio)
@@ -306,10 +309,23 @@ class PJSUAAudioBridge:
 
 async def create_pjsua_audio_bridge(
     call: PJSUACall,
-) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event, "PJSUAAudioBridge"]:
-    """Create audio bridge components for a PJSUA call. (INCHANGÉ)"""
+    media_active_event: asyncio.Event,
+) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event, asyncio.Event, "PJSUAAudioBridge"]:
+    """Create audio bridge components for a PJSUA call.
+
+    Args:
+        call: The PJSUA call to bridge
+        media_active_event: Event that signals when the media port is active
+
+    Returns:
+        Tuple of (rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge)
+    """
     bridge = PJSUAAudioBridge(call)
-    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, bridge
+    # Store the media_active_event in the bridge for later use
+    bridge._media_active_event = media_active_event
+    # pjsua_ready_event is the adapter's frame_requested_event (signals when PJSUA starts consuming audio)
+    pjsua_ready_event = call.adapter._frame_requested_event
+    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, pjsua_ready_event, bridge
 
 
 __all__ = [
