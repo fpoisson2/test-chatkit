@@ -289,16 +289,20 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                                max_amplitude, "⚠️ SILENCE!" if is_silence else "✅ AUDIO VALIDE")
 
                 # Silence au début de l'appel est NORMAL (téléphone n'envoie pas encore de parole)
-                # Ne warning que si on détecte du silence après avoir reçu du vrai audio
+                # Silence pendant un appel est aussi normal (utilisateur ne parle pas)
+                # On ne log qu'une seule fois si silence prolongé détecté, pour éviter de spammer les logs
                 if self._frame_received_count > 50 and is_silence:
                     if not hasattr(self, '_silence_after_audio_count'):
                         self._silence_after_audio_count = 0
+                        self._silence_warning_logged = False
                     self._silence_after_audio_count += 1
-                    if self._silence_after_audio_count > 100:  # Plus de 2 secondes de silence
-                        logger.warning("⚠️ Silence prolongé détecté après %d frames audio",
-                                     self._frame_received_count)
+                    # Log une seule fois quand on atteint 2 secondes de silence
+                    if self._silence_after_audio_count == 100 and not self._silence_warning_logged:
+                        logger.info("ℹ️ Silence détecté pendant l'appel (normal si l'utilisateur ne parle pas)")
+                        self._silence_warning_logged = True
                 elif not is_silence and hasattr(self, '_silence_after_audio_count'):
                     self._silence_after_audio_count = 0
+                    self._silence_warning_logged = False
 
                 # Ajouter l'audio PCM à la queue pour traitement async
                 self._incoming_audio_queue.put_nowait(audio_pcm)
