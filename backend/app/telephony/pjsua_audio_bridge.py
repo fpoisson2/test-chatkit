@@ -442,24 +442,23 @@ class PJSUAAudioBridge:
             return frames_injected
 
     def get_next_frame_8k(self) -> bytes:
-        """Pull 1 frame (320 bytes @ 8kHz) avec ratio dynamique doux.
+        """Pull 1 frame (320 bytes @ 8kHz) avec ratio dynamique et anti-starvation.
 
         Appelé par AudioMediaPort.onFrameRequested() (callback synchrone PJSUA).
-        Mode PULL: PJSUA demande l'audio à son rythme (20ms/frame).
+        Mode PULL: PJSUA demande l'audio à son rythme (20ms/frame = tick).
 
-        ARCHITECTURE:
-        1. Injecter staging → ring (leaky bucket continu)
-        2. Calculer ratio dynamique selon ring_len
+        ARCHITECTURE (tick 20ms):
+        1. Injecter staging → ring (anti-starvation si ring=0)
+        2. Calculer ratio dynamique SANS JAMAIS RALENTIR en pénurie
         3. Pull 1 frame du ring (ou silence si vide)
-        4. Time-stretch si ratio != 1.0
+        4. Time-stretch si ratio > 1.0
 
         Returns:
             320 bytes PCM16 @ 8kHz (silence si buffer vide)
         """
         SILENCE_8K = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
 
-        # 1) CRITICAL: Injecter staging → ring (leaky bucket continu)
-        # Appelé toutes les 20ms par PJSUA, c'est le heartbeat d'injection
+        # 1) TICK 20ms: Injecter staging → ring (anti-starvation intégré)
         self._inject_from_staging_to_ring()
 
         with self._ring_lock:
@@ -467,11 +466,21 @@ class PJSUAAudioBridge:
             buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
             ring_len = int(buffer_frames)
 
-            # 2) Calculer ratio dynamique doux
-            # ratio = clamp(1 + k * (ring - target), 0.96, 1.06)
-            self._speed_ratio = max(0.96, min(1.06,
-                1.0 + self.RATIO_K * (ring_len - self.RING_TARGET)
-            ))
+            # 2) Calculer ratio dynamique SANS RALENTIR en pénurie
+            # - Si ring <= LOW (6): ratio = 1.00 (JAMAIS ralentir!)
+            # - Si ring > HIGH (10): ratio = min(1 + k*(ring-target), 1.06)
+            # - Sinon: ratio = 1.00 (zone de stabilité)
+            if ring_len <= self.RING_LOW:
+                # Pénurie: JAMAIS ralentir (ratio < 1.00)
+                self._speed_ratio = 1.00
+            elif ring_len > self.RING_HIGH:
+                # Surplus: accélérer doucement (max 1.06x)
+                self._speed_ratio = min(1.06,
+                    1.0 + self.RATIO_K * (ring_len - self.RING_TARGET)
+                )
+            else:
+                # Zone de stabilité LOW < ring <= HIGH: pas de stretch
+                self._speed_ratio = 1.00
 
             # 3) Extraire 1 frame si disponible
             if buffer_size >= self.EXPECTED_FRAME_SIZE_8KHZ:
