@@ -364,40 +364,18 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         if frame.type == pj.PJMEDIA_FRAME_TYPE_AUDIO and frame.buf:
             try:
-                # Récupérer l'audio PCM déjà décodé par PJSUA
+                # OPTIMISATION CRITIQUE: Minimiser le traitement dans le callback pour libérer le GIL rapidement
+                # Ne faire que la copie minimale + put_nowait(), pas de calculs coûteux ici
                 audio_pcm = bytes(frame.buf[:frame.size])
 
-                # DIAGNOSTIC: Vérifier si c'est du silence ou du vrai audio
-                # Avec conference bridge mal connecté, on recevra du silence (tous les bytes = 0)
-                max_amplitude = audioop.max(audio_pcm, 2) if len(audio_pcm) > 0 else 0
-                is_silence = max_amplitude == 0
-
-                if self._frame_received_count <= 5:
-                    logger.info("✅ Audio PCM extrait: %d bytes, premiers bytes: %s, max_amplitude=%d %s",
-                               len(audio_pcm), list(audio_pcm[:10]) if len(audio_pcm) >= 10 else list(audio_pcm),
-                               max_amplitude, "⚠️ SILENCE!" if is_silence else "✅ AUDIO VALIDE")
-
-                # Silence au début de l'appel est NORMAL (téléphone n'envoie pas encore de parole)
-                # Silence pendant un appel est aussi normal (utilisateur ne parle pas)
-                # On ne log qu'une seule fois si silence prolongé détecté, pour éviter de spammer les logs
-                if self._frame_received_count > 50 and is_silence:
-                    if not hasattr(self, '_silence_after_audio_count'):
-                        self._silence_after_audio_count = 0
-                        self._silence_warning_logged = False
-                    self._silence_after_audio_count += 1
-                    # Log une seule fois quand on atteint 2 secondes de silence
-                    if self._silence_after_audio_count == 100 and not self._silence_warning_logged:
-                        logger.info("ℹ️ Silence détecté pendant l'appel (normal si l'utilisateur ne parle pas)")
-                        self._silence_warning_logged = True
-                elif not is_silence and hasattr(self, '_silence_after_audio_count'):
-                    self._silence_after_audio_count = 0
-                    self._silence_warning_logged = False
-
                 # Ajouter l'audio PCM à la queue pour traitement async
+                # IMPORTANT: Ceci doit être ULTRA-RAPIDE pour éviter de bloquer PJSUA
                 self._incoming_audio_queue.put_nowait(audio_pcm)
 
+                # Logging minimal (seulement pour debug)
                 if self._frame_received_count <= 5:
-                    logger.info("✅ Audio ajouté à la queue (taille queue: %d)", self._incoming_audio_queue.qsize())
+                    logger.info("✅ Frame #%d ajoutée à queue (%d bytes, queue=%d)",
+                               self._frame_received_count, len(audio_pcm), self._incoming_audio_queue.qsize())
 
                 # Notifier l'adaptateur qu'il y a de l'audio
                 if hasattr(self.adapter, '_on_audio_received'):
@@ -1467,7 +1445,7 @@ class PJSUAAdapter:
         COOLDOWN: Force recreate après N réutilisations pour casser tout état latent.
         Si MAX_REUSE_COUNT = 0, réutilisation illimitée sans jamais détruire le port.
         """
-        MAX_REUSE_COUNT = 0  # 0 = réutilisation illimitée, >0 = force recréation après N usages
+        MAX_REUSE_COUNT = 1  # TEST: Forcer recréation après chaque appel pour isoler le problème
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
