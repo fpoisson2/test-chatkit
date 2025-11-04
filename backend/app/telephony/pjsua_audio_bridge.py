@@ -98,6 +98,9 @@ class PJSUAAudioBridge:
         self._ring_buffer_8k = bytearray()
         self._ring_lock = threading.Lock()
 
+        # Staging buffer @ 8kHz: accumule audio resamplé avant admission control
+        self._stage_8k = bytearray()
+
         # Resamplers
         self._downsampler = get_resampler(
             from_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
@@ -119,6 +122,11 @@ class PJSUAAudioBridge:
         self._catchup_active = False
         self._last_rate_change_time = 0.0
 
+        # Admission control thresholds
+        self.TARGET_FRAMES = 6   # 120ms
+        self.HIGH_FRAMES = 9     # 180ms → activer catch-up 1.12x
+        self.CAP_FRAMES = 12     # 240ms → ne pas dépasser
+
         # Remainder buffer for 8kHz → 24kHz upsampling
         self._upsample_remainder = b""
 
@@ -126,6 +134,7 @@ class PJSUAAudioBridge:
         self._send_to_peer_call_count = 0
         self._frames_pulled = 0
         self._silence_pulled = 0
+        self._drops_admission = 0  # Frames droppées par admission control
 
     async def rtp_stream(
         self,
@@ -292,13 +301,21 @@ class PJSUAAudioBridge:
 
         logger.info("✅ Silence de prime injecté directement dans ring buffer @ 8kHz")
 
-    async def send_to_peer(self, audio_24khz: bytes) -> None:
-        """Send audio from VoiceBridge to ring buffer @ 8kHz.
+    def _ring_len_frames(self) -> int:
+        """Retourne la taille du ring buffer en frames (thread-safe)."""
+        return len(self._ring_buffer_8k) // self.EXPECTED_FRAME_SIZE_8KHZ
 
-        ARCHITECTURE PULL:
-        - Resample immédiatement 24kHz → 8kHz
-        - Ajoute dans ring buffer thread-safe
-        - PJSUA pull via AudioMediaPort.onFrameRequested() → get_next_frame_8k()
+    async def send_to_peer(self, audio_24khz: bytes) -> None:
+        """Send audio from VoiceBridge to ring buffer @ 8kHz avec admission control.
+
+        ARCHITECTURE PULL + ADMISSION CONTROL:
+        1. Resample 24kHz → 8kHz dans staging buffer
+        2. Découpe en frames de 320 bytes
+        3. AVANT d'enfiler chaque frame:
+           - Vérifie free space (CAP_FRAMES - ring_len)
+           - Si free <= 0: drop la frame (compte _drops_admission)
+           - Sinon: enqueue dans ring buffer
+        4. Gère catch-up hystérésis selon ring_len
 
         Args:
             audio_24khz: PCM16 audio at 24kHz from OpenAI (taille variable)
@@ -311,9 +328,10 @@ class PJSUAAudioBridge:
         # Vérifier si on doit dropper (interruption utilisateur)
         if self._drop_until_next_assistant:
             logger.debug("🗑️ Drop audio assistant (interruption utilisateur active)")
-            # Vider le ring buffer
+            # Vider le ring buffer ET le staging buffer
             with self._ring_lock:
                 self._ring_buffer_8k.clear()
+                self._stage_8k.clear()
             return
 
         # Latch de timing: ne rien envoyer tant que media_active + first_frame + silence_primed
@@ -322,7 +340,7 @@ class PJSUAAudioBridge:
             # Skip silencieusement (ne pas bufferiser avant que PJSUA soit prêt)
             return
 
-        # Resample 24kHz → 8kHz IMMÉDIATEMENT
+        # 1) Resample 24kHz → 8kHz dans staging buffer
         try:
             audio_8khz = self._downsampler.resample(audio_24khz)
         except Exception as e:
@@ -330,20 +348,61 @@ class PJSUAAudioBridge:
             self._downsampler.reset()
             return
 
-        # Ajouter au ring buffer thread-safe
-        with self._ring_lock:
-            self._ring_buffer_8k.extend(audio_8khz)
-            buffer_size = len(self._ring_buffer_8k)
+        self._stage_8k.extend(audio_8khz)
 
-        if self._send_to_peer_call_count <= 5:
-            buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
+        # 2) Découpe staging buffer en frames de 320 bytes avec admission control
+        frames_admitted = 0
+        frames_dropped = 0
+
+        while len(self._stage_8k) >= self.EXPECTED_FRAME_SIZE_8KHZ:
+            frame = bytes(self._stage_8k[:self.EXPECTED_FRAME_SIZE_8KHZ])
+            del self._stage_8k[:self.EXPECTED_FRAME_SIZE_8KHZ]
+
+            # 3) Admission control AVANT ring
+            with self._ring_lock:
+                ring_len = self._ring_len_frames()
+                free = self.CAP_FRAMES - ring_len
+
+                if free <= 0:
+                    # Pas de place: drop cette frame
+                    self._drops_admission += 1
+                    frames_dropped += 1
+                    continue
+
+                # Catch-up hystérésis (set flag, appliqué dans get_next_frame_8k)
+                if ring_len >= self.HIGH_FRAMES and not self._catchup_active:
+                    self._catchup_active = True
+                    self._speed_ratio = 1.12
+                    self._last_rate_change_time = time.monotonic()
+                    logger.info(
+                        "🚀 Catch-up activé: vitesse %.2fx (buffer=%d frames = %dms)",
+                        self._speed_ratio, ring_len, ring_len * 20
+                    )
+                elif ring_len <= self.TARGET_FRAMES and self._catchup_active:
+                    self._catchup_active = False
+                    self._speed_ratio = 1.0
+                    self._last_rate_change_time = time.monotonic()
+                    logger.info(
+                        "✅ Catch-up désactivé: retour vitesse 1.00x (buffer=%d frames = %dms)",
+                        ring_len, ring_len * 20
+                    )
+
+                # 4) Enqueue
+                self._ring_buffer_8k.extend(frame)
+                frames_admitted += 1
+
+        # Log (premiers appels ou si drop)
+        if self._send_to_peer_call_count <= 5 or frames_dropped > 0:
+            with self._ring_lock:
+                ring_len = self._ring_len_frames()
             logger.info(
-                "📤 send_to_peer #%d: reçu %d bytes @ 24kHz → %d bytes @ 8kHz, ring buffer=%.1f frames (%.0fms)",
+                "📤 send_to_peer #%d: %d bytes @ 24kHz → +%d frames, -%d drops, ring=%d frames (%dms)",
                 self._send_to_peer_call_count,
                 len(audio_24khz),
-                len(audio_8khz),
-                buffer_frames,
-                buffer_frames * 20,
+                frames_admitted,
+                frames_dropped,
+                ring_len,
+                ring_len * 20,
             )
 
     def get_next_frame_8k(self) -> bytes:
@@ -352,11 +411,8 @@ class PJSUAAudioBridge:
         Appelé par AudioMediaPort.onFrameRequested() (callback synchrone PJSUA).
         Mode PULL: PJSUA demande l'audio à son rythme (20ms/frame).
 
-        Bornes catch-up conservatrices:
-        - Target: 6 frames (120ms)
-        - High: 9 frames (180ms) → 1.12x
-        - Cap: 12 frames (240ms) → 1.20x max
-        - Hard cap: 15 frames (300ms) → drop frames
+        Admission control et catch-up state sont gérés dans send_to_peer().
+        Cette méthode extrait simplement 1 frame et applique time-stretch si nécessaire.
 
         Returns:
             320 bytes PCM16 @ 8kHz (silence si buffer vide)
@@ -366,18 +422,6 @@ class PJSUAAudioBridge:
         with self._ring_lock:
             buffer_size = len(self._ring_buffer_8k)
             buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
-
-            # Hard cap: si buffer > 15 frames (300ms), drop des frames
-            if buffer_frames > 15:
-                frames_to_drop = int(buffer_frames - 12)  # Ramener à 12 frames (240ms)
-                bytes_to_drop = frames_to_drop * self.EXPECTED_FRAME_SIZE_8KHZ
-                del self._ring_buffer_8k[:bytes_to_drop]
-                logger.warning(
-                    "🗑️ Hard cap: buffer=%d frames (%.0fms) > 300ms, drop %d frames",
-                    buffer_frames, buffer_frames * 20, frames_to_drop
-                )
-                buffer_size = len(self._ring_buffer_8k)
-                buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
 
             # Extraire 1 frame si disponible
             if buffer_size >= self.EXPECTED_FRAME_SIZE_8KHZ:
@@ -391,44 +435,8 @@ class PJSUAAudioBridge:
                 is_silence = True
                 self._silence_pulled += 1
 
-        # CATCH-UP: Adapter la vitesse selon buffer size (hystérésis 200ms)
-        t_now = time.monotonic()
-        if t_now - self._last_rate_change_time >= 0.2:  # 200ms hystérésis
-            if buffer_frames >= 12:  # >= 240ms → 1.20x
-                target_speed = 1.20
-            elif buffer_frames >= 9:  # >= 180ms → 1.12x
-                target_speed = 1.12
-            elif buffer_frames <= 6:  # <= 120ms → 1.00x (normal)
-                target_speed = 1.0
-            else:
-                # Zone d'hystérésis: garder vitesse actuelle
-                target_speed = self._speed_ratio
-
-            # Appliquer changement si significatif (>= 0.02)
-            if abs(target_speed - self._speed_ratio) >= 0.02:
-                was_active = self._catchup_active
-                self._speed_ratio = target_speed
-                self._catchup_active = (target_speed > 1.0)
-                self._last_rate_change_time = t_now
-
-                # Log transitions
-                if self._catchup_active and not was_active:
-                    logger.info(
-                        "🚀 Catch-up activé: vitesse %.2fx (buffer=%.1f frames = %.0fms)",
-                        target_speed, buffer_frames, buffer_frames * 20
-                    )
-                elif not self._catchup_active and was_active:
-                    logger.info(
-                        "✅ Catch-up désactivé: retour vitesse 1.00x (buffer=%.1f frames = %.0fms)",
-                        buffer_frames, buffer_frames * 20
-                    )
-                elif self._catchup_active:
-                    logger.debug(
-                        "⚡ Catch-up vitesse ajustée: %.2fx (buffer=%.1f frames = %.0fms)",
-                        target_speed, buffer_frames, buffer_frames * 20
-                    )
-
         # Appliquer time-stretch @ 8kHz si en mode catch-up (et pas silence)
+        # Le catch-up state est géré dans send_to_peer()
         if self._catchup_active and not is_silence:
             try:
                 stretched = self._timestretch_8k.process(frame_8k, self._speed_ratio)
@@ -440,11 +448,12 @@ class PJSUAAudioBridge:
         # Log périodique
         if (self._frames_pulled + self._silence_pulled) % 100 == 0:
             logger.debug(
-                "📊 PULL stats: %d frames, %d silence, ring buffer=%.1f frames (%.0fms)",
+                "📊 PULL stats: %d frames, %d silence, %d drops, ring=%d frames (%dms)",
                 self._frames_pulled,
                 self._silence_pulled,
-                buffer_frames,
-                buffer_frames * 20,
+                self._drops_admission,
+                int(buffer_frames),
+                int(buffer_frames * 20),
             )
 
         return frame_8k
