@@ -2852,8 +2852,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 try:
                     # OPTIMISATION: Construire model_config et démarrer connexion WebSocket MAINTENANT
                     # Cela se fera en parallèle avec answer_call + conference bridge setup
-                    from agents.realtime.model import RealtimePlaybackTracker
-                    from telephony.voice_bridge import TelephonyPlaybackTracker
+                    from app.telephony.voice_bridge import TelephonyPlaybackTracker
 
                     # Créer le playback tracker pour gérer les interruptions audio
                     playback_tracker = TelephonyPlaybackTracker()
