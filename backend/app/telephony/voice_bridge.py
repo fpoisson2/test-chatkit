@@ -538,7 +538,8 @@ class TelephonyVoiceBridge:
         processed_item_ids: set[str] = set()  # Track item IDs we've already seen
 
         # Force immediate response after user speech (max 0.1s silence)
-        response_watchdog_task: asyncio.Task | None = None  # Task monitoring response delay
+        # CRITICAL FIX: Track all watchdog tasks to prevent leaks
+        response_watchdog_tasks: list[asyncio.Task] = []  # All watchdog tasks (for proper cleanup)
         audio_received_after_user_speech = False  # Track if we got actual audio
         response_started_after_user_speech = False  # Track if agent started generating ANY response
 
@@ -588,7 +589,7 @@ class TelephonyVoiceBridge:
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task, audio_received_after_user_speech, response_started_after_user_speech
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_tasks, audio_received_after_user_speech, response_started_after_user_speech
             try:
                 async for event in session:
                     if not should_continue():
@@ -799,10 +800,14 @@ class TelephonyVoiceBridge:
                             audio_received_after_user_speech = True
                             logger.debug("✅ Audio reçu - watchdog ne se déclenchera pas")
 
-                        # Cancel watchdog on FIRST audio chunk - agent is actually speaking!
-                        if response_watchdog_task and not response_watchdog_task.done():
-                            response_watchdog_task.cancel()
-                            logger.debug("✅ Watchdog annulé - agent parle vraiment")
+                        # Cancel ALL watchdog tasks on FIRST audio chunk - agent is actually speaking!
+                        # CRITICAL FIX: Cancel all watchdog tasks to prevent leaks
+                        for watchdog_task in response_watchdog_tasks:
+                            if not watchdog_task.done():
+                                watchdog_task.cancel()
+                        if response_watchdog_tasks:
+                            logger.debug("✅ %d watchdog task(s) annulé(s) - agent parle vraiment", len(response_watchdog_tasks))
+                            response_watchdog_tasks.clear()  # Clear list after cancelling all
 
                         audio_event = event.audio
                         pcm_data = audio_event.data
@@ -961,6 +966,13 @@ class TelephonyVoiceBridge:
                 logger.exception("Erreur dans le flux d'événements SDK")
                 error = VoiceBridgeError(f"Erreur événements SDK: {exc}")
             finally:
+                # CRITICAL FIX: Cancel all watchdog tasks to prevent leaks
+                for watchdog_task in response_watchdog_tasks:
+                    if not watchdog_task.done():
+                        watchdog_task.cancel()
+                if response_watchdog_tasks:
+                    logger.debug("🧹 Cleanup: %d watchdog task(s) annulé(s)", len(response_watchdog_tasks))
+                    response_watchdog_tasks.clear()
                 await request_stop()
 
         stats: VoiceBridgeStats | None = None

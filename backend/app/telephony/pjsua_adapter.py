@@ -513,6 +513,8 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         on fait juste un nettoyage minimal.
 
         Si disable() n'a PAS été appelé (cas rares), on fait le drain actif complet.
+
+        CRITICAL FIX: More aggressive queue draining to prevent accumulation.
         """
         import time
 
@@ -526,48 +528,61 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         self._frame_requested_event = None
 
-        # ACTIVE DRAIN: Seulement nécessaire si le port n'était PAS déjà disabled
-        # Si disable() a été appelé en premier (cas DISCONNECTED), la porte est fermée
-        # et aucune nouvelle frame ne peut arriver, donc pas besoin de drain de 50ms
-        if not already_disabled:
-            logger.debug("prepare_for_pool: drain actif de 50ms (port n'était pas disabled)")
-            # Wait for residual frames to exit PJSUA jitter buffer
-            # Race condition: frames can arrive AFTER deactivate() completes
-            # Solution: Keep draining for a short period (50ms) to catch stragglers
-            drain_timeout = 0.05  # 50ms - enough for ~2-3 frames @ 20ms
-            drain_start = time.monotonic()
-            total_drained = 0
+        # CRITICAL FIX: ALWAYS drain queues aggressively, even if already disabled
+        # Residual frames can accumulate and cause slowdown on next call
+        drain_timeout = 0.1  # Increased to 100ms for more thorough draining
+        drain_start = time.monotonic()
+        total_incoming_drained = 0
+        total_outgoing_drained = 0
 
-            while (time.monotonic() - drain_start) < drain_timeout:
-                drained_this_pass = 0
+        logger.debug("prepare_for_pool: drain agressif de 100ms pour éliminer toute accumulation")
 
-                # Drain incoming queue
-                try:
-                    while True:
-                        self._incoming_audio_queue.get_nowait()
-                        drained_this_pass += 1
-                        total_drained += 1
-                except queue.Empty:
-                    pass
+        while (time.monotonic() - drain_start) < drain_timeout:
+            drained_this_pass = 0
 
-                # If we drained something, reset timeout to catch more
-                if drained_this_pass > 0:
-                    drain_start = time.monotonic()
-                    logger.debug(
-                        "🔄 Active drain: cleared %d residual frames, continuing...",
-                        drained_this_pass
-                    )
-                else:
-                    # Nothing drained - sleep briefly before retry
-                    time.sleep(0.005)  # 5ms
+            # Drain incoming queue
+            try:
+                while True:
+                    self._incoming_audio_queue.get_nowait()
+                    drained_this_pass += 1
+                    total_incoming_drained += 1
+            except queue.Empty:
+                pass
 
-            if total_drained > 0:
-                logger.info(
-                    "✅ Active drain complete: %d residual frames removed after deactivate",
-                    total_drained
+            # CRITICAL FIX: Also drain OUTGOING queue (was not drained before!)
+            # Outgoing queue can have up to 1000 frames (20+ seconds) accumulated
+            try:
+                while True:
+                    self._outgoing_audio_queue.get_nowait()
+                    drained_this_pass += 1
+                    total_outgoing_drained += 1
+            except queue.Empty:
+                pass
+
+            # If we drained something, reset timeout to catch more
+            if drained_this_pass > 0:
+                drain_start = time.monotonic()
+                logger.debug(
+                    "🔄 Active drain: cleared %d residual frames, continuing...",
+                    drained_this_pass
                 )
-        else:
-            logger.debug("prepare_for_pool: skip drain actif (port était déjà disabled - porte fermée)")
+            else:
+                # Nothing drained - sleep briefly before retry
+                time.sleep(0.005)  # 5ms
+
+        if total_incoming_drained > 0 or total_outgoing_drained > 0:
+            logger.info(
+                "✅ Drain agressif terminé: %d frames entrantes + %d frames sortantes vidées",
+                total_incoming_drained,
+                total_outgoing_drained
+            )
+
+            # Log warning if large accumulation detected (indicates potential issue)
+            if total_outgoing_drained > 50:
+                logger.warning(
+                    "⚠️ ACCUMULATION EXCESSIVE DÉTECTÉE: %d frames sortantes vidées (>50) - possible problème",
+                    total_outgoing_drained
+                )
 
     def prepare_for_new_call(
         self, frame_requested_event: asyncio.Event | None, audio_bridge: Any | None = None
@@ -735,14 +750,25 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         # CRITIQUE: Retirer le port custom du bridge conference
         # Après confDisconnect, il faut aussi confRemovePort pour libérer complètement la ressource
+        # CRITICAL FIX: Verify confRemovePort success to detect conference slot leaks
+        remove_port_success = False
         if endpoint is not None and hasattr(endpoint, "confRemovePort") and custom_slot is not None:
             try:
                 endpoint.confRemovePort(custom_slot)  # type: ignore[attr-defined]
+                remove_port_success = True
                 logger.debug("✅ confRemovePort(slot=%s) exécuté (call_id=%s)", custom_slot, call_id)
             except Exception as error:
                 # EINVAL peut arriver si le port est déjà retiré, c'est ok
                 if not _is_invalid_conference_disconnect_error(error):
-                    logger.warning("Erreur confRemovePort slot=%s (call_id=%s): %s", custom_slot, call_id, error)
+                    logger.error("⚠️ CRITIQUE: confRemovePort ÉCHEC slot=%s (call_id=%s): %s - POSSIBLE FUITE DE SLOT CONFERENCE", custom_slot, call_id, error)
+                else:
+                    # Port déjà retiré = succès
+                    remove_port_success = True
+                    logger.debug("confRemovePort: port déjà retiré (EINVAL), considéré comme succès")
+
+        # Log critical warning if confRemovePort failed (conference slot leak detected)
+        if custom_slot is not None and not remove_port_success:
+            logger.error("🚨 FUITE DE SLOT CONFERENCE DÉTECTÉE: slot=%s (call_id=%s) N'A PAS ÉTÉ LIBÉRÉ!", custom_slot, call_id)
 
         self._conference_connected = False
         self._audio_media = None
@@ -1719,8 +1745,9 @@ class PJSUAAdapter:
         """
         # Port reuse is now SAFE thanks to active drain in prepare_for_pool()
         # Active drain eliminates race condition with residual PJSUA jitter buffer frames
-        # Allow many reuses before forced recreation (performance optimization)
-        MAX_REUSE_COUNT = 20  # Recreate every 20 uses as preventive maintenance
+        # CRITICAL FIX: Reduce reuse count to prevent state accumulation and conference slot leaks
+        # After investigation, ports and conference bridges accumulate state that causes slowdown
+        MAX_REUSE_COUNT = 5  # Recreate every 5 uses to prevent resource leaks (reduced from 20)
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
