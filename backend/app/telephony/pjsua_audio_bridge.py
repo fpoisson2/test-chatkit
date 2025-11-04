@@ -199,8 +199,10 @@ class PJSUAAudioBridge:
                         none_count_during_call += 1
                         # Générer 160 samples (20ms) de silence @ 8kHz
                         audio_8khz = bytes(320)  # 160 samples × 2 bytes/sample = 320 bytes
-                        if none_count_during_call % 50 == 1:  # Log toutes les secondes
+                        if none_count_during_call % 100 == 1:  # Log toutes les 2 secondes
                             logger.debug("📭 Queue audio vide pendant l'appel - envoi de silence (count=%d)", none_count_during_call)
+                        # CRITIQUE : Attendre 10ms pour ne pas boucler à fond
+                        await asyncio.sleep(0.01)
                     else:
                         # Avant le premier packet, attendre la connexion du bridge
                         await asyncio.sleep(0.01)  # 10ms
