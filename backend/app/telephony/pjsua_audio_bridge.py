@@ -39,16 +39,18 @@ class PJSUAAudioBridge:
     EXPECTED_FRAME_SIZE_24KHZ = 960
     SAMPLES_PER_FRAME_24KHZ = 480
 
-    # Burst control: limite l'enqueue à 3 frames max par tick
-    # 3 frames @ 8kHz = 3×320 bytes = 960 bytes = 60ms de latence max par burst
-    MAX_CHUNKS_PER_TICK = 3
+    # Stratégie watermark pour contrôle de burst intelligent
+    # FRAME = 320 bytes (20ms @ 8kHz)
+    # Remplir jusqu'à HIGH, stopper l'enfilage si queue >= HIGH
+    # Reprendre l'enfilage quand queue < LOW
+    HIGH_WATERMARK = 8   # 8 frames = 160ms - stop d'enfilage
+    LOW_WATERMARK = 4    # 4 frames = 80ms - reprise d'enfilage
+    MAX_QUEUE_SIZE = 10  # 10 frames = 200ms - limite absolue
 
-    # Queue watermarks pour monitoring et drop de silence
-    # Si queue > HIGH_WATERMARK (8 chunks = 160ms), dropper le silence
-    # Si queue < LOW_WATERMARK (3 chunks = 60ms), mode normal
-    HIGH_WATERMARK = 8
-    LOW_WATERMARK = 3
-    MAX_QUEUE_SIZE = 10  # Limite absolue avant drop forcé
+    # Latence maximale autorisée (queue + remainder buffer)
+    # Si render_latency > MAX_RENDER_LATENCY, tronquer remainder
+    MAX_RENDER_LATENCY_MS = 180  # Seuil de troncature
+    TARGET_RENDER_LATENCY_MS = 120  # Cible après troncature
 
     def __init__(self, call: PJSUACall) -> None:
         """Initialize the audio bridge for a specific call.
@@ -76,6 +78,11 @@ class PJSUAAudioBridge:
         # Queue watermark tracking
         self._queue_high_watermark_logged = False
         self._queue_low_watermark_logged = False
+
+        # Flag pour drop pendant interruption utilisateur
+        # Activé quand on détecte la voix de l'utilisateur (interrupt_response=True)
+        # Désactivé quand l'assistant reprend (prochain chunk assistant)
+        self._drop_until_next_assistant = False
 
         # State used to preserve resampling continuity from 24kHz → 8kHz
         self._send_to_peer_state: Any = None
@@ -297,6 +304,42 @@ class PJSUAAudioBridge:
             self._downsample_remainder = b""
             return
 
+        # Vérifier si on doit dropper (interruption utilisateur)
+        if self._drop_until_next_assistant:
+            # Drop tout jusqu'à ce que l'assistant reprenne
+            logger.debug("🗑️ Drop audio assistant (interruption utilisateur active)")
+            self._downsample_remainder = b""  # Vider le remainder
+            return
+
+        # Calculer latence totale "théorique" = queue + remainder
+        # render_latency_ms = (queue_size * 20) + (remainder_frames * 20)
+        queue_size = self._outgoing_audio_queue.qsize()
+        remainder_frames = len(self._downsample_remainder) / self.EXPECTED_FRAME_SIZE_8KHZ
+        render_latency_ms = (queue_size * 20) + (remainder_frames * 20)
+
+        # Tronquer remainder si latence trop élevée (> 180ms)
+        # Priorité téléphonie: mieux vaut skipper que lagger
+        if render_latency_ms > self.MAX_RENDER_LATENCY_MS:
+            # Calculer combien de frames garder pour atteindre TARGET (120ms)
+            target_total_frames = self.TARGET_RENDER_LATENCY_MS / 20
+            frames_to_keep_in_remainder = max(0, target_total_frames - queue_size)
+            bytes_to_keep = int(frames_to_keep_in_remainder * self.EXPECTED_FRAME_SIZE_8KHZ)
+
+            # Tronquer depuis le DÉBUT (drop le plus ancien)
+            dropped_bytes = len(self._downsample_remainder) - bytes_to_keep
+            if dropped_bytes > 0:
+                self._downsample_remainder = self._downsample_remainder[-bytes_to_keep:] if bytes_to_keep > 0 else b""
+                logger.warning(
+                    "⚠️ Latence trop haute (%.1f ms) - troncature remainder: dropped %d bytes (%.1f ms) → target %.1f ms",
+                    render_latency_ms,
+                    dropped_bytes,
+                    (dropped_bytes / self.EXPECTED_FRAME_SIZE_8KHZ) * 20,
+                    self.TARGET_RENDER_LATENCY_MS,
+                )
+                # Recalculer après troncature
+                remainder_frames = len(self._downsample_remainder) / self.EXPECTED_FRAME_SIZE_8KHZ
+                render_latency_ms = (queue_size * 20) + (remainder_frames * 20)
+
         # Découper en chunks de exactement 320 bytes depuis le buffer
         # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes
         # Cadencing is handled by a background task to avoid blocking the caller
@@ -304,10 +347,11 @@ class PJSUAAudioBridge:
         chunks_sent = 0
         chunks_dropped = 0
 
-        # Extraire MAX_CHUNKS_PER_TICK (3) chunks max par tick pour éviter les bursts
-        # Si OpenAI envoie 12kB d'un coup, on limite à 3×320=960 bytes (60ms) par tick
+        # Stratégie watermark: remplir jusqu'à HIGH_WATERMARK (8 frames = 160ms)
+        # Stopper l'enfilage dès que queue_size >= HIGH_WATERMARK
+        # Plus intelligent que "3 frames max": profite de la queue quand elle est vide
         try:
-            while len(self._downsample_remainder) >= chunk_size and chunks_sent < self.MAX_CHUNKS_PER_TICK:
+            while len(self._downsample_remainder) >= chunk_size and queue_size < self.HIGH_WATERMARK:
                 # Vérifier l'état de la queue AVANT d'enqueuer
                 queue_size = self._outgoing_audio_queue.qsize()
 
@@ -373,34 +417,45 @@ class PJSUAAudioBridge:
                         logger.warning("⚠️ Queue pleine - audio NON-SILENCE perdu!")
                         chunks_dropped += 1
 
-            # Calculate total pacing duration for monitoring (20ms per chunk)
-            pacing_duration_ms = chunks_sent * 20
+            # Log avec latence totale et watermark status
+            final_queue_size = self._outgoing_audio_queue.qsize()
+            final_remainder_frames = len(self._downsample_remainder) / self.EXPECTED_FRAME_SIZE_8KHZ
+            final_render_latency_ms = (final_queue_size * 20) + (final_remainder_frames * 20)
+
             if self._send_to_peer_call_count <= 5 or chunks_dropped > 0:
                 logger.info(
-                    "✅ send_to_peer #%d: Enqueued %d chunks (dropped %d silence) @ 8kHz vers PJSUA "
-                    "(resampled=%d bytes, buffer_remainder=%d bytes, queue=%d/%d, cadencé sur %d ms)",
+                    "✅ send_to_peer #%d: Enqueued %d chunks (dropped %d silence) @ 8kHz vers PJSUA\n"
+                    "   Queue: %d/%d frames, Remainder: %d bytes (%.1f frames)\n"
+                    "   Latence totale: %.1f ms (queue+remainder), Status: %s",
                     self._send_to_peer_call_count,
                     chunks_sent,
                     chunks_dropped,
-                    len(resampled),
-                    len(self._downsample_remainder),
-                    self._outgoing_audio_queue.qsize(),
+                    final_queue_size,
                     self.MAX_QUEUE_SIZE,
-                    pacing_duration_ms,
+                    len(self._downsample_remainder),
+                    final_remainder_frames,
+                    final_render_latency_ms,
+                    "HIGH" if final_queue_size >= self.HIGH_WATERMARK else "NORMAL",
                 )
             else:
                 logger.debug(
-                    "✅ Enqueued %d chunks @ 8kHz vers PJSUA (queue=%d/%d, remainder=%d bytes)",
+                    "✅ Enqueued %d chunks @ 8kHz (queue=%d, remainder=%.1f frames, latency=%.1f ms)",
                     chunks_sent,
-                    self._outgoing_audio_queue.qsize(),
-                    self.MAX_QUEUE_SIZE,
-                    len(self._downsample_remainder),
+                    final_queue_size,
+                    final_remainder_frames,
+                    final_render_latency_ms,
                 )
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
     def clear_audio_queue(self) -> int:
         """Clear the outgoing audio queue (used during interruptions).
+
+        Purge instantanée:
+        - Vide la queue PJSUA
+        - Vide le remainder buffer (downsample)
+        - Active le flag drop pour ignorer les chunks assistant en vol
+        - L'assistant doit appeler resume_after_interruption() quand il reprend
 
         Returns:
             Number of frames cleared
@@ -417,12 +472,32 @@ class PJSUAAudioBridge:
             except asyncio.QueueEmpty:  # pragma: no cover - race condition
                 break
 
-        if drained:
-            logger.debug("Cleared %d pending chunks from pacing queue", drained)
+        # Vider le remainder buffer (downsample 24kHz→8kHz)
+        remainder_bytes = len(self._downsample_remainder)
+        remainder_frames = remainder_bytes / self.EXPECTED_FRAME_SIZE_8KHZ if remainder_bytes > 0 else 0
+        self._downsample_remainder = b""
+
+        # Activer le flag pour dropper tous les chunks assistant jusqu'à reprise
+        self._drop_until_next_assistant = True
 
         # Réinitialiser l'état de resampling pour éviter des artefacts
         self._send_to_peer_state = None
-        return cleared + drained
+
+        if drained or remainder_frames > 0:
+            logger.info(
+                "🗑️ Purge interruption: queue=%d frames, remainder=%.1f frames (%.1f ms total) - drop activé",
+                drained,
+                remainder_frames,
+                (drained + remainder_frames) * 20,
+            )
+
+        return cleared + drained + int(remainder_frames)
+
+    def resume_after_interruption(self) -> None:
+        """Désactive le drop mode - appelé quand l'assistant reprend après interruption."""
+        if self._drop_until_next_assistant:
+            logger.info("✅ Assistant reprend - désactivation du drop mode")
+            self._drop_until_next_assistant = False
 
     def stop(self) -> None:
         """Stop the audio bridge."""
