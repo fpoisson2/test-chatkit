@@ -795,14 +795,30 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                    custom_port_info_after.portId, custom_port_info_after.name)
 
                         # 📊 DIAGNOSTIC: Afficher le port RTP utilisé pour vérifier qu'il change entre appels
+                        logger.warning("🔍 Tentative d'extraction du port RTP (call_id=%s, media_idx=%d)...", ci.id, mi.index)
                         try:
+                            # Méthode 1: via getStreamInfo
                             stream_info = self.getStreamInfo(mi.index)
-                            if hasattr(stream_info, 'transport') and hasattr(stream_info.transport, 'localRtpName'):
-                                local_rtp = stream_info.transport.localRtpName
-                                logger.warning("🔌 PORT RTP LOCAL: %s (call_id=%s)", local_rtp, ci.id)
-                            elif hasattr(stream_info, 'rtpInfo') and hasattr(stream_info.rtpInfo, 'localPort'):
-                                local_port = stream_info.rtpInfo.localPort
-                                logger.warning("🔌 PORT RTP LOCAL: %d (call_id=%s)", local_port, ci.id)
+                            logger.warning("📋 StreamInfo obtenu: type=%s", type(stream_info).__name__)
+
+                            # Essayer d'extraire les infos de transport
+                            if hasattr(stream_info, 'rtpSockName'):
+                                logger.warning("🔌 PORT RTP (rtpSockName): %s (call_id=%s)", stream_info.rtpSockName, ci.id)
+
+                            if hasattr(stream_info, 'rtcpSockName'):
+                                logger.warning("🔌 PORT RTCP (rtcpSockName): %s (call_id=%s)", stream_info.rtcpSockName, ci.id)
+
+                            # Méthode 2: via getMediaTransportInfo
+                            try:
+                                med_transport_info = self.getMediaTransportInfo(mi.index)
+                                logger.warning("📋 MediaTransportInfo obtenu: type=%s", type(med_transport_info).__name__)
+
+                                if hasattr(med_transport_info, 'localRtpName'):
+                                    logger.warning("🔌 PORT RTP (MediaTransport.localRtpName): %s (call_id=%s)",
+                                                 med_transport_info.localRtpName, ci.id)
+                            except Exception as transport_err:
+                                logger.warning("⚠️ getMediaTransportInfo échoué: %s", transport_err)
+
                         except Exception as port_err:
                             logger.warning("⚠️ Impossible d'obtenir le port RTP: %s", port_err)
 
