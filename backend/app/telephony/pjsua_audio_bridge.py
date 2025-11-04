@@ -815,10 +815,17 @@ async def create_pjsua_audio_bridge(
     # global). Chaque appel a son propre event pour éviter les problèmes de
     # timing sur les appels successifs.
     pjsua_ready_event = call._frame_requested_event
+
+    # Créer une fonction pour vider la queue ENTRANTE (silence accumulé)
+    # Cette fonction appelle l'adaptateur pour vider _incoming_audio_queue
+    def clear_incoming_queue() -> int:
+        """Vide la queue audio entrante (silence accumulé avant session)."""
+        return call.adapter.clear_call_incoming_audio_queue(call)
+
     return (
         bridge.rtp_stream(media_active_event),
         bridge.send_to_peer,
-        bridge.clear_audio_queue,
+        clear_incoming_queue,  # Vide la queue ENTRANTE au lieu de la queue sortante
         bridge.first_packet_received_event,
         pjsua_ready_event,
         bridge,

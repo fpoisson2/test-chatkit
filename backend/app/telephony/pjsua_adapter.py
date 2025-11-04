@@ -437,6 +437,21 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         except queue.Empty:
             return None
 
+    def clear_incoming_audio_queue(self) -> int:
+        """Vide la queue audio entrante (utilisé pour supprimer le silence initial).
+
+        Returns:
+            Nombre de frames vidées
+        """
+        count = 0
+        try:
+            while True:
+                self._incoming_audio_queue.get_nowait()
+                count += 1
+        except queue.Empty:
+            pass
+        return count
+
     def clear_outgoing_audio_queue(self) -> int:
         """Vide la queue audio sortante (utilisé lors d'interruptions).
 
@@ -1373,6 +1388,16 @@ class PJSUAAdapter:
         """
         if call._audio_port:
             return call._audio_port.clear_outgoing_audio_queue()
+        return 0
+
+    def clear_call_incoming_audio_queue(self, call: PJSUACall) -> int:
+        """Vide la queue audio entrante d'un appel (utilisé pour supprimer le silence initial).
+
+        Returns:
+            Nombre de frames vidées
+        """
+        if call._audio_port:
+            return call._audio_port.clear_incoming_audio_queue()
         return 0
 
     def acquire_audio_port(
