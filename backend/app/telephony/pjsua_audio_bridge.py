@@ -527,9 +527,10 @@ class PJSUAAudioBridge:
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
 
-        # Clear ring buffer
+        # Clear ring buffer and staging buffer
         with self._ring_lock:
             self._ring_buffer_8k.clear()
+            self._stage_8k.clear()
 
         # Reset resamplers and time-stretcher state
         self._downsampler.reset()
