@@ -2794,8 +2794,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     # CONNEXION WEBSOCKET SDK - PENDANT LA SONNERIE!
                     logger.info("🔌 Connexion WebSocket SDK PENDANT LA SONNERIE (call_id=%s)...", call_id)
-                    sdk_session = await session_handle.runner.run(model_config=model_config)
-                    logger.info("✅ SDK connecté PENDANT LA SONNERIE (call_id=%s)", call_id)
+                    sdk_context_manager = await session_handle.runner.run(model_config=model_config)
+                    # CRITIQUE: Entrer le context manager MAINTENANT pour vraiment connecter le WebSocket
+                    sdk_session = await sdk_context_manager.__aenter__()
+                    logger.info("✅ SDK WebSocket RÉELLEMENT CONNECTÉ pendant sonnerie (call_id=%s)", call_id)
 
                     return session_handle, voice_bridge, sdk_session, playback_tracker, realtime_api_base
 
