@@ -826,6 +826,14 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                 # Obtenir le processus actuel
                                 current_process = psutil.Process(os.getpid())
 
+                                # DEBUG: Lister TOUTES les sockets UDP pour voir ce qui se passe
+                                all_udp = []
+                                for conn in current_process.connections(kind='udp'):
+                                    all_udp.append(conn.laddr.port)
+
+                                logger.warning("📋 DEBUG: Toutes les sockets UDP du processus (%d): %s",
+                                             len(all_udp), sorted(all_udp))
+
                                 # Lister toutes les sockets UDP du processus dans le range RTP
                                 rtp_sockets = []
                                 for conn in current_process.connections(kind='udp'):
@@ -838,9 +846,6 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                     # Trier par port (ordre d'allocation)
                                     rtp_sockets.sort(key=lambda x: x[0])
 
-                                    # Le dernier socket créé (port le plus élevé) est probablement le bon
-                                    latest_port = rtp_sockets[-1][0]
-
                                     # Filtrer uniquement les ports RTP (pairs)
                                     rtp_only = [p for p, _ in rtp_sockets if p % 2 == 0]
 
@@ -850,13 +855,17 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                         logger.warning("   Sockets RTP actives dans range: %s", rtp_only)
                                     else:
                                         logger.warning("⚠️ Aucun socket RTP pair trouvé dans range 10000-20000")
+                                        logger.warning("   Sockets trouvées dans range: %s", [p for p, _ in rtp_sockets])
                                 else:
                                     logger.warning("⚠️ Aucune socket UDP dans le range 10000-20000")
+                                    logger.warning("   Peut-être que PJSUA utilise un range différent?")
 
                             except ImportError:
                                 logger.warning("⚠️ psutil non disponible - impossible de trouver le port local")
                             except Exception as psutil_err:
                                 logger.warning("⚠️ Erreur psutil: %s", psutil_err)
+                                import traceback
+                                logger.warning("Traceback: %s", traceback.format_exc())
 
                         except Exception as port_err:
                             logger.warning("⚠️ Erreur recherche port RTP: %s", port_err)
