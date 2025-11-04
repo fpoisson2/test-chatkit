@@ -401,25 +401,23 @@ class TelephonyVoiceBridge:
                             try:
                                 # 1. D'abord, envoyer quelques frames de silence minimal pour amorcer
                                 # CRITIQUE: Seulement 2 frames (40ms) pour éviter lag au démarrage
-                                # À 24kHz: 20ms = 480 samples = 960 bytes (requis par OpenAI)
-                                silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
+                                # IMPORTANT: Injection DIRECTE dans la queue 8kHz sans backlog dans le buffer 24kHz
+                                # pour éviter latence artificielle de 40ms
                                 num_silence_frames = 2  # 2 frames = 40ms - minimal prime (optimal pour téléphonie)
-                                silence_frame = b'\x00' * silence_frame_size
 
-                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence @ 24kHz (40ms prime)", num_silence_frames)
-                                for i in range(num_silence_frames):
-                                    await send_to_peer(silence_frame)
-                                    await asyncio.sleep(0.020)  # Respecter le cadençage 20ms
-
-                                logger.info("✅ Pipeline audio amorcé avec %d frames de silence", num_silence_frames)
-
-                                # Déverrouiller l'envoi audio maintenant que les conditions sont remplies:
-                                # - onCallMediaState actif (media_active_event)
-                                # - Premier onFrameRequested reçu (pjsua_ready_event)
-                                # - 40ms de silence envoyés (amorçage)
+                                logger.info("🔇 Canal bidirectionnel confirmé - injection directe de %d frames de silence (40ms prime sans backlog)", num_silence_frames)
                                 if audio_bridge:
+                                    # Injection directe dans la queue 8kHz (skip le buffer 24kHz)
+                                    await audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
+                                    logger.info("✅ Pipeline audio amorcé avec %d frames de silence (injection directe)", num_silence_frames)
+                                    # Déverrouiller l'envoi audio maintenant que les conditions sont remplies:
+                                    # - onCallMediaState actif (media_active_event)
+                                    # - Premier onFrameRequested reçu (pjsua_ready_event)
+                                    # - 40ms de silence envoyés (amorçage)
                                     audio_bridge.enable_audio_output()
                                     logger.info("🔓 Envoi audio TTS déverrouillé après amorçage")
+                                else:
+                                    logger.warning("⚠️ audio_bridge n'est pas disponible pour l'injection de silence")
 
                                 # 2. PUIS, envoyer response.create maintenant que le canal est amorcé
                                 from agents.realtime.model_inputs import (

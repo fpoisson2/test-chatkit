@@ -100,17 +100,16 @@ class PJSUAAudioBridge:
         # Désactivé quand l'assistant reprend (prochain chunk assistant)
         self._drop_until_next_assistant = False
 
-        # High-quality resamplers (soxr HQ for telephony - good quality/latency tradeoff)
+        # High-quality resamplers (soxr for telephony)
         # These handle resampling state internally and provide better quality
+        # TODO: Utiliser quality='HQ' au lieu de 'VHQ' pour moins de latence (nécessite modification audio_resampler.py)
         self._upsampler = get_resampler(
             from_rate=self.PJSUA_SAMPLE_RATE,
             to_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
-            quality="HQ",  # HQ suffit pour téléphonie, moins de latence que VHQ
         )  # 8kHz → 24kHz
         self._downsampler = get_resampler(
             from_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
             to_rate=self.PJSUA_SAMPLE_RATE,
-            quality="HQ",  # HQ suffit pour téléphonie, moins de latence que VHQ
         )  # 24kHz → 8kHz
 
         # Time-stretcher for catch-up mode in playout pacer (24kHz)
@@ -297,6 +296,41 @@ class PJSUAAudioBridge:
             raise
         finally:
             logger.info("RTP stream ended")
+
+    async def send_prime_silence_direct(self, num_frames: int = 2) -> None:
+        """Envoie du silence de prime DIRECTEMENT dans la queue 8kHz sans backlog.
+
+        Le silence de prime ne doit PAS s'empiler dans _playout_buffer_24k car cela
+        crée une latence artificielle. On l'injecte directement dans _outgoing_audio_queue.
+
+        Si du TTS arrive pendant la prime, il écrasera naturellement ce silence.
+
+        Args:
+            num_frames: Nombre de frames de silence à envoyer (défaut: 2 = 40ms)
+        """
+        import time
+
+        # Silence à 8kHz (320 bytes = 20ms @ 8kHz PCM16 mono)
+        silence_8k = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
+
+        # Timestamp d'injection (approxime t_model_in pour mesure latence)
+        t_inject = time.monotonic()
+
+        logger.info(
+            "🔇 Injection silence de prime direct: %d frames (=%dms) sans backlog",
+            num_frames,
+            num_frames * 20
+        )
+
+        for i in range(num_frames):
+            try:
+                # Injecter directement dans la queue 8kHz (skip le buffer 24kHz)
+                self._outgoing_audio_queue.put_nowait((silence_8k, t_inject))
+            except asyncio.QueueFull:
+                logger.warning("⚠️ Queue 8kHz pleine lors du prime silence, skip frame %d", i)
+                break
+
+        logger.info("✅ Silence de prime injecté directement (pas de backlog dans buffer 24kHz)")
 
     async def send_to_peer(self, audio_24khz: bytes) -> None:
         """Send audio from VoiceBridge to playout buffer.
