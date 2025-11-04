@@ -503,11 +503,12 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._frame_requested_event = None
 
     def prepare_for_new_call(
-        self, frame_requested_event: asyncio.Event | None
+        self, frame_requested_event: asyncio.Event | None, audio_bridge: Any | None = None
     ) -> None:
         """Reset counters and state before reusing the port."""
 
         self._frame_requested_event = frame_requested_event
+        self._audio_bridge = audio_bridge  # Mettre à jour le bridge pour le nouvel appel
         self._frame_count = 0
         self._audio_frame_count = 0
         self._silence_frame_count = 0
@@ -703,10 +704,17 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                 self.adapter.release_audio_port(old_port)
 
                     self._conference_connected = False
+
+                    # Passer le bridge si disponible pour activer le mode PULL
+                    bridge = getattr(self, '_audio_bridge', None)
                     self._audio_port = self.adapter.acquire_audio_port(
                         self._frame_requested_event,
                         call_id=ci.id,
+                        audio_bridge=bridge,
                     )
+
+                    if bridge:
+                        logger.info("✅ Bridge connecté à AudioMediaPort (mode PULL activé)")
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
@@ -1364,6 +1372,7 @@ class PJSUAAdapter:
         frame_requested_event: asyncio.Event | None,
         *,
         call_id: int | None = None,
+        audio_bridge: Any | None = None,
     ) -> AudioMediaPort:
         """Retourne un port audio prêt pour un nouvel appel."""
 
@@ -1373,14 +1382,14 @@ class PJSUAAdapter:
                 "♻️ Réutilisation d'un AudioMediaPort depuis le pool%s",
                 f" (call_id={call_id})" if call_id is not None else "",
             )
-            port.prepare_for_new_call(frame_requested_event)
+            port.prepare_for_new_call(frame_requested_event, audio_bridge)
             return port
 
         logger.info(
             "🔧 Création d'un nouvel AudioMediaPort%s",
             f" (call_id={call_id})" if call_id is not None else "",
         )
-        return AudioMediaPort(self, frame_requested_event)
+        return AudioMediaPort(self, frame_requested_event, audio_bridge)
 
     def release_audio_port(
         self, port: AudioMediaPort, *, destroy: bool = False
