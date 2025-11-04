@@ -801,23 +801,28 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                             stream_info = self.getStreamInfo(mi.index)
                             logger.warning("📋 StreamInfo obtenu: type=%s", type(stream_info).__name__)
 
-                            # Essayer d'extraire les infos de transport
-                            if hasattr(stream_info, 'rtpSockName'):
-                                logger.warning("🔌 PORT RTP (rtpSockName): %s (call_id=%s)", stream_info.rtpSockName, ci.id)
+                            # DÉBUG: Afficher TOUS les attributs de StreamInfo
+                            all_attrs = [attr for attr in dir(stream_info) if not attr.startswith('_')]
+                            logger.warning("📋 Attributs StreamInfo: %s", all_attrs)
 
-                            if hasattr(stream_info, 'rtcpSockName'):
-                                logger.warning("🔌 PORT RTCP (rtcpSockName): %s (call_id=%s)", stream_info.rtcpSockName, ci.id)
+                            # Essayer d'accéder aux infos de transport
+                            if hasattr(stream_info, 'type'):
+                                logger.warning("   - type: %s", stream_info.type)
 
-                            # Méthode 2: via getMediaTransportInfo
-                            try:
-                                med_transport_info = self.getMediaTransportInfo(mi.index)
-                                logger.warning("📋 MediaTransportInfo obtenu: type=%s", type(med_transport_info).__name__)
+                            if hasattr(stream_info, 'info'):
+                                logger.warning("   - info: %s (type=%s)", stream_info.info, type(stream_info.info).__name__)
+                                # Si c'est de l'audio, chercher info.aud
+                                if hasattr(stream_info.info, 'aud'):
+                                    aud_info = stream_info.info.aud
+                                    logger.warning("   - info.aud: %s (type=%s)", aud_info, type(aud_info).__name__)
 
-                                if hasattr(med_transport_info, 'localRtpName'):
-                                    logger.warning("🔌 PORT RTP (MediaTransport.localRtpName): %s (call_id=%s)",
-                                                 med_transport_info.localRtpName, ci.id)
-                            except Exception as transport_err:
-                                logger.warning("⚠️ getMediaTransportInfo échoué: %s", transport_err)
+                                    # Chercher rtpSockName dans aud
+                                    if hasattr(aud_info, 'rtpSockName'):
+                                        logger.warning("🔌 PORT RTP: %s (call_id=%s)", aud_info.rtpSockName, ci.id)
+
+                                    # Lister tous les attributs de aud_info
+                                    aud_attrs = [attr for attr in dir(aud_info) if not attr.startswith('_')]
+                                    logger.warning("   - Attributs aud_info: %s", aud_attrs)
 
                         except Exception as port_err:
                             logger.warning("⚠️ Impossible d'obtenir le port RTP: %s", port_err)
