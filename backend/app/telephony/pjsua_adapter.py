@@ -861,12 +861,19 @@ class PJSUAAdapter:
         self._send_audio_warning_count = 0  # Compteur de warnings supprimés
         self._send_audio_last_warning = 0.0  # Timestamp du dernier warning loggé
 
-    async def initialize(self, config: PJSUAConfig | None = None, *, port: int = 5060) -> None:
+    async def initialize(
+        self,
+        config: PJSUAConfig | None = None,
+        *,
+        port: int = 5060,
+        nomadic_mode: bool = False
+    ) -> None:
         """Initialise l'endpoint PJSUA et optionnellement crée le compte SIP.
 
         Args:
             config: Configuration SIP (optionnelle). Si None, seul l'endpoint est créé.
             port: Port UDP pour le transport SIP (utilisé si config est None)
+            nomadic_mode: True = mode nomade (ICE activé), False = mode passerelle (ICE désactivé)
         """
         if not PJSUA_AVAILABLE:
             raise RuntimeError("pjsua2 n'est pas disponible")
@@ -894,6 +901,24 @@ class PJSUAAdapter:
         media_cfg.jb_max_pre = 4       # Maximum 4 frames (80ms) en prefetch - réduit inertie
         media_cfg.jb_max = 10          # Maximum 10 frames (200ms) absolu
         media_cfg.snd_auto_close_time = 0  # Ne jamais fermer automatiquement le device
+
+        # OPTIMISATION RTP: Port fixe + range court pour éviter problèmes NAT/firewall
+        media_cfg.rtp_port = 10000     # Port de départ pour RTP
+        media_cfg.rtp_port_range = 100 # Range court: 10000-10100 (50 appels simultanés max)
+
+        # OPTIMISATION: ICE selon le mode
+        # Mode passerelle (défaut): ICE désactivé - pas besoin de négociation NAT sur serveur
+        # Mode nomade: ICE activé - nécessaire pour traverser les NAT en mobilité
+        media_cfg.enable_ice = nomadic_mode
+
+        # OPTIMISATION: Activer RTCP mux pour multiplexer RTP+RTCP sur même port
+        # Réduit l'utilisation de ports et simplifie le firewall
+        media_cfg.enable_rtcp_mux = True
+
+        # OPTIMISATION CRITIQUE: Désactiver VAD (Voice Activity Detection)
+        # On fait du pontage audio vers OpenAI - ne pas couper l'audio sur les silences!
+        media_cfg.no_vad = True
+
         logger.info(
             "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max_pre=%dms, max=%dms, auto_close=%d",
             media_cfg.jb_init * 20,
@@ -901,6 +926,20 @@ class PJSUAAdapter:
             media_cfg.jb_max_pre * 20,
             media_cfg.jb_max * 20,
             media_cfg.snd_auto_close_time,
+        )
+        logger.info(
+            "🔧 RTP configuré: port=%d, range=%d (ports %d-%d)",
+            media_cfg.rtp_port,
+            media_cfg.rtp_port_range,
+            media_cfg.rtp_port,
+            media_cfg.rtp_port + media_cfg.rtp_port_range,
+        )
+        logger.info(
+            "🔧 Optimisations audio: mode=%s, ICE=%s, RTCP_mux=%s, VAD=%s",
+            "nomade" if nomadic_mode else "passerelle",
+            "enabled" if media_cfg.enable_ice else "disabled",
+            "enabled" if media_cfg.enable_rtcp_mux else "disabled",
+            "disabled" if media_cfg.no_vad else "enabled",
         )
 
         # Initialiser l'endpoint
