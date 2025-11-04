@@ -2844,25 +2844,59 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             logger.info("🚀 Démarrage VoiceBridge IMMÉDIATEMENT (SDK va démarrer en parallèle) (call_id=%s)", call_id)
 
             async def run_voice_bridge():
-                """Tâche pour exécuter le voice bridge (SDK démarre ici)."""
+                """Tâche pour exécuter le voice bridge (SDK démarre ici).
+
+                OPTIMISATION: La connexion WebSocket SDK démarre IMMÉDIATEMENT dans cette tâche,
+                avant même answer_call, pour économiser ~420ms de latence.
+                """
                 try:
-                    stats = await voice_bridge.run(
-                        runner=session_handle.runner,
-                        client_secret=client_secret,
-                        model=voice_model,
-                        instructions=instructions,
-                        voice=voice_name,
-                        rtp_stream=rtp_stream,
-                        send_to_peer=send_to_peer,
-                        clear_audio_queue=clear_queue,
-                        pjsua_ready_to_consume=pjsua_ready_event,  # Attendre que PJSUA soit prêt avant speak_first
-                        audio_bridge=audio_bridge,  # Pour enable_audio_output() après silence priming
-                        api_base=realtime_api_base,
-                        tools=telephony_tools,
-                        handoffs=voice_handoffs,
-                        speak_first=speak_first,  # speak_first sera traité par VoiceBridge au bon moment
-                    )
-                    logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
+                    # OPTIMISATION: Construire model_config et démarrer connexion WebSocket MAINTENANT
+                    # Cela se fera en parallèle avec answer_call + conference bridge setup
+                    from agents.realtime.model import RealtimePlaybackTracker
+                    from telephony.voice_bridge import TelephonyPlaybackTracker
+
+                    # Créer le playback tracker pour gérer les interruptions audio
+                    playback_tracker = TelephonyPlaybackTracker()
+
+                    model_settings: dict[str, Any] = {
+                        "model_name": voice_model,
+                        "modalities": ["audio"],
+                        "output_modalities": ["audio"],
+                        "input_audio_format": "pcm16",
+                        "output_audio_format": "pcm16",
+                    }
+                    if voice_name:
+                        model_settings["voice"] = voice_name
+
+                    model_config: dict[str, Any] = {
+                        "api_key": client_secret,
+                        "initial_model_settings": model_settings,
+                        "playback_tracker": playback_tracker,
+                    }
+
+                    # CONNEXION WEBSOCKET SDK - DÉMARRE IMMÉDIATEMENT
+                    logger.info("🔌 Connexion WebSocket SDK (call_id=%s)...", call_id)
+                    async with await session_handle.runner.run(model_config=model_config) as session:
+                        logger.info("✅ SDK connecté (call_id=%s)", call_id)
+
+                        # Maintenant exécuter voice_bridge avec la session déjà connectée
+                        stats = await voice_bridge._run_with_connected_session(
+                            session=session,
+                            playback_tracker=playback_tracker,
+                            model=voice_model,
+                            instructions=instructions,
+                            voice=voice_name,
+                            rtp_stream=rtp_stream,
+                            send_to_peer=send_to_peer,
+                            clear_audio_queue=clear_queue,
+                            pjsua_ready_to_consume=pjsua_ready_event,
+                            audio_bridge=audio_bridge,
+                            api_base=realtime_api_base,
+                            tools=telephony_tools,
+                            handoffs=voice_handoffs,
+                            speak_first=speak_first,
+                        )
+                        logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
                 except Exception as e:
                     logger.exception("Erreur dans VoiceBridge PJSUA (call_id=%s): %s", call_id, e)
 

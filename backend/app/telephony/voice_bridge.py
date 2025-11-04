@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import audioop
 import base64
+import contextlib
 import json
 import logging
 import struct
@@ -266,11 +267,11 @@ class TelephonyVoiceBridge:
         self._receive_timeout = max(0.1, receive_timeout)
         self._settings = settings or get_settings()
 
-    async def run(
+    async def _run_with_connected_session(
         self,
         *,
-        runner: Any,
-        client_secret: str,
+        session: Any,
+        playback_tracker: Any,
         model: str,
         instructions: str,
         voice: str | None,
@@ -283,6 +284,52 @@ class TelephonyVoiceBridge:
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
         speak_first: bool = False,
+    ) -> VoiceBridgeStats:
+        """Exécute le voice bridge avec une session SDK déjà connectée.
+
+        Cette méthode interne est utilisée pour l'optimisation où la connexion WebSocket
+        est démarrée avant answer_call dans startup.py.
+        """
+        logger.info("Session SDK déjà connectée, démarrage du pont voix")
+        # Appeler run() avec la session pré-connectée
+        return await self.run(
+            runner=None,  # Pas besoin de runner, on a déjà la session
+            client_secret="",  # Déjà utilisé pour créer la session
+            model=model,
+            instructions=instructions,
+            voice=voice,
+            rtp_stream=rtp_stream,
+            send_to_peer=send_to_peer,
+            clear_audio_queue=clear_audio_queue,
+            pjsua_ready_to_consume=pjsua_ready_to_consume,
+            audio_bridge=audio_bridge,
+            api_base=None,  # Déjà utilisé pour créer la session
+            tools=tools,
+            handoffs=handoffs,
+            speak_first=speak_first,
+            _existing_session=session,  # Passer la session existante
+            _existing_playback_tracker=playback_tracker,  # Passer le tracker existant
+        )
+
+    async def run(
+        self,
+        *,
+        runner: Any | None = None,
+        client_secret: str = "",
+        model: str,
+        instructions: str,
+        voice: str | None,
+        rtp_stream: AsyncIterator[RtpPacket],
+        send_to_peer: Callable[[bytes], Awaitable[None]],
+        clear_audio_queue: Callable[[], int] | None = None,
+        pjsua_ready_to_consume: asyncio.Event | None = None,
+        audio_bridge: Any | None = None,
+        api_base: str | None = None,
+        tools: list[Any] | None = None,
+        handoffs: list[Any] | None = None,
+        speak_first: bool = False,
+        _existing_session: Any | None = None,  # Paramètre interne pour optimisation
+        _existing_playback_tracker: Any | None = None,  # Paramètre interne pour optimisation
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -311,8 +358,13 @@ class TelephonyVoiceBridge:
             block_audio_send_ref[0] = True
             logger.info("🛑 Audio bloqué via playback tracker (interruption détectée par SDK)")
 
-        # Create playback tracker for proper interruption handling
-        playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=on_playback_interrupted)
+        # Create playback tracker for proper interruption handling (or use existing one)
+        if _existing_playback_tracker is not None:
+            playback_tracker = _existing_playback_tracker
+            # Update callback since it references block_audio_send_ref from this scope
+            playback_tracker.set_interrupt_callback(on_playback_interrupted)
+        else:
+            playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=on_playback_interrupted)
 
         def should_continue() -> bool:
             if stop_event.is_set():
@@ -912,10 +964,21 @@ class TelephonyVoiceBridge:
             }
 
             # Create session using the SDK runner (this is what enables tool calls!)
-            logger.info("Démarrage session SDK avec runner")
-            # Utiliser async with pour gérer proprement le context manager et éviter les erreurs de cancel scope
-            async with await runner.run(model_config=model_config) as session:
-                logger.info("Session SDK démarrée avec succès")
+            # OPTIMISATION: Si une session est déjà fournie (connexion WebSocket déjà établie),
+            # l'utiliser directement au lieu de créer une nouvelle connexion
+            if _existing_session is not None:
+                # Session déjà connectée - utiliser avec un context manager dummy
+                session_context = contextlib.nullcontext(_existing_session)
+                logger.info("Session SDK déjà connectée, utilisation directe")
+            else:
+                # Créer une nouvelle session avec le runner
+                logger.info("Démarrage session SDK avec runner")
+                session_context = await runner.run(model_config=model_config)
+
+            # Utiliser async with pour gérer proprement le context manager
+            async with session_context as session:
+                if _existing_session is None:
+                    logger.info("Session SDK démarrée avec succès")
 
                 # Vider le buffer audio d'entrée au début de la session pour éviter des données résiduelles
                 # de sessions précédentes
