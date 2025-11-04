@@ -449,6 +449,19 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         return count
 
+    def disable(self) -> None:
+        """Désactive IMMÉDIATEMENT le port (ferme la porte à PJSUA).
+
+        CRITICAL: Cette méthode doit être appelée EN PREMIER lors du DISCONNECTED,
+        AVANT toute autre opération de nettoyage. Elle empêche les trames orphelines
+        en disant à PJSUA "n'envoie plus rien".
+
+        Cette méthode ne fait QUE désactiver le flag _active. Le vidage des queues
+        et le nettoyage complet sont faits plus tard par deactivate() ou prepare_for_pool().
+        """
+        logger.info("🛑 Port audio désactivé IMMÉDIATEMENT (fermeture porte PJSUA)")
+        self._active = False
+
     def deactivate(self, *, destroy_port: bool = True) -> None:
         """Désactive le port audio et vide les queues (appelé quand l'appel se termine).
 
@@ -495,49 +508,66 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
     def prepare_for_pool(self) -> None:
         """Stop activity but keep the port alive for future reuse.
 
-        CRITICAL: Active drain to handle race condition where audio frames
-        arrive from PJSUA jitter buffer after disconnect.
+        IMPORTANT: Si disable() a déjà été appelé (cas DISCONNECTED), le port
+        est déjà désactivé et les queues ont déjà été vidées. Dans ce cas,
+        on fait juste un nettoyage minimal.
+
+        Si disable() n'a PAS été appelé (cas rares), on fait le drain actif complet.
         """
         import time
 
-        self.deactivate(destroy_port=False)
+        # Si le port n'est pas encore désactivé, le faire maintenant
+        already_disabled = not self._active
+        if not already_disabled:
+            self.deactivate(destroy_port=False)
+            logger.debug("prepare_for_pool: port n'était pas désactivé, deactivate() appelé")
+        else:
+            logger.debug("prepare_for_pool: port déjà désactivé via disable(), skip deactivate()")
+
         self._frame_requested_event = None
 
-        # ACTIVE DRAIN: Wait for residual frames to exit PJSUA jitter buffer
-        # Race condition: frames can arrive AFTER deactivate() completes
-        # Solution: Keep draining for a short period (50ms) to catch stragglers
-        drain_timeout = 0.05  # 50ms - enough for ~2-3 frames @ 20ms
-        drain_start = time.monotonic()
-        total_drained = 0
+        # ACTIVE DRAIN: Seulement nécessaire si le port n'était PAS déjà disabled
+        # Si disable() a été appelé en premier (cas DISCONNECTED), la porte est fermée
+        # et aucune nouvelle frame ne peut arriver, donc pas besoin de drain de 50ms
+        if not already_disabled:
+            logger.debug("prepare_for_pool: drain actif de 50ms (port n'était pas disabled)")
+            # Wait for residual frames to exit PJSUA jitter buffer
+            # Race condition: frames can arrive AFTER deactivate() completes
+            # Solution: Keep draining for a short period (50ms) to catch stragglers
+            drain_timeout = 0.05  # 50ms - enough for ~2-3 frames @ 20ms
+            drain_start = time.monotonic()
+            total_drained = 0
 
-        while (time.monotonic() - drain_start) < drain_timeout:
-            drained_this_pass = 0
+            while (time.monotonic() - drain_start) < drain_timeout:
+                drained_this_pass = 0
 
-            # Drain incoming queue
-            try:
-                while True:
-                    self._incoming_audio_queue.get_nowait()
-                    drained_this_pass += 1
-                    total_drained += 1
-            except queue.Empty:
-                pass
+                # Drain incoming queue
+                try:
+                    while True:
+                        self._incoming_audio_queue.get_nowait()
+                        drained_this_pass += 1
+                        total_drained += 1
+                except queue.Empty:
+                    pass
 
-            # If we drained something, reset timeout to catch more
-            if drained_this_pass > 0:
-                drain_start = time.monotonic()
-                logger.debug(
-                    "🔄 Active drain: cleared %d residual frames, continuing...",
-                    drained_this_pass
+                # If we drained something, reset timeout to catch more
+                if drained_this_pass > 0:
+                    drain_start = time.monotonic()
+                    logger.debug(
+                        "🔄 Active drain: cleared %d residual frames, continuing...",
+                        drained_this_pass
+                    )
+                else:
+                    # Nothing drained - sleep briefly before retry
+                    time.sleep(0.005)  # 5ms
+
+            if total_drained > 0:
+                logger.info(
+                    "✅ Active drain complete: %d residual frames removed after deactivate",
+                    total_drained
                 )
-            else:
-                # Nothing drained - sleep briefly before retry
-                time.sleep(0.005)  # 5ms
-
-        if total_drained > 0:
-            logger.info(
-                "✅ Active drain complete: %d residual frames removed after deactivate",
-                total_drained
-            )
+        else:
+            logger.debug("prepare_for_pool: skip drain actif (port était déjà disabled - porte fermée)")
 
     def prepare_for_new_call(
         self, frame_requested_event: asyncio.Event | None, audio_bridge: Any | None = None
@@ -1305,11 +1335,32 @@ class PJSUAAdapter:
 
             self._active_calls.pop(call_info.id, None)
 
-            # IMPORTANT: Arrêter l'audio bridge d'abord pour stopper le RTP stream
-            if hasattr(call, '_audio_bridge') and call._audio_bridge:
+            # SÉQUENCE DE NETTOYAGE CORRECTE (ordre critique pour éviter race condition) :
+            #
+            # 1. DÉSACTIVER LE PORT EN PREMIER (ferme la porte à PJSUA)
+            # 2. Arrêter le voice bridge
+            # 3. Vidage actif des queues
+            # 4. Disconnect conference bridge
+            # 5. Remettre le port dans le pool
+
+            port = call._audio_port if call._audio_port else None
+            audio_bridge = call._audio_bridge if hasattr(call, '_audio_bridge') else None
+
+            # ÉTAPE 1: DÉSACTIVER LE PORT IMMÉDIATEMENT (CRITIQUE!)
+            # Cela empêche la "trame orpheline" d'arriver
+            if port:
                 try:
-                    logger.info("🛑 Arrêt de l'audio bridge (call_id=%s)", call_info.id)
-                    call._audio_bridge.stop()
+                    port.disable()
+                    logger.info("✅ [1/5] Port audio désactivé IMMÉDIATEMENT (call_id=%s)", call_info.id)
+                except Exception as e:
+                    logger.error("Erreur lors de la désactivation du port (call_id=%s): %s", call_info.id, e)
+
+            # ÉTAPE 2: ARRÊTER LE VOICE BRIDGE
+            # Maintenant que le port est muet, on peut arrêter la logique applicative
+            if audio_bridge:
+                try:
+                    logger.info("🛑 [2/5] Arrêt de l'audio bridge (call_id=%s)", call_info.id)
+                    audio_bridge.stop()
                 except Exception as e:
                     # DEBUG si erreur post-mortem 171140, WARNING sinon
                     if _is_session_terminated_error(e):
@@ -1319,22 +1370,54 @@ class PJSUAAdapter:
                 finally:
                     call._audio_bridge = None
 
-            # IMPORTANT: Nettoyer le port audio pour éviter les fuites
-            # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
-            if call._audio_port:
-                port = call._audio_port
+            # ÉTAPE 3: VIDAGE ACTIF DES QUEUES
+            # Vider tout ce qui a pu arriver AVANT l'appel à disable()
+            if port:
+                try:
+                    cleared_incoming = 0
+                    try:
+                        while True:
+                            port._incoming_audio_queue.get_nowait()
+                            cleared_incoming += 1
+                    except queue.Empty:
+                        pass
+
+                    cleared_outgoing = 0
+                    try:
+                        while True:
+                            port._outgoing_audio_queue.get_nowait()
+                            cleared_outgoing += 1
+                    except queue.Empty:
+                        pass
+
+                    if cleared_incoming > 0 or cleared_outgoing > 0:
+                        logger.info(
+                            "🗑️ [3/5] Queues audio vidées: %d frames entrantes, %d sortantes (call_id=%s)",
+                            cleared_incoming, cleared_outgoing, call_info.id
+                        )
+                except Exception as e:
+                    logger.warning("Erreur vidage queues (call_id=%s): %s", call_info.id, e)
+
+            # ÉTAPE 4: DISCONNECT CONFERENCE BRIDGE
+            if port:
                 call._audio_port = None
                 try:
                     call._disconnect_conference_bridge(call_info.id)
+                    logger.info("✅ [4/5] Conference bridge déconnecté (call_id=%s)", call_info.id)
                 except Exception as e:
                     # DEBUG si erreur post-mortem 171140, WARNING sinon
                     if _is_session_terminated_error(e):
-                        logger.debug("Erreur attendue désactivation port audio (call_id=%s, déjà terminé): %s", call_info.id, e)
+                        logger.debug("Erreur attendue disconnect conference (call_id=%s, déjà terminé): %s", call_info.id, e)
                     else:
-                        logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_info.id, e)
-                finally:
+                        logger.warning("Erreur disconnect conference (call_id=%s): %s", call_info.id, e)
+
+            # ÉTAPE 5: REMETTRE LE PORT (MAINTENANT PROPRE) DANS LE POOL
+            if port:
+                try:
                     self.release_audio_port(port)
-                    logger.info("✅ Port audio désactivé (call_id=%s)", call_info.id)
+                    logger.info("✅ [5/5] Port audio remis dans le pool (call_id=%s)", call_info.id)
+                except Exception as e:
+                    logger.warning("Erreur release port (call_id=%s): %s", call_info.id, e)
 
         if self._call_state_callback:
             await self._call_state_callback(call, call_info)
