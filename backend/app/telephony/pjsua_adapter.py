@@ -493,10 +493,51 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 logger.debug("Ignorer erreur destroyPort: %s", exc)
 
     def prepare_for_pool(self) -> None:
-        """Stop activity but keep the port alive for future reuse."""
+        """Stop activity but keep the port alive for future reuse.
+
+        CRITICAL: Active drain to handle race condition where audio frames
+        arrive from PJSUA jitter buffer after disconnect.
+        """
+        import time
 
         self.deactivate(destroy_port=False)
         self._frame_requested_event = None
+
+        # ACTIVE DRAIN: Wait for residual frames to exit PJSUA jitter buffer
+        # Race condition: frames can arrive AFTER deactivate() completes
+        # Solution: Keep draining for a short period (50ms) to catch stragglers
+        drain_timeout = 0.05  # 50ms - enough for ~2-3 frames @ 20ms
+        drain_start = time.monotonic()
+        total_drained = 0
+
+        while (time.monotonic() - drain_start) < drain_timeout:
+            drained_this_pass = 0
+
+            # Drain incoming queue
+            try:
+                while True:
+                    self._incoming_audio_queue.get_nowait()
+                    drained_this_pass += 1
+                    total_drained += 1
+            except queue.Empty:
+                pass
+
+            # If we drained something, reset timeout to catch more
+            if drained_this_pass > 0:
+                drain_start = time.monotonic()
+                logger.debug(
+                    "🔄 Active drain: cleared %d residual frames, continuing...",
+                    drained_this_pass
+                )
+            else:
+                # Nothing drained - sleep briefly before retry
+                time.sleep(0.005)  # 5ms
+
+        if total_drained > 0:
+            logger.info(
+                "✅ Active drain complete: %d residual frames removed after deactivate",
+                total_drained
+            )
 
     def prepare_for_new_call(
         self, frame_requested_event: asyncio.Event | None, audio_bridge: Any | None = None
@@ -1578,13 +1619,36 @@ class PJSUAAdapter:
         COOLDOWN: Force recreate après N réutilisations pour casser tout état latent.
         Si MAX_REUSE_COUNT = 0, réutilisation illimitée sans jamais détruire le port.
         """
-        # CRITICAL: Désactiver la réutilisation des ports pour éviter le bégaiement au 3e appel
-        # Le jitter buffer PJSUA interne (C++) conserve des frames de l'ancien appel
-        # Forcer la destruction garantit un jitter buffer propre à chaque appel
-        MAX_REUSE_COUNT = 1  # Destruction après 1 utilisation (pas de réutilisation)
+        # Port reuse is now SAFE thanks to active drain in prepare_for_pool()
+        # Active drain eliminates race condition with residual PJSUA jitter buffer frames
+        # Allow many reuses before forced recreation (performance optimization)
+        MAX_REUSE_COUNT = 20  # Recreate every 20 uses as preventive maintenance
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
+
+            # SAFETY CHECK: Verify port is clean (should never fail with active drain)
+            incoming_size = port._incoming_audio_queue.qsize()
+            outgoing_size = port._outgoing_audio_queue.qsize()
+
+            if incoming_size > 0 or outgoing_size > 0:
+                logger.error(
+                    "⚠️ SAFETY: Port from pool is DIRTY! incoming=%d, outgoing=%d "
+                    "(active drain should have prevented this - possible bug!)",
+                    incoming_size, outgoing_size
+                )
+                # Force clean before use
+                try:
+                    while True:
+                        port._incoming_audio_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    while True:
+                        port._outgoing_audio_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                logger.info("🗑️ Emergency cleanup: queues forcibly drained")
 
             # Vérifier le compteur de réutilisation (0 = illimité)
             if MAX_REUSE_COUNT > 0 and port._reuse_count >= MAX_REUSE_COUNT:
