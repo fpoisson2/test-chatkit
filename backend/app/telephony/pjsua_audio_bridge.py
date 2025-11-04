@@ -14,6 +14,7 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+from .audio_resampler import get_resampler
 from .voice_bridge import RtpPacket
 
 if TYPE_CHECKING:
@@ -84,8 +85,16 @@ class PJSUAAudioBridge:
         # Désactivé quand l'assistant reprend (prochain chunk assistant)
         self._drop_until_next_assistant = False
 
-        # State used to preserve resampling continuity from 24kHz → 8kHz
-        self._send_to_peer_state: Any = None
+        # High-quality resamplers (soxr if available, else audioop fallback)
+        # These handle resampling state internally and provide better quality
+        self._upsampler = get_resampler(
+            from_rate=self.PJSUA_SAMPLE_RATE,
+            to_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
+        )  # 8kHz → 24kHz
+        self._downsampler = get_resampler(
+            from_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
+            to_rate=self.PJSUA_SAMPLE_RATE,
+        )  # 24kHz → 8kHz
 
         # Remainder buffer for 24kHz → 8kHz downsampling
         # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
@@ -95,9 +104,6 @@ class PJSUAAudioBridge:
         # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
         # Exemple: ratecv produit 956 bytes au lieu de 960 → on accumule jusqu'à 960+
         self._upsample_remainder = b""
-
-        # State used to preserve resampling continuity from 8kHz → 24kHz
-        self._upsample_state: Any = None
 
         # Counter for send_to_peer calls (for pacing diagnostics)
         self._send_to_peer_call_count = 0
@@ -180,14 +186,8 @@ class PJSUAAudioBridge:
                 # CRITIQUE: Ne pas padder/truncate chaque frame individuellement
                 # Au lieu de ça, accumuler dans _upsample_remainder jusqu'à avoir >= 960 bytes
                 try:
-                    resampled, self._upsample_state = audioop.ratecv(
-                        audio_8khz,
-                        self.BYTES_PER_SAMPLE,
-                        self.CHANNELS,
-                        self.PJSUA_SAMPLE_RATE,
-                        self.VOICE_BRIDGE_SAMPLE_RATE,
-                        self._upsample_state,
-                    )
+                    # Utilise soxr (high quality) si disponible, sinon audioop (fallback)
+                    resampled = self._upsampler.resample(audio_8khz)
 
                     # Accumuler dans le buffer remainder
                     self._upsample_remainder += resampled
@@ -212,11 +212,11 @@ class PJSUAAudioBridge:
                             len(self._upsample_remainder),
                         )
 
-                except audioop.error as e:
+                except Exception as e:
                     logger.warning("Resampling error (8kHz→24kHz): %s", e)
                     # Reset le buffer en cas d'erreur pour éviter accumulation de corruption
                     self._upsample_remainder = b""
-                    self._upsample_state = None
+                    self._upsampler.reset()
                     continue
 
                 # Create RTP packet
@@ -283,24 +283,16 @@ class PJSUAAudioBridge:
 
         # Resample 24kHz → 8kHz (3x downsampling) avec accumulation fractionnaire
         try:
-            # ratecv renvoie également un état qui permet de préserver la
-            # continuité entre les chunks. On le conserve pour réduire les
-            # artefacts de rééchantillonnage sur les longs flux audio.
-            resampled, self._send_to_peer_state = audioop.ratecv(
-                audio_24khz,
-                self.BYTES_PER_SAMPLE,
-                self.CHANNELS,
-                self.VOICE_BRIDGE_SAMPLE_RATE,
-                self.PJSUA_SAMPLE_RATE,
-                self._send_to_peer_state,
-            )
+            # Utilise soxr (high quality) si disponible, sinon audioop (fallback)
+            # Le resampler gère son propre état pour préserver la continuité
+            resampled = self._downsampler.resample(audio_24khz)
 
             # Accumuler dans le buffer remainder
             self._downsample_remainder += resampled
 
-        except audioop.error as e:
+        except Exception as e:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
-            self._send_to_peer_state = None
+            self._downsampler.reset()
             self._downsample_remainder = b""
             return
 
@@ -480,8 +472,9 @@ class PJSUAAudioBridge:
         # Activer le flag pour dropper tous les chunks assistant jusqu'à reprise
         self._drop_until_next_assistant = True
 
-        # Réinitialiser l'état de resampling pour éviter des artefacts
-        self._send_to_peer_state = None
+        # Réinitialiser l'état des resamplers pour éviter des artefacts
+        self._downsampler.reset()
+        self._upsampler.reset()
 
         if drained or remainder_frames > 0:
             logger.info(
@@ -509,7 +502,10 @@ class PJSUAAudioBridge:
             self._outgoing_audio_queue.put_nowait(None)
         except asyncio.QueueFull:
             pass
-        self._send_to_peer_state = None
+
+        # Reset resamplers state
+        self._downsampler.reset()
+        self._upsampler.reset()
 
     async def _audio_sender_loop(self) -> None:
         """Background task responsible for pacing audio frames sent to PJSUA."""
