@@ -194,10 +194,14 @@ class WSolaTimeStretch:
         frame_aligned_len = (output_len // self.frame_size) * self.frame_size
 
         if frame_aligned_len < output_len:
-            # Garder le reste pour le prochain appel
-            remainder = output[frame_aligned_len:].astype(np.int16)
-            self._input_buffer = np.concatenate([remainder, self._input_buffer])
-            output = output[:frame_aligned_len]
+            # Pad au prochain multiple de frame_size pour garder alignement
+            # Le padding de quelques samples (<160) est inaudible
+            next_multiple = ((output_len + self.frame_size - 1) // self.frame_size) * self.frame_size
+            output = np.pad(output, (0, next_multiple - output_len), mode='constant')
+            logger.debug(
+                "WSOLA padded %d samples → %d samples (frame alignment)",
+                output_len, len(output)
+            )
 
         logger.debug(
             "WSOLA processed %d frames: %d samples → %d samples (ratio=%.2fx, frame-aligned)",
