@@ -260,6 +260,27 @@ class WSolaTimeStretch:
     def reset(self) -> None:
         """Reset internal buffers."""
         self._input_buffer = np.array([], dtype=np.int16)
+        logger.debug("WSOLA buffers reset")
+
+    def validate_output(self, output: bytes) -> bool:
+        """Validate que la sortie est alignée sur frame_size.
+
+        Args:
+            output: Output bytes to validate
+
+        Returns:
+            True if valid (multiple of frame_size bytes)
+        """
+        frame_size_bytes = self.frame_size * 2  # 2 bytes per sample (PCM16)
+        is_valid = (len(output) % frame_size_bytes) == 0
+
+        if not is_valid:
+            logger.warning(
+                "WSOLA output NOT frame-aligned: %d bytes (should be multiple of %d)",
+                len(output), frame_size_bytes
+            )
+
+        return is_valid
 
 
 def create_timestretch(sample_rate: int = 8000) -> WSolaTimeStretch:
