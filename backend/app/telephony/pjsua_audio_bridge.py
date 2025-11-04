@@ -100,24 +100,27 @@ class PJSUAAudioBridge:
         # Désactivé quand l'assistant reprend (prochain chunk assistant)
         self._drop_until_next_assistant = False
 
-        # High-quality resamplers (soxr if available, else audioop fallback)
+        # High-quality resamplers (soxr HQ for telephony - good quality/latency tradeoff)
         # These handle resampling state internally and provide better quality
         self._upsampler = get_resampler(
             from_rate=self.PJSUA_SAMPLE_RATE,
             to_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
+            quality="HQ",  # HQ suffit pour téléphonie, moins de latence que VHQ
         )  # 8kHz → 24kHz
         self._downsampler = get_resampler(
             from_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
             to_rate=self.PJSUA_SAMPLE_RATE,
+            quality="HQ",  # HQ suffit pour téléphonie, moins de latence que VHQ
         )  # 24kHz → 8kHz
 
-        # Time-stretcher for catch-up mode (reduce latency without dropping frames)
-        # Uses WSOLA to speed up playback 1.10-1.25x when queue builds up
-        self._timestretch = create_timestretch(sample_rate=self.PJSUA_SAMPLE_RATE)
+        # Time-stretcher for catch-up mode in playout pacer (24kHz)
+        # Uses WSOLA to speed up playback when buffer grows
+        self._timestretch_24k = create_timestretch(sample_rate=self.VOICE_BRIDGE_SAMPLE_RATE)
 
-        # Catch-up mode state
-        self._current_speed_ratio = 1.0  # Current playback speed (1.0 = normal)
-        self._catchup_mode_active = False  # True when actively catching up
+        # Catch-up mode state for playout pacer
+        self._playout_speed_ratio = 1.0  # Current playback speed (1.0 = normal)
+        self._playout_catchup_active = False  # True when actively catching up
+        self._last_rate_change_time = 0.0  # Timestamp of last rate change (for hysteresis)
 
         # Remainder buffer for 24kHz → 8kHz downsampling
         # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
@@ -425,11 +428,11 @@ class PJSUAAudioBridge:
         # Reset resamplers and time-stretcher state
         self._downsampler.reset()
         self._upsampler.reset()
-        self._timestretch.reset()
+        self._timestretch_24k.reset()
 
         # Reset catch-up mode state
-        self._current_speed_ratio = 1.0
-        self._catchup_mode_active = False
+        self._playout_speed_ratio = 1.0
+        self._playout_catchup_active = False
 
     async def _playout_pacer_loop(self) -> None:
         """Pacer côté sortie: extrait exactement 1 frame 24kHz toutes les 20ms.
@@ -471,7 +474,9 @@ class PJSUAAudioBridge:
 
                 # Extraire exactement 960 bytes du buffer circulaire
                 async with self._playout_buffer_lock:
-                    if len(self._playout_buffer_24k) >= self.EXPECTED_FRAME_SIZE_24KHZ:
+                    buffer_size_before = len(self._playout_buffer_24k)
+
+                    if buffer_size_before >= self.EXPECTED_FRAME_SIZE_24KHZ:
                         # Extraire 1 frame
                         frame_24k = bytes(self._playout_buffer_24k[:self.EXPECTED_FRAME_SIZE_24KHZ])
                         del self._playout_buffer_24k[:self.EXPECTED_FRAME_SIZE_24KHZ]
@@ -480,9 +485,61 @@ class PJSUAAudioBridge:
                     else:
                         # Buffer vide: injecter silence
                         frame_24k = SILENCE_24K
-                        buffer_size = len(self._playout_buffer_24k)
+                        buffer_size = buffer_size_before
                         is_silence = True
                         silence_injected_count += 1
+
+                # CATCH-UP MODE: Adapter la vitesse selon la taille du buffer
+                # Politique adaptative avec hystérésis (200ms min entre changements)
+                buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_24KHZ
+
+                # Déterminer vitesse cible selon seuils (avec hystérésis)
+                if t_extract - self._last_rate_change_time >= 0.2:  # 200ms hystérésis
+                    if buffer_frames >= 36:  # ~720ms
+                        target_speed = 1.30
+                    elif buffer_frames >= 24:  # ~480ms
+                        target_speed = 1.20
+                    elif buffer_frames >= 12:  # ~240ms
+                        target_speed = 1.12
+                    elif buffer_frames <= 4:  # ~80ms
+                        target_speed = 1.0
+                    else:
+                        # Zone d'hystérésis: garder vitesse actuelle
+                        target_speed = self._playout_speed_ratio
+
+                    # Appliquer changement si significatif (>= 0.02)
+                    if abs(target_speed - self._playout_speed_ratio) >= 0.02:
+                        was_active = self._playout_catchup_active
+                        self._playout_speed_ratio = target_speed
+                        self._playout_catchup_active = (target_speed > 1.0)
+                        self._last_rate_change_time = t_extract
+
+                        # Log transitions
+                        if self._playout_catchup_active and not was_active:
+                            logger.info(
+                                "🚀 Playout catch-up activé: vitesse %.2fx (buffer=%.1f frames = %.0fms)",
+                                target_speed, buffer_frames, buffer_frames * 20
+                            )
+                        elif not self._playout_catchup_active and was_active:
+                            logger.info(
+                                "✅ Playout catch-up désactivé: retour vitesse 1.00x (buffer=%.1f frames = %.0fms)",
+                                buffer_frames, buffer_frames * 20
+                            )
+                        elif self._playout_catchup_active:
+                            logger.debug(
+                                "⚡ Playout vitesse ajustée: %.2fx (buffer=%.1f frames = %.0fms)",
+                                target_speed, buffer_frames, buffer_frames * 20
+                            )
+
+                # Appliquer time-stretch si en mode catch-up (et pas silence)
+                if self._playout_catchup_active and not is_silence:
+                    try:
+                        stretched = self._timestretch_24k.process(frame_24k, self._playout_speed_ratio)
+                        # Si time-stretch retourne vide (pas assez de data), utiliser frame originale
+                        if len(stretched) > 0:
+                            frame_24k = stretched
+                    except Exception as e:
+                        logger.warning("Erreur time-stretch 24kHz: %s, utilisation frame originale", e)
 
                 # Resample cette frame: 960 bytes @ 24kHz → ~320 bytes @ 8kHz
                 if not is_silence:
@@ -562,9 +619,6 @@ class PJSUAAudioBridge:
                 # Préparer le next tick
                 next_t += period
 
-                # Mesurer la taille de queue AVANT de récupérer (pour catch-up)
-                queue_size = self._outgoing_audio_queue.qsize()
-
                 # Tenter de récupérer une frame (non-bloquant pour respecter timing)
                 try:
                     item = self._outgoing_audio_queue.get_nowait()
@@ -582,57 +636,6 @@ class PJSUAAudioBridge:
                     # Dépack tuple (frame, timestamp)
                     frame_8k, t_model_in = item
                     self._outgoing_audio_queue.task_done()
-
-                # CATCH-UP MODE: Adapter la vitesse de lecture selon la taille de queue
-                # Politique adaptative pour réduire latence accumulée sans dropper:
-                # - queue > 100 frames (~2s) → 1.25x speed
-                # - queue > 50 frames (~1s) → 1.15x speed
-                # - queue < 30 frames (~600ms) → 1.0x speed (normal)
-                queue_size_ms = queue_size * 20  # Chaque frame = 20ms
-
-                # Déterminer vitesse cible selon seuils
-                if queue_size >= 100:  # 2000ms
-                    target_speed = 1.25
-                elif queue_size >= 50:  # 1000ms
-                    target_speed = 1.15
-                elif queue_size < 30:  # 600ms
-                    target_speed = 1.0
-                else:
-                    # Zone d'hystérésis: garder vitesse actuelle
-                    target_speed = self._current_speed_ratio
-
-                # Mettre à jour vitesse actuelle
-                if target_speed != self._current_speed_ratio:
-                    was_active = self._catchup_mode_active
-                    self._current_speed_ratio = target_speed
-                    self._catchup_mode_active = (target_speed > 1.0)
-
-                    # Log transitions
-                    if self._catchup_mode_active and not was_active:
-                        logger.info(
-                            "🚀 Catch-up mode activé: vitesse %.2fx (queue=%d frames = %dms)",
-                            target_speed, queue_size, queue_size_ms
-                        )
-                    elif not self._catchup_mode_active and was_active:
-                        logger.info(
-                            "✅ Catch-up mode désactivé: retour vitesse 1.00x (queue=%d frames = %dms)",
-                            queue_size, queue_size_ms
-                        )
-                    elif self._catchup_mode_active:
-                        logger.debug(
-                            "⚡ Catch-up vitesse ajustée: %.2fx (queue=%d frames = %dms)",
-                            target_speed, queue_size, queue_size_ms
-                        )
-
-                # Appliquer time-stretch si en mode catch-up (et pas silence)
-                if self._catchup_mode_active and frame_8k != SILENCE_8K:
-                    try:
-                        stretched = self._timestretch.process(frame_8k, self._current_speed_ratio)
-                        # Si time-stretch retourne vide (pas assez de data), utiliser frame originale
-                        if len(stretched) > 0:
-                            frame_8k = stretched
-                    except Exception as e:
-                        logger.warning("Erreur time-stretch: %s, utilisation frame originale", e)
 
                 # t_pjsua_pop: moment où on consomme la frame pour PJSUA
                 t_pjsua_pop = time.monotonic()
