@@ -18,11 +18,40 @@ import audioop
 import logging
 import queue
 from collections.abc import Awaitable, Callable
+from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger("chatkit.telephony.pjsua")
 logger.setLevel(logging.INFO)  # Niveau INFO pour diagnostics du conference bridge
+
+
+def _schedule_coroutine_from_thread(coro: Any, loop: Any, callback_name: str = "callback") -> None:
+    """Schedule a coroutine from a thread and log any exceptions.
+
+    CRITICAL FIX: run_coroutine_threadsafe returns a Future that must be handled.
+    If we don't check the Future, exceptions are silently swallowed and the Future
+    object remains in memory with all its references.
+
+    Args:
+        coro: The coroutine to schedule
+        loop: The event loop
+        callback_name: Name of the callback for logging
+    """
+    try:
+        future: Future = asyncio.run_coroutine_threadsafe(coro, loop)
+
+        # Add a done callback to log any exceptions
+        def _check_exception(fut: Future) -> None:
+            try:
+                # This will raise if the coroutine raised an exception
+                fut.result()
+            except Exception as exc:
+                logger.error("Exception in %s: %s", callback_name, exc, exc_info=True)
+
+        future.add_done_callback(_check_exception)
+    except Exception as exc:
+        logger.error("Failed to schedule %s: %s", callback_name, exc)
 
 # Import conditionnel de pjsua2
 PJSUA_AVAILABLE = False
@@ -133,13 +162,11 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
 
         # Notifier l'adaptateur du changement d'état
         if hasattr(self.adapter, '_on_reg_state'):
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.adapter._on_reg_state(ai.regIsActive),
-                    self.adapter._loop
-                )
-            except Exception as e:
-                logger.exception("Erreur dans onRegState callback: %s", e)
+            _schedule_coroutine_from_thread(
+                self.adapter._on_reg_state(ai.regIsActive),
+                self.adapter._loop,
+                "onRegState"
+            )
 
     def onIncomingCall(self, prm: Any) -> None:
         """Appelé lors d'un appel entrant."""
@@ -156,13 +183,11 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
 
         # Notifier l'adaptateur de l'appel entrant
         if hasattr(self.adapter, '_on_incoming_call'):
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.adapter._on_incoming_call(call, call_info),
-                    self.adapter._loop
-                )
-            except Exception as e:
-                logger.exception("Erreur dans onIncomingCall callback: %s", e)
+            _schedule_coroutine_from_thread(
+                self.adapter._on_incoming_call(call, call_info),
+                self.adapter._loop,
+                "onIncomingCall"
+            )
 
 
 class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
@@ -379,13 +404,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
                 # Notifier l'adaptateur qu'il y a de l'audio
                 if hasattr(self.adapter, '_on_audio_received'):
-                    try:
-                        asyncio.run_coroutine_threadsafe(
-                            self.adapter._on_audio_received(audio_pcm),
-                            self.adapter._loop
-                        )
-                    except Exception as e:
-                        logger.debug("Erreur notification audio reçu: %s", e)
+                    _schedule_coroutine_from_thread(
+                        self.adapter._on_audio_received(audio_pcm),
+                        self.adapter._loop,
+                        "onAudioReceived"
+                    )
             except queue.Full:
                 logger.warning("Queue audio entrante pleine, frame ignorée")
         else:
@@ -677,13 +700,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         # Notifier l'adaptateur du changement d'état
         if hasattr(self.adapter, '_on_call_state'):
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.adapter._on_call_state(self, ci),
-                    self.adapter._loop
-                )
-            except Exception as e:
-                logger.exception("Erreur dans onCallState callback: %s", e)
+            _schedule_coroutine_from_thread(
+                self.adapter._on_call_state(self, ci),
+                self.adapter._loop,
+                "onCallState"
+            )
 
     def _disconnect_conference_bridge(self, call_id: int) -> None:
         """Disconnect the conference bridge if it is still active."""
@@ -995,13 +1016,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
                     # Notifier l'adaptateur que le média est prêt
                     if hasattr(self.adapter, '_on_media_active'):
-                        try:
-                            asyncio.run_coroutine_threadsafe(
-                                self.adapter._on_media_active(self, mi),
-                                self.adapter._loop
-                            )
-                        except Exception as e:
-                            logger.exception("Erreur dans onCallMediaState callback: %s", e)
+                        _schedule_coroutine_from_thread(
+                            self.adapter._on_media_active(self, mi),
+                            self.adapter._loop,
+                            "onCallMediaState"
+                        )
 
         # IMPORTANT: Si le média n'est plus actif et qu'on a un port audio, le désactiver
         # Cela évite les "ports zombies" qui continuent d'envoyer du silence après la fin de l'appel
@@ -1873,7 +1892,13 @@ class PJSUAAdapter:
     def release_audio_port(
         self, port: AudioMediaPort, *, destroy: bool = False
     ) -> None:
-        """Remet le port dans le pool ou le détruit définitivement."""
+        """Remet le port dans le pool ou le détruit définitivement.
+
+        CRITICAL FIX: Limite la taille du pool pour éviter l'accumulation infinie.
+        """
+        # CRITICAL FIX: Limit pool size to prevent unbounded growth
+        # If we have concurrent calls that create many ports, we don't want to keep them all forever
+        MAX_POOL_SIZE = 3  # Keep max 3 ports in pool (enough for typical concurrent call scenarios)
 
         try:
             if destroy:
@@ -1885,7 +1910,23 @@ class PJSUAAdapter:
             destroy = True
 
         if not destroy:
-            self._audio_port_pool.append(port)
+            # Check pool size limit before adding
+            if len(self._audio_port_pool) >= MAX_POOL_SIZE:
+                logger.debug(
+                    "🗑️ Pool audio plein (%d ports), destruction du port au lieu de pooling",
+                    len(self._audio_port_pool)
+                )
+                try:
+                    port.deactivate(destroy_port=True)
+                except Exception as exc:
+                    logger.debug("Erreur destruction port: %s", exc)
+            else:
+                self._audio_port_pool.append(port)
+                logger.debug(
+                    "♻️ Port ajouté au pool (taille actuelle: %d/%d)",
+                    len(self._audio_port_pool),
+                    MAX_POOL_SIZE
+                )
 
     def _drain_audio_port_pool(self) -> None:
         """Détruit tous les ports présents dans le pool (arrêt complet)."""
