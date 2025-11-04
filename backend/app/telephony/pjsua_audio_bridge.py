@@ -116,17 +116,25 @@ class PJSUAAudioBridge:
         # Time-stretcher @ 8kHz pour ratio dynamique doux
         self._timestretch_8k = create_timestretch(sample_rate=self.PJSUA_SAMPLE_RATE)
 
-        # Contrôle doux du ring buffer (±6% max, pas 12%)
-        # Target: 8 frames (160ms), Low: 6 frames (120ms), High: 10 frames (200ms)
-        self.RING_TARGET = 8    # 160ms - cible idéale
-        self.RING_LOW = 6       # 120ms - hystérésis basse
-        self.RING_HIGH = 10     # 200ms - hystérésis haute
+        # Contrôle doux du ring buffer avec LARGE ZONE MORTE pour éviter artefacts WSOLA
+        # Zone morte: 6-15 frames (120-300ms) = PAS de time-stretching (ratio = 1.00x)
+        # Cela évite le hachurage causé par WSOLA constamment actif
+        # Target: 10 frames (200ms), Low: 6 frames (120ms), High: 15 frames (300ms)
+        self.RING_TARGET = 10   # 200ms - cible idéale (accepte plus de latence)
+        self.RING_LOW = 6       # 120ms - hystérésis basse (pas de ralentissement < 6)
+        self.RING_HIGH = 15     # 300ms - hystérésis haute (WSOLA seulement si > 15)
         self.RING_OVERFLOW = 24 # 480ms - drop d'urgence si dépassé
         self.RING_SAFE = 16     # 320ms - revenir ici après overflow
 
-        # Ratio dynamique doux: ratio = clamp(1 + k*(ring - target), 0.96, 1.06)
-        self.RATIO_K = 0.01     # Coefficient de réactivité (1% par frame d'écart)
+        # Ratio dynamique TRÈS DOUX: réaction progressive pour éviter artefacts
+        # Seuil minimal: pas de stretch si ratio < 1.03x (trop proche de 1.0x = audible)
+        self.RATIO_K = 0.005    # Coefficient réduit: 0.5% par frame d'écart (vs 1%)
+        self.RATIO_MIN_THRESHOLD = 1.03  # Ne pas activer WSOLA si ratio < 1.03x
         self._speed_ratio = 1.0
+
+        # Log de confirmation que le nouveau code anti-hachurage est actif
+        logger.info("🎛️ WSOLA config: DEAD_ZONE=[%d-%d frames], TARGET=%d, MIN_RATIO=%.2fx (anti-hachurage)",
+                   self.RING_LOW, self.RING_HIGH, self.RING_TARGET, self.RATIO_MIN_THRESHOLD)
 
         # Leaky bucket pour limiter injection à ~1 frame/20ms
         self._last_injection_time = 0.0  # timestamp de dernière injection
@@ -514,20 +522,24 @@ class PJSUAAudioBridge:
             buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
             ring_len = int(buffer_frames)
 
-            # 2) Calculer ratio dynamique SANS RALENTIR en pénurie
+            # 2) Calculer ratio dynamique avec LARGE ZONE MORTE (6-15 frames)
             # - Si ring <= LOW (6): ratio = 1.00 (JAMAIS ralentir!)
-            # - Si ring > HIGH (10): ratio = min(1 + k*(ring-target), 1.06)
-            # - Sinon: ratio = 1.00 (zone de stabilité)
+            # - Si ring > HIGH (15): ratio calculé mais limité
+            # - Sinon (6 < ring <= 15): ratio = 1.00 (ZONE MORTE - pas de stretch)
+            # Seuil minimal: ne pas activer WSOLA si ratio < 1.03x (évite artefacts)
             if ring_len <= self.RING_LOW:
                 # Pénurie: JAMAIS ralentir (ratio < 1.00)
                 self._speed_ratio = 1.00
             elif ring_len > self.RING_HIGH:
                 # Surplus: accélérer doucement (max 1.06x)
-                self._speed_ratio = min(1.06,
-                    1.0 + self.RATIO_K * (ring_len - self.RING_TARGET)
-                )
+                raw_ratio = 1.0 + self.RATIO_K * (ring_len - self.RING_TARGET)
+                self._speed_ratio = min(1.06, raw_ratio)
+
+                # SEUIL MINIMAL: pas de stretch si ratio < 1.03x (trop proche de 1.0x)
+                if self._speed_ratio < self.RATIO_MIN_THRESHOLD:
+                    self._speed_ratio = 1.00
             else:
-                # Zone de stabilité LOW < ring <= HIGH: pas de stretch
+                # Zone de stabilité LOW < ring <= HIGH: PAS de stretch (ZONE MORTE)
                 self._speed_ratio = 1.00
 
             # 3) Extraire 1 frame si disponible
@@ -553,8 +565,9 @@ class PJSUAAudioBridge:
                 is_silence = True
                 self._silence_pulled += 1
 
-        # 4) Appliquer time-stretch si ratio > 1.0 (accélération uniquement, jamais ralentir)
-        if self._speed_ratio > 1.01 and not is_silence:
+        # 4) Appliquer time-stretch SEULEMENT si ratio >= 1.03x (seuil minimal anti-artefacts)
+        # En dessous de 1.03x, le WSOLA introduit plus d'artefacts qu'il n'améliore
+        if self._speed_ratio >= self.RATIO_MIN_THRESHOLD and not is_silence:
             try:
                 stretched = self._timestretch_8k.process(frame_8k, self._speed_ratio)
                 if len(stretched) > 0:
