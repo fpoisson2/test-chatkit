@@ -459,21 +459,22 @@ class PJSUAAudioBridge:
         return frame_8k
 
     def clear_audio_queue(self) -> int:
-        """Clear the ring buffer (used during interruptions).
+        """Clear the ring buffer and staging buffer (used during interruptions).
 
         Purge instantanée:
-        - Vide le ring buffer @ 8kHz
+        - Vide le ring buffer @ 8kHz ET le staging buffer
         - Active le flag drop pour ignorer les chunks assistant en vol
         - L'assistant doit appeler resume_after_interruption() quand il reprend
 
         Returns:
             Number of frames cleared
         """
-        # Vider le ring buffer thread-safe
+        # Vider le ring buffer ET le staging buffer thread-safe
         with self._ring_lock:
             buffer_size = len(self._ring_buffer_8k)
             buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
             self._ring_buffer_8k.clear()
+            self._stage_8k.clear()  # Vider aussi le staging buffer
 
         # Activer le flag pour dropper tous les chunks assistant jusqu'à reprise
         self._drop_until_next_assistant = True
