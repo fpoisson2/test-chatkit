@@ -1450,7 +1450,7 @@ class PJSUAAdapter:
 
         COOLDOWN: Force recreate après 2 réutilisations pour casser tout état latent.
         """
-        MAX_REUSE_COUNT = 2  # Force recreate au 3e appel
+        MAX_REUSE_COUNT = 0  # TEMPORAIRE: Désactiver réutilisation pour tester sautillement
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
