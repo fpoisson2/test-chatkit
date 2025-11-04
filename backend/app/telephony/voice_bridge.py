@@ -350,9 +350,6 @@ class TelephonyVoiceBridge:
         # Track if we've sent response.create immediately (for speak_first optimization)
         response_create_sent_immediately = False
 
-        # Track background task for ring buffer keepalive
-        silence_keeper_task: asyncio.Task | None = None
-
         # Use a list to create a mutable reference for block_audio_send
         block_audio_send_ref = [False]
 
@@ -834,6 +831,18 @@ class TelephonyVoiceBridge:
                                                 diag.phase_first_tts.metadata = {'delay_ms': delta, 'bytes': len(pcm_data)}
                                                 logger.info(f"⏱️ Phase 'first_tts' enregistrée: {delta:.1f}ms")
 
+                                    # CRITIQUE: Premier chunk TTS → activer l'audio output MAINTENANT
+                                    # 1. Amorcer le ring buffer avec du silence (évite les clics)
+                                    # 2. Activer l'audio output
+                                    # 3. Le TTS va immédiatement suivre dans send_to_peer() ci-dessous
+                                    # Aucune race condition car tout se passe dans le même événement async
+                                    num_silence_frames = 12  # 240ms de silence de prime
+                                    audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
+                                    logger.info("✅ Ring buffer amorcé avec %d frames de silence", num_silence_frames)
+
+                                    audio_bridge.enable_audio_output()
+                                    logger.info("🔓 Audio output activé (premier chunk TTS reçu)")
+
                                 outbound_audio_bytes += len(pcm_data)
                                 logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
                                 # Send audio and wait until it's actually sent via RTP
@@ -1033,21 +1042,11 @@ class TelephonyVoiceBridge:
                             else:
                                 logger.warning("⚠️ clear_audio_queue est None - impossible de vider la queue!")
 
-                            # OPTIMISATION AGRESSIVE: Amorcer le canal et envoyer response.create MAINTENANT
+                            # OPTIMISATION AGRESSIVE: Envoyer response.create MAINTENANT
                             # Cela démarre la génération TTS immédiatement sans attendre le premier paquet RTP
                             # Gain de temps: ~200-800ms (délai typique avant premier RTP)
                             try:
-                                # 1. Amorcer le ring buffer avec du silence (anti-starvation)
-                                num_silence_frames = 12  # 12 frames = 240ms de silence pour stabilité
-                                logger.info("🔇 Amorçage immédiat du canal avec %d frames de silence (%dms)",
-                                           num_silence_frames, num_silence_frames * 20)
-                                if audio_bridge:
-                                    audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
-                                    logger.info("✅ Pipeline audio amorcé avec %d frames (injection directe)", num_silence_frames)
-                                    audio_bridge.enable_audio_output()
-                                    logger.info("🔓 Envoi audio TTS déverrouillé")
-
-                                # 2. Envoyer response.create MAINTENANT pour démarrer la génération TTS
+                                # 1. Envoyer response.create MAINTENANT pour démarrer la génération TTS
                                 from agents.realtime.model_inputs import (
                                     RealtimeModelRawClientMessage,
                                     RealtimeModelSendRawMessage,
@@ -1076,12 +1075,11 @@ class TelephonyVoiceBridge:
                                             diag.phase_response_create.start()
                                             diag.phase_response_create.end()
 
-                                # 3. CRITICAL: Start background task to keep injecting silence
-                                # until first TTS arrives (prevents ring buffer starvation)
-                                silence_keeper_task = asyncio.create_task(
-                                    self._keep_ring_buffer_alive(audio_bridge, stop_event)
-                                )
-                                logger.info("🔄 Keepalive silence task started")
+                                # NOTE IMPORTANTE: On N'active PAS audio_output ici !
+                                # L'activation se fera dans forward_audio() dès réception du premier chunk TTS.
+                                # Cela évite la starvation du ring buffer pendant l'attente du TTS (800-900ms).
+                                # Si on active maintenant, PJSUA consommerait ~40 frames avant l'arrivée du TTS.
+                                logger.info("⏸️ Audio output restera désactivé jusqu'au premier chunk TTS (évite starvation)")
                             except Exception as exc:
                                 logger.warning("⚠️ Erreur lors de l'envoi immédiat de response.create: %s", exc)
                                 # En cas d'erreur, le fallback dans forward_audio() prendra le relais
@@ -1108,18 +1106,10 @@ class TelephonyVoiceBridge:
                     for task in pending:
                         task.cancel()
 
-                    # Cancel silence keeper task if it's running
-                    if silence_keeper_task is not None and not silence_keeper_task.done():
-                        silence_keeper_task.cancel()
-                        logger.debug("🔄 Cancelling silence keeper task")
-
                     # Attendre que les tâches annulées se terminent proprement (ignorer CancelledError)
-                    tasks_to_wait = list(pending)
-                    if silence_keeper_task is not None:
-                        tasks_to_wait.append(silence_keeper_task)
-                    if tasks_to_wait:
+                    if pending:
                         try:
-                            await asyncio.gather(*tasks_to_wait, return_exceptions=True)
+                            await asyncio.gather(*pending, return_exceptions=True)
                         except Exception as gather_exc:
                             logger.debug("Erreur lors de l'attente des tâches annulées: %s", gather_exc)
 
@@ -1141,17 +1131,11 @@ class TelephonyVoiceBridge:
                         if not task.done():
                             task.cancel()
 
-                    # Cancel silence keeper task if it's running
-                    if silence_keeper_task is not None and not silence_keeper_task.done():
-                        silence_keeper_task.cancel()
-                        logger.debug("🔄 Cancelling silence keeper task (error path)")
-
                     # Attendre que les tâches annulées se terminent
-                    tasks_to_wait = [audio_task, events_task]
-                    if silence_keeper_task is not None:
-                        tasks_to_wait.append(silence_keeper_task)
                     try:
-                        await asyncio.gather(*tasks_to_wait, return_exceptions=True)
+                        await asyncio.gather(
+                            audio_task, events_task, return_exceptions=True
+                        )
                     except Exception as gather_exc:
                         logger.debug("Erreur lors de l'attente des tâches annulées: %s", gather_exc)
                 # Le context manager ferme automatiquement la session ici, proprement depuis la même tâche
@@ -1190,61 +1174,6 @@ class TelephonyVoiceBridge:
             raise RuntimeError("Statistiques de pont voix indisponibles")
 
         return stats
-
-    async def _keep_ring_buffer_alive(
-        self,
-        audio_bridge: "PJSUAAudioBridge",
-        stop_event: asyncio.Event
-    ) -> None:
-        """Keep injecting silence into ring buffer until first TTS arrives.
-
-        Prevents ring buffer starvation during TTS generation latency.
-        During the wait for first TTS (can be 800-900ms), PJSUA pulls frames
-        continuously (~40 frames for 800ms). If we only inject 12 frames initially,
-        the ring buffer starves, causing silence gaps.
-
-        This task continuously monitors the ring buffer and tops it up with silence
-        until the first TTS chunk arrives.
-
-        Args:
-            audio_bridge: The audio bridge to monitor
-            stop_event: Event to signal task cancellation
-        """
-        target_ring_buffer_frames = 8  # Maintain ~160ms (8 * 20ms)
-        check_interval = 0.02  # Check every 20ms (1 frame duration)
-
-        try:
-            logger.info("🔄 Ring buffer keepalive: Started monitoring")
-
-            while not stop_event.is_set():
-                # Check if first TTS has arrived
-                if audio_bridge._t2_first_tts_chunk is not None:
-                    logger.info("✅ Ring buffer keepalive: First TTS arrived, stopping")
-                    break
-
-                # Check ring buffer level (thread-safe)
-                with audio_bridge._ring_lock:
-                    current_frames = audio_bridge._ring_len_frames()
-
-                # If buffer is low, inject silence to maintain level
-                if current_frames < target_ring_buffer_frames:
-                    frames_needed = target_ring_buffer_frames - current_frames
-                    audio_bridge.send_prime_silence_direct(num_frames=frames_needed)
-                    logger.debug(
-                        "🔇 Ring buffer keepalive: Injected %d silence frames (was %d, now %d)",
-                        frames_needed, current_frames, target_ring_buffer_frames
-                    )
-
-                # Wait before next check
-                await asyncio.sleep(check_interval)
-
-            logger.info("🔄 Ring buffer keepalive: Stopped normally")
-
-        except asyncio.CancelledError:
-            logger.info("🔄 Ring buffer keepalive: Cancelled")
-            raise
-        except Exception as e:
-            logger.error("❌ Ring buffer keepalive: Unexpected error: %s", e, exc_info=True)
 
     async def _teardown(
         self, transcripts: list[dict[str, str]], error: Exception | None
