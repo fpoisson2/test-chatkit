@@ -1717,10 +1717,10 @@ class PJSUAAdapter:
         COOLDOWN: Force recreate après N réutilisations pour casser tout état latent.
         Si MAX_REUSE_COUNT = 0, réutilisation illimitée sans jamais détruire le port.
         """
-        # Port reuse is now SAFE thanks to active drain in prepare_for_pool()
-        # Active drain eliminates race condition with residual PJSUA jitter buffer frames
-        # Allow many reuses before forced recreation (performance optimization)
-        MAX_REUSE_COUNT = 20  # Recreate every 20 uses as preventive maintenance
+        # DIAGNOSTIC: Force port recreation after EVERY use to eliminate port reuse as variable
+        # If hachurage disappears → port reuse was the problem
+        # If hachurage persists → problem is elsewhere (PJSUA jitter buffer, conference bridge, etc.)
+        MAX_REUSE_COUNT = 1  # Recreate after 1 use (was 20) - diagnostic mode
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()

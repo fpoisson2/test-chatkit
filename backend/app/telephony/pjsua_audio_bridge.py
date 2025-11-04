@@ -790,10 +790,19 @@ class PJSUAAudioBridge:
         # 6. Reset WSOLA (time-stretcher) - casse l'état interne
         self._timestretch_8k.reset()
 
-        # 7. Reset resamplers - reinit pour éviter état résiduel
-        # Note: get_resampler crée de nouvelles instances
-        self._downsampler.reset()
-        self._upsampler.reset()
+        # 7. CRITICAL FIX: RECRÉER les resamplers au lieu de juste reset()
+        # Les resamplers (même SOXR "stateless") peuvent accumuler des erreurs numériques
+        # ou des états résiduels dans numpy/soxr qui causent le hachurage
+        logger.info("🔄 Recréation des resamplers (downsampler 24kHz→8kHz, upsampler 8kHz→24kHz)")
+        self._downsampler = get_resampler(
+            from_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
+            to_rate=self.PJSUA_SAMPLE_RATE,
+        )  # 24kHz → 8kHz (utilisé dans send_to_peer)
+
+        self._upsampler = get_resampler(
+            from_rate=self.PJSUA_SAMPLE_RATE,
+            to_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
+        )  # 8kHz → 24kHz (utilisé pour RTP vers OpenAI)
 
         logger.info("✅ Reset agressif terminé - état vierge")
 
