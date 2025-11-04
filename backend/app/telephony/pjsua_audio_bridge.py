@@ -184,29 +184,17 @@ class PJSUAAudioBridge:
 
         packet_count = 0
         none_count = 0
-        none_count_during_call = 0
         try:
             while not self._stop_event.is_set():
                 # Get audio from PJSUA (8kHz PCM16 mono)
                 audio_8khz = await self._adapter.receive_audio_from_call(self._call)
 
                 if audio_8khz is None:
+                    # No audio available - wait a bit
+                    # C'est normal pendant les silences de l'utilisateur
                     none_count += 1
-
-                    # Après le premier packet, envoyer du silence au lieu d'attendre
-                    # pour éviter les sautillements audibles
-                    if packet_count > 0:
-                        none_count_during_call += 1
-                        # Générer 160 samples (20ms) de silence @ 8kHz
-                        audio_8khz = bytes(320)  # 160 samples × 2 bytes/sample = 320 bytes
-                        if none_count_during_call % 100 == 1:  # Log toutes les 2 secondes
-                            logger.debug("📭 Queue audio vide pendant l'appel - envoi de silence (count=%d)", none_count_during_call)
-                        # CRITIQUE : Attendre 10ms pour ne pas boucler à fond
-                        await asyncio.sleep(0.01)
-                    else:
-                        # Avant le premier packet, attendre la connexion du bridge
-                        await asyncio.sleep(0.01)  # 10ms
-                        continue
+                    await asyncio.sleep(0.01)  # 10ms
+                    continue
 
                 if len(audio_8khz) == 0:
                     logger.info("⚠️ Audio reçu mais len=0")
@@ -318,15 +306,6 @@ class PJSUAAudioBridge:
             raise
         finally:
             logger.info("RTP stream ended")
-
-            # 📊 Diagnostic: Enregistrer le none_count_during_call pour analyse de sautillements
-            if hasattr(self._call, 'chatkit_call_id') and self._call.chatkit_call_id:
-                diag_manager = get_diagnostics_manager()  # Import déjà fait en haut du fichier
-                diag = diag_manager.get_call(self._call.chatkit_call_id)
-                if diag:
-                    diag.none_packets_during_call = none_count_during_call
-                    if none_count_during_call > 0:
-                        logger.info("📊 Diagnostic: %d None packets pendant l'appel (remplacés par silence)", none_count_during_call)
 
     def send_prime_silence_direct(self, num_frames: int = 1) -> None:
         """Envoie du silence de prime DIRECTEMENT dans le ring buffer @ 8kHz.

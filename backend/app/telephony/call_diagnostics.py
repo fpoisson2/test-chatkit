@@ -56,7 +56,6 @@ class CallDiagnostics:
     port_reuse_count: int = 0
     port_recreated: bool = False
     none_packets_before_audio: int = 0
-    none_packets_during_call: int = 0  # None packets PENDANT l'appel (cause de sautillements)
 
     # OpenAI API
     openai_response_times: List[float] = field(default_factory=list)
@@ -92,11 +91,7 @@ class CallDiagnostics:
         if self.none_packets_before_audio > 10:
             self.lag_sources.append(f"RTP_DELAY:{self.none_packets_before_audio}_none_packets")
 
-        # 4. Sautillements audio (>50 None packets pendant l'appel)
-        if self.none_packets_during_call > 50:
-            self.lag_sources.append(f"AUDIO_STUTTERING:{self.none_packets_during_call}_gaps")
-
-        # 5. Port recréé (signe de problème)
+        # 4. Port recréé (signe de problème)
         if self.port_recreated:
             self.lag_sources.append("PORT_RECREATED")
 
@@ -152,7 +147,6 @@ class CallDiagnostics:
             f"  • Port recréé: {'OUI ⚠️' if self.port_recreated else 'NON ✅'}",
             f"  • Port reuse count: {self.port_reuse_count}",
             f"  • None packets avant audio: {self.none_packets_before_audio}",
-            f"  • None packets pendant appel: {self.none_packets_during_call}" + (" ⚠️" if self.none_packets_during_call > 10 else " ✅"),
         ])
 
         if self.openai_response_times:
