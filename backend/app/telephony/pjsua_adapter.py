@@ -534,17 +534,30 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._active = True
 
         # S'assurer que les queues sont bien vides avant de repartir
+        incoming_count = 0
         try:
             while True:
                 self._incoming_audio_queue.get_nowait()
+                incoming_count += 1
         except queue.Empty:
             pass
 
+        outgoing_count = 0
         try:
             while True:
                 self._outgoing_audio_queue.get_nowait()
+                outgoing_count += 1
         except queue.Empty:
             pass
+
+        # 📊 Diagnostic: Enregistrer l'état des buffers avant vidage
+        if audio_bridge and hasattr(audio_bridge, '_chatkit_call_id') and audio_bridge._chatkit_call_id:
+            from .call_diagnostics import get_diagnostics_manager
+            diag_manager = get_diagnostics_manager()
+            diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
+            if diag:
+                diag.add_buffer_state('incoming_queue_before_call', incoming_count)
+                diag.add_buffer_state('outgoing_queue_before_call', outgoing_count)
 
 
 class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
