@@ -39,6 +39,17 @@ class PJSUAAudioBridge:
     EXPECTED_FRAME_SIZE_24KHZ = 960
     SAMPLES_PER_FRAME_24KHZ = 480
 
+    # Burst control: limite l'enqueue à 3 frames max par tick
+    # 3 frames @ 8kHz = 3×320 bytes = 960 bytes = 60ms de latence max par burst
+    MAX_CHUNKS_PER_TICK = 3
+
+    # Queue watermarks pour monitoring et drop de silence
+    # Si queue > HIGH_WATERMARK (8 chunks = 160ms), dropper le silence
+    # Si queue < LOW_WATERMARK (3 chunks = 60ms), mode normal
+    HIGH_WATERMARK = 8
+    LOW_WATERMARK = 3
+    MAX_QUEUE_SIZE = 10  # Limite absolue avant drop forcé
+
     def __init__(self, call: PJSUACall) -> None:
         """Initialize the audio bridge for a specific call.
 
@@ -52,15 +63,19 @@ class PJSUAAudioBridge:
         self._timestamp = 0
 
         # Audio buffer for outgoing audio (from VoiceBridge to phone)
-        # CRITIQUE: Limité à 8 frames max (160ms) pour éviter accumulation de latence
-        # Si queue pleine, les silences seront droppés en premier (TODO)
+        # CRITIQUE: Limité à MAX_QUEUE_SIZE (10 frames = 200ms) pour éviter accumulation de latence
+        # Si queue > HIGH_WATERMARK, les silences seront droppés en premier
         self._outgoing_audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue(
-            maxsize=8
+            maxsize=self.MAX_QUEUE_SIZE
         )
 
         # Event qui se déclenche quand on reçoit le premier paquet audio du téléphone
         # Cela confirme que le flux audio bidirectionnel est établi
         self._first_packet_received = asyncio.Event()
+
+        # Queue watermark tracking
+        self._queue_high_watermark_logged = False
+        self._queue_low_watermark_logged = False
 
         # State used to preserve resampling continuity from 24kHz → 8kHz
         self._send_to_peer_state: Any = None
@@ -287,16 +302,37 @@ class PJSUAAudioBridge:
         # Cadencing is handled by a background task to avoid blocking the caller
         chunk_size = self.EXPECTED_FRAME_SIZE_8KHZ  # 320 bytes
         chunks_sent = 0
+        chunks_dropped = 0
 
-        # Extraire tous les chunks complets disponibles
+        # Extraire MAX_CHUNKS_PER_TICK (3) chunks max par tick pour éviter les bursts
+        # Si OpenAI envoie 12kB d'un coup, on limite à 3×320=960 bytes (60ms) par tick
         try:
-            while len(self._downsample_remainder) >= chunk_size:
+            while len(self._downsample_remainder) >= chunk_size and chunks_sent < self.MAX_CHUNKS_PER_TICK:
+                # Vérifier l'état de la queue AVANT d'enqueuer
+                queue_size = self._outgoing_audio_queue.qsize()
+
+                # Watermark monitoring
+                if queue_size >= self.HIGH_WATERMARK and not self._queue_high_watermark_logged:
+                    logger.warning(
+                        "⚠️ Queue audio haute (>= %d chunks = %d ms) - risque de latence",
+                        self.HIGH_WATERMARK,
+                        self.HIGH_WATERMARK * 20,
+                    )
+                    self._queue_high_watermark_logged = True
+                    self._queue_low_watermark_logged = False
+                elif queue_size < self.LOW_WATERMARK and not self._queue_low_watermark_logged:
+                    if self._queue_high_watermark_logged:  # Seulement log si on était haut avant
+                        logger.info("✅ Queue audio normale (< %d chunks)", self.LOW_WATERMARK)
+                    self._queue_low_watermark_logged = True
+                    self._queue_high_watermark_logged = False
+
                 # Extraire exactement 320 bytes
                 chunk = self._downsample_remainder[:chunk_size]
                 self._downsample_remainder = self._downsample_remainder[chunk_size:]
 
                 # Amplification dynamique pour garantir une amplitude minimale audible
                 # OpenAI envoie parfois un audio très faible (amplitude ~7) qui est inaudible
+                max_amplitude = 0
                 try:
                     max_amplitude = audioop.max(chunk, self.BYTES_PER_SAMPLE)
                     if max_amplitude > 0:
@@ -305,30 +341,60 @@ class PJSUAAudioBridge:
                         if max_amplitude < min_target_amplitude:
                             gain = min_target_amplitude / max_amplitude
                             chunk = audioop.mul(chunk, self.BYTES_PER_SAMPLE, gain)
+                            # Recalculer max_amplitude après amplification
+                            max_amplitude = audioop.max(chunk, self.BYTES_PER_SAMPLE)
                 except audioop.error as e:
                     logger.warning("Audio processing error: %s", e)
 
-                await self._outgoing_audio_queue.put(chunk)
-                chunks_sent += 1
+                # Drop de silence si la queue est trop pleine (>= HIGH_WATERMARK)
+                # Silence = max_amplitude très faible (< 100)
+                is_silence = max_amplitude < 100
+                if queue_size >= self.HIGH_WATERMARK and is_silence:
+                    chunks_dropped += 1
+                    if chunks_dropped <= 3:
+                        logger.debug(
+                            "🗑️ Drop silence (queue=%d/%d, amplitude=%d)",
+                            queue_size,
+                            self.MAX_QUEUE_SIZE,
+                            max_amplitude,
+                        )
+                    continue  # Skip l'enqueue de ce chunk silencieux
+
+                # Enqueue le chunk (avec try/except pour gérer QueueFull)
+                try:
+                    self._outgoing_audio_queue.put_nowait(chunk)
+                    chunks_sent += 1
+                except asyncio.QueueFull:
+                    # Queue pleine: si c'est du silence, dropper; sinon logger warning
+                    if is_silence:
+                        chunks_dropped += 1
+                        logger.debug("🗑️ Queue pleine - drop silence")
+                    else:
+                        logger.warning("⚠️ Queue pleine - audio NON-SILENCE perdu!")
+                        chunks_dropped += 1
 
             # Calculate total pacing duration for monitoring (20ms per chunk)
             pacing_duration_ms = chunks_sent * 20
-            if self._send_to_peer_call_count <= 5:
+            if self._send_to_peer_call_count <= 5 or chunks_dropped > 0:
                 logger.info(
-                    "✅ send_to_peer #%d: Enqueued %d chunks @ 8kHz vers PJSUA "
-                    "(resampled=%d bytes, buffer_remainder=%d bytes, cadencé sur %d ms)",
+                    "✅ send_to_peer #%d: Enqueued %d chunks (dropped %d silence) @ 8kHz vers PJSUA "
+                    "(resampled=%d bytes, buffer_remainder=%d bytes, queue=%d/%d, cadencé sur %d ms)",
                     self._send_to_peer_call_count,
                     chunks_sent,
+                    chunks_dropped,
                     len(resampled),
                     len(self._downsample_remainder),
+                    self._outgoing_audio_queue.qsize(),
+                    self.MAX_QUEUE_SIZE,
                     pacing_duration_ms,
                 )
             else:
                 logger.debug(
-                    "✅ Enqueued %d chunks @ 8kHz vers PJSUA (remainder=%d bytes)",
+                    "✅ Enqueued %d chunks @ 8kHz vers PJSUA (queue=%d/%d, remainder=%d bytes)",
                     chunks_sent,
+                    self._outgoing_audio_queue.qsize(),
+                    self.MAX_QUEUE_SIZE,
                     len(self._downsample_remainder),
-                    pacing_duration_ms,
                 )
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
