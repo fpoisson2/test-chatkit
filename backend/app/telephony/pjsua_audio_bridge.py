@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import audioop
 import logging
+from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
@@ -114,9 +115,11 @@ class PJSUAAudioBridge:
         # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
         self._downsample_remainder = b""
 
-        # Buffer pour accumuler chunks 24kHz incomplets AVANT resampling
-        # send_to_peer() peut recevoir n'importe quelle taille, on accumule jusqu'à 960 bytes
-        self._send_to_peer_buffer = b""
+        # Buffer circulaire pour pacer côté sortie (playout)
+        # Stocke les bytes 24kHz bruts avant découpage/resampling
+        # Le ticker _playout_pacer_loop() extrait exactement 960 bytes toutes les 20ms
+        self._playout_buffer_24k = bytearray()
+        self._playout_buffer_lock = asyncio.Lock()
 
         # Remainder buffer for 8kHz → 24kHz upsampling
         # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
@@ -135,6 +138,12 @@ class PJSUAAudioBridge:
         self._audio_sender_task: asyncio.Task[None] | None = loop.create_task(
             self._audio_sender_loop(),
             name="pjsua-audio-sender",
+        )
+
+        # Background task for playout pacer (extracts 1 frame/20ms from 24kHz buffer)
+        self._playout_pacer_task: asyncio.Task[None] | None = loop.create_task(
+            self._playout_pacer_loop(),
+            name="playout-pacer",
         )
 
     async def rtp_stream(
@@ -279,13 +288,10 @@ class PJSUAAudioBridge:
             logger.info("RTP stream ended")
 
     async def send_to_peer(self, audio_24khz: bytes) -> None:
-        """Send audio from VoiceBridge to PJSUA avec pacer strict 20ms.
+        """Send audio from VoiceBridge to playout buffer.
 
-        Pacer strict:
-        1. Slice en chunks de exactement 960 bytes (20ms @ 24kHz) AVANT resampling
-        2. Resample frame par frame (960→320 bytes)
-        3. Enqueue avec head-drop si queue >= MAX_QUEUE_FRAMES (6)
-        4. Mesure latence E2E (t_model_in → t_pjsua_pop)
+        Cette fonction ne fait QUE remplir le buffer circulaire 24kHz.
+        Le ticker _playout_pacer_loop() s'occupera du découpage/resampling strict à 20ms.
 
         Args:
             audio_24khz: PCM16 audio at 24kHz from OpenAI (taille variable)
@@ -293,74 +299,35 @@ class PJSUAAudioBridge:
         if len(audio_24khz) == 0:
             return
 
-        # Timestamp de réception du chunk modèle (t_model_in)
-        import time
-        t_model_in = time.monotonic()
-
         self._send_to_peer_call_count += 1
 
         # Vérifier si on doit dropper (interruption utilisateur)
         if self._drop_until_next_assistant:
             logger.debug("🗑️ Drop audio assistant (interruption utilisateur active)")
-            self._send_to_peer_buffer = b""  # Vider le buffer
+            # Vider le buffer de playout
+            async with self._playout_buffer_lock:
+                self._playout_buffer_24k.clear()
             return
 
         # Latch de timing: ne rien envoyer tant que media_active + first_frame + silence_primed
         # Évite les warnings "pas de slot audio" en début d'appel
         if not self._can_send_audio:
             # Buffer silencieusement, sera traité quand can_send_audio=True
-            self._send_to_peer_buffer += audio_24khz
+            async with self._playout_buffer_lock:
+                self._playout_buffer_24k.extend(audio_24khz)
             return
 
-        # Accumuler dans le buffer (peut recevoir n'importe quelle taille)
-        self._send_to_peer_buffer += audio_24khz
+        # Ajouter au buffer circulaire (pas de découpage, pas de resampling)
+        async with self._playout_buffer_lock:
+            self._playout_buffer_24k.extend(audio_24khz)
+            buffer_size = len(self._playout_buffer_24k)
 
         if self._send_to_peer_call_count <= 5:
             logger.info(
                 "📤 send_to_peer #%d: reçu %d bytes, buffer total=%d bytes",
                 self._send_to_peer_call_count,
                 len(audio_24khz),
-                len(self._send_to_peer_buffer),
-            )
-
-        # Slice en frames de exactement FRAME_24K = 960 bytes (20ms @ 24kHz)
-        frames_processed = 0
-        frames_dropped_head = 0
-
-        while len(self._send_to_peer_buffer) >= self.EXPECTED_FRAME_SIZE_24KHZ:
-            # Extraire exactement 960 bytes
-            frame_24k = self._send_to_peer_buffer[:self.EXPECTED_FRAME_SIZE_24KHZ]
-            self._send_to_peer_buffer = self._send_to_peer_buffer[self.EXPECTED_FRAME_SIZE_24KHZ:]
-
-            # Resample cette frame: 960 bytes @ 24kHz → ~320 bytes @ 8kHz
-            try:
-                frame_8k = self._downsampler.resample(frame_24k)
-            except Exception as e:
-                logger.warning("Resampling error (24kHz→8kHz): %s", e)
-                self._downsampler.reset()
-                continue
-
-            # Enqueue la nouvelle frame @ 8kHz avec timestamp
-            try:
-                # Stocker (frame, t_enqueue) pour mesurer latence plus tard
-                self._outgoing_audio_queue.put_nowait((frame_8k, t_model_in))
-                frames_processed += 1
-            except asyncio.QueueFull:
-                # Queue pleine: dropper cette frame
-                logger.debug("🗑️ Queue pleine - drop cette frame")
-                frames_dropped_head += 1
-
-        # Log si frames droppées ou si parmi les 5 premiers appels
-        if frames_dropped_head > 0 or self._send_to_peer_call_count <= 5:
-            final_queue_size = self._outgoing_audio_queue.qsize()
-            logger.info(
-                "✅ send_to_peer #%d: sliced %d frames (dropped %d head), queue=%d/%d, buffer_rest=%d bytes",
-                self._send_to_peer_call_count,
-                frames_processed,
-                frames_dropped_head,
-                final_queue_size,
-                self.MAX_QUEUE_FRAMES,
-                len(self._send_to_peer_buffer),
+                buffer_size,
             )
 
     def clear_audio_queue(self) -> int:
@@ -387,9 +354,9 @@ class PJSUAAudioBridge:
             except asyncio.QueueEmpty:  # pragma: no cover - race condition
                 break
 
-        # Vider le buffer send_to_peer (24kHz pré-resampling)
-        buffer_frames = len(self._send_to_peer_buffer) / self.EXPECTED_FRAME_SIZE_24KHZ
-        self._send_to_peer_buffer = b""
+        # Vider le buffer de playout (24kHz pré-resampling)
+        buffer_frames = len(self._playout_buffer_24k) / self.EXPECTED_FRAME_SIZE_24KHZ
+        self._playout_buffer_24k.clear()
 
         # Activer le flag pour dropper tous les chunks assistant jusqu'à reprise
         self._drop_until_next_assistant = True
@@ -426,18 +393,20 @@ class PJSUAAudioBridge:
         """
         if not self._can_send_audio:
             self._can_send_audio = True
-            buffer_size = len(self._send_to_peer_buffer)
+            buffer_size = len(self._playout_buffer_24k)
             logger.info(
                 "🔓 Audio output enabled (buffer buffered during init: %d bytes = %.1f frames)",
                 buffer_size,
                 buffer_size / self.EXPECTED_FRAME_SIZE_24KHZ if buffer_size > 0 else 0,
             )
-            # Le buffer accumulé sera traité au prochain appel de send_to_peer()
+            # Le buffer accumulé sera traité par le playout pacer
 
     def stop(self) -> None:
         """Stop the audio bridge."""
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
+        if self._playout_pacer_task and not self._playout_pacer_task.done():
+            self._playout_pacer_task.cancel()
         if self._audio_sender_task and not self._audio_sender_task.done():
             self._audio_sender_task.cancel()
         try:
@@ -453,6 +422,97 @@ class PJSUAAudioBridge:
         # Reset catch-up mode state
         self._current_speed_ratio = 1.0
         self._catchup_mode_active = False
+
+    async def _playout_pacer_loop(self) -> None:
+        """Pacer côté sortie: extrait exactement 1 frame 24kHz toutes les 20ms.
+
+        Pacer strict:
+        - Cadence fixe 20ms (period = 0.020s)
+        - Extrait EXACTEMENT 960 bytes (1 frame @ 24kHz) par tick
+        - Resample à 8kHz (320 bytes)
+        - Enqueue dans _outgoing_audio_queue pour _audio_sender_loop()
+        - Si buffer vide: injecte silence (ne jamais sauter de tick)
+        """
+        import time
+
+        period = 0.020  # 20ms strict
+        loop = asyncio.get_running_loop()
+        next_t = loop.time()
+
+        # Silence de 960 bytes (20ms @ 24kHz PCM16 mono)
+        SILENCE_24K = b'\x00' * self.EXPECTED_FRAME_SIZE_24KHZ
+
+        frame_count = 0
+        silence_injected_count = 0
+        frames_resampled = 0
+
+        try:
+            while True:
+                # Préparer le next tick
+                next_t += period
+
+                # Timestamp d'extraction (approxime t_model_in)
+                t_extract = time.monotonic()
+
+                # Extraire exactement 960 bytes du buffer circulaire
+                async with self._playout_buffer_lock:
+                    if len(self._playout_buffer_24k) >= self.EXPECTED_FRAME_SIZE_24KHZ:
+                        # Extraire 1 frame
+                        frame_24k = bytes(self._playout_buffer_24k[:self.EXPECTED_FRAME_SIZE_24KHZ])
+                        del self._playout_buffer_24k[:self.EXPECTED_FRAME_SIZE_24KHZ]
+                        buffer_size = len(self._playout_buffer_24k)
+                        is_silence = False
+                    else:
+                        # Buffer vide: injecter silence
+                        frame_24k = SILENCE_24K
+                        buffer_size = len(self._playout_buffer_24k)
+                        is_silence = True
+                        silence_injected_count += 1
+
+                # Resample cette frame: 960 bytes @ 24kHz → ~320 bytes @ 8kHz
+                if not is_silence:
+                    try:
+                        frame_8k = self._downsampler.resample(frame_24k)
+                        frames_resampled += 1
+                    except Exception as e:
+                        logger.warning("Resampling error (24kHz→8kHz): %s", e)
+                        self._downsampler.reset()
+                        # En cas d'erreur, injecter silence
+                        frame_8k = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
+                else:
+                    # Silence: pas besoin de resample, juste convertir à 8kHz
+                    frame_8k = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
+
+                # Enqueue la frame @ 8kHz avec timestamp
+                try:
+                    # Stocker (frame, t_enqueue) pour mesurer latence plus tard
+                    self._outgoing_audio_queue.put_nowait((frame_8k, t_extract))
+                except asyncio.QueueFull:
+                    # Queue pleine: dropper cette frame (rare)
+                    logger.warning("🗑️ Playout pacer: queue pleine, drop frame")
+
+                frame_count += 1
+
+                # Log périodique
+                if frame_count % 100 == 0:
+                    logger.debug(
+                        "📊 Playout pacer: %d frames, %d silence, buffer=%d bytes (%.1f frames)",
+                        frames_resampled,
+                        silence_injected_count,
+                        buffer_size,
+                        buffer_size / self.EXPECTED_FRAME_SIZE_24KHZ,
+                    )
+
+                # Sleep jusqu'au prochain tick (pacer strict)
+                sleep_duration = max(0, next_t - loop.time())
+                if sleep_duration > 0:
+                    await asyncio.sleep(sleep_duration)
+
+        except asyncio.CancelledError:
+            logger.debug("Playout pacer task cancelled (processed %d frames, %d silence)", frame_count, silence_injected_count)
+            raise
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.exception("Error in playout pacer loop: %s", exc)
 
     async def _audio_sender_loop(self) -> None:
         """Background task avec pacer strict 20ms pour envoyer frames vers PJSUA.
