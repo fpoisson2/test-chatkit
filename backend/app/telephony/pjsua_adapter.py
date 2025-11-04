@@ -795,37 +795,47 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                    custom_port_info_after.portId, custom_port_info_after.name)
 
                         # 📊 DIAGNOSTIC: Afficher le port RTP utilisé pour vérifier qu'il change entre appels
-                        logger.warning("🔍 Tentative d'extraction du port RTP (call_id=%s, media_idx=%d)...", ci.id, mi.index)
+                        logger.warning("🔍 Extraction du port RTP (call_id=%s, media_idx=%d)...", ci.id, mi.index)
                         try:
-                            # Méthode 1: via getStreamInfo
+                            # Méthode 1: getStreamInfo - structure complète du stream
                             stream_info = self.getStreamInfo(mi.index)
-                            logger.warning("📋 StreamInfo obtenu: type=%s", type(stream_info).__name__)
+                            logger.warning("📋 StreamInfo: type=%s", type(stream_info).__name__)
 
-                            # DÉBUG: Afficher TOUS les attributs de StreamInfo
-                            all_attrs = [attr for attr in dir(stream_info) if not attr.startswith('_')]
-                            logger.warning("📋 Attributs StreamInfo: %s", all_attrs)
+                            # Lister les attributs publics disponibles
+                            stream_attrs = [a for a in dir(stream_info) if not a.startswith('_')]
+                            logger.warning("   Attributs: %s", ', '.join(stream_attrs[:15]))  # Limiter pour lisibilité
 
-                            # Essayer d'accéder aux infos de transport
+                            # Explorer la structure StreamInfo -> type + info (union)
                             if hasattr(stream_info, 'type'):
-                                logger.warning("   - type: %s", stream_info.type)
+                                logger.warning("   stream_info.type = %s", stream_info.type)
 
                             if hasattr(stream_info, 'info'):
-                                logger.warning("   - info: %s (type=%s)", stream_info.info, type(stream_info.info).__name__)
-                                # Si c'est de l'audio, chercher info.aud
-                                if hasattr(stream_info.info, 'aud'):
-                                    aud_info = stream_info.info.aud
-                                    logger.warning("   - info.aud: %s (type=%s)", aud_info, type(aud_info).__name__)
+                                info_obj = stream_info.info
+                                logger.warning("   stream_info.info type = %s", type(info_obj).__name__)
 
-                                    # Chercher rtpSockName dans aud
-                                    if hasattr(aud_info, 'rtpSockName'):
-                                        logger.warning("🔌 PORT RTP: %s (call_id=%s)", aud_info.rtpSockName, ci.id)
+                                # L'info est une union - pour audio, utiliser .aud
+                                if hasattr(info_obj, 'aud'):
+                                    aud = info_obj.aud
+                                    logger.warning("   stream_info.info.aud type = %s", type(aud).__name__)
 
-                                    # Lister tous les attributs de aud_info
-                                    aud_attrs = [attr for attr in dir(aud_info) if not attr.startswith('_')]
-                                    logger.warning("   - Attributs aud_info: %s", aud_attrs)
+                                    # Lister attributs audio stream
+                                    aud_attrs = [a for a in dir(aud) if not a.startswith('_')]
+                                    logger.warning("   Attributs aud: %s", ', '.join(aud_attrs[:20]))
+
+                                    # Le port RTP devrait être dans rtpSockName
+                                    if hasattr(aud, 'rtpSockName'):
+                                        logger.warning("🔌 PORT RTP: %s (call_id=%s)", aud.rtpSockName, ci.id)
+                                    else:
+                                        logger.warning("⚠️ Attribut 'rtpSockName' absent de aud")
+
+                                    # Également vérifier rtcpSockName
+                                    if hasattr(aud, 'rtcpSockName'):
+                                        logger.warning("🔌 PORT RTCP: %s (call_id=%s)", aud.rtcpSockName, ci.id)
 
                         except Exception as port_err:
-                            logger.warning("⚠️ Impossible d'obtenir le port RTP: %s", port_err)
+                            logger.warning("⚠️ Erreur extraction port RTP: %s", port_err)
+                            import traceback
+                            logger.warning("Traceback: %s", traceback.format_exc())
 
                         logger.info("✅ Null sound device + conference bridge correctement armé")
                     except Exception as e:
