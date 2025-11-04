@@ -731,10 +731,18 @@ class PJSUAAudioBridge:
             self._t3_first_send_to_peer = None
             self._t4_first_real_pull = None
 
+        # CRITICAL FIX: Reset asyncio events to allow bridge reuse
+        # If stop() was called on previous call, _stop_event is still set
+        # This would cause rtp_stream() to exit immediately (line 188)
+        self._stop_event.clear()
+        self._first_packet_received.clear()
+
+        logger.debug("✅ Events reset: _stop_event and _first_packet_received cleared")
+
         # 6. Reset WSOLA (time-stretcher) - casse l'état interne
         self._timestretch_8k.reset()
 
-        # 6. Reset resamplers - reinit pour éviter état résiduel
+        # 7. Reset resamplers - reinit pour éviter état résiduel
         # Note: get_resampler crée de nouvelles instances
         self._downsampler.reset()
         self._upsampler.reset()
