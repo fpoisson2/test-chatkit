@@ -20,6 +20,8 @@ dependencies = [
     "email-validator",
     "pgvector",
     "playwright",
+    "soxr>=0.3.0",
+    "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]

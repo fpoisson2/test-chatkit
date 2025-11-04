@@ -2,6 +2,8 @@
 openai-agents[litellm]
 # aiosip - Removed due to Python 3.11+ incompatibility (@asyncio.coroutine deprecated)
 pjsua2  # PJSIP stack - Production-ready SIP/RTP implementation
+soxr>=0.3.0  # High-quality audio resampling (VHQ mode for telephony)
+numpy>=1.24.0  # Required by soxr for audio processing
 fastapi
 openai
 openai-chatkit @ file:../chatkit-python
