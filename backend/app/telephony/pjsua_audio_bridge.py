@@ -23,13 +23,19 @@ logger = logging.getLogger("chatkit.telephony.pjsua_audio_bridge")
 
 
 class PJSUAAudioBridge:
-    """Bridge audio entre PJSUA (8kHz) et TelephonyVoiceBridge (24kHz)."""
+    """Bridge audio entre PJSUA (8kHz) et TelephonyVoiceBridge (16kHz)."""
 
     # Audio format constants
     PJSUA_SAMPLE_RATE = 8000  # Telephony standard
-    VOICE_BRIDGE_SAMPLE_RATE = 24000  # OpenAI Realtime API
+    VOICE_BRIDGE_SAMPLE_RATE = 16000  # 16kHz pour ratio exact 2x avec 8kHz
     BYTES_PER_SAMPLE = 2  # PCM16 = 16-bit = 2 bytes
     CHANNELS = 1  # Mono
+
+    # Frame sizes at 20ms intervals
+    # 8kHz:  160 samples = 320 bytes
+    # 16kHz: 320 samples = 640 bytes (exact 2x ratio)
+    EXPECTED_FRAME_SIZE_8KHZ = 320
+    EXPECTED_FRAME_SIZE_16KHZ = 640
 
     def __init__(self, call: PJSUACall) -> None:
         """Initialize the audio bridge for a specific call.
@@ -44,8 +50,10 @@ class PJSUAAudioBridge:
         self._timestamp = 0
 
         # Audio buffer for outgoing audio (from VoiceBridge to phone)
+        # CRITIQUE: Limité à 8 frames max (160ms) pour éviter accumulation de latence
+        # Si queue pleine, les silences seront droppés en premier (TODO)
         self._outgoing_audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue(
-            maxsize=1000
+            maxsize=8
         )
 
         # Event qui se déclenche quand on reçoit le premier paquet audio du téléphone
@@ -145,7 +153,8 @@ class PJSUAAudioBridge:
 
                     if packet_count < 5:
                         logger.info(
-                            "✅ Rééchantillonné à %d bytes @ 24kHz",
+                            "✅ Rééchantillonné %d→%d bytes (8kHz→16kHz), ratio=2x exact",
+                            len(audio_8khz),
                             len(audio_24khz),
                         )
                 except audioop.error as e:
@@ -172,9 +181,10 @@ class PJSUAAudioBridge:
                     )
 
                 # Update RTP metadata
-                # At 24kHz: 20ms = 24000 samples/sec * 0.02 sec = 480 samples
-                samples_in_packet = len(audio_24khz) // self.BYTES_PER_SAMPLE
-                self._timestamp += samples_in_packet
+                # At 16kHz: 20ms = 16000 samples/sec * 0.02 sec = 320 samples = 640 bytes
+                # Timestamp MUST increment by exact 320 samples per frame for proper RTP timing
+                SAMPLES_PER_FRAME_16KHZ = 320
+                self._timestamp += SAMPLES_PER_FRAME_16KHZ
                 self._sequence_number = (self._sequence_number + 1) % 65536
 
                 packet_count += 1
@@ -189,38 +199,38 @@ class PJSUAAudioBridge:
         finally:
             logger.info("RTP stream ended")
 
-    async def send_to_peer(self, audio_24khz: bytes) -> None:
-        """Send audio from VoiceBridge to PJSUA (24kHz → 8kHz).
+    async def send_to_peer(self, audio_16khz: bytes) -> None:
+        """Send audio from VoiceBridge to PJSUA (16kHz → 8kHz).
 
         This is the callback passed to TelephonyVoiceBridge.run(send_to_peer=...).
-        Receives 24kHz PCM from OpenAI, resamples to 8kHz, and sends to PJSUA.
+        Receives 16kHz PCM from OpenAI, resamples to 8kHz, and sends to PJSUA.
 
         Args:
-            audio_24khz: PCM16 audio at 24kHz from OpenAI
+            audio_16khz: PCM16 audio at 16kHz from OpenAI (640 bytes per 20ms frame)
         """
-        if len(audio_24khz) == 0:
+        if len(audio_16khz) == 0:
             return
 
         self._send_to_peer_call_count += 1
         if self._send_to_peer_call_count <= 5:
             logger.info(
-                "📤 send_to_peer #%d appelé avec %d bytes @ 24kHz (cadençage activé)",
+                "📤 send_to_peer #%d appelé avec %d bytes @ 16kHz (cadençage activé, expect 640)",
                 self._send_to_peer_call_count,
-                len(audio_24khz),
+                len(audio_16khz),
             )
         else:
             logger.debug(
-                "📤 send_to_peer appelé avec %d bytes @ 24kHz",
-                len(audio_24khz),
+                "📤 send_to_peer appelé avec %d bytes @ 16kHz",
+                len(audio_16khz),
             )
 
-        # Resample 24kHz → 8kHz
+        # Resample 16kHz → 8kHz (exact 2x downsampling)
         try:
             # ratecv renvoie également un état qui permet de préserver la
             # continuité entre les chunks. On le conserve pour réduire les
             # artefacts de rééchantillonnage sur les longs flux audio.
             audio_8khz, self._send_to_peer_state = audioop.ratecv(
-                audio_24khz,
+                audio_16khz,
                 self.BYTES_PER_SAMPLE,
                 self.CHANNELS,
                 self.VOICE_BRIDGE_SAMPLE_RATE,
@@ -228,7 +238,7 @@ class PJSUAAudioBridge:
                 self._send_to_peer_state,
             )
         except audioop.error as e:
-            logger.warning("Resampling error (24kHz→8kHz): %s", e)
+            logger.warning("Resampling error (16kHz→8kHz): %s", e)
             self._send_to_peer_state = None
             return
 
