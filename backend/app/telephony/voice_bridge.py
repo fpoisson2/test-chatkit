@@ -451,9 +451,8 @@ class TelephonyVoiceBridge:
                         # que le canal bidirectionnel est confirmé
                         if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             try:
-                                # 0. RESET AGRESSIF: casser tout état résiduel avant le nouvel appel
-                                if audio_bridge:
-                                    audio_bridge.reset_all()
+                                # NOTE: reset_all() is now called unconditionally at session start (line ~997)
+                                # so no need to call it again here
 
                                 # 1. D'abord, précharger généreusement le ring buffer (8-10 frames)
                                 # CRITIQUE: Amorcer avec TARGET frames pour éviter sous-alimentation
@@ -990,6 +989,12 @@ class TelephonyVoiceBridge:
             async with session_context as session:
                 if _existing_session is None:
                     logger.info("Session SDK démarrée avec succès")
+
+                # CRITICAL FIX: Reset audio bridge at START of call to clear any state from previous call
+                # Especially important for _drop_until_next_assistant flag which blocks all audio if True
+                if audio_bridge:
+                    audio_bridge.reset_all()
+                    logger.info("✅ Audio bridge reset_all() appelé au début de l'appel")
 
                 # Vider le buffer audio d'entrée au début de la session pour éviter des données résiduelles
                 # de sessions précédentes
