@@ -930,6 +930,16 @@ class TelephonyVoiceBridge:
                 except Exception as e:
                     logger.warning("input_audio_buffer.clear échoué au début: %s", e)
 
+                # OPTIMISATION: Vider aussi la queue locale PJSUA pour supprimer
+                # les frames de silence accumulées avant le démarrage de la session
+                if clear_audio_queue is not None:
+                    try:
+                        cleared_count = clear_audio_queue()
+                        if cleared_count > 0:
+                            logger.info("🗑️ Queue locale PJSUA vidée: %d frames de silence supprimées", cleared_count)
+                    except Exception as e:
+                        logger.warning("Erreur lors du vidage de la queue PJSUA: %s", e)
+
                 # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
                 # NOTE: Le response.create() sera envoyé APRÈS la réception du premier paquet RTP
                 # et l'envoi des frames de silence (voir forward_audio() plus bas)

@@ -2668,18 +2668,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             send_to_peer = send_to_peer_blocked
 
-            # Attendre le ring timeout avant de répondre à l'appel
-            if ring_timeout_seconds > 0:
-                logger.info(
-                    "⏰ Sonnerie de %.2f secondes avant de répondre (call_id=%s)",
-                    ring_timeout_seconds,
-                    call_id,
-                )
-                await asyncio.sleep(ring_timeout_seconds)
-
-            # Créer la session vocale APRÈS la sonnerie mais AVANT de répondre à l'appel
-            # Cela permet d'avoir la session prête quand l'audio commence à arriver
-            logger.info("Ouverture session vocale PJSUA après sonnerie (call_id=%s)", call_id)
+            # OPTIMISATION: Paralléliser le setup pendant la sonnerie
+            # Au lieu de faire: sonnerie → setup → answer
+            # On fait: (sonnerie || setup) → answer
+            # Gain: ~1-2 secondes sur le temps de première réponse
 
             # Ajouter le tool de transfert d'appel
             telephony_tools = list(voice_tools) if voice_tools else []
@@ -2711,42 +2703,81 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             }
             telephony_tools.append(transfer_tool_config)
 
-            # Ouvrir la session avec un timeout pour éviter les blocages
-            try:
-                session_handle = await asyncio.wait_for(
-                    open_voice_session(
-                        user_id=f"pjsua:{call_id}",
-                        model=voice_model,
-                        instructions=instructions,
-                        voice=voice_name,
-                        provider_id=voice_provider_id,
-                        provider_slug=voice_provider_slug,
-                        tools=telephony_tools,
-                        handoffs=voice_handoffs,
-                        realtime={},
-                        metadata={
-                            "pjsua_call_id": call_id,
-                            "incoming_number": incoming_number,
-                        },
-                    ),
-                    timeout=10.0,  # Timeout de 10 secondes
-                )
-            except asyncio.TimeoutError:
-                logger.error(
-                    "⏱️ Timeout lors de la création de session Realtime (call_id=%s) - "
-                    "OpenAI ne répond pas",
+            # Démarrer la création de session EN PARALLÈLE avec la sonnerie
+            async def create_session_task():
+                """Tâche pour créer la session vocale pendant la sonnerie."""
+                try:
+                    return await asyncio.wait_for(
+                        open_voice_session(
+                            user_id=f"pjsua:{call_id}",
+                            model=voice_model,
+                            instructions=instructions,
+                            voice=voice_name,
+                            provider_id=voice_provider_id,
+                            provider_slug=voice_provider_slug,
+                            tools=telephony_tools,
+                            handoffs=voice_handoffs,
+                            realtime={},
+                            metadata={
+                                "pjsua_call_id": call_id,
+                                "incoming_number": incoming_number,
+                            },
+                        ),
+                        timeout=10.0,  # Timeout de 10 secondes
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        "⏱️ Timeout lors de la création de session Realtime (call_id=%s) - "
+                        "OpenAI ne répond pas",
+                        call_id,
+                    )
+                    raise
+                except Exception as e:
+                    logger.exception(
+                        "❌ Erreur lors de la création de session Realtime (call_id=%s)",
+                        call_id,
+                        exc_info=e,
+                    )
+                    raise
+
+            # Lancer la création de session et la sonnerie EN PARALLÈLE
+            if ring_timeout_seconds > 0:
+                logger.info(
+                    "⏰ Sonnerie de %.2f secondes PENDANT la préparation de la session (call_id=%s)",
+                    ring_timeout_seconds,
                     call_id,
                 )
-                await pjsua_adapter.hangup_call(call)
-                return
-            except Exception as e:
-                logger.exception(
-                    "❌ Erreur lors de la création de session Realtime (call_id=%s)",
-                    call_id,
-                    exc_info=e,
-                )
-                await pjsua_adapter.hangup_call(call)
-                return
+                logger.info("🚀 Démarrage parallèle: sonnerie || création session (call_id=%s)", call_id)
+
+                # Exécuter les deux tâches en parallèle
+                ring_task = asyncio.create_task(asyncio.sleep(ring_timeout_seconds))
+                session_task = asyncio.create_task(create_session_task())
+
+                # Attendre que les deux soient terminées
+                try:
+                    done, pending = await asyncio.wait(
+                        {ring_task, session_task},
+                        return_when=asyncio.ALL_COMPLETED
+                    )
+
+                    # Récupérer le résultat de la session (peut lever une exception)
+                    session_handle = await session_task
+                    logger.info("✅ Session créée pendant la sonnerie (call_id=%s)", call_id)
+
+                except Exception as e:
+                    # En cas d'erreur, annuler les tâches pendantes et raccrocher
+                    for task in pending:
+                        task.cancel()
+                    await pjsua_adapter.hangup_call(call)
+                    return
+            else:
+                # Pas de sonnerie: créer la session immédiatement
+                logger.info("Ouverture session vocale PJSUA (pas de sonnerie) (call_id=%s)", call_id)
+                try:
+                    session_handle = await create_session_task()
+                except Exception:
+                    await pjsua_adapter.hangup_call(call)
+                    return
 
             # Récupérer le client secret
             client_secret = session_handle.client_secret
