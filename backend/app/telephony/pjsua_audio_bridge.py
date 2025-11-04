@@ -705,6 +705,14 @@ class PJSUAAudioBridge:
         # Reset state
         self._speed_ratio = 1.0
 
+        # CRITICAL FIX: Break circular references to allow garbage collection
+        # Bridge holds reference to Call, Call holds reference to Bridge
+        # Must explicitly break the cycle or objects will never be GC'd
+        self._call = None
+        self._adapter = None
+        self._port_ready_event = None
+        logger.debug("✅ Circular references broken (call/adapter/event cleared)")
+
     def reset_all(self) -> None:
         """Reset agressif de tout l'état au début d'un nouvel appel.
 

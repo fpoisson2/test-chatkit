@@ -528,6 +528,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         self._frame_requested_event = None
 
+        # CRITICAL FIX: Break circular reference to audio bridge to allow GC
+        # The port holds a reference to the bridge, which holds a reference to the call,
+        # which holds a reference to the port -> circular reference prevents GC!
+        self._audio_bridge = None
+
         # CRITICAL FIX: ALWAYS drain queues aggressively, even if already disabled
         # Residual frames can accumulate and cause slowdown on next call
         drain_timeout = 0.1  # Increased to 100ms for more thorough draining
@@ -1460,6 +1465,22 @@ class PJSUAAdapter:
                 except Exception as e:
                     logger.warning("Erreur release port (call_id=%s): %s", call_info.id, e)
 
+            # ÉTAPE 6: CASSER TOUTES LES RÉFÉRENCES CIRCULAIRES DANS LE CALL
+            # CRITICAL FIX: Explicitly break all circular references to allow GC
+            # This is essential even though we set to None above, because Call object
+            # may still be referenced in PJSUA callbacks or event handlers
+            try:
+                call._audio_port = None
+                call._audio_bridge = None
+                call._audio_media = None
+                call._frame_requested_event = None
+                call._conference_connected = False
+                call._call_slot_id = None
+                call._custom_port_slot_id = None
+                logger.debug("✅ [6/6] Références circulaires cassées dans Call (call_id=%s)", call_info.id)
+            except Exception as e:
+                logger.warning("Erreur cassage références circulaires (call_id=%s): %s", call_info.id, e)
+
         if self._call_state_callback:
             await self._call_state_callback(call, call_info)
 
@@ -1594,10 +1615,19 @@ class PJSUAAdapter:
                 call._terminated = True
                 call._closed = True
 
+                # CRITICAL FIX: Break all circular references before deleting
+                # Call may still be referenced elsewhere (e.g., in callbacks)
+                # Explicitly clear all attributes to allow garbage collection
+                call._audio_port = None
+                call._audio_bridge = None
+                call._audio_media = None
+                call._frame_requested_event = None
+                # Adapter reference is needed for PJSUA operations, keep it
+
                 # Forcer la destruction de l'objet Call
                 # Note: Python garbage collectera l'objet, mais on s'assure qu'il n'y a plus de refs
                 del call
-                logger.info("✅ Nettoyage terminé + Call object détruit (call_id=%s)", call_id)
+                logger.info("✅ Nettoyage terminé + Call object détruit + références circulaires cassées (call_id=%s)", call_id)
             except Exception as del_err:
                 logger.warning("⚠️ Erreur destruction Call object (call_id=%s): %s", call_id, del_err)
 
