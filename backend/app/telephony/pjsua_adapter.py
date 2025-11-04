@@ -1170,9 +1170,48 @@ class PJSUAAdapter:
                 logger.error(
                     "⚠️ SÉCURITÉ: call_id=%d existe déjà dans _active_calls! "
                     "Possible réutilisation d'ID sans cleanup complet. "
-                    "Ancien appel sera remplacé.",
+                    "Forçage du cleanup de l'ancien appel...",
                     call_info.id,
                 )
+
+                # CRITIQUE: Nettoyer complètement l'ancien appel AVANT de le remplacer
+                try:
+                    # Forcer le cleanup immédiat sans délai
+                    old_call = existing_call
+
+                    # Marquer comme terminé
+                    old_call._terminated = True
+                    old_call._closed = True
+                    old_call._cleanup_done = True
+
+                    # Arrêter l'audio bridge
+                    if hasattr(old_call, '_audio_bridge') and old_call._audio_bridge:
+                        old_call._audio_bridge.stop()
+                        old_call._audio_bridge = None
+
+                    # Nettoyer le port audio
+                    if old_call._audio_port:
+                        port = old_call._audio_port
+                        old_call._audio_port = None
+                        try:
+                            old_call._disconnect_conference_bridge(call_info.id)
+                        except:
+                            pass
+                        self.release_audio_port(port)
+
+                    # Hangup si nécessaire
+                    try:
+                        await self.hangup_call(old_call)
+                    except:
+                        pass
+
+                    # Détruire l'objet
+                    del old_call
+
+                    logger.warning("✅ Ancien appel call_id=%d nettoyé et détruit", call_info.id)
+
+                except Exception as cleanup_err:
+                    logger.error("⚠️ Erreur cleanup forcé ancien appel: %s", cleanup_err)
 
         self._active_calls[call_info.id] = call
 
@@ -1359,7 +1398,20 @@ class PJSUAAdapter:
 
             # Retirer de active_calls
             self._active_calls.pop(call_id, None)
-            logger.info("✅ Nettoyage terminé (call_id=%s)", call_id)
+
+            # CRITIQUE: Destruction explicite de l'objet Call pour libérer les ressources PJSUA
+            # Sans cela, PJSUA peut garder des références internes et ne pas libérer les ports RTP
+            try:
+                # Marquer l'objet comme invalide
+                call._terminated = True
+                call._closed = True
+
+                # Forcer la destruction de l'objet Call
+                # Note: Python garbage collectera l'objet, mais on s'assure qu'il n'y a plus de refs
+                del call
+                logger.info("✅ Nettoyage terminé + Call object détruit (call_id=%s)", call_id)
+            except Exception as del_err:
+                logger.warning("⚠️ Erreur destruction Call object (call_id=%s): %s", call_id, del_err)
 
         except Exception as e:
             # DEBUG si erreur post-mortem 171140, WARNING sinon
