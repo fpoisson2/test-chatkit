@@ -302,7 +302,10 @@ class PJSUAAudioBridge:
         logger.info("✅ Silence de prime injecté directement dans ring buffer @ 8kHz")
 
     def _ring_len_frames(self) -> int:
-        """Retourne la taille du ring buffer en frames (thread-safe)."""
+        """Retourne la taille du ring buffer en frames.
+
+        ATTENTION: Doit être appelé avec self._ring_lock acquis.
+        """
         return len(self._ring_buffer_8k) // self.EXPECTED_FRAME_SIZE_8KHZ
 
     async def send_to_peer(self, audio_24khz: bytes) -> None:
@@ -348,18 +351,18 @@ class PJSUAAudioBridge:
             self._downsampler.reset()
             return
 
-        self._stage_8k.extend(audio_8khz)
-
         # 2) Découpe staging buffer en frames de 320 bytes avec admission control
         frames_admitted = 0
         frames_dropped = 0
 
-        while len(self._stage_8k) >= self.EXPECTED_FRAME_SIZE_8KHZ:
-            frame = bytes(self._stage_8k[:self.EXPECTED_FRAME_SIZE_8KHZ])
-            del self._stage_8k[:self.EXPECTED_FRAME_SIZE_8KHZ]
+        with self._ring_lock:
+            self._stage_8k.extend(audio_8khz)
 
-            # 3) Admission control AVANT ring
-            with self._ring_lock:
+            while len(self._stage_8k) >= self.EXPECTED_FRAME_SIZE_8KHZ:
+                frame = bytes(self._stage_8k[:self.EXPECTED_FRAME_SIZE_8KHZ])
+                del self._stage_8k[:self.EXPECTED_FRAME_SIZE_8KHZ]
+
+                # 3) Admission control AVANT ring
                 ring_len = self._ring_len_frames()
                 free = self.CAP_FRAMES - ring_len
 
@@ -391,10 +394,10 @@ class PJSUAAudioBridge:
                 self._ring_buffer_8k.extend(frame)
                 frames_admitted += 1
 
-        # Log (premiers appels ou si drop)
+            # Log (premiers appels ou si drop)
+            ring_len = self._ring_len_frames()
+
         if self._send_to_peer_call_count <= 5 or frames_dropped > 0:
-            with self._ring_lock:
-                ring_len = self._ring_len_frames()
             logger.info(
                 "📤 send_to_peer #%d: %d bytes @ 24kHz → +%d frames, -%d drops, ring=%d frames (%dms)",
                 self._send_to_peer_call_count,
