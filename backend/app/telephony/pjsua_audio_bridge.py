@@ -132,6 +132,10 @@ class PJSUAAudioBridge:
         self.RATIO_MIN_THRESHOLD = 1.03  # Ne pas activer WSOLA si ratio < 1.03x
         self._speed_ratio = 1.0
 
+        # Log de confirmation que le nouveau code anti-hachurage est actif
+        logger.info("🎛️ WSOLA config: DEAD_ZONE=[%d-%d frames], TARGET=%d, MIN_RATIO=%.2fx (anti-hachurage)",
+                   self.RING_LOW, self.RING_HIGH, self.RING_TARGET, self.RATIO_MIN_THRESHOLD)
+
         # Leaky bucket pour limiter injection à ~1 frame/20ms
         self._last_injection_time = 0.0  # timestamp de dernière injection
         self._injection_credits = 0.0    # crédits accumulés (1 crédit = 1 frame injectable)

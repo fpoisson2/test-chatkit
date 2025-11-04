@@ -878,6 +878,21 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                             remote_ip = None
                             remote_port = None
 
+                            # 🎵 DIAGNOSTIC: Codec et qualité audio
+                            if hasattr(stream_info, 'codecName'):
+                                logger.warning("🎵 CODEC NÉGOCIÉ: %s @ %d Hz",
+                                             stream_info.codecName,
+                                             getattr(stream_info, 'codecClockRate', 0))
+
+                            # 📊 DIAGNOSTIC: Stats RTP (packet loss, jitter)
+                            if hasattr(stream_info, 'rtpStat'):
+                                rtp_stat = stream_info.rtpStat
+                                logger.warning("📊 RTP STATS: loss=%d packets (%.1f%%), jitter_ms=%.1f, avg_burst=%d",
+                                             getattr(rtp_stat, 'loss', 0),
+                                             getattr(rtp_stat, 'lossPct', 0.0) / 65536.0,  # Fixed point to float
+                                             getattr(rtp_stat, 'jitter', 0) / 16.0,  # Jitter en ms
+                                             getattr(rtp_stat, 'avgBurst', 0))
+
                             if hasattr(stream_info, 'remoteRtpAddress'):
                                 remote_rtp = stream_info.remoteRtpAddress
                                 logger.warning("🔌 PORT RTP DISTANT: %s", remote_rtp)
