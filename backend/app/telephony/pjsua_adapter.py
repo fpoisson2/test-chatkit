@@ -1053,12 +1053,13 @@ class PJSUAAdapter:
         # Configuration du jitter buffer pour éviter l'accumulation de latence
         # CRITICAL: Sans cette config, le JB peut gonfler jusqu'à 200 frames (4 secondes!)
         # causant un lag progressif aux appels 2, 3, 4...
-        # NOUVELLE CONFIG: réduire l'inertie du JB avec ptime fixe 20ms
+        # NOUVELLE CONFIG AGRESSIVE: réduire drastiquement jb_max pour éviter accumulation
+        # entre appels qui cause le hachurage sur call #3
         media_cfg = ep_cfg.medConfig
         media_cfg.jb_init = 1          # Démarrer à 1 frame (20ms) - rapide
         media_cfg.jb_min_pre = 1       # Minimum 1 frame en précharge
-        media_cfg.jb_max_pre = 4       # Maximum 4 frames (80ms) en prefetch - réduit inertie
-        media_cfg.jb_max = 10          # Maximum 10 frames (200ms) absolu
+        media_cfg.jb_max_pre = 3       # Maximum 3 frames (60ms) en prefetch - réduit inertie
+        media_cfg.jb_max = 5           # Maximum 5 frames (100ms) absolu - RÉDUIT de 10→5 pour éviter accumulation
         media_cfg.snd_auto_close_time = 0  # Ne jamais fermer automatiquement le device
 
         # OPTIMISATION RTP: Large range pour éviter collisions de ports avec "dangling calls" du PBX
@@ -1081,7 +1082,7 @@ class PJSUAAdapter:
         media_cfg.no_vad = True
 
         logger.info(
-            "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max_pre=%dms, max=%dms, auto_close=%d",
+            "📊 Jitter buffer AGRESSIF: init=%dms, min_pre=%dms, max_pre=%dms, max=%dms (RÉDUIT de 200→100ms), auto_close=%d",
             media_cfg.jb_init * 20,
             media_cfg.jb_min_pre * 20,
             media_cfg.jb_max_pre * 20,
