@@ -2781,6 +2781,11 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     if voice_name:
                         model_settings["voice"] = voice_name
 
+                    # Récupérer le client_secret depuis session_handle
+                    client_secret = session_handle.client_secret
+                    if not client_secret:
+                        raise ValueError("Client secret introuvable")
+
                     model_config: dict[str, Any] = {
                         "api_key": client_secret,
                         "initial_model_settings": model_settings,
