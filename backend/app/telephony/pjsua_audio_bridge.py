@@ -65,6 +65,18 @@ class PJSUAAudioBridge:
         # State used to preserve resampling continuity from 24kHz → 8kHz
         self._send_to_peer_state: Any = None
 
+        # Remainder buffer for 24kHz → 8kHz downsampling
+        # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
+        self._downsample_remainder = b""
+
+        # Remainder buffer for 8kHz → 24kHz upsampling
+        # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
+        # Exemple: ratecv produit 956 bytes au lieu de 960 → on accumule jusqu'à 960+
+        self._upsample_remainder = b""
+
+        # State used to preserve resampling continuity from 8kHz → 24kHz
+        self._upsample_state: Any = None
+
         # Counter for send_to_peer calls (for pacing diagnostics)
         self._send_to_peer_call_count = 0
 
@@ -142,48 +154,47 @@ class PJSUAAudioBridge:
                         max_amplitude,
                     )
 
-                # Resample 8kHz → 24kHz
-                # CRITIQUE: Forcer exactement 960 bytes de sortie (API OpenAI exige ce format)
+                # Resample 8kHz → 24kHz avec accumulation fractionnaire
+                # CRITIQUE: Ne pas padder/truncate chaque frame individuellement
+                # Au lieu de ça, accumuler dans _upsample_remainder jusqu'à avoir >= 960 bytes
                 try:
-                    audio_24khz, resampling_state = audioop.ratecv(
+                    resampled, self._upsample_state = audioop.ratecv(
                         audio_8khz,
                         self.BYTES_PER_SAMPLE,
                         self.CHANNELS,
                         self.PJSUA_SAMPLE_RATE,
                         self.VOICE_BRIDGE_SAMPLE_RATE,
-                        resampling_state,
+                        self._upsample_state,
                     )
 
-                    # Garantir exactement 960 bytes (480 samples @ 24kHz)
-                    # audioop.ratecv peut produire 956-964 bytes à cause d'arrondis
-                    actual_size = len(audio_24khz)
-                    if actual_size != self.EXPECTED_FRAME_SIZE_24KHZ:
-                        if actual_size < self.EXPECTED_FRAME_SIZE_24KHZ:
-                            # Pad avec des zéros
-                            padding = self.EXPECTED_FRAME_SIZE_24KHZ - actual_size
-                            audio_24khz += b'\x00' * padding
-                            if packet_count < 5:
-                                logger.warning(
-                                    "⚠️ Resampling sous-dimensionné: %d bytes, padded +%d bytes → 960",
-                                    actual_size, padding
-                                )
-                        else:
-                            # Tronquer
-                            audio_24khz = audio_24khz[:self.EXPECTED_FRAME_SIZE_24KHZ]
-                            if packet_count < 5:
-                                logger.warning(
-                                    "⚠️ Resampling surdimensionné: %d bytes, truncated → 960",
-                                    actual_size
-                                )
+                    # Accumuler dans le buffer remainder
+                    self._upsample_remainder += resampled
+
+                    # Si on n'a pas encore 960 bytes, continuer à accumuler (skip cette frame)
+                    if len(self._upsample_remainder) < self.EXPECTED_FRAME_SIZE_24KHZ:
+                        if packet_count < 5:
+                            logger.info(
+                                "📊 Accumulation: resampled=%d bytes, buffer=%d bytes (attente de 960)",
+                                len(resampled),
+                                len(self._upsample_remainder),
+                            )
+                        continue
+
+                    # Découper exactement 960 bytes depuis le buffer
+                    audio_24khz = self._upsample_remainder[:self.EXPECTED_FRAME_SIZE_24KHZ]
+                    self._upsample_remainder = self._upsample_remainder[self.EXPECTED_FRAME_SIZE_24KHZ:]
 
                     if packet_count < 5:
                         logger.info(
-                            "✅ Rééchantillonné %d→%d bytes (8kHz→24kHz), ratio=3x",
-                            len(audio_8khz),
-                            len(audio_24khz),
+                            "✅ Frame 24kHz extraite: 960 bytes, remainder=%d bytes (pas de padding!)",
+                            len(self._upsample_remainder),
                         )
+
                 except audioop.error as e:
                     logger.warning("Resampling error (8kHz→24kHz): %s", e)
+                    # Reset le buffer en cas d'erreur pour éviter accumulation de corruption
+                    self._upsample_remainder = b""
+                    self._upsample_state = None
                     continue
 
                 # Create RTP packet
@@ -248,12 +259,12 @@ class PJSUAAudioBridge:
                 len(audio_24khz),
             )
 
-        # Resample 24kHz → 8kHz (3x downsampling)
+        # Resample 24kHz → 8kHz (3x downsampling) avec accumulation fractionnaire
         try:
             # ratecv renvoie également un état qui permet de préserver la
             # continuité entre les chunks. On le conserve pour réduire les
             # artefacts de rééchantillonnage sur les longs flux audio.
-            audio_8khz, self._send_to_peer_state = audioop.ratecv(
+            resampled, self._send_to_peer_state = audioop.ratecv(
                 audio_24khz,
                 self.BYTES_PER_SAMPLE,
                 self.CHANNELS,
@@ -261,32 +272,42 @@ class PJSUAAudioBridge:
                 self.PJSUA_SAMPLE_RATE,
                 self._send_to_peer_state,
             )
+
+            # Accumuler dans le buffer remainder
+            self._downsample_remainder += resampled
+
         except audioop.error as e:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
             self._send_to_peer_state = None
+            self._downsample_remainder = b""
             return
 
-        # Amplification dynamique pour garantir une amplitude minimale audible
-        # OpenAI envoie parfois un audio très faible (amplitude ~7) qui est inaudible
-        try:
-            max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
-            if max_amplitude > 0:
-                # Garantir une amplitude minimale audible
-                min_target_amplitude = 1800
-                if max_amplitude < min_target_amplitude:
-                    gain = min_target_amplitude / max_amplitude
-                    audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
-        except audioop.error as e:
-            logger.warning("Audio processing error: %s", e)
-
-        # Send to PJSUA in chunks of 320 bytes (20ms @ 8kHz, 16-bit, mono)
+        # Découper en chunks de exactement 320 bytes depuis le buffer
         # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes
         # Cadencing is handled by a background task to avoid blocking the caller
-        chunk_size = 320
+        chunk_size = self.EXPECTED_FRAME_SIZE_8KHZ  # 320 bytes
         chunks_sent = 0
+
+        # Extraire tous les chunks complets disponibles
         try:
-            for i in range(0, len(audio_8khz), chunk_size):
-                chunk = audio_8khz[i:i + chunk_size]
+            while len(self._downsample_remainder) >= chunk_size:
+                # Extraire exactement 320 bytes
+                chunk = self._downsample_remainder[:chunk_size]
+                self._downsample_remainder = self._downsample_remainder[chunk_size:]
+
+                # Amplification dynamique pour garantir une amplitude minimale audible
+                # OpenAI envoie parfois un audio très faible (amplitude ~7) qui est inaudible
+                try:
+                    max_amplitude = audioop.max(chunk, self.BYTES_PER_SAMPLE)
+                    if max_amplitude > 0:
+                        # Garantir une amplitude minimale audible
+                        min_target_amplitude = 1800
+                        if max_amplitude < min_target_amplitude:
+                            gain = min_target_amplitude / max_amplitude
+                            chunk = audioop.mul(chunk, self.BYTES_PER_SAMPLE, gain)
+                except audioop.error as e:
+                    logger.warning("Audio processing error: %s", e)
+
                 await self._outgoing_audio_queue.put(chunk)
                 chunks_sent += 1
 
@@ -295,17 +316,18 @@ class PJSUAAudioBridge:
             if self._send_to_peer_call_count <= 5:
                 logger.info(
                     "✅ send_to_peer #%d: Enqueued %d chunks @ 8kHz vers PJSUA "
-                    "(total: %d bytes, cadencé sur %d ms)",
+                    "(resampled=%d bytes, buffer_remainder=%d bytes, cadencé sur %d ms)",
                     self._send_to_peer_call_count,
                     chunks_sent,
-                    len(audio_8khz),
+                    len(resampled),
+                    len(self._downsample_remainder),
                     pacing_duration_ms,
                 )
             else:
                 logger.debug(
-                    "✅ Enqueued %d chunks @ 8kHz vers PJSUA (%d bytes, cadence %d ms)",
+                    "✅ Enqueued %d chunks @ 8kHz vers PJSUA (remainder=%d bytes)",
                     chunks_sent,
-                    len(audio_8khz),
+                    len(self._downsample_remainder),
                     pacing_duration_ms,
                 )
         except Exception as e:
