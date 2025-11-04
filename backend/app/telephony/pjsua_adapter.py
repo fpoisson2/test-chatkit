@@ -1717,10 +1717,9 @@ class PJSUAAdapter:
         COOLDOWN: Force recreate après N réutilisations pour casser tout état latent.
         Si MAX_REUSE_COUNT = 0, réutilisation illimitée sans jamais détruire le port.
         """
-        # DIAGNOSTIC: Force port recreation after EVERY use to eliminate port reuse as variable
-        # If hachurage disappears → port reuse was the problem
-        # If hachurage persists → problem is elsewhere (PJSUA jitter buffer, conference bridge, etc.)
-        MAX_REUSE_COUNT = 1  # Recreate after 1 use (was 20) - diagnostic mode
+        # ROLLBACK: Port recreation after every use causes instability
+        # Keeping port reuse with periodic recreation for safety
+        MAX_REUSE_COUNT = 20  # Recreate every 20 uses (back to default)
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
