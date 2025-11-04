@@ -781,6 +781,10 @@ class PJSUAAdapter:
         self._call_state_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._media_active_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
 
+        # Warning throttling pour éviter le spam de logs
+        self._send_audio_warning_count = 0  # Compteur de warnings supprimés
+        self._send_audio_last_warning = 0.0  # Timestamp du dernier warning loggé
+
     async def initialize(self, config: PJSUAConfig | None = None, *, port: int = 5060) -> None:
         """Initialise l'endpoint PJSUA et optionnellement crée le compte SIP.
 
@@ -1273,7 +1277,21 @@ class PJSUAAdapter:
         if call._audio_port:
             call._audio_port.send_audio(audio_data)
         else:
-            logger.warning("Tentative d'envoi audio sur un appel sans port audio")
+            # Throttling: log seulement toutes les 2 secondes max
+            import time
+            now = time.monotonic()
+            if now - self._send_audio_last_warning >= 2.0:
+                if self._send_audio_warning_count > 0:
+                    logger.warning(
+                        "Tentative d'envoi audio sur un appel sans port audio (%d suppressed)",
+                        self._send_audio_warning_count
+                    )
+                    self._send_audio_warning_count = 0
+                else:
+                    logger.warning("Tentative d'envoi audio sur un appel sans port audio")
+                self._send_audio_last_warning = now
+            else:
+                self._send_audio_warning_count += 1
 
     async def receive_audio_from_call(self, call: PJSUACall) -> bytes | None:
         """Récupère l'audio reçu d'un appel (PCM 8kHz, 16-bit, mono)."""

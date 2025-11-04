@@ -77,6 +77,14 @@ class PJSUAAudioBridge:
         # Cela confirme que le flux audio bidirectionnel est établi
         self._first_packet_received = asyncio.Event()
 
+        # Event qui se déclenche quand le port audio PJSUA est complètement prêt
+        # Set seulement après:
+        # - onCallMediaState(ACTIVE)
+        # - AudioMediaPort créé et bridgé
+        # - Premier onFrameRequested reçu (signal que PJSUA peut consommer)
+        # IMPORTANT: Utilise le _frame_requested_event du call, qui est set dans onFrameRequested()
+        self._port_ready_event = call._frame_requested_event
+
         # Latch pour verrouiller le timing d'envoi
         # Ne devient True que quand: media_active + first_frame + silence_primed
         # Empêche tout envoi audio prématuré (évite warnings "pas de slot audio")
@@ -427,6 +435,7 @@ class PJSUAAudioBridge:
         """Pacer côté sortie: extrait exactement 1 frame 24kHz toutes les 20ms.
 
         Pacer strict:
+        - Attend que le port audio PJSUA soit prêt
         - Cadence fixe 20ms (period = 0.020s)
         - Extrait EXACTEMENT 960 bytes (1 frame @ 24kHz) par tick
         - Resample à 8kHz (320 bytes)
@@ -434,6 +443,12 @@ class PJSUAAudioBridge:
         - Si buffer vide: injecte silence (ne jamais sauter de tick)
         """
         import time
+
+        # CRITIQUE: Attendre que PJSUA soit complètement prêt
+        # (port créé, bridgé, et premier onFrameRequested reçu)
+        logger.info("🔒 Playout pacer: attente que le port PJSUA soit prêt...")
+        await self._port_ready_event.wait()
+        logger.info("✅ Playout pacer: port PJSUA prêt, démarrage du pacer")
 
         period = 0.020  # 20ms strict
         loop = asyncio.get_running_loop()
@@ -518,12 +533,19 @@ class PJSUAAudioBridge:
         """Background task avec pacer strict 20ms pour envoyer frames vers PJSUA.
 
         Pacer strict:
+        - Attend que le port audio PJSUA soit prêt
         - Cadence fixe 20ms (period = 0.020s)
         - Envoie silence si queue vide (évite trous)
         - Mesure latence E2E: t_model_in → t_pjsua_pop
         - Log spikes (>120ms) pour diagnostics
         """
         import time
+
+        # CRITIQUE: Attendre que PJSUA soit complètement prêt
+        # (port créé, bridgé, et premier onFrameRequested reçu)
+        logger.info("🔒 Audio sender: attente que le port PJSUA soit prêt...")
+        await self._port_ready_event.wait()
+        logger.info("✅ Audio sender: port PJSUA prêt, démarrage du pacer")
 
         period = 0.020  # 20ms strict
         loop = asyncio.get_running_loop()
