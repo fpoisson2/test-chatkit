@@ -87,7 +87,7 @@ def test_build_mcp_tool_constructs_server(monkeypatch: pytest.MonkeyPatch) -> No
     assert headers["Cache-Control"] == "no-cache"
     assert params["timeout"] == 12
     assert params["sse_read_timeout"] == 34
-    assert created["cache_tools_list"] is False
+    assert created["cache_tools_list"] is True
     assert created["name"] == "Example"
     assert created["client_session_timeout_seconds"] == 5
 

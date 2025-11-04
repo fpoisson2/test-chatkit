@@ -1344,7 +1344,7 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
 
     kwargs: dict[str, Any] = {
         "params": params,
-        "cache_tools_list": False,
+        "cache_tools_list": True,
     }
     if tool_name is not None:
         kwargs["name"] = tool_name
