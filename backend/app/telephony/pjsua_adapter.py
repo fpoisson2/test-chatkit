@@ -1578,7 +1578,10 @@ class PJSUAAdapter:
         COOLDOWN: Force recreate après N réutilisations pour casser tout état latent.
         Si MAX_REUSE_COUNT = 0, réutilisation illimitée sans jamais détruire le port.
         """
-        MAX_REUSE_COUNT = 0  # Réutilisation illimitée - le large range RTP évite les collisions
+        # CRITICAL: Désactiver la réutilisation des ports pour éviter le bégaiement au 3e appel
+        # Le jitter buffer PJSUA interne (C++) conserve des frames de l'ancien appel
+        # Forcer la destruction garantit un jitter buffer propre à chaque appel
+        MAX_REUSE_COUNT = 1  # Destruction après 1 utilisation (pas de réutilisation)
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
