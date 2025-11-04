@@ -823,6 +823,21 @@ async def create_pjsua_audio_bridge(
         bridge.stop()
         ```
     """
+    # CRITICAL: Nettoyer l'ancien bridge si présent (ne devrait jamais arriver normalement)
+    # Chaque appel devrait avoir son propre Call object et bridge
+    if hasattr(call, '_audio_bridge') and call._audio_bridge is not None:
+        logger.warning(
+            "⚠️ ATTENTION: Bridge existant détecté sur Call object - cleanup forcé "
+            "(cela ne devrait pas arriver - possible réutilisation incorrecte de Call)"
+        )
+        try:
+            old_bridge = call._audio_bridge
+            old_bridge.stop()
+        except Exception as e:
+            logger.error("Erreur cleanup ancien bridge: %s", e)
+        finally:
+            call._audio_bridge = None
+
     bridge = PJSUAAudioBridge(call)
 
     # 📊 Diagnostic: Stocker le call_id ChatKit dans le bridge
