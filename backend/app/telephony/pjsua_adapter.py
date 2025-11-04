@@ -956,6 +956,18 @@ class PJSUAAdapter:
 
     async def _on_incoming_call(self, call: PJSUACall, call_info: Any) -> None:
         """Callback interne pour les appels entrants."""
+        # Sécurité: vérifier qu'on n'écrase pas un appel actif
+        # Cela ne devrait jamais arriver si le cleanup est correct
+        if call_info.id in self._active_calls:
+            existing_call = self._active_calls[call_info.id]
+            if existing_call != call:
+                logger.error(
+                    "⚠️ SÉCURITÉ: call_id=%d existe déjà dans _active_calls! "
+                    "Possible réutilisation d'ID sans cleanup complet. "
+                    "Ancien appel sera remplacé.",
+                    call_info.id,
+                )
+
         self._active_calls[call_info.id] = call
 
         if self._incoming_call_callback:
@@ -1085,6 +1097,22 @@ class PJSUAAdapter:
                 logger.debug("Appel %s déjà nettoyé ou introuvable", call_id)
                 return
 
+            # Sécurité: Vérifier que le call_id de l'objet correspond au call_id demandé
+            # Protection contre la confusion d'ID si PJSUA réutilise les ID
+            try:
+                call_info_check = call.getInfo()
+                if call_info_check.id != call_id:
+                    logger.error(
+                        "⚠️ SÉCURITÉ: Incohérence call_id! Demandé=%d, Objet=%d. "
+                        "Nettoyage annulé pour éviter de fermer le mauvais appel.",
+                        call_id,
+                        call_info_check.id,
+                    )
+                    return
+            except Exception as e:
+                # Si getInfo() échoue (appel déjà terminé), continuer le nettoyage quand même
+                logger.debug("getInfo() échoué dans cleanup_call pour vérification ID: %s", e)
+
             # Protection idempotente: éviter les doubles nettoyages (race avec DISCONNECTED callback)
             if call._cleanup_done:
                 logger.debug("Nettoyage déjà effectué pour call_id=%s (via DISCONNECTED), ignoré", call_id)
@@ -1183,6 +1211,19 @@ class PJSUAAdapter:
 
         # Récupérer l'info de l'appel pour obtenir l'ID
         ci = call.getInfo()
+
+        # Sécurité: vérifier qu'on n'écrase pas un appel actif
+        # Cela ne devrait jamais arriver si le cleanup est correct
+        if ci.id in self._active_calls:
+            existing_call = self._active_calls[ci.id]
+            if existing_call != call:
+                logger.error(
+                    "⚠️ SÉCURITÉ: call_id=%d existe déjà dans _active_calls! "
+                    "Possible réutilisation d'ID sans cleanup complet. "
+                    "Ancien appel sera remplacé.",
+                    ci.id,
+                )
+
         self._active_calls[ci.id] = call
 
         logger.info("Appel sortant initié vers %s", dest_uri)
