@@ -817,32 +817,46 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                     remote_ip = match.group(1)
                                     remote_port = int(match.group(2))
 
-                            # Utiliser psutil pour trouver la socket UDP correspondante
-                            if remote_ip and remote_port:
-                                try:
-                                    import psutil
+                            # Utiliser psutil pour trouver la socket RTP locale
+                            # Les sockets UDP PJSUA ne sont pas "connectées" donc pas de raddr
+                            # On cherche les sockets qui écoutent sur le range RTP (10000-20000)
+                            try:
+                                import psutil
 
-                                    # Obtenir le processus actuel
-                                    current_process = psutil.Process(os.getpid())
+                                # Obtenir le processus actuel
+                                current_process = psutil.Process(os.getpid())
 
-                                    # Parcourir toutes les connexions UDP du processus
-                                    for conn in current_process.connections(kind='udp'):
-                                        # Vérifier si c'est la connexion vers le distant
-                                        if conn.raddr and conn.raddr.ip == remote_ip and conn.raddr.port == remote_port:
-                                            local_port = conn.laddr.port
-                                            logger.warning("🔌 PORT RTP LOCAL (réel via psutil): 0.0.0.0:%d", local_port)
-                                            break
+                                # Lister toutes les sockets UDP du processus dans le range RTP
+                                rtp_sockets = []
+                                for conn in current_process.connections(kind='udp'):
+                                    local_port = conn.laddr.port
+                                    # Range RTP: 10000-20000 (pairs pour RTP, impairs pour RTCP)
+                                    if 10000 <= local_port <= 20000:
+                                        rtp_sockets.append((local_port, conn))
+
+                                if rtp_sockets:
+                                    # Trier par port (ordre d'allocation)
+                                    rtp_sockets.sort(key=lambda x: x[0])
+
+                                    # Le dernier socket créé (port le plus élevé) est probablement le bon
+                                    latest_port = rtp_sockets[-1][0]
+
+                                    # Filtrer uniquement les ports RTP (pairs)
+                                    rtp_only = [p for p, _ in rtp_sockets if p % 2 == 0]
+
+                                    if rtp_only:
+                                        actual_port = rtp_only[-1]  # Le plus récent
+                                        logger.warning("🔌 PORT RTP LOCAL (réel via psutil): 0.0.0.0:%d", actual_port)
+                                        logger.warning("   Sockets RTP actives dans range: %s", rtp_only)
                                     else:
-                                        logger.warning("⚠️ Aucune socket UDP trouvée vers %s:%d", remote_ip, remote_port)
+                                        logger.warning("⚠️ Aucun socket RTP pair trouvé dans range 10000-20000")
+                                else:
+                                    logger.warning("⚠️ Aucune socket UDP dans le range 10000-20000")
 
-                                        # Debug: afficher toutes les sockets UDP
-                                        udp_conns = [c for c in current_process.connections(kind='udp') if c.raddr]
-                                        logger.warning("   Connexions UDP actives (%d): %s",
-                                                     len(udp_conns),
-                                                     [f"{c.laddr.port}→{c.raddr.ip}:{c.raddr.port}" for c in udp_conns[:5]])
-
-                                except ImportError:
-                                    logger.warning("⚠️ psutil non disponible - impossible de trouver le port local")
+                            except ImportError:
+                                logger.warning("⚠️ psutil non disponible - impossible de trouver le port local")
+                            except Exception as psutil_err:
+                                logger.warning("⚠️ Erreur psutil: %s", psutil_err)
 
                         except Exception as port_err:
                             logger.warning("⚠️ Erreur recherche port RTP: %s", port_err)
