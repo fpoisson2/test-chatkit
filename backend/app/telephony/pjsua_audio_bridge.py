@@ -297,7 +297,7 @@ class PJSUAAudioBridge:
         finally:
             logger.info("RTP stream ended")
 
-    async def send_prime_silence_direct(self, num_frames: int = 2) -> None:
+    async def send_prime_silence_direct(self, num_frames: int = 1) -> None:
         """Envoie du silence de prime DIRECTEMENT dans la queue 8kHz sans backlog.
 
         Le silence de prime ne doit PAS s'empiler dans _playout_buffer_24k car cela
@@ -306,7 +306,7 @@ class PJSUAAudioBridge:
         Si du TTS arrive pendant la prime, il écrasera naturellement ce silence.
 
         Args:
-            num_frames: Nombre de frames de silence à envoyer (défaut: 2 = 40ms)
+            num_frames: Nombre de frames de silence à envoyer (défaut: 1 = 20ms, démarrage sec)
         """
         import time
 
