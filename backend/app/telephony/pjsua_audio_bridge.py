@@ -494,8 +494,8 @@ class PJSUAAudioBridge:
                 is_silence = True
                 self._silence_pulled += 1
 
-        # 4) Appliquer time-stretch doux si ratio != 1.0 (et pas silence)
-        if abs(self._speed_ratio - 1.0) > 0.01 and not is_silence:
+        # 4) Appliquer time-stretch si ratio > 1.0 (accélération uniquement, jamais ralentir)
+        if self._speed_ratio > 1.01 and not is_silence:
             try:
                 stretched = self._timestretch_8k.process(frame_8k, self._speed_ratio)
                 if len(stretched) > 0:
