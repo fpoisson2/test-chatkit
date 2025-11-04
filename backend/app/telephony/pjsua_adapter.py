@@ -793,6 +793,19 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                    call_port_info_after.portId, call_port_info_after.name)
                         logger.info("   - Custom port: slot=%d, name=%s",
                                    custom_port_info_after.portId, custom_port_info_after.name)
+
+                        # 📊 DIAGNOSTIC: Afficher le port RTP utilisé pour vérifier qu'il change entre appels
+                        try:
+                            stream_info = self.getStreamInfo(mi.index)
+                            if hasattr(stream_info, 'transport') and hasattr(stream_info.transport, 'localRtpName'):
+                                local_rtp = stream_info.transport.localRtpName
+                                logger.warning("🔌 PORT RTP LOCAL: %s (call_id=%s)", local_rtp, ci.id)
+                            elif hasattr(stream_info, 'rtpInfo') and hasattr(stream_info.rtpInfo, 'localPort'):
+                                local_port = stream_info.rtpInfo.localPort
+                                logger.warning("🔌 PORT RTP LOCAL: %d (call_id=%s)", local_port, ci.id)
+                        except Exception as port_err:
+                            logger.warning("⚠️ Impossible d'obtenir le port RTP: %s", port_err)
+
                         logger.info("✅ Null sound device + conference bridge correctement armé")
                     except Exception as e:
                         logger.warning("⚠️ Impossible de vérifier les connexions conference bridge: %s", e)
@@ -896,9 +909,11 @@ class PJSUAAdapter:
         media_cfg.jb_max = 10          # Maximum 10 frames (200ms) absolu
         media_cfg.snd_auto_close_time = 0  # Ne jamais fermer automatiquement le device
 
-        # OPTIMISATION RTP: Port fixe + range court pour éviter problèmes NAT/firewall
-        media_cfg.rtp_port = 10000     # Port de départ pour RTP
-        media_cfg.rtp_port_range = 100 # Range court: 10000-10100 (50 appels simultanés max)
+        # OPTIMISATION RTP: Large range pour éviter collisions de ports avec "dangling calls" du PBX
+        # Le PBX peut continuer d'envoyer du RTP sur un ancien port pendant quelques secondes après raccrochage
+        # Un range large (10000 ports) garantit qu'on ne réutilise pas le même port trop rapidement
+        media_cfg.rtp_port = 10000      # Port de départ pour RTP
+        media_cfg.rtp_port_range = 10000 # Large range: 10000-20000 pour éviter réutilisation rapide
 
         # OPTIMISATION: ICE selon le mode
         # Mode passerelle (défaut): ICE désactivé - pas besoin de négociation NAT sur serveur
@@ -1445,7 +1460,7 @@ class PJSUAAdapter:
         COOLDOWN: Force recreate après N réutilisations pour casser tout état latent.
         Si MAX_REUSE_COUNT = 0, réutilisation illimitée sans jamais détruire le port.
         """
-        MAX_REUSE_COUNT = 1  # TEST: Forcer recréation après chaque appel pour isoler le problème
+        MAX_REUSE_COUNT = 0  # Réutilisation illimitée - le large range RTP évite les collisions
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
