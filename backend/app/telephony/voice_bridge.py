@@ -399,11 +399,15 @@ class TelephonyVoiceBridge:
                         # que le canal bidirectionnel est confirmé
                         if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             try:
+                                # 0. RESET AGRESSIF: casser tout état résiduel avant le nouvel appel
+                                if audio_bridge:
+                                    audio_bridge.reset_all()
+
                                 # 1. D'abord, précharger généreusement le ring buffer (8-10 frames)
                                 # CRITIQUE: Amorcer avec TARGET frames pour éviter sous-alimentation
                                 # Cela évite les silences quand TTS arrive en burst
                                 # IMPORTANT: Injection DIRECTE dans le ring buffer @ 8kHz
-                                num_silence_frames = 8  # 8 frames = 160ms - amorçage généreux pour stabilité
+                                num_silence_frames = 12  # 12 frames = 240ms - amorçage très généreux (anti-starvation)
 
                                 logger.info("🔇 Canal bidirectionnel confirmé - injection directe de %d frames de silence (%dms prime pour stabilité)", num_silence_frames, num_silence_frames * 20)
                                 if audio_bridge:
@@ -433,7 +437,22 @@ class TelephonyVoiceBridge:
                                     )
                                 )
                                 response_create_sent_on_ready = True
-                                logger.info("✅ response.create envoyé après amorçage du canal - l'assistant génère l'audio")
+
+                                # Timing diagnostic: envoi response.create (t1)
+                                if audio_bridge:
+                                    import time
+                                    audio_bridge._t1_response_create = time.monotonic()
+                                    if audio_bridge._t0_first_rtp is not None:
+                                        delta = (audio_bridge._t1_response_create - audio_bridge._t0_first_rtp) * 1000
+                                        logger.info(
+                                            "✅ [t1=%.3fs, Δt0→t1=%.1fms] response.create envoyé après amorçage",
+                                            audio_bridge._t1_response_create, delta
+                                        )
+                                    else:
+                                        logger.info(
+                                            "✅ [t1=%.3fs] response.create envoyé après amorçage",
+                                            audio_bridge._t1_response_create
+                                        )
                             except Exception as exc:
                                 logger.warning("⚠️ Erreur lors de l'amorçage et envoi response.create: %s", exc)
 
@@ -739,6 +758,17 @@ class TelephonyVoiceBridge:
 
                         if not block_audio_send_ref[0]:
                             if pcm_data:
+                                # Timing diagnostic: premier chunk TTS (t2)
+                                if audio_bridge and audio_bridge._t2_first_tts_chunk is None:
+                                    import time
+                                    audio_bridge._t2_first_tts_chunk = time.monotonic()
+                                    if audio_bridge._t1_response_create is not None:
+                                        delta = (audio_bridge._t2_first_tts_chunk - audio_bridge._t1_response_create) * 1000
+                                        logger.info(
+                                            "🎵 [t2=%.3fs, Δt1→t2=%.1fms] Premier chunk TTS reçu (%d bytes)",
+                                            audio_bridge._t2_first_tts_chunk, delta, len(pcm_data)
+                                        )
+
                                 outbound_audio_bytes += len(pcm_data)
                                 logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
                                 # Send audio and wait until it's actually sent via RTP

@@ -206,6 +206,9 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         # Flag pour arrêter le traitement après la déconnexion de l'appel
         self._active = True
 
+        # Cooldown counter: force recreate après 2 réutilisations
+        self._reuse_count = 0  # Nombre de fois que ce port a été réutilisé
+
         # Initialiser le port
         super().__init__()
 
@@ -869,15 +872,20 @@ class PJSUAAdapter:
         # Configuration du jitter buffer pour éviter l'accumulation de latence
         # CRITICAL: Sans cette config, le JB peut gonfler jusqu'à 200 frames (4 secondes!)
         # causant un lag progressif aux appels 2, 3, 4...
+        # NOUVELLE CONFIG: réduire l'inertie du JB avec ptime fixe 20ms
         media_cfg = ep_cfg.medConfig
-        media_cfg.jb_init = 1      # Démarrer à 1 frame (20ms)
-        media_cfg.jb_min_pre = 1   # Minimum 1 frame en précharge
-        media_cfg.jb_max = 10      # Maximum 10 frames (200ms) au lieu de 4s par défaut
+        media_cfg.jb_init = 1          # Démarrer à 1 frame (20ms) - rapide
+        media_cfg.jb_min_pre = 1       # Minimum 1 frame en précharge
+        media_cfg.jb_max_pre = 4       # Maximum 4 frames (80ms) en prefetch - réduit inertie
+        media_cfg.jb_max = 10          # Maximum 10 frames (200ms) absolu
+        media_cfg.snd_auto_close_time = 0  # Ne jamais fermer automatiquement le device
         logger.info(
-            "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max=%dms",
+            "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max_pre=%dms, max=%dms, auto_close=%d",
             media_cfg.jb_init * 20,
             media_cfg.jb_min_pre * 20,
+            media_cfg.jb_max_pre * 20,
             media_cfg.jb_max * 20,
+            media_cfg.snd_auto_close_time,
         )
 
         # Initialiser l'endpoint
@@ -1374,20 +1382,45 @@ class PJSUAAdapter:
         call_id: int | None = None,
         audio_bridge: Any | None = None,
     ) -> AudioMediaPort:
-        """Retourne un port audio prêt pour un nouvel appel."""
+        """Retourne un port audio prêt pour un nouvel appel.
+
+        COOLDOWN: Force recreate après 2 réutilisations pour casser tout état latent.
+        """
+        MAX_REUSE_COUNT = 2  # Force recreate au 3e appel
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
+
+            # Vérifier le compteur de réutilisation
+            if port._reuse_count >= MAX_REUSE_COUNT:
+                logger.info(
+                    "🔄 Port atteint %d réutilisations - destruction et recréation (call_id=%s)",
+                    port._reuse_count, call_id
+                )
+                try:
+                    port.deactivate(destroy_port=True)
+                except Exception as exc:
+                    logger.debug("Erreur destruction port (cooldown): %s", exc)
+
+                # Créer un nouveau port
+                logger.info(
+                    "🔧 Création d'un nouvel AudioMediaPort après cooldown (call_id=%s)",
+                    call_id
+                )
+                return AudioMediaPort(self, frame_requested_event, audio_bridge)
+
+            # Réutiliser le port existant
+            port._reuse_count += 1
             logger.info(
-                "♻️ Réutilisation d'un AudioMediaPort depuis le pool%s",
-                f" (call_id={call_id})" if call_id is not None else "",
+                "♻️ Réutilisation d'un AudioMediaPort depuis le pool (reuse #%d, call_id=%s)",
+                port._reuse_count, call_id
             )
             port.prepare_for_new_call(frame_requested_event, audio_bridge)
             return port
 
         logger.info(
-            "🔧 Création d'un nouvel AudioMediaPort%s",
-            f" (call_id={call_id})" if call_id is not None else "",
+            "🔧 Création d'un nouvel AudioMediaPort (call_id=%s)",
+            call_id
         )
         return AudioMediaPort(self, frame_requested_event, audio_bridge)
 

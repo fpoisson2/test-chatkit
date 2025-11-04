@@ -146,6 +146,13 @@ class PJSUAAudioBridge:
         self._frames_injected = 0 # Frames injectées du staging vers ring
         self._frames_staged = 0   # Frames reçues et mises dans staging
 
+        # Timing diagnostics (latence E2E)
+        self._t0_first_rtp = None       # Premier RTP entrant
+        self._t1_response_create = None # Envoi response.create
+        self._t2_first_tts_chunk = None # Premier chunk audio TTS reçu
+        self._t3_first_send_to_peer = None  # Premier send_to_peer
+        self._t4_first_real_pull = None # Premier PULL non-silence
+
     async def rtp_stream(
         self,
         media_active_event: asyncio.Event | None = None,
@@ -197,9 +204,11 @@ class PJSUAAudioBridge:
                 # Signaler la réception du premier paquet pour confirmer que le flux
                 # est établi
                 if packet_count == 0:
+                    import time
+                    self._t0_first_rtp = time.monotonic()
                     logger.info(
-                        "📥 Premier paquet audio reçu - flux confirmé (%d None avant)",
-                        none_count,
+                        "📥 [t0=%.3fs] Premier paquet audio reçu - flux confirmé (%d None avant)",
+                        self._t0_first_rtp, none_count,
                     )
                     self._first_packet_received.set()
 
@@ -335,6 +344,17 @@ class PJSUAAudioBridge:
 
         self._send_to_peer_call_count += 1
 
+        # Timing diagnostic: premier send_to_peer (t3)
+        if self._send_to_peer_call_count == 1 and self._t3_first_send_to_peer is None:
+            import time
+            self._t3_first_send_to_peer = time.monotonic()
+            if self._t0_first_rtp is not None:
+                delta = (self._t3_first_send_to_peer - self._t0_first_rtp) * 1000
+                logger.info(
+                    "📤 [t3=%.3fs, Δt0→t3=%.1fms] Premier send_to_peer",
+                    self._t3_first_send_to_peer, delta
+                )
+
         # Vérifier si on doit dropper (interruption utilisateur)
         if self._drop_until_next_assistant:
             logger.debug("🗑️ Drop audio assistant (interruption utilisateur active)")
@@ -391,14 +411,18 @@ class PJSUAAudioBridge:
     def _inject_from_staging_to_ring(self) -> int:
         """Injecte des frames du staging vers le ring - tick 20ms dédié.
 
-        NOUVELLE LOGIQUE (anti-starvation):
-        - Si ring=0 et staging>0: remplir rapidement jusqu'à LOW (6 frames)
-        - Sinon: injecter exactement 1 frame par tick (20ms)
+        NOUVELLE LOGIQUE (anti-starvation proactif):
+        - Si ring < 4 et staging>0: remplir rapidement jusqu'à TARGET (8 frames)
+        - Si 4 <= ring <= HIGH: injecter exactement 1 frame par tick (20ms)
         - Drop d'urgence seulement si ring >= OVERFLOW (24 frames = 480ms)
+        - Guard: ne jamais dépasser RING_MAX (30 frames = 600ms max latence)
 
         Returns:
             Nombre de frames injectées
         """
+        RING_STARVATION_THRESHOLD = 4  # < 4 frames = 80ms = risque de silence
+        RING_MAX = 30  # 600ms - guard anti-latence excessive
+
         with self._ring_lock:
             ring_len = self._ring_len_frames()
             staging_len = len(self._staging_frames_8k)
@@ -407,13 +431,15 @@ class PJSUAAudioBridge:
             if staging_len == 0:
                 return 0
 
-            # ANTI-STARVATION: si ring vide, remplir rapidement jusqu'à LOW
-            if ring_len == 0:
-                frames_to_inject = min(self.RING_LOW, staging_len)  # jusqu'à 6 frames
-                logger.debug(
-                    "⚡ Anti-starvation: ring=0, injection rapide de %d frames (staging=%d)",
-                    frames_to_inject, staging_len
-                )
+            # ANTI-STARVATION PROACTIF: si ring < 4, remplir rapidement jusqu'à TARGET
+            if ring_len < RING_STARVATION_THRESHOLD:
+                frames_to_inject = min(self.RING_TARGET - ring_len, staging_len)
+                if frames_to_inject > 1:  # Log seulement si injection multiple
+                    logger.debug(
+                        "⚡ Anti-starvation: ring=%d < %d, injection rapide de %d frames → ring=%d (staging=%d)",
+                        ring_len, RING_STARVATION_THRESHOLD, frames_to_inject,
+                        ring_len + frames_to_inject, staging_len
+                    )
             # OVERFLOW: ne rien injecter, juste drop si nécessaire
             elif ring_len >= self.RING_OVERFLOW:
                 if ring_len > self.RING_SAFE:
@@ -428,6 +454,17 @@ class PJSUAAudioBridge:
             # NORMAL: injecter exactement 1 frame par tick (20ms)
             else:
                 frames_to_inject = 1
+
+            # GUARD: ne jamais dépasser RING_MAX (anti-latence excessive)
+            space_available = RING_MAX - ring_len
+            if frames_to_inject > space_available:
+                frames_to_inject = max(0, space_available)
+                if space_available <= 0:
+                    logger.debug(
+                        "⚠️ Ring buffer full (ring=%d >= max=%d), skipping injection",
+                        ring_len, RING_MAX
+                    )
+                    return 0
 
             # Injecter les frames
             frames_injected = 0
@@ -488,6 +525,17 @@ class PJSUAAudioBridge:
                 del self._ring_buffer_8k[:self.EXPECTED_FRAME_SIZE_8KHZ]
                 is_silence = False
                 self._frames_pulled += 1
+
+                # Timing diagnostic: premier pull non-silence (t4)
+                if self._t4_first_real_pull is None and self._frames_pulled == 1:
+                    import time
+                    self._t4_first_real_pull = time.monotonic()
+                    if self._t3_first_send_to_peer is not None:
+                        delta = (self._t4_first_real_pull - self._t3_first_send_to_peer) * 1000
+                        logger.info(
+                            "🎵 [t4=%.3fs, Δt3→t4=%.1fms] Premier PULL non-silence",
+                            self._t4_first_real_pull, delta
+                        )
             else:
                 # Buffer vide: retourner silence
                 frame_8k = SILENCE_8K
@@ -632,6 +680,55 @@ class PJSUAAudioBridge:
 
         # Reset state
         self._speed_ratio = 1.0
+
+    def reset_all(self) -> None:
+        """Reset agressif de tout l'état au début d'un nouvel appel.
+
+        CRITICAL: Appelé APRÈS CONFIRMED et AVANT de déverrouiller l'envoi TTS.
+        Casse tout état résiduel (buffers, WSOLA, resamplers, jitter).
+        """
+        logger.info("🔄 Reset agressif de l'audio bridge (nouveau appel)")
+
+        with self._ring_lock:
+            # 1. Clear tous les buffers
+            self._ring_buffer_8k.clear()
+            self._staging_frames_8k.clear()
+            self._resample_remainder_8k = b""
+            self._upsample_remainder = b""
+
+            # 2. Reset counters
+            self._send_to_peer_call_count = 0
+            self._frames_pulled = 0
+            self._silence_pulled = 0
+            self._drops_overflow = 0
+            self._frames_injected = 0
+            self._frames_staged = 0
+
+            # 3. Reset timing/ratio
+            self._speed_ratio = 1.0
+            self._last_injection_time = 0.0
+            self._injection_credits = 0.0
+
+            # 4. Reset flags
+            self._can_send_audio = False
+            self._drop_until_next_assistant = False
+
+            # 5. Reset timing diagnostics
+            self._t0_first_rtp = None
+            self._t1_response_create = None
+            self._t2_first_tts_chunk = None
+            self._t3_first_send_to_peer = None
+            self._t4_first_real_pull = None
+
+        # 6. Reset WSOLA (time-stretcher) - casse l'état interne
+        self._timestretch_8k.reset()
+
+        # 6. Reset resamplers - reinit pour éviter état résiduel
+        # Note: get_resampler crée de nouvelles instances
+        self._downsampler.reset()
+        self._upsampler.reset()
+
+        logger.info("✅ Reset agressif terminé - état vierge")
 
     @property
     def is_stopped(self) -> bool:
