@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from .audio_resampler import get_resampler
 from .audio_timestretch import create_timestretch
+from .call_diagnostics import get_diagnostics_manager
 from .voice_bridge import RtpPacket
 
 if TYPE_CHECKING:
@@ -211,6 +212,15 @@ class PJSUAAudioBridge:
                         self._t0_first_rtp, none_count,
                     )
                     self._first_packet_received.set()
+
+                    # 📊 Diagnostic: Enregistrer le none_count pour détection de lag
+                    if hasattr(self._call, 'chatkit_call_id') and self._call.chatkit_call_id:
+                        diag_manager = get_diagnostics_manager()
+                        diag = diag_manager.get_call(self._call.chatkit_call_id)
+                        if diag:
+                            diag.none_packets_before_audio = none_count
+                            diag.phase_first_rtp.start()
+                            diag.phase_first_rtp.end(none_packets=none_count)
 
                 # Log périodiquement pour monitoring
                 if packet_count < 5 or packet_count % 500 == 0:
@@ -805,6 +815,10 @@ async def create_pjsua_audio_bridge(
         ```
     """
     bridge = PJSUAAudioBridge(call)
+
+    # 📊 Diagnostic: Stocker le call_id ChatKit dans le bridge
+    if hasattr(call, 'chatkit_call_id'):
+        bridge._chatkit_call_id = call.chatkit_call_id
 
     # Stocker le bridge sur le call pour que AudioMediaPort puisse le récupérer
     # Le port sera créé plus tard dans onCallMediaState() et pourra accéder au bridge

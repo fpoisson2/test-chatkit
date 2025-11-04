@@ -821,6 +821,15 @@ class TelephonyVoiceBridge:
                                             audio_bridge._t2_first_tts_chunk, delta, len(pcm_data)
                                         )
 
+                                        # 📊 Diagnostic: Enregistrer le temps du premier TTS
+                                        if hasattr(audio_bridge, '_chatkit_call_id') and audio_bridge._chatkit_call_id:
+                                            from .call_diagnostics import get_diagnostics_manager
+                                            diag_manager = get_diagnostics_manager()
+                                            diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
+                                            if diag:
+                                                diag.phase_first_tts.start()
+                                                diag.phase_first_tts.end(delay_ms=delta, bytes=len(pcm_data))
+
                                 outbound_audio_bytes += len(pcm_data)
                                 logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
                                 # Send audio and wait until it's actually sent via RTP
@@ -1047,6 +1056,15 @@ class TelephonyVoiceBridge:
                                 if audio_bridge:
                                     audio_bridge._t1_response_create = time.monotonic()
                                     logger.info("✅ response.create envoyé IMMÉDIATEMENT (optimisation maximale)")
+
+                                    # 📊 Diagnostic: Enregistrer le début de response.create
+                                    if hasattr(audio_bridge, '_chatkit_call_id') and audio_bridge._chatkit_call_id:
+                                        from .call_diagnostics import get_diagnostics_manager
+                                        diag_manager = get_diagnostics_manager()
+                                        diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
+                                        if diag:
+                                            diag.phase_response_create.start()
+                                            diag.phase_response_create.end()
                             except Exception as exc:
                                 logger.warning("⚠️ Erreur lors de l'envoi immédiat de response.create: %s", exc)
                                 # En cas d'erreur, le fallback dans forward_audio() prendra le relais

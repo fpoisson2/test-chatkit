@@ -576,6 +576,9 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         self._closed = False
         self._cleanup_done = False
 
+        # 📊 Diagnostic: call_id ChatKit (UUID) pour tracer les métriques
+        self.chatkit_call_id: str | None = None
+
     def onCallState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état d'appel."""
         if not PJSUA_AVAILABLE:

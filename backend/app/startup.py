@@ -36,6 +36,7 @@ from .database import (
 )
 from .docs import DocumentationService
 from .model_providers import configure_model_provider
+from .telephony.call_diagnostics import get_diagnostics_manager
 from .models import (
     EMBEDDING_DIMENSION,
     AppSettings,
@@ -2506,6 +2507,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
         pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
         call_id = str(uuid.uuid4())
 
+        # 📊 Démarrer le diagnostic pour cet appel
+        diag_manager = get_diagnostics_manager()
+        diag = diag_manager.start_call(call_id)
+
         logger.info(
             "Appel PJSUA entrant: call_id=%s, remote_uri=%s",
             call_id,
@@ -2566,6 +2571,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             # Envoyer 180 Ringing
             logger.info("Envoi 180 Ringing (call_id=%s)", call_id)
+            diag.phase_ring.start()
             await pjsua_adapter.answer_call(call, code=180)
 
             # Créer un Event pour bloquer l'envoi d'audio ET le RTP stream jusqu'à ce que le média soit actif
@@ -2577,6 +2583,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # pour permettre à l'assistant de générer l'audio pendant la sonnerie
             # IMPORTANT: Le RTP stream attendra media_active_event avant de yield des paquets
             logger.info("Création de l'audio bridge PJSUA AVANT la réponse (call_id=%s)", call_id)
+
+            # 📊 Assigner le call_id ChatKit au call PJSUA pour le diagnostic
+            call.chatkit_call_id = call_id
+
             rtp_stream, send_to_peer_raw, clear_queue, first_packet_event, pjsua_ready_event, audio_bridge = await create_pjsua_audio_bridge(call, media_active_event)
 
             # pjsua_ready_event est maintenant un event spécifique à cet appel (pas partagé)
@@ -2586,6 +2596,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
+                    diag.phase_media_active.start()
                     logger.info("🎵 Média actif détecté (call_id=%s)", call_id)
 
                     # Attendre que le jitter buffer soit initialisé
@@ -2609,6 +2620,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     # OPTIMISATION: Plus besoin de signaler voice_bridge_start_event
                     # Le voice bridge a déjà démarré et attend naturellement pjsua_ready_event
+                    diag.phase_media_active.end()
                     logger.info("🚀 Média actif - le voice bridge continuera automatiquement (call_id=%s)", call_id)
 
             # Enregistrer le callback média avant de démarrer
@@ -2707,6 +2719,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 """Tâche pour créer la session vocale + voice_bridge + CONNECTER SDK pendant la sonnerie."""
                 try:
                     # 1. Créer la session Realtime (client_secret)
+                    diag.phase_session_create.start()
                     session_handle = await asyncio.wait_for(
                         open_voice_session(
                             user_id=f"pjsua:{call_id}",
@@ -2758,6 +2771,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     # 3. Créer le voice bridge
                     voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
 
+                    diag.phase_session_create.end(session_id=session_handle.session_id)
                     logger.info("✅ Session + VoiceBridge créés pendant la sonnerie (call_id=%s)", call_id)
 
                     # 4. OPTIMISATION AGRESSIVE: Connecter le SDK WebSocket MAINTENANT (pendant la sonnerie!)
@@ -2793,10 +2807,12 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     }
 
                     # CONNEXION WEBSOCKET SDK - PENDANT LA SONNERIE!
+                    diag.phase_sdk_connect.start()
                     logger.info("🔌 Connexion WebSocket SDK PENDANT LA SONNERIE (call_id=%s)...", call_id)
                     sdk_context_manager = await session_handle.runner.run(model_config=model_config)
                     # CRITIQUE: Entrer le context manager MAINTENANT pour vraiment connecter le WebSocket
                     sdk_session = await sdk_context_manager.__aenter__()
+                    diag.phase_sdk_connect.end()
                     logger.info("✅ SDK WebSocket RÉELLEMENT CONNECTÉ pendant sonnerie (call_id=%s)", call_id)
 
                     return session_handle, voice_bridge, sdk_session, sdk_context_manager, playback_tracker, realtime_api_base
@@ -2838,6 +2854,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     # Récupérer le résultat: session + voice_bridge + SDK connecté (peut lever une exception)
                     session_handle, voice_bridge, sdk_session, sdk_context_manager, playback_tracker, realtime_api_base = await session_task
+                    diag.phase_ring.end()
                     logger.info("✅ Session + VoiceBridge + SDK connectés après sonnerie (call_id=%s)", call_id)
 
                 except Exception as e:
@@ -2897,8 +2914,19 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         speak_first=speak_first,
                     )
                     logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
+
+                    # 📊 Terminer le diagnostic et générer le rapport
+                    diag_manager.end_call(call_id)
+
+                    # Rapport comparatif si plusieurs appels
+                    if diag_manager._call_sequence >= 2:
+                        comparison = diag_manager.generate_comparison_report()
+                        if comparison:
+                            logger.warning(comparison)
+
                 except Exception as e:
                     logger.exception("Erreur dans VoiceBridge PJSUA (call_id=%s): %s", call_id, e)
+                    diag_manager.end_call(call_id)
                 finally:
                     # Nettoyer proprement le context manager en appelant __aexit__()
                     try:
