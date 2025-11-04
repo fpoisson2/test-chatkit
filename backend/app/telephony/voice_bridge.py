@@ -407,13 +407,13 @@ class TelephonyVoiceBridge:
 
                                 logger.info("🔇 Canal bidirectionnel confirmé - injection directe de %d frame de silence (%dms prime sans backlog)", num_silence_frames, num_silence_frames * 20)
                                 if audio_bridge:
-                                    # Injection directe dans la queue 8kHz (skip le buffer 24kHz)
-                                    await audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
+                                    # Injection directe dans le ring buffer @ 8kHz (synchrone, pas async)
+                                    audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
                                     logger.info("✅ Pipeline audio amorcé avec %d frames de silence (injection directe)", num_silence_frames)
                                     # Déverrouiller l'envoi audio maintenant que les conditions sont remplies:
                                     # - onCallMediaState actif (media_active_event)
                                     # - Premier onFrameRequested reçu (pjsua_ready_event)
-                                    # - 40ms de silence envoyés (amorçage)
+                                    # - 20ms de silence envoyés (amorçage)
                                     audio_bridge.enable_audio_output()
                                     logger.info("🔓 Envoi audio TTS déverrouillé après amorçage")
                                 else:

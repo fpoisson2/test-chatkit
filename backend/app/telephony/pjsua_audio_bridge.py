@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import audioop
 import logging
+import threading
+import time
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
@@ -66,13 +68,6 @@ class PJSUAAudioBridge:
         self._sequence_number = 0
         self._timestamp = 0
 
-        # Audio buffer for outgoing audio (from VoiceBridge to phone)
-        # CRITIQUE: Limité à MAX_QUEUE_SIZE (10 frames = 200ms) pour éviter accumulation de latence
-        # Si queue > HIGH_WATERMARK, les silences seront droppés en premier
-        self._outgoing_audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue(
-            maxsize=self.MAX_QUEUE_SIZE
-        )
-
         # Event qui se déclenche quand on reçoit le premier paquet audio du téléphone
         # Cela confirme que le flux audio bidirectionnel est établi
         self._first_packet_received = asyncio.Event()
@@ -89,72 +84,48 @@ class PJSUAAudioBridge:
         # Ne devient True que quand: media_active + first_frame + silence_primed
         # Empêche tout envoi audio prématuré (évite warnings "pas de slot audio")
         self._can_send_audio = False
-        self._silence_primed = False
-
-        # Queue watermark tracking
-        self._queue_high_watermark_logged = False
-        self._queue_low_watermark_logged = False
 
         # Flag pour drop pendant interruption utilisateur
         # Activé quand on détecte la voix de l'utilisateur (interrupt_response=True)
         # Désactivé quand l'assistant reprend (prochain chunk assistant)
         self._drop_until_next_assistant = False
 
-        # High-quality resamplers (soxr for telephony)
-        # These handle resampling state internally and provide better quality
-        # TODO: Utiliser quality='HQ' au lieu de 'VHQ' pour moins de latence (nécessite modification audio_resampler.py)
-        self._upsampler = get_resampler(
-            from_rate=self.PJSUA_SAMPLE_RATE,
-            to_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
-        )  # 8kHz → 24kHz
+        # ====================
+        # ARCHITECTURE PULL (ring buffer @ 8kHz)
+        # ====================
+        # Ring buffer @ 8kHz: PJSUA pull via AudioMediaPort.onFrameRequested()
+        # Thread-safe car callback PJSUA est synchrone (pas asyncio)
+        self._ring_buffer_8k = bytearray()
+        self._ring_lock = threading.Lock()
+
+        # Resamplers
         self._downsampler = get_resampler(
             from_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
             to_rate=self.PJSUA_SAMPLE_RATE,
-        )  # 24kHz → 8kHz
+        )  # 24kHz → 8kHz (utilisé dans send_to_peer)
 
-        # Time-stretcher for catch-up mode in playout pacer (24kHz)
-        # Uses WSOLA to speed up playback when buffer grows
-        self._timestretch_24k = create_timestretch(sample_rate=self.VOICE_BRIDGE_SAMPLE_RATE)
+        self._upsampler = get_resampler(
+            from_rate=self.PJSUA_SAMPLE_RATE,
+            to_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
+        )  # 8kHz → 24kHz (utilisé pour RTP vers OpenAI)
 
-        # Catch-up mode state for playout pacer
-        self._playout_speed_ratio = 1.0  # Current playback speed (1.0 = normal)
-        self._playout_catchup_active = False  # True when actively catching up
-        self._last_rate_change_time = 0.0  # Timestamp of last rate change (for hysteresis)
+        # Time-stretcher @ 8kHz pour catch-up
+        self._timestretch_8k = create_timestretch(sample_rate=self.PJSUA_SAMPLE_RATE)
 
-        # Remainder buffer for 24kHz → 8kHz downsampling
-        # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
-        self._downsample_remainder = b""
-
-        # Buffer circulaire pour pacer côté sortie (playout)
-        # Stocke les bytes 24kHz bruts avant découpage/resampling
-        # Le ticker _playout_pacer_loop() extrait exactement 960 bytes toutes les 20ms
-        self._playout_buffer_24k = bytearray()
-        self._playout_buffer_lock = asyncio.Lock()
+        # Catch-up state (bornes conservatrices)
+        # Target: 6 frames (120ms), High: 9 frames (180ms), Cap: 12 frames (240ms)
+        # Ratio: 1.12-1.20x max (jamais 1.30x)
+        self._speed_ratio = 1.0
+        self._catchup_active = False
+        self._last_rate_change_time = 0.0
 
         # Remainder buffer for 8kHz → 24kHz upsampling
-        # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
-        # Exemple: ratecv produit 956 bytes au lieu de 960 → on accumule jusqu'à 960+
         self._upsample_remainder = b""
 
-        # Timestamps pour mesurer latence E2E (downlink: modèle → PJSUA)
-        self._latency_samples: list[float] = []  # Derniers N samples de latence
-        self._latency_spike_count = 0
-
-        # Counter for send_to_peer calls (for pacing diagnostics)
+        # Counter for diagnostics
         self._send_to_peer_call_count = 0
-
-        # Background task responsible for pacing audio sent to PJSUA
-        loop = asyncio.get_running_loop()
-        self._audio_sender_task: asyncio.Task[None] | None = loop.create_task(
-            self._audio_sender_loop(),
-            name="pjsua-audio-sender",
-        )
-
-        # Background task for playout pacer (extracts 1 frame/20ms from 24kHz buffer)
-        self._playout_pacer_task: asyncio.Task[None] | None = loop.create_task(
-            self._playout_pacer_loop(),
-            name="playout-pacer",
-        )
+        self._frames_pulled = 0
+        self._silence_pulled = 0
 
     async def rtp_stream(
         self,
@@ -297,46 +268,37 @@ class PJSUAAudioBridge:
         finally:
             logger.info("RTP stream ended")
 
-    async def send_prime_silence_direct(self, num_frames: int = 1) -> None:
-        """Envoie du silence de prime DIRECTEMENT dans la queue 8kHz sans backlog.
+    def send_prime_silence_direct(self, num_frames: int = 1) -> None:
+        """Envoie du silence de prime DIRECTEMENT dans le ring buffer @ 8kHz.
 
-        Le silence de prime ne doit PAS s'empiler dans _playout_buffer_24k car cela
-        crée une latence artificielle. On l'injecte directement dans _outgoing_audio_queue.
-
-        Si du TTS arrive pendant la prime, il écrasera naturellement ce silence.
+        Le silence de prime ne doit PAS créer de backlog.
+        Il est injecté directement dans le ring buffer.
 
         Args:
             num_frames: Nombre de frames de silence à envoyer (défaut: 1 = 20ms, démarrage sec)
         """
-        import time
-
         # Silence à 8kHz (320 bytes = 20ms @ 8kHz PCM16 mono)
-        silence_8k = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
-
-        # Timestamp d'injection (approxime t_model_in pour mesure latence)
-        t_inject = time.monotonic()
+        silence_8k = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ * num_frames
 
         logger.info(
-            "🔇 Injection silence de prime direct: %d frames (=%dms) sans backlog",
+            "🔇 Injection silence de prime direct: %d frames (=%dms) dans ring buffer @ 8kHz",
             num_frames,
             num_frames * 20
         )
 
-        for i in range(num_frames):
-            try:
-                # Injecter directement dans la queue 8kHz (skip le buffer 24kHz)
-                self._outgoing_audio_queue.put_nowait((silence_8k, t_inject))
-            except asyncio.QueueFull:
-                logger.warning("⚠️ Queue 8kHz pleine lors du prime silence, skip frame %d", i)
-                break
+        # Injecter dans le ring buffer thread-safe
+        with self._ring_lock:
+            self._ring_buffer_8k.extend(silence_8k)
 
-        logger.info("✅ Silence de prime injecté directement (pas de backlog dans buffer 24kHz)")
+        logger.info("✅ Silence de prime injecté directement dans ring buffer @ 8kHz")
 
     async def send_to_peer(self, audio_24khz: bytes) -> None:
-        """Send audio from VoiceBridge to playout buffer.
+        """Send audio from VoiceBridge to ring buffer @ 8kHz.
 
-        Cette fonction ne fait QUE remplir le buffer circulaire 24kHz.
-        Le ticker _playout_pacer_loop() s'occupera du découpage/resampling strict à 20ms.
+        ARCHITECTURE PULL:
+        - Resample immédiatement 24kHz → 8kHz
+        - Ajoute dans ring buffer thread-safe
+        - PJSUA pull via AudioMediaPort.onFrameRequested() → get_next_frame_8k()
 
         Args:
             audio_24khz: PCM16 audio at 24kHz from OpenAI (taille variable)
@@ -349,59 +311,160 @@ class PJSUAAudioBridge:
         # Vérifier si on doit dropper (interruption utilisateur)
         if self._drop_until_next_assistant:
             logger.debug("🗑️ Drop audio assistant (interruption utilisateur active)")
-            # Vider le buffer de playout
-            async with self._playout_buffer_lock:
-                self._playout_buffer_24k.clear()
+            # Vider le ring buffer
+            with self._ring_lock:
+                self._ring_buffer_8k.clear()
             return
 
         # Latch de timing: ne rien envoyer tant que media_active + first_frame + silence_primed
         # Évite les warnings "pas de slot audio" en début d'appel
         if not self._can_send_audio:
-            # Buffer silencieusement, sera traité quand can_send_audio=True
-            async with self._playout_buffer_lock:
-                self._playout_buffer_24k.extend(audio_24khz)
+            # Skip silencieusement (ne pas bufferiser avant que PJSUA soit prêt)
             return
 
-        # Ajouter au buffer circulaire (pas de découpage, pas de resampling)
-        async with self._playout_buffer_lock:
-            self._playout_buffer_24k.extend(audio_24khz)
-            buffer_size = len(self._playout_buffer_24k)
+        # Resample 24kHz → 8kHz IMMÉDIATEMENT
+        try:
+            audio_8khz = self._downsampler.resample(audio_24khz)
+        except Exception as e:
+            logger.warning("Erreur resampling 24kHz→8kHz: %s", e)
+            self._downsampler.reset()
+            return
+
+        # Ajouter au ring buffer thread-safe
+        with self._ring_lock:
+            self._ring_buffer_8k.extend(audio_8khz)
+            buffer_size = len(self._ring_buffer_8k)
 
         if self._send_to_peer_call_count <= 5:
+            buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
             logger.info(
-                "📤 send_to_peer #%d: reçu %d bytes, buffer total=%d bytes",
+                "📤 send_to_peer #%d: reçu %d bytes @ 24kHz → %d bytes @ 8kHz, ring buffer=%.1f frames (%.0fms)",
                 self._send_to_peer_call_count,
                 len(audio_24khz),
-                buffer_size,
+                len(audio_8khz),
+                buffer_frames,
+                buffer_frames * 20,
             )
 
+    def get_next_frame_8k(self) -> bytes:
+        """Pull 1 frame (320 bytes @ 8kHz) depuis le ring buffer avec catch-up WSOLA.
+
+        Appelé par AudioMediaPort.onFrameRequested() (callback synchrone PJSUA).
+        Mode PULL: PJSUA demande l'audio à son rythme (20ms/frame).
+
+        Bornes catch-up conservatrices:
+        - Target: 6 frames (120ms)
+        - High: 9 frames (180ms) → 1.12x
+        - Cap: 12 frames (240ms) → 1.20x max
+        - Hard cap: 15 frames (300ms) → drop frames
+
+        Returns:
+            320 bytes PCM16 @ 8kHz (silence si buffer vide)
+        """
+        SILENCE_8K = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
+
+        with self._ring_lock:
+            buffer_size = len(self._ring_buffer_8k)
+            buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
+
+            # Hard cap: si buffer > 15 frames (300ms), drop des frames
+            if buffer_frames > 15:
+                frames_to_drop = int(buffer_frames - 12)  # Ramener à 12 frames (240ms)
+                bytes_to_drop = frames_to_drop * self.EXPECTED_FRAME_SIZE_8KHZ
+                del self._ring_buffer_8k[:bytes_to_drop]
+                logger.warning(
+                    "🗑️ Hard cap: buffer=%d frames (%.0fms) > 300ms, drop %d frames",
+                    buffer_frames, buffer_frames * 20, frames_to_drop
+                )
+                buffer_size = len(self._ring_buffer_8k)
+                buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
+
+            # Extraire 1 frame si disponible
+            if buffer_size >= self.EXPECTED_FRAME_SIZE_8KHZ:
+                frame_8k = bytes(self._ring_buffer_8k[:self.EXPECTED_FRAME_SIZE_8KHZ])
+                del self._ring_buffer_8k[:self.EXPECTED_FRAME_SIZE_8KHZ]
+                is_silence = False
+                self._frames_pulled += 1
+            else:
+                # Buffer vide: retourner silence
+                frame_8k = SILENCE_8K
+                is_silence = True
+                self._silence_pulled += 1
+
+        # CATCH-UP: Adapter la vitesse selon buffer size (hystérésis 200ms)
+        t_now = time.monotonic()
+        if t_now - self._last_rate_change_time >= 0.2:  # 200ms hystérésis
+            if buffer_frames >= 12:  # >= 240ms → 1.20x
+                target_speed = 1.20
+            elif buffer_frames >= 9:  # >= 180ms → 1.12x
+                target_speed = 1.12
+            elif buffer_frames <= 6:  # <= 120ms → 1.00x (normal)
+                target_speed = 1.0
+            else:
+                # Zone d'hystérésis: garder vitesse actuelle
+                target_speed = self._speed_ratio
+
+            # Appliquer changement si significatif (>= 0.02)
+            if abs(target_speed - self._speed_ratio) >= 0.02:
+                was_active = self._catchup_active
+                self._speed_ratio = target_speed
+                self._catchup_active = (target_speed > 1.0)
+                self._last_rate_change_time = t_now
+
+                # Log transitions
+                if self._catchup_active and not was_active:
+                    logger.info(
+                        "🚀 Catch-up activé: vitesse %.2fx (buffer=%.1f frames = %.0fms)",
+                        target_speed, buffer_frames, buffer_frames * 20
+                    )
+                elif not self._catchup_active and was_active:
+                    logger.info(
+                        "✅ Catch-up désactivé: retour vitesse 1.00x (buffer=%.1f frames = %.0fms)",
+                        buffer_frames, buffer_frames * 20
+                    )
+                elif self._catchup_active:
+                    logger.debug(
+                        "⚡ Catch-up vitesse ajustée: %.2fx (buffer=%.1f frames = %.0fms)",
+                        target_speed, buffer_frames, buffer_frames * 20
+                    )
+
+        # Appliquer time-stretch @ 8kHz si en mode catch-up (et pas silence)
+        if self._catchup_active and not is_silence:
+            try:
+                stretched = self._timestretch_8k.process(frame_8k, self._speed_ratio)
+                if len(stretched) > 0:
+                    frame_8k = stretched
+            except Exception as e:
+                logger.warning("Erreur time-stretch @ 8kHz: %s, utilisation frame originale", e)
+
+        # Log périodique
+        if (self._frames_pulled + self._silence_pulled) % 100 == 0:
+            logger.debug(
+                "📊 PULL stats: %d frames, %d silence, ring buffer=%.1f frames (%.0fms)",
+                self._frames_pulled,
+                self._silence_pulled,
+                buffer_frames,
+                buffer_frames * 20,
+            )
+
+        return frame_8k
+
     def clear_audio_queue(self) -> int:
-        """Clear the outgoing audio queue (used during interruptions).
+        """Clear the ring buffer (used during interruptions).
 
         Purge instantanée:
-        - Vide la queue PJSUA
-        - Vide le buffer send_to_peer (24kHz pré-resampling)
+        - Vide le ring buffer @ 8kHz
         - Active le flag drop pour ignorer les chunks assistant en vol
         - L'assistant doit appeler resume_after_interruption() quand il reprend
 
         Returns:
             Number of frames cleared
         """
-        cleared = self._adapter.clear_call_audio_queue(self._call)
-
-        # Vider également la file d'attente utilisée pour le pacing asynchrone
-        drained = 0
-        while not self._outgoing_audio_queue.empty():
-            try:
-                self._outgoing_audio_queue.get_nowait()
-                self._outgoing_audio_queue.task_done()
-                drained += 1
-            except asyncio.QueueEmpty:  # pragma: no cover - race condition
-                break
-
-        # Vider le buffer de playout (24kHz pré-resampling)
-        buffer_frames = len(self._playout_buffer_24k) / self.EXPECTED_FRAME_SIZE_24KHZ
-        self._playout_buffer_24k.clear()
+        # Vider le ring buffer thread-safe
+        with self._ring_lock:
+            buffer_size = len(self._ring_buffer_8k)
+            buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
+            self._ring_buffer_8k.clear()
 
         # Activer le flag pour dropper tous les chunks assistant jusqu'à reprise
         self._drop_until_next_assistant = True
@@ -410,15 +473,14 @@ class PJSUAAudioBridge:
         self._downsampler.reset()
         self._upsampler.reset()
 
-        if drained > 0 or buffer_frames > 0:
+        if buffer_frames > 0:
             logger.info(
-                "🗑️ Purge interruption: queue=%d frames (8kHz), buffer=%.1f frames (24kHz), total~%.1f ms - drop activé",
-                drained,
+                "🗑️ Purge interruption: ring buffer=%.1f frames @ 8kHz (%.0f ms) - drop activé",
                 buffer_frames,
-                (drained + buffer_frames) * 20,
+                buffer_frames * 20,
             )
 
-        return cleared + drained + int(buffer_frames)
+        return int(buffer_frames)
 
     def resume_after_interruption(self) -> None:
         """Désactive le drop mode - appelé quand l'assistant reprend après interruption."""
@@ -432,306 +494,38 @@ class PJSUAAudioBridge:
         À appeler après:
         - onCallMediaState actif
         - Premier onFrameRequested reçu
-        - Silence primer envoyé (40ms)
+        - Silence primer envoyé (20ms)
 
         Déverrouille send_to_peer() pour commencer l'envoi TTS.
         """
         if not self._can_send_audio:
             self._can_send_audio = True
-            buffer_size = len(self._playout_buffer_24k)
+            with self._ring_lock:
+                buffer_size = len(self._ring_buffer_8k)
+                buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
             logger.info(
-                "🔓 Audio output enabled (buffer buffered during init: %d bytes = %.1f frames)",
-                buffer_size,
-                buffer_size / self.EXPECTED_FRAME_SIZE_24KHZ if buffer_size > 0 else 0,
+                "🔓 Audio output enabled (ring buffer @ 8kHz: %.1f frames = %.0fms)",
+                buffer_frames,
+                buffer_frames * 20,
             )
-            # Le buffer accumulé sera traité par le playout pacer
 
     def stop(self) -> None:
         """Stop the audio bridge."""
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
-        if self._playout_pacer_task and not self._playout_pacer_task.done():
-            self._playout_pacer_task.cancel()
-        if self._audio_sender_task and not self._audio_sender_task.done():
-            self._audio_sender_task.cancel()
-        try:
-            self._outgoing_audio_queue.put_nowait(None)
-        except asyncio.QueueFull:
-            pass
+
+        # Clear ring buffer
+        with self._ring_lock:
+            self._ring_buffer_8k.clear()
 
         # Reset resamplers and time-stretcher state
         self._downsampler.reset()
         self._upsampler.reset()
-        self._timestretch_24k.reset()
+        self._timestretch_8k.reset()
 
         # Reset catch-up mode state
-        self._playout_speed_ratio = 1.0
-        self._playout_catchup_active = False
-
-    async def _playout_pacer_loop(self) -> None:
-        """Pacer côté sortie: extrait exactement 1 frame 24kHz toutes les 20ms.
-
-        Pacer strict:
-        - Attend que le port audio PJSUA soit prêt
-        - Cadence fixe 20ms (period = 0.020s)
-        - Extrait EXACTEMENT 960 bytes (1 frame @ 24kHz) par tick
-        - Resample à 8kHz (320 bytes)
-        - Enqueue dans _outgoing_audio_queue pour _audio_sender_loop()
-        - Si buffer vide: injecte silence (ne jamais sauter de tick)
-        """
-        import time
-
-        # CRITIQUE: Attendre que PJSUA soit complètement prêt
-        # (port créé, bridgé, et premier onFrameRequested reçu)
-        logger.info("🔒 Playout pacer: attente que le port PJSUA soit prêt...")
-        await self._port_ready_event.wait()
-        logger.info("✅ Playout pacer: port PJSUA prêt, démarrage du pacer")
-
-        period = 0.020  # 20ms strict
-        loop = asyncio.get_running_loop()
-        next_t = loop.time()
-
-        # Silence de 960 bytes (20ms @ 24kHz PCM16 mono)
-        SILENCE_24K = b'\x00' * self.EXPECTED_FRAME_SIZE_24KHZ
-
-        frame_count = 0
-        silence_injected_count = 0
-        frames_resampled = 0
-
-        try:
-            while True:
-                # Préparer le next tick
-                next_t += period
-
-                # Timestamp d'extraction (approxime t_model_in)
-                t_extract = time.monotonic()
-
-                # Extraire exactement 960 bytes du buffer circulaire
-                async with self._playout_buffer_lock:
-                    buffer_size_before = len(self._playout_buffer_24k)
-
-                    if buffer_size_before >= self.EXPECTED_FRAME_SIZE_24KHZ:
-                        # Extraire 1 frame
-                        frame_24k = bytes(self._playout_buffer_24k[:self.EXPECTED_FRAME_SIZE_24KHZ])
-                        del self._playout_buffer_24k[:self.EXPECTED_FRAME_SIZE_24KHZ]
-                        buffer_size = len(self._playout_buffer_24k)
-                        is_silence = False
-                    else:
-                        # Buffer vide: injecter silence
-                        frame_24k = SILENCE_24K
-                        buffer_size = buffer_size_before
-                        is_silence = True
-                        silence_injected_count += 1
-
-                # CATCH-UP MODE: Adapter la vitesse selon la taille du buffer
-                # Politique adaptative avec hystérésis (200ms min entre changements)
-                buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_24KHZ
-
-                # Déterminer vitesse cible selon seuils (avec hystérésis)
-                if t_extract - self._last_rate_change_time >= 0.2:  # 200ms hystérésis
-                    if buffer_frames >= 36:  # ~720ms
-                        target_speed = 1.30
-                    elif buffer_frames >= 24:  # ~480ms
-                        target_speed = 1.20
-                    elif buffer_frames >= 12:  # ~240ms
-                        target_speed = 1.12
-                    elif buffer_frames <= 4:  # ~80ms
-                        target_speed = 1.0
-                    else:
-                        # Zone d'hystérésis: garder vitesse actuelle
-                        target_speed = self._playout_speed_ratio
-
-                    # Appliquer changement si significatif (>= 0.02)
-                    if abs(target_speed - self._playout_speed_ratio) >= 0.02:
-                        was_active = self._playout_catchup_active
-                        self._playout_speed_ratio = target_speed
-                        self._playout_catchup_active = (target_speed > 1.0)
-                        self._last_rate_change_time = t_extract
-
-                        # Log transitions
-                        if self._playout_catchup_active and not was_active:
-                            logger.info(
-                                "🚀 Playout catch-up activé: vitesse %.2fx (buffer=%.1f frames = %.0fms)",
-                                target_speed, buffer_frames, buffer_frames * 20
-                            )
-                        elif not self._playout_catchup_active and was_active:
-                            logger.info(
-                                "✅ Playout catch-up désactivé: retour vitesse 1.00x (buffer=%.1f frames = %.0fms)",
-                                buffer_frames, buffer_frames * 20
-                            )
-                        elif self._playout_catchup_active:
-                            logger.debug(
-                                "⚡ Playout vitesse ajustée: %.2fx (buffer=%.1f frames = %.0fms)",
-                                target_speed, buffer_frames, buffer_frames * 20
-                            )
-
-                # Appliquer time-stretch si en mode catch-up (et pas silence)
-                if self._playout_catchup_active and not is_silence:
-                    try:
-                        stretched = self._timestretch_24k.process(frame_24k, self._playout_speed_ratio)
-                        # Si time-stretch retourne vide (pas assez de data), utiliser frame originale
-                        if len(stretched) > 0:
-                            frame_24k = stretched
-                    except Exception as e:
-                        logger.warning("Erreur time-stretch 24kHz: %s, utilisation frame originale", e)
-
-                # Resample cette frame: 960 bytes @ 24kHz → ~320 bytes @ 8kHz
-                if not is_silence:
-                    try:
-                        frame_8k = self._downsampler.resample(frame_24k)
-                        frames_resampled += 1
-                    except Exception as e:
-                        logger.warning("Resampling error (24kHz→8kHz): %s", e)
-                        self._downsampler.reset()
-                        # En cas d'erreur, injecter silence
-                        frame_8k = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
-                else:
-                    # Silence: pas besoin de resample, juste convertir à 8kHz
-                    frame_8k = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
-
-                # Enqueue la frame @ 8kHz avec timestamp
-                try:
-                    # Stocker (frame, t_enqueue) pour mesurer latence plus tard
-                    self._outgoing_audio_queue.put_nowait((frame_8k, t_extract))
-                except asyncio.QueueFull:
-                    # Queue pleine: dropper cette frame (rare)
-                    logger.warning("🗑️ Playout pacer: queue pleine, drop frame")
-
-                frame_count += 1
-
-                # Log périodique
-                if frame_count % 100 == 0:
-                    logger.debug(
-                        "📊 Playout pacer: %d frames, %d silence, buffer=%d bytes (%.1f frames)",
-                        frames_resampled,
-                        silence_injected_count,
-                        buffer_size,
-                        buffer_size / self.EXPECTED_FRAME_SIZE_24KHZ,
-                    )
-
-                # Sleep jusqu'au prochain tick (pacer strict)
-                sleep_duration = max(0, next_t - loop.time())
-                if sleep_duration > 0:
-                    await asyncio.sleep(sleep_duration)
-
-        except asyncio.CancelledError:
-            logger.debug("Playout pacer task cancelled (processed %d frames, %d silence)", frame_count, silence_injected_count)
-            raise
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logger.exception("Error in playout pacer loop: %s", exc)
-
-    async def _audio_sender_loop(self) -> None:
-        """Background task avec pacer strict 20ms pour envoyer frames vers PJSUA.
-
-        Pacer strict:
-        - Attend que le port audio PJSUA soit prêt
-        - Cadence fixe 20ms (period = 0.020s)
-        - Envoie silence si queue vide (évite trous)
-        - Mesure latence E2E: t_model_in → t_pjsua_pop
-        - Log spikes (>120ms) pour diagnostics
-        """
-        import time
-
-        # CRITIQUE: Attendre que PJSUA soit complètement prêt
-        # (port créé, bridgé, et premier onFrameRequested reçu)
-        logger.info("🔒 Audio sender: attente que le port PJSUA soit prêt...")
-        await self._port_ready_event.wait()
-        logger.info("✅ Audio sender: port PJSUA prêt, démarrage du pacer")
-
-        period = 0.020  # 20ms strict
-        loop = asyncio.get_running_loop()
-        next_t = loop.time()
-
-        # Silence de 320 bytes (20ms @ 8kHz PCM16 mono)
-        SILENCE_8K = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
-
-        frame_count = 0
-        silence_sent_count = 0
-
-        try:
-            while True:
-                # Préparer le next tick
-                next_t += period
-
-                # Tenter de récupérer une frame (non-bloquant pour respecter timing)
-                try:
-                    item = self._outgoing_audio_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    # Queue vide: envoyer silence pour éviter trous
-                    frame_8k = SILENCE_8K
-                    t_model_in = None
-                    silence_sent_count += 1
-                else:
-                    # Vérifier si c'est le signal de stop
-                    if item is None:
-                        self._outgoing_audio_queue.task_done()
-                        break
-
-                    # Dépack tuple (frame, timestamp)
-                    frame_8k, t_model_in = item
-                    self._outgoing_audio_queue.task_done()
-
-                # t_pjsua_pop: moment où on consomme la frame pour PJSUA
-                t_pjsua_pop = time.monotonic()
-
-                # Calculer latence E2E si on a un timestamp
-                if t_model_in is not None:
-                    latency_ms = (t_pjsua_pop - t_model_in) * 1000
-                    self._latency_samples.append(latency_ms)
-
-                    # Garder seulement les 100 derniers samples
-                    if len(self._latency_samples) > 100:
-                        self._latency_samples.pop(0)
-
-                    # Détecter spike (>120ms)
-                    if latency_ms > 120:
-                        self._latency_spike_count += 1
-                        queue_size = self._outgoing_audio_queue.qsize()
-                        if self._latency_spike_count <= 5 or self._latency_spike_count % 50 == 0:
-                            logger.warning(
-                                "⚠️ Latency spike #%d: %.1f ms (queue=%d frames)",
-                                self._latency_spike_count,
-                                latency_ms,
-                                queue_size,
-                            )
-
-                    # Log latency périodiquement
-                    if frame_count % 100 == 0 and len(self._latency_samples) >= 10:
-                        avg_latency = sum(self._latency_samples[-10:]) / 10
-                        logger.debug(
-                            "📊 Latency E2E (avg derniers 10): %.1f ms, queue=%d frames",
-                            avg_latency,
-                            self._outgoing_audio_queue.qsize(),
-                        )
-
-                # Envoyer la frame à PJSUA
-                try:
-                    self._adapter.send_audio_to_call(self._call, frame_8k)
-                except Exception as e:
-                    logger.warning("Erreur send_audio_to_call: %s", e)
-
-                frame_count += 1
-
-                # Sleep jusqu'au prochain tick (pacer strict)
-                sleep_duration = max(0, next_t - loop.time())
-                if sleep_duration > 0:
-                    await asyncio.sleep(sleep_duration)
-
-        except asyncio.CancelledError:
-            logger.debug("Audio sender task cancelled (sent %d frames, %d silence)", frame_count, silence_sent_count)
-            raise
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logger.exception("Error in audio sender loop: %s", exc)
-        finally:
-            # Vider la queue
-            while not self._outgoing_audio_queue.empty():
-                try:
-                    item = self._outgoing_audio_queue.get_nowait()
-                except asyncio.QueueEmpty:  # pragma: no cover - race condition
-                    break
-                else:
-                    self._outgoing_audio_queue.task_done()
-            logger.debug("Audio sender task terminated")
+        self._speed_ratio = 1.0
+        self._catchup_active = False
 
     @property
     def is_stopped(self) -> bool:
@@ -808,6 +602,13 @@ async def create_pjsua_audio_bridge(
         ```
     """
     bridge = PJSUAAudioBridge(call)
+
+    # Connecter le bridge à l'AudioMediaPort pour mode PULL
+    # IMPORTANT: Permet à onFrameRequested() d'appeler bridge.get_next_frame_8k()
+    if hasattr(call, '_audio_port') and call._audio_port:
+        call._audio_port._audio_bridge = bridge
+        logger.info("✅ Bridge connecté à AudioMediaPort (mode PULL activé)")
+
     # Récupérer l'event frame_requested de CET appel (pas de l'adaptateur
     # global). Chaque appel a son propre event pour éviter les problèmes de
     # timing sur les appels successifs.

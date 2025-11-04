@@ -166,9 +166,19 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
 
 
 class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
-    """Port audio personnalisé pour capturer et injecter l'audio."""
+    """Port audio personnalisé pour capturer et injecter l'audio.
 
-    def __init__(self, adapter: PJSUAAdapter, frame_requested_event: asyncio.Event | None = None):
+    Supporte deux modes:
+    - Mode PULL (recommandé): utilise audio_bridge.get_next_frame_8k()
+    - Mode PUSH (legacy): utilise _outgoing_audio_queue
+    """
+
+    def __init__(
+        self,
+        adapter: PJSUAAdapter,
+        frame_requested_event: asyncio.Event | None = None,
+        audio_bridge: Any | None = None,
+    ):
         if not PJSUA_AVAILABLE:
             return
 
@@ -176,19 +186,14 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         # PJSUA utilise 8kHz, 16-bit, mono pour la téléphonie
         self.adapter = adapter
         self._frame_requested_event = frame_requested_event  # Event spécifique à cet appel
+        self._audio_bridge = audio_bridge  # Bridge pour mode PULL (optionnel)
         self.sample_rate = 8000
         self.channels = 1
         self.samples_per_frame = 160  # 20ms @ 8kHz
         self.bits_per_sample = 16
 
-        # Files pour l'audio
-        # Buffer de 1000 frames = 20 secondes @ 20ms/frame
-        # Grande capacité nécessaire:
-        # - OpenAI envoie en très gros bursts (plusieurs centaines de ms d'audio d'un coup)
-        # - PJSUA consomme à taux fixe (20ms/frame)
-        # - Queue absorbe les bursts sans perdre de paquets
-        # - Préférer latence plutôt que perte audio (coupures audibles)
-        # - Tests montrent que 1000 frames évite les "⚠️ Queue audio sortante pleine"
+        # Files pour l'audio (mode PUSH legacy)
+        # NOTE: Si audio_bridge est fourni, ces queues ne sont plus utilisées
         self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
         self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone - 20s max
 
@@ -216,6 +221,9 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
     def onFrameRequested(self, frame: pj.MediaFrame) -> None:
         """Appelé par PJSUA pour obtenir de l'audio à envoyer au téléphone.
 
+        Mode PULL (recommandé): utilise audio_bridge.get_next_frame_8k()
+        Mode PUSH (legacy): utilise _outgoing_audio_queue
+
         Note: PJSUA gère automatiquement l'encodage du codec (PCM → PCMU).
         Ce callback doit fournir du PCM linéaire 16-bit, pas du µ-law.
         """
@@ -237,54 +245,96 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         # Au premier appel, signaler que PJSUA est prêt à consommer l'audio
         # CRITIQUE: Utiliser l'event spécifique à cet appel, pas un event global
         if self._frame_count == 1 and self._frame_requested_event and not self._frame_requested_event.is_set():
-            logger.info("🎬 Premier onFrameRequested - PJSUA est prêt à consommer l'audio")
+            logger.info("🎬 Premier onFrameRequested - PJSUA est prêt à consommer l'audio (mode %s)",
+                       "PULL" if self._audio_bridge else "PUSH")
             self._frame_requested_event.set()
 
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
 
-        try:
-            # Récupérer l'audio de la queue (non-bloquant)
-            audio_data = self._outgoing_audio_queue.get_nowait()
-            self._audio_frame_count += 1
+        # MODE PULL: utiliser audio_bridge.get_next_frame_8k()
+        if self._audio_bridge:
+            try:
+                audio_data = self._audio_bridge.get_next_frame_8k()
+                self._audio_frame_count += 1
 
-            # Vérifier si c'est vraiment de l'audio (pas du silence)
-            is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
+                # Vérifier si c'est du silence
+                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
 
-            if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20 and not is_silence):
-                logger.info("📢 onFrameRequested #%d: audio trouvé (%d bytes) - %s",
-                           self._frame_count, len(audio_data),
-                           "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
+                if not is_silence:
+                    if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20):
+                        logger.info("📢 PULL #%d: audio frame (%d bytes)",
+                                   self._frame_count, len(audio_data))
+                else:
+                    self._silence_frame_count += 1
 
-            # S'assurer que la taille est correcte
-            if len(audio_data) < expected_size:
-                # Padding avec du silence si nécessaire
-                audio_data += b'\x00' * (expected_size - len(audio_data))
-            elif len(audio_data) > expected_size:
-                # Tronquer si trop long
-                audio_data = audio_data[:expected_size]
+                # S'assurer que la taille est correcte
+                if len(audio_data) < expected_size:
+                    audio_data += b'\x00' * (expected_size - len(audio_data))
+                elif len(audio_data) > expected_size:
+                    audio_data = audio_data[:expected_size]
 
-            # Redimensionner le buffer et copier les données PCM
-            frame.buf.clear()
-            for byte in audio_data:
-                frame.buf.append(byte)
+                # Copier les données PCM
+                frame.buf.clear()
+                for byte in audio_data:
+                    frame.buf.append(byte)
 
-            frame.size = len(audio_data)
-            frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
+                frame.size = len(audio_data)
+                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
-        except queue.Empty:
-            # Pas d'audio disponible, envoyer du silence PCM (0x00)
-            self._silence_frame_count += 1
+            except Exception as e:
+                logger.warning("Erreur PULL get_next_frame_8k: %s, envoi silence", e)
+                self._silence_frame_count += 1
+                frame.buf.clear()
+                for _ in range(expected_size):
+                    frame.buf.append(0)
+                frame.size = expected_size
+                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
-            if self._silence_frame_count <= 5 or self._silence_frame_count % 50 == 0:
-                logger.debug("🔇 onFrameRequested #%d: queue vide, envoi silence (total silence: %d)",
-                           self._frame_count, self._silence_frame_count)
+        # MODE PUSH (legacy): utiliser _outgoing_audio_queue
+        else:
+            try:
+                # Récupérer l'audio de la queue (non-bloquant)
+                audio_data = self._outgoing_audio_queue.get_nowait()
+                self._audio_frame_count += 1
 
-            frame.buf.clear()
-            for _ in range(expected_size):
-                frame.buf.append(0)
+                # Vérifier si c'est vraiment de l'audio (pas du silence)
+                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
 
-            frame.size = expected_size
-            frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
+                if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20 and not is_silence):
+                    logger.info("📢 PUSH #%d: audio trouvé (%d bytes) - %s",
+                               self._frame_count, len(audio_data),
+                               "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
+
+                # S'assurer que la taille est correcte
+                if len(audio_data) < expected_size:
+                    # Padding avec du silence si nécessaire
+                    audio_data += b'\x00' * (expected_size - len(audio_data))
+                elif len(audio_data) > expected_size:
+                    # Tronquer si trop long
+                    audio_data = audio_data[:expected_size]
+
+                # Redimensionner le buffer et copier les données PCM
+                frame.buf.clear()
+                for byte in audio_data:
+                    frame.buf.append(byte)
+
+                frame.size = len(audio_data)
+                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
+
+            except queue.Empty:
+                # Pas d'audio disponible, envoyer du silence PCM (0x00)
+                self._silence_frame_count += 1
+
+                if self._silence_frame_count <= 5 or self._silence_frame_count % 50 == 0:
+                    logger.debug("🔇 PUSH #%d: queue vide, envoi silence (total silence: %d)",
+                               self._frame_count, self._silence_frame_count)
+
+                frame.buf.clear()
+                for _ in range(expected_size):
+                    frame.buf.append(0)
+
+                frame.size = expected_size
+                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
     def onFrameReceived(self, frame: pj.MediaFrame) -> None:
         """Appelé par PJSUA quand de l'audio est reçu du téléphone.
