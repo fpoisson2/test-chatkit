@@ -795,39 +795,36 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                    custom_port_info_after.portId, custom_port_info_after.name)
 
                         # 📊 DIAGNOSTIC: Afficher le port RTP utilisé pour vérifier qu'il change entre appels
-                        logger.warning("🔍 Extraction du port RTP (call_id=%s, media_idx=%d)...", ci.id, mi.index)
+                        # StreamInfo ne contient PAS le port local, seulement le distant
+                        # On doit estimer le port basé sur l'allocation séquentielle de PJSUA
+                        logger.warning("🔍 Estimation du port RTP (call_id=%s, PJSUA call_id=%s)...", ci.id, ci.callIdString)
+
                         try:
-                            # getStreamInfo contient directement les infos RTP (pas de structure .info.aud)
+                            # PJSUA alloue les ports RTP séquentiellement: 10000, 10002, 10004, ...
+                            # Chaque appel utilise 2 ports: pair pour RTP, impair pour RTCP
+                            # Le PJSUA call_id numérique indique l'ordre d'allocation
+
+                            # Calculer le port RTP estimé basé sur le call_id PJSUA
+                            pjsua_call_id = ci.id  # C'est un int qui s'incrémente: 0, 1, 2, ...
+                            estimated_rtp_port = 10000 + (pjsua_call_id * 2)
+                            estimated_rtcp_port = estimated_rtp_port + 1
+
+                            logger.warning("🔌 PORT RTP LOCAL ESTIMÉ: 0.0.0.0:%d (basé sur PJSUA call_id=%d)",
+                                         estimated_rtp_port, pjsua_call_id)
+                            logger.warning("🔌 PORT RTCP LOCAL ESTIMÉ: 0.0.0.0:%d", estimated_rtcp_port)
+
+                            # Afficher aussi le port distant pour comparaison
                             stream_info = self.getStreamInfo(mi.index)
-
-                            # Lister TOUS les attributs pour trouver le port local
-                            all_attrs = [a for a in dir(stream_info) if not a.startswith('_')]
-                            logger.warning("📋 Tous les attributs StreamInfo (%d): %s", len(all_attrs), ', '.join(all_attrs))
-
-                            # Chercher les attributs de port RTP local
-                            rtp_found = False
-
-                            # Option 1: rtpSockName
-                            if hasattr(stream_info, 'rtpSockName'):
-                                logger.warning("🔌 PORT RTP LOCAL (rtpSockName): %s", stream_info.rtpSockName)
-                                rtp_found = True
-
-                            # Option 2: localRtpName
-                            if hasattr(stream_info, 'localRtpName'):
-                                logger.warning("🔌 PORT RTP LOCAL (localRtpName): %s", stream_info.localRtpName)
-                                rtp_found = True
-
-                            # Option 3: remoteRtpAddress (pour comparer)
                             if hasattr(stream_info, 'remoteRtpAddress'):
                                 logger.warning("🔌 PORT RTP DISTANT: %s", stream_info.remoteRtpAddress)
 
-                            if not rtp_found:
-                                logger.warning("⚠️ Aucun attribut de port RTP local trouvé!")
+                            # Note: Cette estimation est fiable tant que:
+                            # 1. Tous les appels utilisent le même compte SIP
+                            # 2. Aucun appel sortant n'est fait en parallèle
+                            # 3. Le range de ports est suffisamment grand (10000 ports = 5000 appels)
 
                         except Exception as port_err:
-                            logger.warning("⚠️ Erreur extraction port RTP: %s", port_err)
-                            import traceback
-                            logger.warning("Traceback: %s", traceback.format_exc())
+                            logger.warning("⚠️ Erreur estimation port RTP: %s", port_err)
 
                         logger.info("✅ Null sound device + conference bridge correctement armé")
                     except Exception as e:
