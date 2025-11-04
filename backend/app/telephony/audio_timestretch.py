@@ -188,24 +188,25 @@ class WSolaTimeStretch:
         # Clip and convert to int16
         output = np.clip(output[:output_pos], -32768, 32767).astype(np.int16)
 
-        # CRITICAL: Arrondir au multiple de frame_size (160 samples @ 8kHz)
-        # Évite les problèmes d'alignement quand on envoie à PJSUA
+        # CRITICAL: Tronquer au multiple de frame_size (160 samples @ 8kHz)
+        # Garantit sortie alignée sans padding artificiel
         output_len = len(output)
         frame_aligned_len = (output_len // self.frame_size) * self.frame_size
 
         if frame_aligned_len < output_len:
-            # Pad au prochain multiple de frame_size pour garder alignement
-            # Le padding de quelques samples (<160) est inaudible
-            next_multiple = ((output_len + self.frame_size - 1) // self.frame_size) * self.frame_size
-            output = np.pad(output, (0, next_multiple - output_len), mode='constant')
-            logger.debug(
-                "WSOLA padded %d samples → %d samples (frame alignment)",
-                output_len, len(output)
-            )
+            # Tronquer au multiple précédent (pas de padding!)
+            # Les samples résiduels (<160) sont perdus mais négligeables
+            samples_dropped = output_len - frame_aligned_len
+            output = output[:frame_aligned_len]
+            if samples_dropped > 40:  # Log seulement si significatif
+                logger.debug(
+                    "WSOLA truncated %d residual samples → %d samples (frame-aligned, no padding)",
+                    output_len, frame_aligned_len
+                )
 
         logger.debug(
-            "WSOLA processed %d frames: %d samples → %d samples (ratio=%.2fx, frame-aligned)",
-            frame_count, len(audio), len(output), speed_ratio
+            "WSOLA: %d samples in → %d samples out (ratio=%.2fx, %d frames)",
+            len(audio), len(output), speed_ratio, len(output) // self.frame_size
         )
 
         return output
