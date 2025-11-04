@@ -1451,15 +1451,16 @@ class PJSUAAdapter:
     ) -> AudioMediaPort:
         """Retourne un port audio prêt pour un nouvel appel.
 
-        COOLDOWN: Force recreate après 2 réutilisations pour casser tout état latent.
+        COOLDOWN: Force recreate après N réutilisations pour casser tout état latent.
+        Si MAX_REUSE_COUNT = 0, réutilisation illimitée sans jamais détruire le port.
         """
-        MAX_REUSE_COUNT = 0  # TEMPORAIRE: Désactiver réutilisation pour tester sautillement
+        MAX_REUSE_COUNT = 0  # 0 = réutilisation illimitée, >0 = force recréation après N usages
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
 
-            # Vérifier le compteur de réutilisation
-            if port._reuse_count >= MAX_REUSE_COUNT:
+            # Vérifier le compteur de réutilisation (0 = illimité)
+            if MAX_REUSE_COUNT > 0 and port._reuse_count >= MAX_REUSE_COUNT:
                 logger.info(
                     "🔄 Port atteint %d réutilisations - destruction et recréation (call_id=%s)",
                     port._reuse_count, call_id
@@ -1469,12 +1470,23 @@ class PJSUAAdapter:
                 except Exception as exc:
                     logger.debug("Erreur destruction port (cooldown): %s", exc)
 
-                # Créer un nouveau port
+                # Créer un nouveau port après cooldown
                 logger.info(
                     "🔧 Création d'un nouvel AudioMediaPort après cooldown (call_id=%s)",
                     call_id
                 )
-                return AudioMediaPort(self, frame_requested_event, audio_bridge)
+                new_port = AudioMediaPort(self, frame_requested_event, audio_bridge)
+
+                # 📊 Diagnostic: Enregistrer que le port a été recréé
+                if audio_bridge and hasattr(audio_bridge, '_chatkit_call_id') and audio_bridge._chatkit_call_id:
+                    from .call_diagnostics import get_diagnostics_manager
+                    diag_manager = get_diagnostics_manager()
+                    diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
+                    if diag:
+                        diag.port_reuse_count = 0
+                        diag.port_recreated = True
+
+                return new_port
 
             # Réutiliser le port existant
             port._reuse_count += 1
@@ -1483,13 +1495,34 @@ class PJSUAAdapter:
                 port._reuse_count, call_id
             )
             port.prepare_for_new_call(frame_requested_event, audio_bridge)
+
+            # 📊 Diagnostic: Enregistrer le nombre de réutilisations
+            if audio_bridge and hasattr(audio_bridge, '_chatkit_call_id') and audio_bridge._chatkit_call_id:
+                from .call_diagnostics import get_diagnostics_manager
+                diag_manager = get_diagnostics_manager()
+                diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
+                if diag:
+                    diag.port_reuse_count = port._reuse_count
+                    diag.port_recreated = False
+
             return port
 
         logger.info(
             "🔧 Création d'un nouvel AudioMediaPort (call_id=%s)",
             call_id
         )
-        return AudioMediaPort(self, frame_requested_event, audio_bridge)
+        new_port = AudioMediaPort(self, frame_requested_event, audio_bridge)
+
+        # 📊 Diagnostic: Premier port créé (pool vide)
+        if audio_bridge and hasattr(audio_bridge, '_chatkit_call_id') and audio_bridge._chatkit_call_id:
+            from .call_diagnostics import get_diagnostics_manager
+            diag_manager = get_diagnostics_manager()
+            diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
+            if diag:
+                diag.port_reuse_count = 0
+                diag.port_recreated = False
+
+        return new_port
 
     def release_audio_port(
         self, port: AudioMediaPort, *, destroy: bool = False

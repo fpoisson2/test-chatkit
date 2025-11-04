@@ -827,8 +827,10 @@ class TelephonyVoiceBridge:
                                             diag_manager = get_diagnostics_manager()
                                             diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
                                             if diag:
-                                                diag.phase_first_tts.start()
-                                                diag.phase_first_tts.end(delay_ms=delta, bytes=len(pcm_data))
+                                                # Utiliser directement delta au lieu de start/end pour capturer la vraie valeur
+                                                diag.phase_first_tts.duration_ms = delta
+                                                diag.phase_first_tts.metadata = {'delay_ms': delta, 'bytes': len(pcm_data)}
+                                                logger.info(f"⏱️ Phase 'first_tts' enregistrée: {delta:.1f}ms")
 
                                 outbound_audio_bytes += len(pcm_data)
                                 logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
