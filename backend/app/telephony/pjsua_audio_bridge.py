@@ -460,29 +460,33 @@ class PJSUAAudioBridge:
         Appelé par AudioMediaPort.onFrameRequested() (callback synchrone PJSUA).
         Mode PULL: PJSUA demande l'audio à son rythme (20ms/frame).
 
-        RATIO DYNAMIQUE DOUX:
-        - ratio = clamp(1 + 0.01 * (ring_len - 8), 0.96, 1.06)
-        - Si ring > target: accélérer légèrement (±6% max, pas 12%)
-        - Si ring < target: ralentir légèrement
-        - Appliqué sur chaque quantum de 20ms
+        ARCHITECTURE:
+        1. Injecter staging → ring (leaky bucket continu)
+        2. Calculer ratio dynamique selon ring_len
+        3. Pull 1 frame du ring (ou silence si vide)
+        4. Time-stretch si ratio != 1.0
 
         Returns:
             320 bytes PCM16 @ 8kHz (silence si buffer vide)
         """
         SILENCE_8K = b'\x00' * self.EXPECTED_FRAME_SIZE_8KHZ
 
+        # 1) CRITICAL: Injecter staging → ring (leaky bucket continu)
+        # Appelé toutes les 20ms par PJSUA, c'est le heartbeat d'injection
+        self._inject_from_staging_to_ring()
+
         with self._ring_lock:
             buffer_size = len(self._ring_buffer_8k)
             buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
             ring_len = int(buffer_frames)
 
-            # Calculer ratio dynamique doux
+            # 2) Calculer ratio dynamique doux
             # ratio = clamp(1 + k * (ring - target), 0.96, 1.06)
             self._speed_ratio = max(0.96, min(1.06,
                 1.0 + self.RATIO_K * (ring_len - self.RING_TARGET)
             ))
 
-            # Extraire 1 frame si disponible
+            # 3) Extraire 1 frame si disponible
             if buffer_size >= self.EXPECTED_FRAME_SIZE_8KHZ:
                 frame_8k = bytes(self._ring_buffer_8k[:self.EXPECTED_FRAME_SIZE_8KHZ])
                 del self._ring_buffer_8k[:self.EXPECTED_FRAME_SIZE_8KHZ]
@@ -494,7 +498,7 @@ class PJSUAAudioBridge:
                 is_silence = True
                 self._silence_pulled += 1
 
-        # Appliquer time-stretch doux si ratio != 1.0 (et pas silence)
+        # 4) Appliquer time-stretch doux si ratio != 1.0 (et pas silence)
         if abs(self._speed_ratio - 1.0) > 0.01 and not is_silence:
             try:
                 stretched = self._timestretch_8k.process(frame_8k, self._speed_ratio)
