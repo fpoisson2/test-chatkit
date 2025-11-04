@@ -1031,16 +1031,27 @@ class PJSUAAdapter:
     async def hangup_call(self, call: PJSUACall) -> None:
         """Termine un appel de manière idempotente.
 
-        Utilise isValid() pour vérifier que l'appel existe encore avant de tenter hangup().
+        Vérifie l'état de l'appel via getInfo() avant de tenter hangup().
         Cela évite les appels inutiles à hangup() sur des sessions déjà terminées.
         """
         if not PJSUA_AVAILABLE:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
-        # Protection idempotente: ne hangup que si l'appel est encore valide
-        if not call.isValid():
-            logger.debug("Appel déjà invalide/terminé, hangup ignoré")
-            return
+        # Protection idempotente: vérifier l'état avant hangup
+        try:
+            ci = call.getInfo()
+            # Si déjà DISCONNECTED, ne pas faire hangup
+            if ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+                logger.debug("Appel déjà DISCONNECTED (call_id=%s), hangup ignoré", ci.id)
+                return
+        except Exception as e:
+            # Si getInfo() échoue avec ESESSIONTERMINATED, l'appel est déjà mort
+            error_str = str(e).lower()
+            if "already terminated" in error_str or "esessionterminated" in error_str or "171140" in str(e):
+                logger.debug("Appel déjà terminé (getInfo failed with 171140), hangup ignoré")
+                return
+            # Pour d'autres erreurs, continuer et tenter le hangup quand même
+            logger.debug("getInfo() échoué dans hangup_call: %s - tentative hangup quand même", e)
 
         try:
             prm = pj.CallOpParam()
@@ -1126,7 +1137,7 @@ class PJSUAAdapter:
     def _is_call_valid(self, call: PJSUACall) -> bool:
         """Vérifie si un appel est toujours valide et peut être raccroché.
 
-        Utilise isValid() au lieu de getInfo() pour éviter les erreurs ESESSIONTERMINATED.
+        Utilise getInfo().state pour vérifier l'état, en gérant les erreurs ESESSIONTERMINATED.
 
         Args:
             call: L'appel PJSUA à vérifier
@@ -1137,7 +1148,19 @@ class PJSUAAdapter:
         if not PJSUA_AVAILABLE or not call:
             return False
 
-        return call.isValid()
+        try:
+            ci = call.getInfo()
+            # Valide si PAS encore DISCONNECTED
+            return ci.state != pj.PJSIP_INV_STATE_DISCONNECTED
+        except Exception as e:
+            # Si getInfo() échoue (ESESSIONTERMINATED), l'appel n'est pas valide
+            error_str = str(e).lower()
+            if "already terminated" in error_str or "esessionterminated" in error_str or "171140" in str(e):
+                logger.debug("_is_call_valid: appel déjà terminé (171140)")
+                return False
+            # Autre erreur, considérer invalide par sécurité
+            logger.warning("_is_call_valid: getInfo() échoué: %s", e)
+            return False
 
     async def make_call(self, dest_uri: str) -> PJSUACall:
         """Initie un appel sortant."""
