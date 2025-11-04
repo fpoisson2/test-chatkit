@@ -993,16 +993,6 @@ class TelephonyVoiceBridge:
                 except Exception as e:
                     logger.warning("input_audio_buffer.clear échoué au début: %s", e)
 
-                # OPTIMISATION: Vider aussi la queue locale PJSUA pour supprimer
-                # les frames de silence accumulées avant le démarrage de la session
-                if clear_audio_queue is not None:
-                    try:
-                        cleared_count = clear_audio_queue()
-                        if cleared_count > 0:
-                            logger.info("🗑️ Queue locale PJSUA vidée: %d frames de silence supprimées", cleared_count)
-                    except Exception as e:
-                        logger.warning("Erreur lors du vidage de la queue PJSUA: %s", e)
-
                 # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
                 # OPTIMISATION: Envoyer response.create IMMÉDIATEMENT après pjsua_ready, sans attendre le premier RTP
                 if speak_first:
@@ -1011,6 +1001,16 @@ class TelephonyVoiceBridge:
                         try:
                             await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
                             logger.info("✅ PJSUA prêt - envoi IMMÉDIAT de response.create (sans attendre RTP)")
+
+                            # OPTIMISATION CRITIQUE: Vider la queue locale PJSUA MAINTENANT
+                            # Les frames de silence se sont accumulées pendant l'attente
+                            if clear_audio_queue is not None:
+                                try:
+                                    cleared_count = clear_audio_queue()
+                                    if cleared_count > 0:
+                                        logger.info("🗑️ Queue locale PJSUA vidée: %d frames de silence supprimées", cleared_count)
+                                except Exception as e:
+                                    logger.warning("Erreur lors du vidage de la queue PJSUA: %s", e)
 
                             # OPTIMISATION AGRESSIVE: Amorcer le canal et envoyer response.create MAINTENANT
                             # Cela démarre la génération TTS immédiatement sans attendre le premier paquet RTP
