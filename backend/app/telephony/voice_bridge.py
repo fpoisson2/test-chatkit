@@ -980,7 +980,6 @@ class TelephonyVoiceBridge:
 
                                 # Timing diagnostic
                                 if audio_bridge:
-                                    import time
                                     audio_bridge._t1_response_create = time.monotonic()
                                     logger.info("✅ response.create envoyé IMMÉDIATEMENT (optimisation maximale)")
                             except Exception as exc:
