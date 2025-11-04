@@ -75,6 +75,12 @@ class PJSUAAudioBridge:
         # Cela confirme que le flux audio bidirectionnel est établi
         self._first_packet_received = asyncio.Event()
 
+        # Latch pour verrouiller le timing d'envoi
+        # Ne devient True que quand: media_active + first_frame + silence_primed
+        # Empêche tout envoi audio prématuré (évite warnings "pas de slot audio")
+        self._can_send_audio = False
+        self._silence_primed = False
+
         # Queue watermark tracking
         self._queue_high_watermark_logged = False
         self._queue_low_watermark_logged = False
@@ -290,6 +296,13 @@ class PJSUAAudioBridge:
             self._send_to_peer_buffer = b""  # Vider le buffer
             return
 
+        # Latch de timing: ne rien envoyer tant que media_active + first_frame + silence_primed
+        # Évite les warnings "pas de slot audio" en début d'appel
+        if not self._can_send_audio:
+            # Buffer silencieusement, sera traité quand can_send_audio=True
+            self._send_to_peer_buffer += audio_24khz
+            return
+
         # Accumuler dans le buffer (peut recevoir n'importe quelle taille)
         self._send_to_peer_buffer += audio_24khz
 
@@ -318,26 +331,49 @@ class PJSUAAudioBridge:
                 self._downsampler.reset()
                 continue
 
-            # Head-drop si queue >= MAX_QUEUE_FRAMES (6 frames = 120ms)
-            # Drop en TÊTE (oldest first) pour minimiser gigue perçue
+            # Skip-to-latest si queue > TARGET_QUEUE_FRAMES (4 = 80ms)
+            # Au lieu de head-drop frame par frame, garder seulement la dernière frame
+            # Conserve au moins la prochaine frontière de 20ms, réduit le hachage
             queue_size = self._outgoing_audio_queue.qsize()
-            while queue_size >= self.MAX_QUEUE_FRAMES:
-                try:
-                    dropped_frame = self._outgoing_audio_queue.get_nowait()
-                    frames_dropped_head += 1
-                    queue_size -= 1
-                except asyncio.QueueEmpty:
-                    break
+            if queue_size > self.TARGET_QUEUE_FRAMES:
+                # Vider toute la queue SAUF la dernière frame
+                frames_to_keep = []
+                frames_skipped = 0
 
-            # Enqueue la frame @ 8kHz avec timestamp
+                # Extraire toutes les frames
+                while not self._outgoing_audio_queue.empty():
+                    try:
+                        frame = self._outgoing_audio_queue.get_nowait()
+                        frames_to_keep.append(frame)
+                    except asyncio.QueueEmpty:
+                        break
+
+                # Garder seulement la DERNIÈRE frame (skip-to-latest)
+                if len(frames_to_keep) > 1:
+                    frames_skipped = len(frames_to_keep) - 1
+                    frames_dropped_head += frames_skipped
+                    # Remettre seulement la dernière
+                    self._outgoing_audio_queue.put_nowait(frames_to_keep[-1])
+                elif len(frames_to_keep) == 1:
+                    # Remettre l'unique frame
+                    self._outgoing_audio_queue.put_nowait(frames_to_keep[0])
+
+                if frames_skipped > 0:
+                    logger.debug(
+                        "⏭️ Skip-to-latest: dropped %d old frames, kept latest frame (queue was %d)",
+                        frames_skipped,
+                        len(frames_to_keep),
+                    )
+
+            # Enqueue la nouvelle frame @ 8kHz avec timestamp
             try:
                 # Stocker (frame, t_enqueue) pour mesurer latence plus tard
                 self._outgoing_audio_queue.put_nowait((frame_8k, t_model_in))
                 frames_processed += 1
             except asyncio.QueueFull:
-                # Ne devrait pas arriver car on vient de faire head-drop
-                logger.warning("⚠️ Queue pleine malgré head-drop!")
-                break
+                # Queue pleine: dropper cette frame
+                logger.debug("🗑️ Queue pleine - drop cette frame")
+                frames_dropped_head += 1
 
         # Log si frames droppées ou si parmi les 5 premiers appels
         if frames_dropped_head > 0 or self._send_to_peer_call_count <= 5:
@@ -402,6 +438,26 @@ class PJSUAAudioBridge:
         if self._drop_until_next_assistant:
             logger.info("✅ Assistant reprend - désactivation du drop mode")
             self._drop_until_next_assistant = False
+
+    def enable_audio_output(self) -> None:
+        """Active l'envoi audio après vérification des conditions.
+
+        À appeler après:
+        - onCallMediaState actif
+        - Premier onFrameRequested reçu
+        - Silence primer envoyé (40ms)
+
+        Déverrouille send_to_peer() pour commencer l'envoi TTS.
+        """
+        if not self._can_send_audio:
+            self._can_send_audio = True
+            buffer_size = len(self._send_to_peer_buffer)
+            logger.info(
+                "🔓 Audio output enabled (buffer buffered during init: %d bytes = %.1f frames)",
+                buffer_size,
+                buffer_size / self.EXPECTED_FRAME_SIZE_24KHZ if buffer_size > 0 else 0,
+            )
+            # Le buffer accumulé sera traité au prochain appel de send_to_peer()
 
     def stop(self) -> None:
         """Stop the audio bridge."""
