@@ -340,40 +340,6 @@ class PJSUAAudioBridge:
                 self._downsampler.reset()
                 continue
 
-            # Skip-to-latest si queue > TARGET_QUEUE_FRAMES (4 = 80ms)
-            # Au lieu de head-drop frame par frame, garder seulement la dernière frame
-            # Conserve au moins la prochaine frontière de 20ms, réduit le hachage
-            queue_size = self._outgoing_audio_queue.qsize()
-            if queue_size > self.TARGET_QUEUE_FRAMES:
-                # Vider toute la queue SAUF la dernière frame
-                frames_to_keep = []
-                frames_skipped = 0
-
-                # Extraire toutes les frames
-                while not self._outgoing_audio_queue.empty():
-                    try:
-                        frame = self._outgoing_audio_queue.get_nowait()
-                        frames_to_keep.append(frame)
-                    except asyncio.QueueEmpty:
-                        break
-
-                # Garder seulement la DERNIÈRE frame (skip-to-latest)
-                if len(frames_to_keep) > 1:
-                    frames_skipped = len(frames_to_keep) - 1
-                    frames_dropped_head += frames_skipped
-                    # Remettre seulement la dernière
-                    self._outgoing_audio_queue.put_nowait(frames_to_keep[-1])
-                elif len(frames_to_keep) == 1:
-                    # Remettre l'unique frame
-                    self._outgoing_audio_queue.put_nowait(frames_to_keep[0])
-
-                if frames_skipped > 0:
-                    logger.debug(
-                        "⏭️ Skip-to-latest: dropped %d old frames, kept latest frame (queue was %d)",
-                        frames_skipped,
-                        len(frames_to_keep),
-                    )
-
             # Enqueue la nouvelle frame @ 8kHz avec timestamp
             try:
                 # Stocker (frame, t_enqueue) pour mesurer latence plus tard
