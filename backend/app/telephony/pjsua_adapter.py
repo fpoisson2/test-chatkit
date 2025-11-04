@@ -477,6 +477,10 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         # Utiliser un event partagé cause des problèmes sur les 2e/3e appels
         self._frame_requested_event = asyncio.Event() if adapter._loop else None
 
+        # Flag idempotent pour éviter les doubles nettoyages
+        # Empêche la race condition entre DISCONNECTED callback et cleanup_call() tardif
+        self._cleanup_done = False
+
     def onCallState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état d'appel."""
         if not PJSUA_AVAILABLE:
@@ -568,6 +572,17 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         if slots_disconnected or self._conference_connected:
             logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
+
+        # CRITIQUE: Retirer le port custom du bridge conference
+        # Après confDisconnect, il faut aussi confRemovePort pour libérer complètement la ressource
+        if endpoint is not None and hasattr(endpoint, "confRemovePort") and custom_slot is not None:
+            try:
+                endpoint.confRemovePort(custom_slot)  # type: ignore[attr-defined]
+                logger.debug("✅ confRemovePort(slot=%s) exécuté (call_id=%s)", custom_slot, call_id)
+            except Exception as error:
+                # EINVAL peut arriver si le port est déjà retiré, c'est ok
+                if not _is_invalid_conference_disconnect_error(error):
+                    logger.warning("Erreur confRemovePort slot=%s (call_id=%s): %s", custom_slot, call_id, error)
 
         self._conference_connected = False
         self._audio_media = None
@@ -955,6 +970,12 @@ class PJSUAAdapter:
         """
         # Nettoyer les appels terminés
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+            # Protection idempotente: éviter les doubles nettoyages
+            if call._cleanup_done:
+                logger.debug("Nettoyage déjà effectué pour call_id=%s, ignoré", call_info.id)
+                return
+
+            call._cleanup_done = True
             logger.info("📞 Appel DISCONNECTED détecté - nettoyage immédiat (call_id=%s)", call_info.id)
 
             self._active_calls.pop(call_info.id, None)
@@ -1008,36 +1029,30 @@ class PJSUAAdapter:
         logger.info("Réponse envoyée à l'appel (code=%d)", code)
 
     async def hangup_call(self, call: PJSUACall) -> None:
-        """Termine un appel."""
+        """Termine un appel de manière idempotente.
+
+        Utilise isValid() pour vérifier que l'appel existe encore avant de tenter hangup().
+        Cela évite les appels inutiles à hangup() sur des sessions déjà terminées.
+        """
         if not PJSUA_AVAILABLE:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
-        # Vérifier si l'appel est déjà terminé pour éviter les erreurs "INVITE session already terminated"
-        try:
-            ci = call.getInfo()
-            if ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
-                logger.debug("Appel déjà terminé (call_id=%s), ignorer hangup", ci.id)
-                return
-        except Exception as e:
-            # Si getInfo() échoue avec "already terminated", l'appel est déjà terminé
-            error_str = str(e).lower()
-            if "already terminated" in error_str or "esessionterminated" in error_str:
-                logger.debug("Appel déjà terminé (getInfo échoué), ignorer hangup: %s", e)
-                return
-            # Sinon, logger l'erreur mais continuer pour essayer le hangup
-            logger.debug("Impossible de vérifier l'état de l'appel: %s", e)
+        # Protection idempotente: ne hangup que si l'appel est encore valide
+        if not call.isValid():
+            logger.debug("Appel déjà invalide/terminé, hangup ignoré")
+            return
 
         try:
             prm = pj.CallOpParam()
             call.hangup(prm)
-            logger.info("Appel terminé")
+            logger.info("Appel terminé via hangup()")
         except Exception as e:
-            # Ignorer les erreurs si l'appel est déjà terminé
+            # PJSIP_ESESSIONTERMINATED (171140) signifie "déjà terminé" - c'est ok
             error_str = str(e).lower()
-            if "already terminated" in error_str or "esessionterminated" in error_str:
-                logger.debug("Appel déjà terminé, erreur ignorée: %s", e)
+            if "already terminated" in error_str or "esessionterminated" in error_str or "171140" in str(e):
+                logger.debug("Appel déjà terminé (171140), traité comme succès")
             else:
-                # Réemettre l'exception si c'est une autre erreur
+                # Autre erreur réelle
                 raise
 
     async def cleanup_call(self, call_id: int) -> None:
@@ -1059,6 +1074,12 @@ class PJSUAAdapter:
                 logger.debug("Appel %s déjà nettoyé ou introuvable", call_id)
                 return
 
+            # Protection idempotente: éviter les doubles nettoyages (race avec DISCONNECTED callback)
+            if call._cleanup_done:
+                logger.debug("Nettoyage déjà effectué pour call_id=%s (via DISCONNECTED), ignoré", call_id)
+                return
+
+            call._cleanup_done = True
             logger.info("🧹 Début nettoyage appel (call_id=%s)", call_id)
 
             # Arrêter l'audio bridge d'abord (si attaché dynamiquement à l'appel)
@@ -1105,6 +1126,8 @@ class PJSUAAdapter:
     def _is_call_valid(self, call: PJSUACall) -> bool:
         """Vérifie si un appel est toujours valide et peut être raccroché.
 
+        Utilise isValid() au lieu de getInfo() pour éviter les erreurs ESESSIONTERMINATED.
+
         Args:
             call: L'appel PJSUA à vérifier
 
@@ -1114,13 +1137,7 @@ class PJSUAAdapter:
         if not PJSUA_AVAILABLE or not call:
             return False
 
-        try:
-            ci = call.getInfo()
-            # Vérifier si l'appel n'est pas déjà terminé
-            return ci.state != pj.PJSIP_INV_STATE_DISCONNECTED
-        except Exception:
-            # Si getInfo() échoue, l'appel n'est pas valide
-            return False
+        return call.isValid()
 
     async def make_call(self, dest_uri: str) -> PJSUACall:
         """Initie un appel sortant."""
