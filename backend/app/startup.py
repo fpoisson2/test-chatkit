@@ -2668,20 +2668,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             send_to_peer = send_to_peer_blocked
 
-            # Attendre le ring timeout avant de répondre à l'appel
-            if ring_timeout_seconds > 0:
-                logger.info(
-                    "⏰ Sonnerie de %.2f secondes avant de répondre (call_id=%s)",
-                    ring_timeout_seconds,
-                    call_id,
-                )
-                await asyncio.sleep(ring_timeout_seconds)
-
-            # Créer la session vocale APRÈS la sonnerie mais AVANT de répondre à l'appel
-            # Cela permet d'avoir la session prête quand l'audio commence à arriver
-            logger.info("Ouverture session vocale PJSUA après sonnerie (call_id=%s)", call_id)
-
-            # Ajouter le tool de transfert d'appel
+            # Ajouter le tool de transfert d'appel AVANT de créer la session
             telephony_tools = list(voice_tools) if voice_tools else []
             transfer_tool_config = {
                 "type": "function",
@@ -2711,9 +2698,14 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             }
             telephony_tools.append(transfer_tool_config)
 
-            # Ouvrir la session avec un timeout pour éviter les blocages
-            try:
-                session_handle = await asyncio.wait_for(
+            # OPTIMISATION: Créer la session vocale EN PARALLÈLE avec la sonnerie
+            # Cela permet de gagner jusqu'à 1 seconde de latence (requête client_secret + connexion OpenAI)
+            logger.info("🚀 Démarrage création session vocale PENDANT la sonnerie (call_id=%s)", call_id)
+
+            # Créer une tâche asynchrone pour la création de session
+            async def create_session_async():
+                """Crée la session vocale de manière asynchrone."""
+                return await asyncio.wait_for(
                     open_voice_session(
                         user_id=f"pjsua:{call_id}",
                         model=voice_model,
@@ -2731,6 +2723,22 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     ),
                     timeout=10.0,  # Timeout de 10 secondes
                 )
+
+            session_task = asyncio.create_task(create_session_async())
+
+            # Attendre la sonnerie ET la création de session en parallèle
+            if ring_timeout_seconds > 0:
+                logger.info(
+                    "⏰ Sonnerie de %.2f secondes (en parallèle avec création session) (call_id=%s)",
+                    ring_timeout_seconds,
+                    call_id,
+                )
+                await asyncio.sleep(ring_timeout_seconds)
+                logger.info("🔔 Sonnerie terminée, attente de la session si nécessaire... (call_id=%s)", call_id)
+
+            # Attendre que la session soit prête (si elle n'est pas déjà terminée)
+            try:
+                session_handle = await session_task
             except asyncio.TimeoutError:
                 logger.error(
                     "⏱️ Timeout lors de la création de session Realtime (call_id=%s) - "
