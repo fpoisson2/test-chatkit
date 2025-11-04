@@ -187,6 +187,23 @@ class PJSUAAudioBridge:
             await media_active_event.wait()
             logger.info("✅ RTP stream: média actif, démarrage de la capture audio")
 
+        # CRITICAL FIX: Vider la queue audio entrante AVANT de démarrer le stream
+        # Cela élimine tout silence/bruit résiduel d'appels précédents ou du warm-up
+        # du jitter buffer, ce qui réduit drastiquement les "none packets"
+        if self._call._audio_port:
+            cleared_frames = self._call._audio_port.clear_incoming_audio_queue()
+            if cleared_frames > 0:
+                logger.info(
+                    "🗑️ RTP stream: vidage initial de %d frames résiduelles de la queue entrante",
+                    cleared_frames
+                )
+
+        # CRITICAL FIX: Attendre 50ms supplémentaires après media_active pour que le
+        # conference bridge soit complètement stable et que le flux RTP commence vraiment
+        # Cela évite de boucler pendant 100-200ms à attendre le premier paquet
+        await asyncio.sleep(0.05)  # 50ms - temps pour que RTP s'établisse réellement
+        logger.info("✅ RTP stream: délai de stabilisation terminé, démarrage de la capture")
+
         logger.info("Starting RTP stream from PJSUA (8kHz → 24kHz)")
         resampling_state = None
 
