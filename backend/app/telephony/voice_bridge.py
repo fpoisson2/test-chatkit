@@ -56,9 +56,9 @@ class TelephonyPlaybackTracker(RealtimePlaybackTracker):
             return
 
         # Calculate duration from bytes based on audio format
-        # PCM16 at 16kHz: 2 bytes per sample, 16000 samples per second
-        # So: bytes / 2 / 16000 * 1000 = ms
-        sample_rate = getattr(self._audio_format, 'rate', 16000)
+        # PCM16 at 24kHz: 2 bytes per sample, 24000 samples per second
+        # So: bytes / 2 / 24000 * 1000 = ms
+        sample_rate = getattr(self._audio_format, 'rate', 24000)
         bytes_per_sample = 2  # PCM16 is 16-bit = 2 bytes
         ms = (len(audio_bytes) / bytes_per_sample / sample_rate) * 1000
 
@@ -253,7 +253,7 @@ class TelephonyVoiceBridge:
         | None = None,
         voice_session_checker: VoiceSessionChecker | None = None,
         input_codec: str = "pcmu",
-        target_sample_rate: int = 16_000,  # 16kHz pour ratio exact 2x avec 8kHz téléphonie
+        target_sample_rate: int = 24_000,  # 24kHz requis par OpenAI Realtime API
         receive_timeout: float = 0.5,
         settings: Settings | None = None,
     ) -> None:
@@ -400,12 +400,12 @@ class TelephonyVoiceBridge:
                             try:
                                 # 1. D'abord, envoyer quelques frames de silence minimal pour amorcer
                                 # CRITIQUE: Seulement 3 frames (60ms) pour éviter lag au démarrage
-                                # À 16kHz: 20ms = 320 samples = 640 bytes
-                                silence_frame_size = 640  # 16000 samples/sec * 0.020 sec * 2 bytes/sample
+                                # À 24kHz: 20ms = 480 samples = 960 bytes (requis par OpenAI)
+                                silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
                                 num_silence_frames = 3  # 3 frames = 60ms - minimal prime
                                 silence_frame = b'\x00' * silence_frame_size
 
-                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence (60ms prime)", num_silence_frames)
+                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence @ 24kHz (60ms prime)", num_silence_frames)
                                 for i in range(num_silence_frames):
                                     await send_to_peer(silence_frame)
                                     await asyncio.sleep(0.020)  # Respecter le cadençage 20ms
@@ -1041,7 +1041,7 @@ class TelephonyVoiceBridge:
             "output_modalities": ["audio"],  # CRITICAL: Force audio output for telephony
             "audio": {
                 "input": {
-                    "format": {"type": "audio/pcm", "rate": 16000},  # 16kHz pour ratio exact 2x
+                    "format": {"type": "audio/pcm", "rate": 24000},  # 24kHz requis par OpenAI Realtime API
                     "turn_detection": {
                         "type": "semantic_vad",  # VAD sémantique pour une meilleure détection de fin de phrase
                         "create_response": True,
@@ -1049,7 +1049,7 @@ class TelephonyVoiceBridge:
                     },
                 },
                 "output": {
-                    "format": {"type": "audio/pcm", "rate": 16000},  # 16kHz pour ratio exact 2x
+                    "format": {"type": "audio/pcm", "rate": 24000},  # 24kHz requis par OpenAI Realtime API
                 },
             },
         }
