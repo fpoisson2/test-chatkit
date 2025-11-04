@@ -365,7 +365,11 @@ def _extract_http_status_error(
 async def _connect_mcp_servers(
     configs: Sequence[Mapping[str, Any]],
 ) -> list[MCPServer]:
-    """Crée et connecte les serveurs MCP définis dans la configuration."""
+    """Crée les serveurs MCP définis dans la configuration.
+
+    Les serveurs ne sont pas connectés ici - le SDK Agents les connectera
+    automatiquement quand nécessaire.
+    """
 
     servers: list[MCPServer] = []
     for config in configs:
@@ -375,39 +379,6 @@ async def _connect_mcp_servers(
             continue
         if isinstance(context, ResolvedMcpServerContext):
             attach_mcp_runtime_context(server, context)
-        try:
-            await server.connect()
-        except Exception as exc:  # pragma: no cover - dépendances externes
-            await _cleanup_mcp_servers(servers)
-            http_error = _extract_http_status_error(exc)
-            if http_error is not None and http_error.response is not None:
-                response = http_error.response
-                error_detail = {
-                    "error": "MCP server connection failed",
-                    "server_url": config.get("server_url"),
-                    "status_code": response.status_code,
-                    "reason": response.reason_phrase,
-                }
-                sanitized_detail, _ = sanitize_value(error_detail)
-                logger.error(
-                    "Échec de connexion au serveur MCP %s : %s",
-                    config.get("server_url"),
-                    sanitized_detail,
-                    exc_info=exc,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=sanitized_detail,
-                ) from http_error
-
-            logger.exception(
-                "Échec de connexion au serveur MCP %s",
-                config.get("server_url"),
-            )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={"error": "MCP server connection failed"},
-            ) from exc
         if isinstance(context, ResolvedMcpServerContext) and context.allowlist:
             sanitized_allowlist = [
                 entry

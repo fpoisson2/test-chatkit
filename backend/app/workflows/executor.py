@@ -2300,57 +2300,8 @@ async def run_workflow(
                     exc_info=True,
                 )
 
-        # Connecter les serveurs MCP si présents AVANT de démarrer l'agent
-        mcp_servers = getattr(agent, "mcp_servers", None)
-        connected_mcp_servers: list[MCPServer] = []
-        if mcp_servers:
-            for server in mcp_servers:
-                if isinstance(server, MCPServer):
-                    try:
-                        await server.connect()
-                        connected_mcp_servers.append(server)
-                        logger.debug(
-                            "Serveur MCP %s connecté pour l'agent %s",
-                            getattr(server, "name", "<inconnu>"),
-                            getattr(agent, "name", "<inconnu>"),
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Impossible de connecter le serveur MCP %s : %s",
-                            getattr(server, "name", "<inconnu>"),
-                            exc,
-                            exc_info=True,
-                        )
-
-            # Mettre à jour agent.mcp_servers pour ne garder que les serveurs connectés
-            if connected_mcp_servers:
-                try:
-                    agent.mcp_servers = connected_mcp_servers
-                    logger.debug(
-                        "%d serveur(s) MCP connecté(s) sur %d configuré(s) "
-                        "pour l'agent %s",
-                        len(connected_mcp_servers),
-                        len(mcp_servers),
-                        getattr(agent, "name", "<inconnu>"),
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Impossible de mettre à jour agent.mcp_servers : %s",
-                        exc,
-                    )
-            else:
-                # Aucun serveur connecté, vider la liste
-                try:
-                    agent.mcp_servers = []
-                    logger.warning(
-                        "Aucun serveur MCP n'a pu se connecter pour l'agent %s",
-                        getattr(agent, "name", "<inconnu>"),
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Impossible de vider agent.mcp_servers : %s",
-                        exc,
-                    )
+        # Les serveurs MCP sont connectés automatiquement par le SDK Agents
+        # Pas besoin de les connecter manuellement ici
 
         conversation_history_input = _normalize_conversation_history_for_provider(
             conversation_history,
