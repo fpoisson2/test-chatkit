@@ -399,13 +399,13 @@ class TelephonyVoiceBridge:
                         if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             try:
                                 # 1. D'abord, envoyer quelques frames de silence minimal pour amorcer
-                                # CRITIQUE: Seulement 3 frames (60ms) pour éviter lag au démarrage
+                                # CRITIQUE: Seulement 2 frames (40ms) pour éviter lag au démarrage
                                 # À 24kHz: 20ms = 480 samples = 960 bytes (requis par OpenAI)
                                 silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
-                                num_silence_frames = 3  # 3 frames = 60ms - minimal prime
+                                num_silence_frames = 2  # 2 frames = 40ms - minimal prime (optimal pour téléphonie)
                                 silence_frame = b'\x00' * silence_frame_size
 
-                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence @ 24kHz (60ms prime)", num_silence_frames)
+                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence @ 24kHz (40ms prime)", num_silence_frames)
                                 for i in range(num_silence_frames):
                                     await send_to_peer(silence_frame)
                                     await asyncio.sleep(0.020)  # Respecter le cadençage 20ms
