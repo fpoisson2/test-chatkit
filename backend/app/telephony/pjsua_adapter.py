@@ -50,6 +50,28 @@ def _is_invalid_conference_disconnect_error(error: Exception) -> bool:
     return False
 
 
+def _is_session_terminated_error(error: Exception) -> bool:
+    """Return True if the exception represents ESESSIONTERMINATED (171140).
+
+    Ces erreurs sont normales quand on tente d'opérer sur un appel déjà terminé
+    et doivent être loggées en DEBUG au lieu de WARNING pour éviter le bruit.
+    """
+    message = str(error).lower() if error else ""
+
+    # Vérifier le message d'erreur
+    if "already terminated" in message or "esessionterminated" in message or "171140" in message:
+        return True
+
+    # Vérifier le code d'erreur PJSIP
+    if PJSUA_AVAILABLE and isinstance(error, pj.Error):  # type: ignore[has-type]
+        status = getattr(error, "status", None)
+        # PJSIP_ESESSIONTERMINATED = 171140
+        if status == 171140:
+            return True
+
+    return False
+
+
 @dataclass
 class PJSUAConfig:
     """Configuration pour un compte SIP PJSUA."""
@@ -144,9 +166,19 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
 
 
 class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
-    """Port audio personnalisé pour capturer et injecter l'audio."""
+    """Port audio personnalisé pour capturer et injecter l'audio.
 
-    def __init__(self, adapter: PJSUAAdapter, frame_requested_event: asyncio.Event | None = None):
+    Supporte deux modes:
+    - Mode PULL (recommandé): utilise audio_bridge.get_next_frame_8k()
+    - Mode PUSH (legacy): utilise _outgoing_audio_queue
+    """
+
+    def __init__(
+        self,
+        adapter: PJSUAAdapter,
+        frame_requested_event: asyncio.Event | None = None,
+        audio_bridge: Any | None = None,
+    ):
         if not PJSUA_AVAILABLE:
             return
 
@@ -154,19 +186,14 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         # PJSUA utilise 8kHz, 16-bit, mono pour la téléphonie
         self.adapter = adapter
         self._frame_requested_event = frame_requested_event  # Event spécifique à cet appel
+        self._audio_bridge = audio_bridge  # Bridge pour mode PULL (optionnel)
         self.sample_rate = 8000
         self.channels = 1
         self.samples_per_frame = 160  # 20ms @ 8kHz
         self.bits_per_sample = 16
 
-        # Files pour l'audio
-        # Buffer de 1000 frames = 20 secondes @ 20ms/frame
-        # Grande capacité nécessaire:
-        # - OpenAI envoie en très gros bursts (plusieurs centaines de ms d'audio d'un coup)
-        # - PJSUA consomme à taux fixe (20ms/frame)
-        # - Queue absorbe les bursts sans perdre de paquets
-        # - Préférer latence plutôt que perte audio (coupures audibles)
-        # - Tests montrent que 1000 frames évite les "⚠️ Queue audio sortante pleine"
+        # Files pour l'audio (mode PUSH legacy)
+        # NOTE: Si audio_bridge est fourni, ces queues ne sont plus utilisées
         self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
         self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone - 20s max
 
@@ -178,6 +205,9 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         # Flag pour arrêter le traitement après la déconnexion de l'appel
         self._active = True
+
+        # Cooldown counter: force recreate après 2 réutilisations
+        self._reuse_count = 0  # Nombre de fois que ce port a été réutilisé
 
         # Initialiser le port
         super().__init__()
@@ -193,6 +223,9 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
     def onFrameRequested(self, frame: pj.MediaFrame) -> None:
         """Appelé par PJSUA pour obtenir de l'audio à envoyer au téléphone.
+
+        Mode PULL (recommandé): utilise audio_bridge.get_next_frame_8k()
+        Mode PUSH (legacy): utilise _outgoing_audio_queue
 
         Note: PJSUA gère automatiquement l'encodage du codec (PCM → PCMU).
         Ce callback doit fournir du PCM linéaire 16-bit, pas du µ-law.
@@ -215,54 +248,96 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         # Au premier appel, signaler que PJSUA est prêt à consommer l'audio
         # CRITIQUE: Utiliser l'event spécifique à cet appel, pas un event global
         if self._frame_count == 1 and self._frame_requested_event and not self._frame_requested_event.is_set():
-            logger.info("🎬 Premier onFrameRequested - PJSUA est prêt à consommer l'audio")
+            logger.info("🎬 Premier onFrameRequested - PJSUA est prêt à consommer l'audio (mode %s)",
+                       "PULL" if self._audio_bridge else "PUSH")
             self._frame_requested_event.set()
 
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
 
-        try:
-            # Récupérer l'audio de la queue (non-bloquant)
-            audio_data = self._outgoing_audio_queue.get_nowait()
-            self._audio_frame_count += 1
+        # MODE PULL: utiliser audio_bridge.get_next_frame_8k()
+        if self._audio_bridge:
+            try:
+                audio_data = self._audio_bridge.get_next_frame_8k()
+                self._audio_frame_count += 1
 
-            # Vérifier si c'est vraiment de l'audio (pas du silence)
-            is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
+                # Vérifier si c'est du silence
+                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
 
-            if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20 and not is_silence):
-                logger.info("📢 onFrameRequested #%d: audio trouvé (%d bytes) - %s",
-                           self._frame_count, len(audio_data),
-                           "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
+                if not is_silence:
+                    if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20):
+                        logger.info("📢 PULL #%d: audio frame (%d bytes)",
+                                   self._frame_count, len(audio_data))
+                else:
+                    self._silence_frame_count += 1
 
-            # S'assurer que la taille est correcte
-            if len(audio_data) < expected_size:
-                # Padding avec du silence si nécessaire
-                audio_data += b'\x00' * (expected_size - len(audio_data))
-            elif len(audio_data) > expected_size:
-                # Tronquer si trop long
-                audio_data = audio_data[:expected_size]
+                # S'assurer que la taille est correcte
+                if len(audio_data) < expected_size:
+                    audio_data += b'\x00' * (expected_size - len(audio_data))
+                elif len(audio_data) > expected_size:
+                    audio_data = audio_data[:expected_size]
 
-            # Redimensionner le buffer et copier les données PCM
-            frame.buf.clear()
-            for byte in audio_data:
-                frame.buf.append(byte)
+                # Copier les données PCM
+                frame.buf.clear()
+                for byte in audio_data:
+                    frame.buf.append(byte)
 
-            frame.size = len(audio_data)
-            frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
+                frame.size = len(audio_data)
+                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
-        except queue.Empty:
-            # Pas d'audio disponible, envoyer du silence PCM (0x00)
-            self._silence_frame_count += 1
+            except Exception as e:
+                logger.warning("Erreur PULL get_next_frame_8k: %s, envoi silence", e)
+                self._silence_frame_count += 1
+                frame.buf.clear()
+                for _ in range(expected_size):
+                    frame.buf.append(0)
+                frame.size = expected_size
+                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
-            if self._silence_frame_count <= 5 or self._silence_frame_count % 50 == 0:
-                logger.debug("🔇 onFrameRequested #%d: queue vide, envoi silence (total silence: %d)",
-                           self._frame_count, self._silence_frame_count)
+        # MODE PUSH (legacy): utiliser _outgoing_audio_queue
+        else:
+            try:
+                # Récupérer l'audio de la queue (non-bloquant)
+                audio_data = self._outgoing_audio_queue.get_nowait()
+                self._audio_frame_count += 1
 
-            frame.buf.clear()
-            for _ in range(expected_size):
-                frame.buf.append(0)
+                # Vérifier si c'est vraiment de l'audio (pas du silence)
+                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
 
-            frame.size = expected_size
-            frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
+                if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20 and not is_silence):
+                    logger.info("📢 PUSH #%d: audio trouvé (%d bytes) - %s",
+                               self._frame_count, len(audio_data),
+                               "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
+
+                # S'assurer que la taille est correcte
+                if len(audio_data) < expected_size:
+                    # Padding avec du silence si nécessaire
+                    audio_data += b'\x00' * (expected_size - len(audio_data))
+                elif len(audio_data) > expected_size:
+                    # Tronquer si trop long
+                    audio_data = audio_data[:expected_size]
+
+                # Redimensionner le buffer et copier les données PCM
+                frame.buf.clear()
+                for byte in audio_data:
+                    frame.buf.append(byte)
+
+                frame.size = len(audio_data)
+                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
+
+            except queue.Empty:
+                # Pas d'audio disponible, envoyer du silence PCM (0x00)
+                self._silence_frame_count += 1
+
+                if self._silence_frame_count <= 5 or self._silence_frame_count % 50 == 0:
+                    logger.debug("🔇 PUSH #%d: queue vide, envoi silence (total silence: %d)",
+                               self._frame_count, self._silence_frame_count)
+
+                frame.buf.clear()
+                for _ in range(expected_size):
+                    frame.buf.append(0)
+
+                frame.size = expected_size
+                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
     def onFrameReceived(self, frame: pj.MediaFrame) -> None:
         """Appelé par PJSUA quand de l'audio est reçu du téléphone.
@@ -431,11 +506,12 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._frame_requested_event = None
 
     def prepare_for_new_call(
-        self, frame_requested_event: asyncio.Event | None
+        self, frame_requested_event: asyncio.Event | None, audio_bridge: Any | None = None
     ) -> None:
         """Reset counters and state before reusing the port."""
 
         self._frame_requested_event = frame_requested_event
+        self._audio_bridge = audio_bridge  # Mettre à jour le bridge pour le nouvel appel
         self._frame_count = 0
         self._audio_frame_count = 0
         self._silence_frame_count = 0
@@ -476,6 +552,14 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         # CRITIQUE: Chaque appel doit avoir son propre event pour savoir quand PJSUA est prêt
         # Utiliser un event partagé cause des problèmes sur les 2e/3e appels
         self._frame_requested_event = asyncio.Event() if adapter._loop else None
+
+        # Flags de statut pour éviter les appels post-mortem
+        # _terminated: True dès DISCONNECTED - empêche tout hangup/getInfo ultérieur
+        # _closed: True après close_pipeline - empêche double cleanup
+        # _cleanup_done: True après cleanup complet - pour backward compat
+        self._terminated = False
+        self._closed = False
+        self._cleanup_done = False
 
     def onCallState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état d'appel."""
@@ -569,6 +653,17 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         if slots_disconnected or self._conference_connected:
             logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
 
+        # CRITIQUE: Retirer le port custom du bridge conference
+        # Après confDisconnect, il faut aussi confRemovePort pour libérer complètement la ressource
+        if endpoint is not None and hasattr(endpoint, "confRemovePort") and custom_slot is not None:
+            try:
+                endpoint.confRemovePort(custom_slot)  # type: ignore[attr-defined]
+                logger.debug("✅ confRemovePort(slot=%s) exécuté (call_id=%s)", custom_slot, call_id)
+            except Exception as error:
+                # EINVAL peut arriver si le port est déjà retiré, c'est ok
+                if not _is_invalid_conference_disconnect_error(error):
+                    logger.warning("Erreur confRemovePort slot=%s (call_id=%s): %s", custom_slot, call_id, error)
+
         self._conference_connected = False
         self._audio_media = None
         self._call_slot_id = None
@@ -612,10 +707,17 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                                 self.adapter.release_audio_port(old_port)
 
                     self._conference_connected = False
+
+                    # Passer le bridge si disponible pour activer le mode PULL
+                    bridge = getattr(self, '_audio_bridge', None)
                     self._audio_port = self.adapter.acquire_audio_port(
                         self._frame_requested_event,
                         call_id=ci.id,
+                        audio_bridge=bridge,
                     )
+
+                    if bridge:
+                        logger.info("✅ Bridge connecté à AudioMediaPort (mode PULL activé)")
 
                     # Obtenir le média audio de l'appel
                     call_media = self.getMedia(mi.index)
@@ -708,7 +810,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                     self.adapter.release_audio_port(port)
                 logger.info("✅ Port audio zombie désactivé (call_id=%s)", ci.id)
             except Exception as e:
-                logger.warning("Erreur désactivation port audio zombie: %s", e)
+                # DEBUG si erreur post-mortem 171140, WARNING sinon
+                if _is_session_terminated_error(e):
+                    logger.debug("Erreur attendue désactivation port audio zombie (call_id=%s, déjà terminé): %s", ci.id, e)
+                else:
+                    logger.warning("Erreur désactivation port audio zombie (call_id=%s): %s", ci.id, e)
             finally:
                 if self._audio_port is None:
                     self._conference_connected = False
@@ -736,6 +842,10 @@ class PJSUAAdapter:
         self._call_state_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._media_active_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
 
+        # Warning throttling pour éviter le spam de logs
+        self._send_audio_warning_count = 0  # Compteur de warnings supprimés
+        self._send_audio_last_warning = 0.0  # Timestamp du dernier warning loggé
+
     async def initialize(self, config: PJSUAConfig | None = None, *, port: int = 5060) -> None:
         """Initialise l'endpoint PJSUA et optionnellement crée le compte SIP.
 
@@ -758,6 +868,25 @@ class PJSUAAdapter:
         # Ces "erreurs" sont normales quand on raccroche un appel déjà terminé
         ep_cfg.logConfig.level = 1  # ERROR level only
         ep_cfg.logConfig.consoleLevel = 1
+
+        # Configuration du jitter buffer pour éviter l'accumulation de latence
+        # CRITICAL: Sans cette config, le JB peut gonfler jusqu'à 200 frames (4 secondes!)
+        # causant un lag progressif aux appels 2, 3, 4...
+        # NOUVELLE CONFIG: réduire l'inertie du JB avec ptime fixe 20ms
+        media_cfg = ep_cfg.medConfig
+        media_cfg.jb_init = 1          # Démarrer à 1 frame (20ms) - rapide
+        media_cfg.jb_min_pre = 1       # Minimum 1 frame en précharge
+        media_cfg.jb_max_pre = 4       # Maximum 4 frames (80ms) en prefetch - réduit inertie
+        media_cfg.jb_max = 10          # Maximum 10 frames (200ms) absolu
+        media_cfg.snd_auto_close_time = 0  # Ne jamais fermer automatiquement le device
+        logger.info(
+            "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max_pre=%dms, max=%dms, auto_close=%d",
+            media_cfg.jb_init * 20,
+            media_cfg.jb_min_pre * 20,
+            media_cfg.jb_max_pre * 20,
+            media_cfg.jb_max * 20,
+            media_cfg.snd_auto_close_time,
+        )
 
         # Initialiser l'endpoint
         self._ep.libInit(ep_cfg)
@@ -927,6 +1056,18 @@ class PJSUAAdapter:
 
     async def _on_incoming_call(self, call: PJSUACall, call_info: Any) -> None:
         """Callback interne pour les appels entrants."""
+        # Sécurité: vérifier qu'on n'écrase pas un appel actif
+        # Cela ne devrait jamais arriver si le cleanup est correct
+        if call_info.id in self._active_calls:
+            existing_call = self._active_calls[call_info.id]
+            if existing_call != call:
+                logger.error(
+                    "⚠️ SÉCURITÉ: call_id=%d existe déjà dans _active_calls! "
+                    "Possible réutilisation d'ID sans cleanup complet. "
+                    "Ancien appel sera remplacé.",
+                    call_info.id,
+                )
+
         self._active_calls[call_info.id] = call
 
         if self._incoming_call_callback:
@@ -941,6 +1082,16 @@ class PJSUAAdapter:
         """
         # Nettoyer les appels terminés
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+            # CRITIQUE: Marquer terminated=True IMMÉDIATEMENT pour empêcher tout hangup/getInfo ultérieur
+            # Doit être fait AVANT le check _cleanup_done pour garantir le flag même si cleanup skip
+            call._terminated = True
+
+            # Protection idempotente: éviter les doubles nettoyages
+            if call._cleanup_done:
+                logger.debug("Nettoyage déjà effectué pour call_id=%s, ignoré", call_info.id)
+                return
+
+            call._cleanup_done = True
             logger.info("📞 Appel DISCONNECTED détecté - nettoyage immédiat (call_id=%s)", call_info.id)
 
             self._active_calls.pop(call_info.id, None)
@@ -951,7 +1102,11 @@ class PJSUAAdapter:
                     logger.info("🛑 Arrêt de l'audio bridge (call_id=%s)", call_info.id)
                     call._audio_bridge.stop()
                 except Exception as e:
-                    logger.warning("Erreur arrêt audio bridge (call_id=%s): %s", call_info.id, e)
+                    # DEBUG si erreur post-mortem 171140, WARNING sinon
+                    if _is_session_terminated_error(e):
+                        logger.debug("Erreur attendue arrêt audio bridge (call_id=%s, déjà terminé): %s", call_info.id, e)
+                    else:
+                        logger.warning("Erreur arrêt audio bridge (call_id=%s): %s", call_info.id, e)
                 finally:
                     call._audio_bridge = None
 
@@ -963,11 +1118,11 @@ class PJSUAAdapter:
                 try:
                     call._disconnect_conference_bridge(call_info.id)
                 except Exception as e:
-                    logger.warning(
-                        "Erreur désactivation port audio (call_id=%s): %s",
-                        call_info.id,
-                        e,
-                    )
+                    # DEBUG si erreur post-mortem 171140, WARNING sinon
+                    if _is_session_terminated_error(e):
+                        logger.debug("Erreur attendue désactivation port audio (call_id=%s, déjà terminé): %s", call_info.id, e)
+                    else:
+                        logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_info.id, e)
                 finally:
                     self.release_audio_port(port)
                     logger.info("✅ Port audio désactivé (call_id=%s)", call_info.id)
@@ -994,36 +1149,30 @@ class PJSUAAdapter:
         logger.info("Réponse envoyée à l'appel (code=%d)", code)
 
     async def hangup_call(self, call: PJSUACall) -> None:
-        """Termine un appel."""
+        """Termine un appel de manière idempotente.
+
+        Vérifie le flag _terminated avant de tenter hangup().
+        Cela évite les appels inutiles à hangup() sur des sessions déjà terminées.
+        """
         if not PJSUA_AVAILABLE:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
-        # Vérifier si l'appel est déjà terminé pour éviter les erreurs "INVITE session already terminated"
-        try:
-            ci = call.getInfo()
-            if ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
-                logger.debug("Appel déjà terminé (call_id=%s), ignorer hangup", ci.id)
-                return
-        except Exception as e:
-            # Si getInfo() échoue avec "already terminated", l'appel est déjà terminé
-            error_str = str(e).lower()
-            if "already terminated" in error_str or "esessionterminated" in error_str:
-                logger.debug("Appel déjà terminé (getInfo échoué), ignorer hangup: %s", e)
-                return
-            # Sinon, logger l'erreur mais continuer pour essayer le hangup
-            logger.debug("Impossible de vérifier l'état de l'appel: %s", e)
+        # Protection: vérifier si l'appel est déjà terminé AVANT tout appel PJSUA
+        if call._terminated or call._closed:
+            logger.debug("hangup_call skipped: already terminated=%s or closed=%s", call._terminated, call._closed)
+            return
 
         try:
             prm = pj.CallOpParam()
             call.hangup(prm)
-            logger.info("Appel terminé")
+            logger.info("Appel terminé via hangup()")
         except Exception as e:
-            # Ignorer les erreurs si l'appel est déjà terminé
+            # PJSIP_ESESSIONTERMINATED (171140) signifie "déjà terminé" - c'est ok
             error_str = str(e).lower()
-            if "already terminated" in error_str or "esessionterminated" in error_str:
-                logger.debug("Appel déjà terminé, erreur ignorée: %s", e)
+            if "already terminated" in error_str or "esessionterminated" in error_str or "171140" in str(e):
+                logger.debug("Appel déjà terminé (171140), traité comme succès")
             else:
-                # Réemettre l'exception si c'est une autre erreur
+                # Autre erreur réelle
                 raise
 
     async def cleanup_call(self, call_id: int) -> None:
@@ -1045,7 +1194,20 @@ class PJSUAAdapter:
                 logger.debug("Appel %s déjà nettoyé ou introuvable", call_id)
                 return
 
-            logger.info("🧹 Début nettoyage appel (call_id=%s)", call_id)
+            # Protection idempotente: éviter les doubles nettoyages (race avec DISCONNECTED callback)
+            if call._closed or call._cleanup_done:
+                logger.debug(
+                    "Nettoyage déjà effectué pour call_id=%s (closed=%s, cleanup_done=%s), ignoré",
+                    call_id,
+                    call._closed,
+                    call._cleanup_done,
+                )
+                return
+
+            # Marquer l'appel comme fermé IMMÉDIATEMENT pour empêcher tout accès concurrent
+            call._closed = True
+            call._cleanup_done = True
+            logger.info("🧹 Début nettoyage appel (call_id=%s, terminated=%s)", call_id, call._terminated)
 
             # Arrêter l'audio bridge d'abord (si attaché dynamiquement à l'appel)
             if hasattr(call, '_audio_bridge') and call._audio_bridge:
@@ -1053,7 +1215,11 @@ class PJSUAAdapter:
                     logger.info("🛑 Arrêt de l'audio bridge (call_id=%s)", call_id)
                     call._audio_bridge.stop()
                 except Exception as e:
-                    logger.warning("Erreur arrêt audio bridge (call_id=%s): %s", call_id, e)
+                    # DEBUG si erreur post-mortem 171140, WARNING sinon
+                    if _is_session_terminated_error(e):
+                        logger.debug("Erreur attendue arrêt audio bridge (call_id=%s, déjà terminé): %s", call_id, e)
+                    else:
+                        logger.warning("Erreur arrêt audio bridge (call_id=%s): %s", call_id, e)
                 finally:
                     call._audio_bridge = None
 
@@ -1064,11 +1230,11 @@ class PJSUAAdapter:
                 try:
                     call._disconnect_conference_bridge(call_id)
                 except Exception as e:
-                    logger.warning(
-                        "Erreur désactivation port audio (call_id=%s): %s",
-                        call_id,
-                        e,
-                    )
+                    # DEBUG si erreur post-mortem 171140, WARNING sinon
+                    if _is_session_terminated_error(e):
+                        logger.debug("Erreur attendue désactivation port audio (call_id=%s, déjà terminé): %s", call_id, e)
+                    else:
+                        logger.warning("Erreur désactivation port audio (call_id=%s): %s", call_id, e)
                 finally:
                     self.release_audio_port(port)
                     logger.info("🛑 Désactivation du port audio (call_id=%s)", call_id)
@@ -1079,17 +1245,28 @@ class PJSUAAdapter:
                     logger.info("📞 Hangup de l'appel (call_id=%s)", call_id)
                     await self.hangup_call(call)
                 except Exception as e:
-                    logger.warning("Erreur hangup (call_id=%s): %s", call_id, e)
+                    # DEBUG si erreur post-mortem 171140, WARNING sinon
+                    if _is_session_terminated_error(e):
+                        logger.debug("Erreur attendue hangup (call_id=%s, déjà terminé): %s", call_id, e)
+                    else:
+                        logger.warning("Erreur hangup (call_id=%s): %s", call_id, e)
 
             # Retirer de active_calls
             self._active_calls.pop(call_id, None)
             logger.info("✅ Nettoyage terminé (call_id=%s)", call_id)
 
         except Exception as e:
-            logger.warning("Erreur cleanup (call_id=%s): %s", call_id, e)
+            # DEBUG si erreur post-mortem 171140, WARNING sinon
+            if _is_session_terminated_error(e):
+                logger.debug("Erreur attendue cleanup (call_id=%s, déjà terminé): %s", call_id, e)
+            else:
+                logger.warning("Erreur cleanup (call_id=%s): %s", call_id, e)
 
     def _is_call_valid(self, call: PJSUACall) -> bool:
         """Vérifie si un appel est toujours valide et peut être raccroché.
+
+        Utilise les flags _terminated/_closed au lieu de getInfo() pour éviter
+        les appels PJSUA post-mortem qui génèrent des erreurs 171140.
 
         Args:
             call: L'appel PJSUA à vérifier
@@ -1100,13 +1277,9 @@ class PJSUAAdapter:
         if not PJSUA_AVAILABLE or not call:
             return False
 
-        try:
-            ci = call.getInfo()
-            # Vérifier si l'appel n'est pas déjà terminé
-            return ci.state != pj.PJSIP_INV_STATE_DISCONNECTED
-        except Exception:
-            # Si getInfo() échoue, l'appel n'est pas valide
-            return False
+        # Vérifier les flags d'état au lieu d'appeler getInfo()
+        # Cela évite les erreurs ESESSIONTERMINATED (171140) post-mortem
+        return not (call._terminated or call._closed)
 
     async def make_call(self, dest_uri: str) -> PJSUACall:
         """Initie un appel sortant."""
@@ -1129,6 +1302,19 @@ class PJSUAAdapter:
 
         # Récupérer l'info de l'appel pour obtenir l'ID
         ci = call.getInfo()
+
+        # Sécurité: vérifier qu'on n'écrase pas un appel actif
+        # Cela ne devrait jamais arriver si le cleanup est correct
+        if ci.id in self._active_calls:
+            existing_call = self._active_calls[ci.id]
+            if existing_call != call:
+                logger.error(
+                    "⚠️ SÉCURITÉ: call_id=%d existe déjà dans _active_calls! "
+                    "Possible réutilisation d'ID sans cleanup complet. "
+                    "Ancien appel sera remplacé.",
+                    ci.id,
+                )
+
         self._active_calls[ci.id] = call
 
         logger.info("Appel sortant initié vers %s", dest_uri)
@@ -1157,7 +1343,21 @@ class PJSUAAdapter:
         if call._audio_port:
             call._audio_port.send_audio(audio_data)
         else:
-            logger.warning("Tentative d'envoi audio sur un appel sans port audio")
+            # Throttling: log seulement toutes les 2 secondes max
+            import time
+            now = time.monotonic()
+            if now - self._send_audio_last_warning >= 2.0:
+                if self._send_audio_warning_count > 0:
+                    logger.warning(
+                        "Tentative d'envoi audio sur un appel sans port audio (%d suppressed)",
+                        self._send_audio_warning_count
+                    )
+                    self._send_audio_warning_count = 0
+                else:
+                    logger.warning("Tentative d'envoi audio sur un appel sans port audio")
+                self._send_audio_last_warning = now
+            else:
+                self._send_audio_warning_count += 1
 
     async def receive_audio_from_call(self, call: PJSUACall) -> bytes | None:
         """Récupère l'audio reçu d'un appel (PCM 8kHz, 16-bit, mono)."""
@@ -1180,23 +1380,49 @@ class PJSUAAdapter:
         frame_requested_event: asyncio.Event | None,
         *,
         call_id: int | None = None,
+        audio_bridge: Any | None = None,
     ) -> AudioMediaPort:
-        """Retourne un port audio prêt pour un nouvel appel."""
+        """Retourne un port audio prêt pour un nouvel appel.
+
+        COOLDOWN: Force recreate après 2 réutilisations pour casser tout état latent.
+        """
+        MAX_REUSE_COUNT = 2  # Force recreate au 3e appel
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
+
+            # Vérifier le compteur de réutilisation
+            if port._reuse_count >= MAX_REUSE_COUNT:
+                logger.info(
+                    "🔄 Port atteint %d réutilisations - destruction et recréation (call_id=%s)",
+                    port._reuse_count, call_id
+                )
+                try:
+                    port.deactivate(destroy_port=True)
+                except Exception as exc:
+                    logger.debug("Erreur destruction port (cooldown): %s", exc)
+
+                # Créer un nouveau port
+                logger.info(
+                    "🔧 Création d'un nouvel AudioMediaPort après cooldown (call_id=%s)",
+                    call_id
+                )
+                return AudioMediaPort(self, frame_requested_event, audio_bridge)
+
+            # Réutiliser le port existant
+            port._reuse_count += 1
             logger.info(
-                "♻️ Réutilisation d'un AudioMediaPort depuis le pool%s",
-                f" (call_id={call_id})" if call_id is not None else "",
+                "♻️ Réutilisation d'un AudioMediaPort depuis le pool (reuse #%d, call_id=%s)",
+                port._reuse_count, call_id
             )
-            port.prepare_for_new_call(frame_requested_event)
+            port.prepare_for_new_call(frame_requested_event, audio_bridge)
             return port
 
         logger.info(
-            "🔧 Création d'un nouvel AudioMediaPort%s",
-            f" (call_id={call_id})" if call_id is not None else "",
+            "🔧 Création d'un nouvel AudioMediaPort (call_id=%s)",
+            call_id
         )
-        return AudioMediaPort(self, frame_requested_event)
+        return AudioMediaPort(self, frame_requested_event, audio_bridge)
 
     def release_audio_port(
         self, port: AudioMediaPort, *, destroy: bool = False

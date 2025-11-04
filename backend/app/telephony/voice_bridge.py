@@ -253,7 +253,7 @@ class TelephonyVoiceBridge:
         | None = None,
         voice_session_checker: VoiceSessionChecker | None = None,
         input_codec: str = "pcmu",
-        target_sample_rate: int = 24_000,
+        target_sample_rate: int = 24_000,  # 24kHz requis par OpenAI Realtime API
         receive_timeout: float = 0.5,
         settings: Settings | None = None,
     ) -> None:
@@ -278,6 +278,7 @@ class TelephonyVoiceBridge:
         send_to_peer: Callable[[bytes], Awaitable[None]],
         clear_audio_queue: Callable[[], int] | None = None,
         pjsua_ready_to_consume: asyncio.Event | None = None,
+        audio_bridge: Any | None = None,
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
@@ -398,20 +399,29 @@ class TelephonyVoiceBridge:
                         # que le canal bidirectionnel est confirmé
                         if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             try:
-                                # 1. D'abord, envoyer des frames de silence pour amorcer le pipeline audio
-                                # Cela évite que les premières millisecondes d'audio réel soient perdues
-                                silence_frame_size = 960  # 24000 samples/sec * 0.020 sec * 2 bytes/sample
-                                num_silence_frames = 10  # 10 frames = 200ms pour bien saturer le pipeline
-                                silence_frame = b'\x00' * silence_frame_size
+                                # 0. RESET AGRESSIF: casser tout état résiduel avant le nouvel appel
+                                if audio_bridge:
+                                    audio_bridge.reset_all()
 
-                                logger.info("🔇 Canal bidirectionnel confirmé - envoi de %d frames de silence pour amorcer", num_silence_frames)
-                                for i in range(num_silence_frames):
-                                    await send_to_peer(silence_frame)
-                                    # Pas de délai - envoyer rapidement pour saturer le buffer
-                                    if i % 3 == 2:  # Petit yield tous les 3 frames pour ne pas bloquer
-                                        await asyncio.sleep(0.001)
+                                # 1. D'abord, précharger généreusement le ring buffer (8-10 frames)
+                                # CRITIQUE: Amorcer avec TARGET frames pour éviter sous-alimentation
+                                # Cela évite les silences quand TTS arrive en burst
+                                # IMPORTANT: Injection DIRECTE dans le ring buffer @ 8kHz
+                                num_silence_frames = 12  # 12 frames = 240ms - amorçage très généreux (anti-starvation)
 
-                                logger.info("✅ Pipeline audio amorcé avec %d frames de silence", num_silence_frames)
+                                logger.info("🔇 Canal bidirectionnel confirmé - injection directe de %d frames de silence (%dms prime pour stabilité)", num_silence_frames, num_silence_frames * 20)
+                                if audio_bridge:
+                                    # Injection directe dans le ring buffer @ 8kHz (synchrone, pas async)
+                                    audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
+                                    logger.info("✅ Pipeline audio amorcé avec %d frames de silence (injection directe)", num_silence_frames)
+                                    # Déverrouiller l'envoi audio maintenant que les conditions sont remplies:
+                                    # - onCallMediaState actif (media_active_event)
+                                    # - Premier onFrameRequested reçu (pjsua_ready_event)
+                                    # - 20ms de silence envoyés (amorçage)
+                                    audio_bridge.enable_audio_output()
+                                    logger.info("🔓 Envoi audio TTS déverrouillé après amorçage")
+                                else:
+                                    logger.warning("⚠️ audio_bridge n'est pas disponible pour l'injection de silence")
 
                                 # 2. PUIS, envoyer response.create maintenant que le canal est amorcé
                                 from agents.realtime.model_inputs import (
@@ -427,7 +437,22 @@ class TelephonyVoiceBridge:
                                     )
                                 )
                                 response_create_sent_on_ready = True
-                                logger.info("✅ response.create envoyé après amorçage du canal - l'assistant génère l'audio")
+
+                                # Timing diagnostic: envoi response.create (t1)
+                                if audio_bridge:
+                                    import time
+                                    audio_bridge._t1_response_create = time.monotonic()
+                                    if audio_bridge._t0_first_rtp is not None:
+                                        delta = (audio_bridge._t1_response_create - audio_bridge._t0_first_rtp) * 1000
+                                        logger.info(
+                                            "✅ [t1=%.3fs, Δt0→t1=%.1fms] response.create envoyé après amorçage",
+                                            audio_bridge._t1_response_create, delta
+                                        )
+                                    else:
+                                        logger.info(
+                                            "✅ [t1=%.3fs] response.create envoyé après amorçage",
+                                            audio_bridge._t1_response_create
+                                        )
                             except Exception as exc:
                                 logger.warning("⚠️ Erreur lors de l'amorçage et envoi response.create: %s", exc)
 
@@ -733,6 +758,17 @@ class TelephonyVoiceBridge:
 
                         if not block_audio_send_ref[0]:
                             if pcm_data:
+                                # Timing diagnostic: premier chunk TTS (t2)
+                                if audio_bridge and audio_bridge._t2_first_tts_chunk is None:
+                                    import time
+                                    audio_bridge._t2_first_tts_chunk = time.monotonic()
+                                    if audio_bridge._t1_response_create is not None:
+                                        delta = (audio_bridge._t2_first_tts_chunk - audio_bridge._t1_response_create) * 1000
+                                        logger.info(
+                                            "🎵 [t2=%.3fs, Δt1→t2=%.1fms] Premier chunk TTS reçu (%d bytes)",
+                                            audio_bridge._t2_first_tts_chunk, delta, len(pcm_data)
+                                        )
+
                                 outbound_audio_bytes += len(pcm_data)
                                 logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
                                 # Send audio and wait until it's actually sent via RTP
@@ -1042,7 +1078,7 @@ class TelephonyVoiceBridge:
             "output_modalities": ["audio"],  # CRITICAL: Force audio output for telephony
             "audio": {
                 "input": {
-                    "format": {"type": "audio/pcm", "rate": 24000},
+                    "format": {"type": "audio/pcm", "rate": 24000},  # 24kHz requis par OpenAI Realtime API
                     "turn_detection": {
                         "type": "semantic_vad",  # VAD sémantique pour une meilleure détection de fin de phrase
                         "create_response": True,
@@ -1050,7 +1086,7 @@ class TelephonyVoiceBridge:
                     },
                 },
                 "output": {
-                    "format": {"type": "audio/pcm", "rate": 24000},
+                    "format": {"type": "audio/pcm", "rate": 24000},  # 24kHz requis par OpenAI Realtime API
                 },
             },
         }
