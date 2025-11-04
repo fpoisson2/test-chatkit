@@ -121,11 +121,13 @@ class PJSUAAudioBridge:
         self._speed_ratio = 1.0
         self._catchup_active = False
         self._last_rate_change_time = 0.0
+        self._cooldown_ms = 60  # 60ms minimum entre changements de ratio (évite flutter)
 
         # Admission control thresholds
         self.TARGET_FRAMES = 6   # 120ms
         self.HIGH_FRAMES = 9     # 180ms → activer catch-up 1.12x
         self.CAP_FRAMES = 12     # 240ms → ne pas dépasser
+        self.MAX_CHUNK_BYTES_24K = 4800  # 4800 bytes @ 24kHz = 5 frames @ 8kHz (100ms chunks)
 
         # Remainder buffer for 8kHz → 24kHz upsampling
         self._upsample_remainder = b""
@@ -311,22 +313,21 @@ class PJSUAAudioBridge:
     async def send_to_peer(self, audio_24khz: bytes) -> None:
         """Send audio from VoiceBridge to ring buffer @ 8kHz avec admission control.
 
-        ARCHITECTURE PULL + ADMISSION CONTROL:
+        ARCHITECTURE PULL + ADMISSION CONTROL + MINICHUNKS:
+        0. Découpe les gros chunks 24kHz en morceaux ≤ MAX_CHUNK_BYTES_24K pour éviter bursts
         1. Resample 24kHz → 8kHz dans staging buffer
         2. Découpe en frames de 320 bytes
         3. AVANT d'enfiler chaque frame:
            - Vérifie free space (CAP_FRAMES - ring_len)
            - Si free <= 0: drop la frame (compte _drops_admission)
            - Sinon: enqueue dans ring buffer
-        4. Gère catch-up hystérésis selon ring_len
+        4. Gère catch-up hystérésis avec cooldown 60ms
 
         Args:
             audio_24khz: PCM16 audio at 24kHz from OpenAI (taille variable)
         """
         if len(audio_24khz) == 0:
             return
-
-        self._send_to_peer_call_count += 1
 
         # Vérifier si on doit dropper (interruption utilisateur)
         if self._drop_until_next_assistant:
@@ -343,7 +344,38 @@ class PJSUAAudioBridge:
             # Skip silencieusement (ne pas bufferiser avant que PJSUA soit prêt)
             return
 
-        # 1) Resample 24kHz → 8kHz dans staging buffer
+        # 0) MINICHUNKS: découper en blocs de max 4800 bytes @ 24kHz (5 frames @ 8kHz)
+        # Évite les bursts de 12000+ bytes qui saturent le ring buffer
+        chunk_size = self.MAX_CHUNK_BYTES_24K
+        num_chunks = (len(audio_24khz) + chunk_size - 1) // chunk_size
+
+        # Log si on découpe un gros chunk
+        if num_chunks > 1 and self._send_to_peer_call_count <= 10:
+            logger.debug(
+                "✂️ Découpage burst: %d bytes @ 24kHz → %d minichunks de %d bytes max",
+                len(audio_24khz), num_chunks, chunk_size
+            )
+
+        offset = 0
+        while offset < len(audio_24khz):
+            chunk = audio_24khz[offset:offset + chunk_size]
+            offset += chunk_size
+
+            # Process this minichunk
+            await self._process_chunk_24k(chunk)
+
+    async def _process_chunk_24k(self, audio_24khz: bytes) -> None:
+        """Process a single chunk of 24kHz audio (internal, called by send_to_peer).
+
+        Args:
+            audio_24khz: PCM16 audio at 24kHz (≤ MAX_CHUNK_BYTES_24K)
+        """
+        if len(audio_24khz) == 0:
+            return
+
+        self._send_to_peer_call_count += 1
+
+        # 1) Resample 24kHz → 8kHz
         try:
             audio_8khz = self._downsampler.resample(audio_24khz)
         except Exception as e:
@@ -372,23 +404,27 @@ class PJSUAAudioBridge:
                     frames_dropped += 1
                     continue
 
-                # Catch-up hystérésis (set flag, appliqué dans get_next_frame_8k)
-                if ring_len >= self.HIGH_FRAMES and not self._catchup_active:
-                    self._catchup_active = True
-                    self._speed_ratio = 1.12
-                    self._last_rate_change_time = time.monotonic()
-                    logger.info(
-                        "🚀 Catch-up activé: vitesse %.2fx (buffer=%d frames = %dms)",
-                        self._speed_ratio, ring_len, ring_len * 20
-                    )
-                elif ring_len <= self.TARGET_FRAMES and self._catchup_active:
-                    self._catchup_active = False
-                    self._speed_ratio = 1.0
-                    self._last_rate_change_time = time.monotonic()
-                    logger.info(
-                        "✅ Catch-up désactivé: retour vitesse 1.00x (buffer=%d frames = %dms)",
-                        ring_len, ring_len * 20
-                    )
+                # Catch-up hystérésis avec cooldown (set flag, appliqué dans get_next_frame_8k)
+                t_now = time.monotonic()
+                elapsed_ms = (t_now - self._last_rate_change_time) * 1000
+
+                if elapsed_ms >= self._cooldown_ms:
+                    if ring_len >= self.HIGH_FRAMES and not self._catchup_active:
+                        self._catchup_active = True
+                        self._speed_ratio = 1.12
+                        self._last_rate_change_time = t_now
+                        logger.info(
+                            "🚀 Catch-up activé: vitesse %.2fx (buffer=%d frames = %dms)",
+                            self._speed_ratio, ring_len, ring_len * 20
+                        )
+                    elif ring_len <= self.TARGET_FRAMES and self._catchup_active:
+                        self._catchup_active = False
+                        self._speed_ratio = 1.0
+                        self._last_rate_change_time = t_now
+                        logger.info(
+                            "✅ Catch-up désactivé: retour vitesse 1.00x (buffer=%d frames = %dms)",
+                            ring_len, ring_len * 20
+                        )
 
                 # 4) Enqueue
                 self._ring_buffer_8k.extend(frame)
@@ -397,7 +433,7 @@ class PJSUAAudioBridge:
             # Log (premiers appels ou si drop)
             ring_len = self._ring_len_frames()
 
-        if self._send_to_peer_call_count <= 5 or frames_dropped > 0:
+        if self._send_to_peer_call_count <= 10 or frames_dropped > 0:
             logger.info(
                 "📤 send_to_peer #%d: %d bytes @ 24kHz → +%d frames, -%d drops, ring=%d frames (%dms)",
                 self._send_to_peer_call_count,
@@ -448,13 +484,17 @@ class PJSUAAudioBridge:
             except Exception as e:
                 logger.warning("Erreur time-stretch @ 8kHz: %s, utilisation frame originale", e)
 
-        # Log périodique
+        # Log périodique avec statistiques détaillées
         if (self._frames_pulled + self._silence_pulled) % 100 == 0:
+            total_processed = self._frames_pulled + self._drops_admission
+            drop_rate = (self._drops_admission / total_processed * 100) if total_processed > 0 else 0
             logger.debug(
-                "📊 PULL stats: %d frames, %d silence, %d drops, ring=%d frames (%dms)",
+                "📊 PULL stats: %d frames, %d silence, %d drops (%.1f%%), ratio=%.2fx, ring=%d frames (%dms)",
                 self._frames_pulled,
                 self._silence_pulled,
                 self._drops_admission,
+                drop_rate,
+                self._speed_ratio,
                 int(buffer_frames),
                 int(buffer_frames * 20),
             )
@@ -524,6 +564,17 @@ class PJSUAAudioBridge:
 
     def stop(self) -> None:
         """Stop the audio bridge."""
+        # Log statistiques finales
+        total_processed = self._frames_pulled + self._drops_admission
+        drop_rate = (self._drops_admission / total_processed * 100) if total_processed > 0 else 0
+
+        logger.info(
+            "🛑 PJSUA audio bridge final stats: %d frames pulled, %d silence, %d drops (%.1f%% drop rate)",
+            self._frames_pulled,
+            self._silence_pulled,
+            self._drops_admission,
+            drop_rate,
+        )
         logger.info("Stopping PJSUA audio bridge")
         self._stop_event.set()
 
