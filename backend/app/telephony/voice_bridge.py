@@ -941,15 +941,52 @@ class TelephonyVoiceBridge:
                         logger.warning("Erreur lors du vidage de la queue PJSUA: %s", e)
 
                 # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
-                # NOTE: Le response.create() sera envoyé APRÈS la réception du premier paquet RTP
-                # et l'envoi des frames de silence (voir forward_audio() plus bas)
-                # Cela garantit que le canal bidirectionnel est établi et amorcé avant de commencer la génération
+                # OPTIMISATION: Envoyer response.create IMMÉDIATEMENT après pjsua_ready, sans attendre le premier RTP
                 if speak_first:
                     if pjsua_ready_to_consume is not None:
                         logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
                         try:
                             await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
-                            logger.info("✅ PJSUA prêt - attente du premier paquet RTP pour amorcer le canal")
+                            logger.info("✅ PJSUA prêt - envoi IMMÉDIAT de response.create (sans attendre RTP)")
+
+                            # OPTIMISATION AGRESSIVE: Amorcer le canal et envoyer response.create MAINTENANT
+                            # Cela démarre la génération TTS immédiatement sans attendre le premier paquet RTP
+                            # Gain de temps: ~200-800ms (délai typique avant premier RTP)
+                            try:
+                                # 1. Amorcer le ring buffer avec du silence (anti-starvation)
+                                num_silence_frames = 12  # 12 frames = 240ms de silence pour stabilité
+                                logger.info("🔇 Amorçage immédiat du canal avec %d frames de silence (%dms)",
+                                           num_silence_frames, num_silence_frames * 20)
+                                if audio_bridge:
+                                    audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
+                                    logger.info("✅ Pipeline audio amorcé avec %d frames (injection directe)", num_silence_frames)
+                                    audio_bridge.enable_audio_output()
+                                    logger.info("🔓 Envoi audio TTS déverrouillé")
+
+                                # 2. Envoyer response.create MAINTENANT pour démarrer la génération TTS
+                                from agents.realtime.model_inputs import (
+                                    RealtimeModelRawClientMessage,
+                                    RealtimeModelSendRawMessage,
+                                )
+                                await session._model.send_event(
+                                    RealtimeModelSendRawMessage(
+                                        message=RealtimeModelRawClientMessage(
+                                            type="response.create",
+                                            other_data={},
+                                        )
+                                    )
+                                )
+                                response_create_sent_immediately = True
+
+                                # Timing diagnostic
+                                if audio_bridge:
+                                    import time
+                                    audio_bridge._t1_response_create = time.monotonic()
+                                    logger.info("✅ response.create envoyé IMMÉDIATEMENT (optimisation maximale)")
+                            except Exception as exc:
+                                logger.warning("⚠️ Erreur lors de l'envoi immédiat de response.create: %s", exc)
+                                # En cas d'erreur, le fallback dans forward_audio() prendra le relais
+
                         except asyncio.TimeoutError:
                             logger.warning("⚠️ Timeout en attendant PJSUA")
                     else:
