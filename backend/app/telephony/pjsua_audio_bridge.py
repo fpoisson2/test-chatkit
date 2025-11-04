@@ -226,7 +226,7 @@ class PJSUAAudioBridge:
 
                     # 📊 Diagnostic: Enregistrer le none_count pour détection de lag
                     if hasattr(self._call, 'chatkit_call_id') and self._call.chatkit_call_id:
-                        diag_manager = get_diagnostics_manager()
+                        diag_manager = get_diagnostics_manager()  # Import déjà fait en haut du fichier
                         diag = diag_manager.get_call(self._call.chatkit_call_id)
                         if diag:
                             diag.none_packets_before_audio = none_count
@@ -319,8 +319,7 @@ class PJSUAAudioBridge:
 
             # 📊 Diagnostic: Enregistrer le none_count_during_call pour analyse de sautillements
             if hasattr(self._call, 'chatkit_call_id') and self._call.chatkit_call_id:
-                from .call_diagnostics import get_diagnostics_manager
-                diag_manager = get_diagnostics_manager()
+                diag_manager = get_diagnostics_manager()  # Import déjà fait en haut du fichier
                 diag = diag_manager.get_call(self._call.chatkit_call_id)
                 if diag:
                     diag.none_packets_during_call = none_count_during_call
