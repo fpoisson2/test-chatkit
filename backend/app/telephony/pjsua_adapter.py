@@ -794,39 +794,60 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                         logger.info("   - Custom port: slot=%d, name=%s",
                                    custom_port_info_after.portId, custom_port_info_after.name)
 
-                        # 📊 DIAGNOSTIC: Afficher les ports RTP (local estimé + distant réel)
-                        logger.warning("🔍 Diagnostic ports RTP (call_id=%s)...", ci.id)
+                        # 📊 DIAGNOSTIC: Trouver le VRAI port RTP local via psutil (infaillible)
+                        logger.warning("🔍 Recherche du port RTP local via psutil (call_id=%s)...", ci.id)
 
                         try:
-                            # PJSUA alloue les ports RTP séquentiellement: 10000, 10002, 10004, ...
-                            # Le call_id PJSUA (0, 1, 2...) indique l'ordre d'allocation
-                            pjsua_call_id = ci.id
-                            estimated_local_rtp = 10000 + (pjsua_call_id * 2)
-                            estimated_local_rtcp = estimated_local_rtp + 1
+                            import os
+                            import re
 
-                            logger.warning("🔌 PORT RTP LOCAL ESTIMÉ: 0.0.0.0:%d (basé sur call_id=%d)",
-                                         estimated_local_rtp, pjsua_call_id)
-
-                            # Récupérer le port distant RÉEL depuis StreamInfo
+                            # Récupérer le port distant depuis StreamInfo
                             stream_info = self.getStreamInfo(mi.index)
+                            remote_rtp = None
+                            remote_ip = None
+                            remote_port = None
+
                             if hasattr(stream_info, 'remoteRtpAddress'):
                                 remote_rtp = stream_info.remoteRtpAddress
-                                logger.warning("🔌 PORT RTP DISTANT (réel): %s", remote_rtp)
+                                logger.warning("🔌 PORT RTP DISTANT: %s", remote_rtp)
 
-                                # Parser le port distant pour analyse
-                                import re
-                                remote_match = re.search(r':(\d+)$', remote_rtp)
-                                if remote_match:
-                                    remote_port = int(remote_match.group(1))
-                                    logger.warning("   → Port distant: %d", remote_port)
-                            else:
-                                logger.warning("⚠️ remoteRtpAddress non disponible dans StreamInfo")
+                                # Parser IP:port
+                                match = re.match(r'(.+):(\d+)$', remote_rtp)
+                                if match:
+                                    remote_ip = match.group(1)
+                                    remote_port = int(match.group(2))
 
-                            if hasattr(stream_info, 'remoteRtcpAddress'):
-                                logger.warning("🔌 PORT RTCP DISTANT: %s", stream_info.remoteRtcpAddress)
+                            # Utiliser psutil pour trouver la socket UDP correspondante
+                            if remote_ip and remote_port:
+                                try:
+                                    import psutil
+
+                                    # Obtenir le processus actuel
+                                    current_process = psutil.Process(os.getpid())
+
+                                    # Parcourir toutes les connexions UDP du processus
+                                    for conn in current_process.connections(kind='udp'):
+                                        # Vérifier si c'est la connexion vers le distant
+                                        if conn.raddr and conn.raddr.ip == remote_ip and conn.raddr.port == remote_port:
+                                            local_port = conn.laddr.port
+                                            logger.warning("🔌 PORT RTP LOCAL (réel via psutil): 0.0.0.0:%d", local_port)
+                                            break
+                                    else:
+                                        logger.warning("⚠️ Aucune socket UDP trouvée vers %s:%d", remote_ip, remote_port)
+
+                                        # Debug: afficher toutes les sockets UDP
+                                        udp_conns = [c for c in current_process.connections(kind='udp') if c.raddr]
+                                        logger.warning("   Connexions UDP actives (%d): %s",
+                                                     len(udp_conns),
+                                                     [f"{c.laddr.port}→{c.raddr.ip}:{c.raddr.port}" for c in udp_conns[:5]])
+
+                                except ImportError:
+                                    logger.warning("⚠️ psutil non disponible - impossible de trouver le port local")
 
                         except Exception as port_err:
-                            logger.warning("⚠️ Erreur diagnostic ports: %s", port_err)
+                            logger.warning("⚠️ Erreur recherche port RTP: %s", port_err)
+                            import traceback
+                            logger.warning("Traceback: %s", traceback.format_exc())
 
                         logger.info("✅ Null sound device + conference bridge correctement armé")
                     except Exception as e:
