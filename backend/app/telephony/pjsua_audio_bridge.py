@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from .audio_resampler import get_resampler
+from .audio_timestretch import create_timestretch
 from .voice_bridge import RtpPacket
 
 if TYPE_CHECKING:
@@ -100,6 +101,14 @@ class PJSUAAudioBridge:
             from_rate=self.VOICE_BRIDGE_SAMPLE_RATE,
             to_rate=self.PJSUA_SAMPLE_RATE,
         )  # 24kHz → 8kHz
+
+        # Time-stretcher for catch-up mode (reduce latency without dropping frames)
+        # Uses WSOLA to speed up playback 1.10-1.25x when queue builds up
+        self._timestretch = create_timestretch(sample_rate=self.PJSUA_SAMPLE_RATE)
+
+        # Catch-up mode state
+        self._current_speed_ratio = 1.0  # Current playback speed (1.0 = normal)
+        self._catchup_mode_active = False  # True when actively catching up
 
         # Remainder buffer for 24kHz → 8kHz downsampling
         # Accumule les bytes fractionnaires entre frames pour éviter padding/truncation
@@ -470,9 +479,14 @@ class PJSUAAudioBridge:
         except asyncio.QueueFull:
             pass
 
-        # Reset resamplers state
+        # Reset resamplers and time-stretcher state
         self._downsampler.reset()
         self._upsampler.reset()
+        self._timestretch.reset()
+
+        # Reset catch-up mode state
+        self._current_speed_ratio = 1.0
+        self._catchup_mode_active = False
 
     async def _audio_sender_loop(self) -> None:
         """Background task avec pacer strict 20ms pour envoyer frames vers PJSUA.
@@ -500,6 +514,9 @@ class PJSUAAudioBridge:
                 # Préparer le next tick
                 next_t += period
 
+                # Mesurer la taille de queue AVANT de récupérer (pour catch-up)
+                queue_size = self._outgoing_audio_queue.qsize()
+
                 # Tenter de récupérer une frame (non-bloquant pour respecter timing)
                 try:
                     item = self._outgoing_audio_queue.get_nowait()
@@ -517,6 +534,57 @@ class PJSUAAudioBridge:
                     # Dépack tuple (frame, timestamp)
                     frame_8k, t_model_in = item
                     self._outgoing_audio_queue.task_done()
+
+                # CATCH-UP MODE: Adapter la vitesse de lecture selon la taille de queue
+                # Politique adaptative pour réduire latence accumulée sans dropper:
+                # - queue > 100 frames (~2s) → 1.25x speed
+                # - queue > 50 frames (~1s) → 1.15x speed
+                # - queue < 30 frames (~600ms) → 1.0x speed (normal)
+                queue_size_ms = queue_size * 20  # Chaque frame = 20ms
+
+                # Déterminer vitesse cible selon seuils
+                if queue_size >= 100:  # 2000ms
+                    target_speed = 1.25
+                elif queue_size >= 50:  # 1000ms
+                    target_speed = 1.15
+                elif queue_size < 30:  # 600ms
+                    target_speed = 1.0
+                else:
+                    # Zone d'hystérésis: garder vitesse actuelle
+                    target_speed = self._current_speed_ratio
+
+                # Mettre à jour vitesse actuelle
+                if target_speed != self._current_speed_ratio:
+                    was_active = self._catchup_mode_active
+                    self._current_speed_ratio = target_speed
+                    self._catchup_mode_active = (target_speed > 1.0)
+
+                    # Log transitions
+                    if self._catchup_mode_active and not was_active:
+                        logger.info(
+                            "🚀 Catch-up mode activé: vitesse %.2fx (queue=%d frames = %dms)",
+                            target_speed, queue_size, queue_size_ms
+                        )
+                    elif not self._catchup_mode_active and was_active:
+                        logger.info(
+                            "✅ Catch-up mode désactivé: retour vitesse 1.00x (queue=%d frames = %dms)",
+                            queue_size, queue_size_ms
+                        )
+                    elif self._catchup_mode_active:
+                        logger.debug(
+                            "⚡ Catch-up vitesse ajustée: %.2fx (queue=%d frames = %dms)",
+                            target_speed, queue_size, queue_size_ms
+                        )
+
+                # Appliquer time-stretch si en mode catch-up (et pas silence)
+                if self._catchup_mode_active and frame_8k != SILENCE_8K:
+                    try:
+                        stretched = self._timestretch.process(frame_8k, self._current_speed_ratio)
+                        # Si time-stretch retourne vide (pas assez de data), utiliser frame originale
+                        if len(stretched) > 0:
+                            frame_8k = stretched
+                    except Exception as e:
+                        logger.warning("Erreur time-stretch: %s, utilisation frame originale", e)
 
                 # t_pjsua_pop: moment où on consomme la frame pour PJSUA
                 t_pjsua_pop = time.monotonic()
