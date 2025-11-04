@@ -278,6 +278,7 @@ class TelephonyVoiceBridge:
         send_to_peer: Callable[[bytes], Awaitable[None]],
         clear_audio_queue: Callable[[], int] | None = None,
         pjsua_ready_to_consume: asyncio.Event | None = None,
+        audio_bridge: Any | None = None,
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
@@ -411,6 +412,14 @@ class TelephonyVoiceBridge:
                                     await asyncio.sleep(0.020)  # Respecter le cadençage 20ms
 
                                 logger.info("✅ Pipeline audio amorcé avec %d frames de silence", num_silence_frames)
+
+                                # Déverrouiller l'envoi audio maintenant que les conditions sont remplies:
+                                # - onCallMediaState actif (media_active_event)
+                                # - Premier onFrameRequested reçu (pjsua_ready_event)
+                                # - 40ms de silence envoyés (amorçage)
+                                if audio_bridge:
+                                    audio_bridge.enable_audio_output()
+                                    logger.info("🔓 Envoi audio TTS déverrouillé après amorçage")
 
                                 # 2. PUIS, envoyer response.create maintenant que le canal est amorcé
                                 from agents.realtime.model_inputs import (
