@@ -130,22 +130,26 @@ class WSolaTimeStretch:
 
         frame_count = 0
 
-        while input_pos + self.frame_size < len(audio):
+        while input_pos + self.frame_size <= len(audio):  # <= au lieu de <
             # Extract reference overlap from output (for correlation)
             ref_start = output_pos - self.overlap_size
             ref_overlap = output[ref_start:output_pos]
 
             # Search for best match in input around predicted position
             search_start = max(0, input_pos - self.search_size)
-            search_end = min(len(audio) - self.overlap_size, input_pos + self.search_size)
+            search_end = min(len(audio) - self.frame_size, input_pos + self.search_size)  # -frame_size pour garantir assez de samples
 
             # Find best correlation position
             best_pos = self._find_best_match(
                 audio, ref_overlap, search_start, search_end
             )
 
-            # Extract frame from best position
+            # Extract frame from best position - GARANTIR frame_size samples
             frame = audio[best_pos:best_pos + self.frame_size].astype(np.float32)
+
+            # SAFETY: pad si frame trop court (ne devrait jamais arriver avec fix ci-dessus)
+            if len(frame) < self.frame_size:
+                frame = np.pad(frame, (0, self.frame_size - len(frame)), mode='constant')
 
             # Overlap-add with previous output
             overlap_region = frame[0:self.overlap_size]
@@ -159,9 +163,15 @@ class WSolaTimeStretch:
                     overlap_region[i] * weight
                 )
 
-            # Add non-overlapping part
+            # Add non-overlapping part - GARANTIR synthesis_hop samples
             non_overlap_start = self.overlap_size
-            output[output_pos:output_pos + synthesis_hop] = frame[non_overlap_start:non_overlap_start + synthesis_hop]
+            non_overlap_part = frame[non_overlap_start:non_overlap_start + synthesis_hop]
+
+            # SAFETY: pad si trop court
+            if len(non_overlap_part) < synthesis_hop:
+                non_overlap_part = np.pad(non_overlap_part, (0, synthesis_hop - len(non_overlap_part)), mode='constant')
+
+            output[output_pos:output_pos + synthesis_hop] = non_overlap_part
 
             # Advance positions
             input_pos += analysis_hop
@@ -178,8 +188,19 @@ class WSolaTimeStretch:
         # Clip and convert to int16
         output = np.clip(output[:output_pos], -32768, 32767).astype(np.int16)
 
+        # CRITICAL: Arrondir au multiple de frame_size (160 samples @ 8kHz)
+        # Évite les problèmes d'alignement quand on envoie à PJSUA
+        output_len = len(output)
+        frame_aligned_len = (output_len // self.frame_size) * self.frame_size
+
+        if frame_aligned_len < output_len:
+            # Garder le reste pour le prochain appel
+            remainder = output[frame_aligned_len:].astype(np.int16)
+            self._input_buffer = np.concatenate([remainder, self._input_buffer])
+            output = output[:frame_aligned_len]
+
         logger.debug(
-            "WSOLA processed %d frames: %d samples → %d samples (ratio=%.2fx)",
+            "WSOLA processed %d frames: %d samples → %d samples (ratio=%.2fx, frame-aligned)",
             frame_count, len(audio), len(output), speed_ratio
         )
 
