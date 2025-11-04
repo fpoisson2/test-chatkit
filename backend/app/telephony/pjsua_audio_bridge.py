@@ -319,14 +319,13 @@ class PJSUAAudioBridge:
         return len(self._ring_buffer_8k) // self.EXPECTED_FRAME_SIZE_8KHZ
 
     async def send_to_peer(self, audio_24khz: bytes) -> None:
-        """Send audio from VoiceBridge avec contrôle doux et leaky bucket.
+        """Send audio from VoiceBridge - remplit uniquement staging buffer.
 
-        NOUVELLE ARCHITECTURE (contrôle doux):
+        NOUVELLE ARCHITECTURE (tick 20ms dédié):
         1. Resample 24kHz → 8kHz
         2. Découpe en frames de 160 samples (320 bytes)
-        3. Ajoute dans staging buffer (pas de drop)
-        4. Leaky bucket: injecte staging → ring à max ~1 frame/20ms
-        5. Ratio dynamique doux: ±6% max selon ring_len
+        3. Ajoute dans staging buffer (PAS d'injection ici)
+        4. L'injection staging→ring est faite par get_next_frame_8k() (tick 20ms)
 
         Args:
             audio_24khz: PCM16 audio at 24kHz from OpenAI (taille variable)
@@ -376,79 +375,67 @@ class PJSUAAudioBridge:
             self._resample_remainder_8k = audio_8khz
 
             staging_len = len(self._staging_frames_8k)
-
-        # 3) Leaky bucket: injecter du staging vers ring avec rate limiting
-        frames_injected = self._inject_from_staging_to_ring()
+            ring_len = self._ring_len_frames()
 
         # Log (premiers appels ou activité significative)
         if self._send_to_peer_call_count <= 10 or frames_added > 5:
-            with self._ring_lock:
-                ring_len = self._ring_len_frames()
             logger.info(
-                "📤 send_to_peer #%d: %d bytes @ 24kHz → +%d staged, +%d injected, staging=%d, ring=%d frames (%dms)",
+                "📤 send_to_peer #%d: %d bytes @ 24kHz → +%d staged, staging=%d, ring=%d",
                 self._send_to_peer_call_count,
                 len(audio_24khz),
                 frames_added,
-                frames_injected,
                 staging_len,
                 ring_len,
-                ring_len * 20,
             )
 
     def _inject_from_staging_to_ring(self) -> int:
-        """Injecte des frames du staging vers le ring avec leaky bucket.
+        """Injecte des frames du staging vers le ring - tick 20ms dédié.
 
-        Leaky bucket: max ~1 frame/20ms en moyenne.
-        - Crédits accumulés = temps écoulé * 50 Hz
-        - Max crédits = 3 (60ms de burst)
-        - Injecter min(crédits, frames disponibles)
+        NOUVELLE LOGIQUE (anti-starvation):
+        - Si ring=0 et staging>0: remplir rapidement jusqu'à LOW (6 frames)
+        - Sinon: injecter exactement 1 frame par tick (20ms)
+        - Drop d'urgence seulement si ring >= OVERFLOW (24 frames = 480ms)
 
         Returns:
             Nombre de frames injectées
         """
-        t_now = time.monotonic()
-
         with self._ring_lock:
-            # Calculer crédits accumulés depuis dernière injection
-            if self._last_injection_time > 0:
-                elapsed_sec = t_now - self._last_injection_time
-                new_credits = elapsed_sec * 50.0  # 50 Hz = 1 frame/20ms
-                self._injection_credits = min(
-                    self._injection_credits + new_credits,
-                    self._max_injection_credits
+            ring_len = self._ring_len_frames()
+            staging_len = len(self._staging_frames_8k)
+
+            # Pas de staging: rien à injecter
+            if staging_len == 0:
+                return 0
+
+            # ANTI-STARVATION: si ring vide, remplir rapidement jusqu'à LOW
+            if ring_len == 0:
+                frames_to_inject = min(self.RING_LOW, staging_len)  # jusqu'à 6 frames
+                logger.debug(
+                    "⚡ Anti-starvation: ring=0, injection rapide de %d frames (staging=%d)",
+                    frames_to_inject, staging_len
                 )
+            # OVERFLOW: ne rien injecter, juste drop si nécessaire
+            elif ring_len >= self.RING_OVERFLOW:
+                if ring_len > self.RING_SAFE:
+                    # Drop 1 frame du ring
+                    del self._ring_buffer_8k[:self.EXPECTED_FRAME_SIZE_8KHZ]
+                    self._drops_overflow += 1
+                    logger.warning(
+                        "🚨 Drop d'urgence (overflow): ring %d → %d frames",
+                        ring_len, ring_len - 1
+                    )
+                return 0
+            # NORMAL: injecter exactement 1 frame par tick (20ms)
             else:
-                # Première injection: commencer avec 1 crédit
-                self._injection_credits = 1.0
+                frames_to_inject = 1
 
-            self._last_injection_time = t_now
-
-            # Injecter jusqu'à épuisement des crédits ou du staging
+            # Injecter les frames
             frames_injected = 0
-            while (self._injection_credits >= 1.0 and
-                   len(self._staging_frames_8k) > 0):
-
-                # Vérifier overflow d'urgence
-                ring_len = self._ring_len_frames()
-                if ring_len >= self.RING_OVERFLOW:
-                    # Drop d'urgence: 1 frame par tick jusqu'à RING_SAFE
-                    if ring_len > self.RING_SAFE:
-                        # Drop 1 frame du ring
-                        bytes_to_drop = self.EXPECTED_FRAME_SIZE_8KHZ
-                        del self._ring_buffer_8k[:bytes_to_drop]
-                        self._drops_overflow += 1
-                        ring_len_after = self._ring_len_frames()
-                        logger.warning(
-                            "🚨 Drop d'urgence (overflow): ring %d → %d frames, reason=overflow",
-                            ring_len, ring_len_after
-                        )
-                    # Ne pas injecter si overflow
+            for _ in range(frames_to_inject):
+                if len(self._staging_frames_8k) == 0:
                     break
-
-                # Injecter 1 frame
                 frame = self._staging_frames_8k.pop(0)
                 self._ring_buffer_8k.extend(frame)
-                self._injection_credits -= 1.0
                 frames_injected += 1
                 self._frames_injected += 1
 

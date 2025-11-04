@@ -399,13 +399,13 @@ class TelephonyVoiceBridge:
                         # que le canal bidirectionnel est confirmé
                         if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
                             try:
-                                # 1. D'abord, envoyer une frame de silence minimal pour amorcer
-                                # CRITIQUE: Seulement 1 frame (20ms) pour démarrage sec
-                                # RTP arrive très vite, TTS aussi - pas besoin de plus
-                                # IMPORTANT: Injection DIRECTE dans la queue 8kHz sans backlog dans le buffer 24kHz
-                                num_silence_frames = 1  # 1 frame = 20ms - prime minimale pour démarrage sec
+                                # 1. D'abord, précharger généreusement le ring buffer (8-10 frames)
+                                # CRITIQUE: Amorcer avec TARGET frames pour éviter sous-alimentation
+                                # Cela évite les silences quand TTS arrive en burst
+                                # IMPORTANT: Injection DIRECTE dans le ring buffer @ 8kHz
+                                num_silence_frames = 8  # 8 frames = 160ms - amorçage généreux pour stabilité
 
-                                logger.info("🔇 Canal bidirectionnel confirmé - injection directe de %d frame de silence (%dms prime sans backlog)", num_silence_frames, num_silence_frames * 20)
+                                logger.info("🔇 Canal bidirectionnel confirmé - injection directe de %d frames de silence (%dms prime pour stabilité)", num_silence_frames, num_silence_frames * 20)
                                 if audio_bridge:
                                     # Injection directe dans le ring buffer @ 8kHz (synchrone, pas async)
                                     audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
