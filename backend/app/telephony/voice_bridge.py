@@ -1004,13 +1004,15 @@ class TelephonyVoiceBridge:
 
                             # OPTIMISATION CRITIQUE: Vider la queue locale PJSUA MAINTENANT
                             # Les frames de silence se sont accumulées pendant l'attente
+                            logger.info("🔍 DEBUG: clear_audio_queue = %s (type=%s)", clear_audio_queue, type(clear_audio_queue))
                             if clear_audio_queue is not None:
                                 try:
                                     cleared_count = clear_audio_queue()
-                                    if cleared_count > 0:
-                                        logger.info("🗑️ Queue locale PJSUA vidée: %d frames de silence supprimées", cleared_count)
+                                    logger.info("🗑️ Queue locale PJSUA vidée: %d frames de silence supprimées", cleared_count)
                                 except Exception as e:
                                     logger.warning("Erreur lors du vidage de la queue PJSUA: %s", e)
+                            else:
+                                logger.warning("⚠️ clear_audio_queue est None - impossible de vider la queue!")
 
                             # OPTIMISATION AGRESSIVE: Amorcer le canal et envoyer response.create MAINTENANT
                             # Cela démarre la génération TTS immédiatement sans attendre le premier paquet RTP
