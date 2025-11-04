@@ -603,11 +603,10 @@ async def create_pjsua_audio_bridge(
     """
     bridge = PJSUAAudioBridge(call)
 
-    # Connecter le bridge à l'AudioMediaPort pour mode PULL
-    # IMPORTANT: Permet à onFrameRequested() d'appeler bridge.get_next_frame_8k()
-    if hasattr(call, '_audio_port') and call._audio_port:
-        call._audio_port._audio_bridge = bridge
-        logger.info("✅ Bridge connecté à AudioMediaPort (mode PULL activé)")
+    # Stocker le bridge sur le call pour que AudioMediaPort puisse le récupérer
+    # Le port sera créé plus tard dans onCallMediaState() et pourra accéder au bridge
+    call._audio_bridge = bridge
+    logger.info("✅ Bridge stocké sur Call (sera connecté au port quand créé)")
 
     # Récupérer l'event frame_requested de CET appel (pas de l'adaptateur
     # global). Chaque appel a son propre event pour éviter les problèmes de
