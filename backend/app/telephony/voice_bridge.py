@@ -1054,17 +1054,8 @@ class TelephonyVoiceBridge:
                     else:
                         logger.info("⏳ Mode speak_first activé - response.create sera envoyé après amorçage du canal")
 
-                # Log available tools
-                try:
-                    agent = session._current_agent
-                    tools_list = await agent.get_all_tools(session._context_wrapper)
-                    logger.info("Outils disponibles dans l'agent : %d outils", len(tools_list))
-                    for tool in tools_list[:5]:  # Log first 5 tools
-                        tool_name = getattr(tool, 'name', '<unknown>')
-                        logger.info("  - Outil : %s", tool_name)
-                except Exception as e:
-                    logger.warning("Impossible de lister les outils : %s", e)
-
+                # OPTIMISATION: Démarrer forward_audio() et handle_events() IMMÉDIATEMENT
+                # pour que le RTP stream commence à capturer l'audio le plus tôt possible
                 audio_task = asyncio.create_task(forward_audio())
                 events_task = asyncio.create_task(handle_events())
                 try:
