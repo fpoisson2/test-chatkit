@@ -471,7 +471,7 @@ class PJSUAAudioBridge:
             if ring_len < RING_STARVATION_THRESHOLD:
                 frames_to_inject = min(self.RING_TARGET - ring_len, staging_len)
                 if frames_to_inject > 1:  # Log seulement si injection multiple
-                    logger.debug(
+                    logger.info(
                         "⚡ Anti-starvation: ring=%d < %d, injection rapide de %d frames → ring=%d (staging=%d)",
                         ring_len, RING_STARVATION_THRESHOLD, frames_to_inject,
                         ring_len + frames_to_inject, staging_len
@@ -539,25 +539,32 @@ class PJSUAAudioBridge:
             buffer_frames = buffer_size / self.EXPECTED_FRAME_SIZE_8KHZ
             ring_len = int(buffer_frames)
 
-            # 2) Calculer ratio dynamique avec LARGE ZONE MORTE (6-15 frames)
-            # - Si ring <= LOW (6): ratio = 1.00 (JAMAIS ralentir!)
-            # - Si ring > HIGH (15): ratio calculé mais limité
-            # - Sinon (6 < ring <= 15): ratio = 1.00 (ZONE MORTE - pas de stretch)
-            # Seuil minimal: ne pas activer WSOLA si ratio < 1.03x (évite artefacts)
-            if ring_len <= self.RING_LOW:
-                # Pénurie: JAMAIS ralentir (ratio < 1.00)
-                self._speed_ratio = 1.00
-            elif ring_len > self.RING_HIGH:
-                # Surplus: accélérer doucement (max 1.06x)
-                raw_ratio = 1.0 + self.RATIO_K * (ring_len - self.RING_TARGET)
-                self._speed_ratio = min(1.06, raw_ratio)
+            # DIAGNOSTIC: Log si ring buffer dépasse seuil HIGH (ancien seuil WSOLA)
+            if ring_len > self.RING_HIGH:
+                logger.warning(
+                    "⚠️ RING BUFFER GONFLÉ: ring=%d frames (seuil HIGH=%d, TARGET=%d), staging=%d",
+                    ring_len,
+                    self.RING_HIGH,
+                    self.RING_TARGET,
+                    len(self._staging_frames_8k),
+                )
 
-                # SEUIL MINIMAL: pas de stretch si ratio < 1.03x (trop proche de 1.0x)
-                if self._speed_ratio < self.RATIO_MIN_THRESHOLD:
-                    self._speed_ratio = 1.00
-            else:
-                # Zone de stabilité LOW < ring <= HIGH: PAS de stretch (ZONE MORTE)
-                self._speed_ratio = 1.00
+            # 2) WSOLA TEMPORAIREMENT DÉSACTIVÉ POUR DIAGNOSTIC
+            # Hypothèse: WSOLA cause le hachurage en s'activant/désactivant de façon erratique
+            # Test: désactiver complètement pour voir si hachurage disparaît
+            # TODO: Si hachurage persiste, le problème est ailleurs (resampling, jitter buffer PJSUA)
+            self._speed_ratio = 1.00  # TOUJOURS 1.00 = PAS de time-stretching
+
+            # ANCIEN CODE (garde pour référence):
+            # if ring_len <= self.RING_LOW:
+            #     self._speed_ratio = 1.00
+            # elif ring_len > self.RING_HIGH:
+            #     raw_ratio = 1.0 + self.RATIO_K * (ring_len - self.RING_TARGET)
+            #     self._speed_ratio = min(1.06, raw_ratio)
+            #     if self._speed_ratio < self.RATIO_MIN_THRESHOLD:
+            #         self._speed_ratio = 1.00
+            # else:
+            #     self._speed_ratio = 1.00
 
             # 3) Extraire 1 frame si disponible
             if buffer_size >= self.EXPECTED_FRAME_SIZE_8KHZ:
@@ -593,11 +600,12 @@ class PJSUAAudioBridge:
                 logger.warning("Erreur time-stretch @ 8kHz: %s, utilisation frame originale", e)
 
         # Log périodique avec statistiques détaillées
-        if (self._frames_pulled + self._silence_pulled) % 100 == 0:
+        # CRITIQUE: Log plus fréquent pour diagnostiquer hachurage
+        if (self._frames_pulled + self._silence_pulled) % 50 == 0:
             with self._ring_lock:
                 staging_len = len(self._staging_frames_8k)
 
-            logger.debug(
+            logger.info(
                 "📊 PULL stats: %d pulled, %d silence, %d overflow drops, ratio=%.3fx, ring=%d, staging=%d",
                 self._frames_pulled,
                 self._silence_pulled,
@@ -606,6 +614,16 @@ class PJSUAAudioBridge:
                 ring_len,
                 staging_len,
             )
+
+            # DIAGNOSTIC: Détecter activation WSOLA
+            if self._speed_ratio > 1.0:
+                logger.warning(
+                    "⚠️ WSOLA ACTIF: ratio=%.3fx, ring=%d (seuil HIGH=%d), staging=%d",
+                    self._speed_ratio,
+                    ring_len,
+                    self.RING_HIGH,
+                    staging_len,
+                )
 
         return frame_8k
 
