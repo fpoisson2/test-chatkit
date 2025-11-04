@@ -125,11 +125,7 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
             return
 
         call = PJSUACall(self.adapter, call_id=prm.callId)
-        call_info = call._safe_get_info()
-
-        if call_info is None:
-            logger.warning("Appel entrant mais session déjà terminée, ignoré")
-            return
+        call_info = call.getInfo()
 
         logger.info(
             "Appel SIP entrant de %s",
@@ -481,42 +477,12 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         # Utiliser un event partagé cause des problèmes sur les 2e/3e appels
         self._frame_requested_event = asyncio.Event() if adapter._loop else None
 
-        # Flag idempotent pour éviter les doubles tentatives de fermeture
-        # Protège contre la race condition entre DISCONNECTED callback et cleanup_call()
-        self._closing = False
-
-    def _safe_get_info(self) -> Any | None:
-        """Wrapper sûr autour de getInfo() qui gère les sessions déjà terminées.
-
-        Returns:
-            CallInfo si disponible, None si la session est déjà terminée
-        """
-        if not PJSUA_AVAILABLE:
-            return None
-
-        try:
-            return self.getInfo()
-        except Exception as e:
-            error_str = str(e).lower()
-            # Si la session est déjà terminée (PJSIP_ESESSIONTERMINATED = 171140),
-            # c'est attendu et pas une vraie erreur
-            if "already terminated" in error_str or "esessionterminated" in error_str or "171140" in str(e):
-                logger.debug("Session déjà terminée (getInfo), ignoré: %s", e)
-                return None
-            # Pour toute autre erreur, la propager
-            raise
-
     def onCallState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état d'appel."""
         if not PJSUA_AVAILABLE:
             return
 
-        # Utiliser le wrapper sûr pour éviter les erreurs si la session est déjà terminée
-        ci = self._safe_get_info()
-        if ci is None:
-            logger.debug("onCallState appelé mais session déjà terminée, ignoré")
-            return
-
+        ci = self.getInfo()
         logger.info(
             "📞 onCallState - call_id=%s, state=%d (%s), remote=%s",
             ci.id,
@@ -613,11 +579,7 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         if not PJSUA_AVAILABLE:
             return
 
-        # Utiliser le wrapper sûr pour éviter les erreurs si la session est déjà terminée
-        ci = self._safe_get_info()
-        if ci is None:
-            logger.debug("onCallMediaState appelé mais session déjà terminée, ignoré")
-            return
+        ci = self.getInfo()
 
         logger.info("🎵 onCallMediaState appelé pour call_id=%s, state=%s", ci.id, ci.state)
 
@@ -683,31 +645,23 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
                     # Connecter : téléphone -> notre port (pour recevoir/capturer l'audio)
                     # Ceci active onFrameReceived() sur notre port
-                    # IMPORTANT: Vérifier qu'on n'est pas déjà connecté pour éviter les chemins multiples
-                    # qui causent l'augmentation du buffering au fil des appels
                     try:
-                        if not self._conference_connected:
-                            audio_media.startTransmit(self._audio_port)
-                            logger.info(
-                                "✅ Connexion conference bridge: call (slot %d) → custom port (slot %d)",
-                                call_port_info.portId if 'call_port_info' in locals() else -1,
-                                custom_port_info.portId if 'custom_port_info' in locals() else -1,
-                            )
+                        audio_media.startTransmit(self._audio_port)
+                        logger.info(
+                            "✅ Connexion conference bridge: call (slot %d) → custom port (slot %d)",
+                            call_port_info.portId if 'call_port_info' in locals() else -1,
+                            custom_port_info.portId if 'custom_port_info' in locals() else -1,
+                        )
 
-                            # Connecter : notre port -> téléphone (pour envoyer/lecture l'audio)
-                            # Ceci permet à onFrameRequested() d'envoyer l'audio au téléphone
-                            self._audio_port.startTransmit(audio_media)
-                            logger.info(
-                                "✅ Connexion conference bridge: custom port (slot %d) → call (slot %d)",
-                                custom_port_info.portId if 'custom_port_info' in locals() else -1,
-                                call_port_info.portId if 'call_port_info' in locals() else -1,
-                            )
-                            self._conference_connected = True
-                        else:
-                            logger.warning(
-                                "⚠️ Bridge déjà connecté, skip startTransmit pour éviter chemins dupliqués (call_id=%s)",
-                                ci.id
-                            )
+                        # Connecter : notre port -> téléphone (pour envoyer/lecture l'audio)
+                        # Ceci permet à onFrameRequested() d'envoyer l'audio au téléphone
+                        self._audio_port.startTransmit(audio_media)
+                        logger.info(
+                            "✅ Connexion conference bridge: custom port (slot %d) → call (slot %d)",
+                            custom_port_info.portId if 'custom_port_info' in locals() else -1,
+                            call_port_info.portId if 'call_port_info' in locals() else -1,
+                        )
+                        self._conference_connected = True
                     except Exception as exc:
                         self._conference_connected = False
                         logger.warning("Erreur lors de la connexion du conference bridge: %s", exc)
@@ -806,20 +760,17 @@ class PJSUAAdapter:
         ep_cfg.logConfig.consoleLevel = 1
 
         # Configuration du jitter buffer pour éviter l'accumulation de latence
-        # Les paramètres par défaut (jb_max=200 frames = 4s) peuvent gonfler au fil des appels
-        # On durcit le buffer pour maintenir une latence stable:
-        # - jb_init=1: démarrer à 1 frame (20ms)
-        # - jb_min_pre=1: minimum 1 frame en précharge
-        # - jb_max=10: maximum 10 frames (200ms) au lieu de 4 secondes
+        # CRITICAL: Sans cette config, le JB peut gonfler jusqu'à 200 frames (4 secondes!)
+        # causant un lag progressif aux appels 2, 3, 4...
         media_cfg = ep_cfg.medConfig
-        media_cfg.jb_init = 1
-        media_cfg.jb_min_pre = 1
-        media_cfg.jb_max = 10
+        media_cfg.jb_init = 1      # Démarrer à 1 frame (20ms)
+        media_cfg.jb_min_pre = 1   # Minimum 1 frame en précharge
+        media_cfg.jb_max = 10      # Maximum 10 frames (200ms) au lieu de 4s par défaut
         logger.info(
-            "Jitter buffer configuré: init=%d, min_pre=%d, max=%d frames",
-            media_cfg.jb_init,
-            media_cfg.jb_min_pre,
-            media_cfg.jb_max,
+            "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max=%dms",
+            media_cfg.jb_init * 20,
+            media_cfg.jb_min_pre * 20,
+            media_cfg.jb_max * 20,
         )
 
         # Initialiser l'endpoint
@@ -1004,12 +955,6 @@ class PJSUAAdapter:
         """
         # Nettoyer les appels terminés
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
-            # Protection idempotente: éviter le double nettoyage
-            if call._closing:
-                logger.debug("Nettoyage déjà en cours (DISCONNECTED), ignoré (call_id=%s)", call_info.id)
-                return
-
-            call._closing = True
             logger.info("📞 Appel DISCONNECTED détecté - nettoyage immédiat (call_id=%s)", call_info.id)
 
             self._active_calls.pop(call_info.id, None)
@@ -1063,46 +1008,43 @@ class PJSUAAdapter:
         logger.info("Réponse envoyée à l'appel (code=%d)", code)
 
     async def hangup_call(self, call: PJSUACall) -> None:
-        """Termine un appel de manière idempotente.
-
-        Gère proprement le cas où la session est déjà terminée (PJSIP_ESESSIONTERMINATED),
-        ce qui arrive souvent en raison de la race condition entre le callback DISCONNECTED
-        et les tentatives de nettoyage explicites.
-        """
+        """Termine un appel."""
         if not PJSUA_AVAILABLE:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
-        # Utiliser le wrapper sûr pour vérifier l'état
-        ci = call._safe_get_info()
-        if ci is None:
-            # Session déjà terminée, rien à faire
-            logger.debug("Appel déjà terminé (getInfo=None), hangup ignoré")
-            return
+        # Vérifier si l'appel est déjà terminé pour éviter les erreurs "INVITE session already terminated"
+        try:
+            ci = call.getInfo()
+            if ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+                logger.debug("Appel déjà terminé (call_id=%s), ignorer hangup", ci.id)
+                return
+        except Exception as e:
+            # Si getInfo() échoue avec "already terminated", l'appel est déjà terminé
+            error_str = str(e).lower()
+            if "already terminated" in error_str or "esessionterminated" in error_str:
+                logger.debug("Appel déjà terminé (getInfo échoué), ignorer hangup: %s", e)
+                return
+            # Sinon, logger l'erreur mais continuer pour essayer le hangup
+            logger.debug("Impossible de vérifier l'état de l'appel: %s", e)
 
-        if ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
-            logger.debug("Appel déjà DISCONNECTED (call_id=%s), hangup ignoré", ci.id)
-            return
-
-        # Tenter le hangup, en traitant ESESSIONTERMINATED comme un succès
         try:
             prm = pj.CallOpParam()
             call.hangup(prm)
-            logger.info("Appel terminé (call_id=%s)", ci.id)
+            logger.info("Appel terminé")
         except Exception as e:
+            # Ignorer les erreurs si l'appel est déjà terminé
             error_str = str(e).lower()
-            # PJSIP_ESESSIONTERMINATED (171140) signifie "déjà fermé" = succès
-            if "already terminated" in error_str or "esessionterminated" in error_str or "171140" in str(e):
-                logger.debug("Appel déjà terminé pendant hangup (171140), traité comme succès")
+            if "already terminated" in error_str or "esessionterminated" in error_str:
+                logger.debug("Appel déjà terminé, erreur ignorée: %s", e)
             else:
-                # Autre erreur réelle
+                # Réemettre l'exception si c'est une autre erreur
                 raise
 
     async def cleanup_call(self, call_id: int) -> None:
-        """Nettoie proprement une session d'appel PJSUA de manière idempotente.
+        """Nettoie proprement une session d'appel PJSUA.
 
-        Utilise un flag _closing pour éviter les doubles nettoyages causés par
-        la race condition entre le callback DISCONNECTED et les appels explicites
-        à cleanup_call().
+        Attend un délai avant de nettoyer pour laisser PJSUA terminer proprement,
+        puis nettoie les ressources audio et raccroche l'appel si nécessaire.
 
         Args:
             call_id: ID de l'appel à nettoyer
@@ -1117,13 +1059,6 @@ class PJSUAAdapter:
                 logger.debug("Appel %s déjà nettoyé ou introuvable", call_id)
                 return
 
-            # Protection idempotente: vérifier si le nettoyage est déjà en cours
-            if call._closing:
-                logger.debug("Nettoyage déjà en cours pour call_id=%s, ignoré", call_id)
-                return
-
-            # Marquer comme en cours de fermeture
-            call._closing = True
             logger.info("🧹 Début nettoyage appel (call_id=%s)", call_id)
 
             # Arrêter l'audio bridge d'abord (si attaché dynamiquement à l'appel)
@@ -1179,14 +1114,13 @@ class PJSUAAdapter:
         if not PJSUA_AVAILABLE or not call:
             return False
 
-        # Utiliser le wrapper sûr qui gère ESESSIONTERMINATED
-        ci = call._safe_get_info()
-        if ci is None:
-            # Session déjà terminée
+        try:
+            ci = call.getInfo()
+            # Vérifier si l'appel n'est pas déjà terminé
+            return ci.state != pj.PJSIP_INV_STATE_DISCONNECTED
+        except Exception:
+            # Si getInfo() échoue, l'appel n'est pas valide
             return False
-
-        # Vérifier si l'appel n'est pas déjà terminé
-        return ci.state != pj.PJSIP_INV_STATE_DISCONNECTED
 
     async def make_call(self, dest_uri: str) -> PJSUACall:
         """Initie un appel sortant."""
@@ -1208,28 +1142,18 @@ class PJSUAAdapter:
         call.makeCall(dest_uri, prm)
 
         # Récupérer l'info de l'appel pour obtenir l'ID
-        ci = call._safe_get_info()
-        if ci is None:
-            raise RuntimeError("Impossible d'obtenir les infos de l'appel sortant")
-
+        ci = call.getInfo()
         self._active_calls[ci.id] = call
 
-        logger.info("Appel sortant initié vers %s (call_id=%s)", dest_uri, ci.id)
+        logger.info("Appel sortant initié vers %s", dest_uri)
         return call
 
-    def get_call_info(self, call: PJSUACall) -> CallInfo | None:
-        """Récupère les informations d'un appel.
-
-        Returns:
-            CallInfo si l'appel est valide, None si la session est déjà terminée
-        """
+    def get_call_info(self, call: PJSUACall) -> CallInfo:
+        """Récupère les informations d'un appel."""
         if not PJSUA_AVAILABLE:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
-        ci = call._safe_get_info()
-        if ci is None:
-            return None
-
+        ci = call.getInfo()
         return CallInfo(
             call_id=ci.id,
             remote_uri=ci.remoteUri,
