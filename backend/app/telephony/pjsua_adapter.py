@@ -794,41 +794,39 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                         logger.info("   - Custom port: slot=%d, name=%s",
                                    custom_port_info_after.portId, custom_port_info_after.name)
 
-                        # 📊 DIAGNOSTIC: Extraire le VRAI port RTP local depuis le SDP
-                        logger.warning("🔍 Extraction du port RTP local depuis SDP (call_id=%s)...", ci.id)
+                        # 📊 DIAGNOSTIC: Afficher les ports RTP (local estimé + distant réel)
+                        logger.warning("🔍 Diagnostic ports RTP (call_id=%s)...", ci.id)
 
                         try:
-                            import re
+                            # PJSUA alloue les ports RTP séquentiellement: 10000, 10002, 10004, ...
+                            # Le call_id PJSUA (0, 1, 2...) indique l'ordre d'allocation
+                            pjsua_call_id = ci.id
+                            estimated_local_rtp = 10000 + (pjsua_call_id * 2)
+                            estimated_local_rtcp = estimated_local_rtp + 1
 
-                            # Récupérer le SDP local via call.dump()
-                            # Le paramètre True inclut les détails complets avec SDP local et distant
-                            sdp_dump = self.dump(True, "  ")
+                            logger.warning("🔌 PORT RTP LOCAL ESTIMÉ: 0.0.0.0:%d (basé sur call_id=%d)",
+                                         estimated_local_rtp, pjsua_call_id)
 
-                            # Parser le SDP local pour trouver la ligne m=audio avec le port RTP
-                            # Format: m=audio <port> RTP/AVP <payload_types>
-                            # Exemple: m=audio 10000 RTP/AVP 96 97 98
-                            match = re.search(r"(?mi)^m=audio\s+(\d+)\s+RTP/\w+", sdp_dump)
+                            # Récupérer le port distant RÉEL depuis StreamInfo
+                            stream_info = self.getStreamInfo(mi.index)
+                            if hasattr(stream_info, 'remoteRtpAddress'):
+                                remote_rtp = stream_info.remoteRtpAddress
+                                logger.warning("🔌 PORT RTP DISTANT (réel): %s", remote_rtp)
 
-                            if match:
-                                local_rtp_port = int(match.group(1))
-                                local_rtcp_port = local_rtp_port + 1  # RTCP = RTP + 1
-
-                                logger.warning("🔌 PORT RTP LOCAL (depuis SDP): 0.0.0.0:%d (call_id=%s)",
-                                             local_rtp_port, ci.id)
-                                logger.warning("🔌 PORT RTCP LOCAL (calculé): 0.0.0.0:%d", local_rtcp_port)
-
-                                # Afficher aussi le port distant pour comparaison
-                                stream_info = self.getStreamInfo(mi.index)
-                                if hasattr(stream_info, 'remoteRtpAddress'):
-                                    logger.warning("🔌 PORT RTP DISTANT: %s", stream_info.remoteRtpAddress)
+                                # Parser le port distant pour analyse
+                                import re
+                                remote_match = re.search(r':(\d+)$', remote_rtp)
+                                if remote_match:
+                                    remote_port = int(remote_match.group(1))
+                                    logger.warning("   → Port distant: %d", remote_port)
                             else:
-                                logger.warning("⚠️ Impossible de parser le port RTP depuis le SDP")
-                                logger.warning("SDP dump (premiers 500 chars): %s", sdp_dump[:500])
+                                logger.warning("⚠️ remoteRtpAddress non disponible dans StreamInfo")
+
+                            if hasattr(stream_info, 'remoteRtcpAddress'):
+                                logger.warning("🔌 PORT RTCP DISTANT: %s", stream_info.remoteRtcpAddress)
 
                         except Exception as port_err:
-                            logger.warning("⚠️ Erreur extraction port RTP depuis SDP: %s", port_err)
-                            import traceback
-                            logger.warning("Traceback: %s", traceback.format_exc())
+                            logger.warning("⚠️ Erreur diagnostic ports: %s", port_err)
 
                         logger.info("✅ Null sound device + conference bridge correctement armé")
                     except Exception as e:
