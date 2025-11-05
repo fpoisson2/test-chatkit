@@ -25,6 +25,7 @@ show_help() {
     echo "  minimal     - Test minimal (sans dépendances du projet)"
     echo "  simple      - Test simple avec PJSUA"
     echo "  bridge      - Test avec Voice Bridge (nécessite OpenAI API)"
+    echo "  8khz        - Test avec Voice Bridge à 8kHz direct (nécessite OpenAI API)"
     echo ""
     echo "OPTIONS:"
     echo "  -c FILE     - Fichier de configuration (défaut: test_config.env)"
@@ -37,6 +38,7 @@ show_help() {
     echo "  $0 -v simple"
     echo "  $0 -d 300 bridge"
     echo "  $0 -c my_config.env bridge"
+    echo "  $0 8khz                    # Test avec audio 8kHz direct"
     echo ""
 }
 
@@ -166,6 +168,39 @@ case "$MODE" in
 
         echo ""
         eval "\"$PJSIP_PY\" test_incoming_calls_with_bridge.py $BRIDGE_ARGS"
+        ;;
+
+    8khz)
+        echo -e "${BLUE}🚀 Lancement du test avec Voice Bridge 8kHz direct...${NC}"
+        echo -e "${YELLOW}⚠️  Mode expérimental: envoie l'audio à 8kHz sans upsampling${NC}"
+
+        # Vérifier la clé API OpenAI
+        if [ -z "$OPENAI_API_KEY" ]; then
+            echo -e "${RED}❌ Erreur: OPENAI_API_KEY doit être défini pour le mode 8khz${NC}"
+            exit 1
+        fi
+
+        # Exporter la clé API
+        export OPENAI_API_KEY
+
+        # Construire les arguments du bridge
+        BRIDGE_ARGS="$COMMON_ARGS"
+
+        if [ -n "$OPENAI_MODEL" ]; then
+            BRIDGE_ARGS="$BRIDGE_ARGS --model \"${OPENAI_MODEL}\""
+        fi
+
+        if [ -n "$OPENAI_VOICE" ]; then
+            BRIDGE_ARGS="$BRIDGE_ARGS --voice \"${OPENAI_VOICE}\""
+        fi
+
+        if [ -n "$OPENAI_INSTRUCTIONS" ]; then
+            BRIDGE_ARGS="$BRIDGE_ARGS --instructions \"${OPENAI_INSTRUCTIONS}\""
+        fi
+
+        echo ""
+        echo -e "${GREEN}🎯 Configuration: Audio 8kHz direct (pas d'upsampling à 24kHz)${NC}"
+        eval "\"$PJSIP_PY\" test_incoming_calls_with_bridge_8khz.py $BRIDGE_ARGS"
         ;;
 
     *)
