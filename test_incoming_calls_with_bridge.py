@@ -91,8 +91,12 @@ class IncomingCallTester:
         self.active_calls = {}
         self.running = False
 
-        # Créer le runner OpenAI
-        self.runner = RealtimeRunner(api_key=self.api_key)
+        # Créer l'agent et le runner OpenAI
+        agent = RealtimeAgent(
+            name="incoming-call-test-agent",
+            instructions=self.instructions
+        )
+        self.runner = RealtimeRunner(agent)
 
     async def initialize(self):
         """Initialise l'adaptateur PJSUA et le voice bridge."""
