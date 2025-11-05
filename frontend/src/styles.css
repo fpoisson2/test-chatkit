@@ -835,9 +835,11 @@ button {
       var(--chatkit-sidebar-content-padding-x)
     )
   );
-  padding-inline-start: var(
-    --chatkit-sidebar-open-workflow-padding-x,
-    var(--chatkit-sidebar-content-padding-x)
+  padding-inline-start: calc(
+    var(
+      --chatkit-sidebar-open-workflow-padding-x,
+      var(--chatkit-sidebar-content-padding-x)
+    ) + var(--chatkit-sidebar-workflow-leading-width)
   );
   padding-inline-end: calc(
     var(
@@ -857,6 +859,15 @@ button {
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-button::after {
+  inset-inline-start: calc(
+    -1 * var(
+      --chatkit-sidebar-open-workflow-padding-x,
+      var(--chatkit-sidebar-content-padding-x)
+    )
+  );
+}
+
+.chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-pin-button--leading {
   inset-inline-start: calc(
     -1 * var(
       --chatkit-sidebar-open-workflow-padding-x,
