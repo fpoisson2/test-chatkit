@@ -292,13 +292,6 @@ export function MyChat() {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
 
-  // Sync current thread from lastThreadSnapshotRef
-  useEffect(() => {
-    if (lastThreadSnapshotRef.current !== currentThread) {
-      setCurrentThread(lastThreadSnapshotRef.current);
-    }
-  }, [lastThreadSnapshotRef.current, currentThread]);
-
   // Detect outbound calls
   const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallDetector(currentThread);
 
@@ -1018,6 +1011,8 @@ export function MyChat() {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
               lastThreadSnapshotRef.current = data.thread as Record<string, unknown>;
+              // Update state to trigger re-render and useOutboundCallDetector
+              setCurrentThread(data.thread as Record<string, unknown>);
             }
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
