@@ -2663,7 +2663,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
 
-                    # Exécuter
+                    # Exécuter avec speak_first=True pour que l'agent parle en premier
                     stats = await voice_bridge.run(
                         runner=runner,
                         client_secret=api_key,
@@ -2674,6 +2674,9 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         send_to_peer=send_to_peer,
                         audio_bridge=audio_bridge,
                         tools=normalized_tools,
+                        speak_first=True,
+                        clear_audio_queue=clear_queue,
+                        pjsua_ready_to_consume=pjsua_ready_event,
                     )
 
                     logger.info("✅ Terminé: %s", stats)
