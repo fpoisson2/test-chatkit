@@ -2886,58 +2886,58 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 except Exception as e:
                     logger.exception("❌ Erreur dans VoiceBridge (call_id=%s): %s", call_id, e)
                     diag_manager.end_call(call_id)
+                finally:
+                    # CRITIQUE: Nettoyage DANS la tâche (pas dans le callback principal)
+                    # Comme le test: lignes 238-248
+                    logger.info("🧹 Début nettoyage appel (call_id=%s)", call_id)
 
-            # Lancer le voice bridge en tâche
-            voice_bridge_task = asyncio.create_task(run_voice_bridge())
+                    # Arrêter le bridge audio
+                    try:
+                        audio_bridge.stop()
+                        logger.info("✅ Bridge audio arrêté (call_id=%s)", call_id)
+                    except Exception as e:
+                        logger.warning("Erreur arrêt bridge audio: %s", e)
 
-            # Attendre la fin du voice bridge
-            try:
-                await voice_bridge_task
-                # Session vocale terminée - raccrocher l'appel de notre côté
-                logger.info("✅ Session vocale fermée (call_id=%s)", call_id)
-                try:
-                    await pjsua_adapter.hangup_call(call)
-                    logger.info("📞 Appel PJSUA raccroché (call_id=%s)", call_id)
-                except Exception as hangup_error:
-                    # Ignorer les erreurs "already terminated" (appel déjà raccroché)
-                    error_str = str(hangup_error).lower()
-                    if "already terminated" not in error_str and "esessionterminated" not in error_str:
-                        logger.warning("Erreur fermeture appel PJSUA: %s", hangup_error)
-            except Exception as e:
-                logger.exception("Erreur d'attente du voice bridge (call_id=%s): %s", call_id, e)
-                # En cas d'erreur, aussi raccrocher
-                try:
-                    await pjsua_adapter.hangup_call(call)
-                except Exception:
-                    pass
-            finally:
-                # Garantir la fermeture de la session Realtime
-                try:
-                    await close_voice_session(session_id=session_handle.session_id)
-                    logger.info("🔒 Session Realtime fermée explicitement (call_id=%s)", call_id)
-                except Exception as cleanup_error:
-                    logger.warning(
-                        "Erreur lors du nettoyage de session Realtime (call_id=%s): %s",
-                        call_id,
-                        cleanup_error,
-                    )
+                    # Raccrocher l'appel
+                    try:
+                        await pjsua_adapter.hangup_call(call)
+                        logger.info("📞 Appel PJSUA raccroché (call_id=%s)", call_id)
+                    except Exception as hangup_error:
+                        error_str = str(hangup_error).lower()
+                        if "already terminated" not in error_str and "esessionterminated" not in error_str:
+                            logger.warning("Erreur fermeture appel PJSUA: %s", hangup_error)
 
-                # NOUVEAU: Nettoyer les callbacks du dictionnaire (backup si pas déjà fait)
-                _media_active_callbacks.pop(call_key, None)
-                _call_state_callbacks.pop(call_key, None)
-                logger.debug("🧹 Nettoyage final callbacks pour call_key=%s (call_id=%s)", call_key, call_id)
+                    # Fermer la session Realtime
+                    try:
+                        await close_voice_session(session_id=session_handle.session_id)
+                        logger.info("🔒 Session Realtime fermée (call_id=%s)", call_id)
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            "Erreur nettoyage session Realtime (call_id=%s): %s",
+                            call_id,
+                            cleanup_error,
+                        )
+
+                    # Nettoyer les callbacks du dictionnaire
+                    _media_active_callbacks.pop(call_key, None)
+                    _call_state_callbacks.pop(call_key, None)
+                    logger.debug("🧹 Callbacks nettoyés pour call_key=%s (call_id=%s)", call_key, call_id)
+
+            # CRITIQUE: Lancer la tâche et NE PAS ATTENDRE (comme le test ligne 159-168)
+            # Le callback doit retourner immédiatement pour permettre d'autres appels!
+            asyncio.create_task(run_voice_bridge())
+            logger.info("✅ Tâche voice bridge lancée, callback retourne immédiatement (call_id=%s)", call_id)
 
         except Exception as e:
-            logger.exception("Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
+            logger.exception("❌ Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
+            # Nettoyage d'urgence en cas d'erreur AVANT le lancement de la tâche
             try:
                 await pjsua_adapter.hangup_call(call)
             except Exception:
                 pass
-            finally:
-                # NOUVEAU: Nettoyer les callbacks même en cas d'erreur
-                _media_active_callbacks.pop(call_key, None)
-                _call_state_callbacks.pop(call_key, None)
-                logger.debug("🧹 Nettoyage callbacks après erreur pour call_key=%s (call_id=%s)", call_key, call_id)
+            # Nettoyer les callbacks
+            _media_active_callbacks.pop(call_key, None)
+            _call_state_callbacks.pop(call_key, None)
 
     return _handle_pjsua_incoming_call
 
