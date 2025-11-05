@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 /**
  * Hook to detect active outbound calls via WebSocket events.
@@ -7,9 +7,20 @@ import { useState, useEffect } from "react";
 export function useOutboundCallSession(): {
   callId: string | null;
   isActive: boolean;
+  sendCommand: (command: { type: string; [key: string]: any }) => void;
 } {
   const [callId, setCallId] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  const sendCommand = useCallback((command: { type: string; [key: string]: any }) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(command));
+      console.log("[OutboundCallSession] Sent command:", command);
+    } else {
+      console.error("[OutboundCallSession] WebSocket not connected, cannot send command");
+    }
+  }, []);
 
   useEffect(() => {
     // Connect to outbound call events WebSocket
@@ -20,6 +31,7 @@ export function useOutboundCallSession(): {
     console.log("[OutboundCallSession] Connecting to", wsUrl);
 
     const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
 
     ws.onopen = () => {
       console.log("[OutboundCallSession] WebSocket connected");
@@ -44,6 +56,19 @@ export function useOutboundCallSession(): {
             setTimeout(() => setCallId(null), 500);
             break;
 
+          case "hangup_response":
+            console.log("[OutboundCallSession] Hangup response:", message);
+            if (message.success) {
+              console.log("[OutboundCallSession] Call hung up successfully");
+            } else {
+              console.error("[OutboundCallSession] Failed to hang up call");
+            }
+            break;
+
+          case "ping":
+            // Ignore pings
+            break;
+
           default:
             console.log("[OutboundCallSession] Unknown event type:", message.type);
         }
@@ -62,8 +87,9 @@ export function useOutboundCallSession(): {
 
     return () => {
       ws.close();
+      wsRef.current = null;
     };
   }, []); // Empty deps - WebSocket should persist for the entire component lifecycle
 
-  return { callId, isActive };
+  return { callId, isActive, sendCommand };
 }

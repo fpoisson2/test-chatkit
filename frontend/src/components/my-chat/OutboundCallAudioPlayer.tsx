@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 interface OutboundCallAudioPlayerProps {
   callId: string | null;
   onCallEnd?: () => void;
+  sendCommand: (command: { type: string; [key: string]: any }) => void;
 }
 
 interface AudioPacket {
@@ -17,6 +18,7 @@ interface AudioPacket {
 export const OutboundCallAudioPlayer = ({
   callId,
   onCallEnd,
+  sendCommand,
 }: OutboundCallAudioPlayerProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -32,32 +34,29 @@ export const OutboundCallAudioPlayer = ({
   const nextPlayTimeRef = useRef<number>(0);
 
   // Handle hang up
-  const handleHangup = useCallback(async () => {
+  const handleHangup = useCallback(() => {
     if (!callId || isHangingUp) return;
 
     setIsHangingUp(true);
     try {
-      const response = await fetch(`/api/outbound/call/${callId}/hangup`, {
-        method: "POST",
-        credentials: "include", // Send cookies for authentication
-        headers: {
-          "Content-Type": "application/json",
-        },
+      console.log("[OutboundCallAudioPlayer] Sending hangup command for call", callId);
+      sendCommand({
+        type: "hangup",
+        call_id: callId,
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to hang up call");
-      }
-
-      console.log("[OutboundCallAudioPlayer] Call hung up successfully");
-      onCallEnd?.();
+      // The response will come via WebSocket (hangup_response event)
+      // For now, just mark as success after a delay
+      setTimeout(() => {
+        setIsHangingUp(false);
+        onCallEnd?.();
+      }, 1000);
     } catch (err) {
-      console.error("[OutboundCallAudioPlayer] Failed to hang up:", err);
+      console.error("[OutboundCallAudioPlayer] Failed to send hangup command:", err);
       setError("Échec du raccrochage");
-    } finally {
       setIsHangingUp(false);
     }
-  }, [callId, isHangingUp, onCallEnd]);
+  }, [callId, isHangingUp, onCallEnd, sendCommand]);
 
   // Initialize Audio Context
   const initializeAudioContext = useCallback(() => {
