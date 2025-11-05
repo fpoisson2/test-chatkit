@@ -2602,7 +2602,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     instructions = voice_instructions
                     tools = voice_tools
 
-                    # Créer hooks simples
+                    # Créer hooks simples (DOIVENT être async!)
                     async def close_dialog_hook() -> None:
                         try:
                             await pjsua_adapter.hangup_call(call)
@@ -2612,10 +2612,18 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                             if "already terminated" not in error_str:
                                 logger.warning("Erreur fermeture appel: %s", e)
 
+                    async def clear_voice_state_hook() -> None:
+                        """Hook vide pour clear_voice_state."""
+                        pass
+
+                    async def resume_workflow_hook(transcripts: list[dict[str, str]]) -> None:
+                        """Hook appelé à la fin de la session vocale."""
+                        logger.info("Session terminée avec %d transcripts (call_id=%s)", len(transcripts), chatkit_call_id)
+
                     hooks = VoiceBridgeHooks(
                         close_dialog=close_dialog_hook,
-                        clear_voice_state=lambda: None,
-                        resume_workflow=lambda transcripts: logger.info("Session terminée avec %d transcripts", len(transcripts)),
+                        clear_voice_state=clear_voice_state_hook,
+                        resume_workflow=resume_workflow_hook,
                     )
 
                     # Créer le voice bridge
