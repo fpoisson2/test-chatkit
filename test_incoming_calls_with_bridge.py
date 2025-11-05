@@ -133,17 +133,10 @@ class IncomingCallTester:
         logger.info("📞 Call ID: %s", call_id)
 
         try:
-            # Accepter l'appel
-            logger.info("✅ Acceptation de l'appel...")
-            await self.adapter.answer_call(call)
-
-            # Attendre que le média soit actif
-            await asyncio.sleep(1)
-
-            # Créer un audio bridge pour cet appel avec la fonction helper
+            # Créer un audio bridge pour cet appel AVANT d'accepter
+            # Ceci est critique: le bridge doit être sur le call AVANT onCallMediaState
             logger.info("🎵 Création du bridge audio...")
             media_active = asyncio.Event()
-            media_active.set()  # Déjà actif après answer_call
 
             (
                 rtp_stream,
@@ -153,6 +146,16 @@ class IncomingCallTester:
                 pjsua_ready_event,
                 audio_bridge,
             ) = await create_pjsua_audio_bridge(call, media_active)
+
+            # Accepter l'appel (ceci déclenchera onCallMediaState qui verra le bridge)
+            logger.info("✅ Acceptation de l'appel...")
+            await self.adapter.answer_call(call)
+
+            # Signaler que le média est actif
+            media_active.set()
+
+            # Attendre que le média soit actif
+            await asyncio.sleep(1)
 
             # Démarrer le voice bridge
             logger.info("🎵 Démarrage du voice bridge...")
