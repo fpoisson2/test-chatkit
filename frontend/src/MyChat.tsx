@@ -1010,9 +1010,20 @@ export function MyChat() {
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
-              lastThreadSnapshotRef.current = data.thread as Record<string, unknown>;
+              const thread = data.thread as Record<string, unknown>;
+              lastThreadSnapshotRef.current = thread;
               // Update state to trigger re-render and useOutboundCallDetector
-              setCurrentThread(data.thread as Record<string, unknown>);
+              setCurrentThread(thread);
+
+              // Debug: Log thread structure
+              console.log('[MyChat] Thread updated:', {
+                keys: Object.keys(thread),
+                hasItems: 'items' in thread,
+                hasMessages: 'messages' in thread,
+                itemsLength: Array.isArray(thread.items) ? thread.items.length : 'N/A',
+                messagesLength: Array.isArray(thread.messages) ? thread.messages.length : 'N/A',
+                firstItem: Array.isArray(thread.items) && thread.items.length > 0 ? thread.items[0] : null,
+              });
             }
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
