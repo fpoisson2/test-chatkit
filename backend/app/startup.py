@@ -2588,10 +2588,16 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     # Créer le voice bridge
                     voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
 
-                    # Créer runner
+                    # COMME LE TEST: Créer agent PUIS runner
                     from agents.realtime.runner import RealtimeRunner
+                    from agents.realtime.agent import RealtimeAgent
 
-                    runner = RealtimeRunner()
+                    agent = RealtimeAgent(
+                        name=f"incoming-call-{call_id}",
+                        instructions=instructions,
+                    )
+                    runner = RealtimeRunner(agent)
+                    logger.info("✅ Runner créé pour l'appel %s", call_id)
 
                     # EXACTEMENT comme le test: utiliser voice_bridge.run()
                     logger.info("🚀 Démarrage voice_bridge.run() (call_id=%s)", chatkit_call_id)
