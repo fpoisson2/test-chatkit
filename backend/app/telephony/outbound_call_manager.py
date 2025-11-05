@@ -1039,10 +1039,87 @@ class OutboundCallManager:
                             e,
                         )
 
+                async def on_transcript_hook(transcript: dict[str, str]) -> None:
+                    """Appelé en temps réel pour chaque transcription."""
+                    try:
+                        # Récupérer le thread_id depuis les métadonnées
+                        call = db.query(OutboundCall).filter_by(id=call_db_id).first()
+                        if not call:
+                            logger.warning("Call not found for on_transcript hook")
+                            return
+
+                        metadata = call.metadata_ or {}
+                        thread_id = metadata.get("triggered_by_session_id")
+                        if not thread_id:
+                            logger.debug("No thread_id in call metadata, skipping real-time transcript")
+                            return
+
+                        # Ajouter la transcription au thread ChatKit
+                        from ..chatkit_server import get_chatkit_server
+                        from ..chatkit_types import UserMessage, AssistantMessage
+
+                        server = get_chatkit_server()
+                        context: dict = {}
+
+                        # Charger le thread
+                        try:
+                            thread = await server.store.load_thread(thread_id, context)
+                        except Exception as e:
+                            logger.error("Failed to load thread %s: %s", thread_id, e)
+                            return
+
+                        # Ajouter le message de transcription
+                        role = transcript.get("role")
+                        text = transcript.get("text", "")
+
+                        if not text:
+                            return
+
+                        if role == "user":
+                            user_msg = UserMessage(
+                                content=text,
+                                annotations=[{"type": "voice_transcript_realtime"}],
+                            )
+                            thread.messages.append(user_msg)
+                        elif role == "assistant":
+                            assistant_msg = AssistantMessage(
+                                content=[text],
+                                annotations=[{"type": "voice_transcript_realtime"}],
+                            )
+                            thread.messages.append(assistant_msg)
+
+                        # Sauvegarder le thread
+                        await server.store.save_thread(thread, context)
+                        logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+
+                    except Exception as e:
+                        logger.error("Error in on_transcript_hook: %s", e, exc_info=True)
+
+                # Hooks pour le streaming audio
+                from .audio_stream_manager import get_audio_stream_manager
+                audio_stream_mgr = get_audio_stream_manager()
+
+                async def on_audio_inbound_hook(pcm_data: bytes) -> None:
+                    """Appelé en temps réel pour chaque chunk audio entrant."""
+                    try:
+                        await audio_stream_mgr.broadcast_audio(session.call_id, pcm_data, channel="inbound")
+                    except Exception as e:
+                        logger.error("Error broadcasting inbound audio: %s", e)
+
+                async def on_audio_outbound_hook(pcm_data: bytes) -> None:
+                    """Appelé en temps réel pour chaque chunk audio sortant."""
+                    try:
+                        await audio_stream_mgr.broadcast_audio(session.call_id, pcm_data, channel="outbound")
+                    except Exception as e:
+                        logger.error("Error broadcasting outbound audio: %s", e)
+
                 hooks = VoiceBridgeHooks(
                     close_dialog=close_dialog_hook,
                     clear_voice_state=clear_voice_state_hook,
                     resume_workflow=resume_workflow_hook,
+                    on_transcript=on_transcript_hook,
+                    on_audio_inbound=on_audio_inbound_hook,
+                    on_audio_outbound=on_audio_outbound_hook,
                 )
 
                 # Créer le voice bridge
