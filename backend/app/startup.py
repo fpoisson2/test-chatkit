@@ -2593,7 +2593,8 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             # COMME LE TEST: Définir et lancer run_voice_bridge comme fonction interne
             async def run_voice_bridge():
-                """COMME LE TEST: Voice bridge simple et performant."""
+                """Voice bridge avec serveurs MCP sur l'agent."""
+                mcp_servers = []
                 try:
                     api_key = os.getenv("OPENAI_API_KEY")
 
@@ -2619,17 +2620,34 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
 
-                    # COMME LE TEST: Agent simple
+                    # Charger et connecter les serveurs MCP
+                    from .realtime_runner import (
+                        _normalize_realtime_tools_payload,
+                        _connect_mcp_servers,
+                        _cleanup_mcp_servers,
+                    )
                     from agents.realtime.runner import RealtimeRunner
                     from agents.realtime.agent import RealtimeAgent
 
+                    # Normaliser tools pour extraire configs MCP
+                    mcp_server_configs = []
+                    normalized_tools = _normalize_realtime_tools_payload(
+                        voice_tools, mcp_server_configs=mcp_server_configs
+                    )
+
+                    # Connecter serveurs MCP
+                    if mcp_server_configs:
+                        mcp_servers = await _connect_mcp_servers(mcp_server_configs)
+
+                    # Agent avec serveurs MCP
                     agent = RealtimeAgent(
                         name=f"call-{call_id}",
                         instructions=voice_instructions,
+                        mcp_servers=mcp_servers,
                     )
                     runner = RealtimeRunner(agent)
 
-                    # Exécuter COMME LE TEST
+                    # Exécuter
                     stats = await voice_bridge.run(
                         runner=runner,
                         client_secret=api_key,
@@ -2639,7 +2657,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         rtp_stream=rtp_stream,
                         send_to_peer=send_to_peer,
                         audio_bridge=audio_bridge,
-                        tools=voice_tools,
+                        tools=normalized_tools,
                     )
 
                     logger.info("✅ Terminé: %s", stats)
@@ -2647,7 +2665,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 except Exception as e:
                     logger.exception("❌ Erreur dans VoiceBridge (call_id=%s): %s", chatkit_call_id, e)
                 finally:
-                    # Nettoyage COMME LE TEST
+                    # Nettoyage
                     try:
                         audio_bridge.stop()
                     except Exception as e:
@@ -2658,6 +2676,13 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     except Exception as e:
                         if "already terminated" not in str(e).lower():
                             logger.warning("Erreur: %s", e)
+
+                    # Nettoyer serveurs MCP
+                    if mcp_servers:
+                        try:
+                            await _cleanup_mcp_servers(mcp_servers)
+                        except Exception as e:
+                            logger.warning("Erreur cleanup MCP: %s", e)
 
             # COMME LE TEST: Démarrer le voice bridge SANS ATTENDRE
             logger.info("🎵 Démarrage du voice bridge...")
