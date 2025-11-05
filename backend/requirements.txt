@@ -1,7 +1,7 @@
 # Core dependencies
 openai-agents[litellm]
 # aiosip - Removed due to Python 3.11+ incompatibility (@asyncio.coroutine deprecated)
-pjsua2  # PJSIP stack - Production-ready SIP/RTP implementation
+# pjsua2  # PJSIP stack - Compiled from source in Dockerfile (avoid pip sdist issues)
 soxr>=0.3.0  # High-quality audio resampling (VHQ mode for telephony)
 numpy>=1.24.0  # Required by soxr for audio processing
 psutil>=5.9.0  # System and process monitoring (used for RTP port diagnostics)
