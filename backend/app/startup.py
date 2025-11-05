@@ -2619,12 +2619,9 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
 
-                    # Créer agent avec serveurs MCP partagés
+                    # Créer agent simplement comme le test
                     from agents.realtime.runner import RealtimeRunner
                     from agents.realtime.agent import RealtimeAgent
-
-                    # Récupérer les serveurs MCP partagés (chargés une seule fois au démarrage)
-                    mcp_servers = app.state.mcp_servers if hasattr(app.state, 'mcp_servers') else []
 
                     agent = RealtimeAgent(
                         name=f"call-{call_id}",
@@ -2632,7 +2629,6 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         model=voice_model,
                         voice=voice_name,
                         tools=voice_tools,
-                        mcp_servers=mcp_servers,  # Serveurs MCP partagés (pas de rechargement)
                     )
                     runner = RealtimeRunner(agent)
 
@@ -2803,15 +2799,6 @@ def register_startup_events(app: FastAPI) -> None:
                 from .telephony.outbound_call_manager import get_outbound_call_manager
                 get_outbound_call_manager(pjsua_adapter=pjsua_adapter)
                 logger.info("OutboundCallManager initialisé avec PJSUA")
-
-                # Charger les serveurs MCP UNE SEULE FOIS pour tous les appels
-                try:
-                    from agents.realtime.mcp_manager import load_mcp_servers_for_user
-                    app.state.mcp_servers = await load_mcp_servers_for_user("default")
-                    logger.info("✅ Serveurs MCP chargés (partagés pour tous les appels)")
-                except Exception as e:
-                    logger.warning("Impossible de charger les serveurs MCP: %s", e)
-                    app.state.mcp_servers = []
 
                 # Configurer le callback pour les appels entrants
                 incoming_call_handler = _build_pjsua_incoming_call_handler(app)
