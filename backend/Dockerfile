@@ -4,7 +4,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PJSIP_VERSION=2.14.1
+    PJSIP_VERSION=2.15.1
 
 WORKDIR /app
 
@@ -22,8 +22,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libv4l-dev \
     libsdl2-dev \
-    # Python headers for pjsua2 Python bindings
+    # Python headers and additional libs for pjsua2 Python bindings
     python3-dev \
+    libffi-dev \
+    libz-dev \
+    liblzma-dev \
     # Download tools
     wget \
     ca-certificates \
@@ -45,10 +48,10 @@ RUN cd /tmp \
     && make dep \
     && make -j$(nproc) \
     && make install \
-    # Compiler les bindings Python pjsua2
-    && cd pjsip-apps/src/swig/python \
-    && make \
-    && make install \
+    # Compiler les bindings Python pjsua2 (nouveau chemin pour 2.15+)
+    && cd pjsip-apps/src/pjsua2 \
+    && python3 setup.py build \
+    && pip install . \
     # Mettre à jour le cache des bibliothèques partagées
     && ldconfig \
     # Vérifier l'installation
