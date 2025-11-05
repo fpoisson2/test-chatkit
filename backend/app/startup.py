@@ -2641,18 +2641,14 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         mcp_servers = await _connect_mcp_servers(mcp_server_configs)
                         logger.info("✅ Serveurs MCP connectés")
 
-                    # Créer agent avec les serveurs MCP de cet appel
+                    # COMME LE TEST: Agent avec seulement name et instructions
                     agent = RealtimeAgent(
                         name=f"call-{call_id}",
                         instructions=voice_instructions,
-                        model=voice_model,
-                        voice=voice_name,
-                        tools=normalized_tools,
-                        mcp_servers=mcp_servers,
                     )
                     runner = RealtimeRunner(agent)
 
-                    # Exécuter
+                    # Exécuter avec model, voice, tools, et mcp_servers
                     stats = await voice_bridge.run(
                         runner=runner,
                         client_secret=api_key,
@@ -2663,6 +2659,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         send_to_peer=send_to_peer,
                         audio_bridge=audio_bridge,
                         tools=normalized_tools,
+                        mcp_servers=mcp_servers,  # Serveurs MCP passés au voice bridge
                     )
 
                     logger.info("✅ Terminé: %s", stats)
