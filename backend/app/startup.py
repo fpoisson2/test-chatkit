@@ -2500,6 +2500,47 @@ def _ensure_protected_vector_store() -> None:
 def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
     """Construit le handler pour les appels entrants PJSUA."""
 
+    # ===== SYSTÈME DE DISPATCH CENTRALISÉ POUR APPELS MULTIPLES =====
+    # Dictionnaires pour stocker les callbacks par call PJSUA
+    # Clé: id(call) pour identifier chaque objet call de manière unique
+    _media_active_callbacks: dict[int, Any] = {}
+    _call_state_callbacks: dict[int, Any] = {}
+
+    # Callback global dispatch pour media_active (appelé UNE SEULE FOIS pour tous les appels)
+    async def _global_media_active_dispatch(active_call: Any, media_info: Any) -> None:
+        """Dispatche les événements media_active vers le callback du bon appel."""
+        call_key = id(active_call)
+        callback = _media_active_callbacks.get(call_key)
+        if callback:
+            try:
+                await callback(active_call, media_info)
+            except Exception as e:
+                logger.exception("Erreur dans callback media_active (call_key=%s): %s", call_key, e)
+
+    # Callback global dispatch pour call_state (appelé UNE SEULE FOIS pour tous les appels)
+    async def _global_call_state_dispatch(active_call: Any, call_info: Any) -> None:
+        """Dispatche les événements call_state vers le callback du bon appel."""
+        call_key = id(active_call)
+        callback = _call_state_callbacks.get(call_key)
+        if callback:
+            try:
+                await callback(active_call, call_info)
+            except Exception as e:
+                logger.exception("Erreur dans callback call_state (call_key=%s): %s", call_key, e)
+
+        # Nettoyer les callbacks quand l'appel est déconnecté
+        if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
+            _media_active_callbacks.pop(call_key, None)
+            _call_state_callbacks.pop(call_key, None)
+            logger.debug("Callbacks nettoyés pour call_key=%s", call_key)
+
+    # Enregistrer les callbacks globaux UNE SEULE FOIS
+    pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
+    pjsua_adapter.set_media_active_callback(_global_media_active_dispatch)
+    pjsua_adapter.set_call_state_callback(_global_call_state_dispatch)
+    logger.info("✅ Système de dispatch centralisé configuré pour appels multiples")
+    # ===== FIN DU SYSTÈME DE DISPATCH =====
+
     async def _handle_pjsua_incoming_call(call: Any, call_info: Any) -> None:
         """Gère un appel entrant PJSUA."""
         from .telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
@@ -2623,26 +2664,18 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     diag.phase_media_active.end()
                     logger.info("🚀 Média actif - le voice bridge continuera automatiquement (call_id=%s)", call_id)
 
-            # Enregistrer le callback média avant de démarrer
-            pjsua_adapter.set_media_active_callback(on_media_active_callback)
+            # NOUVEAU: Enregistrer le callback dans le dictionnaire (au lieu de remplacer le callback global)
+            call_key = id(call)
+            _media_active_callbacks[call_key] = on_media_active_callback
+            logger.debug("✅ Callback media_active enregistré pour call_key=%s (call_id=%s)", call_key, call_id)
 
             # Callback pour nettoyer les ressources quand l'appel se termine
             bridge_ref: list[Any] = [audio_bridge]  # Stocker la référence au bridge
             cleanup_done = asyncio.Event()
-
-            # Sauvegarder le callback précédent s'il existe
-            previous_call_state_callback = getattr(pjsua_adapter, '_call_state_callback', None)
+            session_handle_ref: list[Any] = [None]  # Référence pour session_handle (créé plus tard)
 
             async def on_call_state_callback(active_call: Any, call_info: Any) -> None:
                 """Appelé quand l'état de l'appel change."""
-                # D'abord, appeler le callback précédent s'il existe
-                if previous_call_state_callback:
-                    try:
-                        await previous_call_state_callback(active_call, call_info)
-                    except Exception as e:
-                        logger.warning("Erreur dans callback précédent: %s", e)
-
-                # Ensuite, gérer notre propre nettoyage
                 if active_call == call:
                     # Si l'appel est déconnecté, nettoyer les ressources
                     if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
@@ -2659,6 +2692,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                             # Fermer la session vocale
                             try:
+                                session_handle = session_handle_ref[0]
                                 if session_handle:
                                     await close_voice_session(session_id=session_handle.session_id)
                                     logger.info("✅ Session vocale fermée (call_id=%s)", call_id)
@@ -2667,8 +2701,9 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                             cleanup_done.set()
 
-            # Enregistrer le callback de changement d'état
-            pjsua_adapter.set_call_state_callback(on_call_state_callback)
+            # NOUVEAU: Enregistrer le callback dans le dictionnaire (au lieu de remplacer le callback global)
+            _call_state_callbacks[call_key] = on_call_state_callback
+            logger.debug("✅ Callback call_state enregistré pour call_key=%s (call_id=%s)", call_key, call_id)
 
             # Wrapper send_to_peer pour bloquer l'audio jusqu'à ce que le média soit actif
             async def send_to_peer_blocked(audio: bytes) -> None:
@@ -2854,6 +2889,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     # Récupérer le résultat: session + voice_bridge + SDK connecté (peut lever une exception)
                     session_handle, voice_bridge, sdk_session, sdk_context_manager, playback_tracker, realtime_api_base = await session_task
+                    session_handle_ref[0] = session_handle  # Rendre disponible pour le callback
                     diag.phase_ring.end()
                     logger.info("✅ Session + VoiceBridge + SDK connectés après sonnerie (call_id=%s)", call_id)
 
@@ -2868,6 +2904,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 logger.info("Ouverture session vocale PJSUA (pas de sonnerie) (call_id=%s)", call_id)
                 try:
                     session_handle, voice_bridge, sdk_session, sdk_context_manager, playback_tracker, realtime_api_base = await create_session_and_start_sdk()
+                    session_handle_ref[0] = session_handle  # Rendre disponible pour le callback
                 except Exception:
                     await pjsua_adapter.hangup_call(call)
                     return
@@ -2978,12 +3015,22 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         cleanup_error,
                     )
 
+                # NOUVEAU: Nettoyer les callbacks du dictionnaire (backup si pas déjà fait)
+                _media_active_callbacks.pop(call_key, None)
+                _call_state_callbacks.pop(call_key, None)
+                logger.debug("🧹 Nettoyage final callbacks pour call_key=%s (call_id=%s)", call_key, call_id)
+
         except Exception as e:
             logger.exception("Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
             try:
                 await pjsua_adapter.hangup_call(call)
             except Exception:
                 pass
+            finally:
+                # NOUVEAU: Nettoyer les callbacks même en cas d'erreur
+                _media_active_callbacks.pop(call_key, None)
+                _call_state_callbacks.pop(call_key, None)
+                logger.debug("🧹 Nettoyage callbacks après erreur pour call_key=%s (call_id=%s)", call_key, call_id)
 
     return _handle_pjsua_incoming_call
 
