@@ -2593,16 +2593,46 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             # COMME LE TEST: Définir et lancer run_voice_bridge comme fonction interne
             async def run_voice_bridge():
-                """COMME LE TEST: Version simplifiée SANS MCP pour éviter les lags."""
+                """Voice bridge avec serveurs MCP - Création session dans la tâche async."""
+                session_handle = None
                 try:
                     # Utiliser les valeurs du workflow
-                    api_key = os.getenv("OPENAI_API_KEY")
                     model = voice_model
                     voice = voice_name
                     instructions = voice_instructions
                     tools = voice_tools
 
-                    logger.info("🚀 Démarrage voice bridge (call_id=%s, model=%s, tools=%d)", chatkit_call_id, model, len(tools))
+                    # CRITIQUE: Créer la session MCP DANS la tâche (pas dans le callback)
+                    # Ceci ne bloque pas le callback principal
+                    logger.info("Création session Realtime MCP (call_id=%s)", chatkit_call_id)
+                    session_handle = await asyncio.wait_for(
+                        open_voice_session(
+                            user_id=f"pjsua:{chatkit_call_id}",
+                            model=model,
+                            instructions=instructions,
+                            voice=voice,
+                            provider_id=None,
+                            provider_slug="openai",
+                            tools=tools,
+                            handoffs=[],
+                            realtime={},
+                            metadata={
+                                "pjsua_call_id": call_id,
+                                "incoming_number": incoming_number,
+                            },
+                        ),
+                        timeout=10.0,
+                    )
+                    logger.info("✅ Session MCP créée (session_id=%s)", session_handle.session_id)
+
+                    # Utiliser le runner et client_secret de la session MCP
+                    runner = session_handle.runner
+                    client_secret = session_handle.client_secret
+
+                    if not client_secret:
+                        logger.error("Client secret introuvable (call_id=%s)", chatkit_call_id)
+                        await pjsua_adapter.hangup_call(call)
+                        return
 
                     # Créer hooks simples (DOIVENT être async!)
                     async def close_dialog_hook() -> None:
@@ -2631,24 +2661,11 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     # Créer le voice bridge
                     voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
 
-                    # COMME LE TEST: Créer agent avec les tools du workflow
-                    from agents.realtime.runner import RealtimeRunner
-                    from agents.realtime.agent import RealtimeAgent
-
-                    agent = RealtimeAgent(
-                        name=f"incoming-call-{call_id}",
-                        instructions=instructions,
-                        model=model,
-                        voice=voice,
-                        tools=tools,  # Tools du workflow!
-                    )
-                    runner = RealtimeRunner(agent)
-                    logger.info("✅ Runner créé avec %d tools (call_id=%s)", len(tools), call_id)
-
-                    # EXACTEMENT comme le test: utiliser voice_bridge.run()
+                    # Exécuter voice_bridge avec la session MCP
+                    logger.info("🚀 Démarrage voice_bridge.run() avec MCP (call_id=%s, tools=%d)", chatkit_call_id, len(tools))
                     stats = await voice_bridge.run(
                         runner=runner,
-                        client_secret=api_key,  # Utiliser l'API key directement comme le test
+                        client_secret=client_secret,
                         model=model,
                         instructions=instructions,
                         voice=voice,
@@ -2663,22 +2680,27 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 except Exception as e:
                     logger.exception("❌ Erreur dans VoiceBridge (call_id=%s): %s", chatkit_call_id, e)
                 finally:
-                    # COMME LE TEST: Nettoyage dans le finally
-                    logger.info("🧹 Nettoyage appel (call_id=%s)", chatkit_call_id)
+                    # Nettoyage
+                    logger.info("🧹 Nettoyage (call_id=%s)", chatkit_call_id)
 
                     try:
                         audio_bridge.stop()
-                        logger.info("✅ Bridge audio arrêté")
                     except Exception as e:
                         logger.warning("Erreur arrêt bridge: %s", e)
 
                     try:
                         await pjsua_adapter.hangup_call(call)
-                        logger.info("📞 Appel raccroché")
                     except Exception as e:
-                        error_str = str(e).lower()
-                        if "already terminated" not in error_str:
+                        if "already terminated" not in str(e).lower():
                             logger.warning("Erreur raccrochage: %s", e)
+
+                    # CRITIQUE: Toujours fermer la session MCP pour éviter les fuites
+                    if session_handle:
+                        try:
+                            await close_voice_session(session_id=session_handle.session_id)
+                            logger.info("✅ Session MCP fermée (call_id=%s)", chatkit_call_id)
+                        except Exception as e:
+                            logger.warning("Erreur fermeture session MCP: %s", e)
 
             # COMME LE TEST: Démarrer le voice bridge SANS ATTENDRE
             logger.info("🎵 Démarrage du voice bridge...")
