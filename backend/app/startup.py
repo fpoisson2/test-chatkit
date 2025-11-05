@@ -2715,10 +2715,6 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             send_to_peer = send_to_peer_blocked
 
-            # ==== SIMPLIFICATION: COMME LE TEST QUI FONCTIONNE ====
-            # Pas de pré-connexion WebSocket compliquée
-            # Laisser voice_bridge.run() gérer tout le cycle de vie
-
             # Ajouter le tool de transfert d'appel
             telephony_tools = list(voice_tools) if voice_tools else []
             transfer_tool_config = {
@@ -2749,111 +2745,107 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             }
             telephony_tools.append(transfer_tool_config)
 
-            # Sonnerie si configurée
-            if ring_timeout_seconds > 0:
-                logger.info(
-                    "⏰ Sonnerie de %.2f secondes (call_id=%s)",
-                    ring_timeout_seconds,
-                    call_id,
-                )
-                diag.phase_ring.start()
-                await asyncio.sleep(ring_timeout_seconds)
-                diag.phase_ring.end()
-
-            # Créer la session Realtime (obtenir le client_secret)
-            diag.phase_session_create.start()
-            logger.info("Création session Realtime (call_id=%s)", call_id)
-            try:
-                session_handle = await asyncio.wait_for(
-                    open_voice_session(
-                        user_id=f"pjsua:{call_id}",
-                        model=voice_model,
-                        instructions=instructions,
-                        voice=voice_name,
-                        provider_id=voice_provider_id,
-                        provider_slug=voice_provider_slug,
-                        tools=telephony_tools,
-                        handoffs=voice_handoffs,
-                        realtime={},
-                        metadata={
-                            "pjsua_call_id": call_id,
-                            "incoming_number": incoming_number,
-                        },
-                    ),
-                    timeout=10.0,
-                )
-                session_handle_ref[0] = session_handle  # Rendre disponible pour le callback
-                diag.phase_session_create.end(session_id=session_handle.session_id)
-                logger.info("✅ Session Realtime créée (session_id=%s, call_id=%s)", session_handle.session_id, call_id)
-            except Exception as e:
-                logger.exception("❌ Erreur création session Realtime (call_id=%s): %s", call_id, e)
-                await pjsua_adapter.hangup_call(call)
-                return
-
-            # Récupérer le client secret
-            client_secret = session_handle.client_secret
-
-            if not client_secret:
-                logger.error(
-                    "Client secret introuvable pour l'appel %s - fermeture session",
-                    call_id,
-                )
-                try:
-                    await close_voice_session(session_id=session_handle.session_id)
-                except Exception:
-                    pass
-                await pjsua_adapter.hangup_call(call)
-                return
-
-            # Créer les hooks pour le voice bridge
-            async def close_dialog_hook() -> None:
-                """Ferme le dialogue SIP."""
-                try:
-                    await pjsua_adapter.hangup_call(call)
-                    logger.info("Appel PJSUA terminé (call_id=%s)", call_id)
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if "already terminated" not in error_str and "esessionterminated" not in error_str:
-                        logger.warning("Erreur fermeture appel PJSUA: %s", e)
-
-            async def clear_voice_state_hook() -> None:
-                """Nettoie l'état vocal."""
-                pass
-
-            async def resume_workflow_hook(transcripts: list[dict[str, str]]) -> None:
-                """Callback appelé à la fin de la session vocale."""
-                logger.info(
-                    "Session vocale PJSUA terminée avec %d transcripts (call_id=%s)",
-                    len(transcripts),
-                    call_id,
-                )
-
-            hooks = VoiceBridgeHooks(
-                close_dialog=close_dialog_hook,
-                clear_voice_state=clear_voice_state_hook,
-                resume_workflow=resume_workflow_hook,
-            )
-
-            # Créer le voice bridge
-            voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
-
-            # Déterminer le base URL pour le provider
-            realtime_api_base: str | None = None
-            if voice_provider_slug == "openai":
-                realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
-
-            # Maintenant répondre à l'appel (200 OK)
-            logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)
+            # ==== COMME LE TEST: Répondre IMMÉDIATEMENT, tout le reste dans la tâche async ====
+            logger.info("📞 Réponse IMMÉDIATE à l'appel PJSUA (call_id=%s)", call_id)
             await pjsua_adapter.answer_call(call, code=200)
-
-            # L'audio sera débloqué automatiquement par le callback on_media_active_callback
-            # quand PJSUA appellera onCallMediaState et créera le port audio
-            logger.info("⏳ Attente que le média devienne actif pour envoyer l'audio... (call_id=%s)", call_id)
 
             # ==== COMME LE TEST: Utiliser voice_bridge.run() directement ====
             async def run_voice_bridge():
                 """Tâche pour exécuter le voice bridge - SIMPLIFIÉ comme le test."""
                 try:
+                    # DÉPLACÉ DANS LA TÂCHE: Sonnerie si configurée
+                    if ring_timeout_seconds > 0:
+                        logger.info(
+                            "⏰ Sonnerie de %.2f secondes (call_id=%s)",
+                            ring_timeout_seconds,
+                            call_id,
+                        )
+                        diag.phase_ring.start()
+                        await asyncio.sleep(ring_timeout_seconds)
+                        diag.phase_ring.end()
+
+                    # DÉPLACÉ DANS LA TÂCHE: Créer la session Realtime (obtenir le client_secret)
+                    diag.phase_session_create.start()
+                    logger.info("Création session Realtime (call_id=%s)", call_id)
+                    try:
+                        session_handle = await asyncio.wait_for(
+                            open_voice_session(
+                                user_id=f"pjsua:{call_id}",
+                                model=voice_model,
+                                instructions=instructions,
+                                voice=voice_name,
+                                provider_id=voice_provider_id,
+                                provider_slug=voice_provider_slug,
+                                tools=telephony_tools,
+                                handoffs=voice_handoffs,
+                                realtime={},
+                                metadata={
+                                    "pjsua_call_id": call_id,
+                                    "incoming_number": incoming_number,
+                                },
+                            ),
+                            timeout=10.0,
+                        )
+                        session_handle_ref[0] = session_handle  # Rendre disponible pour le callback
+                        diag.phase_session_create.end(session_id=session_handle.session_id)
+                        logger.info("✅ Session Realtime créée (session_id=%s, call_id=%s)", session_handle.session_id, call_id)
+                    except Exception as e:
+                        logger.exception("❌ Erreur création session Realtime (call_id=%s): %s", call_id, e)
+                        await pjsua_adapter.hangup_call(call)
+                        return
+
+                    # Récupérer le client secret
+                    client_secret = session_handle.client_secret
+
+                    if not client_secret:
+                        logger.error(
+                            "Client secret introuvable pour l'appel %s - fermeture session",
+                            call_id,
+                        )
+                        try:
+                            await close_voice_session(session_id=session_handle.session_id)
+                        except Exception:
+                            pass
+                        await pjsua_adapter.hangup_call(call)
+                        return
+
+                    # Créer les hooks pour le voice bridge
+                    async def close_dialog_hook() -> None:
+                        """Ferme le dialogue SIP."""
+                        try:
+                            await pjsua_adapter.hangup_call(call)
+                            logger.info("Appel PJSUA terminé (call_id=%s)", call_id)
+                        except Exception as e:
+                            error_str = str(e).lower()
+                            if "already terminated" not in error_str and "esessionterminated" not in error_str:
+                                logger.warning("Erreur fermeture appel PJSUA: %s", e)
+
+                    async def clear_voice_state_hook() -> None:
+                        """Nettoie l'état vocal."""
+                        pass
+
+                    async def resume_workflow_hook(transcripts: list[dict[str, str]]) -> None:
+                        """Callback appelé à la fin de la session vocale."""
+                        logger.info(
+                            "Session vocale PJSUA terminée avec %d transcripts (call_id=%s)",
+                            len(transcripts),
+                            call_id,
+                        )
+
+                    hooks = VoiceBridgeHooks(
+                        close_dialog=close_dialog_hook,
+                        clear_voice_state=clear_voice_state_hook,
+                        resume_workflow=resume_workflow_hook,
+                    )
+
+                    # Créer le voice bridge
+                    voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
+
+                    # Déterminer le base URL pour le provider
+                    realtime_api_base: str | None = None
+                    if voice_provider_slug == "openai":
+                        realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
+
                     logger.info("🚀 Démarrage VoiceBridge.run() (call_id=%s)", call_id)
 
                     # EXACTEMENT comme le test: passer runner, client_secret, et laisser run() gérer tout
