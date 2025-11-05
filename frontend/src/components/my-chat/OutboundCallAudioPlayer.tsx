@@ -23,12 +23,37 @@ export const OutboundCallAudioPlayer = ({
   const [volume, setVolume] = useState(0.8);
   const [channelFilter, setChannelFilter] = useState<"all" | "inbound" | "outbound">("all");
   const [error, setError] = useState<string | null>(null);
+  const [isHangingUp, setIsHangingUp] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const nextPlayTimeRef = useRef<number>(0);
+
+  // Handle hang up
+  const handleHangup = useCallback(async () => {
+    if (!callId || isHangingUp) return;
+
+    setIsHangingUp(true);
+    try {
+      const response = await fetch(`/api/outbound/call/${callId}/hangup`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to hang up call");
+      }
+
+      console.log("[OutboundCallAudioPlayer] Call hung up successfully");
+      onCallEnd?.();
+    } catch (err) {
+      console.error("[OutboundCallAudioPlayer] Failed to hang up:", err);
+      setError("Échec du raccrochage");
+    } finally {
+      setIsHangingUp(false);
+    }
+  }, [callId, isHangingUp, onCallEnd]);
 
   // Initialize Audio Context
   const initializeAudioContext = useCallback(() => {
@@ -211,7 +236,7 @@ export const OutboundCallAudioPlayer = ({
       style={{
         position: "fixed",
         bottom: "20px",
-        left: "20px",
+        right: "20px",
         padding: "16px",
         background: isConnected ? "#10a37f" : "#ff9800",
         color: "white",
@@ -246,6 +271,27 @@ export const OutboundCallAudioPlayer = ({
             {isConnected ? "🎧 Appel en cours" : "⏸️ Connexion..."}
           </span>
         </div>
+        <button
+          type="button"
+          onClick={handleHangup}
+          disabled={isHangingUp}
+          style={{
+            padding: "6px 12px",
+            background: "#dc2626",
+            border: "none",
+            borderRadius: "6px",
+            color: "white",
+            cursor: isHangingUp ? "not-allowed" : "pointer",
+            fontSize: "13px",
+            fontWeight: 600,
+            opacity: isHangingUp ? 0.6 : 1,
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+          }}
+        >
+          📞 {isHangingUp ? "Raccrochage..." : "Raccrocher"}
+        </button>
       </div>
 
       {/* Error message */}

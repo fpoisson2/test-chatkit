@@ -168,6 +168,33 @@ async def get_call_status(
     )
 
 
+@router.post("/api/outbound/call/{call_id}/hangup")
+async def hangup_call(
+    call_id: str,
+    _: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """
+    Raccroche un appel en cours.
+
+    Args:
+        call_id: ID de l'appel
+        _: Utilisateur admin (requis)
+
+    Returns:
+        Message de confirmation
+
+    Raises:
+        HTTPException: Si l'appel n'est pas trouvé
+    """
+    call_manager = get_outbound_call_manager()
+    success = await call_manager.hangup_call(call_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Call not found or already ended")
+
+    return {"message": "Call hung up successfully", "call_id": call_id}
+
+
 @router.get("/api/outbound/calls")
 async def list_outbound_calls(
     skip: int = 0,
