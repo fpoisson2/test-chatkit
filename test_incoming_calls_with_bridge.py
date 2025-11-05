@@ -91,13 +91,6 @@ class IncomingCallTester:
         self.active_calls = {}
         self.running = False
 
-        # Créer l'agent et le runner OpenAI
-        agent = RealtimeAgent(
-            name="incoming-call-test-agent",
-            instructions=self.instructions
-        )
-        self.runner = RealtimeRunner(agent)
-
     async def initialize(self):
         """Initialise l'adaptateur PJSUA et le voice bridge."""
         logger.info("🚀 Initialisation du testeur d'appels entrants...")
@@ -205,9 +198,19 @@ class IncomingCallTester:
             await pjsua_ready_event.wait()
             logger.info("✅ PJSUA prêt à consommer l'audio")
 
+            # Créer un nouveau runner pour CHAQUE appel (évite la réutilisation d'état)
+            # CRITIQUE: Le RealtimeRunner maintient un état interne qui ne doit PAS
+            # être réutilisé entre les appels, sinon on obtient des erreurs "item does not exist"
+            agent = RealtimeAgent(
+                name=f"incoming-call-test-agent-{call_id}",
+                instructions=self.instructions
+            )
+            runner = RealtimeRunner(agent)
+            logger.info("✅ Nouveau runner créé pour l'appel %s", call_id)
+
             # Exécuter le voice bridge avec tous les paramètres
             stats = await self.voice_bridge.run(
-                runner=self.runner,
+                runner=runner,
                 client_secret=self.api_key,
                 model=self.model,
                 instructions=self.instructions,
