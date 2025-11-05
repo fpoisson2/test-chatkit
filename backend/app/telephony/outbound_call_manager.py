@@ -577,16 +577,11 @@ class OutboundCallManager:
                         return
 
                     # Ajouter la transcription au thread ChatKit
-                    from ..chatkit_server import get_chatkit_server
-                    from ..chatkit_types import UserMessage, AssistantMessage
+                    from ..chatkit import get_chatkit_server
 
                     server = get_chatkit_server()
 
                     # Créer un context minimal pour le store
-                    from ..routes.chatkit import build_chatkit_request_context
-                    from ..dependencies import get_current_user
-                    # Pour les appels sortants, nous n'avons pas de request/user actuel
-                    # On peut utiliser un context vide ou minimal
                     context: dict = {}
 
                     # Charger le thread
@@ -603,18 +598,17 @@ class OutboundCallManager:
                     if not text:
                         return
 
-                    if role == "user":
-                        user_msg = UserMessage(
-                            content=text,
-                            annotations=[{"type": "voice_transcript_realtime"}],
-                        )
-                        thread.messages.append(user_msg)
-                    elif role == "assistant":
-                        assistant_msg = AssistantMessage(
-                            content=[text],
-                            annotations=[{"type": "voice_transcript_realtime"}],
-                        )
-                        thread.messages.append(assistant_msg)
+                    # Créer un message simple
+                    transcript_msg = {
+                        "role": role,
+                        "content": [{"type": "text", "text": text}],
+                        "annotations": [{"type": "voice_transcript_realtime"}],
+                    }
+
+                    # Ajouter au thread
+                    if not hasattr(thread, "messages"):
+                        thread.messages = []
+                    thread.messages.append(transcript_msg)
 
                     # Sauvegarder le thread
                     await server.store.save_thread(thread, context)

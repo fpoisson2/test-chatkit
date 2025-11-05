@@ -3447,16 +3447,20 @@ async def run_workflow(
                 # Ajouter un message au thread pour notifier le début de l'appel
                 if thread is not None:
                     try:
-                        from ..chatkit_types import AssistantMessage
-
-                        call_start_msg = AssistantMessage(
-                            content=[f"📞 Appel en cours vers {to_number}..."],
-                            annotations=[{
+                        # Créer un message simple avec annotation
+                        call_start_msg = {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": f"📞 Appel en cours vers {to_number}..."}],
+                            "annotations": [{
                                 "type": "outbound_call_start",
                                 "call_id": call_session.call_id,
                                 "to_number": to_number,
                             }],
-                        )
+                        }
+
+                        # Ajouter au thread
+                        if not hasattr(thread, "messages"):
+                            thread.messages = []
                         thread.messages.append(call_start_msg)
 
                         # Sauvegarder le thread
@@ -3500,8 +3504,6 @@ async def run_workflow(
                         # Ajouter un message avec les liens audio à la fin de l'appel
                         if audio_recordings and thread is not None:
                             try:
-                                from ..chatkit_types import AssistantMessage
-
                                 call_id = call_result["call_id"]
                                 audio_links = []
                                 if audio_recordings.get("inbound"):
@@ -3512,12 +3514,16 @@ async def run_workflow(
                                     audio_links.append(f"🎧 [Audio mixé](/api/outbound/call/{call_id}/audio/mixed)")
 
                                 if audio_links:
-                                    audio_msg = AssistantMessage(
-                                        content=[
-                                            f"**Enregistrements audio de l'appel :**\n\n" + "\n".join(audio_links)
-                                        ],
-                                        annotations=[{"type": "audio_recordings"}],
-                                    )
+                                    # Créer un message simple avec annotation
+                                    audio_msg = {
+                                        "role": "assistant",
+                                        "content": [{"type": "text", "text": f"**Enregistrements audio de l'appel :**\n\n" + "\n".join(audio_links)}],
+                                        "annotations": [{"type": "audio_recordings"}],
+                                    }
+
+                                    # Ajouter au thread
+                                    if not hasattr(thread, "messages"):
+                                        thread.messages = []
                                     thread.messages.append(audio_msg)
 
                                     # Sauvegarder le thread
