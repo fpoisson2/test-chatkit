@@ -2622,7 +2622,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     # Charger les serveurs MCP juste avant de créer l'agent
                     from .realtime_runner import (
-                        _normalize_tool_configuration,
+                        _normalize_realtime_tools_payload,
                         _connect_mcp_servers,
                         _cleanup_mcp_servers,
                     )
@@ -2631,7 +2631,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     # Normaliser les tools pour extraire les configs MCP
                     mcp_server_configs = []
-                    normalized_tools, _ = _normalize_tool_configuration(
+                    normalized_tools = _normalize_realtime_tools_payload(
                         voice_tools, mcp_server_configs=mcp_server_configs
                     )
 
