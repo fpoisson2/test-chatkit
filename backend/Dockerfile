@@ -48,14 +48,7 @@ RUN set -eux; \
     cd pjsip-apps/src/swig/python; \
     python3 -m pip install --no-cache-dir .; \
     ldconfig; \
-    python3 - <<'PY'; \
-import pjsua2
-ep = pjsua2.Endpoint()
-ep.libCreate()
-v = ep.libVersion()
-print("PJSUA2 version:", v.full)
-ep.libDestroy()
-PY
+    python3 -c "import pjsua2; ep = pjsua2.Endpoint(); ep.libCreate(); v = ep.libVersion(); print('PJSUA2 version:', v.full); ep.libDestroy()"; \
     cd /tmp; rm -rf /tmp/pjproject-${PJSIP_VERSION} /tmp/${PJSIP_VERSION}.tar.gz
 
 # Pré-installe les dépendances Python (dont la version locale d'openai-chatkit)
