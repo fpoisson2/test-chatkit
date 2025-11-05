@@ -2570,11 +2570,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     voice_tools = []
                     ring_timeout_seconds = 0
 
-            # Envoyer 180 Ringing
-            logger.info("📞 Envoi 180 Ringing (call_id=%s)", chatkit_call_id)
-            await pjsua_adapter.answer_call(call, code=180)
-
-            # Créer l'audio bridge PENDANT le ringing
+            # Créer l'audio bridge (RAPIDE - juste la config)
             logger.info("🎵 Création du bridge audio...")
             media_active = asyncio.Event()
 
@@ -2587,9 +2583,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 audio_bridge,
             ) = await create_pjsua_audio_bridge(call, media_active)
 
-            # PENDANT LA SONNERIE: Initialiser l'agent et les serveurs MCP
-            logger.info("⏰ Sonnerie de %ds + initialisation agent...", ring_timeout_seconds)
-
+            # Imports pour la tâche async
             from .realtime_runner import (
                 _normalize_realtime_tools_payload,
                 _connect_mcp_servers,
@@ -2598,44 +2592,53 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             from agents.realtime.runner import RealtimeRunner
             from agents.realtime.agent import RealtimeAgent
 
-            # Normaliser tools pour extraire configs MCP
-            mcp_server_configs = []
-            normalized_tools = _normalize_realtime_tools_payload(
-                voice_tools, mcp_server_configs=mcp_server_configs
-            )
-
-            # Connecter serveurs MCP PENDANT la sonnerie
-            mcp_servers = []
-            if mcp_server_configs:
-                logger.info("Connexion %d serveurs MCP pendant sonnerie...", len(mcp_server_configs))
-                mcp_servers = await _connect_mcp_servers(mcp_server_configs)
-                logger.info("✅ Serveurs MCP connectés")
-
-            # Créer l'agent PENDANT la sonnerie
-            agent = RealtimeAgent(
-                name=f"call-{call_id}",
-                instructions=voice_instructions,
-                mcp_servers=mcp_servers,
-            )
-            runner = RealtimeRunner(agent)
-            logger.info("✅ Agent créé pendant sonnerie")
-
-            # Sonnerie (le temps restant si l'init a pris du temps)
-            if ring_timeout_seconds > 0:
-                await asyncio.sleep(ring_timeout_seconds)
-
-            # APRÈS LA SONNERIE: Répondre 200 OK
-            logger.info("📞 Réponse 200 OK (call_id=%s)", chatkit_call_id)
-            await pjsua_adapter.answer_call(call, code=200)
-
-            # Signaler que le média est actif
-            media_active.set()
-            await asyncio.sleep(1)
-
-            # Définir et lancer run_voice_bridge
+            # Définir la tâche async qui contient TOUTES les opérations bloquantes
             async def run_voice_bridge():
-                """Voice bridge avec agent déjà initialisé."""
+                """Voice bridge avec sonnerie et init agent dans la tâche async."""
+                mcp_servers = []
                 try:
+                    # 1. ENVOYER 180 RINGING (dans la tâche async, ne bloque pas le callback)
+                    logger.info("📞 Envoi 180 Ringing (call_id=%s)", chatkit_call_id)
+                    await pjsua_adapter.answer_call(call, code=180)
+
+                    # 2. PENDANT LA SONNERIE: Initialiser l'agent et les serveurs MCP
+                    logger.info("⏰ Initialisation agent pendant la sonnerie...")
+
+                    # Normaliser tools pour extraire configs MCP
+                    mcp_server_configs = []
+                    normalized_tools = _normalize_realtime_tools_payload(
+                        voice_tools, mcp_server_configs=mcp_server_configs
+                    )
+
+                    # Connecter serveurs MCP PENDANT la sonnerie
+                    if mcp_server_configs:
+                        logger.info("Connexion %d serveurs MCP pendant sonnerie...", len(mcp_server_configs))
+                        mcp_servers = await _connect_mcp_servers(mcp_server_configs)
+                        logger.info("✅ Serveurs MCP connectés")
+
+                    # Créer l'agent PENDANT la sonnerie
+                    agent = RealtimeAgent(
+                        name=f"call-{call_id}",
+                        instructions=voice_instructions,
+                        mcp_servers=mcp_servers,
+                    )
+                    runner = RealtimeRunner(agent)
+                    logger.info("✅ Agent créé pendant sonnerie")
+
+                    # 3. SONNERIE (le temps configuré)
+                    if ring_timeout_seconds > 0:
+                        logger.info("⏰ Sonnerie de %ds...", ring_timeout_seconds)
+                        await asyncio.sleep(ring_timeout_seconds)
+
+                    # 4. RÉPONDRE 200 OK
+                    logger.info("📞 Réponse 200 OK (call_id=%s)", chatkit_call_id)
+                    await pjsua_adapter.answer_call(call, code=200)
+
+                    # 5. ACTIVER LE MÉDIA
+                    media_active.set()
+                    await asyncio.sleep(1)
+
+                    # 6. EXÉCUTER LE VOICE BRIDGE
                     api_key = os.getenv("OPENAI_API_KEY")
 
                     # Hooks (DOIVENT être async)
@@ -2698,7 +2701,8 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                             logger.warning("Erreur cleanup MCP: %s", e)
 
             # COMME LE TEST: Démarrer le voice bridge SANS ATTENDRE
-            logger.info("🎵 Démarrage du voice bridge...")
+            # Le callback retourne immédiatement, permettant les appels multiples
+            logger.info("🎵 Démarrage du voice bridge (async)...")
             asyncio.create_task(run_voice_bridge())
 
         except Exception as e:
