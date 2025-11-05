@@ -92,7 +92,7 @@ class IncomingCallTester:
         self.running = False
 
         # Créer le runner OpenAI
-        self.runner = Runner(api_key=self.api_key)
+        self.runner = RealtimeRunner(api_key=self.api_key)
 
     async def initialize(self):
         """Initialise l'adaptateur PJSUA et le voice bridge."""
