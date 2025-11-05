@@ -2535,7 +2535,39 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
         pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
         chatkit_call_id = str(uuid.uuid4())
 
+        # Extraire le numéro appelant
+        import re
+        remote_uri = call_info.remoteUri if hasattr(call_info, 'remoteUri') else ""
+        incoming_number = None
+        match = re.search(r"sip:([^@>;]+)@", remote_uri, re.IGNORECASE)
+        if match:
+            incoming_number = match.group(1)
+            logger.info("Numéro entrant: %s", incoming_number)
+
         try:
+            # Résoudre le workflow pour obtenir instructions/tools
+            with SessionLocal() as db_session:
+                workflow_service = WorkflowService(db_session)
+                try:
+                    context = resolve_workflow_for_phone_number(
+                        workflow_service,
+                        phone_number=incoming_number or "",
+                        session=db_session,
+                        sip_account_id=None,
+                    )
+                    voice_model = context.voice_model
+                    voice_instructions = context.voice_instructions
+                    voice_name = context.voice_voice
+                    voice_tools = context.voice_tools or []
+                    logger.info("✅ Workflow résolu: model=%s, tools=%d", voice_model, len(voice_tools))
+                except Exception as exc:
+                    logger.warning("Erreur workflow (call_id=%s): %s - utilisation valeurs par défaut", call_id, exc)
+                    # Valeurs par défaut si pas de workflow
+                    voice_model = "gpt-4o-realtime-preview"
+                    voice_instructions = "Vous êtes un assistant vocal. Répondez brièvement."
+                    voice_name = "alloy"
+                    voice_tools = []
+
             # COMME LE TEST: Créer l'audio bridge AVANT d'accepter
             logger.info("🎵 Création du bridge audio...")
             media_active = asyncio.Event()
@@ -2563,11 +2595,12 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def run_voice_bridge():
                 """COMME LE TEST: Version simplifiée du voice bridge."""
                 try:
-                    # Valeurs par défaut simples comme le test
+                    # Utiliser les valeurs du workflow
                     api_key = os.getenv("OPENAI_API_KEY")
-                    model = "gpt-4o-realtime-preview"
-                    voice = "alloy"
-                    instructions = "Vous êtes un assistant vocal. Répondez brièvement aux questions."
+                    model = voice_model
+                    voice = voice_name
+                    instructions = voice_instructions
+                    tools = voice_tools
 
                     # Créer hooks simples
                     async def close_dialog_hook() -> None:
@@ -2600,7 +2633,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     logger.info("✅ Runner créé pour l'appel %s", call_id)
 
                     # EXACTEMENT comme le test: utiliser voice_bridge.run()
-                    logger.info("🚀 Démarrage voice_bridge.run() (call_id=%s)", chatkit_call_id)
+                    logger.info("🚀 Démarrage voice_bridge.run() (call_id=%s, tools=%d)", chatkit_call_id, len(tools))
                     stats = await voice_bridge.run(
                         runner=runner,
                         client_secret=api_key,
@@ -2610,6 +2643,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         rtp_stream=rtp_stream,
                         send_to_peer=send_to_peer,
                         audio_bridge=audio_bridge,
+                        tools=tools,  # Ajouter les tools du workflow
                     )
 
                     logger.info("✅ VoiceBridge terminé: %s (call_id=%s)", stats, chatkit_call_id)
