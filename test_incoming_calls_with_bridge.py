@@ -110,9 +110,13 @@ class IncomingCallTester:
         )
 
         # Créer le voice bridge
+        # IMPORTANT: input_codec="pcm" car pjsua_audio_bridge envoie déjà du PCM16 à 24kHz
+        # (PJSUA a déjà décodé PCMU→PCM et resamplé 8kHz→24kHz)
         self.voice_bridge = TelephonyVoiceBridge(
             hooks=hooks,
             metrics=self.metrics,
+            input_codec="pcm",  # Audio déjà en PCM16 à 24kHz
+            target_sample_rate=24000,  # OpenAI Realtime API utilise 24kHz
         )
 
         # Créer l'adaptateur PJSUA
