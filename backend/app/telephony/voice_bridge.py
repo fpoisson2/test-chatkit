@@ -190,6 +190,9 @@ class VoiceBridgeHooks:
     close_dialog: Callable[[], Awaitable[None]] | None = None
     clear_voice_state: Callable[[], Awaitable[None]] | None = None
     resume_workflow: Callable[[list[dict[str, str]]], Awaitable[None]] | None = None
+    on_transcript: Callable[[dict[str, str]], Awaitable[None]] | None = None  # Appelé pour chaque transcription en temps réel
+    on_audio_inbound: Callable[[bytes], Awaitable[None]] | None = None  # Appelé pour chaque chunk audio entrant
+    on_audio_outbound: Callable[[bytes], Awaitable[None]] | None = None  # Appelé pour chaque chunk audio sortant
 
 
 VoiceSessionChecker = Callable[[], bool]
@@ -672,6 +675,13 @@ class TelephonyVoiceBridge:
                     if audio_recorder:
                         audio_recorder.write_inbound(pcm)
 
+                    # Stream inbound audio en temps réel
+                    if self._hooks.on_audio_inbound:
+                        try:
+                            await self._hooks.on_audio_inbound(pcm)
+                        except Exception as e:
+                            logger.error("Erreur lors du streaming audio entrant: %s", e)
+
                     # Note: turn_detection est déjà activé dans la configuration initiale de session
                     # (voir _build_session_update), donc on n'a pas besoin de l'activer ici.
                     # Tenter de le faire après le speak_first cause l'erreur:
@@ -1019,6 +1029,13 @@ class TelephonyVoiceBridge:
                                 if audio_recorder:
                                     audio_recorder.write_outbound(pcm_data)
 
+                                # Stream outbound audio en temps réel
+                                if self._hooks.on_audio_outbound:
+                                    try:
+                                        await self._hooks.on_audio_outbound(pcm_data)
+                                    except Exception as e:
+                                        logger.error("Erreur lors du streaming audio sortant: %s", e)
+
                                 # Now update the playback tracker so OpenAI knows when audio was played
                                 # This is critical for proper interruption handling!
                                 playback_tracker.on_play_bytes(
@@ -1098,9 +1115,17 @@ class TelephonyVoiceBridge:
 
                             if text_parts:
                                 combined_text = "\n".join(text_parts)
-                                transcripts.append({"role": role, "text": combined_text})
+                                transcript_entry = {"role": role, "text": combined_text}
+                                transcripts.append(transcript_entry)
                                 # Log transcription to help debug tool usage
                                 logger.info("💬 %s: %s", role.upper(), combined_text[:200])
+
+                                # Appeler le hook de transcription en temps réel si disponible
+                                if self._hooks.on_transcript:
+                                    try:
+                                        await self._hooks.on_transcript(transcript_entry)
+                                    except Exception as e:
+                                        logger.error("Erreur lors de l'envoi de la transcription en temps réel: %s", e)
 
                                 # Track if assistant message is short (likely just a preamble)
                                 if role == "assistant":

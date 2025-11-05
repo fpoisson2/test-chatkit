@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import json
 import logging
 import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -16,6 +19,7 @@ from ..database import get_session
 from ..dependencies import require_admin
 from ..models import OutboundCall, SipAccount, User, WorkflowDefinition
 from ..telephony.outbound_call_manager import get_outbound_call_manager
+from ..telephony.audio_stream_manager import get_audio_stream_manager
 
 logger = logging.getLogger("chatkit.routes.outbound")
 
@@ -317,3 +321,82 @@ async def get_call_transcripts(
         "status": call.status,
         "duration_seconds": call.duration_seconds,
     }
+
+
+@router.websocket("/api/outbound/call/{call_id}/audio/stream")
+async def stream_call_audio(websocket: WebSocket, call_id: str):
+    """
+    Stream audio en temps réel d'un appel sortant via WebSocket.
+
+    Le client reçoit des paquets JSON avec :
+    - type: "audio" pour les chunks audio
+    - channel: "inbound", "outbound" ou "mixed"
+    - data: Audio PCM encodé en base64
+    - timestamp: Timestamp du paquet
+
+    Args:
+        websocket: Connexion WebSocket
+        call_id: ID de l'appel
+    """
+    await websocket.accept()
+    audio_stream_mgr = get_audio_stream_manager()
+    queue = None
+
+    try:
+        # Enregistrer le listener
+        queue = await audio_stream_mgr.register_listener(call_id)
+        logger.info("WebSocket client connected for call %s audio stream", call_id)
+
+        # Envoyer un message de confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "call_id": call_id,
+            "message": "Audio stream started"
+        })
+
+        # Boucle d'envoi des packets audio
+        while True:
+            try:
+                # Attendre un paquet avec timeout
+                packet = await asyncio.wait_for(queue.get(), timeout=30.0)
+
+                if packet["type"] == "end":
+                    # Fin de l'appel
+                    await websocket.send_json({
+                        "type": "end",
+                        "message": "Call ended"
+                    })
+                    break
+
+                # Encoder l'audio en base64 pour le transport JSON
+                audio_b64 = base64.b64encode(packet["data"]).decode('utf-8')
+                await websocket.send_json({
+                    "type": "audio",
+                    "channel": packet["channel"],
+                    "data": audio_b64,
+                    "timestamp": packet["timestamp"],
+                })
+
+            except asyncio.TimeoutError:
+                # Envoyer un ping pour maintenir la connexion
+                await websocket.send_json({"type": "ping"})
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket client disconnected from call %s audio stream", call_id)
+    except Exception as e:
+        logger.error("Error in audio stream WebSocket for call %s: %s", call_id, e, exc_info=True)
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": str(e)
+            })
+        except:
+            pass
+    finally:
+        # Désenregistrer le listener
+        if queue:
+            await audio_stream_mgr.unregister_listener(call_id, queue)
+        try:
+            await websocket.close()
+        except:
+            pass
