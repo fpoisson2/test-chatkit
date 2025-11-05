@@ -2543,6 +2543,8 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
     async def _handle_pjsua_incoming_call(call: Any, call_info: Any) -> None:
         """Gère un appel entrant PJSUA."""
+        logger.info("🔔 [DÉBUT] _handle_pjsua_incoming_call appelé - call_info.id=%s", call_info.id if hasattr(call_info, 'id') else 'unknown')
+
         from .telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
 
         pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
