@@ -1007,6 +1007,12 @@ export function MyChat() {
           console.debug("[ChatKit] thread load end", { threadId });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
+          // Debug: Log every onLog call
+          console.log('[MyChat] onLog called:', entry.name, {
+            hasData: !!entry.data,
+            dataKeys: entry.data ? Object.keys(entry.data) : [],
+          });
+
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
