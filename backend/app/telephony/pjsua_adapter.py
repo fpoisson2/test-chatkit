@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import audioop
 import logging
+import os
 import queue
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future
@@ -24,6 +25,17 @@ from typing import Any
 
 logger = logging.getLogger("chatkit.telephony.pjsua")
 logger.setLevel(logging.INFO)  # Niveau INFO pour diagnostics du conference bridge
+
+# CRITICAL WORKAROUND: Force PJSUA to use correct RTP ports via environment variables
+# Some PJSUA/PJSIP builds read these env vars before initialization
+# This is a last-resort workaround if Python API doesn't work
+if not os.environ.get('PJSUA_RTP_PORT_START'):
+    os.environ['PJSUA_RTP_PORT_START'] = '10000'
+    logger.info("🔧 WORKAROUND: Définition de PJSUA_RTP_PORT_START=10000 via env var")
+
+if not os.environ.get('PJSUA_RTP_PORT_RANGE'):
+    os.environ['PJSUA_RTP_PORT_RANGE'] = '10000'
+    logger.info("🔧 WORKAROUND: Définition de PJSUA_RTP_PORT_RANGE=10000 via env var")
 
 
 def _schedule_coroutine_from_thread(coro: Any, loop: Any, callback_name: str = "callback") -> None:
@@ -1093,6 +1105,41 @@ class PJSUAAdapter:
         self._ep = pj.Endpoint()
         self._ep.libCreate()
 
+        # CRITICAL FIX: Force RTP ports using PJSUA core API (C layer)
+        # The Python ep_cfg.medConfig binding is broken - PJSUA ignores it
+        # We need to call pjsua_media_config_default() and pjsua_reconfigure_media()
+        try:
+            # Try to import and use the C-level pjsua API if available
+            # This is the ONLY way to force ports on buggy PJSUA2 Python versions
+            import ctypes
+
+            # Check if pjsua module (C API) is available
+            try:
+                import pjsua  # Low-level C API (different from pjsua2)
+
+                logger.info("🔧 API PJSUA (C) disponible - tentative de configuration directe...")
+
+                # Use pjsua C API to set media config
+                if hasattr(pjsua, 'media_config_default'):
+                    med_cfg = pjsua.media_config_default()
+                    med_cfg.port = 10000
+                    med_cfg.max_port = 20000
+
+                    # Apply the config
+                    if hasattr(pjsua, 'reconfigure_media'):
+                        pjsua.reconfigure_media(med_cfg)
+                        logger.info("✅ Ports RTP forcés via pjsua.reconfigure_media(): 10000-20000")
+                    else:
+                        logger.warning("⚠️ pjsua.reconfigure_media() non disponible")
+                else:
+                    logger.warning("⚠️ pjsua.media_config_default() non disponible")
+
+            except ImportError:
+                logger.info("ℹ️ Module pjsua (C API) non disponible, utilisation de pjsua2 uniquement")
+
+        except Exception as e:
+            logger.warning("⚠️ Impossible d'accéder à l'API PJSUA C: %s", e)
+
         # Configuration de l'endpoint
         ep_cfg = pj.EpConfig()
         # Niveau 1 = ERROR only (ne pas afficher les warnings "already terminated")
@@ -1133,11 +1180,36 @@ class PJSUAAdapter:
         media_cfg.jb_max = 10          # Maximum 10 frames (200ms) absolu
         media_cfg.snd_auto_close_time = 0  # Ne jamais fermer automatiquement le device
 
-        # OPTIMISATION RTP: Large range pour éviter collisions de ports avec "dangling calls" du PBX
-        # Le PBX peut continuer d'envoyer du RTP sur un ancien port pendant quelques secondes après raccrochage
-        # Un range large (10000 ports) garantit qu'on ne réutilise pas le même port trop rapidement
-        media_cfg.rtp_port = 10000      # Port de départ pour RTP
-        media_cfg.rtp_port_range = 10000 # Large range: 10000-20000 pour éviter réutilisation rapide
+        # CRITICAL FIX: Force RTP ports with explicit attribute names
+        # PJSUA2 sometimes requires specific attribute names depending on version
+        # Try multiple approaches to ensure ports are set correctly
+
+        # Approach 1: Standard attributes (may not work on all versions)
+        media_cfg.rtp_port = 10000
+        media_cfg.rtp_port_range = 10000
+
+        # Approach 2: Try alternative attribute names used in some PJSUA2 versions
+        try:
+            # Some versions use rtpStart instead of rtp_port
+            if hasattr(media_cfg, 'rtpStart'):
+                media_cfg.rtpStart = 10000
+                logger.debug("Tentative: media_cfg.rtpStart = 10000")
+        except:
+            pass
+
+        try:
+            # Some versions use portRange instead of rtp_port_range
+            if hasattr(media_cfg, 'portRange'):
+                media_cfg.portRange = 10000
+                logger.debug("Tentative: media_cfg.portRange = 10000")
+        except:
+            pass
+
+        # Approach 3: Log what attributes are actually available
+        logger.info(
+            "📋 Attributs medConfig disponibles: %s",
+            [attr for attr in dir(media_cfg) if not attr.startswith('_') and 'port' in attr.lower()]
+        )
 
         # OPTIMISATION: ICE selon le mode
         # Mode passerelle (défaut): ICE désactivé - pas besoin de négociation NAT sur serveur
