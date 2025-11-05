@@ -2625,20 +2625,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     runner = RealtimeRunner(agent)
                     logger.info("✅ Agent créé pendant sonnerie")
 
-                    # 3. SONNERIE (le temps configuré)
-                    if ring_timeout_seconds > 0:
-                        logger.info("⏰ Sonnerie de %ds...", ring_timeout_seconds)
-                        await asyncio.sleep(ring_timeout_seconds)
-
-                    # 4. RÉPONDRE 200 OK
-                    logger.info("📞 Réponse 200 OK (call_id=%s)", chatkit_call_id)
-                    await pjsua_adapter.answer_call(call, code=200)
-
-                    # 5. ACTIVER LE MÉDIA
-                    media_active.set()
-                    await asyncio.sleep(1)
-
-                    # 6. EXÉCUTER LE VOICE BRIDGE
+                    # 3. PRÉPARER LE VOICE BRIDGE (hooks, config)
                     api_key = os.getenv("OPENAI_API_KEY")
 
                     # Hooks (DOIVENT être async)
@@ -2663,21 +2650,41 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
 
-                    # Exécuter avec speak_first=True pour que l'agent parle en premier
-                    stats = await voice_bridge.run(
-                        runner=runner,
-                        client_secret=api_key,
-                        model=voice_model,
-                        instructions=voice_instructions,
-                        voice=voice_name,
-                        rtp_stream=rtp_stream,
-                        send_to_peer=send_to_peer,
-                        audio_bridge=audio_bridge,
-                        tools=normalized_tools,
-                        speak_first=True,
-                        clear_audio_queue=clear_queue,
-                        pjsua_ready_to_consume=pjsua_ready_event,
+                    # 4. LANCER LA SESSION SDK EN PARALLÈLE (va se connecter pendant la sonnerie)
+                    logger.info("🔌 Démarrage connexion session SDK pendant la sonnerie...")
+                    voice_bridge_task = asyncio.create_task(
+                        voice_bridge.run(
+                            runner=runner,
+                            client_secret=api_key,
+                            model=voice_model,
+                            instructions=voice_instructions,
+                            voice=voice_name,
+                            rtp_stream=rtp_stream,
+                            send_to_peer=send_to_peer,
+                            audio_bridge=audio_bridge,
+                            tools=normalized_tools,
+                            speak_first=True,
+                            clear_audio_queue=clear_queue,
+                            pjsua_ready_to_consume=pjsua_ready_event,
+                        )
                     )
+
+                    # 5. SONNERIE - PENDANT CE TEMPS la session SDK se connecte à OpenAI
+                    if ring_timeout_seconds > 0:
+                        logger.info("⏰ Sonnerie de %ds (session SDK se connecte en parallèle)...", ring_timeout_seconds)
+                        await asyncio.sleep(ring_timeout_seconds)
+
+                    # 6. RÉPONDRE 200 OK
+                    logger.info("📞 Réponse 200 OK (call_id=%s)", chatkit_call_id)
+                    await pjsua_adapter.answer_call(call, code=200)
+
+                    # 7. ACTIVER LE MÉDIA - va déclencher pjsua_ready_event → response.create
+                    media_active.set()
+                    await asyncio.sleep(1)
+
+                    # 8. ATTENDRE que le voice bridge se termine
+                    logger.info("⏳ Attente du voice bridge...")
+                    stats = await voice_bridge_task
 
                     logger.info("✅ Terminé: %s", stats)
 
