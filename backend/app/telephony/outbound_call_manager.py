@@ -1562,13 +1562,18 @@ a=sendrecv
             # 4. Mettre à jour la DB
             db = SessionLocal()
             try:
-                self._update_call_status(
-                    db,
-                    call_id,
-                    "terminated",
-                    ended_at=datetime.now(UTC),
-                    failure_reason="Raccroché manuellement"
-                )
+                # Récupérer l'enregistrement de l'appel pour obtenir son ID de base de données
+                call_record = db.query(OutboundCall).filter_by(call_sid=call_id).first()
+                if call_record:
+                    self._update_call_status(
+                        db,
+                        call_record.id,
+                        "terminated",
+                        ended_at=datetime.now(UTC),
+                        failure_reason="Raccroché manuellement"
+                    )
+                else:
+                    logger.warning("Call record not found in DB for call_id=%s", call_id)
             finally:
                 db.close()
 
