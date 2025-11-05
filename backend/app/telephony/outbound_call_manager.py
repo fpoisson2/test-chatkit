@@ -603,6 +603,20 @@ class OutboundCallManager:
                             "transcript_count": stats.transcript_count,
                             "error": str(stats.error) if stats.error else None,
                         }
+                        # Sauvegarder les chemins des fichiers audio
+                        if stats.inbound_audio_file or stats.outbound_audio_file or stats.mixed_audio_file:
+                            metadata["audio_recordings"] = {
+                                "inbound": stats.inbound_audio_file,
+                                "outbound": stats.outbound_audio_file,
+                                "mixed": stats.mixed_audio_file,
+                            }
+                            logger.info(
+                                "Audio recordings saved for call %s: inbound=%s, outbound=%s, mixed=%s",
+                                session.call_id,
+                                stats.inbound_audio_file,
+                                stats.outbound_audio_file,
+                                stats.mixed_audio_file,
+                            )
                         call.metadata_ = metadata
                         db.commit()
                 except Exception as e:
@@ -991,6 +1005,21 @@ class OutboundCallManager:
                                 "error": str(stats.error) if stats.error else None,
                             }
 
+                            # Sauvegarder les chemins des fichiers audio
+                            if stats.inbound_audio_file or stats.outbound_audio_file or stats.mixed_audio_file:
+                                metadata["audio_recordings"] = {
+                                    "inbound": stats.inbound_audio_file,
+                                    "outbound": stats.outbound_audio_file,
+                                    "mixed": stats.mixed_audio_file,
+                                }
+                                logger.info(
+                                    "Audio recordings saved for call %s: inbound=%s, outbound=%s, mixed=%s",
+                                    session.call_id,
+                                    stats.inbound_audio_file,
+                                    stats.outbound_audio_file,
+                                    stats.mixed_audio_file,
+                                )
+
                             # Mettre à jour en base
                             call.metadata_ = metadata
                             db.commit()
@@ -1215,6 +1244,11 @@ a=sendrecv
         if not call:
             return None
 
+        # Récupérer les métadonnées
+        metadata = call.metadata_ or {}
+        transcripts = metadata.get("transcripts", [])
+        audio_recordings = metadata.get("audio_recordings", {})
+
         return {
             "call_id": call.call_sid,
             "status": call.status,
@@ -1225,6 +1259,8 @@ a=sendrecv
             "ended_at": call.ended_at.isoformat() if call.ended_at else None,
             "duration_seconds": call.duration_seconds,
             "failure_reason": call.failure_reason,
+            "transcripts": transcripts,
+            "audio_recordings": audio_recordings,
         }
 
 

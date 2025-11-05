@@ -3464,6 +3464,70 @@ async def run_workflow(
                     )
 
                     if call_result:
+                        # Ajouter les transcriptions au thread ChatKit si disponibles
+                        transcripts = call_result.get("transcripts", [])
+                        audio_recordings = call_result.get("audio_recordings", {})
+
+                        if transcripts and thread is not None:
+                            try:
+                                from ..chatkit_types import UserMessage, AssistantMessage
+
+                                # Ajouter les messages de transcription au thread
+                                for transcript_entry in transcripts:
+                                    role = transcript_entry.get("role")
+                                    text = transcript_entry.get("text", "")
+
+                                    if not text:
+                                        continue
+
+                                    if role == "user":
+                                        # Message de l'utilisateur (appelé)
+                                        user_msg = UserMessage(
+                                            content=text,
+                                            annotations=[{"type": "voice_transcript"}],
+                                        )
+                                        thread.messages.append(user_msg)
+                                    elif role == "assistant":
+                                        # Message de l'assistant
+                                        assistant_msg = AssistantMessage(
+                                            content=[text],
+                                            annotations=[{"type": "voice_transcript"}],
+                                        )
+                                        thread.messages.append(assistant_msg)
+
+                                # Ajouter un message avec les liens audio si disponibles
+                                if audio_recordings:
+                                    call_id = call_result["call_id"]
+                                    audio_links = []
+                                    if audio_recordings.get("inbound"):
+                                        audio_links.append(f"🎤 [Audio entrant](/api/outbound/call/{call_id}/audio/inbound)")
+                                    if audio_recordings.get("outbound"):
+                                        audio_links.append(f"🔊 [Audio sortant](/api/outbound/call/{call_id}/audio/outbound)")
+                                    if audio_recordings.get("mixed"):
+                                        audio_links.append(f"🎧 [Audio mixé](/api/outbound/call/{call_id}/audio/mixed)")
+
+                                    if audio_links:
+                                        audio_msg = AssistantMessage(
+                                            content=[
+                                                f"**Enregistrements audio de l'appel :**\n\n" + "\n".join(audio_links)
+                                            ],
+                                            annotations=[{"type": "audio_recordings"}],
+                                        )
+                                        thread.messages.append(audio_msg)
+
+                                # Sauvegarder le thread
+                                if context and server and hasattr(server, "store"):
+                                    await server.store.save_thread(thread, context)
+                                    logger.info(
+                                        "Transcriptions et audio ajoutés au thread pour l'appel %s",
+                                        call_session.call_id,
+                                    )
+                            except Exception as e:
+                                logger.error(
+                                    "Erreur lors de l'ajout des transcriptions au thread : %s",
+                                    e,
+                                )
+
                         last_step_context = {
                             "outbound_call": {
                                 "call_id": call_result["call_id"],
@@ -3471,6 +3535,8 @@ async def run_workflow(
                                 "answered": call_result["status"] == "completed",
                                 "duration_seconds": call_result.get("duration_seconds"),
                                 "to_number": to_number,
+                                "transcripts": transcripts,
+                                "audio_recordings": audio_recordings,
                             }
                         }
                     else:

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -203,3 +206,114 @@ async def list_outbound_calls(
             for c in calls
         ],
     )
+
+
+@router.get("/api/outbound/call/{call_id}/audio/{audio_type}")
+async def get_call_audio(
+    call_id: str,
+    audio_type: str,
+    db: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+) -> FileResponse:
+    """
+    Télécharge un fichier audio d'un appel sortant.
+
+    Args:
+        call_id: ID de l'appel
+        audio_type: Type d'audio ('inbound', 'outbound', ou 'mixed')
+        db: Session de base de données
+        _: Utilisateur admin (requis)
+
+    Returns:
+        Fichier audio WAV
+
+    Raises:
+        HTTPException: Si l'appel ou le fichier audio n'est pas trouvé
+    """
+    # Valider le type d'audio
+    if audio_type not in ('inbound', 'outbound', 'mixed'):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid audio type. Must be 'inbound', 'outbound', or 'mixed'"
+        )
+
+    # Récupérer l'appel
+    call = db.query(OutboundCall).filter_by(call_sid=call_id).first()
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    # Récupérer le chemin du fichier audio depuis les métadonnées
+    metadata = call.metadata_ or {}
+    audio_recordings = metadata.get("audio_recordings", {})
+
+    if not audio_recordings:
+        raise HTTPException(
+            status_code=404,
+            detail="No audio recordings available for this call"
+        )
+
+    audio_path = audio_recordings.get(audio_type)
+    if not audio_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No {audio_type} audio recording available for this call"
+        )
+
+    # Vérifier que le fichier existe
+    if not os.path.exists(audio_path):
+        logger.error("Audio file not found on disk: %s", audio_path)
+        raise HTTPException(
+            status_code=404,
+            detail="Audio file not found on disk"
+        )
+
+    # Retourner le fichier
+    filename = Path(audio_path).name
+    return FileResponse(
+        path=audio_path,
+        media_type="audio/wav",
+        filename=filename,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "public, max-age=3600"
+        }
+    )
+
+
+@router.get("/api/outbound/call/{call_id}/transcripts")
+async def get_call_transcripts(
+    call_id: str,
+    db: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """
+    Récupère les transcriptions d'un appel sortant.
+
+    Args:
+        call_id: ID de l'appel
+        db: Session de base de données
+        _: Utilisateur admin (requis)
+
+    Returns:
+        Transcriptions de l'appel
+
+    Raises:
+        HTTPException: Si l'appel n'est pas trouvé
+    """
+    # Récupérer l'appel
+    call = db.query(OutboundCall).filter_by(call_sid=call_id).first()
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    # Récupérer les transcriptions depuis les métadonnées
+    metadata = call.metadata_ or {}
+    transcripts = metadata.get("transcripts", [])
+    audio_recordings = metadata.get("audio_recordings", {})
+
+    return {
+        "call_id": call_id,
+        "transcripts": transcripts,
+        "audio_recordings": audio_recordings,
+        "status": call.status,
+        "duration_seconds": call.duration_seconds,
+    }
