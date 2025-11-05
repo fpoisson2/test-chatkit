@@ -38,10 +38,10 @@ export function useOutboundCallSession(): {
             break;
 
           case "call_ended":
-            if (message.call_id === callId) {
-              setIsActive(false);
-              console.log("[OutboundCallSession] Call ended:", message.call_id);
-            }
+            console.log("[OutboundCallSession] Call ended:", message.call_id);
+            setIsActive(false);
+            // Reset callId after a short delay to allow UI to update
+            setTimeout(() => setCallId(null), 500);
             break;
 
           default:
@@ -63,7 +63,7 @@ export function useOutboundCallSession(): {
     return () => {
       ws.close();
     };
-  }, [callId]);
+  }, []); // Empty deps - WebSocket should persist for the entire component lifecycle
 
   return { callId, isActive };
 }
