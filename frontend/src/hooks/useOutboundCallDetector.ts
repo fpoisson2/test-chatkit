@@ -23,6 +23,15 @@ export function useOutboundCallDetector(thread: Thread | null): {
   const [isActive, setIsActive] = useState(false);
 
   useEffect(() => {
+    // Debug: log thread structure
+    console.log('[OutboundCallDetector] Thread received:', {
+      hasThread: !!thread,
+      hasItems: !!thread?.items,
+      itemsLength: thread?.items?.length,
+      threadKeys: thread ? Object.keys(thread) : [],
+      firstItems: thread?.items?.slice(0, 3),
+    });
+
     if (!thread || !thread.items) {
       setCallId(null);
       setIsActive(false);
@@ -45,16 +54,19 @@ export function useOutboundCallDetector(thread: Thread | null): {
           // Try to parse as JSON to find the event
           if (content.includes('"type":"outbound_call.event"') || content.includes('"type": "outbound_call.event"')) {
             const parsed = JSON.parse(content);
+            console.log('[OutboundCallDetector] Found outbound_call.event:', parsed);
             if (parsed.type === "outbound_call.event" && parsed.event) {
               if (parsed.event.type === "call_started" && callStartIndex === -1) {
                 callStartIndex = i;
                 foundCallId = parsed.event.call_id || null;
+                console.log('[OutboundCallDetector] Found call_started:', foundCallId);
               } else if (parsed.event.type === "call_ended" && callEndIndex === -1) {
                 callEndIndex = i;
+                console.log('[OutboundCallDetector] Found call_ended');
               }
             }
           }
-        } catch {
+        } catch (e) {
           // Ignore parse errors
         }
       }
@@ -74,6 +86,8 @@ export function useOutboundCallDetector(thread: Thread | null): {
         foundActive = true;
       }
     }
+
+    console.log('[OutboundCallDetector] Result:', { callId: foundCallId, isActive: foundActive });
 
     setCallId(foundCallId);
     setIsActive(foundActive);
