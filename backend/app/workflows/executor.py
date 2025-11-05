@@ -3445,37 +3445,27 @@ async def run_workflow(
                 )
 
                 # Ajouter un message au thread pour notifier le début de l'appel
-                if thread is not None and on_stream_event is not None:
+                if thread is not None:
                     try:
-                        # Créer un message et l'émettre via les événements (comme user_message/assistant_message)
-                        message_id = agent_context.generate_id("message")
+                        from ..chatkit_types import AssistantMessage
 
-                        call_start_msg = AssistantMessageItem(
-                            id=message_id,
-                            thread_id=thread.id,
-                            created_at=datetime.now(),
-                            content=[AssistantMessageContent(text=f"📞 Appel en cours vers {to_number}...")],
+                        call_start_msg = AssistantMessage(
+                            content=[f"📞 Appel en cours vers {to_number}..."],
+                            annotations=[{
+                                "type": "outbound_call_start",
+                                "call_id": call_session.call_id,
+                                "to_number": to_number,
+                            }],
                         )
+                        thread.messages.append(call_start_msg)
 
-                        # Émettre les événements (approche standard des blocs message)
-                        await _emit_stream_event(ThreadItemAddedEvent(item=call_start_msg))
-                        await _emit_stream_event(ThreadItemDoneEvent(item=call_start_msg))
-
-                        # Ajouter l'info de l'appel actif dans les métadonnées du thread
-                        # pour que le frontend puisse le détecter
-                        thread.metadata["active_outbound_call"] = {
-                            "call_id": call_session.call_id,
-                            "to_number": to_number,
-                            "started_at": datetime.now().isoformat(),
-                            "message_id": message_id,
-                        }
-                        await agent_context.store.save_thread(thread, agent_context.request_context)
-
-                        logger.info(
-                            "Message de début d'appel ajouté au thread %s pour call_id=%s",
-                            thread.id,
-                            call_session.call_id,
-                        )
+                        # Sauvegarder le thread avec le nouveau message et les annotations
+                        if context and server and hasattr(server, "store"):
+                            await server.store.save_thread(thread, context)
+                            logger.info(
+                                "Message de début d'appel ajouté au thread pour call_id=%s",
+                                call_session.call_id,
+                            )
                     except Exception as e:
                         logger.error(
                             "Erreur lors de l'ajout du message de début d'appel : %s",
@@ -3520,24 +3510,20 @@ async def run_workflow(
                                     audio_links.append(f"🎧 [Audio mixé](/api/outbound/call/{call_id}/audio/mixed)")
 
                                 if audio_links:
-                                    # Créer un message et l'émettre via les événements
-                                    message_id = agent_context.generate_id("message")
+                                    # Créer un message avec annotation pour signaler la fin de l'appel
+                                    from ..chatkit_types import AssistantMessage
 
-                                    audio_msg = AssistantMessageItem(
-                                        id=message_id,
-                                        thread_id=thread.id,
-                                        created_at=datetime.now(),
-                                        content=[AssistantMessageContent(text=f"**Enregistrements audio de l'appel :**\n\n" + "\n".join(audio_links))],
+                                    audio_msg = AssistantMessage(
+                                        content=[f"**Enregistrements audio de l'appel :**\n\n" + "\n".join(audio_links)],
+                                        annotations=[{
+                                            "type": "audio_recordings",
+                                            "call_id": call_id,
+                                        }],
                                     )
+                                    thread.messages.append(audio_msg)
 
-                                    # Émettre les événements
-                                    await _emit_stream_event(ThreadItemAddedEvent(item=audio_msg))
-                                    await _emit_stream_event(ThreadItemDoneEvent(item=audio_msg))
-
-                                    # Supprimer l'info de l'appel actif des métadonnées du thread
-                                    if "active_outbound_call" in thread.metadata:
-                                        del thread.metadata["active_outbound_call"]
-                                        await agent_context.store.save_thread(thread, agent_context.request_context)
+                                    # Sauvegarder le thread avec le message de fin d'appel
+                                    await agent_context.store.save_thread(thread, agent_context.request_context)
 
                                     logger.info(
                                         "Liens audio ajoutés au thread %s pour l'appel %s",

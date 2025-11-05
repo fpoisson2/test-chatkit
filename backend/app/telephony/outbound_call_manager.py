@@ -582,13 +582,19 @@ class OutboundCallManager:
                     from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
                     from datetime import datetime, timezone
                     import uuid
+                    from ..models import ChatThread
 
                     server = get_chatkit_server()
 
-                    # Créer un contexte minimal pour le store
-                    # Les transcriptions d'appels sortants ne sont pas liées à un utilisateur spécifique
+                    # Récupérer le owner_id du thread depuis la base de données
+                    thread_record = db.query(ChatThread).filter_by(id=thread_id).first()
+                    if not thread_record:
+                        logger.warning("Thread %s not found in database", thread_id)
+                        return
+
+                    # Créer un contexte avec le bon owner_id
                     context = ChatKitRequestContext(
-                        user_id="system:outbound_call",
+                        user_id=thread_record.owner_id,
                         email=None,
                         authorization=None,
                         public_base_url=None,
@@ -1066,18 +1072,28 @@ class OutboundCallManager:
                             return
 
                         # Ajouter la transcription au thread ChatKit
-                        from ..chatkit_server import get_chatkit_server
-                        from ..chatkit_types import UserMessage, AssistantMessage
+                        from ..chatkit import get_chatkit_server
+                        from ..chatkit_server.context import ChatKitRequestContext
+                        from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
+                        from datetime import datetime, timezone
+                        import uuid
+                        from ..models import ChatThread
 
                         server = get_chatkit_server()
-                        context: dict = {}
 
-                        # Charger le thread
-                        try:
-                            thread = await server.store.load_thread(thread_id, context)
-                        except Exception as e:
-                            logger.error("Failed to load thread %s: %s", thread_id, e)
+                        # Récupérer le owner_id du thread depuis la base de données
+                        thread_record = db.query(ChatThread).filter_by(id=thread_id).first()
+                        if not thread_record:
+                            logger.warning("Thread %s not found in database", thread_id)
                             return
+
+                        # Créer un contexte avec le bon owner_id
+                        context = ChatKitRequestContext(
+                            user_id=thread_record.owner_id,
+                            email=None,
+                            authorization=None,
+                            public_base_url=None,
+                        )
 
                         # Ajouter le message de transcription
                         role = transcript.get("role")
@@ -1086,22 +1102,35 @@ class OutboundCallManager:
                         if not text:
                             return
 
-                        if role == "user":
-                            user_msg = UserMessage(
-                                content=text,
-                                annotations=[{"type": "voice_transcript_realtime"}],
-                            )
-                            thread.messages.append(user_msg)
-                        elif role == "assistant":
-                            assistant_msg = AssistantMessage(
-                                content=[text],
-                                annotations=[{"type": "voice_transcript_realtime"}],
-                            )
-                            thread.messages.append(assistant_msg)
+                        # Créer un ID unique pour le message
+                        message_id = f"transcript_{session.call_id}_{uuid.uuid4().hex[:8]}"
+                        now = datetime.now(timezone.utc)
 
-                        # Sauvegarder le thread
-                        await server.store.save_thread(thread, context)
-                        logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+                        # Ajouter le message via le store API
+                        try:
+                            if role == "user":
+                                user_msg = UserMessageItem(
+                                    id=message_id,
+                                    thread_id=thread_id,
+                                    created_at=now,
+                                    content=[UserMessageTextContent(text=text)],
+                                    attachments=[],
+                                    inference_options=None,
+                                    quoted_text=None,
+                                )
+                                await server.store.add_thread_item(thread_id, user_msg, context)
+                            elif role == "assistant":
+                                assistant_msg = AssistantMessageItem(
+                                    id=message_id,
+                                    thread_id=thread_id,
+                                    created_at=now,
+                                    content=[AssistantMessageContent(text=text)],
+                                )
+                                await server.store.add_thread_item(thread_id, assistant_msg, context)
+
+                            logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+                        except Exception as e:
+                            logger.error("Failed to add transcript to thread: %s", e, exc_info=True)
 
                     except Exception as e:
                         logger.error("Error in on_transcript_hook: %s", e, exc_info=True)
