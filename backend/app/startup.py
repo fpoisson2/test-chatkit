@@ -2736,7 +2736,6 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                             ),
                             timeout=10.0,
                         )
-                        session_handle_ref[0] = session_handle  # Rendre disponible pour le callback
                         diag.phase_session_create.end(session_id=session_handle.session_id)
                         logger.info("✅ Session Realtime créée (session_id=%s, call_id=%s)", session_handle.session_id, call_id)
                     except Exception as e:
