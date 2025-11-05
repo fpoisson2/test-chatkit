@@ -3444,31 +3444,39 @@ async def run_workflow(
                     metadata=metadata,
                 )
 
-                # Ajouter un message au thread pour notifier le début de l'appel
-                if thread is not None:
+                # Émettre un événement d'appel sortant (similaire à realtime.event pour voice_agent)
+                if on_stream_event is not None and agent_context.thread is not None:
                     try:
-                        from ..chatkit_types import AssistantMessage
-
-                        call_start_msg = AssistantMessage(
-                            content=[f"📞 Appel en cours vers {to_number}..."],
-                            annotations=[{
-                                "type": "outbound_call_start",
+                        outbound_call_event = {
+                            "type": "outbound_call.event",
+                            "step": {"slug": current_node.slug, "title": title},
+                            "event": {
+                                "type": "call_started",
                                 "call_id": call_session.call_id,
                                 "to_number": to_number,
-                            }],
-                        )
-                        thread.messages.append(call_start_msg)
+                                "from_number": from_number,
+                            },
+                        }
 
-                        # Sauvegarder le thread avec le nouveau message et les annotations
-                        if context and server and hasattr(server, "store"):
-                            await server.store.save_thread(thread, context)
-                            logger.info(
-                                "Message de début d'appel ajouté au thread pour call_id=%s",
-                                call_session.call_id,
-                            )
+                        task_item = TaskItem(
+                            id=agent_context.generate_id("task"),
+                            thread_id=agent_context.thread.id,
+                            created_at=datetime.now(),
+                            task=CustomTask(
+                                title=f"📞 Appel en cours vers {to_number}...",
+                                content=json.dumps(outbound_call_event, ensure_ascii=False),
+                            ),
+                        )
+                        await _emit_stream_event(ThreadItemAddedEvent(item=task_item))
+                        await _emit_stream_event(ThreadItemDoneEvent(item=task_item))
+
+                        logger.info(
+                            "Événement d'appel sortant émis pour call_id=%s",
+                            call_session.call_id,
+                        )
                     except Exception as e:
                         logger.error(
-                            "Erreur lors de l'ajout du message de début d'appel : %s",
+                            "Erreur lors de l'émission de l'événement d'appel sortant : %s",
                             e,
                         )
 
@@ -3510,20 +3518,40 @@ async def run_workflow(
                                     audio_links.append(f"🎧 [Audio mixé](/api/outbound/call/{call_id}/audio/mixed)")
 
                                 if audio_links:
-                                    # Créer un message avec annotation pour signaler la fin de l'appel
-                                    from ..chatkit_types import AssistantMessage
+                                    # Émettre un événement de fin d'appel
+                                    try:
+                                        outbound_call_end_event = {
+                                            "type": "outbound_call.event",
+                                            "step": {"slug": current_node.slug, "title": title},
+                                            "event": {
+                                                "type": "call_ended",
+                                                "call_id": call_id,
+                                                "status": call_result.get("status"),
+                                                "duration_seconds": call_result.get("duration_seconds"),
+                                            },
+                                        }
 
-                                    audio_msg = AssistantMessage(
-                                        content=[f"**Enregistrements audio de l'appel :**\n\n" + "\n".join(audio_links)],
-                                        annotations=[{
-                                            "type": "audio_recordings",
-                                            "call_id": call_id,
-                                        }],
-                                    )
-                                    thread.messages.append(audio_msg)
+                                        task_item = TaskItem(
+                                            id=agent_context.generate_id("task"),
+                                            thread_id=thread.id,
+                                            created_at=datetime.now(),
+                                            task=CustomTask(
+                                                title=f"**Enregistrements audio de l'appel :**",
+                                                content=json.dumps(outbound_call_end_event, ensure_ascii=False) + "\n\n" + "\n".join(audio_links),
+                                            ),
+                                        )
+                                        await _emit_stream_event(ThreadItemAddedEvent(item=task_item))
+                                        await _emit_stream_event(ThreadItemDoneEvent(item=task_item))
 
-                                    # Sauvegarder le thread avec le message de fin d'appel
-                                    await agent_context.store.save_thread(thread, agent_context.request_context)
+                                        logger.info(
+                                            "Événement de fin d'appel émis pour call_id=%s",
+                                            call_id,
+                                        )
+                                    except Exception as e:
+                                        logger.error(
+                                            "Erreur lors de l'émission de l'événement de fin d'appel : %s",
+                                            e,
+                                        )
 
                                     logger.info(
                                         "Liens audio ajoutés au thread %s pour l'appel %s",
