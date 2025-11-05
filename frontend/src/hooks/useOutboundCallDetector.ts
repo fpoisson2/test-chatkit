@@ -24,17 +24,31 @@ export function useOutboundCallDetector(thread: Thread | null): {
   const [isActive, setIsActive] = useState(false);
 
   useEffect(() => {
-    if (!thread?.messages) {
+    if (!thread) {
       setCallId(null);
       setIsActive(false);
       return;
     }
 
-    // Look for the most recent outbound call in messages
+    // First, check thread metadata for active call (most reliable)
+    const activeCall = thread.metadata?.active_outbound_call;
+    if (activeCall?.call_id) {
+      setCallId(activeCall.call_id);
+      setIsActive(true);
+      return;
+    }
+
+    // Fallback: Look for the most recent outbound call in messages
     // We look for:
     // 1. outbound_call_start annotation (call starting)
     // 2. voice_transcript_realtime annotations (call in progress)
     // 3. audio_recordings annotation (call ended)
+
+    if (!thread.messages) {
+      setCallId(null);
+      setIsActive(false);
+      return;
+    }
 
     let foundCallId: string | null = null;
     let foundActive = false;
