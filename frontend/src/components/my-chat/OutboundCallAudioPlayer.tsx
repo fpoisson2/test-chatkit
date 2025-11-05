@@ -39,6 +39,10 @@ export const OutboundCallAudioPlayer = ({
     try {
       const response = await fetch(`/api/outbound/call/${callId}/hangup`, {
         method: "POST",
+        credentials: "include", // Send cookies for authentication
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
       if (!response.ok) {
