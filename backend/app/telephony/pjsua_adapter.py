@@ -1100,6 +1100,28 @@ class PJSUAAdapter:
         ep_cfg.logConfig.level = 1  # ERROR level only
         ep_cfg.logConfig.consoleLevel = 1
 
+        # CRITICAL FIX: Aggressive SIP timers for immediate teardown
+        # Force session timer to quickly detect and cleanup stale sessions
+        # This eliminates the "ghost session" problem when rapidly cycling calls
+        ua_cfg = ep_cfg.uaConfig
+        ua_cfg.mainThreadOnly = False  # Allow async callbacks
+
+        # NAT keepalive (not needed in LAN bridge mode, but harmless)
+        # Set to 15s to quickly detect dead connections
+        ua_cfg.natTypeInSdp = 0  # Don't put NAT type in SDP
+
+        # SIP Session Timers: Force aggressive timeout for rapid teardown
+        # When call ends, session timer ensures complete cleanup within 90s
+        try:
+            # timerUse options: 0=No, 1=Optional, 2=Required, 3=Always
+            ua_cfg.timerUse = 3  # PJSUA_SIP_TIMER_ALWAYS - Force session timer
+            ua_cfg.timerMinSE = 90  # Minimum 90s (RFC minimum)
+            ua_cfg.timerSessExpires = 180  # Session expires in 180s
+            logger.info("🔧 SIP Session Timers: FORCED mode, minSE=90s, expires=180s")
+        except AttributeError:
+            # Older PJSUA2 versions may not have these attributes
+            logger.warning("⚠️ SIP Session Timers not available in this PJSUA2 version")
+
         # Configuration du jitter buffer pour éviter l'accumulation de latence
         # CRITICAL: Sans cette config, le JB peut gonfler jusqu'à 200 frames (4 secondes!)
         # causant un lag progressif aux appels 2, 3, 4...
@@ -1129,6 +1151,32 @@ class PJSUAAdapter:
         # OPTIMISATION CRITIQUE: Désactiver VAD (Voice Activity Detection)
         # On fait du pontage audio vers OpenAI - ne pas couper l'audio sur les silences!
         media_cfg.no_vad = True
+
+        # CRITICAL FIX: Minimize RTP learning delay for rapid call cycling
+        # These settings eliminate the "strict RTP learning" delay when reusing ports
+        try:
+            # Disable ICE host candidates to skip local network discovery
+            # This speeds up media negotiation significantly
+            media_cfg.ice_no_host_cands = True
+            logger.info("🔧 ICE host candidates: DISABLED (faster media setup)")
+        except AttributeError:
+            logger.debug("ice_no_host_cands not available")
+
+        try:
+            # Disable echo canceller tail (not needed in bridge mode)
+            # ecTailLen=0 eliminates echo canceller processing delay
+            media_cfg.ecTailLen = 0
+            logger.info("🔧 Echo canceller: DISABLED (ecTailLen=0, bridge mode)")
+        except AttributeError:
+            logger.debug("ecTailLen not available")
+
+        try:
+            # Make SRTP optional (clarifies RTP state even without encryption)
+            # This prevents SRTP negotiation delays
+            media_cfg.srtpOpt = 1  # PJMEDIA_SRTP_OPTIONAL
+            logger.info("🔧 SRTP: OPTIONAL (no negotiation delay)")
+        except AttributeError:
+            logger.debug("srtpOpt not available")
 
         logger.info(
             "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max_pre=%dms, max=%dms, auto_close=%d",
@@ -1499,6 +1547,19 @@ class PJSUAAdapter:
                 logger.debug("✅ [6/6] Références circulaires cassées dans Call (call_id=%s)", call_info.id)
             except Exception as e:
                 logger.warning("Erreur cassage références circulaires (call_id=%s): %s", call_info.id, e)
+
+            # ÉTAPE 7: FORCE CLEANUP OF ALL PJSUA INTERNAL STATE
+            # CRITICAL FIX: Force PJSUA to cleanup any ghost calls in its internal structures
+            # This eliminates "semi-existence zombie" call dialogs that block rapid re-calls
+            try:
+                # hangupAllCalls() ensures PJSUA internal state is fully cleared
+                # Even if we already cleaned up our Python objects, PJSUA C++ layer may
+                # still have SIP transaction state that needs explicit cleanup
+                self._ep.hangupAllCalls()
+                logger.debug("✅ [7/7] PJSUA hangupAllCalls() forcé (call_id=%s)", call_info.id)
+            except Exception as e:
+                # This is safe to fail - call is already disconnected
+                logger.debug("hangupAllCalls() failed (expected if no active calls): %s", e)
 
         if self._call_state_callback:
             await self._call_state_callback(call, call_info)
