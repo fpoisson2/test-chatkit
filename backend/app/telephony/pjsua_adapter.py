@@ -1222,6 +1222,34 @@ class PJSUAAdapter:
             port if config is None else config.port,
         )
 
+        # CRITICAL DIAGNOSTIC: Verify actual RTP ports being used after libStart()
+        # If PJSUA ignores our config, this will show the real ports
+        try:
+            # Re-read the media config to see what PJSUA actually configured
+            actual_cfg = self._ep.libGetConfig()
+            actual_rtp_port = actual_cfg.medConfig.rtp_port
+            actual_rtp_range = actual_cfg.medConfig.rtp_port_range
+
+            logger.info(
+                "✅ DIAGNOSTIC: PJSUA ports RTP RÉELS après libStart(): start=%d, range=%d (ports %d-%d)",
+                actual_rtp_port,
+                actual_rtp_range,
+                actual_rtp_port,
+                actual_rtp_port + actual_rtp_range,
+            )
+
+            # CRITICAL: Warn if PJSUA ignored our configuration
+            if actual_rtp_port != 10000:
+                logger.error(
+                    "🚨 PJSUA A IGNORÉ NOTRE CONFIG! Nous avons demandé rtp_port=10000 mais PJSUA utilise %d",
+                    actual_rtp_port
+                )
+                logger.error(
+                    "🚨 Ceci est un BUG de PJSUA2 ou une incompatibilité de version!"
+                )
+        except Exception as e:
+            logger.warning("Impossible de lire la config PJSUA réelle: %s", e)
+
         # Créer le compte SIP si configuré
         if config is not None and config.register:
             await self._create_account(config)
