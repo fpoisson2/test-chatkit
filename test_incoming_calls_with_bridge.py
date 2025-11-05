@@ -91,9 +91,6 @@ class IncomingCallTester:
         self.active_calls = {}
         self.running = False
 
-        # Créer le runner OpenAI
-        self.runner = Runner(api_key=self.api_key)
-
     async def initialize(self):
         """Initialise l'adaptateur PJSUA et le voice bridge."""
         logger.info("🚀 Initialisation du testeur d'appels entrants...")
@@ -106,9 +103,13 @@ class IncomingCallTester:
         )
 
         # Créer le voice bridge
+        # IMPORTANT: input_codec="pcm" car pjsua_audio_bridge envoie déjà du PCM16 à 24kHz
+        # (PJSUA a déjà décodé PCMU→PCM et resamplé 8kHz→24kHz)
         self.voice_bridge = TelephonyVoiceBridge(
             hooks=hooks,
             metrics=self.metrics,
+            input_codec="pcm",  # Audio déjà en PCM16 à 24kHz
+            target_sample_rate=24000,  # OpenAI Realtime API utilise 24kHz
         )
 
         # Créer l'adaptateur PJSUA
@@ -129,17 +130,10 @@ class IncomingCallTester:
         logger.info("📞 Call ID: %s", call_id)
 
         try:
-            # Accepter l'appel
-            logger.info("✅ Acceptation de l'appel...")
-            await self.adapter.answer_call(call)
-
-            # Attendre que le média soit actif
-            await asyncio.sleep(1)
-
-            # Créer un audio bridge pour cet appel avec la fonction helper
+            # Créer un audio bridge pour cet appel AVANT d'accepter
+            # Ceci est critique: le bridge doit être sur le call AVANT onCallMediaState
             logger.info("🎵 Création du bridge audio...")
             media_active = asyncio.Event()
-            media_active.set()  # Déjà actif après answer_call
 
             (
                 rtp_stream,
@@ -149,6 +143,16 @@ class IncomingCallTester:
                 pjsua_ready_event,
                 audio_bridge,
             ) = await create_pjsua_audio_bridge(call, media_active)
+
+            # Accepter l'appel (ceci déclenchera onCallMediaState qui verra le bridge)
+            logger.info("✅ Acceptation de l'appel...")
+            await self.adapter.answer_call(call)
+
+            # Signaler que le média est actif
+            media_active.set()
+
+            # Attendre que le média soit actif
+            await asyncio.sleep(1)
 
             # Démarrer le voice bridge
             logger.info("🎵 Démarrage du voice bridge...")
@@ -194,9 +198,19 @@ class IncomingCallTester:
             await pjsua_ready_event.wait()
             logger.info("✅ PJSUA prêt à consommer l'audio")
 
+            # Créer un nouveau runner pour CHAQUE appel (évite la réutilisation d'état)
+            # CRITIQUE: Le RealtimeRunner maintient un état interne qui ne doit PAS
+            # être réutilisé entre les appels, sinon on obtient des erreurs "item does not exist"
+            agent = RealtimeAgent(
+                name=f"incoming-call-test-agent-{call_id}",
+                instructions=self.instructions
+            )
+            runner = RealtimeRunner(agent)
+            logger.info("✅ Nouveau runner créé pour l'appel %s", call_id)
+
             # Exécuter le voice bridge avec tous les paramètres
             stats = await self.voice_bridge.run(
-                runner=self.runner,
+                runner=runner,
                 client_secret=self.api_key,
                 model=self.model,
                 instructions=self.instructions,
