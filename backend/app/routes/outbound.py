@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_session
-from ..dependencies import require_admin
+from ..dependencies import require_admin, get_current_user
 from ..models import OutboundCall, SipAccount, User, WorkflowDefinition
 from ..telephony.outbound_call_manager import get_outbound_call_manager
 from ..telephony.audio_stream_manager import get_audio_stream_manager
@@ -171,14 +171,14 @@ async def get_call_status(
 @router.post("/api/outbound/call/{call_id}/hangup")
 async def hangup_call(
     call_id: str,
-    _: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Raccroche un appel en cours.
 
     Args:
         call_id: ID de l'appel
-        _: Utilisateur admin (requis)
+        current_user: Utilisateur authentifié (requis)
 
     Returns:
         Message de confirmation
