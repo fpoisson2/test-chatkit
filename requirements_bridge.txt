@@ -1,0 +1,41 @@
+# Dépendances pour le test avec Voice Bridge
+# Ces dépendances sont nécessaires pour tester avec backend/app/telephony/
+
+# Core
+openai>=1.0.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
+typing_extensions>=4.5.0  # Utilisé par certains modules backend
+
+# Pour les imports backend
+fastapi>=0.110.0
+numpy>=1.24.0
+soxr>=0.3.0
+psutil>=5.9.0
+aiohttp>=3.8.0
+multidict>=6.0.0
+
+# Base de données (utilisée par les imports backend)
+sqlalchemy>=2.0.0
+psycopg[binary]>=3.1.0
+pgvector>=0.3.0
+
+# Background tasks (si utilisées par backend)
+celery[redis]>=5.3.0
+redis>=5.0.0
+
+# Autres dépendances backend
+uvicorn[standard]>=0.27.0
+cryptography>=41.0.0
+PyJWT>=2.8.0
+playwright>=1.40.0
+email-validator>=2.0.0
+
+# Audio resampling (utilisé par pjsua_audio_bridge.py)
+# soxr nécessite des dépendances système:
+# sudo apt-get install libsoxr-dev
+
+# Note: Dépendances supplémentaires
+# 1. pjsua2 doit être installé via pyenv ou système (voir INSTALL_PJSUA2.md)
+# 2. openai-chatkit doit être installé depuis le répertoire local:
+#    pip install ./chatkit-python/

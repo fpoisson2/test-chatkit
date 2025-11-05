@@ -1,0 +1,9 @@
+# Dépendances minimales pour les tests d'appels entrants
+
+# Note: pjsua2 doit être installé via le système
+# Ubuntu/Debian: sudo apt-get install python3-pjsua2
+# Ou depuis le code source PJSIP
+
+# Dépendances Python
+openai>=1.0.0
+python-dotenv>=1.0.0

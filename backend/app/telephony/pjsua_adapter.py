@@ -246,17 +246,33 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         # Cooldown counter: force recreate après 2 réutilisations
         self._reuse_count = 0  # Nombre de fois que ce port a été réutilisé
 
-        # Initialiser le port
+        # Initialiser le port parent
         super().__init__()
 
-        # Créer la configuration du port
-        port_info = pj.MediaFormatAudio()
-        port_info.clockRate = self.sample_rate
-        port_info.channelCount = self.channels
-        port_info.bitsPerSample = self.bits_per_sample
-        port_info.frameTimeUsec = 20000  # 20ms
+        # CRITICAL FIX: Utiliser la méthode init() de MediaFormatAudio
+        # qui initialise correctement type et detail_type
+        audio_fmt = pj.MediaFormatAudio()
+        audio_fmt.clockRate = self.sample_rate
+        audio_fmt.channelCount = self.channels
+        audio_fmt.bitsPerSample = self.bits_per_sample
+        audio_fmt.frameTimeUsec = 20000  # 20ms
+        audio_fmt.avgBps = self.sample_rate * self.channels * self.bits_per_sample
+        audio_fmt.maxBps = audio_fmt.avgBps
 
-        self.createPort("chatkit_audio", port_info)
+        # Appeler init() pour initialiser correctement les champs internes
+        # Cela définit fmt.type et fmt.detail_type correctement
+        # Signature: init(formatId, clockRate, channelCount, frameTimeUsec, bitsPerSample, avgBps, maxBps)
+        audio_fmt.init(
+            pj.PJMEDIA_FORMAT_L16,  # format ID (PCM 16-bit)
+            self.sample_rate,        # clockRate
+            self.channels,           # channelCount
+            20000,                   # frameTimeUsec (20ms)
+            self.bits_per_sample,    # bitsPerSample
+            self.sample_rate * self.channels * self.bits_per_sample,  # avgBps
+            self.sample_rate * self.channels * self.bits_per_sample   # maxBps
+        )
+
+        self.createPort("chatkit_audio", audio_fmt)
 
     def onFrameRequested(self, frame: pj.MediaFrame) -> None:
         """Appelé par PJSUA pour obtenir de l'audio à envoyer au téléphone.

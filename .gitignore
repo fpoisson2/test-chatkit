@@ -13,3 +13,4 @@
 *.pyc
 /.pip-cache
 logs/
+test_config.env

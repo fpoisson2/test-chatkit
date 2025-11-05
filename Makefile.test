@@ -1,0 +1,90 @@
+# Makefile pour tester les appels entrants
+# Usage: make -f Makefile.test [target]
+SHELL := /bin/bash
+
+PJSIP_PY := /home/fpoisson/.pyenv/versions/pjsip311/bin/python
+
+
+.PHONY: help install config test-minimal test-simple test-bridge clean
+
+# Couleurs
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+BLUE := \033[0;34m
+RED := \033[0;31m
+NC := \033[0m # No Color
+
+help: ## Afficher cette aide
+	@echo "$(BLUE)═══════════════════════════════════════════════════════$(NC)"
+	@echo "$(BLUE)  Test des Appels Entrants - Makefile$(NC)"
+	@echo "$(BLUE)═══════════════════════════════════════════════════════$(NC)"
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+
+install: ## Installer les dépendances
+	@echo "$(BLUE)📦 Installation des dépendances...$(NC)"
+	cd backend && pip install -r requirements.txt
+	@echo "$(GREEN)✅ Dépendances installées$(NC)"
+
+config: ## Créer le fichier de configuration
+	@if [ ! -f test_config.env ]; then \
+		echo "$(BLUE)📝 Création de test_config.env...$(NC)"; \
+		cp test_config.example.env test_config.env; \
+		echo "$(YELLOW)⚠️  Éditez test_config.env avec vos paramètres SIP$(NC)"; \
+		echo "   nano test_config.env"; \
+	else \
+		echo "$(YELLOW)⚠️  test_config.env existe déjà$(NC)"; \
+	fi
+
+test-minimal: ## Test minimal (appel simple)
+	@echo "$(BLUE)🚀 Lancement du test minimal...$(NC)"
+	@./run_test.sh minimal
+
+test-simple: ## Test simple avec PJSUA
+	@echo "$(BLUE)🚀 Lancement du test simple...$(NC)"
+	@./run_test.sh simple
+
+test-bridge: ## Test avec Voice Bridge (OpenAI)
+	@echo "$(BLUE)🚀 Lancement du test avec Voice Bridge...$(NC)"
+	@./run_test.sh bridge
+
+test-interactive: ## Test interactif (menu)
+	@./test_example.sh
+
+clean: ## Nettoyer les fichiers temporaires
+	@echo "$(BLUE)🧹 Nettoyage...$(NC)"
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name "__pycache__" -delete
+	@echo "$(GREEN)✅ Nettoyage terminé$(NC)"
+
+check: ## Vérifier la configuration
+	@echo "$(BLUE)🔍 Vérification...$(NC)"
+	@echo ""
+	@echo "$(YELLOW)1. Vérification de PJSUA2:$(NC)"
+	@$(PJSIP_PY) -c "import pjsua2; print('   ✅ PJSUA2 installé')" 2>/dev/null || echo "   $(RED)❌ PJSUA2 non installé$(NC)"
+	@echo ""
+	@echo "$(YELLOW)2. Vérification de la configuration:$(NC)"
+	@if [ -f test_config.env ]; then \
+		echo "   ✅ test_config.env existe"; \
+		source test_config.env && \
+		if [ -n "$$SIP_URI" ]; then echo "   ✅ SIP_URI défini"; else echo "   $(RED)❌ SIP_URI manquant$(NC)"; fi && \
+		if [ -n "$$SIP_USERNAME" ]; then echo "   ✅ SIP_USERNAME défini"; else echo "   $(RED)❌ SIP_USERNAME manquant$(NC)"; fi && \
+		if [ -n "$$SIP_PASSWORD" ]; then echo "   ✅ SIP_PASSWORD défini"; else echo "   $(RED)❌ SIP_PASSWORD manquant$(NC)"; fi; \
+	else \
+		echo "   $(RED)❌ test_config.env manquant$(NC)"; \
+		echo "   Exécutez: make -f Makefile.test config"; \
+	fi
+	@echo ""
+	@echo "$(YELLOW)3. Vérification d'OpenAI (pour bridge):$(NC)"
+	@if [ -f test_config.env ]; then \
+		source test_config.env && \
+		if [ -n "$$OPENAI_API_KEY" ]; then echo "   ✅ OPENAI_API_KEY défini"; else echo "   $(YELLOW)⚠️  OPENAI_API_KEY non défini (requis pour test-bridge)$(NC)"; fi; \
+	fi
+	@echo ""
+
+# Raccourcis
+m: test-minimal ## Raccourci pour test-minimal
+s: test-simple ## Raccourci pour test-simple
+b: test-bridge ## Raccourci pour test-bridge
+i: test-interactive ## Raccourci pour test-interactive
