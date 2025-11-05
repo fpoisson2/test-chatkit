@@ -3445,31 +3445,28 @@ async def run_workflow(
                 )
 
                 # Ajouter un message au thread pour notifier le début de l'appel
-                if thread is not None and agent_context is not None:
+                if thread is not None and on_stream_event is not None:
                     try:
-                        # Créer un message via le store API
-                        import uuid
-                        from datetime import datetime, timezone
-
-                        message_id = f"outbound_call_start_{call_session.call_id}"
-                        now = datetime.now(timezone.utc)
+                        # Créer un message et l'émettre via les événements (comme user_message/assistant_message)
+                        message_id = agent_context.generate_id("message")
 
                         call_start_msg = AssistantMessageItem(
                             id=message_id,
                             thread_id=thread.id,
-                            created_at=now,
+                            created_at=datetime.now(),
                             content=[AssistantMessageContent(text=f"📞 Appel en cours vers {to_number}...")],
                         )
 
-                        # Ajouter au thread via le store
-                        await agent_context.store.add_thread_item(thread.id, call_start_msg, agent_context.request_context)
+                        # Émettre les événements (approche standard des blocs message)
+                        await _emit_stream_event(ThreadItemAddedEvent(item=call_start_msg))
+                        await _emit_stream_event(ThreadItemDoneEvent(item=call_start_msg))
 
                         # Ajouter l'info de l'appel actif dans les métadonnées du thread
                         # pour que le frontend puisse le détecter
                         thread.metadata["active_outbound_call"] = {
                             "call_id": call_session.call_id,
                             "to_number": to_number,
-                            "started_at": now.isoformat(),
+                            "started_at": datetime.now().isoformat(),
                             "message_id": message_id,
                         }
                         await agent_context.store.save_thread(thread, agent_context.request_context)
@@ -3511,7 +3508,7 @@ async def run_workflow(
                         audio_recordings = call_result.get("audio_recordings", {})
 
                         # Ajouter un message avec les liens audio à la fin de l'appel
-                        if audio_recordings and thread is not None and agent_context is not None:
+                        if audio_recordings and thread is not None and on_stream_event is not None:
                             try:
                                 call_id = call_result["call_id"]
                                 audio_links = []
@@ -3523,22 +3520,19 @@ async def run_workflow(
                                     audio_links.append(f"🎧 [Audio mixé](/api/outbound/call/{call_id}/audio/mixed)")
 
                                 if audio_links:
-                                    # Créer un message via le store API
-                                    import uuid
-                                    from datetime import datetime, timezone
-
-                                    message_id = f"audio_recordings_{call_id}_{uuid.uuid4().hex[:8]}"
-                                    now = datetime.now(timezone.utc)
+                                    # Créer un message et l'émettre via les événements
+                                    message_id = agent_context.generate_id("message")
 
                                     audio_msg = AssistantMessageItem(
                                         id=message_id,
                                         thread_id=thread.id,
-                                        created_at=now,
+                                        created_at=datetime.now(),
                                         content=[AssistantMessageContent(text=f"**Enregistrements audio de l'appel :**\n\n" + "\n".join(audio_links))],
                                     )
 
-                                    # Ajouter au thread via le store
-                                    await agent_context.store.add_thread_item(thread.id, audio_msg, agent_context.request_context)
+                                    # Émettre les événements
+                                    await _emit_stream_event(ThreadItemAddedEvent(item=audio_msg))
+                                    await _emit_stream_event(ThreadItemDoneEvent(item=audio_msg))
 
                                     # Supprimer l'info de l'appel actif des métadonnées du thread
                                     if "active_outbound_call" in thread.metadata:
