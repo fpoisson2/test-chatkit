@@ -16,7 +16,7 @@ import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
-import { useOutboundCallDetector } from "./hooks/useOutboundCallDetector";
+import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -292,8 +292,8 @@ export function MyChat() {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
 
-  // Detect outbound calls
-  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallDetector(currentThread);
+  // Detect outbound calls via WebSocket events (like voice sessions)
+  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession();
 
   const handleOutboundCallEnd = useCallback(() => {
     // Refresh the thread to show final transcriptions and audio links

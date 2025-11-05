@@ -186,6 +186,17 @@ class OutboundCallManager:
         # Enregistrer la session active
         self.active_calls[call_id] = session
 
+        # Émettre un événement call_started
+        from .outbound_events_manager import get_outbound_events_manager
+        events_mgr = get_outbound_events_manager()
+        asyncio.create_task(events_mgr.emit_event({
+            "type": "call_started",
+            "call_id": call_id,
+            "to_number": to_number,
+            "from_number": from_number,
+        }))
+        logger.info("Emitted call_started event for call %s", call_id)
+
         # Lancer l'appel en background avec PJSUA ou aiosip
         if PJSUA_AVAILABLE and self._pjsua_adapter is not None:
             logger.info("Utilisation de PJSUA pour l'appel sortant")
@@ -420,6 +431,20 @@ class OutboundCallManager:
 
             # 4. Marquer la session comme terminée
             session.mark_complete()
+
+            # Émettre un événement call_ended
+            from .outbound_events_manager import get_outbound_events_manager
+            events_mgr = get_outbound_events_manager()
+            try:
+                asyncio.create_task(events_mgr.emit_event({
+                    "type": "call_ended",
+                    "call_id": session.call_id,
+                    "status": session.status,
+                }))
+                logger.info("Emitted call_ended event for call %s", session.call_id)
+            except Exception as e:
+                logger.warning("Failed to emit call_ended event: %s", e)
+
             self.active_calls.pop(session.call_id, None)
 
             logger.info("✅ Nettoyage session terminé (call_id=%s)", session.call_id)
@@ -1337,6 +1362,19 @@ class OutboundCallManager:
 
             # Marquer la session comme terminée
             session.mark_complete()
+
+            # Émettre un événement call_ended
+            from .outbound_events_manager import get_outbound_events_manager
+            events_mgr = get_outbound_events_manager()
+            try:
+                asyncio.create_task(events_mgr.emit_event({
+                    "type": "call_ended",
+                    "call_id": session.call_id,
+                    "status": session.status,
+                }))
+                logger.info("Emitted call_ended event for call %s", session.call_id)
+            except Exception as e:
+                logger.warning("Failed to emit call_ended event: %s", e)
 
             # Retirer de la liste des appels actifs
             if session.call_id in self.active_calls:

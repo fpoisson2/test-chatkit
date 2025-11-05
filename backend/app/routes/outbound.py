@@ -400,3 +400,32 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
             await websocket.close()
         except:
             pass
+
+
+@router.websocket("/events")
+async def outbound_call_events_websocket(websocket: WebSocket):
+    """WebSocket pour recevoir les événements d'appels sortants en temps réel."""
+    from ..telephony.outbound_events_manager import get_outbound_events_manager
+
+    events_mgr = get_outbound_events_manager()
+
+    await websocket.accept()
+    logger.info("WebSocket connection established for outbound call events")
+
+    queue = await events_mgr.register_listener()
+
+    try:
+        while True:
+            # Attendre un événement dans la queue
+            try:
+                event_json = await asyncio.wait_for(queue.get(), timeout=30.0)
+                await websocket.send_text(event_json)
+            except asyncio.TimeoutError:
+                # Envoyer un ping pour maintenir la connexion
+                await websocket.send_text(json.dumps({"type": "ping"}))
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected for outbound call events")
+    except Exception as e:
+        logger.error("Error in outbound call events WebSocket: %s", e, exc_info=True)
+    finally:
+        await events_mgr.unregister_listener(queue)
