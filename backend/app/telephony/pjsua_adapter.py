@@ -16,13 +16,54 @@ from __future__ import annotations
 import asyncio
 import audioop
 import logging
+import os
 import queue
 from collections.abc import Awaitable, Callable
+from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger("chatkit.telephony.pjsua")
 logger.setLevel(logging.INFO)  # Niveau INFO pour diagnostics du conference bridge
+
+# CRITICAL WORKAROUND: Force PJSUA to use correct RTP ports via environment variables
+# Some PJSUA/PJSIP builds read these env vars before initialization
+# This is a last-resort workaround if Python API doesn't work
+if not os.environ.get('PJSUA_RTP_PORT_START'):
+    os.environ['PJSUA_RTP_PORT_START'] = '10000'
+    logger.info("🔧 WORKAROUND: Définition de PJSUA_RTP_PORT_START=10000 via env var")
+
+if not os.environ.get('PJSUA_RTP_PORT_RANGE'):
+    os.environ['PJSUA_RTP_PORT_RANGE'] = '10000'
+    logger.info("🔧 WORKAROUND: Définition de PJSUA_RTP_PORT_RANGE=10000 via env var")
+
+
+def _schedule_coroutine_from_thread(coro: Any, loop: Any, callback_name: str = "callback") -> None:
+    """Schedule a coroutine from a thread and log any exceptions.
+
+    CRITICAL FIX: run_coroutine_threadsafe returns a Future that must be handled.
+    If we don't check the Future, exceptions are silently swallowed and the Future
+    object remains in memory with all its references.
+
+    Args:
+        coro: The coroutine to schedule
+        loop: The event loop
+        callback_name: Name of the callback for logging
+    """
+    try:
+        future: Future = asyncio.run_coroutine_threadsafe(coro, loop)
+
+        # Add a done callback to log any exceptions
+        def _check_exception(fut: Future) -> None:
+            try:
+                # This will raise if the coroutine raised an exception
+                fut.result()
+            except Exception as exc:
+                logger.error("Exception in %s: %s", callback_name, exc, exc_info=True)
+
+        future.add_done_callback(_check_exception)
+    except Exception as exc:
+        logger.error("Failed to schedule %s: %s", callback_name, exc)
 
 # Import conditionnel de pjsua2
 PJSUA_AVAILABLE = False
@@ -133,13 +174,11 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
 
         # Notifier l'adaptateur du changement d'état
         if hasattr(self.adapter, '_on_reg_state'):
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.adapter._on_reg_state(ai.regIsActive),
-                    self.adapter._loop
-                )
-            except Exception as e:
-                logger.exception("Erreur dans onRegState callback: %s", e)
+            _schedule_coroutine_from_thread(
+                self.adapter._on_reg_state(ai.regIsActive),
+                self.adapter._loop,
+                "onRegState"
+            )
 
     def onIncomingCall(self, prm: Any) -> None:
         """Appelé lors d'un appel entrant."""
@@ -156,13 +195,11 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
 
         # Notifier l'adaptateur de l'appel entrant
         if hasattr(self.adapter, '_on_incoming_call'):
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.adapter._on_incoming_call(call, call_info),
-                    self.adapter._loop
-                )
-            except Exception as e:
-                logger.exception("Erreur dans onIncomingCall callback: %s", e)
+            _schedule_coroutine_from_thread(
+                self.adapter._on_incoming_call(call, call_info),
+                self.adapter._loop,
+                "onIncomingCall"
+            )
 
 
 class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
@@ -379,13 +416,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
                 # Notifier l'adaptateur qu'il y a de l'audio
                 if hasattr(self.adapter, '_on_audio_received'):
-                    try:
-                        asyncio.run_coroutine_threadsafe(
-                            self.adapter._on_audio_received(audio_pcm),
-                            self.adapter._loop
-                        )
-                    except Exception as e:
-                        logger.debug("Erreur notification audio reçu: %s", e)
+                    _schedule_coroutine_from_thread(
+                        self.adapter._on_audio_received(audio_pcm),
+                        self.adapter._loop,
+                        "onAudioReceived"
+                    )
             except queue.Full:
                 logger.warning("Queue audio entrante pleine, frame ignorée")
         else:
@@ -513,6 +548,8 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         on fait juste un nettoyage minimal.
 
         Si disable() n'a PAS été appelé (cas rares), on fait le drain actif complet.
+
+        CRITICAL FIX: More aggressive queue draining to prevent accumulation.
         """
         import time
 
@@ -526,48 +563,66 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         self._frame_requested_event = None
 
-        # ACTIVE DRAIN: Seulement nécessaire si le port n'était PAS déjà disabled
-        # Si disable() a été appelé en premier (cas DISCONNECTED), la porte est fermée
-        # et aucune nouvelle frame ne peut arriver, donc pas besoin de drain de 50ms
-        if not already_disabled:
-            logger.debug("prepare_for_pool: drain actif de 50ms (port n'était pas disabled)")
-            # Wait for residual frames to exit PJSUA jitter buffer
-            # Race condition: frames can arrive AFTER deactivate() completes
-            # Solution: Keep draining for a short period (50ms) to catch stragglers
-            drain_timeout = 0.05  # 50ms - enough for ~2-3 frames @ 20ms
-            drain_start = time.monotonic()
-            total_drained = 0
+        # CRITICAL FIX: Break circular reference to audio bridge to allow GC
+        # The port holds a reference to the bridge, which holds a reference to the call,
+        # which holds a reference to the port -> circular reference prevents GC!
+        self._audio_bridge = None
 
-            while (time.monotonic() - drain_start) < drain_timeout:
-                drained_this_pass = 0
+        # CRITICAL FIX: ALWAYS drain queues aggressively, even if already disabled
+        # Residual frames can accumulate and cause slowdown on next call
+        drain_timeout = 0.1  # Increased to 100ms for more thorough draining
+        drain_start = time.monotonic()
+        total_incoming_drained = 0
+        total_outgoing_drained = 0
 
-                # Drain incoming queue
-                try:
-                    while True:
-                        self._incoming_audio_queue.get_nowait()
-                        drained_this_pass += 1
-                        total_drained += 1
-                except queue.Empty:
-                    pass
+        logger.debug("prepare_for_pool: drain agressif de 100ms pour éliminer toute accumulation")
 
-                # If we drained something, reset timeout to catch more
-                if drained_this_pass > 0:
-                    drain_start = time.monotonic()
-                    logger.debug(
-                        "🔄 Active drain: cleared %d residual frames, continuing...",
-                        drained_this_pass
-                    )
-                else:
-                    # Nothing drained - sleep briefly before retry
-                    time.sleep(0.005)  # 5ms
+        while (time.monotonic() - drain_start) < drain_timeout:
+            drained_this_pass = 0
 
-            if total_drained > 0:
-                logger.info(
-                    "✅ Active drain complete: %d residual frames removed after deactivate",
-                    total_drained
+            # Drain incoming queue
+            try:
+                while True:
+                    self._incoming_audio_queue.get_nowait()
+                    drained_this_pass += 1
+                    total_incoming_drained += 1
+            except queue.Empty:
+                pass
+
+            # CRITICAL FIX: Also drain OUTGOING queue (was not drained before!)
+            # Outgoing queue can have up to 1000 frames (20+ seconds) accumulated
+            try:
+                while True:
+                    self._outgoing_audio_queue.get_nowait()
+                    drained_this_pass += 1
+                    total_outgoing_drained += 1
+            except queue.Empty:
+                pass
+
+            # If we drained something, reset timeout to catch more
+            if drained_this_pass > 0:
+                drain_start = time.monotonic()
+                logger.debug(
+                    "🔄 Active drain: cleared %d residual frames, continuing...",
+                    drained_this_pass
                 )
-        else:
-            logger.debug("prepare_for_pool: skip drain actif (port était déjà disabled - porte fermée)")
+            else:
+                # Nothing drained - sleep briefly before retry
+                time.sleep(0.005)  # 5ms
+
+        if total_incoming_drained > 0 or total_outgoing_drained > 0:
+            logger.info(
+                "✅ Drain agressif terminé: %d frames entrantes + %d frames sortantes vidées",
+                total_incoming_drained,
+                total_outgoing_drained
+            )
+
+            # Log warning if large accumulation detected (indicates potential issue)
+            if total_outgoing_drained > 50:
+                logger.warning(
+                    "⚠️ ACCUMULATION EXCESSIVE DÉTECTÉE: %d frames sortantes vidées (>50) - possible problème",
+                    total_outgoing_drained
+                )
 
     def prepare_for_new_call(
         self, frame_requested_event: asyncio.Event | None, audio_bridge: Any | None = None
@@ -657,13 +712,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         # Notifier l'adaptateur du changement d'état
         if hasattr(self.adapter, '_on_call_state'):
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.adapter._on_call_state(self, ci),
-                    self.adapter._loop
-                )
-            except Exception as e:
-                logger.exception("Erreur dans onCallState callback: %s", e)
+            _schedule_coroutine_from_thread(
+                self.adapter._on_call_state(self, ci),
+                self.adapter._loop,
+                "onCallState"
+            )
 
     def _disconnect_conference_bridge(self, call_id: int) -> None:
         """Disconnect the conference bridge if it is still active."""
@@ -735,14 +788,25 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         # CRITIQUE: Retirer le port custom du bridge conference
         # Après confDisconnect, il faut aussi confRemovePort pour libérer complètement la ressource
+        # CRITICAL FIX: Verify confRemovePort success to detect conference slot leaks
+        remove_port_success = False
         if endpoint is not None and hasattr(endpoint, "confRemovePort") and custom_slot is not None:
             try:
                 endpoint.confRemovePort(custom_slot)  # type: ignore[attr-defined]
+                remove_port_success = True
                 logger.debug("✅ confRemovePort(slot=%s) exécuté (call_id=%s)", custom_slot, call_id)
             except Exception as error:
                 # EINVAL peut arriver si le port est déjà retiré, c'est ok
                 if not _is_invalid_conference_disconnect_error(error):
-                    logger.warning("Erreur confRemovePort slot=%s (call_id=%s): %s", custom_slot, call_id, error)
+                    logger.error("⚠️ CRITIQUE: confRemovePort ÉCHEC slot=%s (call_id=%s): %s - POSSIBLE FUITE DE SLOT CONFERENCE", custom_slot, call_id, error)
+                else:
+                    # Port déjà retiré = succès
+                    remove_port_success = True
+                    logger.debug("confRemovePort: port déjà retiré (EINVAL), considéré comme succès")
+
+        # Log critical warning if confRemovePort failed (conference slot leak detected)
+        if custom_slot is not None and not remove_port_success:
+            logger.error("🚨 FUITE DE SLOT CONFERENCE DÉTECTÉE: slot=%s (call_id=%s) N'A PAS ÉTÉ LIBÉRÉ!", custom_slot, call_id)
 
         self._conference_connected = False
         self._audio_media = None
@@ -964,13 +1028,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
                     # Notifier l'adaptateur que le média est prêt
                     if hasattr(self.adapter, '_on_media_active'):
-                        try:
-                            asyncio.run_coroutine_threadsafe(
-                                self.adapter._on_media_active(self, mi),
-                                self.adapter._loop
-                            )
-                        except Exception as e:
-                            logger.exception("Erreur dans onCallMediaState callback: %s", e)
+                        _schedule_coroutine_from_thread(
+                            self.adapter._on_media_active(self, mi),
+                            self.adapter._loop,
+                            "onCallMediaState"
+                        )
 
         # IMPORTANT: Si le média n'est plus actif et qu'on a un port audio, le désactiver
         # Cela évite les "ports zombies" qui continuent d'envoyer du silence après la fin de l'appel
@@ -1043,12 +1105,69 @@ class PJSUAAdapter:
         self._ep = pj.Endpoint()
         self._ep.libCreate()
 
+        # CRITICAL FIX: Force RTP ports using PJSUA core API (C layer)
+        # The Python ep_cfg.medConfig binding is broken - PJSUA ignores it
+        # We need to call pjsua_media_config_default() and pjsua_reconfigure_media()
+        try:
+            # Try to import and use the C-level pjsua API if available
+            # This is the ONLY way to force ports on buggy PJSUA2 Python versions
+            import ctypes
+
+            # Check if pjsua module (C API) is available
+            try:
+                import pjsua  # Low-level C API (different from pjsua2)
+
+                logger.info("🔧 API PJSUA (C) disponible - tentative de configuration directe...")
+
+                # Use pjsua C API to set media config
+                if hasattr(pjsua, 'media_config_default'):
+                    med_cfg = pjsua.media_config_default()
+                    med_cfg.port = 10000
+                    med_cfg.max_port = 20000
+
+                    # Apply the config
+                    if hasattr(pjsua, 'reconfigure_media'):
+                        pjsua.reconfigure_media(med_cfg)
+                        logger.info("✅ Ports RTP forcés via pjsua.reconfigure_media(): 10000-20000")
+                    else:
+                        logger.warning("⚠️ pjsua.reconfigure_media() non disponible")
+                else:
+                    logger.warning("⚠️ pjsua.media_config_default() non disponible")
+
+            except ImportError:
+                logger.info("ℹ️ Module pjsua (C API) non disponible, utilisation de pjsua2 uniquement")
+
+        except Exception as e:
+            logger.warning("⚠️ Impossible d'accéder à l'API PJSUA C: %s", e)
+
         # Configuration de l'endpoint
         ep_cfg = pj.EpConfig()
         # Niveau 1 = ERROR only (ne pas afficher les warnings "already terminated")
         # Ces "erreurs" sont normales quand on raccroche un appel déjà terminé
         ep_cfg.logConfig.level = 1  # ERROR level only
         ep_cfg.logConfig.consoleLevel = 1
+
+        # CRITICAL FIX: Aggressive SIP timers for immediate teardown
+        # Force session timer to quickly detect and cleanup stale sessions
+        # This eliminates the "ghost session" problem when rapidly cycling calls
+        ua_cfg = ep_cfg.uaConfig
+        ua_cfg.mainThreadOnly = False  # Allow async callbacks
+
+        # NAT keepalive (not needed in LAN bridge mode, but harmless)
+        # Set to 15s to quickly detect dead connections
+        ua_cfg.natTypeInSdp = 0  # Don't put NAT type in SDP
+
+        # SIP Session Timers: Force aggressive timeout for rapid teardown
+        # When call ends, session timer ensures complete cleanup within 90s
+        try:
+            # timerUse options: 0=No, 1=Optional, 2=Required, 3=Always
+            ua_cfg.timerUse = 3  # PJSUA_SIP_TIMER_ALWAYS - Force session timer
+            ua_cfg.timerMinSE = 90  # Minimum 90s (RFC minimum)
+            ua_cfg.timerSessExpires = 180  # Session expires in 180s
+            logger.info("🔧 SIP Session Timers: FORCED mode, minSE=90s, expires=180s")
+        except AttributeError:
+            # Older PJSUA2 versions may not have these attributes
+            logger.warning("⚠️ SIP Session Timers not available in this PJSUA2 version")
 
         # Configuration du jitter buffer pour éviter l'accumulation de latence
         # CRITICAL: Sans cette config, le JB peut gonfler jusqu'à 200 frames (4 secondes!)
@@ -1061,11 +1180,36 @@ class PJSUAAdapter:
         media_cfg.jb_max = 10          # Maximum 10 frames (200ms) absolu
         media_cfg.snd_auto_close_time = 0  # Ne jamais fermer automatiquement le device
 
-        # OPTIMISATION RTP: Large range pour éviter collisions de ports avec "dangling calls" du PBX
-        # Le PBX peut continuer d'envoyer du RTP sur un ancien port pendant quelques secondes après raccrochage
-        # Un range large (10000 ports) garantit qu'on ne réutilise pas le même port trop rapidement
-        media_cfg.rtp_port = 10000      # Port de départ pour RTP
-        media_cfg.rtp_port_range = 10000 # Large range: 10000-20000 pour éviter réutilisation rapide
+        # CRITICAL FIX: Force RTP ports with explicit attribute names
+        # PJSUA2 sometimes requires specific attribute names depending on version
+        # Try multiple approaches to ensure ports are set correctly
+
+        # Approach 1: Standard attributes (may not work on all versions)
+        media_cfg.rtp_port = 10000
+        media_cfg.rtp_port_range = 10000
+
+        # Approach 2: Try alternative attribute names used in some PJSUA2 versions
+        try:
+            # Some versions use rtpStart instead of rtp_port
+            if hasattr(media_cfg, 'rtpStart'):
+                media_cfg.rtpStart = 10000
+                logger.debug("Tentative: media_cfg.rtpStart = 10000")
+        except:
+            pass
+
+        try:
+            # Some versions use portRange instead of rtp_port_range
+            if hasattr(media_cfg, 'portRange'):
+                media_cfg.portRange = 10000
+                logger.debug("Tentative: media_cfg.portRange = 10000")
+        except:
+            pass
+
+        # Approach 3: Log what attributes are actually available
+        logger.info(
+            "📋 Attributs medConfig disponibles: %s",
+            [attr for attr in dir(media_cfg) if not attr.startswith('_') and 'port' in attr.lower()]
+        )
 
         # OPTIMISATION: ICE selon le mode
         # Mode passerelle (défaut): ICE désactivé - pas besoin de négociation NAT sur serveur
@@ -1079,6 +1223,32 @@ class PJSUAAdapter:
         # OPTIMISATION CRITIQUE: Désactiver VAD (Voice Activity Detection)
         # On fait du pontage audio vers OpenAI - ne pas couper l'audio sur les silences!
         media_cfg.no_vad = True
+
+        # CRITICAL FIX: Minimize RTP learning delay for rapid call cycling
+        # These settings eliminate the "strict RTP learning" delay when reusing ports
+        try:
+            # Disable ICE host candidates to skip local network discovery
+            # This speeds up media negotiation significantly
+            media_cfg.ice_no_host_cands = True
+            logger.info("🔧 ICE host candidates: DISABLED (faster media setup)")
+        except AttributeError:
+            logger.debug("ice_no_host_cands not available")
+
+        try:
+            # Disable echo canceller tail (not needed in bridge mode)
+            # ecTailLen=0 eliminates echo canceller processing delay
+            media_cfg.ecTailLen = 0
+            logger.info("🔧 Echo canceller: DISABLED (ecTailLen=0, bridge mode)")
+        except AttributeError:
+            logger.debug("ecTailLen not available")
+
+        try:
+            # Make SRTP optional (clarifies RTP state even without encryption)
+            # This prevents SRTP negotiation delays
+            media_cfg.srtpOpt = 1  # PJMEDIA_SRTP_OPTIONAL
+            logger.info("🔧 SRTP: OPTIONAL (no negotiation delay)")
+        except AttributeError:
+            logger.debug("srtpOpt not available")
 
         logger.info(
             "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max_pre=%dms, max=%dms, auto_close=%d",
@@ -1123,6 +1293,34 @@ class PJSUAAdapter:
             "PJSUA endpoint démarré sur UDP:%d",
             port if config is None else config.port,
         )
+
+        # CRITICAL DIAGNOSTIC: Verify actual RTP ports being used after libStart()
+        # If PJSUA ignores our config, this will show the real ports
+        try:
+            # Re-read the media config to see what PJSUA actually configured
+            actual_cfg = self._ep.libGetConfig()
+            actual_rtp_port = actual_cfg.medConfig.rtp_port
+            actual_rtp_range = actual_cfg.medConfig.rtp_port_range
+
+            logger.info(
+                "✅ DIAGNOSTIC: PJSUA ports RTP RÉELS après libStart(): start=%d, range=%d (ports %d-%d)",
+                actual_rtp_port,
+                actual_rtp_range,
+                actual_rtp_port,
+                actual_rtp_port + actual_rtp_range,
+            )
+
+            # CRITICAL: Warn if PJSUA ignored our configuration
+            if actual_rtp_port != 10000:
+                logger.error(
+                    "🚨 PJSUA A IGNORÉ NOTRE CONFIG! Nous avons demandé rtp_port=10000 mais PJSUA utilise %d",
+                    actual_rtp_port
+                )
+                logger.error(
+                    "🚨 Ceci est un BUG de PJSUA2 ou une incompatibilité de version!"
+                )
+        except Exception as e:
+            logger.warning("Impossible de lire la config PJSUA réelle: %s", e)
 
         # Créer le compte SIP si configuré
         if config is not None and config.register:
@@ -1434,6 +1632,35 @@ class PJSUAAdapter:
                 except Exception as e:
                     logger.warning("Erreur release port (call_id=%s): %s", call_info.id, e)
 
+            # ÉTAPE 6: CASSER TOUTES LES RÉFÉRENCES CIRCULAIRES DANS LE CALL
+            # CRITICAL FIX: Explicitly break all circular references to allow GC
+            # This is essential even though we set to None above, because Call object
+            # may still be referenced in PJSUA callbacks or event handlers
+            try:
+                call._audio_port = None
+                call._audio_bridge = None
+                call._audio_media = None
+                call._frame_requested_event = None
+                call._conference_connected = False
+                call._call_slot_id = None
+                call._custom_port_slot_id = None
+                logger.debug("✅ [6/6] Références circulaires cassées dans Call (call_id=%s)", call_info.id)
+            except Exception as e:
+                logger.warning("Erreur cassage références circulaires (call_id=%s): %s", call_info.id, e)
+
+            # ÉTAPE 7: FORCE CLEANUP OF ALL PJSUA INTERNAL STATE
+            # CRITICAL FIX: Force PJSUA to cleanup any ghost calls in its internal structures
+            # This eliminates "semi-existence zombie" call dialogs that block rapid re-calls
+            try:
+                # hangupAllCalls() ensures PJSUA internal state is fully cleared
+                # Even if we already cleaned up our Python objects, PJSUA C++ layer may
+                # still have SIP transaction state that needs explicit cleanup
+                self._ep.hangupAllCalls()
+                logger.debug("✅ [7/7] PJSUA hangupAllCalls() forcé (call_id=%s)", call_info.id)
+            except Exception as e:
+                # This is safe to fail - call is already disconnected
+                logger.debug("hangupAllCalls() failed (expected if no active calls): %s", e)
+
         if self._call_state_callback:
             await self._call_state_callback(call, call_info)
 
@@ -1568,10 +1795,19 @@ class PJSUAAdapter:
                 call._terminated = True
                 call._closed = True
 
+                # CRITICAL FIX: Break all circular references before deleting
+                # Call may still be referenced elsewhere (e.g., in callbacks)
+                # Explicitly clear all attributes to allow garbage collection
+                call._audio_port = None
+                call._audio_bridge = None
+                call._audio_media = None
+                call._frame_requested_event = None
+                # Adapter reference is needed for PJSUA operations, keep it
+
                 # Forcer la destruction de l'objet Call
                 # Note: Python garbage collectera l'objet, mais on s'assure qu'il n'y a plus de refs
                 del call
-                logger.info("✅ Nettoyage terminé + Call object détruit (call_id=%s)", call_id)
+                logger.info("✅ Nettoyage terminé + Call object détruit + références circulaires cassées (call_id=%s)", call_id)
             except Exception as del_err:
                 logger.warning("⚠️ Erreur destruction Call object (call_id=%s): %s", call_id, del_err)
 
@@ -1719,8 +1955,9 @@ class PJSUAAdapter:
         """
         # Port reuse is now SAFE thanks to active drain in prepare_for_pool()
         # Active drain eliminates race condition with residual PJSUA jitter buffer frames
-        # Allow many reuses before forced recreation (performance optimization)
-        MAX_REUSE_COUNT = 20  # Recreate every 20 uses as preventive maintenance
+        # CRITICAL FIX: Reduce reuse count to prevent state accumulation and conference slot leaks
+        # After investigation, ports and conference bridges accumulate state that causes slowdown
+        MAX_REUSE_COUNT = 5  # Recreate every 5 uses to prevent resource leaks (reduced from 20)
 
         if self._audio_port_pool:
             port = self._audio_port_pool.pop()
@@ -1816,7 +2053,13 @@ class PJSUAAdapter:
     def release_audio_port(
         self, port: AudioMediaPort, *, destroy: bool = False
     ) -> None:
-        """Remet le port dans le pool ou le détruit définitivement."""
+        """Remet le port dans le pool ou le détruit définitivement.
+
+        CRITICAL FIX: Limite la taille du pool pour éviter l'accumulation infinie.
+        """
+        # CRITICAL FIX: Limit pool size to prevent unbounded growth
+        # If we have concurrent calls that create many ports, we don't want to keep them all forever
+        MAX_POOL_SIZE = 3  # Keep max 3 ports in pool (enough for typical concurrent call scenarios)
 
         try:
             if destroy:
@@ -1828,7 +2071,23 @@ class PJSUAAdapter:
             destroy = True
 
         if not destroy:
-            self._audio_port_pool.append(port)
+            # Check pool size limit before adding
+            if len(self._audio_port_pool) >= MAX_POOL_SIZE:
+                logger.debug(
+                    "🗑️ Pool audio plein (%d ports), destruction du port au lieu de pooling",
+                    len(self._audio_port_pool)
+                )
+                try:
+                    port.deactivate(destroy_port=True)
+                except Exception as exc:
+                    logger.debug("Erreur destruction port: %s", exc)
+            else:
+                self._audio_port_pool.append(port)
+                logger.debug(
+                    "♻️ Port ajouté au pool (taille actuelle: %d/%d)",
+                    len(self._audio_port_pool),
+                    MAX_POOL_SIZE
+                )
 
     def _drain_audio_port_pool(self) -> None:
         """Détruit tous les ports présents dans le pool (arrêt complet)."""

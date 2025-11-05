@@ -214,7 +214,7 @@ class CallDiagnosticsManager:
             report = diag.generate_report()
             logger.warning(report)  # WARNING pour qu'il soit visible
 
-            # Stocke pour comparaison
+            # Stocke pour comparaison (LIMITÉ aux 50 derniers appels)
             self._comparison_data.append({
                 'call_number': diag.call_number,
                 'call_id': call_id,
@@ -223,6 +223,16 @@ class CallDiagnosticsManager:
                 'none_packets': diag.none_packets_before_audio,
                 'lag_sources': diag.lag_sources,
             })
+
+            # CRITICAL FIX: Auto-cleanup to prevent unlimited accumulation
+            # Keep only last 50 calls in comparison data
+            MAX_COMPARISON_DATA = 50
+            if len(self._comparison_data) > MAX_COMPARISON_DATA:
+                self._comparison_data = self._comparison_data[-MAX_COMPARISON_DATA:]
+                logger.debug(f"🧹 Comparison data trimmed to {MAX_COMPARISON_DATA} most recent calls")
+
+            # Auto-cleanup _calls dict (keep last 20)
+            self.cleanup_old_calls(keep_last_n=20)
 
     def generate_comparison_report(self) -> str:
         """Génère un rapport comparatif entre tous les appels"""
