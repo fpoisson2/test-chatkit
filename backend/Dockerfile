@@ -44,9 +44,8 @@ RUN set -eux; \
         --disable-libyuv; \
     make dep && make -j"$(nproc)" && make install; \
     ldconfig; \
-    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"; \
     cd pjsip-apps/src/swig/python; \
-    python3 -m pip install --no-cache-dir .; \
+    make && make install; \
     ldconfig; \
     python3 -c "import pjsua2; ep = pjsua2.Endpoint(); ep.libCreate(); v = ep.libVersion(); print('PJSUA2 version:', v.full); ep.libDestroy()"; \
     cd /tmp; rm -rf /tmp/pjproject-${PJSIP_VERSION} /tmp/${PJSIP_VERSION}.tar.gz
