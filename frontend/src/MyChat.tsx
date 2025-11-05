@@ -6,6 +6,7 @@ import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
+import { OutboundCallAudioPlayer } from "./components/my-chat/OutboundCallAudioPlayer";
 import {
   useAppearanceSettings,
   type AppearanceWorkflowReference,
@@ -15,6 +16,7 @@ import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
+import { useOutboundCallDetector } from "./hooks/useOutboundCallDetector";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -279,6 +281,7 @@ export function MyChat() {
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+  const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
@@ -288,6 +291,21 @@ export function MyChat() {
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
+
+  // Sync current thread from lastThreadSnapshotRef
+  useEffect(() => {
+    if (lastThreadSnapshotRef.current !== currentThread) {
+      setCurrentThread(lastThreadSnapshotRef.current);
+    }
+  }, [lastThreadSnapshotRef.current, currentThread]);
+
+  // Detect outbound calls
+  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallDetector(currentThread);
+
+  const handleOutboundCallEnd = useCallback(() => {
+    // Refresh the thread to show final transcriptions and audio links
+    requestRefreshRef.current?.("[OutboundCall] Appel terminé");
+  }, []);
 
   const handleHostedFlowDisabled = useCallback(() => {
     resetChatStateRef.current?.({
@@ -1097,6 +1115,12 @@ export function MyChat() {
             Arrêter
           </button>
         </div>
+      )}
+      {outboundCallIsActive && outboundCallId && (
+        <OutboundCallAudioPlayer
+          callId={outboundCallId}
+          onCallEnd={handleOutboundCallEnd}
+        />
       )}
       <style>{`
         @keyframes pulse {

@@ -3444,6 +3444,34 @@ async def run_workflow(
                     metadata=metadata,
                 )
 
+                # Ajouter un message au thread pour notifier le début de l'appel
+                if thread is not None:
+                    try:
+                        from ..chatkit_types import AssistantMessage
+
+                        call_start_msg = AssistantMessage(
+                            content=[f"📞 Appel en cours vers {to_number}..."],
+                            annotations=[{
+                                "type": "outbound_call_start",
+                                "call_id": call_session.call_id,
+                                "to_number": to_number,
+                            }],
+                        )
+                        thread.messages.append(call_start_msg)
+
+                        # Sauvegarder le thread
+                        if context and server and hasattr(server, "store"):
+                            await server.store.save_thread(thread, context)
+                            logger.info(
+                                "Message de début d'appel ajouté au thread pour call_id=%s",
+                                call_session.call_id,
+                            )
+                    except Exception as e:
+                        logger.error(
+                            "Erreur lors de l'ajout du message de début d'appel : %s",
+                            e,
+                        )
+
                 await record_step(
                     current_node.slug,
                     title,
