@@ -2593,8 +2593,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             # COMME LE TEST: Définir et lancer run_voice_bridge comme fonction interne
             async def run_voice_bridge():
-                """Voice bridge avec serveurs MCP chargés pour cet appel."""
-                mcp_servers = []
+                """COMME LE TEST: Voice bridge simple et performant."""
                 try:
                     api_key = os.getenv("OPENAI_API_KEY")
 
@@ -2620,35 +2619,17 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
 
-                    # Charger les serveurs MCP juste avant de créer l'agent
-                    from .realtime_runner import (
-                        _normalize_realtime_tools_payload,
-                        _connect_mcp_servers,
-                        _cleanup_mcp_servers,
-                    )
+                    # COMME LE TEST: Agent simple
                     from agents.realtime.runner import RealtimeRunner
                     from agents.realtime.agent import RealtimeAgent
 
-                    # Normaliser les tools pour extraire les configs MCP
-                    mcp_server_configs = []
-                    normalized_tools = _normalize_realtime_tools_payload(
-                        voice_tools, mcp_server_configs=mcp_server_configs
-                    )
-
-                    # Connecter les serveurs MCP pour cet appel
-                    if mcp_server_configs:
-                        logger.info("Connexion %d serveurs MCP (call_id=%s)", len(mcp_server_configs), chatkit_call_id)
-                        mcp_servers = await _connect_mcp_servers(mcp_server_configs)
-                        logger.info("✅ Serveurs MCP connectés")
-
-                    # COMME LE TEST: Agent avec seulement name et instructions
                     agent = RealtimeAgent(
                         name=f"call-{call_id}",
                         instructions=voice_instructions,
                     )
                     runner = RealtimeRunner(agent)
 
-                    # Exécuter avec model, voice, tools, et mcp_servers
+                    # Exécuter COMME LE TEST
                     stats = await voice_bridge.run(
                         runner=runner,
                         client_secret=api_key,
@@ -2658,8 +2639,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         rtp_stream=rtp_stream,
                         send_to_peer=send_to_peer,
                         audio_bridge=audio_bridge,
-                        tools=normalized_tools,
-                        mcp_servers=mcp_servers,  # Serveurs MCP passés au voice bridge
+                        tools=voice_tools,
                     )
 
                     logger.info("✅ Terminé: %s", stats)
@@ -2667,7 +2647,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 except Exception as e:
                     logger.exception("❌ Erreur dans VoiceBridge (call_id=%s): %s", chatkit_call_id, e)
                 finally:
-                    # Nettoyage
+                    # Nettoyage COMME LE TEST
                     try:
                         audio_bridge.stop()
                     except Exception as e:
@@ -2678,14 +2658,6 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     except Exception as e:
                         if "already terminated" not in str(e).lower():
                             logger.warning("Erreur: %s", e)
-
-                    # CRITIQUE: Nettoyer les serveurs MCP de cet appel
-                    if mcp_servers:
-                        try:
-                            await _cleanup_mcp_servers(mcp_servers)
-                            logger.info("✅ Serveurs MCP nettoyés (call_id=%s)", chatkit_call_id)
-                        except Exception as e:
-                            logger.warning("Erreur nettoyage MCP: %s", e)
 
             # COMME LE TEST: Démarrer le voice bridge SANS ATTENDRE
             logger.info("🎵 Démarrage du voice bridge...")
