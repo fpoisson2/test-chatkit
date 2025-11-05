@@ -8,10 +8,14 @@ import base64
 import contextlib
 import json
 import logging
+import os
 import struct
 import time
+import uuid
+import wave
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import quote
 
@@ -132,6 +136,9 @@ class VoiceBridgeStats:
     outbound_audio_bytes: int
     transcripts: list[dict[str, str]] = field(default_factory=list)
     error: Exception | None = None
+    inbound_audio_file: str | None = None
+    outbound_audio_file: str | None = None
+    mixed_audio_file: str | None = None
 
     @property
     def transcript_count(self) -> int:
@@ -183,9 +190,153 @@ class VoiceBridgeHooks:
     close_dialog: Callable[[], Awaitable[None]] | None = None
     clear_voice_state: Callable[[], Awaitable[None]] | None = None
     resume_workflow: Callable[[list[dict[str, str]]], Awaitable[None]] | None = None
+    on_transcript: Callable[[dict[str, str]], Awaitable[None]] | None = None  # Appelé pour chaque transcription en temps réel
+    on_audio_inbound: Callable[[bytes], Awaitable[None]] | None = None  # Appelé pour chaque chunk audio entrant
+    on_audio_outbound: Callable[[bytes], Awaitable[None]] | None = None  # Appelé pour chaque chunk audio sortant
 
 
 VoiceSessionChecker = Callable[[], bool]
+
+
+class AudioRecorder:
+    """Helper pour enregistrer l'audio entrant et sortant dans des fichiers WAV."""
+
+    def __init__(self, call_id: str, recordings_dir: str = "/tmp/chatkit_recordings"):
+        """Initialise l'enregistreur audio.
+
+        Args:
+            call_id: Identifiant unique de l'appel
+            recordings_dir: Répertoire pour stocker les enregistrements
+        """
+        self.call_id = call_id
+        self.recordings_dir = Path(recordings_dir)
+        self.recordings_dir.mkdir(parents=True, exist_ok=True)
+
+        # Créer des noms de fichiers uniques
+        timestamp = str(int(time.time()))
+        self.inbound_path = self.recordings_dir / f"{call_id}_{timestamp}_inbound.wav"
+        self.outbound_path = self.recordings_dir / f"{call_id}_{timestamp}_outbound.wav"
+        self.mixed_path = self.recordings_dir / f"{call_id}_{timestamp}_mixed.wav"
+
+        # Ouvrir les fichiers WAV (PCM 24kHz mono)
+        self.inbound_wav: wave.Wave_write | None = None
+        self.outbound_wav: wave.Wave_write | None = None
+        self.inbound_frames: list[bytes] = []
+        self.outbound_frames: list[bytes] = []
+
+        try:
+            self.inbound_wav = wave.open(str(self.inbound_path), 'wb')
+            self.inbound_wav.setnchannels(1)  # Mono
+            self.inbound_wav.setsampwidth(2)  # 16-bit
+            self.inbound_wav.setframerate(24000)  # 24kHz
+
+            self.outbound_wav = wave.open(str(self.outbound_path), 'wb')
+            self.outbound_wav.setnchannels(1)  # Mono
+            self.outbound_wav.setsampwidth(2)  # 16-bit
+            self.outbound_wav.setframerate(24000)  # 24kHz
+
+            logger.info("Audio recorder initialized: inbound=%s, outbound=%s", self.inbound_path, self.outbound_path)
+        except Exception as e:
+            logger.error("Failed to initialize audio recorder: %s", e)
+            self.close()
+            raise
+
+    def write_inbound(self, pcm_data: bytes) -> None:
+        """Enregistre l'audio entrant (user)."""
+        if self.inbound_wav:
+            try:
+                self.inbound_wav.writeframes(pcm_data)
+                self.inbound_frames.append(pcm_data)
+            except Exception as e:
+                logger.error("Failed to write inbound audio: %s", e)
+
+    def write_outbound(self, pcm_data: bytes) -> None:
+        """Enregistre l'audio sortant (assistant)."""
+        if self.outbound_wav:
+            try:
+                self.outbound_wav.writeframes(pcm_data)
+                self.outbound_frames.append(pcm_data)
+            except Exception as e:
+                logger.error("Failed to write outbound audio: %s", e)
+
+    def close(self) -> tuple[str | None, str | None, str | None]:
+        """Ferme les fichiers et crée un fichier mixé.
+
+        Returns:
+            Tuple (inbound_path, outbound_path, mixed_path) ou (None, None, None) en cas d'erreur
+        """
+        inbound_path = None
+        outbound_path = None
+        mixed_path = None
+
+        try:
+            # Fermer les fichiers WAV
+            if self.inbound_wav:
+                self.inbound_wav.close()
+                self.inbound_wav = None
+                if self.inbound_path.exists() and self.inbound_path.stat().st_size > 44:  # Plus que header WAV
+                    inbound_path = str(self.inbound_path)
+                    logger.info("Inbound audio saved: %s", inbound_path)
+                else:
+                    # Supprimer fichier vide
+                    self.inbound_path.unlink(missing_ok=True)
+
+            if self.outbound_wav:
+                self.outbound_wav.close()
+                self.outbound_wav = None
+                if self.outbound_path.exists() and self.outbound_path.stat().st_size > 44:  # Plus que header WAV
+                    outbound_path = str(self.outbound_path)
+                    logger.info("Outbound audio saved: %s", outbound_path)
+                else:
+                    # Supprimer fichier vide
+                    self.outbound_path.unlink(missing_ok=True)
+
+            # Créer fichier mixé (stéréo : inbound=gauche, outbound=droite)
+            if self.inbound_frames or self.outbound_frames:
+                try:
+                    mixed_wav = wave.open(str(self.mixed_path), 'wb')
+                    mixed_wav.setnchannels(2)  # Stéréo
+                    mixed_wav.setsampwidth(2)  # 16-bit
+                    mixed_wav.setframerate(24000)  # 24kHz
+
+                    # Mixer les deux canaux
+                    max_len = max(len(self.inbound_frames), len(self.outbound_frames))
+                    for i in range(max_len):
+                        inbound_chunk = self.inbound_frames[i] if i < len(self.inbound_frames) else b'\x00' * 480  # 20ms silence
+                        outbound_chunk = self.outbound_frames[i] if i < len(self.outbound_frames) else b'\x00' * 480
+
+                        # Assurer que les deux chunks ont la même longueur
+                        min_len = min(len(inbound_chunk), len(outbound_chunk))
+                        max_len_chunk = max(len(inbound_chunk), len(outbound_chunk))
+
+                        # Pad le plus court avec du silence
+                        if len(inbound_chunk) < max_len_chunk:
+                            inbound_chunk = inbound_chunk + b'\x00' * (max_len_chunk - len(inbound_chunk))
+                        if len(outbound_chunk) < max_len_chunk:
+                            outbound_chunk = outbound_chunk + b'\x00' * (max_len_chunk - len(outbound_chunk))
+
+                        # Interleaver les samples (L, R, L, R, ...)
+                        num_samples = len(inbound_chunk) // 2
+                        stereo_chunk = bytearray()
+                        for j in range(num_samples):
+                            stereo_chunk.extend(inbound_chunk[j*2:j*2+2])  # Left (inbound)
+                            stereo_chunk.extend(outbound_chunk[j*2:j*2+2])  # Right (outbound)
+
+                        mixed_wav.writeframes(bytes(stereo_chunk))
+
+                    mixed_wav.close()
+                    if self.mixed_path.exists() and self.mixed_path.stat().st_size > 44:
+                        mixed_path = str(self.mixed_path)
+                        logger.info("Mixed audio saved: %s", mixed_path)
+                    else:
+                        self.mixed_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.error("Failed to create mixed audio file: %s", e)
+                    self.mixed_path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.error("Failed to close audio recorder: %s", e)
+
+        return (inbound_path, outbound_path, mixed_path)
 
 
 async def default_websocket_connector(
@@ -346,6 +497,16 @@ class TelephonyVoiceBridge:
         error: Exception | None = None
         session: Any | None = None
         stop_event = asyncio.Event()
+
+        # Initialize audio recorder
+        call_id = str(uuid.uuid4())
+        audio_recorder: AudioRecorder | None = None
+        try:
+            audio_recorder = AudioRecorder(call_id=call_id)
+            logger.info("Audio recorder initialized for call %s", call_id)
+        except Exception as e:
+            logger.warning("Failed to initialize audio recorder: %s. Continuing without recording.", e)
+            audio_recorder = None
 
         # Track if we've sent response.create immediately (for speak_first optimization)
         response_create_sent_immediately = False
@@ -509,6 +670,17 @@ class TelephonyVoiceBridge:
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
+
+                    # Record inbound audio
+                    if audio_recorder:
+                        audio_recorder.write_inbound(pcm)
+
+                    # Stream inbound audio en temps réel
+                    if self._hooks.on_audio_inbound:
+                        try:
+                            await self._hooks.on_audio_inbound(pcm)
+                        except Exception as e:
+                            logger.error("Erreur lors du streaming audio entrant: %s", e)
 
                     # Note: turn_detection est déjà activé dans la configuration initiale de session
                     # (voir _build_session_update), donc on n'a pas besoin de l'activer ici.
@@ -852,6 +1024,18 @@ class TelephonyVoiceBridge:
                                 logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
                                 # Send audio and wait until it's actually sent via RTP
                                 await send_to_peer(pcm_data)
+
+                                # Record outbound audio
+                                if audio_recorder:
+                                    audio_recorder.write_outbound(pcm_data)
+
+                                # Stream outbound audio en temps réel
+                                if self._hooks.on_audio_outbound:
+                                    try:
+                                        await self._hooks.on_audio_outbound(pcm_data)
+                                    except Exception as e:
+                                        logger.error("Erreur lors du streaming audio sortant: %s", e)
+
                                 # Now update the playback tracker so OpenAI knows when audio was played
                                 # This is critical for proper interruption handling!
                                 playback_tracker.on_play_bytes(
@@ -931,9 +1115,17 @@ class TelephonyVoiceBridge:
 
                             if text_parts:
                                 combined_text = "\n".join(text_parts)
-                                transcripts.append({"role": role, "text": combined_text})
+                                transcript_entry = {"role": role, "text": combined_text}
+                                transcripts.append(transcript_entry)
                                 # Log transcription to help debug tool usage
                                 logger.info("💬 %s: %s", role.upper(), combined_text[:200])
+
+                                # Appeler le hook de transcription en temps réel si disponible
+                                if self._hooks.on_transcript:
+                                    try:
+                                        await self._hooks.on_transcript(transcript_entry)
+                                    except Exception as e:
+                                        logger.error("Erreur lors de l'envoi de la transcription en temps réel: %s", e)
 
                                 # Track if assistant message is short (likely just a preamble)
                                 if role == "assistant":
@@ -1156,6 +1348,18 @@ class TelephonyVoiceBridge:
             error = exc
             logger.error("Session voix Realtime interrompue : %s", exc)
         finally:
+            # Close audio recorder and get file paths
+            inbound_audio_file = None
+            outbound_audio_file = None
+            mixed_audio_file = None
+            if audio_recorder:
+                try:
+                    inbound_audio_file, outbound_audio_file, mixed_audio_file = audio_recorder.close()
+                    logger.info("Audio recordings closed: inbound=%s, outbound=%s, mixed=%s",
+                               inbound_audio_file, outbound_audio_file, mixed_audio_file)
+                except Exception as e:
+                    logger.error("Failed to close audio recorder: %s", e)
+
             # Le nettoyage de la session est géré par async with
             # Il nous reste juste à enregistrer les stats
             duration = time.monotonic() - start_time
@@ -1165,6 +1369,9 @@ class TelephonyVoiceBridge:
                 outbound_audio_bytes=outbound_audio_bytes,
                 transcripts=list(transcripts),
                 error=error,
+                inbound_audio_file=inbound_audio_file,
+                outbound_audio_file=outbound_audio_file,
+                mixed_audio_file=mixed_audio_file,
             )
             await self._metrics.record(stats)
             await self._teardown(transcripts, error)

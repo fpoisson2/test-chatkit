@@ -3444,6 +3444,44 @@ async def run_workflow(
                     metadata=metadata,
                 )
 
+                # Ajouter un message au thread pour notifier le début de l'appel
+                if thread is not None and on_stream_event is not None:
+                    try:
+                        # Créer un message et l'émettre via les événements (comme user_message/assistant_message)
+                        message_id = agent_context.generate_id("message")
+
+                        call_start_msg = AssistantMessageItem(
+                            id=message_id,
+                            thread_id=thread.id,
+                            created_at=datetime.now(),
+                            content=[AssistantMessageContent(text=f"📞 Appel en cours vers {to_number}...")],
+                        )
+
+                        # Émettre les événements (approche standard des blocs message)
+                        await _emit_stream_event(ThreadItemAddedEvent(item=call_start_msg))
+                        await _emit_stream_event(ThreadItemDoneEvent(item=call_start_msg))
+
+                        # Ajouter l'info de l'appel actif dans les métadonnées du thread
+                        # pour que le frontend puisse le détecter
+                        thread.metadata["active_outbound_call"] = {
+                            "call_id": call_session.call_id,
+                            "to_number": to_number,
+                            "started_at": datetime.now().isoformat(),
+                            "message_id": message_id,
+                        }
+                        await agent_context.store.save_thread(thread, agent_context.request_context)
+
+                        logger.info(
+                            "Message de début d'appel ajouté au thread %s pour call_id=%s",
+                            thread.id,
+                            call_session.call_id,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "Erreur lors de l'ajout du message de début d'appel : %s",
+                            e,
+                        )
+
                 await record_step(
                     current_node.slug,
                     title,
@@ -3464,6 +3502,54 @@ async def run_workflow(
                     )
 
                     if call_result:
+                        # Les transcriptions sont déjà ajoutées en temps réel via on_transcript_hook
+                        # On récupère juste les métadonnées pour le contexte
+                        transcripts = call_result.get("transcripts", [])
+                        audio_recordings = call_result.get("audio_recordings", {})
+
+                        # Ajouter un message avec les liens audio à la fin de l'appel
+                        if audio_recordings and thread is not None and on_stream_event is not None:
+                            try:
+                                call_id = call_result["call_id"]
+                                audio_links = []
+                                if audio_recordings.get("inbound"):
+                                    audio_links.append(f"🎤 [Audio entrant](/api/outbound/call/{call_id}/audio/inbound)")
+                                if audio_recordings.get("outbound"):
+                                    audio_links.append(f"🔊 [Audio sortant](/api/outbound/call/{call_id}/audio/outbound)")
+                                if audio_recordings.get("mixed"):
+                                    audio_links.append(f"🎧 [Audio mixé](/api/outbound/call/{call_id}/audio/mixed)")
+
+                                if audio_links:
+                                    # Créer un message et l'émettre via les événements
+                                    message_id = agent_context.generate_id("message")
+
+                                    audio_msg = AssistantMessageItem(
+                                        id=message_id,
+                                        thread_id=thread.id,
+                                        created_at=datetime.now(),
+                                        content=[AssistantMessageContent(text=f"**Enregistrements audio de l'appel :**\n\n" + "\n".join(audio_links))],
+                                    )
+
+                                    # Émettre les événements
+                                    await _emit_stream_event(ThreadItemAddedEvent(item=audio_msg))
+                                    await _emit_stream_event(ThreadItemDoneEvent(item=audio_msg))
+
+                                    # Supprimer l'info de l'appel actif des métadonnées du thread
+                                    if "active_outbound_call" in thread.metadata:
+                                        del thread.metadata["active_outbound_call"]
+                                        await agent_context.store.save_thread(thread, agent_context.request_context)
+
+                                    logger.info(
+                                        "Liens audio ajoutés au thread %s pour l'appel %s",
+                                        thread.id,
+                                        call_session.call_id,
+                                    )
+                            except Exception as e:
+                                logger.error(
+                                    "Erreur lors de l'ajout des liens audio au thread : %s",
+                                    e,
+                                )
+
                         last_step_context = {
                             "outbound_call": {
                                 "call_id": call_result["call_id"],
@@ -3471,6 +3557,8 @@ async def run_workflow(
                                 "answered": call_result["status"] == "completed",
                                 "duration_seconds": call_result.get("duration_seconds"),
                                 "to_number": to_number,
+                                "transcripts": transcripts,
+                                "audio_recordings": audio_recordings,
                             }
                         }
                     else:

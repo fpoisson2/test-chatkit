@@ -410,7 +410,15 @@ class OutboundCallManager:
                 finally:
                     session._pjsua_call = None
 
-            # 3. Marquer la session comme terminée
+            # 3. Fermer les streams audio
+            try:
+                from .audio_stream_manager import get_audio_stream_manager
+                audio_stream_mgr = get_audio_stream_manager()
+                await audio_stream_mgr.close_call(session.call_id)
+            except Exception as e:
+                logger.warning("Erreur fermeture streams audio (call_id=%s): %s", session.call_id, e)
+
+            # 4. Marquer la session comme terminée
             session.mark_complete()
             self.active_calls.pop(session.call_id, None)
 
@@ -553,10 +561,104 @@ class OutboundCallManager:
                 except Exception as e:
                     logger.exception("Failed to save transcripts for call %s: %s", session.call_id, e)
 
+            async def on_transcript_hook(transcript: dict[str, str]) -> None:
+                """Appelé en temps réel pour chaque transcription."""
+                try:
+                    # Récupérer le thread_id depuis les métadonnées
+                    call = db.query(OutboundCall).filter_by(id=call_db_id).first()
+                    if not call:
+                        logger.warning("Call not found for on_transcript hook")
+                        return
+
+                    metadata = call.metadata_ or {}
+                    thread_id = metadata.get("triggered_by_session_id")
+                    if not thread_id:
+                        logger.debug("No thread_id in call metadata, skipping real-time transcript")
+                        return
+
+                    # Ajouter la transcription au thread ChatKit
+                    from ..chatkit import get_chatkit_server
+                    from ..chatkit_server.context import ChatKitRequestContext
+                    from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
+                    from datetime import datetime, timezone
+                    import uuid
+
+                    server = get_chatkit_server()
+
+                    # Créer un contexte minimal pour le store
+                    # Les transcriptions d'appels sortants ne sont pas liées à un utilisateur spécifique
+                    context = ChatKitRequestContext(
+                        user_id="system:outbound_call",
+                        email=None,
+                        authorization=None,
+                        public_base_url=None,
+                    )
+
+                    # Ajouter le message de transcription
+                    role = transcript.get("role")
+                    text = transcript.get("text", "")
+
+                    if not text:
+                        return
+
+                    # Créer un ID unique pour le message
+                    message_id = f"transcript_{session.call_id}_{uuid.uuid4().hex[:8]}"
+                    now = datetime.now(timezone.utc)
+
+                    # Ajouter le message via le store API
+                    try:
+                        if role == "user":
+                            user_msg = UserMessageItem(
+                                id=message_id,
+                                thread_id=thread_id,
+                                created_at=now,
+                                content=[UserMessageTextContent(text=text)],
+                                attachments=[],
+                                inference_options=None,
+                                quoted_text=None,
+                            )
+                            await server.store.add_thread_item(thread_id, user_msg, context)
+                        elif role == "assistant":
+                            assistant_msg = AssistantMessageItem(
+                                id=message_id,
+                                thread_id=thread_id,
+                                created_at=now,
+                                content=[AssistantMessageContent(text=text)],
+                            )
+                            await server.store.add_thread_item(thread_id, assistant_msg, context)
+
+                        logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+                    except Exception as e:
+                        logger.error("Failed to add transcript to thread: %s", e, exc_info=True)
+
+                except Exception as e:
+                    logger.error("Error in on_transcript_hook: %s", e, exc_info=True)
+
+            # Hooks pour le streaming audio
+            from .audio_stream_manager import get_audio_stream_manager
+            audio_stream_mgr = get_audio_stream_manager()
+
+            async def on_audio_inbound_hook(pcm_data: bytes) -> None:
+                """Appelé en temps réel pour chaque chunk audio entrant."""
+                try:
+                    await audio_stream_mgr.broadcast_audio(session.call_id, pcm_data, channel="inbound")
+                except Exception as e:
+                    logger.error("Error broadcasting inbound audio: %s", e)
+
+            async def on_audio_outbound_hook(pcm_data: bytes) -> None:
+                """Appelé en temps réel pour chaque chunk audio sortant."""
+                try:
+                    await audio_stream_mgr.broadcast_audio(session.call_id, pcm_data, channel="outbound")
+                except Exception as e:
+                    logger.error("Error broadcasting outbound audio: %s", e)
+
             hooks = VoiceBridgeHooks(
                 close_dialog=close_dialog_hook,
                 clear_voice_state=clear_voice_state_hook,
                 resume_workflow=resume_workflow_hook,
+                on_transcript=on_transcript_hook,
+                on_audio_inbound=on_audio_inbound_hook,
+                on_audio_outbound=on_audio_outbound_hook,
             )
 
             # Créer le voice bridge
@@ -603,6 +705,20 @@ class OutboundCallManager:
                             "transcript_count": stats.transcript_count,
                             "error": str(stats.error) if stats.error else None,
                         }
+                        # Sauvegarder les chemins des fichiers audio
+                        if stats.inbound_audio_file or stats.outbound_audio_file or stats.mixed_audio_file:
+                            metadata["audio_recordings"] = {
+                                "inbound": stats.inbound_audio_file,
+                                "outbound": stats.outbound_audio_file,
+                                "mixed": stats.mixed_audio_file,
+                            }
+                            logger.info(
+                                "Audio recordings saved for call %s: inbound=%s, outbound=%s, mixed=%s",
+                                session.call_id,
+                                stats.inbound_audio_file,
+                                stats.outbound_audio_file,
+                                stats.mixed_audio_file,
+                            )
                         call.metadata_ = metadata
                         db.commit()
                 except Exception as e:
@@ -934,10 +1050,87 @@ class OutboundCallManager:
                             e,
                         )
 
+                async def on_transcript_hook(transcript: dict[str, str]) -> None:
+                    """Appelé en temps réel pour chaque transcription."""
+                    try:
+                        # Récupérer le thread_id depuis les métadonnées
+                        call = db.query(OutboundCall).filter_by(id=call_db_id).first()
+                        if not call:
+                            logger.warning("Call not found for on_transcript hook")
+                            return
+
+                        metadata = call.metadata_ or {}
+                        thread_id = metadata.get("triggered_by_session_id")
+                        if not thread_id:
+                            logger.debug("No thread_id in call metadata, skipping real-time transcript")
+                            return
+
+                        # Ajouter la transcription au thread ChatKit
+                        from ..chatkit_server import get_chatkit_server
+                        from ..chatkit_types import UserMessage, AssistantMessage
+
+                        server = get_chatkit_server()
+                        context: dict = {}
+
+                        # Charger le thread
+                        try:
+                            thread = await server.store.load_thread(thread_id, context)
+                        except Exception as e:
+                            logger.error("Failed to load thread %s: %s", thread_id, e)
+                            return
+
+                        # Ajouter le message de transcription
+                        role = transcript.get("role")
+                        text = transcript.get("text", "")
+
+                        if not text:
+                            return
+
+                        if role == "user":
+                            user_msg = UserMessage(
+                                content=text,
+                                annotations=[{"type": "voice_transcript_realtime"}],
+                            )
+                            thread.messages.append(user_msg)
+                        elif role == "assistant":
+                            assistant_msg = AssistantMessage(
+                                content=[text],
+                                annotations=[{"type": "voice_transcript_realtime"}],
+                            )
+                            thread.messages.append(assistant_msg)
+
+                        # Sauvegarder le thread
+                        await server.store.save_thread(thread, context)
+                        logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+
+                    except Exception as e:
+                        logger.error("Error in on_transcript_hook: %s", e, exc_info=True)
+
+                # Hooks pour le streaming audio
+                from .audio_stream_manager import get_audio_stream_manager
+                audio_stream_mgr = get_audio_stream_manager()
+
+                async def on_audio_inbound_hook(pcm_data: bytes) -> None:
+                    """Appelé en temps réel pour chaque chunk audio entrant."""
+                    try:
+                        await audio_stream_mgr.broadcast_audio(session.call_id, pcm_data, channel="inbound")
+                    except Exception as e:
+                        logger.error("Error broadcasting inbound audio: %s", e)
+
+                async def on_audio_outbound_hook(pcm_data: bytes) -> None:
+                    """Appelé en temps réel pour chaque chunk audio sortant."""
+                    try:
+                        await audio_stream_mgr.broadcast_audio(session.call_id, pcm_data, channel="outbound")
+                    except Exception as e:
+                        logger.error("Error broadcasting outbound audio: %s", e)
+
                 hooks = VoiceBridgeHooks(
                     close_dialog=close_dialog_hook,
                     clear_voice_state=clear_voice_state_hook,
                     resume_workflow=resume_workflow_hook,
+                    on_transcript=on_transcript_hook,
+                    on_audio_inbound=on_audio_inbound_hook,
+                    on_audio_outbound=on_audio_outbound_hook,
                 )
 
                 # Créer le voice bridge
@@ -990,6 +1183,21 @@ class OutboundCallManager:
                                 "transcript_count": stats.transcript_count,
                                 "error": str(stats.error) if stats.error else None,
                             }
+
+                            # Sauvegarder les chemins des fichiers audio
+                            if stats.inbound_audio_file or stats.outbound_audio_file or stats.mixed_audio_file:
+                                metadata["audio_recordings"] = {
+                                    "inbound": stats.inbound_audio_file,
+                                    "outbound": stats.outbound_audio_file,
+                                    "mixed": stats.mixed_audio_file,
+                                }
+                                logger.info(
+                                    "Audio recordings saved for call %s: inbound=%s, outbound=%s, mixed=%s",
+                                    session.call_id,
+                                    stats.inbound_audio_file,
+                                    stats.outbound_audio_file,
+                                    stats.mixed_audio_file,
+                                )
 
                             # Mettre à jour en base
                             call.metadata_ = metadata
@@ -1089,6 +1297,14 @@ class OutboundCallManager:
                     await session._rtp_server.stop()
                 except Exception as e:
                     logger.warning("Error stopping RTP server: %s", e)
+
+            # Fermer les streams audio
+            try:
+                from .audio_stream_manager import get_audio_stream_manager
+                audio_stream_mgr = get_audio_stream_manager()
+                await audio_stream_mgr.close_call(session.call_id)
+            except Exception as e:
+                logger.warning("Erreur fermeture streams audio (call_id=%s): %s", session.call_id, e)
 
             # Marquer la session comme terminée
             session.mark_complete()
@@ -1215,6 +1431,11 @@ a=sendrecv
         if not call:
             return None
 
+        # Récupérer les métadonnées
+        metadata = call.metadata_ or {}
+        transcripts = metadata.get("transcripts", [])
+        audio_recordings = metadata.get("audio_recordings", {})
+
         return {
             "call_id": call.call_sid,
             "status": call.status,
@@ -1225,6 +1446,8 @@ a=sendrecv
             "ended_at": call.ended_at.isoformat() if call.ended_at else None,
             "duration_seconds": call.duration_seconds,
             "failure_reason": call.failure_reason,
+            "transcripts": transcripts,
+            "audio_recordings": audio_recordings,
         }
 
 
