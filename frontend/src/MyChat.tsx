@@ -16,7 +16,7 @@ import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
-import { useOutboundCallDetector } from "./hooks/useOutboundCallDetector";
+import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -292,15 +292,8 @@ export function MyChat() {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
 
-  // Sync current thread from lastThreadSnapshotRef
-  useEffect(() => {
-    if (lastThreadSnapshotRef.current !== currentThread) {
-      setCurrentThread(lastThreadSnapshotRef.current);
-    }
-  }, [lastThreadSnapshotRef.current, currentThread]);
-
-  // Detect outbound calls
-  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallDetector(currentThread);
+  // Detect outbound calls via WebSocket events (like voice sessions)
+  const { callId: outboundCallId, isActive: outboundCallIsActive, sendCommand: sendOutboundCommand } = useOutboundCallSession();
 
   const handleOutboundCallEnd = useCallback(() => {
     // Refresh the thread to show final transcriptions and audio links
@@ -1014,10 +1007,29 @@ export function MyChat() {
           console.debug("[ChatKit] thread load end", { threadId });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
+          // Debug: Log every onLog call
+          console.log('[MyChat] onLog called:', entry.name, {
+            hasData: !!entry.data,
+            dataKeys: entry.data ? Object.keys(entry.data) : [],
+          });
+
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
-              lastThreadSnapshotRef.current = data.thread as Record<string, unknown>;
+              const thread = data.thread as Record<string, unknown>;
+              lastThreadSnapshotRef.current = thread;
+              // Update state to trigger re-render and useOutboundCallDetector
+              setCurrentThread(thread);
+
+              // Debug: Log thread structure
+              console.log('[MyChat] Thread updated:', {
+                keys: Object.keys(thread),
+                hasItems: 'items' in thread,
+                hasMessages: 'messages' in thread,
+                itemsLength: Array.isArray(thread.items) ? thread.items.length : 'N/A',
+                messagesLength: Array.isArray(thread.messages) ? thread.messages.length : 'N/A',
+                firstItem: Array.isArray(thread.items) && thread.items.length > 0 ? thread.items[0] : null,
+              });
             }
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
@@ -1120,6 +1132,7 @@ export function MyChat() {
         <OutboundCallAudioPlayer
           callId={outboundCallId}
           onCallEnd={handleOutboundCallEnd}
+          sendCommand={sendOutboundCommand}
         />
       )}
       <style>{`

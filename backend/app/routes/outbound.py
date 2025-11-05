@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_session
-from ..dependencies import require_admin
+from ..dependencies import require_admin, get_current_user
 from ..models import OutboundCall, SipAccount, User, WorkflowDefinition
 from ..telephony.outbound_call_manager import get_outbound_call_manager
 from ..telephony.audio_stream_manager import get_audio_stream_manager
@@ -166,6 +166,31 @@ async def get_call_status(
         duration_seconds=call.duration_seconds,
         failure_reason=call.failure_reason,
     )
+
+
+@router.post("/api/outbound/call/{call_id}/hangup")
+async def hangup_call(
+    call_id: str,
+) -> dict[str, Any]:
+    """
+    Raccroche un appel en cours.
+
+    Args:
+        call_id: ID de l'appel
+
+    Returns:
+        Message de confirmation
+
+    Raises:
+        HTTPException: Si l'appel n'est pas trouvé
+    """
+    call_manager = get_outbound_call_manager()
+    success = await call_manager.hangup_call(call_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Call not found or already ended")
+
+    return {"message": "Call hung up successfully", "call_id": call_id}
 
 
 @router.get("/api/outbound/calls")
@@ -400,3 +425,67 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
             await websocket.close()
         except:
             pass
+
+
+@router.websocket("/api/outbound/events")
+async def outbound_call_events_websocket(websocket: WebSocket):
+    """WebSocket pour recevoir les événements d'appels sortants et envoyer des commandes."""
+    from ..telephony.outbound_events_manager import get_outbound_events_manager
+
+    events_mgr = get_outbound_events_manager()
+
+    await websocket.accept()
+    logger.info("WebSocket connection established for outbound call events")
+
+    queue = await events_mgr.register_listener()
+
+    async def send_events():
+        """Task to send events from queue to client."""
+        try:
+            while True:
+                try:
+                    event_json = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    await websocket.send_text(event_json)
+                except asyncio.TimeoutError:
+                    # Envoyer un ping pour maintenir la connexion
+                    await websocket.send_text(json.dumps({"type": "ping"}))
+        except Exception as e:
+            logger.error("Error sending events: %s", e)
+
+    async def receive_commands():
+        """Task to receive commands from client."""
+        try:
+            while True:
+                message = await websocket.receive_text()
+                data = json.loads(message)
+
+                if data.get("type") == "hangup":
+                    call_id = data.get("call_id")
+                    if call_id:
+                        logger.info("Received hangup command for call %s", call_id)
+                        call_manager = get_outbound_call_manager()
+                        success = await call_manager.hangup_call(call_id)
+
+                        # Send response
+                        await websocket.send_text(json.dumps({
+                            "type": "hangup_response",
+                            "call_id": call_id,
+                            "success": success
+                        }))
+                    else:
+                        logger.warning("Hangup command missing call_id")
+        except Exception as e:
+            logger.error("Error receiving commands: %s", e)
+
+    try:
+        # Run both tasks concurrently
+        await asyncio.gather(
+            send_events(),
+            receive_commands()
+        )
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected for outbound call events")
+    except Exception as e:
+        logger.error("Error in outbound call events WebSocket: %s", e, exc_info=True)
+    finally:
+        await events_mgr.unregister_listener(queue)

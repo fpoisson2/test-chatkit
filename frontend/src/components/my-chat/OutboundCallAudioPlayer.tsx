@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 interface OutboundCallAudioPlayerProps {
   callId: string | null;
   onCallEnd?: () => void;
+  sendCommand: (command: { type: string; [key: string]: any }) => void;
 }
 
 interface AudioPacket {
@@ -17,18 +18,45 @@ interface AudioPacket {
 export const OutboundCallAudioPlayer = ({
   callId,
   onCallEnd,
+  sendCommand,
 }: OutboundCallAudioPlayerProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.8);
   const [channelFilter, setChannelFilter] = useState<"all" | "inbound" | "outbound">("all");
   const [error, setError] = useState<string | null>(null);
+  const [isHangingUp, setIsHangingUp] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const nextPlayTimeRef = useRef<number>(0);
+
+  // Handle hang up
+  const handleHangup = useCallback(() => {
+    if (!callId || isHangingUp) return;
+
+    setIsHangingUp(true);
+    try {
+      console.log("[OutboundCallAudioPlayer] Sending hangup command for call", callId);
+      sendCommand({
+        type: "hangup",
+        call_id: callId,
+      });
+
+      // The response will come via WebSocket (hangup_response event)
+      // For now, just mark as success after a delay
+      setTimeout(() => {
+        setIsHangingUp(false);
+        onCallEnd?.();
+      }, 1000);
+    } catch (err) {
+      console.error("[OutboundCallAudioPlayer] Failed to send hangup command:", err);
+      setError("Échec du raccrochage");
+      setIsHangingUp(false);
+    }
+  }, [callId, isHangingUp, onCallEnd, sendCommand]);
 
   // Initialize Audio Context
   const initializeAudioContext = useCallback(() => {
@@ -211,7 +239,7 @@ export const OutboundCallAudioPlayer = ({
       style={{
         position: "fixed",
         bottom: "20px",
-        left: "20px",
+        right: "20px",
         padding: "16px",
         background: isConnected ? "#10a37f" : "#ff9800",
         color: "white",
@@ -246,6 +274,27 @@ export const OutboundCallAudioPlayer = ({
             {isConnected ? "🎧 Appel en cours" : "⏸️ Connexion..."}
           </span>
         </div>
+        <button
+          type="button"
+          onClick={handleHangup}
+          disabled={isHangingUp}
+          style={{
+            padding: "6px 12px",
+            background: "#dc2626",
+            border: "none",
+            borderRadius: "6px",
+            color: "white",
+            cursor: isHangingUp ? "not-allowed" : "pointer",
+            fontSize: "13px",
+            fontWeight: 600,
+            opacity: isHangingUp ? 0.6 : 1,
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+          }}
+        >
+          📞 {isHangingUp ? "Raccrochage..." : "Raccrocher"}
+        </button>
       </div>
 
       {/* Error message */}

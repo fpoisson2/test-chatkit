@@ -186,6 +186,17 @@ class OutboundCallManager:
         # Enregistrer la session active
         self.active_calls[call_id] = session
 
+        # Émettre un événement call_started
+        from .outbound_events_manager import get_outbound_events_manager
+        events_mgr = get_outbound_events_manager()
+        asyncio.create_task(events_mgr.emit_event({
+            "type": "call_started",
+            "call_id": call_id,
+            "to_number": to_number,
+            "from_number": from_number,
+        }))
+        logger.info("Emitted call_started event for call %s", call_id)
+
         # Lancer l'appel en background avec PJSUA ou aiosip
         if PJSUA_AVAILABLE and self._pjsua_adapter is not None:
             logger.info("Utilisation de PJSUA pour l'appel sortant")
@@ -420,6 +431,20 @@ class OutboundCallManager:
 
             # 4. Marquer la session comme terminée
             session.mark_complete()
+
+            # Émettre un événement call_ended
+            from .outbound_events_manager import get_outbound_events_manager
+            events_mgr = get_outbound_events_manager()
+            try:
+                asyncio.create_task(events_mgr.emit_event({
+                    "type": "call_ended",
+                    "call_id": session.call_id,
+                    "status": session.status,
+                }))
+                logger.info("Emitted call_ended event for call %s", session.call_id)
+            except Exception as e:
+                logger.warning("Failed to emit call_ended event: %s", e)
+
             self.active_calls.pop(session.call_id, None)
 
             logger.info("✅ Nettoyage session terminé (call_id=%s)", session.call_id)
@@ -582,13 +607,19 @@ class OutboundCallManager:
                     from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
                     from datetime import datetime, timezone
                     import uuid
+                    from ..models import ChatThread
 
                     server = get_chatkit_server()
 
-                    # Créer un contexte minimal pour le store
-                    # Les transcriptions d'appels sortants ne sont pas liées à un utilisateur spécifique
+                    # Récupérer le owner_id du thread depuis la base de données
+                    thread_record = db.query(ChatThread).filter_by(id=thread_id).first()
+                    if not thread_record:
+                        logger.warning("Thread %s not found in database", thread_id)
+                        return
+
+                    # Créer un contexte avec le bon owner_id
                     context = ChatKitRequestContext(
-                        user_id="system:outbound_call",
+                        user_id=thread_record.owner_id,
                         email=None,
                         authorization=None,
                         public_base_url=None,
@@ -1066,18 +1097,28 @@ class OutboundCallManager:
                             return
 
                         # Ajouter la transcription au thread ChatKit
-                        from ..chatkit_server import get_chatkit_server
-                        from ..chatkit_types import UserMessage, AssistantMessage
+                        from ..chatkit import get_chatkit_server
+                        from ..chatkit_server.context import ChatKitRequestContext
+                        from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
+                        from datetime import datetime, timezone
+                        import uuid
+                        from ..models import ChatThread
 
                         server = get_chatkit_server()
-                        context: dict = {}
 
-                        # Charger le thread
-                        try:
-                            thread = await server.store.load_thread(thread_id, context)
-                        except Exception as e:
-                            logger.error("Failed to load thread %s: %s", thread_id, e)
+                        # Récupérer le owner_id du thread depuis la base de données
+                        thread_record = db.query(ChatThread).filter_by(id=thread_id).first()
+                        if not thread_record:
+                            logger.warning("Thread %s not found in database", thread_id)
                             return
+
+                        # Créer un contexte avec le bon owner_id
+                        context = ChatKitRequestContext(
+                            user_id=thread_record.owner_id,
+                            email=None,
+                            authorization=None,
+                            public_base_url=None,
+                        )
 
                         # Ajouter le message de transcription
                         role = transcript.get("role")
@@ -1086,22 +1127,35 @@ class OutboundCallManager:
                         if not text:
                             return
 
-                        if role == "user":
-                            user_msg = UserMessage(
-                                content=text,
-                                annotations=[{"type": "voice_transcript_realtime"}],
-                            )
-                            thread.messages.append(user_msg)
-                        elif role == "assistant":
-                            assistant_msg = AssistantMessage(
-                                content=[text],
-                                annotations=[{"type": "voice_transcript_realtime"}],
-                            )
-                            thread.messages.append(assistant_msg)
+                        # Créer un ID unique pour le message
+                        message_id = f"transcript_{session.call_id}_{uuid.uuid4().hex[:8]}"
+                        now = datetime.now(timezone.utc)
 
-                        # Sauvegarder le thread
-                        await server.store.save_thread(thread, context)
-                        logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+                        # Ajouter le message via le store API
+                        try:
+                            if role == "user":
+                                user_msg = UserMessageItem(
+                                    id=message_id,
+                                    thread_id=thread_id,
+                                    created_at=now,
+                                    content=[UserMessageTextContent(text=text)],
+                                    attachments=[],
+                                    inference_options=None,
+                                    quoted_text=None,
+                                )
+                                await server.store.add_thread_item(thread_id, user_msg, context)
+                            elif role == "assistant":
+                                assistant_msg = AssistantMessageItem(
+                                    id=message_id,
+                                    thread_id=thread_id,
+                                    created_at=now,
+                                    content=[AssistantMessageContent(text=text)],
+                                )
+                                await server.store.add_thread_item(thread_id, assistant_msg, context)
+
+                            logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+                        except Exception as e:
+                            logger.error("Failed to add transcript to thread: %s", e, exc_info=True)
 
                     except Exception as e:
                         logger.error("Error in on_transcript_hook: %s", e, exc_info=True)
@@ -1309,6 +1363,19 @@ class OutboundCallManager:
             # Marquer la session comme terminée
             session.mark_complete()
 
+            # Émettre un événement call_ended
+            from .outbound_events_manager import get_outbound_events_manager
+            events_mgr = get_outbound_events_manager()
+            try:
+                asyncio.create_task(events_mgr.emit_event({
+                    "type": "call_ended",
+                    "call_id": session.call_id,
+                    "status": session.status,
+                }))
+                logger.info("Emitted call_ended event for call %s", session.call_id)
+            except Exception as e:
+                logger.warning("Failed to emit call_ended event: %s", e)
+
             # Retirer de la liste des appels actifs
             if session.call_id in self.active_calls:
                 del self.active_calls[session.call_id]
@@ -1449,6 +1516,83 @@ a=sendrecv
             "transcripts": transcripts,
             "audio_recordings": audio_recordings,
         }
+
+    async def hangup_call(self, call_id: str) -> bool:
+        """Termine un appel en cours manuellement.
+
+        Args:
+            call_id: ID de l'appel à terminer
+
+        Returns:
+            True si l'appel a été terminé, False si l'appel n'existe pas
+        """
+        # Vérifier si l'appel existe
+        session = self.active_calls.get(call_id)
+        if not session:
+            logger.warning("Tentative de raccrochage d'un appel inexistant: %s", call_id)
+            return False
+
+        logger.info("Raccrochage manuel de l'appel %s", call_id)
+
+        # Mettre à jour le statut
+        session.status = "terminated"
+
+        try:
+            # 1. Terminer l'appel PJSUA si applicable
+            if session._pjsua_call is not None:
+                try:
+                    logger.info("Raccrochage de l'appel PJSUA (call_id=%s)", call_id)
+                    session._pjsua_call.hangup()
+                except Exception as e:
+                    logger.warning("Erreur raccrochage PJSUA (call_id=%s): %s", call_id, e)
+                finally:
+                    session._pjsua_call = None
+
+            # 2. Fermer les streams audio
+            try:
+                from .audio_stream_manager import get_audio_stream_manager
+                audio_stream_mgr = get_audio_stream_manager()
+                await audio_stream_mgr.close_call(call_id)
+            except Exception as e:
+                logger.warning("Erreur fermeture streams audio (call_id=%s): %s", call_id, e)
+
+            # 3. Marquer la session comme terminée
+            session.mark_complete()
+
+            # 4. Mettre à jour la DB
+            db = SessionLocal()
+            try:
+                self._update_call_status(
+                    db,
+                    call_id,
+                    "terminated",
+                    ended_at=datetime.now(UTC),
+                    failure_reason="Raccroché manuellement"
+                )
+            finally:
+                db.close()
+
+            # 5. Émettre un événement call_ended
+            from .outbound_events_manager import get_outbound_events_manager
+            events_mgr = get_outbound_events_manager()
+            try:
+                asyncio.create_task(events_mgr.emit_event({
+                    "type": "call_ended",
+                    "call_id": call_id,
+                    "status": "terminated",
+                }))
+                logger.info("Emitted call_ended event for manually hung up call %s", call_id)
+            except Exception as e:
+                logger.warning("Failed to emit call_ended event: %s", e)
+
+            # 6. Retirer de active_calls
+            self.active_calls.pop(call_id, None)
+
+            return True
+
+        except Exception as e:
+            logger.error("Erreur lors du raccrochage de l'appel %s: %s", call_id, e, exc_info=True)
+            return False
 
 
 # Instance globale

@@ -1,20 +1,19 @@
 import { useState, useEffect } from "react";
 
-interface ThreadMessage {
-  role?: string;
-  content?: any;
-  annotations?: Array<{ type: string; call_id?: string; [key: string]: any }>;
-  metadata?: any;
+interface ThreadItem {
+  type?: string;
+  task?: {
+    content?: string;
+  };
 }
 
 interface Thread {
-  messages?: ThreadMessage[];
-  metadata?: any;
+  items?: ThreadItem[];
 }
 
 /**
- * Hook to detect active outbound calls from thread messages.
- * Looks for messages with annotations indicating an outbound call is starting.
+ * Hook to detect active outbound calls from thread task items.
+ * Looks for "outbound_call.event" task items (similar to realtime.event for voice sessions).
  */
 export function useOutboundCallDetector(thread: Thread | null): {
   callId: string | null;
@@ -24,27 +23,16 @@ export function useOutboundCallDetector(thread: Thread | null): {
   const [isActive, setIsActive] = useState(false);
 
   useEffect(() => {
-    if (!thread) {
-      setCallId(null);
-      setIsActive(false);
-      return;
-    }
+    // Debug: log thread structure
+    console.log('[OutboundCallDetector] Thread received:', {
+      hasThread: !!thread,
+      hasItems: !!thread?.items,
+      itemsLength: thread?.items?.length,
+      threadKeys: thread ? Object.keys(thread) : [],
+      firstItems: thread?.items?.slice(0, 3),
+    });
 
-    // First, check thread metadata for active call (most reliable)
-    const activeCall = thread.metadata?.active_outbound_call;
-    if (activeCall?.call_id) {
-      setCallId(activeCall.call_id);
-      setIsActive(true);
-      return;
-    }
-
-    // Fallback: Look for the most recent outbound call in messages
-    // We look for:
-    // 1. outbound_call_start annotation (call starting)
-    // 2. voice_transcript_realtime annotations (call in progress)
-    // 3. audio_recordings annotation (call ended)
-
-    if (!thread.messages) {
+    if (!thread || !thread.items) {
       setCallId(null);
       setIsActive(false);
       return;
@@ -55,26 +43,32 @@ export function useOutboundCallDetector(thread: Thread | null): {
     let callStartIndex = -1;
     let callEndIndex = -1;
 
-    // Iterate backwards to find the most recent call events
-    for (let i = thread.messages.length - 1; i >= 0; i--) {
-      const message = thread.messages[i];
-      const annotations = message.annotations || [];
+    // Iterate backwards to find the most recent outbound call events
+    for (let i = thread.items.length - 1; i >= 0; i--) {
+      const item = thread.items[i];
 
-      // Check for call start
-      const callStartAnnotation = annotations.find(
-        (ann) => ann.type === "outbound_call_start"
-      );
-      if (callStartAnnotation && callStartIndex === -1) {
-        callStartIndex = i;
-        foundCallId = callStartAnnotation.call_id || null;
-      }
-
-      // Check for call end (audio recordings message)
-      const hasAudioRecordings = annotations.some(
-        (ann) => ann.type === "audio_recordings"
-      );
-      if (hasAudioRecordings && callEndIndex === -1) {
-        callEndIndex = i;
+      // Look for task items with outbound_call.event
+      if (item.type === "task" && item.task?.content) {
+        try {
+          const content = item.task.content;
+          // Try to parse as JSON to find the event
+          if (content.includes('"type":"outbound_call.event"') || content.includes('"type": "outbound_call.event"')) {
+            const parsed = JSON.parse(content);
+            console.log('[OutboundCallDetector] Found outbound_call.event:', parsed);
+            if (parsed.type === "outbound_call.event" && parsed.event) {
+              if (parsed.event.type === "call_started" && callStartIndex === -1) {
+                callStartIndex = i;
+                foundCallId = parsed.event.call_id || null;
+                console.log('[OutboundCallDetector] Found call_started:', foundCallId);
+              } else if (parsed.event.type === "call_ended" && callEndIndex === -1) {
+                callEndIndex = i;
+                console.log('[OutboundCallDetector] Found call_ended');
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
       }
 
       // If we found both start and end, we can stop
@@ -85,13 +79,15 @@ export function useOutboundCallDetector(thread: Thread | null): {
 
     // Determine if call is active
     // Call is active if:
-    // - We found a call_start annotation
-    // - AND either we didn't find a call_end OR the call_end is before the call_start
+    // - We found a call_started event
+    // - AND either we didn't find a call_ended event OR the call_ended is before the call_started
     if (foundCallId && callStartIndex !== -1) {
       if (callEndIndex === -1 || callEndIndex < callStartIndex) {
         foundActive = true;
       }
     }
+
+    console.log('[OutboundCallDetector] Result:', { callId: foundCallId, isActive: foundActive });
 
     setCallId(foundCallId);
     setIsActive(foundActive);
