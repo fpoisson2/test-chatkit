@@ -402,7 +402,7 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
             pass
 
 
-@router.websocket("/events")
+@router.websocket("/api/outbound/events")
 async def outbound_call_events_websocket(websocket: WebSocket):
     """WebSocket pour recevoir les événements d'appels sortants en temps réel."""
     from ..telephony.outbound_events_manager import get_outbound_events_manager
