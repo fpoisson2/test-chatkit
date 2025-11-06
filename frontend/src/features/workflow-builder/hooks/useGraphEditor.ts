@@ -18,12 +18,14 @@ import {
 } from "../utils";
 import {
   getVectorStoreNodeConfig,
-  resolveAgentParameters,
   resolveStartParameters,
-  resolveStateParameters,
   resolveWidgetNodeParameters,
   setVectorStoreNodeConfig,
-} from "../../utils/workflows";
+} from "../../../utils/workflows";
+import {
+  resolveAgentParameters,
+  resolveStateParameters,
+} from "../../../utils/agentPresets";
 import {
   parseWorkflowImport,
   WorkflowImportError,
