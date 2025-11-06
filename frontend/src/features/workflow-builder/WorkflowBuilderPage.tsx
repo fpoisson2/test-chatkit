@@ -205,8 +205,12 @@ import {
   type DeviceType,
 } from "./WorkflowBuilderUtils";
 import { useWorkflowViewportPersistence } from "./hooks/useWorkflowViewportPersistence";
-// Contexts will be imported when components are extracted in Phase 4
-// import { useWorkflowContext, useSelectionContext, ... } from "./contexts";
+// Phase 4: Import and use contexts
+import {
+  useSaveContext,
+  useUIContext,
+  useModalContext,
+} from "./contexts";
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
@@ -224,6 +228,51 @@ const WorkflowBuilderPage = () => {
     [token],
   );
   const { openSidebar, closeSidebar, isSidebarCollapsed } = useAppLayout();
+
+  // Phase 4: Use contexts instead of local state
+  const {
+    saveState,
+    saveMessage,
+    setSaveState,
+    setSaveMessage,
+    saveStateRef,
+    lastSavedSnapshotRef,
+    setLastSavedSnapshot,
+  } = useSaveContext();
+
+  const {
+    isBlockLibraryOpen,
+    setIsBlockLibraryOpen,
+    isPropertiesPanelOpen,
+    setIsPropertiesPanelOpen,
+    openWorkflowMenuId,
+    setOpenWorkflowMenuId,
+    isMobileLayout: contextIsMobileLayout,
+    setIsMobileLayout: setContextIsMobileLayout,
+  } = useUIContext();
+
+  const {
+    createWorkflowKind,
+    setCreateWorkflowKind,
+    createWorkflowName,
+    setCreateWorkflowName,
+    createWorkflowRemoteId,
+    setCreateWorkflowRemoteId,
+    createWorkflowError,
+    setCreateWorkflowError,
+    isCreatingWorkflow,
+    setIsCreatingWorkflow,
+    deployToProduction,
+    setDeployToProduction,
+    isDeploying,
+    setIsDeploying,
+    isCreateModalOpen,
+    closeCreateModal: handleCloseCreateModal,
+    isDeployModalOpen,
+    closeDeployModal: handleCloseDeployModal,
+    isAppearanceModalOpen,
+    closeAppearanceModal: handleCloseAppearanceModal,
+  } = useModalContext();
 
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
@@ -276,23 +325,10 @@ const WorkflowBuilderPage = () => {
   } = availableModelsState;
   const { data: widgets, loading: widgetsLoading, error: widgetsError } = widgetsState;
 
-  // NOTE: Contexts created in Phase 2 are ready but not yet used in this component
-  // They will be used when we extract components in Phase 4
-  // For now, using existing hooks (useWorkflowSidebarState, etc.) to avoid breaking changes
-
-  // Available contexts for future use:
-  // - WorkflowContext: workflows, versions, CRUD operations
-  // - SelectionContext: node/edge selection
-  // - GraphContext: ReactFlow nodes/edges
-  // - SaveContext: save state management
-  // - ModalContext: modal states
-  // - ViewportContext: viewport management
-  // - UIContext: UI panel states
-
+  // Phase 4: State migrated to contexts (SaveContext, UIContext, ModalContext)
+  // Remaining local state that doesn't fit in current contexts:
   const [loading, setLoading] = useState(() => !initialSidebarCache);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -309,14 +345,6 @@ const WorkflowBuilderPage = () => {
     },
     [],
   );
-  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
-  const [createWorkflowKind, setCreateWorkflowKind] = useState<"local" | "hosted">("local");
-  const [createWorkflowName, setCreateWorkflowName] = useState("");
-  const [createWorkflowRemoteId, setCreateWorkflowRemoteId] = useState("");
-  const [createWorkflowError, setCreateWorkflowError] = useState<string | null>(null);
-  const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
-  const [deployToProduction, setDeployToProduction] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
@@ -379,6 +407,11 @@ const WorkflowBuilderPage = () => {
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
+
+  // Sync isMobileLayout with UIContext
+  useEffect(() => {
+    setContextIsMobileLayout(isMobileLayout);
+  }, [isMobileLayout, setContextIsMobileLayout]);
   const baseMinViewportZoom = useMemo(
     () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
     [isMobileLayout],
