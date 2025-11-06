@@ -17,17 +17,17 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
 
 @pytest.fixture()
-def tool_factory_module(monkeypatch: pytest.MonkeyPatch):
-    from backend.app import tool_factory
+def workflow_builders(monkeypatch: pytest.MonkeyPatch):
+    from backend.app.tool_builders import workflow
 
-    monkeypatch.setattr(tool_factory, "WorkflowService", lambda: object())
-    return tool_factory
+    monkeypatch.setattr(workflow, "WorkflowService", lambda: object())
+    return workflow
 
 
 def test_build_workflow_tool_sanitizes_invalid_name(
-    tool_factory_module,
+    workflow_builders,
 ):
-    tool = tool_factory_module.build_workflow_tool(
+    tool = workflow_builders.build_workflow_tool(
         {"slug": "workflow-demo", "name": "Démo Workflow!"}
     )
 
@@ -37,9 +37,9 @@ def test_build_workflow_tool_sanitizes_invalid_name(
 
 
 def test_build_workflow_tool_uses_identifier_when_name_missing(
-    tool_factory_module,
+    workflow_builders,
 ):
-    tool = tool_factory_module.build_workflow_tool(
+    tool = workflow_builders.build_workflow_tool(
         {"slug": "assistant", "identifier": "Agent spécial"}
     )
 
@@ -48,8 +48,8 @@ def test_build_workflow_tool_uses_identifier_when_name_missing(
     assert re.fullmatch(r"^[A-Za-z0-9_-]+$", tool.name)
 
 
-def test_build_workflow_tool_fallback_generates_valid_name(tool_factory_module):
-    tool = tool_factory_module.build_workflow_tool({"slug": "***"})
+def test_build_workflow_tool_fallback_generates_valid_name(workflow_builders):
+    tool = workflow_builders.build_workflow_tool({"slug": "***"})
 
     assert tool is not None
     assert tool.name
