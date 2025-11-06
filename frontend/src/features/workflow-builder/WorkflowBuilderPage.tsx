@@ -202,6 +202,8 @@ import {
   type DeviceType,
 } from "./WorkflowBuilderUtils";
 import { useWorkflowViewportPersistence } from "./hooks/useWorkflowViewportPersistence";
+// Contexts will be imported when components are extracted in Phase 4
+// import { useWorkflowContext, useSelectionContext, ... } from "./contexts";
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
@@ -270,6 +272,19 @@ const WorkflowBuilderPage = () => {
     error: availableModelsError,
   } = availableModelsState;
   const { data: widgets, loading: widgetsLoading, error: widgetsError } = widgetsState;
+
+  // NOTE: Contexts created in Phase 2 are ready but not yet used in this component
+  // They will be used when we extract components in Phase 4
+  // For now, using existing hooks (useWorkflowSidebarState, etc.) to avoid breaking changes
+
+  // Available contexts for future use:
+  // - WorkflowContext: workflows, versions, CRUD operations
+  // - SelectionContext: node/edge selection
+  // - GraphContext: ReactFlow nodes/edges
+  // - SaveContext: save state management
+  // - ModalContext: modal states
+  // - ViewportContext: viewport management
+  // - UIContext: UI panel states
 
   const [loading, setLoading] = useState(() => !initialSidebarCache);
   const [loadError, setLoadError] = useState<string | null>(null);
