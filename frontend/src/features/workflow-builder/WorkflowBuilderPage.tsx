@@ -149,6 +149,37 @@ import NodeInspector from "./components/NodeInspector";
 import WorkflowAppearanceModal, {
   type WorkflowAppearanceTarget,
 } from "../workflows/WorkflowAppearanceModal";
+
+// ============================================================================
+// Extracted Modules (Custom Hooks, Services, Components)
+// ============================================================================
+// TODO: Replace inline code with these extracted modules
+// See MIGRATION_GUIDE.md for step-by-step migration instructions
+
+// Custom Hooks - Extracted state management
+import { useWorkflowState } from "./hooks/useWorkflowState";
+import { useFlowState } from "./hooks/useFlowState";
+import { useVersionState } from "./hooks/useVersionState";
+import { useSaveState } from "./hooks/useSaveState";
+import { useModalState } from "./hooks/useModalState";
+import { useResourcesState } from "./hooks/useResourcesState";
+import { useViewportState } from "./hooks/useViewportState";
+import { useMediaQuery } from "./hooks/useMediaQuery";
+
+// Services - Extracted API logic
+import { WorkflowService } from "./services/workflowService";
+import { VersionService } from "./services/versionService";
+import { ImportExportService } from "./services/importExportService";
+
+// UI Components - Extracted presentation logic
+import { SaveToast } from "./components/modals/SaveToast";
+import { DeployModal } from "./components/modals/DeployModal";
+import { PropertiesPanel } from "./components/panels/PropertiesPanel";
+import { BlockLibraryPanel } from "./components/panels/BlockLibraryPanel";
+import { WorkflowHeader } from "./components/header/WorkflowHeader";
+import { WorkflowSidebar } from "./components/sidebar/WorkflowSidebar";
+
+// ============================================================================
 import {
   parseWorkflowImport,
   WorkflowImportError,
