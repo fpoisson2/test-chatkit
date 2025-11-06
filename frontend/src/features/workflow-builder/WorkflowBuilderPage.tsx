@@ -202,15 +202,8 @@ import {
   type DeviceType,
 } from "./WorkflowBuilderUtils";
 import { useWorkflowViewportPersistence } from "./hooks/useWorkflowViewportPersistence";
-import {
-  useWorkflowContext,
-  useSelectionContext,
-  useGraphContext,
-  useSaveContext,
-  useModalContext,
-  useViewportContext,
-  useUIContext,
-} from "./contexts";
+// Contexts will be imported when components are extracted in Phase 4
+// import { useWorkflowContext, useSelectionContext, ... } from "./contexts";
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
@@ -280,96 +273,47 @@ const WorkflowBuilderPage = () => {
   } = availableModelsState;
   const { data: widgets, loading: widgetsLoading, error: widgetsError } = widgetsState;
 
-  // Use contexts for state management (Phase 2 refactoring)
-  const workflowContext = useWorkflowContext();
-  const selectionContext = useSelectionContext();
-  const graphContext = useGraphContext();
-  const saveContext = useSaveContext();
-  const modalContext = useModalContext();
-  const viewportContext = useViewportContext();
-  const uiContext = useUIContext();
+  // NOTE: Contexts created in Phase 2 are ready but not yet used in this component
+  // They will be used when we extract components in Phase 4
+  // For now, using existing hooks (useWorkflowSidebarState, etc.) to avoid breaking changes
 
-  // Destructure context values
-  const {
-    workflows,
-    hostedWorkflows,
-    selectedWorkflowId,
-    versions,
-    selectedVersionId,
-    selectedVersionDetail,
-    loading,
-    loadError,
-    hostedLoading,
-    hostedError,
-    setWorkflows,
-    setSelectedWorkflowId,
-    setVersions,
-    setSelectedVersionId,
-    setSelectedVersionDetail,
-  } = workflowContext;
+  // Available contexts for future use:
+  // - WorkflowContext: workflows, versions, CRUD operations
+  // - SelectionContext: node/edge selection
+  // - GraphContext: ReactFlow nodes/edges
+  // - SaveContext: save state management
+  // - ModalContext: modal states
+  // - ViewportContext: viewport management
+  // - UIContext: UI panel states
 
-  const {
-    selectedNodeId,
-    selectedEdgeId,
-    setSelectedNodeId,
-    setSelectedEdgeId,
-  } = selectionContext;
-
-  const {
-    nodes,
-    edges,
-    hasPendingChanges,
-    setNodes,
-    setEdges,
-    onNodesChange,
-    applyEdgesChange,
-    updateHasPendingChanges,
-  } = graphContext;
-
-  const {
-    saveState,
-    saveMessage,
-    setSaveState,
-    setSaveMessage,
-    lastSavedSnapshotRef,
-  } = saveContext;
-
-  const {
-    isCreateModalOpen,
-    isDeployModalOpen,
-    isAppearanceModalOpen,
-    createWorkflowKind,
-    createWorkflowName,
-    createWorkflowRemoteId,
-    createWorkflowError,
-    isCreatingWorkflow,
-    deployToProduction,
-    isDeploying,
-    setCreateWorkflowKind,
-    setCreateWorkflowName,
-    setCreateWorkflowRemoteId,
-    setCreateWorkflowError,
-    setIsCreatingWorkflow,
-    setDeployToProduction,
-    setIsDeploying,
-  } = modalContext;
-
-  const {
-    minViewportZoom,
-    initialViewport,
-    viewport,
-    setMinViewportZoom,
-    setInitialViewport,
-  } = viewportContext;
-
-  const {
-    isBlockLibraryOpen,
-    isPropertiesPanelOpen,
-    openWorkflowMenuId,
-    setIsBlockLibraryOpen,
-    setIsPropertiesPanelOpen,
-    setOpenWorkflowMenuId,
-  } = uiContext;
+  const [loading, setLoading] = useState(() => !initialSidebarCache);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
+  const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [hostedLoading, setHostedLoading] = useState(false);
+  const [hostedError, setHostedError] = useState<string | null>(null);
+  const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
+  const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
+  const updateHasPendingChanges = useCallback(
+    (value: boolean | ((previous: boolean) => boolean)) => {
+      setHasPendingChanges(value);
+    },
+    [],
+  );
+  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
+  const [createWorkflowKind, setCreateWorkflowKind] = useState<"local" | "hosted">("local");
+  const [createWorkflowName, setCreateWorkflowName] = useState("");
+  const [createWorkflowRemoteId, setCreateWorkflowRemoteId] = useState("");
+  const [createWorkflowError, setCreateWorkflowError] = useState<string | null>(null);
+  const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
+  const [deployToProduction, setDeployToProduction] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
@@ -436,7 +380,8 @@ const WorkflowBuilderPage = () => {
     () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
     [isMobileLayout],
   );
-  // minViewportZoom and initialViewport now come from ViewportContext
+  const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
+  const [initialViewport, setInitialViewport] = useState<Viewport | undefined>(undefined);
 
   const { persistViewportMemory, refreshViewportConstraints, restoreViewport } =
     useWorkflowViewportPersistence({
@@ -470,10 +415,11 @@ const WorkflowBuilderPage = () => {
     [applyEdgesChange, updateHasPendingChanges],
   );
 
-  // isBlockLibraryOpen and isPropertiesPanelOpen now come from UIContext
+  const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
   const previousSelectedElementRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
   const selectedEdgeIdRef = useRef<string | null>(null);
