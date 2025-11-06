@@ -9,7 +9,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
-from .config import get_settings
+from ..config import get_settings
 
 logger = logging.getLogger("chatkit.server")
 settings = get_settings()
