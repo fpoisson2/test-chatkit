@@ -7,14 +7,14 @@ from types import ModuleType
 from typing import Any, Callable
 
 _MODULE_PATHS: dict[str, str] = {
-    "web_search": "backend.app.tool_builders.web_search",
-    "image_generation": "backend.app.tool_builders.image_generation",
-    "computer_use": "backend.app.tool_builders.computer_use",
-    "file_search": "backend.app.tool_builders.file_search",
-    "weather": "backend.app.tool_builders.weather",
-    "mcp": "backend.app.tool_builders.mcp",
-    "workflow": "backend.app.tool_builders.workflow",
-    "widget_validation": "backend.app.tool_builders.widget_validation",
+    "web_search": "app.tool_builders.web_search",
+    "image_generation": "app.tool_builders.image_generation",
+    "computer_use": "app.tool_builders.computer_use",
+    "file_search": "app.tool_builders.file_search",
+    "weather": "app.tool_builders.weather",
+    "mcp": "app.tool_builders.mcp",
+    "workflow": "app.tool_builders.workflow",
+    "widget_validation": "app.tool_builders.widget_validation",
 }
 
 _MODULE_CACHE: dict[str, ModuleType] = {}
