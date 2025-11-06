@@ -6666,40 +6666,7 @@ const WorkflowBuilderPage = () => {
     scheduleBlockLibraryTransformUpdate,
   ]);
 
-  const getBlockLibraryButtonStyle = useCallback(
-    (disabled: boolean): CSSProperties => {
-      if (isMobileLayout) {
-        return {
-          display: "flex",
-          alignItems: "center",
-          gap: "1rem",
-          padding: "1.15rem 1.1rem",
-          border: "none",
-          background: "rgba(15, 23, 42, 0.28)",
-          borderRadius: "1.1rem",
-          cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.45 : 1,
-          width: "100%",
-          textAlign: "left",
-          transition: "background 0.3s ease, transform 0.3s ease",
-          color: "#f8fafc",
-        };
-      }
-      return {
-        display: "flex",
-        alignItems: "center",
-        gap: "0.75rem",
-        padding: "0.5rem 0",
-        border: "none",
-        background: "transparent",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
-        width: "100%",
-        textAlign: "left",
-      };
-    },
-    [isMobileLayout],
-  );
+  // getBlockLibraryButtonStyle removed - now handled by BlockLibraryPanel component (line 175)
 
   // workflowSidebarContent and collapsedWorkflowShortcuts removed - now using WorkflowSidebar component (line 180)
   const { expandedContent: workflowSidebarContent, collapsedContent: collapsedWorkflowShortcuts } =
@@ -6747,153 +6714,7 @@ const WorkflowBuilderPage = () => {
     workflowSidebarContent,
   ]);
 
-  const renderBlockLibraryContent = () => {
-    if (isMobileLayout) {
-      return (
-        <div className={styles.blockLibraryContent}>
-          <div
-            ref={(element) => {
-              blockLibraryScrollRef.current = element;
-              if (element && isBlockLibraryOpen) {
-                scheduleBlockLibraryTransformUpdate();
-              }
-            }}
-            className={styles.blockLibraryScroller}
-            role="list"
-            aria-label="Blocs disponibles"
-          >
-            {blockLibraryItems.map((item) => {
-              const disabled = loading || !selectedWorkflowId;
-              return (
-                <div
-                  key={item.key}
-                  role="listitem"
-                  className={styles.blockLibraryItemWrapper}
-                  ref={(node) => {
-                    if (node) {
-                      blockLibraryItemRefs.current[item.key] = node;
-                      scheduleBlockLibraryTransformUpdate();
-                    } else {
-                      delete blockLibraryItemRefs.current[item.key];
-                    }
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => item.onClick()}
-                    disabled={disabled}
-                    style={getBlockLibraryButtonStyle(disabled)}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: "2.85rem",
-                        height: "2.85rem",
-                        borderRadius: "0.95rem",
-                        background: item.color,
-                        color: "#fff",
-                        display: "grid",
-                        placeItems: "center",
-                        fontWeight: 700,
-                        fontSize: "1.25rem",
-                      }}
-                    >
-                      {item.shortLabel}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "1.05rem",
-                        fontWeight: 600,
-                        lineHeight: 1.1,
-                      }}
-                    >
-                      {item.label}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-
-    const primaryTextColor = "var(--text-color)";
-    return (
-      <div className={styles.blockLibraryDesktopContent}>
-        <div className={styles.blockLibraryDesktopHeader}>
-          <span>Bibliothèque de blocs</span>
-          <button
-            type="button"
-            ref={blockLibraryToggleRef}
-            className={styles.blockLibraryDesktopToggle}
-            onClick={toggleBlockLibrary}
-            aria-controls={blockLibraryContentId}
-            aria-expanded={isBlockLibraryOpen}
-          >
-            <span className={styles.srOnly}>
-              {isBlockLibraryOpen
-                ? "Masquer la bibliothèque de blocs"
-                : "Afficher la bibliothèque de blocs"}
-            </span>
-            <ChevronDown
-              aria-hidden="true"
-              className={styles.blockLibraryDesktopToggleIcon}
-              data-expanded={isBlockLibraryOpen ? "true" : "false"}
-              size={18}
-            />
-          </button>
-        </div>
-        <div
-          id={blockLibraryContentId}
-          className={styles.blockLibraryDesktopScroller}
-          role="list"
-          aria-label="Blocs disponibles"
-          hidden={!isBlockLibraryOpen}
-        >
-          {isBlockLibraryOpen
-            ? blockLibraryItems.map((item) => {
-                const disabled = loading || !selectedWorkflowId;
-                return (
-                  <div
-                    key={item.key}
-                    className={styles.blockLibraryDesktopItem}
-                    role="listitem"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => item.onClick()}
-                      disabled={disabled}
-                      style={getBlockLibraryButtonStyle(disabled)}
-                    >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          width: "2.35rem",
-                          height: "2.35rem",
-                          borderRadius: "0.75rem",
-                          background: item.color,
-                          color: "#fff",
-                          display: "grid",
-                          placeItems: "center",
-                          fontWeight: 700,
-                          fontSize: "1.05rem",
-                        }}
-                      >
-                        {item.shortLabel}
-                      </span>
-                      <div style={{ textAlign: "left", color: primaryTextColor }}>
-                        <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
-                      </div>
-                    </button>
-                  </div>
-                );
-              })
-            : null}
-        </div>
-      </div>
-    );
-  };
+  // renderBlockLibraryContent function removed - now handled by BlockLibraryPanel component (line 175)
 
   const workflowBusy = loading || isImporting || isExporting;
   const editingLocked = false;
@@ -7286,7 +7107,16 @@ const WorkflowBuilderPage = () => {
                     role="dialog"
                     aria-modal="true"
                   >
-                    {renderBlockLibraryContent()}
+                    <BlockLibraryPanel
+                      isMobileLayout={isMobileLayout}
+                      isOpen={isBlockLibraryOpen}
+                      items={blockLibraryItems}
+                      loading={loading}
+                      selectedWorkflowId={selectedWorkflowId}
+                      scrollRef={blockLibraryScrollRef}
+                      itemRefs={blockLibraryItemRefs}
+                      onItemRefSet={scheduleBlockLibraryTransformUpdate}
+                    />
                   </aside>
                 </div>
               ) : null}
@@ -7384,7 +7214,16 @@ const WorkflowBuilderPage = () => {
               className={styles.blockLibrary}
               style={floatingPanelStyle}
             >
-              {renderBlockLibraryContent()}
+              <BlockLibraryPanel
+                isMobileLayout={isMobileLayout}
+                isOpen={isBlockLibraryOpen}
+                items={blockLibraryItems}
+                loading={loading}
+                selectedWorkflowId={selectedWorkflowId}
+                onToggle={toggleBlockLibrary}
+                toggleRef={blockLibraryToggleRef}
+                contentId={blockLibraryContentId}
+              />
             </aside>
           )}
           {showPropertiesPanel ? (
