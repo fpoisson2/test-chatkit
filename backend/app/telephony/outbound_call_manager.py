@@ -608,8 +608,6 @@ class OutboundCallManager:
                         AssistantMessageContent,
                         AssistantMessageItem,
                         InferenceOptions,
-                        ThreadItemAddedEvent,
-                        ThreadItemDoneEvent,
                         UserMessageInput,
                         UserMessageTextContent,
                     )
@@ -650,8 +648,6 @@ class OutboundCallManager:
                         return
 
                     try:
-                        stream_events: list[ThreadItemAddedEvent | ThreadItemDoneEvent] = []
-
                         if role == "user":
                             user_input = UserMessageInput(
                                 content=[UserMessageTextContent(text=text)],
@@ -666,10 +662,6 @@ class OutboundCallManager:
                                 thread_id, user_item, context
                             )
                             message_id = user_item.id
-                            stream_events = [
-                                ThreadItemAddedEvent(item=user_item),
-                                ThreadItemDoneEvent(item=user_item),
-                            ]
                         elif role == "assistant":
                             message_id = server.store.generate_item_id(
                                 "message", thread_metadata, context
@@ -683,28 +675,8 @@ class OutboundCallManager:
                             await server.store.add_thread_item(
                                 thread_id, assistant_msg, context
                             )
-                            stream_events = [
-                                ThreadItemAddedEvent(item=assistant_msg),
-                                ThreadItemDoneEvent(item=assistant_msg),
-                            ]
                         else:
                             return
-
-                        events_mgr = get_outbound_events_manager()
-                        await events_mgr.emit_event(
-                            {
-                                "type": "transcript_delta",
-                                "call_id": session.call_id,
-                                "thread_id": thread_id,
-                                "message_id": message_id,
-                                "role": role,
-                                "text": text,
-                                "thread_events": [
-                                    event.model_dump(mode="json")
-                                    for event in stream_events
-                                ],
-                            }
-                        )
 
                         logger.info(
                             "Added real-time transcript to thread %s: %s: %s",
@@ -1154,8 +1126,6 @@ class OutboundCallManager:
                             AssistantMessageContent,
                             AssistantMessageItem,
                             InferenceOptions,
-                            ThreadItemAddedEvent,
-                            ThreadItemDoneEvent,
                             UserMessageInput,
                             UserMessageTextContent,
                         )
@@ -1196,10 +1166,6 @@ class OutboundCallManager:
                             return
 
                         try:
-                            stream_events: list[
-                                ThreadItemAddedEvent | ThreadItemDoneEvent
-                            ] = []
-
                             if role == "user":
                                 user_input = UserMessageInput(
                                     content=[UserMessageTextContent(text=text)],
@@ -1214,10 +1180,6 @@ class OutboundCallManager:
                                     thread_id, user_item, context
                                 )
                                 message_id = user_item.id
-                                stream_events = [
-                                    ThreadItemAddedEvent(item=user_item),
-                                    ThreadItemDoneEvent(item=user_item),
-                                ]
                             elif role == "assistant":
                                 message_id = server.store.generate_item_id(
                                     "message", thread_metadata, context
@@ -1231,28 +1193,8 @@ class OutboundCallManager:
                                 await server.store.add_thread_item(
                                     thread_id, assistant_msg, context
                                 )
-                                stream_events = [
-                                    ThreadItemAddedEvent(item=assistant_msg),
-                                    ThreadItemDoneEvent(item=assistant_msg),
-                                ]
                             else:
                                 return
-
-                            events_mgr = get_outbound_events_manager()
-                            await events_mgr.emit_event(
-                                {
-                                    "type": "transcript_delta",
-                                    "call_id": session.call_id,
-                                    "thread_id": thread_id,
-                                    "message_id": message_id,
-                                    "role": role,
-                                    "text": text,
-                                    "thread_events": [
-                                        event.model_dump(mode="json")
-                                        for event in stream_events
-                                    ],
-                                }
-                            )
 
                             logger.info(
                                 "Added real-time transcript to thread %s: %s: %s",
