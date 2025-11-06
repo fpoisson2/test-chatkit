@@ -35,7 +35,21 @@ export const OutboundCallAudioPlayer = ({
 
   // Handle hang up
   const handleHangup = useCallback(async () => {
-    if (!callId || isHangingUp || !authToken) return;
+    console.log("[OutboundCallAudioPlayer] handleHangup called", { callId, isHangingUp, hasToken: !!authToken });
+
+    if (!callId) {
+      console.error("[OutboundCallAudioPlayer] No callId");
+      return;
+    }
+    if (isHangingUp) {
+      console.warn("[OutboundCallAudioPlayer] Already hanging up");
+      return;
+    }
+    if (!authToken) {
+      console.error("[OutboundCallAudioPlayer] No authToken available");
+      setError("Token d'authentification manquant");
+      return;
+    }
 
     setIsHangingUp(true);
     try {
