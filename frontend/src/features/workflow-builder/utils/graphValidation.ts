@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode } from "../../../utils/workflows";
+import type { FlowEdge, FlowNode } from "../types";
 import { getParallelSplitJoinSlug, getParallelSplitBranches } from "../../../utils/workflows";
 
 /**

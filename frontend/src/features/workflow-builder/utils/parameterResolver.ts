@@ -2,8 +2,10 @@ import type { NodeKind } from "../types";
 import type { AgentParameters } from "../../../utils/workflows";
 import {
   resolveAgentParameters,
-  resolveVoiceAgentParameters,
   resolveStateParameters,
+} from "../../../utils/agentPresets";
+import {
+  resolveVoiceAgentParameters,
   resolveWidgetNodeParameters,
   resolveStartParameters,
   resolveParallelSplitParameters,
