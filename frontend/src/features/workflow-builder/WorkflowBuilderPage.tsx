@@ -1370,238 +1370,7 @@ const WorkflowBuilderPage = () => {
       </div>
     ) : null;
 
-  const renderHeaderControls = () => {
-    const importDisabled = loading || isImporting;
-    const exportDisabled =
-      loading || !selectedWorkflowId || !selectedVersionId || isExporting;
-    const deployDisabled =
-      loading || !selectedWorkflowId || versions.length === 0 || isDeploying;
-    const importLabel = isImporting
-      ? t("workflowBuilder.import.inProgress")
-      : t("workflowBuilder.actions.importJson");
-    const exportLabel = isExporting
-      ? t("workflowBuilder.export.preparing")
-      : t("workflowBuilder.actions.exportJson");
-    const versionSelect = (
-      <div style={getHeaderLayoutStyle(isMobileLayout)}>
-        <div style={getHeaderGroupStyle(isMobileLayout)}>
-          {!isMobileLayout ? (
-            <label htmlFor="version-select" style={controlLabelStyle}>
-              Révision
-            </label>
-          ) : null}
-          <select
-            id="version-select"
-            aria-label={isMobileLayout ? "Sélectionner une révision" : undefined}
-            value={selectedVersionId ? String(selectedVersionId) : ""}
-            onChange={handleVersionChange}
-            disabled={loading || versions.length === 0}
-            style={getVersionSelectStyle(isMobileLayout, {
-              disabled: loading || versions.length === 0,
-            })}
-          >
-            {versions.length === 0 ? (
-              <option value="">Aucune version disponible</option>
-            ) : (
-              versions.map((version) => {
-                const isDraft = draftVersionIdRef.current === version.id;
-                const displayName = version.name?.trim() || null;
-                const labelParts: string[] = [];
-                if (isDraft) {
-                  labelParts.push(displayName ?? draftDisplayName);
-                } else {
-                  labelParts.push(`v${version.version}`);
-                  if (
-                    displayName &&
-                    (!version.is_active || displayName.toLowerCase() !== "production")
-                  ) {
-                    labelParts.push(displayName);
-                  }
-                }
-                if (version.is_active) {
-                  labelParts.push("Production");
-                }
-                return (
-                  <option key={version.id} value={version.id}>
-                    {labelParts.join(" · ")}
-                  </option>
-                );
-              })
-            )}
-          </select>
-        </div>
-      </div>
-    );
-
-    const importInput = (
-      <input
-        ref={importFileInputRef}
-        type="file"
-        accept="application/json"
-        hidden
-        onChange={(event) => {
-          void handleImportFileChange(event);
-        }}
-      />
-    );
-
-    if (isMobileLayout) {
-      const mobileMenuStyle = getActionMenuStyle(true, "down");
-      mobileMenuStyle.right = 0;
-      mobileMenuStyle.left = "auto";
-      mobileMenuStyle.minWidth = "min(18rem, 85vw)";
-      mobileMenuStyle.width = "min(18rem, 85vw)";
-      mobileMenuStyle.padding = "1rem";
-      mobileMenuStyle.gap = "0.75rem";
-      const shouldShowMobileInfo =
-        Boolean(selectedWorkflow?.description) ||
-        Boolean(selectedWorkflow && !selectedWorkflow.active_version_id);
-
-      return (
-        <>
-          {versionSelect}
-          <div style={getHeaderActionAreaStyle(true)}>
-            <div style={{ ...getActionMenuWrapperStyle(true), width: "auto" }}>
-              <button
-                type="button"
-                ref={mobileActionsTriggerRef}
-                onClick={() => {
-                  setIsMobileActionsOpen((previous) => !previous);
-                }}
-                aria-haspopup="menu"
-                aria-expanded={isMobileActionsOpen}
-                aria-controls={mobileActionsDialogId}
-                style={{
-                  width: "2.75rem",
-                  height: "2.75rem",
-                  borderRadius: "0.75rem",
-                  border: "1px solid var(--surface-border)",
-                  background: "var(--surface-strong)",
-                  color: "var(--text-color)",
-                  display: "grid",
-                  placeItems: "center",
-                  fontSize: "1.5rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                <span aria-hidden="true">⋯</span>
-                <span className={styles.srOnly}>
-                  {t("workflowBuilder.mobileActions.open")}
-                </span>
-              </button>
-              {isMobileActionsOpen ? (
-                <div
-                  id={mobileActionsDialogId}
-                  role="menu"
-                  aria-labelledby={mobileActionsTitleId}
-                  ref={mobileActionsMenuRef}
-                  style={mobileMenuStyle}
-                  className={styles.mobileHeaderMenu}
-                >
-                  <span id={mobileActionsTitleId} className={styles.srOnly}>
-                    {t("workflowBuilder.mobileActions.title")}
-                  </span>
-                  {shouldShowMobileInfo ? (
-                    <div className={styles.mobileHeaderMenuInfo}>
-                      {renderWorkflowDescription(styles.mobileHeaderMenuInfoText)}
-                      {renderWorkflowPublicationReminder(
-                        styles.mobileHeaderMenuInfoWarning,
-                      )}
-                    </div>
-                  ) : null}
-                  <div className={styles.mobileHeaderMenuActions}>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        handleTriggerImport();
-                        closeMobileActions();
-                      }}
-                      disabled={importDisabled}
-                      aria-busy={isImporting}
-                      style={getMobileActionButtonStyle({ disabled: importDisabled })}
-                    >
-                      {importLabel}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        void handleExportWorkflow();
-                        closeMobileActions();
-                      }}
-                      disabled={exportDisabled}
-                      aria-busy={isExporting}
-                      style={getMobileActionButtonStyle({ disabled: exportDisabled })}
-                    >
-                      {exportLabel}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        handleOpenDeployModal();
-                        closeMobileActions();
-                      }}
-                      disabled={deployDisabled}
-                      style={getMobileActionButtonStyle({ disabled: deployDisabled })}
-                    >
-                      Déployer
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-          {importInput}
-        </>
-      );
-    }
-
-    return (
-      <>
-        {versionSelect}
-        <div style={getHeaderActionAreaStyle(false)}>
-          <button
-            type="button"
-            onClick={handleTriggerImport}
-            disabled={importDisabled}
-            aria-busy={isImporting}
-            style={getDeployButtonStyle(false, {
-              disabled: importDisabled,
-            })}
-          >
-            {importLabel}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void handleExportWorkflow();
-            }}
-            disabled={exportDisabled}
-            aria-busy={isExporting}
-            style={getDeployButtonStyle(false, {
-              disabled: exportDisabled,
-            })}
-          >
-            {exportLabel}
-          </button>
-          <button
-            type="button"
-            onClick={handleOpenDeployModal}
-            disabled={deployDisabled}
-            style={getDeployButtonStyle(false, {
-              disabled: deployDisabled,
-            })}
-          >
-            Déployer
-          </button>
-        </div>
-        {importInput}
-      </>
-    );
-  };
+  // renderHeaderControls function removed - now handled by WorkflowHeader component (line 179)
 
   const reactFlowContainerRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -8037,19 +7806,35 @@ const WorkflowBuilderPage = () => {
           overflow: "hidden",
         }}
       >
-        <header style={headerStyle}>
-          <button
-            type="button"
-            onClick={openSidebar}
-            aria-label="Ouvrir la navigation générale"
-            style={getHeaderNavigationButtonStyle(isMobileLayout)}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </button>
-          {renderHeaderControls()}
-        </header>
+        <WorkflowHeader
+          isMobileLayout={isMobileLayout}
+          loading={loading}
+          isImporting={isImporting}
+          isExporting={isExporting}
+          isDeploying={isDeploying}
+          selectedWorkflowId={selectedWorkflowId}
+          selectedVersionId={selectedVersionId}
+          versions={versions}
+          selectedWorkflow={selectedWorkflow}
+          draftVersionIdRef={draftVersionIdRef}
+          draftDisplayName={draftDisplayName}
+          isMobileActionsOpen={isMobileActionsOpen}
+          headerStyle={headerStyle}
+          onOpenSidebar={openSidebar}
+          onVersionChange={handleVersionChange}
+          onTriggerImport={handleTriggerImport}
+          onImportFileChange={handleImportFileChange}
+          onExportWorkflow={handleExportWorkflow}
+          onOpenDeployModal={handleOpenDeployModal}
+          onToggleMobileActions={() => {
+            setIsMobileActionsOpen((previous) => !previous);
+          }}
+          onCloseMobileActions={closeMobileActions}
+          mobileActionsTriggerRef={mobileActionsTriggerRef}
+          mobileActionsMenuRef={mobileActionsMenuRef}
+          importFileInputRef={importFileInputRef}
+          t={t}
+        />
 
         <div style={workspaceWrapperStyle}>
           <div style={workspaceContentStyle}>
