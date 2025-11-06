@@ -210,6 +210,7 @@ import {
   useSaveContext,
   useUIContext,
   useModalContext,
+  useSelectionContext,
 } from "./contexts";
 
 const WorkflowBuilderPage = () => {
@@ -274,6 +275,24 @@ const WorkflowBuilderPage = () => {
     closeAppearanceModal: handleCloseAppearanceModal,
   } = useModalContext();
 
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedEdgeId,
+    setSelectedEdgeId,
+    selectedNodeIdRef,
+    selectedEdgeIdRef,
+    selectedNodeIds,
+    setSelectedNodeIds,
+    selectedEdgeIds,
+    setSelectedEdgeIds,
+    previousSelectedElementRef,
+    selectNode,
+    selectEdge,
+    clearSelection: clearSelectionContext,
+    handleSelectionChange: handleSelectionChangeContext,
+  } = useSelectionContext();
+
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
       return {
@@ -331,8 +350,7 @@ const WorkflowBuilderPage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  // Note: selectedNodeId and selectedEdgeId now come from SelectionContext (above)
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
@@ -451,21 +469,16 @@ const WorkflowBuilderPage = () => {
     [applyEdgesChange, updateHasPendingChanges],
   );
 
-  const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
+  // Note: isBlockLibraryOpen and isPropertiesPanelOpen come from UIContext (imported above)
+  // Note: selectedNodeId, selectedEdgeId and their refs come from SelectionContext (imported above)
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
-  const previousSelectedElementRef = useRef<string | null>(null);
-  const selectedNodeIdRef = useRef<string | null>(null);
-  const selectedEdgeIdRef = useRef<string | null>(null);
   const lastTappedElementRef = useRef<{
     kind: "node" | "edge";
     id: string;
     tapCount: number;
   } | null>(null);
-  const selectedNodeIdsRef = useRef<Set<string>>(new Set());
-  const selectedEdgeIdsRef = useRef<Set<string>>(new Set());
   const isNodeDragInProgressRef = useRef(false);
   const copySequenceRef = useRef<{ count: number; lastTimestamp: number }>({
     count: 0,
@@ -499,11 +512,11 @@ const WorkflowBuilderPage = () => {
   // Mobile actions handlers now provided by useWorkflowBuilderModals hook
 
   const toggleBlockLibrary = useCallback(() => {
-    setBlockLibraryOpen((prev) => !prev);
+    setIsBlockLibraryOpen((prev) => !prev);
   }, []);
   const closeBlockLibrary = useCallback(
     (options: { focusToggle?: boolean } = {}) => {
-      setBlockLibraryOpen(false);
+      setIsBlockLibraryOpen(false);
       if (options.focusToggle && blockLibraryToggleRef.current) {
         blockLibraryToggleRef.current.focus();
       }
@@ -516,7 +529,7 @@ const WorkflowBuilderPage = () => {
   }, [baseMinViewportZoom]);
 
   useEffect(() => {
-    setBlockLibraryOpen(!isMobileLayout);
+    setIsBlockLibraryOpen(!isMobileLayout);
   }, [isMobileLayout]);
 
   // Ferme les actions mobiles quand on n’est pas en layout mobile
@@ -1364,7 +1377,7 @@ const WorkflowBuilderPage = () => {
       setSelectedNodeId(node.id);
       setSelectedEdgeId(null);
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setPropertiesPanelOpen(true);
+        setIsPropertiesPanelOpen(true);
       }
     },
     [isMobileLayout],
@@ -1379,7 +1392,7 @@ const WorkflowBuilderPage = () => {
       setSelectedEdgeId(edge.id);
       setSelectedNodeId(null);
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setPropertiesPanelOpen(true);
+        setIsPropertiesPanelOpen(true);
       }
     },
     [isMobileLayout],
@@ -1412,7 +1425,7 @@ const WorkflowBuilderPage = () => {
 
   const handleClosePropertiesPanel = useCallback(() => {
     if (isMobileLayout) {
-      setPropertiesPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       if (typeof window !== "undefined") {
         window.setTimeout(() => {
           propertiesPanelToggleRef.current?.focus();
@@ -1429,7 +1442,7 @@ const WorkflowBuilderPage = () => {
     if (!selectedNode && !selectedEdge) {
       return;
     }
-    setPropertiesPanelOpen(true);
+    setIsPropertiesPanelOpen(true);
   }, [selectedEdge, selectedNode]);
 
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
@@ -1448,7 +1461,7 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     if (!selectedElementKey) {
-      setPropertiesPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       lastTappedElementRef.current = null;
       previousSelectedElementRef.current = selectedElementKey;
       return;
@@ -1476,10 +1489,10 @@ const WorkflowBuilderPage = () => {
 
     if (isMobileLayout) {
       if (isNewSelection) {
-        setPropertiesPanelOpen(false);
+        setIsPropertiesPanelOpen(false);
       }
     } else if (isNewSelection && !isNodeDragInProgressRef.current) {
-      setPropertiesPanelOpen(true);
+      setIsPropertiesPanelOpen(true);
     }
 
     previousSelectedElementRef.current = selectedElementKey;
@@ -1488,7 +1501,7 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     if (!isMobileLayout) {
       if (selectedElementKey) {
-        setPropertiesPanelOpen(true);
+        setIsPropertiesPanelOpen(true);
       }
     }
   }, [isMobileLayout, selectedElementKey]);
