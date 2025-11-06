@@ -34,24 +34,18 @@ import {
   getParallelSplitBranches,
 } from "../../../../utils/workflows";
 import type {
-  AgentNestedWorkflowSelection,
-  ComputerUseConfig,
-  FileSearchConfig,
   FlowNode,
-  ImageGenerationToolConfig,
   StateAssignment,
   StateAssignmentScope,
   VectorStoreNodeConfig,
   VoiceAgentTool,
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
-  WebSearchConfig,
-  WidgetVariableAssignment,
   WorkflowSummary,
   ParallelBranch,
-  McpSseToolConfig,
 } from "../../types";
 import { labelForKind } from "../../utils";
+import type { WorkflowNodeHandlers } from "../../hooks/useWorkflowNodeHandlers";
 import { TrashIcon } from "./components/TrashIcon";
 import styles from "./NodeInspector.module.css";
 import { useTransformInspectorState } from "./hooks/useTransformInspectorState";
@@ -73,217 +67,111 @@ import { WidgetInspectorSection } from "./sections/WidgetInspectorSection";
 
 export type NodeInspectorProps = {
   node: FlowNode;
-  onDisplayNameChange: (nodeId: string, value: string) => void;
-  onAgentMessageChange: (nodeId: string, value: string) => void;
-  onAgentModelChange: (
-    nodeId: string,
-    selection: {
-      model: string;
-      providerId?: string | null;
-      providerSlug?: string | null;
-      store?: boolean | null;
-    },
-  ) => void;
-  onAgentProviderChange: (
-    nodeId: string,
-    selection: { providerId?: string | null; providerSlug?: string | null },
-  ) => void;
-  onAgentNestedWorkflowChange: (
-    nodeId: string,
-    selection: AgentNestedWorkflowSelection,
-  ) => void;
-  onAgentReasoningChange: (nodeId: string, value: string) => void;
-  onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
-  onAgentTextVerbosityChange: (nodeId: string, value: string) => void;
-  onAgentTemperatureChange: (nodeId: string, value: string) => void;
-  onAgentTopPChange: (nodeId: string, value: string) => void;
-  onAgentMaxOutputTokensChange: (nodeId: string, value: string) => void;
-  onAgentResponseFormatKindChange: (nodeId: string, kind: "text" | "json_schema" | "widget") => void;
-  onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
-  onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
-  onAgentResponseWidgetSlugChange: (nodeId: string, slug: string) => void;
-  onAgentResponseWidgetSourceChange: (
-    nodeId: string,
-    source: "library" | "variable",
-  ) => void;
-  onAgentResponseWidgetDefinitionChange: (nodeId: string, expression: string) => void;
-  onWidgetNodeSlugChange: (nodeId: string, slug: string) => void;
-  onWidgetNodeSourceChange: (
-    nodeId: string,
-    source: "library" | "variable",
-  ) => void;
-  onWidgetNodeDefinitionExpressionChange: (nodeId: string, expression: string) => void;
-  onWidgetNodeVariablesChange: (nodeId: string, assignments: WidgetVariableAssignment[]) => void;
-  onWidgetNodeAwaitActionChange: (nodeId: string, value: boolean) => void;
-  onAgentIncludeChatHistoryChange: (nodeId: string, value: boolean) => void;
-  onAgentDisplayResponseInChatChange: (nodeId: string, value: boolean) => void;
-  onAgentShowSearchSourcesChange: (nodeId: string, value: boolean) => void;
-  onAgentContinueOnErrorChange: (nodeId: string, value: boolean) => void;
-  onAgentStorePreferenceChange: (nodeId: string, value: boolean) => void;
-  onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
-  onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
-  onAgentImageGenerationChange: (nodeId: string, config: ImageGenerationToolConfig | null) => void;
-  onAgentComputerUseChange: (nodeId: string, config: ComputerUseConfig | null) => void;
+  nodeHandlers: WorkflowNodeHandlers;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
   hostedWorkflows: HostedWorkflowMetadata[];
   hostedWorkflowsLoading: boolean;
   hostedWorkflowsError: string | null;
-  onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
-  onVoiceAgentStartBehaviorChange: (
-    nodeId: string,
-    behavior: VoiceAgentStartBehavior,
-  ) => void;
-  onVoiceAgentStopBehaviorChange: (
-    nodeId: string,
-    behavior: VoiceAgentStopBehavior,
-  ) => void;
-  onVoiceAgentToolChange: (
-    nodeId: string,
-    tool: VoiceAgentTool,
-    enabled: boolean,
-  ) => void;
-  onTranscriptionModelChange: (nodeId: string, value: string) => void;
-  onTranscriptionLanguageChange: (nodeId: string, value: string) => void;
-  onTranscriptionPromptChange: (nodeId: string, value: string) => void;
-  onVectorStoreNodeConfigChange: (
-    nodeId: string,
-    updates: Partial<VectorStoreNodeConfig>,
-  ) => void;
-  onParametersChange: (
-    nodeId: string,
-    parameters: Record<string, unknown>,
-  ) => void;
-  onTransformExpressionsChange: (
-    nodeId: string,
-    expressions: Record<string, unknown>,
-  ) => void;
-  onStartAutoRunChange: (nodeId: string, value: boolean) => void;
-  onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
-  onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
-  onStartTelephonySipAccountIdChange: (nodeId: string, value: number | null) => void;
-  onStartTelephonyRingTimeoutChange: (nodeId: string, value: number) => void;
-  onStartTelephonySpeakFirstChange: (nodeId: string, value: boolean) => void;
-  onConditionPathChange: (nodeId: string, value: string) => void;
-  onConditionModeChange: (nodeId: string, value: string) => void;
-  onConditionValueChange: (nodeId: string, value: string) => void;
-  onParallelJoinSlugChange: (nodeId: string, value: string) => void;
-  onParallelBranchesChange: (nodeId: string, branches: ParallelBranch[]) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
   isReasoningModel: (model: string) => boolean;
-  onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
-  onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
-  onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
-  onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
-  onAgentMcpServersChange?: (
-    nodeId: string,
-    configs: McpSseToolConfig[],
-  ) => void;
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
   widgets: WidgetTemplateSummary[];
   widgetsLoading: boolean;
   widgetsError: string | null;
-  onStateAssignmentsChange: (
-    nodeId: string,
-    scope: StateAssignmentScope,
-    assignments: StateAssignment[],
-  ) => void;
-  onEndMessageChange: (nodeId: string, value: string) => void;
-  onAssistantMessageChange: (nodeId: string, value: string) => void;
-  onAssistantMessageStreamEnabledChange: (nodeId: string, value: boolean) => void;
-  onAssistantMessageStreamDelayChange: (nodeId: string, value: string) => void;
-  onWaitForUserInputMessageChange: (nodeId: string, value: string) => void;
-  onUserMessageChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
 
 const NodeInspector = ({
   node,
-  onDisplayNameChange,
-  onAgentMessageChange,
-  onAgentModelChange,
-  onAgentProviderChange,
-  onAgentNestedWorkflowChange,
-  onAgentReasoningChange,
-  onAgentReasoningSummaryChange,
-  onAgentTextVerbosityChange,
-  onAgentTemperatureChange,
-  onAgentTopPChange,
-  onAgentMaxOutputTokensChange,
-  onAgentResponseFormatKindChange,
-  onAgentResponseFormatNameChange,
-  onAgentResponseFormatSchemaChange,
-  onAgentResponseWidgetSlugChange,
-  onAgentResponseWidgetSourceChange,
-  onAgentResponseWidgetDefinitionChange,
-  onWidgetNodeSlugChange,
-  onWidgetNodeSourceChange,
-  onWidgetNodeDefinitionExpressionChange,
-  onWidgetNodeVariablesChange,
-  onWidgetNodeAwaitActionChange,
-  onAgentIncludeChatHistoryChange,
-  onAgentDisplayResponseInChatChange,
-  onAgentShowSearchSourcesChange,
-  onAgentContinueOnErrorChange,
-  onAgentStorePreferenceChange,
-  onAgentWebSearchChange,
-  onAgentFileSearchChange,
-  onAgentImageGenerationChange,
-  onAgentComputerUseChange,
-  onAgentMcpServersChange,
+  nodeHandlers,
   workflows,
   currentWorkflowId,
   hostedWorkflows,
   hostedWorkflowsLoading,
   hostedWorkflowsError,
-  onVoiceAgentVoiceChange,
-  onVoiceAgentStartBehaviorChange,
-  onVoiceAgentStopBehaviorChange,
-  onVoiceAgentToolChange,
-  onTranscriptionModelChange,
-  onTranscriptionLanguageChange,
-  onTranscriptionPromptChange,
-  onVectorStoreNodeConfigChange,
-  onParametersChange,
-  onTransformExpressionsChange,
-  onStartAutoRunChange,
-  onStartAutoRunMessageChange,
-  onStartAutoRunAssistantMessageChange,
-  onStartTelephonySipAccountIdChange,
-  onStartTelephonyRingTimeoutChange,
-  onStartTelephonySpeakFirstChange,
-  onConditionPathChange,
-  onConditionModeChange,
-  onConditionValueChange,
-  onParallelJoinSlugChange,
-  onParallelBranchesChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
   isReasoningModel,
-  onAgentWeatherToolChange,
-  onAgentWidgetValidationToolChange,
-  onAgentWorkflowValidationToolChange,
-  onAgentWorkflowToolToggle,
   vectorStores,
   vectorStoresLoading,
   vectorStoresError,
   widgets,
   widgetsLoading,
   widgetsError,
-  onStateAssignmentsChange,
-  onEndMessageChange,
-  onAssistantMessageChange,
-  onAssistantMessageStreamEnabledChange,
-  onAssistantMessageStreamDelayChange,
-  onWaitForUserInputMessageChange,
-  onUserMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
+  const {
+    handleDisplayNameChange: onDisplayNameChange,
+    handleAgentMessageChange: onAgentMessageChange,
+    handleAgentModelChange: onAgentModelChange,
+    handleAgentProviderChange: onAgentProviderChange,
+    handleAgentNestedWorkflowChange: onAgentNestedWorkflowChange,
+    handleAgentReasoningChange: onAgentReasoningChange,
+    handleAgentReasoningSummaryChange: onAgentReasoningSummaryChange,
+    handleAgentTextVerbosityChange: onAgentTextVerbosityChange,
+    handleAgentTemperatureChange: onAgentTemperatureChange,
+    handleAgentTopPChange: onAgentTopPChange,
+    handleAgentMaxOutputTokensChange: onAgentMaxOutputTokensChange,
+    handleAgentResponseFormatKindChange: onAgentResponseFormatKindChange,
+    handleAgentResponseFormatNameChange: onAgentResponseFormatNameChange,
+    handleAgentResponseFormatSchemaChange: onAgentResponseFormatSchemaChange,
+    handleAgentResponseWidgetSlugChange: onAgentResponseWidgetSlugChange,
+    handleAgentResponseWidgetSourceChange: onAgentResponseWidgetSourceChange,
+    handleAgentResponseWidgetDefinitionChange: onAgentResponseWidgetDefinitionChange,
+    handleWidgetNodeSlugChange: onWidgetNodeSlugChange,
+    handleWidgetNodeSourceChange: onWidgetNodeSourceChange,
+    handleWidgetNodeDefinitionExpressionChange: onWidgetNodeDefinitionExpressionChange,
+    handleWidgetNodeVariablesChange: onWidgetNodeVariablesChange,
+    handleWidgetNodeAwaitActionChange: onWidgetNodeAwaitActionChange,
+    handleAgentIncludeChatHistoryChange: onAgentIncludeChatHistoryChange,
+    handleAgentDisplayResponseInChatChange: onAgentDisplayResponseInChatChange,
+    handleAgentShowSearchSourcesChange: onAgentShowSearchSourcesChange,
+    handleAgentContinueOnErrorChange: onAgentContinueOnErrorChange,
+    handleAgentStorePreferenceChange: onAgentStorePreferenceChange,
+    handleAgentWebSearchChange: onAgentWebSearchChange,
+    handleAgentFileSearchChange: onAgentFileSearchChange,
+    handleAgentImageGenerationChange: onAgentImageGenerationChange,
+    handleAgentComputerUseChange: onAgentComputerUseChange,
+    handleAgentMcpServersChange: onAgentMcpServersChange,
+    handleVoiceAgentVoiceChange: onVoiceAgentVoiceChange,
+    handleVoiceAgentStartBehaviorChange: onVoiceAgentStartBehaviorChange,
+    handleVoiceAgentStopBehaviorChange: onVoiceAgentStopBehaviorChange,
+    handleVoiceAgentToolChange: onVoiceAgentToolChange,
+    handleTranscriptionModelChange: onTranscriptionModelChange,
+    handleTranscriptionLanguageChange: onTranscriptionLanguageChange,
+    handleTranscriptionPromptChange: onTranscriptionPromptChange,
+    handleVectorStoreNodeConfigChange: onVectorStoreNodeConfigChange,
+    handleOutboundCallParametersChange: onParametersChange,
+    handleTransformExpressionsChange: onTransformExpressionsChange,
+    handleStartAutoRunChange: onStartAutoRunChange,
+    handleStartAutoRunMessageChange: onStartAutoRunMessageChange,
+    handleStartAutoRunAssistantMessageChange: onStartAutoRunAssistantMessageChange,
+    handleStartTelephonySipAccountIdChange: onStartTelephonySipAccountIdChange,
+    handleStartTelephonyRingTimeoutChange: onStartTelephonyRingTimeoutChange,
+    handleStartTelephonySpeakFirstChange: onStartTelephonySpeakFirstChange,
+    handleConditionPathChange: onConditionPathChange,
+    handleConditionModeChange: onConditionModeChange,
+    handleConditionValueChange: onConditionValueChange,
+    handleParallelJoinSlugChange: onParallelJoinSlugChange,
+    handleParallelBranchesChange: onParallelBranchesChange,
+    handleAgentWeatherToolChange: onAgentWeatherToolChange,
+    handleAgentWidgetValidationToolChange: onAgentWidgetValidationToolChange,
+    handleAgentWorkflowValidationToolChange: onAgentWorkflowValidationToolChange,
+    handleAgentWorkflowToolToggle: onAgentWorkflowToolToggle,
+    handleStateAssignmentsChange: onStateAssignmentsChange,
+    handleEndMessageChange: onEndMessageChange,
+    handleAssistantMessageChange: onAssistantMessageChange,
+    handleAssistantMessageStreamEnabledChange: onAssistantMessageStreamEnabledChange,
+    handleAssistantMessageStreamDelayChange: onAssistantMessageStreamDelayChange,
+    handleWaitForUserInputMessageChange: onWaitForUserInputMessageChange,
+    handleUserMessageChange: onUserMessageChange,
+  } = nodeHandlers;
   const { token } = useAuth();
   const { t } = useI18n();
   const { kind, displayName, parameters } = node.data;

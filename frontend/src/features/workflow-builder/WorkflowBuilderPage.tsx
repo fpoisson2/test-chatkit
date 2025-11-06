@@ -2402,87 +2402,7 @@ const WorkflowBuilderPage = () => {
     [applySelection, decorateNode, setNodes]
   );
 
-  const {
-    handleDisplayNameChange,
-    handleStartAutoRunChange,
-    handleStartAutoRunMessageChange,
-    handleStartAutoRunAssistantMessageChange,
-    handleStartTelephonySipAccountIdChange,
-    handleStartTelephonyRingTimeoutChange,
-    handleStartTelephonySpeakFirstChange,
-    handleOutboundCallParametersChange,
-    handleAgentMessageChange,
-    handleAgentModelChange,
-    handleAgentProviderChange,
-    handleAgentNestedWorkflowChange,
-    handleAgentReasoningChange,
-    handleAgentReasoningSummaryChange,
-    handleAgentTextVerbosityChange,
-    handleAgentTemperatureChange,
-    handleAgentTopPChange,
-    handleAgentMaxOutputTokensChange,
-    handleAgentIncludeChatHistoryChange,
-    handleAgentDisplayResponseInChatChange,
-    handleAgentShowSearchSourcesChange,
-    handleAgentContinueOnErrorChange,
-    handleAgentStorePreferenceChange,
-    handleAgentResponseFormatKindChange,
-    handleAgentResponseFormatNameChange,
-    handleAgentResponseFormatSchemaChange,
-    handleAgentResponseWidgetSlugChange,
-    handleAgentResponseWidgetSourceChange,
-    handleAgentResponseWidgetDefinitionChange,
-    handleConditionPathChange,
-    handleConditionModeChange,
-    handleConditionValueChange,
-    handleParallelJoinSlugChange,
-    handleParallelBranchesChange,
-    handleWidgetNodeSlugChange,
-    handleWidgetNodeSourceChange,
-    handleWidgetNodeDefinitionExpressionChange,
-    handleWidgetNodeVariablesChange,
-    handleWidgetNodeAwaitActionChange,
-    handleAgentWebSearchChange,
-    handleAgentFileSearchChange,
-    handleAgentImageGenerationChange,
-    handleAgentComputerUseChange,
-    handleAgentMcpServersChange,
-    handleVectorStoreNodeConfigChange,
-    handleTransformExpressionsChange,
-    handleAgentWeatherToolChange,
-    handleAgentWidgetValidationToolChange,
-    handleAgentWorkflowValidationToolChange,
-    handleAgentWorkflowToolToggle,
-    handleVoiceAgentVoiceChange,
-    handleVoiceAgentStartBehaviorChange,
-    handleVoiceAgentStopBehaviorChange,
-    handleVoiceAgentToolChange,
-    handleTranscriptionModelChange,
-    handleTranscriptionLanguageChange,
-    handleTranscriptionPromptChange,
-    handleStateAssignmentsChange,
-    handleEndMessageChange,
-    handleAssistantMessageChange,
-    handleAssistantMessageStreamEnabledChange,
-    handleAssistantMessageStreamDelayChange,
-    handleWaitForUserInputMessageChange,
-    handleUserMessageChange,
-    handleAddAgentNode,
-    handleAddVoiceAgentNode,
-    handleAddOutboundCallNode,
-    handleAddConditionNode,
-    handleAddParallelSplitNode,
-    handleAddParallelJoinNode,
-    handleAddStateNode,
-    handleAddWatchNode,
-    handleAddTransformNode,
-    handleAddWaitForUserInputNode,
-    handleAddAssistantMessageNode,
-    handleAddUserMessageNode,
-    handleAddVectorStoreNode,
-    handleAddWidgetNode,
-    handleAddEndNode,
-  } = useWorkflowNodeHandlers({
+  const nodeHandlers = useWorkflowNodeHandlers({
     updateNodeData,
     addNodeToGraph,
     humanizeSlug,
@@ -3760,51 +3680,61 @@ const WorkflowBuilderPage = () => {
       shortLabel: string;
       onClick: () => void;
     }> = [
-      { key: "agent", kind: "agent", shortLabel: "A", onClick: handleAddAgentNode },
+      { key: "agent", kind: "agent", shortLabel: "A", onClick: nodeHandlers.handleAddAgentNode },
       {
         key: "voice-agent",
         kind: "voice_agent",
         shortLabel: "AV",
-        onClick: handleAddVoiceAgentNode,
+        onClick: nodeHandlers.handleAddVoiceAgentNode,
       },
       {
         key: "outbound-call",
         kind: "outbound_call",
         shortLabel: "AS",
-        onClick: handleAddOutboundCallNode,
+        onClick: nodeHandlers.handleAddOutboundCallNode,
       },
-      { key: "condition", kind: "condition", shortLabel: "C", onClick: handleAddConditionNode },
-      { key: "parallel-split", kind: "parallel_split", shortLabel: "SP", onClick: handleAddParallelSplitNode },
-      { key: "parallel-join", kind: "parallel_join", shortLabel: "JP", onClick: handleAddParallelJoinNode },
-      { key: "state", kind: "state", shortLabel: "É", onClick: handleAddStateNode },
-      { key: "watch", kind: "watch", shortLabel: "W", onClick: handleAddWatchNode },
-      { key: "transform", kind: "transform", shortLabel: "T", onClick: handleAddTransformNode },
+      { key: "condition", kind: "condition", shortLabel: "C", onClick: nodeHandlers.handleAddConditionNode },
+      {
+        key: "parallel-split",
+        kind: "parallel_split",
+        shortLabel: "SP",
+        onClick: nodeHandlers.handleAddParallelSplitNode,
+      },
+      {
+        key: "parallel-join",
+        kind: "parallel_join",
+        shortLabel: "JP",
+        onClick: nodeHandlers.handleAddParallelJoinNode,
+      },
+      { key: "state", kind: "state", shortLabel: "É", onClick: nodeHandlers.handleAddStateNode },
+      { key: "watch", kind: "watch", shortLabel: "W", onClick: nodeHandlers.handleAddWatchNode },
+      { key: "transform", kind: "transform", shortLabel: "T", onClick: nodeHandlers.handleAddTransformNode },
       {
         key: "wait-for-user-input",
         kind: "wait_for_user_input",
         shortLabel: "AU",
-        onClick: handleAddWaitForUserInputNode,
+        onClick: nodeHandlers.handleAddWaitForUserInputNode,
       },
       {
         key: "assistant-message",
         kind: "assistant_message",
         shortLabel: "MA",
-        onClick: handleAddAssistantMessageNode,
+        onClick: nodeHandlers.handleAddAssistantMessageNode,
       },
       {
         key: "user-message",
         kind: "user_message",
         shortLabel: "MU",
-        onClick: handleAddUserMessageNode,
+        onClick: nodeHandlers.handleAddUserMessageNode,
       },
       {
         key: "json-vector-store",
         kind: "json_vector_store",
         shortLabel: "VS",
-        onClick: handleAddVectorStoreNode,
+        onClick: nodeHandlers.handleAddVectorStoreNode,
       },
-      { key: "widget", kind: "widget", shortLabel: "W", onClick: handleAddWidgetNode },
-      { key: "end", kind: "end", shortLabel: "F", onClick: handleAddEndNode },
+      { key: "widget", kind: "widget", shortLabel: "W", onClick: nodeHandlers.handleAddWidgetNode },
+      { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
     ];
 
     return definitions.map((definition) => ({
@@ -3814,20 +3744,20 @@ const WorkflowBuilderPage = () => {
     }));
   }, [
     t,
-    handleAddAgentNode,
-    handleAddVoiceAgentNode,
-    handleAddConditionNode,
-    handleAddParallelSplitNode,
-    handleAddParallelJoinNode,
-    handleAddStateNode,
-    handleAddWatchNode,
-    handleAddTransformNode,
-    handleAddWaitForUserInputNode,
-    handleAddAssistantMessageNode,
-    handleAddUserMessageNode,
-    handleAddVectorStoreNode,
-    handleAddWidgetNode,
-    handleAddEndNode,
+    nodeHandlers.handleAddAgentNode,
+    nodeHandlers.handleAddVoiceAgentNode,
+    nodeHandlers.handleAddConditionNode,
+    nodeHandlers.handleAddParallelSplitNode,
+    nodeHandlers.handleAddParallelJoinNode,
+    nodeHandlers.handleAddStateNode,
+    nodeHandlers.handleAddWatchNode,
+    nodeHandlers.handleAddTransformNode,
+    nodeHandlers.handleAddWaitForUserInputNode,
+    nodeHandlers.handleAddAssistantMessageNode,
+    nodeHandlers.handleAddUserMessageNode,
+    nodeHandlers.handleAddVectorStoreNode,
+    nodeHandlers.handleAddWidgetNode,
+    nodeHandlers.handleAddEndNode,
   ]);
 
   const updateBlockLibraryTransforms = useCallback(() => {
@@ -4271,99 +4201,22 @@ const WorkflowBuilderPage = () => {
         {selectedNode ? (
           <NodeInspector
             node={selectedNode}
-            onDisplayNameChange={handleDisplayNameChange}
-            onAgentMessageChange={handleAgentMessageChange}
-            onAgentModelChange={handleAgentModelChange}
-            onAgentProviderChange={handleAgentProviderChange}
-            onAgentNestedWorkflowChange={handleAgentNestedWorkflowChange}
-            onAgentReasoningChange={handleAgentReasoningChange}
-            onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
-            onAgentTextVerbosityChange={handleAgentTextVerbosityChange}
-            onAgentTemperatureChange={handleAgentTemperatureChange}
-            onAgentTopPChange={handleAgentTopPChange}
-            onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
-            onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
-            onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
-            onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
-            onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
-            onAgentResponseWidgetSourceChange={handleAgentResponseWidgetSourceChange}
-            onAgentResponseWidgetDefinitionChange={
-              handleAgentResponseWidgetDefinitionChange
-            }
-            onWidgetNodeSlugChange={handleWidgetNodeSlugChange}
-            onWidgetNodeSourceChange={handleWidgetNodeSourceChange}
-            onWidgetNodeDefinitionExpressionChange={
-              handleWidgetNodeDefinitionExpressionChange
-            }
-            onWidgetNodeVariablesChange={handleWidgetNodeVariablesChange}
-            onWidgetNodeAwaitActionChange={handleWidgetNodeAwaitActionChange}
-            onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
-            onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
-            onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
-            onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
-            onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
-            onAgentWebSearchChange={handleAgentWebSearchChange}
-            onAgentFileSearchChange={handleAgentFileSearchChange}
-            onAgentImageGenerationChange={handleAgentImageGenerationChange}
-            onAgentComputerUseChange={handleAgentComputerUseChange}
-            onAgentMcpServersChange={handleAgentMcpServersChange}
+            nodeHandlers={nodeHandlers}
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
             hostedWorkflows={hostedWorkflows}
             hostedWorkflowsLoading={hostedLoading}
             hostedWorkflowsError={hostedError}
-            onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
-            onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
-            onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}
-            onVoiceAgentToolChange={handleVoiceAgentToolChange}
-            onTranscriptionModelChange={handleTranscriptionModelChange}
-            onTranscriptionLanguageChange={handleTranscriptionLanguageChange}
-            onTranscriptionPromptChange={handleTranscriptionPromptChange}
-            onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
-            onParametersChange={handleOutboundCallParametersChange}
-            onTransformExpressionsChange={handleTransformExpressionsChange}
-            onStartAutoRunChange={handleStartAutoRunChange}
-            onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
-            onStartAutoRunAssistantMessageChange={
-              handleStartAutoRunAssistantMessageChange
-            }
-            onStartTelephonySipAccountIdChange={handleStartTelephonySipAccountIdChange}
-            onStartTelephonyRingTimeoutChange={handleStartTelephonyRingTimeoutChange}
-            onStartTelephonySpeakFirstChange={handleStartTelephonySpeakFirstChange}
-            onConditionPathChange={handleConditionPathChange}
-            onConditionModeChange={handleConditionModeChange}
-            onConditionValueChange={handleConditionValueChange}
-            onParallelJoinSlugChange={handleParallelJoinSlugChange}
-            onParallelBranchesChange={handleParallelBranchesChange}
             availableModels={availableModels}
             availableModelsLoading={availableModelsLoading}
             availableModelsError={availableModelsError}
             isReasoningModel={isReasoningModel}
-            onAgentWeatherToolChange={handleAgentWeatherToolChange}
-            onAgentWidgetValidationToolChange={handleAgentWidgetValidationToolChange}
-            onAgentWorkflowValidationToolChange={
-              handleAgentWorkflowValidationToolChange
-            }
-            onAgentWorkflowToolToggle={handleAgentWorkflowToolToggle}
             vectorStores={vectorStores}
             vectorStoresLoading={vectorStoresLoading}
             vectorStoresError={vectorStoresError}
             widgets={widgets}
             widgetsLoading={widgetsLoading}
             widgetsError={widgetsError}
-            onStateAssignmentsChange={handleStateAssignmentsChange}
-            onEndMessageChange={handleEndMessageChange}
-            onAssistantMessageChange={handleAssistantMessageChange}
-            onAssistantMessageStreamEnabledChange={
-              handleAssistantMessageStreamEnabledChange
-            }
-            onAssistantMessageStreamDelayChange={
-              handleAssistantMessageStreamDelayChange
-            }
-            onWaitForUserInputMessageChange={
-              handleWaitForUserInputMessageChange
-            }
-            onUserMessageChange={handleUserMessageChange}
             onRemove={handleRemoveNode}
           />
         ) : selectedEdge ? (
