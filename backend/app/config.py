@@ -140,6 +140,8 @@ class Settings:
         chatkit_realtime_model: Modèle Realtime par défaut pour les sessions vocales.
         chatkit_realtime_instructions: Instructions transmises aux sessions Realtime.
         chatkit_realtime_voice: Voix utilisée pour la synthèse Realtime.
+        chatkit_realtime_model_provider_id: ID du fournisseur de modèle pour Realtime.
+        chatkit_realtime_model_provider_slug: Slug du fournisseur de modèle pour Realtime.
         database_url: Chaîne de connexion SQLAlchemy.
         auth_secret_key: Clé secrète pour signer les JWT d'authentification.
         access_token_expire_minutes: Durée de vie des tokens d'accès.
@@ -170,6 +172,8 @@ class Settings:
     chatkit_realtime_model: str
     chatkit_realtime_instructions: str
     chatkit_realtime_voice: str
+    chatkit_realtime_model_provider_id: str
+    chatkit_realtime_model_provider_slug: str
     backend_public_base_url: str
     backend_public_base_url_from_env: bool
     sip_bind_host: str | None
@@ -448,6 +452,14 @@ class Settings:
             chatkit_realtime_voice=env.get(
                 "CHATKIT_REALTIME_VOICE",
                 "verse",
+            ),
+            chatkit_realtime_model_provider_id=env.get(
+                "CHATKIT_REALTIME_MODEL_PROVIDER_ID",
+                "",
+            ),
+            chatkit_realtime_model_provider_slug=env.get(
+                "CHATKIT_REALTIME_MODEL_PROVIDER_SLUG",
+                "",
             ),
             backend_public_base_url=backend_public_base_url,
             backend_public_base_url_from_env=bool(sanitized_public_base_url),
