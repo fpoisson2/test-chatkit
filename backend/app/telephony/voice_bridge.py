@@ -24,7 +24,9 @@ from ..config import Settings, get_settings
 
 __path__ = [str(Path(__file__).resolve().parent / "voice_bridge")]
 
-from .voice_bridge import AudioStreamManager, RealtimeEventRouter, SipSyncController
+from .voice_bridge.audio_pipeline import AudioStreamManager
+from .voice_bridge.event_router import RealtimeEventRouter
+from .voice_bridge.sip_sync import SipSyncController
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 
