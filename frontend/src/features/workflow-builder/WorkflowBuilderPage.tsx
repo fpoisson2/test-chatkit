@@ -2594,6 +2594,144 @@ const WorkflowBuilderPage = () => {
     vectorStores,
   });
 
+  const handleConditionChange = useCallback(
+    (edgeId: string, value: string) => {
+      setEdges((current) =>
+        current.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                label: value,
+                data: { ...edge.data, condition: value || null },
+              }
+            : edge,
+        ),
+      );
+      updateHasPendingChanges(true);
+    },
+    [setEdges, updateHasPendingChanges],
+  );
+
+  const handleEdgeLabelChange = useCallback(
+    (edgeId: string, value: string) => {
+      setEdges((current) =>
+        current.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                label: value,
+                data: {
+                  ...edge.data,
+                  metadata: { ...edge.data?.metadata, label: value },
+                },
+              }
+            : edge,
+        ),
+      );
+      updateHasPendingChanges(true);
+    },
+    [setEdges, updateHasPendingChanges],
+  );
+
+  const removeElements = useCallback(
+    ({
+      nodeIds = [],
+      edgeIds = [],
+    }: {
+      nodeIds?: Iterable<string>;
+      edgeIds?: Iterable<string>;
+    }) => {
+      const nodeIdSet = new Set(nodeIds);
+      const edgeIdSet = new Set(edgeIds);
+
+      if (nodeIdSet.size === 0 && edgeIdSet.size === 0) {
+        return;
+      }
+
+      const removedNodeIds: string[] = [];
+      const protectedNodeIds: string[] = [];
+
+      if (nodeIdSet.size > 0) {
+        setNodes((currentNodes) => {
+          let hasChanges = false;
+          const nextNodes: FlowNode[] = [];
+          for (const node of currentNodes) {
+            if (nodeIdSet.has(node.id)) {
+              if (node.data.kind === "start") {
+                protectedNodeIds.push(node.id);
+                nextNodes.push(node);
+              } else {
+                removedNodeIds.push(node.id);
+                hasChanges = true;
+              }
+            } else {
+              nextNodes.push(node);
+            }
+          }
+          return hasChanges ? nextNodes : currentNodes;
+        });
+      }
+
+      const removedNodeIdSet = new Set(removedNodeIds);
+      const removedEdgeIds: string[] = [];
+
+      setEdges((currentEdges) => {
+        if (removedNodeIdSet.size === 0 && edgeIdSet.size === 0) {
+          return currentEdges;
+        }
+        let hasChanges = false;
+        const nextEdges: FlowEdge[] = [];
+        for (const edge of currentEdges) {
+          if (
+            removedNodeIdSet.has(edge.source) ||
+            removedNodeIdSet.has(edge.target) ||
+            edgeIdSet.has(edge.id)
+          ) {
+            removedEdgeIds.push(edge.id);
+            hasChanges = true;
+          } else {
+            nextEdges.push(edge);
+          }
+        }
+        return hasChanges ? nextEdges : currentEdges;
+      });
+
+      if (
+        removedNodeIds.length === 0 &&
+        removedEdgeIds.length === 0 &&
+        protectedNodeIds.length === 0
+      ) {
+        return;
+      }
+
+      const removedEdgeIdSet = new Set(removedEdgeIds);
+      const remainingNodeIds = Array.from(selectedNodeIdsRef.current).filter(
+        (id) => !removedNodeIdSet.has(id) && !protectedNodeIds.includes(id),
+      );
+      const remainingEdgeIds = Array.from(selectedEdgeIdsRef.current).filter(
+        (id) => !removedEdgeIdSet.has(id),
+      );
+
+      applySelection({
+        nodeIds: remainingNodeIds,
+        edgeIds: remainingEdgeIds,
+        primaryNodeId: selectedNodeIdRef.current,
+        primaryEdgeId: selectedEdgeIdRef.current,
+      });
+
+      if (protectedNodeIds.length > 0) {
+        setSaveState("error");
+        setSaveMessage("Le bloc de démarrage ne peut pas être supprimé.");
+        const clearState = () => setSaveState("idle");
+        if (typeof window !== "undefined") {
+          window.setTimeout(clearState, 1500);
+        } else {
+          setTimeout(clearState, 1500);
+        }
+      }
+    },
+    [applySelection, setEdges, setNodes, setSaveMessage, setSaveState],
+  );
   type InsertGraphResult =
     | { success: true; nodeIds: string[]; edgeIds: string[] }
     | { success: false; reason: "nothing_to_insert" | "error" };
