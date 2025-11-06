@@ -78,10 +78,47 @@ A modal dialog for deploying/publishing workflow versions.
 />
 ```
 
+### Panels
+
+#### PropertiesPanel
+
+A wrapper component for displaying node and edge properties with responsive behavior.
+
+**Props:**
+- `isMobileLayout`: `boolean` - Whether to use mobile layout
+- `selectedElementLabel`: `string` - Label for the selected element (node/edge)
+- `floatingPanelStyle`: `CSSProperties | undefined` - Style for desktop floating panel
+- `onClose`: `() => void` - Close panel handler
+- `closeButtonRef`: `React.RefObject<HTMLButtonElement>` - Ref for close button
+- `children`: `ReactNode` - Content to display (NodeInspector or EdgeInspector)
+
+**Features:**
+- Responsive layout (desktop sidebar vs mobile overlay)
+- Accessible ARIA labels and roles
+- Header with element label and close button
+- Scrollable body for inspector content
+- Uses existing CSS module styles
+
+**Usage:**
+```tsx
+<PropertiesPanel
+  isMobileLayout={isMobile}
+  selectedElementLabel={selectedNode?.data.displayName || ""}
+  floatingPanelStyle={floatingPanelStyle}
+  onClose={handleClosePropertiesPanel}
+  closeButtonRef={propertiesPanelCloseButtonRef}
+>
+  {selectedNode ? (
+    <NodeInspector node={selectedNode} {...handlers} />
+  ) : selectedEdge ? (
+    <EdgeInspector edge={selectedEdge} {...handlers} />
+  ) : null}
+</PropertiesPanel>
+```
+
 ## Future Components (Planned)
 
 ### Panels
-- **PropertiesPanel**: Wrapper for NodeInspector/EdgeInspector with responsive behavior
 - **BlockLibraryPanel**: Node types palette with drag and drop
 
 ### Header
@@ -113,7 +150,7 @@ import { SaveToast, DeployModal } from "./components";
 
 ## Next Steps
 
-1. Extract PropertiesPanel component
+1. ✅ Extract PropertiesPanel component
 2. Extract BlockLibraryPanel component
 3. Extract WorkflowHeader component
 4. Extract WorkflowSidebar component

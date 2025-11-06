@@ -136,25 +136,28 @@ Breaking down the monolithic UI into smaller components:
 - Visual workflow path indicator
 - Location: `components/modals/DeployModal.tsx`
 
-#### 3. `WorkflowHeader` (TODO)
+#### 3. `PropertiesPanel` ✅
+- Wrapper for NodeInspector/EdgeInspector
+- Responsive layout (desktop sidebar vs mobile overlay)
+- Accessible ARIA labels and roles
+- Header with element label and close button
+- Location: `components/panels/PropertiesPanel.tsx`
+
+#### 4. `WorkflowHeader` (TODO)
 - Toolbar
 - Actions menu
 - Version selector
 - Deploy button
 
-#### 4. `WorkflowSidebar` (TODO)
+#### 5. `WorkflowSidebar` (TODO)
 - Workflow list
 - Search
 - Pinning interface
 - Create workflow button
 
-#### 5. `BlockLibraryPanel` (TODO)
+#### 6. `BlockLibraryPanel` (TODO)
 - Node types palette
 - Drag and drop interface
-
-#### 6. `PropertiesPanel` (TODO)
-- Wrapper for NodeInspector/EdgeInspector
-- Responsive behavior
 
 ### Phase 5: Performance Optimization (PLANNED)
 
@@ -224,9 +227,10 @@ workflow-builder/
     │   └── WorkflowHeader.tsx
     ├── sidebar/                    # TODO
     │   └── WorkflowSidebar.tsx
-    ├── panels/                     # TODO
-    │   ├── BlockLibraryPanel.tsx
-    │   └── PropertiesPanel.tsx
+    ├── panels/                     # ⏳ IN PROGRESS
+    │   ├── index.ts
+    │   ├── PropertiesPanel.tsx     # ✅
+    │   └── BlockLibraryPanel.tsx   # TODO
     └── modals/                     # ✅ COMPLETED
         ├── index.ts
         ├── DeployModal.tsx
@@ -367,7 +371,7 @@ const WorkflowBuilderPage = () => {
 Import and use extracted UI components:
 
 ```typescript
-import { SaveToast, DeployModal } from "./components";
+import { SaveToast, DeployModal, PropertiesPanel } from "./components";
 
 const WorkflowBuilderPage = () => {
   // ... state management with hooks
@@ -375,6 +379,23 @@ const WorkflowBuilderPage = () => {
   return (
     <div>
       {/* Main content */}
+
+      {/* Properties panel for selected node/edge */}
+      {showPropertiesPanel && (
+        <PropertiesPanel
+          isMobileLayout={isMobile}
+          selectedElementLabel={selectedNode?.data.displayName || ""}
+          floatingPanelStyle={floatingPanelStyle}
+          onClose={handleClosePropertiesPanel}
+          closeButtonRef={propertiesPanelCloseButtonRef}
+        >
+          {selectedNode ? (
+            <NodeInspector node={selectedNode} {...nodeHandlers} />
+          ) : selectedEdge ? (
+            <EdgeInspector edge={selectedEdge} {...edgeHandlers} />
+          ) : null}
+        </PropertiesPanel>
+      )}
 
       {/* Toast notifications */}
       <SaveToast
