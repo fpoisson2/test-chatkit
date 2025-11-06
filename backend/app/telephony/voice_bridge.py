@@ -716,12 +716,14 @@ class TelephonyVoiceBridge:
                             except Exception as exc:
                                 logger.warning("⚠️ Erreur lors de l'amorçage et envoi response.create: %s", exc)
 
+                    hook_task: Awaitable[None] | None = None
+                    hook_dispatch_time: float | None = None
                     if self._hooks.on_audio_inbound:
                         hook_dispatch_time = time.perf_counter()
                         if first_hook_dispatched_at is None and packet_count == 1:
                             first_hook_dispatched_at = hook_dispatch_time
                         try:
-                            await inbound_audio_dispatcher.submit(
+                            hook_task = inbound_audio_dispatcher.submit(
                                 self._hooks.on_audio_inbound(pcm)
                             )
                         except asyncio.CancelledError:
@@ -735,7 +737,15 @@ class TelephonyVoiceBridge:
                     send_audio_start = time.perf_counter()
 
                     # Always send audio with commit=False - let turn_detection handle commits
-                    await session.send_audio(pcm, commit=False)
+                    if hook_task is not None:
+                        async with asyncio.TaskGroup() as tg:
+                            tg.create_task(hook_task)
+                            tg.create_task(session.send_audio(pcm, commit=False))
+                    else:
+                        await session.send_audio(pcm, commit=False)
+
+                    if first_hook_dispatched_at is None and packet_count == 1:
+                        first_hook_dispatched_at = hook_dispatch_time or send_audio_start
 
                     if (
                         not browser_stream_metric_recorded

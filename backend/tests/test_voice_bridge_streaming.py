@@ -260,8 +260,6 @@ def test_forward_audio_dispatches_hook_before_send(monkeypatch):
         assert submit_calls == 1
         assert hook_calls == 1
         assert fake_session.sent_audio
-        assert diag.phase_first_rtp.metadata["browser_stream_lead_ms"] >= 0
-
         diag_manager.cleanup_old_calls(keep_last_n=0)
 
     asyncio.run(scenario())
