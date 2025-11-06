@@ -678,18 +678,6 @@ class OutboundCallManager:
                         else:
                             return
 
-                        events_mgr = get_outbound_events_manager()
-                        await events_mgr.emit_event(
-                            {
-                                "type": "transcript_delta",
-                                "call_id": session.call_id,
-                                "thread_id": thread_id,
-                                "message_id": message_id,
-                                "role": role,
-                                "text": text,
-                            }
-                        )
-
                         logger.info(
                             "Added real-time transcript to thread %s: %s: %s",
                             thread_id,
@@ -1207,18 +1195,6 @@ class OutboundCallManager:
                                 )
                             else:
                                 return
-
-                            events_mgr = get_outbound_events_manager()
-                            await events_mgr.emit_event(
-                                {
-                                    "type": "transcript_delta",
-                                    "call_id": session.call_id,
-                                    "thread_id": thread_id,
-                                    "message_id": message_id,
-                                    "role": role,
-                                    "text": text,
-                                }
-                            )
 
                             logger.info(
                                 "Added real-time transcript to thread %s: %s: %s",
