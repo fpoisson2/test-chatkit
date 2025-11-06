@@ -45,23 +45,23 @@ export const OutboundCallAudioPlayer = ({
       console.warn("[OutboundCallAudioPlayer] Already hanging up");
       return;
     }
-    if (!authToken) {
-      console.error("[OutboundCallAudioPlayer] No authToken available");
-      setError("Token d'authentification manquant");
-      return;
-    }
 
     setIsHangingUp(true);
     try {
-      console.log("[OutboundCallAudioPlayer] Sending hangup request for call", callId);
+      console.log("[OutboundCallAudioPlayer] Sending hangup request for call", callId, "with auth:", !!authToken);
+
+      // Build headers - include auth token if available
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
+      }
 
       // Use HTTP POST instead of WebSocket for reliability
       const response = await fetch(`/api/outbound/call/${callId}/hangup`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${authToken}`,
-        },
+        headers,
       });
 
       if (!response.ok) {
