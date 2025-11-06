@@ -1,5 +1,6 @@
 """Telephony voice bridge package."""
 
+from ..task_utils import AsyncTaskLimiter, StopController
 from .audio_pipeline import AudioStreamManager
 from .event_router import RealtimeEventRouter
 from .sip_sync import SipSyncController
@@ -12,7 +13,6 @@ from .voice_bridge import (
     VoiceBridgeMetricsRecorder,
     VoiceBridgeStats,
     WebSocketLike,
-    _AsyncTaskLimiter,
     build_realtime_ws_url,
     default_websocket_connector,
 )
@@ -22,7 +22,7 @@ __all__ = [
     "RealtimeEventRouter",
     "SipSyncController",
     "RtpPacket",
-    "_AsyncTaskLimiter",
+    "AsyncTaskLimiter",
     "TelephonyPlaybackTracker",
     "TelephonyVoiceBridge",
     "VoiceBridgeError",
@@ -30,6 +30,7 @@ __all__ = [
     "VoiceBridgeMetricsRecorder",
     "VoiceBridgeStats",
     "WebSocketLike",
+    "StopController",
     "build_realtime_ws_url",
     "default_websocket_connector",
 ]
