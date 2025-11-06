@@ -180,25 +180,25 @@ const useWorkflowPersistence = ({
           }
         }
       } catch (error) {
-        console.error("Impossible de lire la réponse d'erreur de sauvegarde", error);
+        console.error(t("workflowBuilder.save.errorReadResponse"), error);
       }
       return formatSaveFailureWithStatus(response.status);
     },
-    [formatSaveFailureWithStatus],
+    [formatSaveFailureWithStatus, t],
   );
 
   const handleSave = useCallback(async () => {
     setSaveMessage(null);
     if (!selectedWorkflowId) {
       setSaveState("error");
-      setSaveMessage("Sélectionnez un workflow avant d'enregistrer une version.");
+      setSaveMessage(t("workflowBuilder.save.errorWorkflowRequired"));
       return;
     }
 
     const nodesWithErrors = nodes.filter((node) => node.data.parametersError);
     if (nodesWithErrors.length > 0) {
       setSaveState("error");
-      setSaveMessage("Corrigez les paramètres JSON invalides avant d'enregistrer.");
+      setSaveMessage(t("workflowBuilder.save.errorInvalidParameters"));
       return;
     }
 

@@ -610,6 +610,23 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.save.draftDisplayName": "Brouillon",
   "workflowBuilder.save.failure": "Impossible d'enregistrer le workflow.",
   "workflowBuilder.save.failureWithStatus": "Échec de l'enregistrement ({{status}}).",
+  "workflowBuilder.save.errorReadResponse":
+    "Impossible de lire la réponse d'erreur de sauvegarde.",
+  "workflowBuilder.save.errorWorkflowRequired":
+    "Sélectionnez un workflow avant d'enregistrer une version.",
+  "workflowBuilder.save.errorInvalidParameters":
+    "Corrigez les paramètres JSON invalides avant d'enregistrer.",
+  "workflowBuilder.publicationReminder.publishToUse":
+    "Publiez une version pour l'utiliser.",
+  "workflowBuilder.errors.unknown": "Erreur inconnue.",
+  "workflowBuilder.errors.loadVersionFailedWithStatus":
+    "Échec du chargement de la version ({{status}}).",
+  "workflowBuilder.errors.loadVersionsFailedWithStatus":
+    "Échec du chargement des versions ({{status}}).",
+  "workflowBuilder.errors.loadLibraryFailedWithStatus":
+    "Échec du chargement de la bibliothèque ({{status}}).",
+  "workflowBuilder.errors.refreshVersionsFailedWithStatus":
+    "Échec du rafraîchissement des versions ({{status}}).",
   "workflowBuilder.localSection.customizeAction": "Personnaliser",
   "workflowBuilder.localSection.openActions": "Actions pour {label}",
   "workflowBuilder.localSection.duplicateAction": "Dupliquer",
