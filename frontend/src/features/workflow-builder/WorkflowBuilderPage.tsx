@@ -457,40 +457,43 @@ const WorkflowBuilderPage = () => {
   const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>(
-    () => initialSidebarCache?.workflows ?? [],
-  );
-  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>(
-    () => initialSidebarCache?.hostedWorkflows ?? [],
-  );
-  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(() =>
-    buildWorkflowOrderingTimestamps(
-      initialSidebarCache?.workflows ?? [],
-      initialSidebarCache?.hostedWorkflows ?? [],
-      readStoredWorkflowLastUsedMap(),
-    ),
-  );
-  const [pinnedLookup, setPinnedLookup] = useState<StoredWorkflowPinnedLookup>(() =>
-    readStoredWorkflowPinnedLookup(),
-  );
-  const workflowsRef = useRef(workflows);
-  const hostedWorkflowsRef = useRef(hostedWorkflows);
-  const workflowSortCollatorRef = useRef<Intl.Collator | null>(null);
-  const hasLoadedWorkflowsRef = useRef(false);
-  const [hostedLoading, setHostedLoading] = useState(false);
-  const [hostedError, setHostedError] = useState<string | null>(null);
-  const [isAppearanceModalOpen, setAppearanceModalOpen] = useState(false);
-  const [appearanceModalTarget, setAppearanceModalTarget] =
-    useState<WorkflowAppearanceTarget | null>(null);
-  const appearanceModalTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
-  const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
+  // Workflow state managed by useWorkflowState hook
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(() => {
     if (initialSidebarCache?.selectedWorkflowId != null) {
       return initialSidebarCache.selectedWorkflowId;
     }
     return initialStoredSelection?.localWorkflowId ?? null;
   });
+
+  const {
+    workflows,
+    hostedWorkflows,
+    lastUsedAt,
+    pinnedLookup,
+    hostedLoading,
+    hostedError,
+    workflowsRef,
+    hostedWorkflowsRef,
+    workflowSortCollatorRef,
+    hasLoadedWorkflowsRef,
+    setWorkflows,
+    setHostedWorkflows,
+    setLastUsedAt,
+    setHostedLoading,
+    setHostedError,
+    toggleLocalPin,
+    toggleHostedPin,
+  } = useWorkflowState({
+    initialCache: initialSidebarCache,
+    selectedWorkflowId,
+  });
+
+  const [isAppearanceModalOpen, setAppearanceModalOpen] = useState(false);
+  const [appearanceModalTarget, setAppearanceModalTarget] =
+    useState<WorkflowAppearanceTarget | null>(null);
+  const appearanceModalTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
+  const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const updateHasPendingChanges = useCallback(
@@ -498,60 +501,6 @@ const WorkflowBuilderPage = () => {
       setHasPendingChanges(value);
     },
     [],
-  );
-  const persistPinnedLookup = useCallback(
-    (next: StoredWorkflowPinnedLookup) => {
-      const pinnedForStorage: StoredWorkflowPinned = {
-        local: Array.from(next.local),
-        hosted: Array.from(next.hosted),
-      };
-      updateStoredWorkflowSelection((previous) => ({
-        mode: previous?.mode ?? (selectedWorkflowId != null ? "local" : "hosted"),
-        localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
-        hostedSlug: previous?.hostedSlug ?? null,
-        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-        pinned: pinnedForStorage,
-      }));
-    },
-    [selectedWorkflowId],
-  );
-
-  const toggleLocalPin = useCallback(
-    (workflowId: number) => {
-      setPinnedLookup((current) => {
-        const next: StoredWorkflowPinnedLookup = {
-          local: new Set(current.local),
-          hosted: new Set(current.hosted),
-        };
-        if (next.local.has(workflowId)) {
-          next.local.delete(workflowId);
-        } else {
-          next.local.add(workflowId);
-        }
-        persistPinnedLookup(next);
-        return next;
-      });
-    },
-    [persistPinnedLookup],
-  );
-
-  const toggleHostedPin = useCallback(
-    (slug: string) => {
-      setPinnedLookup((current) => {
-        const next: StoredWorkflowPinnedLookup = {
-          local: new Set(current.local),
-          hosted: new Set(current.hosted),
-        };
-        if (next.hosted.has(slug)) {
-          next.hosted.delete(slug);
-        } else {
-          next.hosted.add(slug);
-        }
-        persistPinnedLookup(next);
-        return next;
-      });
-    },
-    [persistPinnedLookup],
   );
   const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
   const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
@@ -634,53 +583,7 @@ const WorkflowBuilderPage = () => {
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (typeof Intl === "undefined" || typeof Intl.Collator !== "function") {
-      return;
-    }
-
-    if (!workflowSortCollatorRef.current) {
-      workflowSortCollatorRef.current = new Intl.Collator(undefined, {
-        sensitivity: "base",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handleSelectionChange = () => {
-      setLastUsedAt(
-        buildWorkflowOrderingTimestamps(
-          workflowsRef.current,
-          hostedWorkflowsRef.current,
-          readStoredWorkflowLastUsedMap(),
-        ),
-      );
-      setPinnedLookup(readStoredWorkflowPinnedLookup());
-    };
-
-    window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
-    return () => {
-      window.removeEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    workflowsRef.current = workflows;
-  }, [workflows]);
-
-  useEffect(() => {
-    hostedWorkflowsRef.current = hostedWorkflows;
-  }, [hostedWorkflows]);
-
-  useEffect(() => {
-    setLastUsedAt(
-      buildWorkflowOrderingTimestamps(workflows, hostedWorkflows, readStoredWorkflowLastUsedMap()),
-    );
-  }, [hostedWorkflows, workflows]);
+  // useEffect hooks for workflow state synchronization removed - now handled by useWorkflowState hook
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
