@@ -1,5 +1,7 @@
 """Pont entre la téléphonie SIP et les sessions Realtime."""
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import asyncio
@@ -16,21 +18,13 @@ from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import quote
 
-from agents.realtime.events import (
-    RealtimeAgentEndEvent,
-    RealtimeAgentStartEvent,
-    RealtimeAudio,
-    RealtimeAudioEnd,
-    RealtimeAudioInterrupted,
-    RealtimeError,
-    RealtimeHistoryAdded,
-    RealtimeHistoryUpdated,
-    RealtimeToolEnd,
-    RealtimeToolStart,
-)
-from agents.realtime.model import RealtimePlaybackTracker, RealtimePlaybackState
+from agents.realtime.model import RealtimePlaybackState, RealtimePlaybackTracker
 
 from ..config import Settings, get_settings
+
+__path__ = [str(Path(__file__).resolve().parent / "voice_bridge")]
+
+from .voice_bridge import AudioStreamManager, RealtimeEventRouter, SipSyncController
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 
@@ -79,10 +73,10 @@ class _AsyncTaskLimiter:
         self._tasks.clear()
 
 class TelephonyPlaybackTracker(RealtimePlaybackTracker):
-    """Tracks audio playback progress for telephony to enable proper interruption handling.
+    """Track audio playback progress for telephony calls.
 
-    In telephony scenarios, audio is sent via RTP packets with delays (20ms between packets).
-    We need to tell OpenAI exactly when audio has been played so it can handle interruptions correctly.
+    In telephony scenarios, audio is sent via RTP packets roughly every 20 ms. We need to
+    report exactly when audio has played so the platform can handle interruptions correctly.
     """
 
     def __init__(self, on_interrupt_callback: callable | None = None) -> None:
@@ -229,9 +223,12 @@ class VoiceBridgeHooks:
     close_dialog: Callable[[], Awaitable[None]] | None = None
     clear_voice_state: Callable[[], Awaitable[None]] | None = None
     resume_workflow: Callable[[list[dict[str, str]]], Awaitable[None]] | None = None
-    on_transcript: Callable[[dict[str, str]], Awaitable[None]] | None = None  # Appelé pour chaque transcription en temps réel
-    on_audio_inbound: Callable[[bytes], Awaitable[None]] | None = None  # Appelé pour chaque chunk audio entrant
-    on_audio_outbound: Callable[[bytes], Awaitable[None]] | None = None  # Appelé pour chaque chunk audio sortant
+    # Appelé pour chaque transcription en temps réel
+    on_transcript: Callable[[dict[str, str]], Awaitable[None]] | None = None
+    # Appelé pour chaque chunk audio entrant
+    on_audio_inbound: Callable[[bytes], Awaitable[None]] | None = None
+    # Appelé pour chaque chunk audio sortant
+    on_audio_outbound: Callable[[bytes], Awaitable[None]] | None = None
 
 
 VoiceSessionChecker = Callable[[], bool]
@@ -274,7 +271,11 @@ class AudioRecorder:
             self.outbound_wav.setsampwidth(2)  # 16-bit
             self.outbound_wav.setframerate(24000)  # 24kHz
 
-            logger.info("Audio recorder initialized: inbound=%s, outbound=%s", self.inbound_path, self.outbound_path)
+            logger.info(
+                "Audio recorder initialized: inbound=%s, outbound=%s",
+                self.inbound_path,
+                self.outbound_path,
+            )
         except Exception as e:
             logger.error("Failed to initialize audio recorder: %s", e)
             self.close()
@@ -302,7 +303,8 @@ class AudioRecorder:
         """Ferme les fichiers et crée un fichier mixé.
 
         Returns:
-            Tuple (inbound_path, outbound_path, mixed_path) ou (None, None, None) en cas d'erreur
+            Tuple (inbound_path, outbound_path, mixed_path) ou (None, None, None)
+            en cas d'erreur
         """
         inbound_path = None
         outbound_path = None
@@ -339,27 +341,37 @@ class AudioRecorder:
                     mixed_wav.setframerate(24000)  # 24kHz
 
                     # Mixer les deux canaux
+
                     max_len = max(len(self.inbound_frames), len(self.outbound_frames))
                     for i in range(max_len):
-                        inbound_chunk = self.inbound_frames[i] if i < len(self.inbound_frames) else b'\x00' * 480  # 20ms silence
-                        outbound_chunk = self.outbound_frames[i] if i < len(self.outbound_frames) else b'\x00' * 480
+                        inbound_chunk = (
+                            self.inbound_frames[i]
+                            if i < len(self.inbound_frames)
+                            else b"\x00" * 480
+                        )
+                        outbound_chunk = (
+                            self.outbound_frames[i]
+                            if i < len(self.outbound_frames)
+                            else b"\x00" * 480
+                        )
 
-                        # Assurer que les deux chunks ont la même longueur
-                        min_len = min(len(inbound_chunk), len(outbound_chunk))
                         max_len_chunk = max(len(inbound_chunk), len(outbound_chunk))
 
-                        # Pad le plus court avec du silence
                         if len(inbound_chunk) < max_len_chunk:
-                            inbound_chunk = inbound_chunk + b'\x00' * (max_len_chunk - len(inbound_chunk))
+                            inbound_chunk += b"\x00" * (
+                                max_len_chunk - len(inbound_chunk)
+                            )
                         if len(outbound_chunk) < max_len_chunk:
-                            outbound_chunk = outbound_chunk + b'\x00' * (max_len_chunk - len(outbound_chunk))
+                            outbound_chunk += b"\x00" * (
+                                max_len_chunk - len(outbound_chunk)
+                            )
 
-                        # Interleaver les samples (L, R, L, R, ...)
                         num_samples = len(inbound_chunk) // 2
                         stereo_chunk = bytearray()
                         for j in range(num_samples):
-                            stereo_chunk.extend(inbound_chunk[j*2:j*2+2])  # Left (inbound)
-                            stereo_chunk.extend(outbound_chunk[j*2:j*2+2])  # Right (outbound)
+                            start = j * 2
+                            stereo_chunk.extend(inbound_chunk[start : start + 2])
+                            stereo_chunk.extend(outbound_chunk[start : start + 2])
 
                         mixed_wav.writeframes(bytes(stereo_chunk))
 
@@ -518,8 +530,8 @@ class TelephonyVoiceBridge:
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
         speak_first: bool = False,
-        _existing_session: Any | None = None,  # Paramètre interne pour optimisation
-        _existing_playback_tracker: Any | None = None,  # Paramètre interne pour optimisation
+        _existing_session: Any | None = None,
+        _existing_playback_tracker: Any | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -530,41 +542,38 @@ class TelephonyVoiceBridge:
         )
 
         start_time = time.monotonic()
-        inbound_audio_bytes = 0
-        outbound_audio_bytes = 0
         transcripts: list[dict[str, str]] = []
         error: Exception | None = None
         session: Any | None = None
         stop_event = asyncio.Event()
 
-        # Initialize audio recorder
         call_id = str(uuid.uuid4())
         audio_recorder: AudioRecorder | None = None
         try:
             audio_recorder = AudioRecorder(call_id=call_id)
             logger.info("Audio recorder initialized for call %s", call_id)
-        except Exception as e:
-            logger.warning("Failed to initialize audio recorder: %s. Continuing without recording.", e)
+        except Exception as exc:
+            logger.warning(
+                "Failed to initialize audio recorder: %s. "
+                "Continuing without recording.",
+                exc,
+            )
             audio_recorder = None
 
-        # Track if we've sent response.create immediately (for speak_first optimization)
-        response_create_sent_immediately = False
-
-        # Use a list to create a mutable reference for block_audio_send
         block_audio_send_ref = [False]
 
-        def on_playback_interrupted():
-            """Called when SDK detects audio interruption."""
+        def on_playback_interrupted() -> None:
             block_audio_send_ref[0] = True
-            logger.info("🛑 Audio bloqué via playback tracker (interruption détectée par SDK)")
+            logger.info("🛑 Audio bloqué via playback tracker "
+                        "(interruption détectée par SDK)")
 
-        # Create playback tracker for proper interruption handling (or use existing one)
         if _existing_playback_tracker is not None:
             playback_tracker = _existing_playback_tracker
-            # Update callback since it references block_audio_send_ref from this scope
             playback_tracker.set_interrupt_callback(on_playback_interrupted)
         else:
-            playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=on_playback_interrupted)
+            playback_tracker = TelephonyPlaybackTracker(
+                on_interrupt_callback=on_playback_interrupted
+            )
 
         def should_continue() -> bool:
             if stop_event.is_set():
@@ -580,18 +589,14 @@ class TelephonyVoiceBridge:
                 )
                 return True
 
-        # Flag pour s'assurer que request_stop() n'est appelé qu'une seule fois
         stop_requested = [False]
 
-        # Limiter pour éviter une accumulation infinie des hooks inbound
         inbound_audio_dispatcher = _AsyncTaskLimiter(
             name="on_audio_inbound",
             max_pending=8,
         )
 
         async def request_stop() -> None:
-            """Request immediate stop of both audio forwarding and event handling."""
-            # Éviter les nettoyages multiples
             if stop_requested[0]:
                 logger.debug("request_stop() déjà appelé, ignorer")
                 return
@@ -599,682 +604,60 @@ class TelephonyVoiceBridge:
 
             stop_event.set()
 
-            # Si la session n'est pas encore créée, ne rien faire
             if session is None:
                 logger.debug("Session non créée, ignorer request_stop()")
                 return
 
-            # Annuler toute réponse en cours pour éviter le "saignement" audio entre sessions
             try:
                 from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-                await session._model.send_event(
-                    RealtimeModelSendRawMessage(
-                        message={"type": "response.cancel"}
-                    )
+
+                await session._model.send_event(  # type: ignore[protected-access]
+                    RealtimeModelSendRawMessage(message={"type": "response.cancel"})
                 )
                 logger.debug("✅ Réponse en cours annulée avant fermeture")
             except asyncio.CancelledError:
                 logger.debug("response.cancel annulé (task en cours d'annulation)")
-            except Exception as e:
-                logger.debug("response.cancel échoué (peut-être pas de réponse active): %s", e)
+            except Exception as exc:
+                logger.debug(
+                    "response.cancel échoué (peut-être pas de réponse active): %s",
+                    exc,
+                )
 
-            # Vider le buffer audio d'entrée pour éviter des données résiduelles
             try:
                 from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-                await session._model.send_event(
+
+                await session._model.send_event(  # type: ignore[protected-access]
                     RealtimeModelSendRawMessage(
                         message={"type": "input_audio_buffer.clear"}
                     )
                 )
                 logger.debug("✅ Buffer audio d'entrée vidé avant fermeture")
             except asyncio.CancelledError:
-                logger.debug("input_audio_buffer.clear annulé (task en cours d'annulation)")
-            except Exception as e:
-                logger.debug("input_audio_buffer.clear échoué: %s", e)
+                logger.debug(
+                    "input_audio_buffer.clear annulé (task en cours d'annulation)"
+                )
+            except Exception as exc:
+                logger.debug("input_audio_buffer.clear échoué: %s", exc)
 
             await inbound_audio_dispatcher.cancel_pending()
-            # Note: Ne pas fermer la session ici car __aexit__ doit être appelé depuis la même tâche que __aenter__
-            # La session sera fermée automatiquement par le context manager 'async with'
 
-        async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes, response_create_sent_immediately
-            packet_count = 0
-            # Note: turn_detection est déjà activé dans la configuration initiale de session (_build_session_update)
-            # Track if we've sent response.create when phone became ready
-            response_create_sent_on_ready = False
-            first_hook_dispatched_at: float | None = None
-            browser_stream_metric_recorded = False
+        sip_sync = SipSyncController(
+            speak_first=speak_first,
+            audio_bridge=audio_bridge,
+            clear_audio_queue=clear_audio_queue,
+            pjsua_ready_to_consume=pjsua_ready_to_consume,
+        )
+
+        audio_manager: AudioStreamManager | None = None
+        event_router: RealtimeEventRouter | None = None
+        inbound_audio_bytes = 0
+        outbound_audio_bytes = 0
 
-            try:
-                async for packet in rtp_stream:
-                    packet_count += 1
-                    pcm = self._decode_packet(packet)
-                    if not pcm:
-                        logger.debug("Paquet RTP #%d: décodage vide, ignoré", packet_count)
-                        continue
-                    inbound_audio_bytes += len(pcm)
-
-                    if packet_count == 1:
-                        logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
-
-                        # Si speak_first est activé, amorcer le canal et envoyer response.create MAINTENANT
-                        # que le canal bidirectionnel est confirmé
-                        if speak_first and not response_create_sent_immediately and not response_create_sent_on_ready:
-                            try:
-                                # NOTE: reset_all() is now called unconditionally at session start (line ~997)
-                                # so no need to call it again here
-
-                                # 1. D'abord, précharger généreusement le ring buffer (8-10 frames)
-                                # CRITIQUE: Amorcer avec TARGET frames pour éviter sous-alimentation
-                                # Cela évite les silences quand TTS arrive en burst
-                                # IMPORTANT: Injection DIRECTE dans le ring buffer @ 8kHz
-                                num_silence_frames = 12  # 12 frames = 240ms - amorçage très généreux (anti-starvation)
-
-                                logger.info("🔇 Canal bidirectionnel confirmé - injection directe de %d frames de silence (%dms prime pour stabilité)", num_silence_frames, num_silence_frames * 20)
-                                if audio_bridge:
-                                    # Injection directe dans le ring buffer @ 8kHz (synchrone, pas async)
-                                    audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
-                                    logger.info("✅ Pipeline audio amorcé avec %d frames de silence (injection directe)", num_silence_frames)
-                                    # Déverrouiller l'envoi audio maintenant que les conditions sont remplies:
-                                    # - onCallMediaState actif (media_active_event)
-                                    # - Premier onFrameRequested reçu (pjsua_ready_event)
-                                    # - 20ms de silence envoyés (amorçage)
-                                    audio_bridge.enable_audio_output()
-                                    logger.info("🔓 Envoi audio TTS déverrouillé après amorçage")
-                                else:
-                                    logger.warning("⚠️ audio_bridge n'est pas disponible pour l'injection de silence")
-
-                                # 2. PUIS, envoyer response.create maintenant que le canal est amorcé
-                                from agents.realtime.model_inputs import (
-                                    RealtimeModelRawClientMessage,
-                                    RealtimeModelSendRawMessage,
-                                )
-                                await session._model.send_event(
-                                    RealtimeModelSendRawMessage(
-                                        message=RealtimeModelRawClientMessage(
-                                            type="response.create",
-                                            other_data={},
-                                        )
-                                    )
-                                )
-                                response_create_sent_on_ready = True
-
-                                # Timing diagnostic: envoi response.create (t1)
-                                if audio_bridge:
-                                    audio_bridge._t1_response_create = time.monotonic()
-                                    if audio_bridge._t0_first_rtp is not None:
-                                        delta = (audio_bridge._t1_response_create - audio_bridge._t0_first_rtp) * 1000
-                                        logger.info(
-                                            "✅ [t1=%.3fs, Δt0→t1=%.1fms] response.create envoyé après amorçage",
-                                            audio_bridge._t1_response_create, delta
-                                        )
-                                    else:
-                                        logger.info(
-                                            "✅ [t1=%.3fs] response.create envoyé après amorçage",
-                                            audio_bridge._t1_response_create
-                                        )
-                            except Exception as exc:
-                                logger.warning("⚠️ Erreur lors de l'amorçage et envoi response.create: %s", exc)
-
-                    hook_task: Awaitable[None] | None = None
-                    hook_dispatch_time: float | None = None
-                    if self._hooks.on_audio_inbound:
-                        hook_dispatch_time = time.perf_counter()
-                        if first_hook_dispatched_at is None and packet_count == 1:
-                            first_hook_dispatched_at = hook_dispatch_time
-                        try:
-                            hook_task = inbound_audio_dispatcher.submit(
-                                self._hooks.on_audio_inbound(pcm)
-                            )
-                        except asyncio.CancelledError:
-                            raise
-                        except Exception as exc:
-                            logger.error(
-                                "Erreur lors de l'ordonnancement du streaming audio entrant: %s",
-                                exc,
-                            )
-
-                    send_audio_start = time.perf_counter()
-
-                    # Always send audio with commit=False - let turn_detection handle commits
-                    if hook_task is not None:
-                        async with asyncio.TaskGroup() as tg:
-                            tg.create_task(hook_task)
-                            tg.create_task(session.send_audio(pcm, commit=False))
-                    else:
-                        await session.send_audio(pcm, commit=False)
-
-                    if first_hook_dispatched_at is None and packet_count == 1:
-                        first_hook_dispatched_at = hook_dispatch_time or send_audio_start
-
-                    if (
-                        not browser_stream_metric_recorded
-                        and packet_count == 1
-                        and first_hook_dispatched_at is not None
-                    ):
-                        browser_stream_metric_recorded = True
-                        hook_lead_ms = (send_audio_start - first_hook_dispatched_at) * 1000
-                        if audio_bridge and hasattr(audio_bridge, "_chatkit_call_id"):
-                            from .call_diagnostics import get_diagnostics_manager
-
-                            diag_manager = get_diagnostics_manager()
-                            diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
-                            if diag:
-                                diag.phase_first_rtp.metadata[
-                                    "browser_stream_lead_ms"
-                                ] = hook_lead_ms
-                                logger.info(
-                                    "📊 Latence stream navigateur réduite: %.1fms d'avance",
-                                    hook_lead_ms,
-                                )
-
-                    # Record inbound audio
-                    if audio_recorder:
-                        audio_recorder.write_inbound(pcm)
-
-                    # Note: turn_detection est déjà activé dans la configuration initiale de session
-                    # (voir _build_session_update), donc on n'a pas besoin de l'activer ici.
-                    # Tenter de le faire après le speak_first cause l'erreur:
-                    # "Cannot update a conversation's voice if assistant audio is present."
-
-                    if not should_continue():
-                        logger.info("forward_audio: arrêt demandé par should_continue()")
-                        break
-
-                logger.info("forward_audio: fin de la boucle RTP stream (paquets reçus: %d)", packet_count)
-            finally:
-                logger.debug("Fin du flux audio RTP, attente de la fermeture de session")
-                await request_stop()
-
-        last_response_id: str | None = None
-        agent_is_speaking = False  # Track if agent is currently speaking
-        user_speech_detected = False  # Track if we detected user speech
-        # block_audio_send is now block_audio_send_ref[0]
-
-        # Track tool calls to ensure confirmations
-        tool_call_detected = False  # Set to True when we detect a tool call
-        last_assistant_message_was_short = False  # Track if last message was likely just a preamble
-
-        # Track processed history items and their last processed transcript text. The
-        # Realtime API replays history entries as user transcription text becomes
-        # available, so we can't just skip duplicate IDs—we need to process updates
-        # when the text changes.
-        processed_history_texts: dict[str, str] = {}
-
-        # Force immediate response after user speech (max 0.1s silence)
-        # CRITICAL FIX: Track all watchdog tasks to prevent leaks
-        response_watchdog_tasks: list[asyncio.Task] = []  # All watchdog tasks (for proper cleanup)
-        audio_received_after_user_speech = False  # Track if we got actual audio
-        response_started_after_user_speech = False  # Track if agent started generating ANY response
-
-        async def force_response_if_silent() -> None:
-            """Wait 0.1s and force audio response if no audio received."""
-            nonlocal audio_received_after_user_speech, response_started_after_user_speech
-            try:
-                await asyncio.sleep(0.1)  # Wait 0.1 second
-                # If we reach here and NO AUDIO received, force response with audio
-                # This ensures there's ALWAYS a verbal preamble, even before function calls
-                if not audio_received_after_user_speech:
-                    if response_started_after_user_speech:
-                        logger.warning("⏱️ 0.1s sans audio détecté (function call sans préambule) - forçage response.create avec audio")
-                        # Cancel the current response first (it has no audio anyway)
-                        try:
-                            from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-                            await session._model.send_event(
-                                RealtimeModelSendRawMessage(
-                                    message={"type": "response.cancel"}
-                                )
-                            )
-                            logger.info("🚫 Réponse sans audio annulée")
-                        except Exception as e:
-                            logger.debug("response.cancel échoué: %s", e)
-                    else:
-                        logger.warning("⏱️ 0.1s silence TOTAL détecté - forçage response.create")
-
-                    try:
-                        from agents.realtime.model_inputs import (
-                            RealtimeModelRawClientMessage,
-                            RealtimeModelSendRawMessage,
-                        )
-                        await session._model.send_event(
-                            RealtimeModelSendRawMessage(
-                                message=RealtimeModelRawClientMessage(
-                                    type="response.create",
-                                    other_data={},
-                                )
-                            )
-                        )
-                        logger.info("✅ response.create forcé pour garantir audio")
-                    except Exception as e:
-                        logger.warning("Impossible de forcer response.create: %s", e)
-            except asyncio.CancelledError:
-                # Watchdog cancelled because audio arrived - this is good!
-                logger.debug("Watchdog annulé - audio reçu à temps")
-
-        async def handle_events() -> None:
-            """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_history_texts, response_watchdog_tasks, audio_received_after_user_speech, response_started_after_user_speech
-            try:
-                async for event in session:
-                    if not should_continue():
-                        break
-
-                    event_type = type(event).__name__
-
-                    # Logging audio events is too verbose - disabled
-                    # if 'audio' in event_type.lower() or 'agent' in event_type.lower():
-                    #     logger.debug("📡 Event: %s", event_type)
-
-                    # Debug: log ALL events to trace MCP tool calls
-                    if 'tool' in event_type.lower() or 'function' in event_type.lower():
-                        logger.info("🔧 Event: %s - %s", event_type, event)
-
-                    # Handle error events
-                    if isinstance(event, RealtimeError):
-                        error_code = getattr(event.error, 'code', None)
-                        # Ignore "response_cancel_not_active" - it's OK if there's no active response
-                        if error_code == 'response_cancel_not_active':
-                            logger.debug("response.cancel ignoré (pas de réponse active): %s", event.error)
-                            continue
-                        # Ignore "conversation_already_has_active_response" - happens when turn_detection
-                        # and manual response.create race (expected behavior)
-                        if error_code == 'conversation_already_has_active_response':
-                            logger.debug("response.create ignoré (réponse déjà active - turn_detection l'a créée): %s", event.error)
-                            continue
-                        # For other errors, fail the session
-                        error = VoiceBridgeError(str(event.error))
-                        logger.error("Erreur Realtime API: %s", event.error)
-                        break
-
-                    # Check for input_audio_buffer.speech_started in raw events
-                    # This is the KEY event for detecting user interruption!
-                    if event_type == "RealtimeRawModelEvent":
-                        # SDK structure: RealtimeRawModelEvent.data is a RealtimeModelEvent
-                        # When it's RealtimeModelRawServerEvent, the .data attribute contains the raw dict
-                        model_event = getattr(event, 'data', None)
-                        if model_event:
-                            model_event_type = getattr(model_event, 'type', None)
-
-                            # Check if this is a raw_server_event (contains raw OpenAI events)
-                            if model_event_type == 'raw_server_event':
-                                # Extract the raw data dictionary
-                                raw_data = getattr(model_event, 'data', None)
-                                if raw_data and isinstance(raw_data, dict):
-                                    event_subtype = raw_data.get('type', '')
-
-                                    # Debug: Log specific event types (disabled by default for performance)
-                                    # if event_subtype not in ('input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped',
-                                    #                          'input_audio_buffer.committed', 'response.audio.delta',
-                                    #                          'response.audio_transcript.delta', 'conversation.item.input_audio_transcription.completed'):
-                                    #     logger.info("🔍 RAW EVENT: %s", event_subtype)
-
-                                    # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
-                                    if event_subtype == 'input_audio_buffer.speech_started':
-                                        logger.info("🎤 Utilisateur commence à parler")
-                                        # ALWAYS block audio when user speaks, even if agent just finished
-                                        # (there might be audio packets still in the pipeline)
-                                        block_audio_send_ref[0] = True
-
-                                        # Clear outgoing audio queue to stop playback immediately
-                                        if clear_audio_queue:
-                                            frames_cleared = clear_audio_queue()
-                                            if frames_cleared > 0:
-                                                logger.info("🗑️  Audio queue vidée: %d frames supprimées pour interruption rapide", frames_cleared)
-
-                                        # Reset tool call tracking when user speaks
-                                        # (no need for confirmation if user moved on)
-                                        if tool_call_detected:
-                                            logger.debug("Réinitialisation du tracking tool call (utilisateur parle)")
-                                            tool_call_detected = False
-                                            last_assistant_message_was_short = False
-
-                                        if agent_is_speaking:
-                                            logger.info("🛑 Interruption de l'agent (agent parlait)!")
-                                            try:
-                                                await session.interrupt()
-                                            except Exception as e:
-                                                logger.warning("Erreur lors de session.interrupt(): %s", e)
-                                        else:
-                                            logger.info("🛑 Blocage audio (agent vient de finir)")
-                                        user_speech_detected = True
-                                        continue
-
-                                    # User stopped speaking
-                                    if event_subtype == 'input_audio_buffer.speech_stopped':
-                                        logger.info("🎤 Utilisateur arrête de parler")
-                                        user_speech_detected = False
-                                        # If agent is not speaking, unblock audio
-                                        if not agent_is_speaking:
-                                            block_audio_send_ref[0] = False
-                                            logger.info("→ Déblocage audio (agent ne parle pas)")
-                                        # Turn detection will create response automatically (no manual intervention)
-                                        continue
-
-                                    # Detect MCP tool call completion in real-time
-                                    if event_subtype == 'response.mcp_call.completed':
-                                        tool_data = raw_data.get('mcp_call', {}) if isinstance(raw_data.get('mcp_call'), dict) else {}
-                                        tool_name = tool_data.get('name', 'unknown')
-                                        logger.info("🔧 Tool MCP terminé EN TEMPS RÉEL: %s", tool_name)
-
-                                        # Force response.create pour confirmation vocale
-                                        # Ignore l'erreur si turn_detection a déjà créé une réponse
-                                        try:
-                                            from agents.realtime.model_inputs import (
-                                                RealtimeModelRawClientMessage,
-                                                RealtimeModelSendRawMessage,
-                                            )
-                                            logger.info("→ Envoi response.create pour forcer confirmation vocale")
-                                            await session._model.send_event(
-                                                RealtimeModelSendRawMessage(
-                                                    message=RealtimeModelRawClientMessage(
-                                                        type="response.create",
-                                                        other_data={},
-                                                    )
-                                                )
-                                            )
-                                            logger.info("✅ response.create envoyé")
-                                        except Exception as e:
-                                            # Ignorer silencieusement si turn_detection a déjà créé une réponse
-                                            error_msg = str(e).lower()
-                                            if "already has an active response" in error_msg or "conversation_already_has_active_response" in error_msg:
-                                                logger.debug("response.create ignoré (réponse déjà active): %s", e)
-                                            else:
-                                                logger.warning("Erreur lors de l'envoi de response.create: %s", e)
-                                        continue
-
-                                    # Detect standard function call completion in real-time
-                                    if event_subtype == 'response.function_call_arguments.done':
-                                        function_name = raw_data.get('name', 'unknown')
-                                        logger.info("🔧 Function call terminé EN TEMPS RÉEL: %s", function_name)
-
-                                        # Force response.create pour confirmation vocale
-                                        # Ignore l'erreur si turn_detection a déjà créé une réponse
-                                        try:
-                                            from agents.realtime.model_inputs import (
-                                                RealtimeModelRawClientMessage,
-                                                RealtimeModelSendRawMessage,
-                                            )
-                                            logger.info("→ Envoi response.create pour forcer confirmation vocale")
-                                            await session._model.send_event(
-                                                RealtimeModelSendRawMessage(
-                                                    message=RealtimeModelRawClientMessage(
-                                                        type="response.create",
-                                                        other_data={},
-                                                    )
-                                                )
-                                            )
-                                            logger.info("✅ response.create envoyé")
-                                        except Exception as e:
-                                            # Ignorer silencieusement si turn_detection a déjà créé une réponse
-                                            error_msg = str(e).lower()
-                                            if "already has an active response" in error_msg or "conversation_already_has_active_response" in error_msg:
-                                                logger.debug("response.create ignoré (réponse déjà active): %s", e)
-                                            else:
-                                                logger.warning("Erreur lors de l'envoi de response.create: %s", e)
-                                        continue
-
-                    # Track when agent starts speaking
-                    if isinstance(event, RealtimeAgentStartEvent):
-                        agent_is_speaking = True
-                        # Mark that a response has started (even if no audio yet)
-                        # This prevents watchdog from forcing duplicate response.create
-                        response_started_after_user_speech = True
-                        # DON'T cancel watchdog here - wait for actual audio chunk
-                        # (AgentStart can fire even for responses without audio, like pure tool calls)
-                        # Don't change block_audio_send here - let RealtimeAgentEndEvent unblock it
-                        logger.debug("Agent commence à parler (block_audio_send=%s)", block_audio_send_ref[0])
-                        continue
-
-                    # Track when agent stops speaking - THIS is when we unblock audio
-                    if isinstance(event, RealtimeAgentEndEvent):
-                        agent_is_speaking = False
-                        # Only unblock audio if user is not currently speaking
-                        if not user_speech_detected:
-                            block_audio_send_ref[0] = False
-                        # else: audio reste bloqué car user parle encore
-
-                        # Tool call handling is now done immediately when detected (see history processing)
-                        # No need for a delayed confirmation check here
-
-                        continue
-
-                    # Handle audio interruption - BLOCK AUDIO IMMEDIATELY!
-                    if isinstance(event, RealtimeAudioInterrupted):
-                        logger.info("🛑 Audio interrompu confirmé par OpenAI - blocage audio")
-                        block_audio_send_ref[0] = True
-                        # Try to cancel the current response generation
-                        # (may fail if response already completed, which is OK)
-                        try:
-                            from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-                            await session._model.send_event(
-                                RealtimeModelSendRawMessage(
-                                    message={"type": "response.cancel"}
-                                )
-                            )
-                            logger.info("✅ Envoyé response.cancel")
-                        except Exception as e:
-                            # It's OK if there's no active response to cancel
-                            logger.debug("response.cancel ignoré: %s", e)
-                        continue
-
-                    # Handle audio events (agent speaking) - only send if not blocked
-                    if isinstance(event, RealtimeAudio):
-                        # Mark that we received audio - this prevents watchdog from firing
-                        if not audio_received_after_user_speech:
-                            audio_received_after_user_speech = True
-                            logger.debug("✅ Audio reçu - watchdog ne se déclenchera pas")
-
-                        # Cancel ALL watchdog tasks on FIRST audio chunk - agent is actually speaking!
-                        # CRITICAL FIX: Cancel all watchdog tasks to prevent leaks
-                        for watchdog_task in response_watchdog_tasks:
-                            if not watchdog_task.done():
-                                watchdog_task.cancel()
-                        if response_watchdog_tasks:
-                            logger.debug("✅ %d watchdog task(s) annulé(s) - agent parle vraiment", len(response_watchdog_tasks))
-                            response_watchdog_tasks.clear()  # Clear list after cancelling all
-
-                        audio_event = event.audio
-                        pcm_data = audio_event.data
-
-                        if not block_audio_send_ref[0]:
-                            if pcm_data:
-                                # Timing diagnostic: premier chunk TTS (t2)
-                                if audio_bridge and audio_bridge._t2_first_tts_chunk is None:
-                                    audio_bridge._t2_first_tts_chunk = time.monotonic()
-                                    if audio_bridge._t1_response_create is not None:
-                                        delta = (audio_bridge._t2_first_tts_chunk - audio_bridge._t1_response_create) * 1000
-                                        logger.info(
-                                            "🎵 [t2=%.3fs, Δt1→t2=%.1fms] Premier chunk TTS reçu (%d bytes)",
-                                            audio_bridge._t2_first_tts_chunk, delta, len(pcm_data)
-                                        )
-
-                                        # 📊 Diagnostic: Enregistrer le temps du premier TTS
-                                        if hasattr(audio_bridge, '_chatkit_call_id') and audio_bridge._chatkit_call_id:
-                                            from .call_diagnostics import get_diagnostics_manager
-                                            diag_manager = get_diagnostics_manager()
-                                            diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
-                                            if diag:
-                                                # Utiliser directement delta au lieu de start/end pour capturer la vraie valeur
-                                                diag.phase_first_tts.duration_ms = delta
-                                                diag.phase_first_tts.metadata = {'delay_ms': delta, 'bytes': len(pcm_data)}
-                                                logger.info(f"⏱️ Phase 'first_tts' enregistrée: {delta:.1f}ms")
-
-                                    # CRITIQUE: Premier chunk TTS → activer l'audio output MAINTENANT
-                                    # 1. Amorcer le ring buffer avec du silence (évite les clics)
-                                    # 2. Activer l'audio output
-                                    # 3. Le TTS va immédiatement suivre dans send_to_peer() ci-dessous
-                                    # Aucune race condition car tout se passe dans le même événement async
-                                    num_silence_frames = 12  # 240ms de silence de prime
-                                    audio_bridge.send_prime_silence_direct(num_frames=num_silence_frames)
-                                    logger.info("✅ Ring buffer amorcé avec %d frames de silence", num_silence_frames)
-
-                                    audio_bridge.enable_audio_output()
-                                    logger.info("🔓 Audio output activé (premier chunk TTS reçu)")
-
-                                outbound_audio_bytes += len(pcm_data)
-                                logger.debug("🎵 Envoi de %d bytes d'audio vers téléphone", len(pcm_data))
-                                # Send audio and wait until it's actually sent via RTP
-                                await send_to_peer(pcm_data)
-
-                                # Record outbound audio
-                                if audio_recorder:
-                                    audio_recorder.write_outbound(pcm_data)
-
-                                # Stream outbound audio en temps réel
-                                if self._hooks.on_audio_outbound:
-                                    try:
-                                        await self._hooks.on_audio_outbound(pcm_data)
-                                    except Exception as e:
-                                        logger.error("Erreur lors du streaming audio sortant: %s", e)
-
-                                # Now update the playback tracker so OpenAI knows when audio was played
-                                # This is critical for proper interruption handling!
-                                playback_tracker.on_play_bytes(
-                                    event.item_id,
-                                    event.content_index,
-                                    pcm_data
-                                )
-                        else:
-                            logger.debug("🛑 Audio bloqué (block_audio_send=%s)", block_audio_send_ref[0])
-                        continue
-
-                    # Handle audio end
-                    if isinstance(event, RealtimeAudioEnd):
-                        continue
-
-                    # Handle history updates (contains transcripts)
-                    if isinstance(event, (RealtimeHistoryAdded, RealtimeHistoryUpdated)):
-                        history = getattr(event, "history", [event.item] if hasattr(event, "item") else [])
-                        for idx, item in enumerate(history):
-                            role = getattr(item, "role", None)
-
-                            # Debug: Log ALL history items to trace tool calls
-                            item_id = getattr(item, "id", None)
-
-                            # Build a stable key for replay detection. OpenAI replays the
-                            # same history entry once transcription text is ready, so we
-                            # compare the text we last processed for this key instead of
-                            # discarding the update outright.
-                            if isinstance(item_id, str) and item_id:
-                                history_key = item_id
-                            else:
-                                history_key = f"{idx}_{role or 'unknown'}"
-
-                            # Preserve the previous logging identifier for debugging.
-                            item_unique_id = item_id if item_id else f"{idx}_{role}_{len(getattr(item, 'content', []))}"
-
-                            item_type = getattr(item, "type", None)
-                            contents = getattr(item, "content", [])
-                            content_count = len(contents) if contents else 0
-                            logger.info("📋 History item: role=%s, type=%s, id=%s, unique_id=%s, content_count=%d",
-                                       role, item_type, item_id, item_unique_id, content_count)
-
-                            # DETECT TOOL CALLS: Check if there are actual function_call or tool_call contents
-                            # Don't just rely on content_count=0, verify there's a real tool call
-                            has_tool_call_content = False
-                            if contents:
-                                for content in contents:
-                                    content_type = getattr(content, "type", None)
-                                    if content_type in ("function_call", "tool_call", "function_call_output"):
-                                        has_tool_call_content = True
-                                        break
-
-                            # Only detect tool call if:
-                            # 1. It's an assistant message AND
-                            # 2. Either has tool call content OR is type="function_call"
-                            if role == "assistant" and (has_tool_call_content or item_type == "function_call"):
-                                tool_call_detected = True
-                                logger.debug("🔧 Tool call détecté dans l'historique (type=%s, has_tool_content=%s)",
-                                           item_type, has_tool_call_content)
-
-                            # Inspect content types for tool-related data
-                            if contents:
-                                for idx, content in enumerate(contents):
-                                    content_type = getattr(content, "type", None)
-                                    logger.info("  📄 Content[%d]: type=%s", idx, content_type)
-                                    # Log tool call details if present
-                                    if content_type in ("function_call", "tool_call", "function_call_output"):
-                                        logger.info("    🔧 Tool content: %s", content)
-
-                            # Only process user/assistant text for transcripts
-                            if role not in ("user", "assistant"):
-                                continue
-                            text_parts: list[str] = []
-                            for content in contents:
-                                text = getattr(content, "text", None) or getattr(content, "transcript", None)
-                                if isinstance(text, str) and text.strip():
-                                    text_parts.append(text.strip())
-
-                            if text_parts:
-                                combined_text = "\n".join(text_parts)
-
-                                if processed_history_texts.get(history_key) == combined_text:
-                                    continue
-
-                                transcript_entry = {"role": role, "text": combined_text}
-                                transcripts.append(transcript_entry)
-                                # Log transcription to help debug tool usage
-                                logger.info("💬 %s: %s", role.upper(), combined_text[:200])
-
-                                # Appeler le hook de transcription en temps réel si disponible
-                                if self._hooks.on_transcript:
-                                    try:
-                                        await self._hooks.on_transcript(transcript_entry)
-                                    except Exception as e:
-                                        logger.error("Erreur lors de l'envoi de la transcription en temps réel: %s", e)
-
-                                processed_history_texts[history_key] = combined_text
-
-                                # Track if assistant message is short (likely just a preamble)
-                                if role == "assistant":
-                                    # Short messages (< 30 chars) are likely preambles like "Je m'en occupe"
-                                    is_short = len(combined_text) < 30
-                                    last_assistant_message_was_short = is_short
-
-                                    # If we had a tool call and now get a proper response, clear the flag
-                                    if tool_call_detected and not is_short:
-                                        logger.info("✅ Confirmation détectée après tool call: %s", combined_text[:50])
-                                        tool_call_detected = False
-                                    elif tool_call_detected and is_short:
-                                        logger.warning("⚠️ Message court après tool call (probable préambule): %s", combined_text)
-                        continue
-
-                    # Handle tool calls (the SDK automatically executes these!)
-                    if isinstance(event, RealtimeToolStart):
-                        tool_name = getattr(event.tool, "name", None)
-                        logger.info("Exécution de l'outil MCP: %s", tool_name)
-                        continue
-
-                    if isinstance(event, RealtimeToolEnd):
-                        tool_name = getattr(event.tool, "name", None)
-                        output = event.output
-                        logger.info("Outil MCP terminé: %s, résultat: %s", tool_name, output)
-                        # Note: response.create is sent when tool call is detected via history (content_count=0)
-                        continue
-
-            except Exception as exc:
-                logger.exception("Erreur dans le flux d'événements SDK")
-                error = VoiceBridgeError(f"Erreur événements SDK: {exc}")
-            finally:
-                # CRITICAL FIX: Cancel all watchdog tasks to prevent leaks
-                for watchdog_task in response_watchdog_tasks:
-                    if not watchdog_task.done():
-                        watchdog_task.cancel()
-                if response_watchdog_tasks:
-                    logger.debug("🧹 Cleanup: %d watchdog task(s) annulé(s)", len(response_watchdog_tasks))
-                    response_watchdog_tasks.clear()
-                await request_stop()
-
-        stats: VoiceBridgeStats | None = None
         try:
-            # Build model config for the SDK runner
-            # Note: turn_detection is already configured in client_secret (semantic_vad)
-            # Note: tools are already available via the runner's MCP server connections
-            # Note: Tool calls work with audio-only mode - they happen internally and don't require text modality
             model_settings: dict[str, Any] = {
                 "model_name": model,
-                "modalities": ["audio"],  # For telephony, audio only (tool calls work internally)
-                "output_modalities": ["audio"],  # CRITICAL: Explicitly force audio-only output
+                "modalities": ["audio"],
+                "output_modalities": ["audio"],
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
             }
@@ -1284,182 +667,125 @@ class TelephonyVoiceBridge:
             model_config: dict[str, Any] = {
                 "api_key": client_secret,
                 "initial_model_settings": model_settings,
-                "playback_tracker": playback_tracker,  # Track audio playback for interruptions
+                "playback_tracker": playback_tracker,
             }
 
-            # Create session using the SDK runner (this is what enables tool calls!)
-            # OPTIMISATION: Si une session est déjà fournie (connexion WebSocket déjà établie),
-            # l'utiliser directement au lieu de créer une nouvelle connexion
             if _existing_session is not None:
-                # Session déjà connectée - utiliser avec un context manager dummy
                 session_context = contextlib.nullcontext(_existing_session)
                 logger.info("Session SDK déjà connectée, utilisation directe")
             else:
-                # Créer une nouvelle session avec le runner
+                if runner is None:
+                    raise RuntimeError("Realtime runner requis pour établir la session")
                 logger.info("Démarrage session SDK avec runner")
                 session_context = await runner.run(model_config=model_config)
 
-            # Utiliser async with pour gérer proprement le context manager
-            async with session_context as session:
+            async with session_context as session_obj:
+                session = session_obj
                 if _existing_session is None:
                     logger.info("Session SDK démarrée avec succès")
 
-                # CRITICAL FIX: Reset audio bridge at START of call to clear any state from previous call
-                # Especially important for _drop_until_next_assistant flag which blocks all audio if True
                 if audio_bridge:
                     audio_bridge.reset_all()
-                    logger.info("✅ Audio bridge reset_all() appelé au début de l'appel")
+                    logger.info("✅ Audio bridge reset_all() "
+                                "appelé au début de l'appel")
 
-                # Vider le buffer audio d'entrée au début de la session pour éviter des données résiduelles
-                # de sessions précédentes
                 try:
                     from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-                    await session._model.send_event(
+
+                    await session._model.send_event(  # type: ignore[protected-access]
                         RealtimeModelSendRawMessage(
                             message={"type": "input_audio_buffer.clear"}
                         )
                     )
                     logger.debug("✅ Buffer audio d'entrée vidé au début de la session")
-                except Exception as e:
-                    logger.warning("input_audio_buffer.clear échoué au début: %s", e)
-
-                # Si speak_first est activé, attendre que PJSUA soit prêt à consommer l'audio
-                # OPTIMISATION: Envoyer response.create IMMÉDIATEMENT après pjsua_ready, sans attendre le premier RTP
-                if speak_first:
-                    if pjsua_ready_to_consume is not None:
-                        logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
-                        try:
-                            await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
-                            logger.info("✅ PJSUA prêt - envoi IMMÉDIAT de response.create (sans attendre RTP)")
-
-                            # OPTIMISATION CRITIQUE: Vider la queue locale PJSUA MAINTENANT
-                            # Les frames de silence se sont accumulées pendant l'attente
-                            logger.info("🔍 DEBUG: clear_audio_queue = %s (type=%s)", clear_audio_queue, type(clear_audio_queue))
-                            if clear_audio_queue is not None:
-                                try:
-                                    cleared_count = clear_audio_queue()
-                                    logger.info("🗑️ Queue locale PJSUA vidée: %d frames de silence supprimées", cleared_count)
-                                except Exception as e:
-                                    logger.warning("Erreur lors du vidage de la queue PJSUA: %s", e)
-                            else:
-                                logger.warning("⚠️ clear_audio_queue est None - impossible de vider la queue!")
-
-                            # OPTIMISATION AGRESSIVE: Envoyer response.create MAINTENANT
-                            # Cela démarre la génération TTS immédiatement sans attendre le premier paquet RTP
-                            # Gain de temps: ~200-800ms (délai typique avant premier RTP)
-                            try:
-                                # 1. Envoyer response.create MAINTENANT pour démarrer la génération TTS
-                                from agents.realtime.model_inputs import (
-                                    RealtimeModelRawClientMessage,
-                                    RealtimeModelSendRawMessage,
-                                )
-                                await session._model.send_event(
-                                    RealtimeModelSendRawMessage(
-                                        message=RealtimeModelRawClientMessage(
-                                            type="response.create",
-                                            other_data={},
-                                        )
-                                    )
-                                )
-                                response_create_sent_immediately = True
-
-                                # Timing diagnostic
-                                if audio_bridge:
-                                    audio_bridge._t1_response_create = time.monotonic()
-                                    logger.info("✅ response.create envoyé IMMÉDIATEMENT (optimisation maximale)")
-
-                                    # 📊 Diagnostic: Enregistrer le début de response.create
-                                    if hasattr(audio_bridge, '_chatkit_call_id') and audio_bridge._chatkit_call_id:
-                                        from .call_diagnostics import get_diagnostics_manager
-                                        diag_manager = get_diagnostics_manager()
-                                        diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
-                                        if diag:
-                                            diag.phase_response_create.start()
-                                            diag.phase_response_create.end()
-
-                                # NOTE IMPORTANTE: On N'active PAS audio_output ici !
-                                # L'activation se fera dans forward_audio() dès réception du premier chunk TTS.
-                                # Cela évite la starvation du ring buffer pendant l'attente du TTS (800-900ms).
-                                # Si on active maintenant, PJSUA consommerait ~40 frames avant l'arrivée du TTS.
-                                logger.info("⏸️ Audio output restera désactivé jusqu'au premier chunk TTS (évite starvation)")
-                            except Exception as exc:
-                                logger.warning("⚠️ Erreur lors de l'envoi immédiat de response.create: %s", exc)
-                                # En cas d'erreur, le fallback dans forward_audio() prendra le relais
-
-                        except asyncio.TimeoutError:
-                            logger.warning("⚠️ Timeout en attendant PJSUA")
-                    else:
-                        logger.info("⏳ Mode speak_first activé - response.create sera envoyé après amorçage du canal")
-
-                # OPTIMISATION: Démarrer forward_audio() et handle_events() IMMÉDIATEMENT
-                # pour que le RTP stream commence à capturer l'audio le plus tôt possible
-                audio_task = asyncio.create_task(forward_audio())
-                events_task = asyncio.create_task(handle_events())
-                try:
-                    # Utiliser wait() avec FIRST_COMPLETED au lieu de gather()
-                    # Cela permet d'annuler la tâche restante dès que l'une se termine
-                    done, pending = await asyncio.wait(
-                        {audio_task, events_task},
-                        return_when=asyncio.FIRST_COMPLETED
-                    )
-
-                    # Si une tâche se termine, arrêter l'autre
-                    await request_stop()
-                    for task in pending:
-                        task.cancel()
-
-                    # Attendre que les tâches annulées se terminent proprement (ignorer CancelledError)
-                    if pending:
-                        try:
-                            await asyncio.gather(*pending, return_exceptions=True)
-                        except Exception as gather_exc:
-                            logger.debug("Erreur lors de l'attente des tâches annulées: %s", gather_exc)
-
-                    # Vérifier si une des tâches terminées a levé une exception
-                    for task in done:
-                        try:
-                            exc = task.exception()
-                            if exc is not None:
-                                error = exc
-                                logger.error("Erreur dans tâche: %s", error)
-                        except asyncio.CancelledError:
-                            # Tâche annulée, c'est normal
-                            pass
-
                 except Exception as exc:
-                    error = exc
-                    await request_stop()
-                    for task in (audio_task, events_task):
-                        if not task.done():
-                            task.cancel()
+                    logger.warning("input_audio_buffer.clear échoué au début: %s", exc)
 
-                    # Attendre que les tâches annulées se terminent
-                    try:
-                        await asyncio.gather(
-                            audio_task, events_task, return_exceptions=True
-                        )
-                    except Exception as gather_exc:
-                        logger.debug("Erreur lors de l'attente des tâches annulées: %s", gather_exc)
-                # Le context manager ferme automatiquement la session ici, proprement depuis la même tâche
-                logger.debug("Session SDK fermée automatiquement par le context manager")
+                await sip_sync.prepare_session(session)
+
+                audio_manager = AudioStreamManager(
+                    session=session,
+                    rtp_stream=rtp_stream,
+                    decode_packet=self._decode_packet,
+                    should_continue=should_continue,
+                    request_stop=request_stop,
+                    inbound_audio_dispatcher=inbound_audio_dispatcher,
+                    hooks=self._hooks,
+                    audio_recorder=audio_recorder,
+                    sip_sync=sip_sync,
+                    audio_bridge=audio_bridge,
+                )
+
+                event_router = RealtimeEventRouter(
+                    session=session,
+                    playback_tracker=playback_tracker,
+                    should_continue=should_continue,
+                    request_stop=request_stop,
+                    send_to_peer=send_to_peer,
+                    clear_audio_queue=clear_audio_queue,
+                    hooks=self._hooks,
+                    transcripts=transcripts,
+                    block_audio_send_ref=block_audio_send_ref,
+                    audio_recorder=audio_recorder,
+                    sip_sync=sip_sync,
+                    error_factory=VoiceBridgeError,
+                )
+
+                try:
+                    async with asyncio.TaskGroup() as tg:
+                        tg.create_task(audio_manager.stream())
+                        tg.create_task(event_router.run())
+                except Exception as exc:
+                    if hasattr(exc, "exceptions"):
+                        for inner in exc.exceptions:  # type: ignore[attr-defined]
+                            if isinstance(inner, asyncio.CancelledError):
+                                continue
+                            error = inner
+                    else:
+                        error = exc
+                else:
+                    if audio_manager.error and error is None:
+                        error = audio_manager.error
+                    if event_router.error and error is None:
+                        error = event_router.error
+
+                if audio_manager is not None:
+                    inbound_audio_bytes = audio_manager.inbound_audio_bytes
+                else:
+                    inbound_audio_bytes = 0
+                if event_router is not None:
+                    outbound_audio_bytes = event_router.outbound_audio_bytes
+                else:
+                    outbound_audio_bytes = 0
         except Exception as exc:
             error = exc
             logger.error("Session voix Realtime interrompue : %s", exc)
         finally:
-            # Close audio recorder and get file paths
-            inbound_audio_file = None
-            outbound_audio_file = None
-            mixed_audio_file = None
-            if audio_recorder:
-                try:
-                    inbound_audio_file, outbound_audio_file, mixed_audio_file = audio_recorder.close()
-                    logger.info("Audio recordings closed: inbound=%s, outbound=%s, mixed=%s",
-                               inbound_audio_file, outbound_audio_file, mixed_audio_file)
-                except Exception as e:
-                    logger.error("Failed to close audio recorder: %s", e)
+            inbound_audio_file: str | None = None
+            outbound_audio_file: str | None = None
+            mixed_audio_file: str | None = None
 
-            # Le nettoyage de la session est géré par async with
-            # Il nous reste juste à enregistrer les stats
+            if audio_manager is not None:
+                inbound_audio_file, outbound_audio_file, mixed_audio_file = (
+                    audio_manager.record()
+                )
+                if any((inbound_audio_file, outbound_audio_file, mixed_audio_file)):
+                    logger.info(
+                        "Audio recordings closed: inbound=%s, outbound=%s, mixed=%s",
+                        inbound_audio_file,
+                        outbound_audio_file,
+                        mixed_audio_file,
+                    )
+            elif audio_recorder is not None:
+                try:
+                    (
+                        inbound_audio_file,
+                        outbound_audio_file,
+                        mixed_audio_file,
+                    ) = audio_recorder.close()
+                except Exception as exc:
+                    logger.error("Failed to close audio recorder: %s", exc)
+
             duration = time.monotonic() - start_time
             stats = VoiceBridgeStats(
                 duration_seconds=duration,
@@ -1475,8 +801,8 @@ class TelephonyVoiceBridge:
             await self._teardown(transcripts, error)
             if error is None:
                 logger.info(
-                    "Session voix terminée (durée=%.2fs, audio_in=%d, audio_out=%d, "
-                    "transcripts=%d)",
+                    "Session voix terminée (durée=%.2fs, audio_in=%d, "
+                    "audio_out=%d, transcripts=%d)",
                     duration,
                     inbound_audio_bytes,
                     outbound_audio_bytes,
@@ -1484,7 +810,8 @@ class TelephonyVoiceBridge:
                 )
             else:
                 logger.warning(
-                    "Session voix terminée avec erreur après %.2fs", duration
+                    "Session voix terminée avec erreur après %.2fs",
+                    duration,
                 )
 
         if stats is None:  # pragma: no cover - garde-fou
