@@ -104,13 +104,15 @@ def ensure_backend_package_stub() -> None:
 
 ensure_backend_package_stub()
 
+from backend.app.telephony.call_diagnostics import (  # noqa: E402
+    get_diagnostics_manager,
+)
 from backend.app.telephony.voice_bridge import (  # noqa: E402
     RtpPacket,
     TelephonyVoiceBridge,
     VoiceBridgeHooks,
     _AsyncTaskLimiter,
 )
-from backend.app.telephony.call_diagnostics import get_diagnostics_manager  # noqa: E402
 
 
 def test_async_task_limiter_throttles_concurrency():
