@@ -1327,33 +1327,7 @@ const WorkflowBuilderPage = () => {
     [setEdges, setNodes, setSelectedEdgeId, setSelectedNodeId],
   );
 
-  const renderWorkflowDescription = (className?: string) =>
-    selectedWorkflow?.description ? (
-      <div
-        className={className}
-        style={
-          className
-            ? undefined
-            : { color: "var(--text-muted)", fontSize: "0.95rem" }
-        }
-      >
-        {selectedWorkflow.description}
-      </div>
-    ) : null;
-
-  const renderWorkflowPublicationReminder = (className?: string) =>
-    selectedWorkflow && !selectedWorkflow.active_version_id ? (
-      <div
-        className={className}
-        style={
-          className
-            ? undefined
-            : { color: "#b45309", fontSize: "0.85rem", fontWeight: 600 }
-        }
-      >
-        Publiez une version pour l'utiliser.
-      </div>
-    ) : null;
+  // renderWorkflowDescription and renderWorkflowPublicationReminder functions inlined below
 
   // renderHeaderControls function removed - now handled by WorkflowHeader component (line 179)
 
@@ -7013,8 +6987,16 @@ const WorkflowBuilderPage = () => {
 
         <div style={workspaceWrapperStyle}>
           <div style={workspaceContentStyle}>
-            {shouldShowWorkflowDescription ? renderWorkflowDescription() : null}
-            {shouldShowPublicationReminder ? renderWorkflowPublicationReminder() : null}
+            {shouldShowWorkflowDescription && selectedWorkflow?.description ? (
+              <div style={{ color: "var(--text-muted)", fontSize: "0.95rem" }}>
+                {selectedWorkflow.description}
+              </div>
+            ) : null}
+            {shouldShowPublicationReminder && selectedWorkflow && !selectedWorkflow.active_version_id ? (
+              <div style={{ color: "#b45309", fontSize: "0.85rem", fontWeight: 600 }}>
+                Publiez une version pour l'utiliser.
+              </div>
+            ) : null}
             <div
               ref={reactFlowContainerRef}
               style={editorContainerStyle}
