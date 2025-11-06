@@ -6,13 +6,22 @@ Extracted UI components from the monolithic `WorkflowBuilderPage.tsx`.
 
 ```
 components/
-├── modals/           # Modal dialogs
+├── modals/           # Modal dialogs ✅
+│   ├── index.ts
 │   ├── SaveToast.tsx
 │   └── DeployModal.tsx
-├── panels/           # Side panels (TODO)
-├── header/           # Header components (TODO)
-├── sidebar/          # Sidebar components (TODO)
-└── index.ts
+├── panels/           # Side panels ✅
+│   ├── index.ts
+│   ├── PropertiesPanel.tsx
+│   └── BlockLibraryPanel.tsx
+├── header/           # Header components ✅
+│   ├── index.ts
+│   └── WorkflowHeader.tsx
+├── sidebar/          # Sidebar components ✅
+│   ├── index.ts
+│   └── WorkflowSidebar.tsx
+├── index.ts
+└── README.md
 ```
 
 ## Components
@@ -246,10 +255,100 @@ A header component that displays the workflow toolbar with version selector and 
 />
 ```
 
-## Future Components (Planned)
-
 ### Sidebar
-- **WorkflowSidebar**: Workflow list, search, pinning interface, create button
+
+#### WorkflowSidebar
+
+A sidebar component that displays the workflow list with pinning, searching, and action menus.
+
+**Props:**
+- `workflows`: `WorkflowSummary[]` - Array of local workflows
+- `hostedWorkflows`: `HostedWorkflowMetadata[]` - Array of hosted workflows
+- `selectedWorkflowId`: `number | null` - Currently selected workflow ID
+- `selectedWorkflow`: `WorkflowSummary | null` - Currently selected workflow
+- `loading`: `boolean` - Whether workflows are loading
+- `loadError`: `string | null` - Error message if loading failed
+- `hostedLoading`: `boolean` - Whether hosted workflows are loading
+- `hostedError`: `string | null` - Error message if hosted loading failed
+- `isCreatingWorkflow`: `boolean` - Whether workflow creation is in progress
+- `isMobileLayout`: `boolean` - Whether to use mobile layout
+- `isSidebarCollapsed`: `boolean` - Whether sidebar is collapsed
+- `pinnedLookup`: `StoredWorkflowPinnedLookup` - Map of pinned workflows
+- `lastUsedAt`: `StoredWorkflowLastUsedAt` - Map of last used timestamps
+- `openWorkflowMenuId`: `number | string | null` - ID of currently open workflow menu
+- `workflowMenuPlacement`: `"up" | "down"` - Placement of workflow action menu
+- `onSelectWorkflow`: `(workflowId: number) => void` - Select workflow handler
+- `onOpenCreateModal`: `() => void` - Open create workflow modal handler
+- `onDuplicateWorkflow`: `(workflowId: number) => Promise<void>` - Duplicate workflow handler
+- `onRenameWorkflow`: `(workflowId: number) => Promise<void>` - Rename workflow handler
+- `onExportWorkflow`: `(workflowId: number) => Promise<void>` - Export workflow handler
+- `onDeleteWorkflow`: `(workflowId: number) => Promise<void>` - Delete workflow handler
+- `onDeleteHostedWorkflow`: `(slug: string) => Promise<void>` - Delete hosted workflow handler
+- `onToggleLocalPin`: `(workflowId: number) => void` - Toggle local workflow pin
+- `onToggleHostedPin`: `(slug: string) => void` - Toggle hosted workflow pin
+- `onCloseWorkflowMenu`: `() => void` - Close workflow menu handler
+- `onSetOpenWorkflowMenuId`: `(id: number | string | null) => void` - Set open menu ID
+- `onSetWorkflowMenuPlacement`: `(placement: "up" | "down") => void` - Set menu placement
+- `onOpenAppearanceModal`: `(target, triggerElement) => void` - Open appearance modal handler
+- `t`: `(key: string, params?: Record<string, unknown>) => string` - Translation function
+
+**Returns:**
+- `{ expandedContent: ReactNode, collapsedContent: ReactNode | null }` - Sidebar content for expanded and collapsed states
+
+**Features:**
+- Workflow list with pinned and regular sections
+- Both local and hosted workflow support
+- Pin/unpin functionality with Star icon
+- Action menus for each workflow (duplicate, rename, export, customize, delete)
+- Responsive menu placement (up/down based on available space)
+- Loading and error states
+- Create workflow button
+- Workflow description and publication reminder
+- Collapsed view with workflow initials
+- Accessible ARIA labels and semantic HTML
+- Uses existing chatkit-sidebar CSS classes
+
+**Usage:**
+```tsx
+const { expandedContent, collapsedContent } = WorkflowSidebar({
+  workflows,
+  hostedWorkflows,
+  selectedWorkflowId,
+  selectedWorkflow,
+  loading,
+  loadError,
+  hostedLoading,
+  hostedError,
+  isCreatingWorkflow,
+  isMobileLayout,
+  isSidebarCollapsed,
+  pinnedLookup,
+  lastUsedAt,
+  openWorkflowMenuId,
+  workflowMenuPlacement,
+  onSelectWorkflow: handleSelectWorkflow,
+  onOpenCreateModal: handleOpenCreateModal,
+  onDuplicateWorkflow: handleDuplicateWorkflow,
+  onRenameWorkflow: handleRenameWorkflow,
+  onExportWorkflow: handleExportWorkflow,
+  onDeleteWorkflow: handleDeleteWorkflow,
+  onDeleteHostedWorkflow: handleDeleteHostedWorkflow,
+  onToggleLocalPin: toggleLocalPin,
+  onToggleHostedPin: toggleHostedPin,
+  onCloseWorkflowMenu: closeWorkflowMenu,
+  onSetOpenWorkflowMenuId: setOpenWorkflowMenuId,
+  onSetWorkflowMenuPlacement: setWorkflowMenuPlacement,
+  onOpenAppearanceModal: openAppearanceModal,
+  t,
+});
+
+// Use with sidebar portal
+useEffect(() => {
+  setSidebarContent(expandedContent);
+  setCollapsedSidebarContent(collapsedContent);
+  return () => clearSidebarContent();
+}, [expandedContent, collapsedContent]);
+```
 
 ## Benefits
 
@@ -277,6 +376,6 @@ import { SaveToast, DeployModal } from "./components";
 1. ✅ Extract PropertiesPanel component
 2. ✅ Extract BlockLibraryPanel component
 3. ✅ Extract WorkflowHeader component
-4. Extract WorkflowSidebar component
+4. ✅ Extract WorkflowSidebar component
 5. Add unit tests for all components
 6. Update WorkflowBuilderPage to use extracted components
