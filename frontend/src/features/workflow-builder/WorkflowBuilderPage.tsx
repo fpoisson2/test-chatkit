@@ -34,6 +34,7 @@ import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "./hooks/useOutsidePointerDown";
 import useWorkflowResources from "./hooks/useWorkflowResources";
 import useWorkflowSidebarState from "./hooks/useWorkflowSidebarState";
+import { useWorkflowKeyboardShortcuts } from "./hooks/useWorkflowKeyboardShortcuts";
 import {
   getAgentFileSearchConfig,
   getAgentWorkflowTools,
@@ -658,6 +659,7 @@ const WorkflowBuilderPage = () => {
     count: 0,
     lastTimestamp: 0,
   });
+  const workflowBusyRef = useRef(false);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
   const historyRef = useRef<{
@@ -2072,154 +2074,23 @@ const WorkflowBuilderPage = () => {
     return true;
   }, [restoreGraphFromSnapshot]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
+  workflowBusyRef.current = loading || isImporting || isExporting;
 
-    const isEditableTarget = (target: EventTarget | null): boolean => {
-      if (!(target instanceof HTMLElement)) {
-        return false;
-      }
-      if (target.isContentEditable) {
-        return true;
-      }
-      const tagName = target.tagName;
-      if (tagName === "INPUT" || tagName === "TEXTAREA") {
-        return true;
-      }
-      return target.closest("input, textarea, [contenteditable=\"true\"]") !== null;
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const isCtrlOrMeta = event.ctrlKey || event.metaKey;
-      const key = event.key.toLowerCase();
-      const now = Date.now();
-      const workflowBusy = loading || isImporting || isExporting;
-
-      if (isCtrlOrMeta && key === "c") {
-        const previousTimestamp = copySequenceRef.current.lastTimestamp;
-        const previousCount = copySequenceRef.current.count;
-        const nextCount =
-          previousTimestamp && now - previousTimestamp <= 600 ? previousCount + 1 : 1;
-        copySequenceRef.current.count = nextCount;
-        copySequenceRef.current.lastTimestamp = now;
-
-        if (workflowBusy) {
-          return;
-        }
-
-        if (isEditableTarget(event.target) && nextCount < 2) {
-          return;
-        }
-
-        event.preventDefault();
-        void copySelectionToClipboard({ includeEntireGraph: nextCount >= 2 });
-        return;
-      }
-
-      const allowDueToCopySequence =
-        copySequenceRef.current.count >= 2 &&
-        now - copySequenceRef.current.lastTimestamp <= 800;
-
-      if (isEditableTarget(event.target) && !allowDueToCopySequence) {
-        if (!isCtrlOrMeta) {
-          resetCopySequence();
-        }
-        return;
-      }
-
-      if (isCtrlOrMeta && key === "z") {
-        if (workflowBusy) {
-          return;
-        }
-        const performed = event.shiftKey ? redoHistory() : undoHistory();
-        if (performed) {
-          event.preventDefault();
-          resetCopySequence();
-        }
-        return;
-      }
-
-      if (isCtrlOrMeta && key === "y") {
-        if (workflowBusy) {
-          return;
-        }
-        const performed = redoHistory();
-        if (performed) {
-          event.preventDefault();
-          resetCopySequence();
-        }
-        return;
-      }
-
-      if (isCtrlOrMeta && key === "a") {
-        if (workflowBusy) {
-          return;
-        }
-        event.preventDefault();
-        const allNodeIds = nodesRef.current.map((node) => node.id);
-        const allEdgeIds = edgesRef.current.map((edge) => edge.id);
-        const primaryNodeId = allNodeIds[0] ?? null;
-        const primaryEdgeId = primaryNodeId ? null : allEdgeIds[0] ?? null;
-        applySelection({
-          nodeIds: allNodeIds,
-          edgeIds: allEdgeIds,
-          primaryNodeId,
-          primaryEdgeId,
-        });
-        resetCopySequence();
-        return;
-      }
-
-      if (isCtrlOrMeta && key === "v") {
-        if (workflowBusy) {
-          return;
-        }
-        event.preventDefault();
-        void pasteClipboardGraph().finally(() => {
-          resetCopySequence();
-        });
-        return;
-      }
-
-      if (event.key === "Delete") {
-        const hasSelection =
-          selectedNodeIdsRef.current.size > 0 || selectedEdgeIdsRef.current.size > 0;
-        if (!hasSelection) {
-          resetCopySequence();
-          return;
-        }
-        event.preventDefault();
-        removeElements({
-          nodeIds: selectedNodeIdsRef.current,
-          edgeIds: selectedEdgeIdsRef.current,
-        });
-        resetCopySequence();
-        return;
-      }
-
-      if (!isCtrlOrMeta) {
-        resetCopySequence();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [
+  useWorkflowKeyboardShortcuts({
     applySelection,
     copySelectionToClipboard,
-    isExporting,
-    isImporting,
-    loading,
+    copySequenceRef,
+    edgesRef,
+    nodesRef,
     pasteClipboardGraph,
     redoHistory,
     removeElements,
     resetCopySequence,
+    selectedEdgeIdsRef,
+    selectedNodeIdsRef,
     undoHistory,
-  ]);
+    workflowBusyRef,
+  });
 
   const handleSelectWorkflow = useCallback(
     (workflowId: number) => {
