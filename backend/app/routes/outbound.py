@@ -171,12 +171,14 @@ async def get_call_status(
 @router.post("/api/outbound/call/{call_id}/hangup")
 async def hangup_call(
     call_id: str,
+    _: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Raccroche un appel en cours.
 
     Args:
         call_id: ID de l'appel
+        _: Utilisateur authentifié (requis)
 
     Returns:
         Message de confirmation

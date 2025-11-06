@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 interface OutboundCallAudioPlayerProps {
   callId: string | null;
   onCallEnd?: () => void;
+  authToken: string | null;
 }
 
 interface AudioPacket {
@@ -17,6 +18,7 @@ interface AudioPacket {
 export const OutboundCallAudioPlayer = ({
   callId,
   onCallEnd,
+  authToken,
 }: OutboundCallAudioPlayerProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -33,7 +35,11 @@ export const OutboundCallAudioPlayer = ({
 
   // Handle hang up
   const handleHangup = useCallback(async () => {
-    if (!callId || isHangingUp) {
+    if (!callId || isHangingUp || !authToken) {
+      console.error("[OutboundCallAudioPlayer] Cannot hangup:", { callId, isHangingUp, hasToken: !!authToken });
+      if (!authToken) {
+        setError("Token d'authentification manquant");
+      }
       return;
     }
 
@@ -46,6 +52,7 @@ export const OutboundCallAudioPlayer = ({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`,
         },
       });
 
@@ -62,7 +69,7 @@ export const OutboundCallAudioPlayer = ({
       setError(`Échec du raccrochage: ${err instanceof Error ? err.message : String(err)}`);
       setIsHangingUp(false);
     }
-  }, [callId, isHangingUp, onCallEnd]);
+  }, [callId, isHangingUp, onCallEnd, authToken]);
 
   // Initialize Audio Context
   const initializeAudioContext = useCallback(() => {

@@ -1132,6 +1132,7 @@ export function MyChat() {
         <OutboundCallAudioPlayer
           callId={outboundCallId}
           onCallEnd={handleOutboundCallEnd}
+          authToken={token}
         />
       )}
       <style>{`
