@@ -293,7 +293,7 @@ export function MyChat() {
   }, [workflowSelection]);
 
   // Detect outbound calls via WebSocket events (like voice sessions)
-  const { callId: outboundCallId, isActive: outboundCallIsActive, sendCommand: sendOutboundCommand } = useOutboundCallSession();
+  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession();
 
   const handleOutboundCallEnd = useCallback(() => {
     // Refresh the thread to show final transcriptions and audio links
@@ -1132,7 +1132,7 @@ export function MyChat() {
         <OutboundCallAudioPlayer
           callId={outboundCallId}
           onCallEnd={handleOutboundCallEnd}
-          sendCommand={sendOutboundCommand}
+          authToken={token}
         />
       )}
       <style>{`

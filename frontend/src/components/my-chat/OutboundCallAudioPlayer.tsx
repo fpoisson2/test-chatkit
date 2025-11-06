@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 interface OutboundCallAudioPlayerProps {
   callId: string | null;
   onCallEnd?: () => void;
-  sendCommand: (command: { type: string; [key: string]: any }) => void;
+  authToken: string | null;
 }
 
 interface AudioPacket {
@@ -18,7 +18,7 @@ interface AudioPacket {
 export const OutboundCallAudioPlayer = ({
   callId,
   onCallEnd,
-  sendCommand,
+  authToken,
 }: OutboundCallAudioPlayerProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -34,29 +34,42 @@ export const OutboundCallAudioPlayer = ({
   const nextPlayTimeRef = useRef<number>(0);
 
   // Handle hang up
-  const handleHangup = useCallback(() => {
-    if (!callId || isHangingUp) return;
+  const handleHangup = useCallback(async () => {
+    if (!callId || isHangingUp || !authToken) {
+      console.error("[OutboundCallAudioPlayer] Cannot hangup:", { callId, isHangingUp, hasToken: !!authToken });
+      if (!authToken) {
+        setError("Token d'authentification manquant");
+      }
+      return;
+    }
 
     setIsHangingUp(true);
     try {
-      console.log("[OutboundCallAudioPlayer] Sending hangup command for call", callId);
-      sendCommand({
-        type: "hangup",
-        call_id: callId,
+      console.log("[OutboundCallAudioPlayer] Sending hangup request for call", callId);
+
+      // Use HTTP POST instead of WebSocket for reliability
+      const response = await fetch(`/api/outbound/call/${callId}/hangup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`,
+        },
       });
 
-      // The response will come via WebSocket (hangup_response event)
-      // For now, just mark as success after a delay
-      setTimeout(() => {
-        setIsHangingUp(false);
-        onCallEnd?.();
-      }, 1000);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Erreur inconnue" }));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      console.log("[OutboundCallAudioPlayer] Call hung up successfully");
+      setIsHangingUp(false);
+      onCallEnd?.();
     } catch (err) {
-      console.error("[OutboundCallAudioPlayer] Failed to send hangup command:", err);
-      setError("Échec du raccrochage");
+      console.error("[OutboundCallAudioPlayer] Failed to hang up call:", err);
+      setError(`Échec du raccrochage: ${err instanceof Error ? err.message : String(err)}`);
       setIsHangingUp(false);
     }
-  }, [callId, isHangingUp, onCallEnd, sendCommand]);
+  }, [callId, isHangingUp, onCallEnd, authToken]);
 
   // Initialize Audio Context
   const initializeAudioContext = useCallback(() => {

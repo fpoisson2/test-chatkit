@@ -33,12 +33,14 @@ logger.info(
 
 # PJSUA imports
 try:
+    import pjsua2 as pj
     from .pjsua_adapter import PJSUAAdapter, PJSUACall, PJSUA_AVAILABLE
     from .pjsua_audio_bridge import create_pjsua_audio_bridge
     if PJSUA_AVAILABLE:
         logger.info("PJSUA disponible pour les appels sortants")
 except ImportError as e:
     PJSUA_AVAILABLE = False
+    pj = None  # type: ignore
     PJSUAAdapter = None  # type: ignore
     PJSUACall = None  # type: ignore
     create_pjsua_audio_bridge = None  # type: ignore
@@ -1542,7 +1544,11 @@ a=sendrecv
             if session._pjsua_call is not None:
                 try:
                     logger.info("Raccrochage de l'appel PJSUA (call_id=%s)", call_id)
-                    session._pjsua_call.hangup()
+                    if pj is not None:
+                        prm = pj.CallOpParam()
+                        session._pjsua_call.hangup(prm)
+                    else:
+                        logger.warning("pjsua2 non disponible, impossible de raccrocher proprement")
                 except Exception as e:
                     logger.warning("Erreur raccrochage PJSUA (call_id=%s): %s", call_id, e)
                 finally:
@@ -1562,13 +1568,18 @@ a=sendrecv
             # 4. Mettre à jour la DB
             db = SessionLocal()
             try:
-                self._update_call_status(
-                    db,
-                    call_id,
-                    "terminated",
-                    ended_at=datetime.now(UTC),
-                    failure_reason="Raccroché manuellement"
-                )
+                # Récupérer l'enregistrement de l'appel pour obtenir son ID de base de données
+                call_record = db.query(OutboundCall).filter_by(call_sid=call_id).first()
+                if call_record:
+                    self._update_call_status(
+                        db,
+                        call_record.id,
+                        "terminated",
+                        ended_at=datetime.now(UTC),
+                        failure_reason="Raccroché manuellement"
+                    )
+                else:
+                    logger.warning("Call record not found in DB for call_id=%s", call_id)
             finally:
                 db.close()
 
