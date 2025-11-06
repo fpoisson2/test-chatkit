@@ -6956,142 +6956,120 @@ const WorkflowBuilderPage = () => {
   }, [headerOverlayOffset, isMobileLayout]);
 
   const propertiesPanelElement = (
-    <aside
-      id={propertiesPanelId}
-      aria-label="Propriétés du bloc sélectionné"
-      aria-labelledby={propertiesPanelTitleId}
-      className={isMobileLayout ? styles.propertiesPanelMobile : styles.propertiesPanel}
-      role={isMobileLayout ? "dialog" : undefined}
-      aria-modal={isMobileLayout ? true : undefined}
-      onClick={isMobileLayout ? (event) => event.stopPropagation() : undefined}
-      style={!isMobileLayout ? floatingPanelStyle : undefined}
+    <PropertiesPanel
+      isMobileLayout={isMobileLayout}
+      selectedElementLabel={selectedElementLabel}
+      floatingPanelStyle={floatingPanelStyle}
+      onClose={handleClosePropertiesPanel}
+      closeButtonRef={propertiesPanelCloseButtonRef}
     >
-      <header className={styles.propertiesPanelHeader}>
-        <div className={styles.propertiesPanelHeaderMeta}>
-          <p className={styles.propertiesPanelOverline}>Propriétés du bloc</p>
-          <h2 id={propertiesPanelTitleId} className={styles.propertiesPanelTitle}>
-            {selectedElementLabel || "Bloc"}
-          </h2>
-        </div>
-        <button
-          type="button"
-          ref={propertiesPanelCloseButtonRef}
-          onClick={handleClosePropertiesPanel}
-          aria-label="Fermer le panneau de propriétés"
-          className={styles.propertiesPanelCloseButton}
-        >
-          ×
-        </button>
-      </header>
-      <div className={styles.propertiesPanelBody}>
-        {selectedNode ? (
-          <NodeInspector
-            node={selectedNode}
-            onDisplayNameChange={handleDisplayNameChange}
-            onAgentMessageChange={handleAgentMessageChange}
-            onAgentModelChange={handleAgentModelChange}
-            onAgentProviderChange={handleAgentProviderChange}
-            onAgentNestedWorkflowChange={handleAgentNestedWorkflowChange}
-            onAgentReasoningChange={handleAgentReasoningChange}
-            onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
-            onAgentTextVerbosityChange={handleAgentTextVerbosityChange}
-            onAgentTemperatureChange={handleAgentTemperatureChange}
-            onAgentTopPChange={handleAgentTopPChange}
-            onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
-            onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
-            onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
-            onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
-            onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
-            onAgentResponseWidgetSourceChange={handleAgentResponseWidgetSourceChange}
-            onAgentResponseWidgetDefinitionChange={
-              handleAgentResponseWidgetDefinitionChange
-            }
-            onWidgetNodeSlugChange={handleWidgetNodeSlugChange}
-            onWidgetNodeSourceChange={handleWidgetNodeSourceChange}
-            onWidgetNodeDefinitionExpressionChange={
-              handleWidgetNodeDefinitionExpressionChange
-            }
-            onWidgetNodeVariablesChange={handleWidgetNodeVariablesChange}
-            onWidgetNodeAwaitActionChange={handleWidgetNodeAwaitActionChange}
-            onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
-            onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
-            onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
-            onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
-            onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
-            onAgentWebSearchChange={handleAgentWebSearchChange}
-            onAgentFileSearchChange={handleAgentFileSearchChange}
-            onAgentImageGenerationChange={handleAgentImageGenerationChange}
-            onAgentComputerUseChange={handleAgentComputerUseChange}
-            onAgentMcpServersChange={handleAgentMcpServersChange}
-            workflows={workflows}
-            currentWorkflowId={selectedWorkflowId}
-            hostedWorkflows={hostedWorkflows}
-            hostedWorkflowsLoading={hostedLoading}
-            hostedWorkflowsError={hostedError}
-            onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
-            onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
-            onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}
-            onVoiceAgentToolChange={handleVoiceAgentToolChange}
-            onTranscriptionModelChange={handleTranscriptionModelChange}
-            onTranscriptionLanguageChange={handleTranscriptionLanguageChange}
-            onTranscriptionPromptChange={handleTranscriptionPromptChange}
-            onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
-            onParametersChange={handleOutboundCallParametersChange}
-            onTransformExpressionsChange={handleTransformExpressionsChange}
-            onStartAutoRunChange={handleStartAutoRunChange}
-            onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
-            onStartAutoRunAssistantMessageChange={
-              handleStartAutoRunAssistantMessageChange
-            }
-            onStartTelephonySipAccountIdChange={handleStartTelephonySipAccountIdChange}
-            onStartTelephonyRingTimeoutChange={handleStartTelephonyRingTimeoutChange}
-            onStartTelephonySpeakFirstChange={handleStartTelephonySpeakFirstChange}
-            onConditionPathChange={handleConditionPathChange}
-            onConditionModeChange={handleConditionModeChange}
-            onConditionValueChange={handleConditionValueChange}
-            onParallelJoinSlugChange={handleParallelJoinSlugChange}
-            onParallelBranchesChange={handleParallelBranchesChange}
-            availableModels={availableModels}
-            availableModelsLoading={availableModelsLoading}
-            availableModelsError={availableModelsError}
-            isReasoningModel={isReasoningModel}
-            onAgentWeatherToolChange={handleAgentWeatherToolChange}
-            onAgentWidgetValidationToolChange={handleAgentWidgetValidationToolChange}
-            onAgentWorkflowValidationToolChange={
-              handleAgentWorkflowValidationToolChange
-            }
-            onAgentWorkflowToolToggle={handleAgentWorkflowToolToggle}
-            vectorStores={vectorStores}
-            vectorStoresLoading={vectorStoresLoading}
-            vectorStoresError={vectorStoresError}
-            widgets={widgets}
-            widgetsLoading={widgetsLoading}
-            widgetsError={widgetsError}
-            onStateAssignmentsChange={handleStateAssignmentsChange}
-            onEndMessageChange={handleEndMessageChange}
-            onAssistantMessageChange={handleAssistantMessageChange}
-            onAssistantMessageStreamEnabledChange={
-              handleAssistantMessageStreamEnabledChange
-            }
-            onAssistantMessageStreamDelayChange={
-              handleAssistantMessageStreamDelayChange
-            }
-            onWaitForUserInputMessageChange={
-              handleWaitForUserInputMessageChange
-            }
-            onUserMessageChange={handleUserMessageChange}
-            onRemove={handleRemoveNode}
-          />
-        ) : selectedEdge ? (
-          <EdgeInspector
-            edge={selectedEdge}
-            onConditionChange={handleConditionChange}
-            onLabelChange={handleEdgeLabelChange}
-            onRemove={handleRemoveEdge}
-          />
-        ) : null}
-      </div>
-    </aside>
+      {selectedNode ? (
+        <NodeInspector
+          node={selectedNode}
+          onDisplayNameChange={handleDisplayNameChange}
+          onAgentMessageChange={handleAgentMessageChange}
+          onAgentModelChange={handleAgentModelChange}
+          onAgentProviderChange={handleAgentProviderChange}
+          onAgentNestedWorkflowChange={handleAgentNestedWorkflowChange}
+          onAgentReasoningChange={handleAgentReasoningChange}
+          onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
+          onAgentTextVerbosityChange={handleAgentTextVerbosityChange}
+          onAgentTemperatureChange={handleAgentTemperatureChange}
+          onAgentTopPChange={handleAgentTopPChange}
+          onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
+          onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
+          onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
+          onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+          onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+          onAgentResponseWidgetSourceChange={handleAgentResponseWidgetSourceChange}
+          onAgentResponseWidgetDefinitionChange={
+            handleAgentResponseWidgetDefinitionChange
+          }
+          onWidgetNodeSlugChange={handleWidgetNodeSlugChange}
+          onWidgetNodeSourceChange={handleWidgetNodeSourceChange}
+          onWidgetNodeDefinitionExpressionChange={
+            handleWidgetNodeDefinitionExpressionChange
+          }
+          onWidgetNodeVariablesChange={handleWidgetNodeVariablesChange}
+          onWidgetNodeAwaitActionChange={handleWidgetNodeAwaitActionChange}
+          onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
+          onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
+          onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
+          onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
+          onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
+          onAgentWebSearchChange={handleAgentWebSearchChange}
+          onAgentFileSearchChange={handleAgentFileSearchChange}
+          onAgentImageGenerationChange={handleAgentImageGenerationChange}
+          onAgentComputerUseChange={handleAgentComputerUseChange}
+          onAgentMcpServersChange={handleAgentMcpServersChange}
+          workflows={workflows}
+          currentWorkflowId={selectedWorkflowId}
+          hostedWorkflows={hostedWorkflows}
+          hostedWorkflowsLoading={hostedLoading}
+          hostedWorkflowsError={hostedError}
+          onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
+          onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
+          onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}
+          onVoiceAgentToolChange={handleVoiceAgentToolChange}
+          onTranscriptionModelChange={handleTranscriptionModelChange}
+          onTranscriptionLanguageChange={handleTranscriptionLanguageChange}
+          onTranscriptionPromptChange={handleTranscriptionPromptChange}
+          onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
+          onParametersChange={handleOutboundCallParametersChange}
+          onTransformExpressionsChange={handleTransformExpressionsChange}
+          onStartAutoRunChange={handleStartAutoRunChange}
+          onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
+          onStartAutoRunAssistantMessageChange={
+            handleStartAutoRunAssistantMessageChange
+          }
+          onStartTelephonySipAccountIdChange={handleStartTelephonySipAccountIdChange}
+          onStartTelephonyRingTimeoutChange={handleStartTelephonyRingTimeoutChange}
+          onStartTelephonySpeakFirstChange={handleStartTelephonySpeakFirstChange}
+          onConditionPathChange={handleConditionPathChange}
+          onConditionModeChange={handleConditionModeChange}
+          onConditionValueChange={handleConditionValueChange}
+          onParallelJoinSlugChange={handleParallelJoinSlugChange}
+          onParallelBranchesChange={handleParallelBranchesChange}
+          availableModels={availableModels}
+          availableModelsLoading={availableModelsLoading}
+          availableModelsError={availableModelsError}
+          isReasoningModel={isReasoningModel}
+          onAgentWeatherToolChange={handleAgentWeatherToolChange}
+          onAgentWidgetValidationToolChange={handleAgentWidgetValidationToolChange}
+          onAgentWorkflowValidationToolChange={
+            handleAgentWorkflowValidationToolChange
+          }
+          onAgentWorkflowToolToggle={handleAgentWorkflowToolToggle}
+          vectorStores={vectorStores}
+          vectorStoresLoading={vectorStoresLoading}
+          vectorStoresError={vectorStoresError}
+          widgets={widgets}
+          widgetsLoading={widgetsLoading}
+          widgetsError={widgetsError}
+          onStateAssignmentsChange={handleStateAssignmentsChange}
+          onEndMessageChange={handleEndMessageChange}
+          onAssistantMessageChange={handleAssistantMessageChange}
+          onAssistantMessageStreamEnabledChange={
+            handleAssistantMessageStreamEnabledChange
+          }
+          onAssistantMessageStreamDelayChange={
+            handleAssistantMessageStreamDelayChange
+          }
+          onWaitForUserInputMessageChange={
+            handleWaitForUserInputMessageChange
+          }
+          onUserMessageChange={handleUserMessageChange}
+          onRemove={handleRemoveNode}
+        />
+      ) : selectedEdge ? (
+        <EdgeInspector
+          edge={selectedEdge}
+          onConditionChange={handleConditionChange}
+          onLabelChange={handleEdgeLabelChange}
+          onRemove={handleRemoveEdge}
+        />
+      ) : null}
+    </PropertiesPanel>
   );
   // toastStyles removed - now handled by SaveToast component (line 175)
 
