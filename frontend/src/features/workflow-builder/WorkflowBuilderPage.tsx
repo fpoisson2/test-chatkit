@@ -6,6 +6,8 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 
 import {
@@ -232,6 +234,67 @@ import {
   type WorkflowViewportRecord,
 } from "./WorkflowBuilderUtils";
 
+type TokenResourceLoaderOptions<T> = {
+  token: string | null;
+  setData: Dispatch<SetStateAction<T>>;
+  setLoading: Dispatch<SetStateAction<boolean>>;
+  setError: Dispatch<SetStateAction<string | null>>;
+  loadResource: () => Promise<T>;
+  fallbackErrorMessage: string;
+  resetData: () => void;
+};
+
+function useTokenResourceLoader<T>({
+  token,
+  setData,
+  setLoading,
+  setError,
+  loadResource,
+  fallbackErrorMessage,
+  resetData,
+}: TokenResourceLoaderOptions<T>) {
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!token) {
+      resetData();
+      setLoading(false);
+      setError(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setLoading(true);
+    setError(null);
+
+    loadResource()
+      .then((result) => {
+        if (isMounted) {
+          setData(result);
+        }
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        const message =
+          error instanceof Error ? error.message : fallbackErrorMessage;
+        setError(message);
+        resetData();
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fallbackErrorMessage, loadResource, resetData, setData, setError, setLoading, token]);
+}
+
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
   const { t } = useI18n();
@@ -402,6 +465,27 @@ const WorkflowBuilderPage = () => {
   const [widgets, setWidgets] = useState<WidgetTemplateSummary[]>([]);
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
+  const resetVectorStores = useCallback(() => {
+    setVectorStores([]);
+  }, [setVectorStores]);
+  const loadVectorStores = useCallback(
+    () => vectorStoreApi.listStores(token as string),
+    [token],
+  );
+  const resetAvailableModels = useCallback(() => {
+    setAvailableModels([]);
+  }, [setAvailableModels]);
+  const loadAvailableModels = useCallback(
+    () => modelRegistryApi.list(token as string),
+    [token],
+  );
+  const resetWidgets = useCallback(() => {
+    setWidgets([]);
+  }, [setWidgets]);
+  const loadWidgets = useCallback(
+    () => widgetLibraryApi.listWorkflowWidgets(token as string),
+    [token],
+  );
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
   const [isDeployModalOpen, setDeployModalOpen] = useState(false);
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
@@ -1419,129 +1503,35 @@ const WorkflowBuilderPage = () => {
     [availableModels],
   );
 
-  useEffect(() => {
-    let isMounted = true;
-    if (!token) {
-      setVectorStores([]);
-      setVectorStoresLoading(false);
-      setVectorStoresError(null);
-      return () => {
-        isMounted = false;
-      };
-    }
+  useTokenResourceLoader<VectorStoreSummary[]>({
+    token,
+    setData: setVectorStores,
+    setLoading: setVectorStoresLoading,
+    setError: setVectorStoresError,
+    loadResource: loadVectorStores,
+    fallbackErrorMessage: "Impossible de charger les vector stores.",
+    resetData: resetVectorStores,
+  });
 
-    setVectorStoresLoading(true);
-    setVectorStoresError(null);
-    vectorStoreApi
-      .listStores(token)
-      .then((stores) => {
-        if (isMounted) {
-          setVectorStores(stores);
-        }
-      })
-      .catch((error) => {
-        if (!isMounted) {
-          return;
-        }
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Impossible de charger les vector stores.";
-        setVectorStoresError(message);
-        setVectorStores([]);
-      })
-      .finally(() => {
-        if (isMounted) {
-          setVectorStoresLoading(false);
-        }
-      });
+  useTokenResourceLoader<AvailableModel[]>({
+    token,
+    setData: setAvailableModels,
+    setLoading: setAvailableModelsLoading,
+    setError: setAvailableModelsError,
+    loadResource: loadAvailableModels,
+    fallbackErrorMessage: "Impossible de charger les modèles autorisés.",
+    resetData: resetAvailableModels,
+  });
 
-    return () => {
-      isMounted = false;
-    };
-  }, [token]);
-
-  useEffect(() => {
-    let isMounted = true;
-    if (!token) {
-      setAvailableModels([]);
-      setAvailableModelsLoading(false);
-      setAvailableModelsError(null);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    setAvailableModelsLoading(true);
-    setAvailableModelsError(null);
-    modelRegistryApi
-      .list(token)
-      .then((models) => {
-        if (!isMounted) {
-          return;
-        }
-        setAvailableModels(models);
-      })
-      .catch((error) => {
-        if (!isMounted) {
-          return;
-        }
-        const message =
-          error instanceof Error ? error.message : "Impossible de charger les modèles autorisés.";
-        setAvailableModelsError(message);
-        setAvailableModels([]);
-      })
-      .finally(() => {
-        if (isMounted) {
-          setAvailableModelsLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [token]);
-
-  useEffect(() => {
-    let isMounted = true;
-    if (!token) {
-      setWidgets([]);
-      setWidgetsLoading(false);
-      setWidgetsError(null);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    setWidgetsLoading(true);
-    setWidgetsError(null);
-    widgetLibraryApi
-      .listWorkflowWidgets(token)
-      .then((items) => {
-        if (!isMounted) {
-          return;
-        }
-        setWidgets(items);
-      })
-      .catch((error) => {
-        if (!isMounted) {
-          return;
-        }
-        const message =
-          error instanceof Error ? error.message : "Impossible de charger la bibliothèque de widgets.";
-        setWidgetsError(message);
-        setWidgets([]);
-      })
-      .finally(() => {
-        if (isMounted) {
-          setWidgetsLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [token]);
+  useTokenResourceLoader<WidgetTemplateSummary[]>({
+    token,
+    setData: setWidgets,
+    setLoading: setWidgetsLoading,
+    setError: setWidgetsError,
+    loadResource: loadWidgets,
+    fallbackErrorMessage: "Impossible de charger la bibliothèque de widgets.",
+    resetData: resetWidgets,
+  });
 
   const loadVersionDetail = useCallback(
     async (
