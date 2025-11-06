@@ -34,6 +34,8 @@ import useWorkflowResources from "./hooks/useWorkflowResources";
 import useWorkflowSidebarState from "./hooks/useWorkflowSidebarState";
 import { useWorkflowKeyboardShortcuts } from "./hooks/useWorkflowKeyboardShortcuts";
 import { useRemoteVersionPolling } from "./hooks/useRemoteVersionPolling";
+import { useWorkflowHistory } from "./hooks/useWorkflowHistory";
+import { useWorkflowBuilderModals } from "./hooks/useWorkflowBuilderModals";
 import { validateGraphStructure } from "./utils/graphValidation";
 import { resolveNodeParameters } from "./utils/parameterResolver";
 import {
@@ -279,10 +281,6 @@ const WorkflowBuilderPage = () => {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
-  const [isAppearanceModalOpen, setAppearanceModalOpen] = useState(false);
-  const [appearanceModalTarget, setAppearanceModalTarget] =
-    useState<WorkflowAppearanceTarget | null>(null);
-  const appearanceModalTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
@@ -294,8 +292,6 @@ const WorkflowBuilderPage = () => {
     [],
   );
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
-  const [isDeployModalOpen, setDeployModalOpen] = useState(false);
-  const [isCreateModalOpen, setCreateModalOpen] = useState(false);
   const [createWorkflowKind, setCreateWorkflowKind] = useState<"local" | "hosted">("local");
   const [createWorkflowName, setCreateWorkflowName] = useState("");
   const [createWorkflowRemoteId, setCreateWorkflowRemoteId] = useState("");
@@ -305,7 +301,6 @@ const WorkflowBuilderPage = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
     useState<ActionMenuPlacement>("up");
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -316,33 +311,34 @@ const WorkflowBuilderPage = () => {
     workflowMenuTriggerRef.current = null;
     workflowMenuRef.current = null;
   }, [workflowMenuRef, workflowMenuTriggerRef]);
-  const handleCloseAppearanceModal = useCallback(() => {
-    setAppearanceModalOpen(false);
-    setAppearanceModalTarget(null);
-    const trigger = appearanceModalTriggerRef.current;
-    appearanceModalTriggerRef.current = null;
-    if (trigger) {
-      if (
-        typeof window !== "undefined" &&
-        typeof window.requestAnimationFrame === "function"
-      ) {
-        window.requestAnimationFrame(() => {
-          trigger.focus();
-        });
-      } else {
-        trigger.focus();
-      }
-    }
-  }, []);
-  const openAppearanceModal = useCallback(
-    (target: WorkflowAppearanceTarget, trigger?: HTMLButtonElement | null) => {
-      closeWorkflowMenu();
-      setAppearanceModalTarget(target);
-      setAppearanceModalOpen(true);
-      appearanceModalTriggerRef.current = trigger ?? null;
-    },
-    [closeWorkflowMenu],
-  );
+
+  // Use modal management hook for all modals and mobile actions
+  const {
+    isAppearanceModalOpen,
+    appearanceModalTarget,
+    appearanceModalTriggerRef,
+    handleCloseAppearanceModal,
+    openAppearanceModal,
+    setAppearanceModalTarget,
+    isCreateModalOpen,
+    handleOpenCreateModal,
+    handleCloseCreateModal,
+    setCreateModalOpen,
+    isDeployModalOpen,
+    handleOpenDeployModal,
+    handleCloseDeployModal,
+    setDeployModalOpen,
+    isMobileActionsOpen,
+    toggleMobileActions,
+    closeMobileActions,
+    mobileActionsTriggerRef,
+    mobileActionsMenuRef,
+    setIsMobileActionsOpen,
+  } = useWorkflowBuilderModals({
+    closeWorkflowMenu,
+    isCreatingWorkflow,
+    isDeploying,
+  });
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
   const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
@@ -362,8 +358,6 @@ const WorkflowBuilderPage = () => {
   const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
-  const mobileActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
@@ -429,20 +423,20 @@ const WorkflowBuilderPage = () => {
   const workflowBusyRef = useRef(false);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
-  const historyRef = useRef<{
-    past: string[];
-    future: string[];
-    last: string | null;
-    isRestoring: boolean;
-    pendingSnapshot: string | null;
-  }>({ past: [], future: [], last: null, isRestoring: false, pendingSnapshot: null });
-  const resetHistory = useCallback((snapshot: string | null) => {
-    historyRef.current.past = [];
-    historyRef.current.future = [];
-    historyRef.current.last = snapshot;
-    historyRef.current.isRestoring = false;
-    historyRef.current.pendingSnapshot = null;
-  }, []);
+
+  // Use workflow history hook for undo/redo functionality
+  const { historyRef, resetHistory, restoreGraphFromSnapshot, undoHistory, redoHistory } =
+    useWorkflowHistory({
+      setNodes,
+      setEdges,
+      setSelectedNodeId,
+      setSelectedEdgeId,
+      selectedNodeIdsRef,
+      selectedEdgeIdsRef,
+      selectedNodeIdRef,
+      selectedEdgeIdRef,
+      decorateNode,
+    });
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
@@ -451,18 +445,8 @@ const WorkflowBuilderPage = () => {
   const propertiesPanelTitleId = `${propertiesPanelId}-title`;
   const mobileActionsDialogId = "workflow-builder-mobile-actions";
   const mobileActionsTitleId = `${mobileActionsDialogId}-title`;
-  const toggleMobileActions = useCallback(() => {
-    setIsMobileActionsOpen((previous) => !previous);
-  }, []);
-  const closeMobileActions = useCallback(
-    (options: { focusTrigger?: boolean } = {}) => {
-      setIsMobileActionsOpen(false);
-      if (options.focusTrigger && mobileActionsTriggerRef.current) {
-        mobileActionsTriggerRef.current.focus();
-      }
-    },
-    [mobileActionsTriggerRef],
-  );
+  // Mobile actions handlers now provided by useWorkflowBuilderModals hook
+
   const toggleBlockLibrary = useCallback(() => {
     setBlockLibraryOpen((prev) => !prev);
   }, []);
@@ -672,7 +656,7 @@ const WorkflowBuilderPage = () => {
         onImportFileChange={handleImportFileChange}
         onTriggerImport={handleTriggerImport}
         onExportWorkflow={handleExportWorkflow}
-        onOpenDeployModal={handleOpenDeployModal}
+        onOpenDeployModal={handleOpenDeployModalWithSetup}
         mobileActionsTriggerRef={mobileActionsTriggerRef}
         mobileActionsMenuRef={mobileActionsMenuRef}
         isMobileActionsOpen={isMobileActionsOpen}
@@ -1597,129 +1581,7 @@ const WorkflowBuilderPage = () => {
     },
     [removeElements, selectedEdgeId, setEdges, updateHasPendingChanges],
   );
-  const restoreGraphFromSnapshot = useCallback(
-    (snapshot: string): boolean => {
-      let parsed;
-      try {
-        parsed = parseWorkflowImport(snapshot);
-      } catch (error) {
-        console.error("Failed to parse workflow history snapshot", error);
-        return false;
-      }
-
-      const flowNodes: FlowNode[] = parsed.graph.nodes.reduce<FlowNode[]>((accumulator, node, index) => {
-        if (!isValidNodeKind(node.kind)) {
-          return accumulator;
-        }
-        const kind = node.kind;
-        const positionFromMetadata = extractPosition(node.metadata);
-        const position = positionFromMetadata ?? { x: 150 * index, y: 120 * index };
-        const displayName = node.display_name ?? humanizeSlug(node.slug);
-        const agentKey = kind === "agent" ? node.agent_key ?? null : null;
-        const parameters = resolveNodeParameters(
-          kind,
-          node.slug,
-          agentKey,
-          node.parameters
-        );
-        accumulator.push(
-          decorateNode({
-            id: node.slug,
-            position,
-            data: {
-              slug: node.slug,
-              kind,
-              displayName,
-              label: displayName,
-              isEnabled: node.is_enabled ?? true,
-              agentKey,
-              parameters,
-              parametersText: stringifyAgentParameters(parameters),
-              parametersError: null,
-              metadata: node.metadata ?? {},
-            },
-            draggable: true,
-            selected: false,
-          }),
-        );
-        return accumulator;
-      }, []);
-
-      const flowEdges = parsed.graph.edges.map<FlowEdge>((edge, index) => ({
-        id: String(edge.metadata?.id ?? `${edge.source}-${edge.target}-${index}`),
-        source: edge.source,
-        target: edge.target,
-        label: edge.metadata?.label ? String(edge.metadata.label) : edge.condition ?? "",
-        data: {
-          condition: edge.condition ?? null,
-          metadata: edge.metadata ?? {},
-        },
-        markerEnd: defaultEdgeOptions.markerEnd
-          ? { ...defaultEdgeOptions.markerEnd }
-          : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
-        style: buildEdgeStyle({ isSelected: false }),
-      }));
-
-      historyRef.current.isRestoring = true;
-      historyRef.current.pendingSnapshot = null;
-      setNodes(flowNodes);
-      setEdges(flowEdges);
-      selectedNodeIdsRef.current = new Set();
-      selectedEdgeIdsRef.current = new Set();
-      setSelectedNodeId(null);
-      setSelectedEdgeId(null);
-      selectedNodeIdRef.current = null;
-      selectedEdgeIdRef.current = null;
-      return true;
-    },
-    [setEdges, setNodes, setSelectedEdgeId, setSelectedNodeId],
-  );
-
-  const undoHistory = useCallback((): boolean => {
-    const history = historyRef.current;
-    if (history.past.length === 0 || !history.last) {
-      return false;
-    }
-    const previousSnapshot = history.past[history.past.length - 1];
-    if (!previousSnapshot) {
-      return false;
-    }
-    const currentSnapshot = history.last;
-    const restored = restoreGraphFromSnapshot(previousSnapshot);
-    if (!restored) {
-      return false;
-    }
-    history.past = history.past.slice(0, -1);
-    if (currentSnapshot) {
-      history.future = [currentSnapshot, ...history.future].slice(0, HISTORY_LIMIT);
-    }
-    history.last = previousSnapshot;
-    history.pendingSnapshot = null;
-    return true;
-  }, [restoreGraphFromSnapshot]);
-
-  const redoHistory = useCallback((): boolean => {
-    const history = historyRef.current;
-    if (history.future.length === 0) {
-      return false;
-    }
-    const [nextSnapshot, ...remaining] = history.future;
-    if (!nextSnapshot) {
-      return false;
-    }
-    const currentSnapshot = history.last;
-    const restored = restoreGraphFromSnapshot(nextSnapshot);
-    if (!restored) {
-      return false;
-    }
-    history.future = remaining;
-    if (currentSnapshot) {
-      history.past = [...history.past, currentSnapshot].slice(-HISTORY_LIMIT);
-    }
-    history.last = nextSnapshot;
-    history.pendingSnapshot = null;
-    return true;
-  }, [restoreGraphFromSnapshot]);
+  // History management functions now provided by useWorkflowHistory hook
 
   workflowBusyRef.current = loading || isImporting || isExporting;
 
@@ -1783,20 +1645,16 @@ const WorkflowBuilderPage = () => {
     [deviceType, loadVersionDetail, selectedWorkflowId],
   );
 
-  const handleOpenCreateModal = useCallback(() => {
+  // Override handleOpenCreateModal to include form reset logic
+  const handleOpenCreateModalWithReset = useCallback(() => {
     setCreateWorkflowKind("local");
     setCreateWorkflowName("");
     setCreateWorkflowRemoteId("");
     setCreateWorkflowError(null);
-    setCreateModalOpen(true);
-  }, []);
+    handleOpenCreateModal();
+  }, [handleOpenCreateModal]);
 
-  const handleCloseCreateModal = useCallback(() => {
-    if (isCreatingWorkflow) {
-      return;
-    }
-    setCreateModalOpen(false);
-  }, [isCreatingWorkflow]);
+  // handleCloseCreateModal is provided by useWorkflowBuilderModals hook
 
   const handleSubmitCreateWorkflow = useCallback(async () => {
     setCreateWorkflowError(null);
@@ -2095,18 +1953,14 @@ const WorkflowBuilderPage = () => {
 
   const conditionGraphError = useMemo(() => validateGraphStructure(nodes, edges), [edges, nodes]);
 
-  const handleOpenDeployModal = useCallback(() => {
+  // Override handleOpenDeployModal to include additional setup logic
+  const handleOpenDeployModalWithSetup = useCallback(() => {
     setSaveMessage(null);
     setDeployToProduction(true);
-    setDeployModalOpen(true);
-  }, []);
+    handleOpenDeployModal();
+  }, [handleOpenDeployModal]);
 
-  const handleCloseDeployModal = useCallback(() => {
-    if (isDeploying) {
-      return;
-    }
-    setDeployModalOpen(false);
-  }, [isDeploying]);
+  // handleCloseDeployModal is provided by useWorkflowBuilderModals hook
 
   useEscapeKeyHandler(handleCloseDeployModal, {
     enabled: isDeployModalOpen,
@@ -2940,7 +2794,7 @@ const WorkflowBuilderPage = () => {
         onDeleteHostedWorkflow={handleDeleteHostedWorkflow}
         onToggleLocalPin={toggleLocalPin}
         onToggleHostedPin={toggleHostedPin}
-        onOpenCreateModal={handleOpenCreateModal}
+        onOpenCreateModal={handleOpenCreateModalWithReset}
         onOpenAppearanceModal={openAppearanceModal}
         onExportWorkflow={handleExportWorkflow}
         closeWorkflowMenu={closeWorkflowMenu}
