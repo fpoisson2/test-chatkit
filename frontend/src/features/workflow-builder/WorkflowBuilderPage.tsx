@@ -632,7 +632,7 @@ const WorkflowBuilderPage = () => {
             : { color: "#b45309", fontSize: "0.85rem", fontWeight: 600 }
         }
       >
-        Publiez une version pour l'utiliser.
+        {t("workflowBuilder.publicationReminder.publishToUse")}
       </div>
     ) : null;
 
@@ -767,7 +767,11 @@ const WorkflowBuilderPage = () => {
             },
           });
           if (!response.ok) {
-            throw new Error(`Échec du chargement de la version (${response.status})`);
+            throw new Error(
+              t("workflowBuilder.errors.loadVersionFailedWithStatus", {
+                status: response.status,
+              }),
+            );
           }
           const data: WorkflowVersionResponse = await response.json();
           setSelectedVersionDetail(data);
@@ -907,7 +911,10 @@ const WorkflowBuilderPage = () => {
           if (error instanceof Error && error.name === "AbortError") {
             continue;
           }
-          lastError = error instanceof Error ? error : new Error("Erreur inconnue");
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error(t("workflowBuilder.errors.unknown"));
         }
       }
       if (lastError) {
@@ -923,6 +930,7 @@ const WorkflowBuilderPage = () => {
       authHeader,
       applySelection,
       deviceType,
+      t,
       persistViewportMemory,
       resetHistory,
       restoreViewport,
@@ -954,7 +962,11 @@ const WorkflowBuilderPage = () => {
             },
           });
           if (!response.ok) {
-            throw new Error(`Échec du chargement des versions (${response.status})`);
+            throw new Error(
+              t("workflowBuilder.errors.loadVersionsFailedWithStatus", {
+                status: response.status,
+              }),
+            );
           }
           const data: WorkflowVersionSummary[] = await response.json();
           let versionsForState: WorkflowVersionSummary[] = [...data];
@@ -1074,7 +1086,10 @@ const WorkflowBuilderPage = () => {
           if (error instanceof Error && error.name === "AbortError") {
             continue;
           }
-          lastError = error instanceof Error ? error : new Error("Erreur inconnue");
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error(t("workflowBuilder.errors.unknown"));
         }
       }
       if (lastError) {
@@ -1090,6 +1105,7 @@ const WorkflowBuilderPage = () => {
       draftDisplayName,
       deviceType,
       loadVersionDetail,
+      t,
       persistViewportMemory,
       resetHistory,
       restoreViewport,
@@ -1132,7 +1148,11 @@ const WorkflowBuilderPage = () => {
             },
           });
           if (!response.ok) {
-            throw new Error(`Échec du chargement de la bibliothèque (${response.status})`);
+            throw new Error(
+              t("workflowBuilder.errors.loadLibraryFailedWithStatus", {
+                status: response.status,
+              }),
+            );
           }
           const data: WorkflowSummary[] = await response.json();
           hasLoadedWorkflowsRef.current = true;
@@ -1201,7 +1221,10 @@ const WorkflowBuilderPage = () => {
           if (error instanceof Error && error.name === "AbortError") {
             continue;
           }
-          lastError = error instanceof Error ? error : new Error("Erreur inconnue");
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error(t("workflowBuilder.errors.unknown"));
         }
       }
       if (lastError) {
@@ -1218,6 +1241,7 @@ const WorkflowBuilderPage = () => {
       restoreViewport,
       selectedWorkflowId,
       setEdges,
+      t,
       updateHasPendingChanges,
       setNodes,
     ],
@@ -1301,7 +1325,9 @@ const WorkflowBuilderPage = () => {
               reloadWorkflows = true;
             }
             throw new Error(
-              `Échec du rafraîchissement des versions (${response.status})`,
+              t("workflowBuilder.errors.refreshVersionsFailedWithStatus", {
+                status: response.status,
+              }),
             );
           }
           const summaries: WorkflowVersionSummary[] = await response.json();
@@ -1393,6 +1419,7 @@ const WorkflowBuilderPage = () => {
     saveState,
     selectedVersionId,
     selectedWorkflowId,
+    t,
   ]);
 
   useEffect(() => {
