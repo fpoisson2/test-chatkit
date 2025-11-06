@@ -84,7 +84,7 @@ def _coerce_positive_float(value: Any, *, field_name: str) -> float | None:
         return None
 
     candidate: float
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
+    if isinstance(value, int | float) and not isinstance(value, bool):
         candidate = float(value)
     elif isinstance(value, str):
         stripped = value.strip()
@@ -226,7 +226,10 @@ def _resolve_mcp_configuration(
         raw_authorization = decrypt_secret(resolved_server.authorization_encrypted)
         if raw_authorization:
             logger.debug(
-                "Authorization récupérée depuis la BDD pour server_id=%d (longueur: %d)",
+                (
+                    "Authorization récupérée depuis la BDD pour server_id=%d "
+                    "(longueur: %d)"
+                ),
                 resolved_server.id,
                 len(raw_authorization),
             )
@@ -288,7 +291,7 @@ def _resolve_mcp_configuration(
         candidates = allow_config.get("tools")
     else:
         candidates = allow_config
-    if isinstance(candidates, (list, tuple, set)):
+    if isinstance(candidates, list | tuple | set):
         for entry in candidates:
             if isinstance(entry, str):
                 trimmed = entry.strip()
@@ -297,7 +300,7 @@ def _resolve_mcp_configuration(
 
     if resolved_server and isinstance(resolved_server.tools_cache, Mapping):
         cache_tools = resolved_server.tools_cache.get("tool_names")
-        if isinstance(cache_tools, (list, tuple, set)):
+        if isinstance(cache_tools, list | tuple | set):
             for entry in cache_tools:
                 if isinstance(entry, str):
                     trimmed = entry.strip()
@@ -362,12 +365,19 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
     normalized_config, context = resolve_mcp_tool_configuration(payload)
 
     params: dict[str, Any] = {"url": normalized_config["url"]}
+
     headers = normalized_config.get("headers")
-    normalized_headers: dict[str, str] | None = None
+    normalized_headers: dict[str, str] = {}
     if isinstance(headers, Mapping) and headers:
-        normalized_headers = {str(key): str(value) for key, value in headers.items()}
-    if normalized_headers is None:
-        normalized_headers = {}
+        normalized_headers = {
+            str(key): str(value)
+            for key, value in headers.items()
+            if str(key).strip() and str(value).strip()
+        }
+
+    authorization_header = normalized_config.get("authorization")
+    if isinstance(authorization_header, str) and authorization_header.strip():
+        normalized_headers["Authorization"] = authorization_header.strip()
 
     normalized_headers.setdefault("Accept", "text/event-stream")
     normalized_headers.setdefault("Cache-Control", "no-cache")
@@ -378,24 +388,39 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
         params["headers"] = normalized_headers
 
     timeout = normalized_config.get("timeout")
-    if isinstance(timeout, (int, float)):
+    if isinstance(timeout, int | float):
         params["timeout"] = timeout
 
     sse_read_timeout = normalized_config.get("sse_read_timeout")
-    if isinstance(sse_read_timeout, (int, float)):
+    if isinstance(sse_read_timeout, int | float):
         params["sse_read_timeout"] = sse_read_timeout
 
     client_session_timeout = normalized_config.get(
         "client_session_timeout_seconds"
     )
-    if isinstance(client_session_timeout, (int, float)):
-        params["client_session_timeout_seconds"] = client_session_timeout
+    client_session_timeout_seconds: float | None = None
+    if isinstance(client_session_timeout, int | float):
+        client_session_timeout_seconds = float(client_session_timeout)
 
-    tool_name = normalized_config.get("name")
-    if isinstance(tool_name, str) and tool_name.strip():
-        params["name"] = tool_name.strip()
+    tool_name_value = normalized_config.get("name")
+    tool_name: str | None = None
+    if isinstance(tool_name_value, str) and tool_name_value.strip():
+        tool_name = tool_name_value.strip()
 
-    server = MCPServerSse(**params)
+    server_kwargs: dict[str, Any] = {
+        "params": params,
+        "cache_tools_list": True,
+    }
+
+    if tool_name is not None:
+        server_kwargs["name"] = tool_name
+
+    if client_session_timeout_seconds is not None:
+        server_kwargs["client_session_timeout_seconds"] = (
+            client_session_timeout_seconds
+        )
+
+    server = MCPServerSse(**server_kwargs)
 
     if context:
         attach_mcp_runtime_context(server, context)
