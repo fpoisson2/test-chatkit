@@ -10,15 +10,15 @@ from pydantic import BaseModel
 from chatkit.agents import AgentContext
 from chatkit.types import ThreadStreamEvent
 
-from ..chatkit_server.actions import (
+from ...chatkit_server.actions import (
     _apply_widget_variable_values,
     _collect_widget_bindings,
     _load_widget_definition,
     _ResponseWidgetConfig,
     _WidgetBinding,
 )
-from ..vector_store.ingestion import evaluate_state_expression
-from ..widgets import WidgetLibraryService
+from ...vector_store.ingestion import evaluate_state_expression
+from ...widgets import WidgetLibraryService
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget

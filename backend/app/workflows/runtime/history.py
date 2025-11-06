@@ -7,7 +7,7 @@ from agents import TResponseInputItem
 from chatkit.agents import ThreadItemConverter
 from chatkit.types import UserMessageItem
 
-from ..chatkit_server.context import _normalize_user_text
+from ...chatkit_server.context import _normalize_user_text
 
 logger = logging.getLogger("chatkit.server")
 

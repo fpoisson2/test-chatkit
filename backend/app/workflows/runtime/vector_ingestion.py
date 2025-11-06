@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
-from ..vector_store.ingestion import ingest_workflow_step
+from ...vector_store.ingestion import ingest_workflow_step
 
 
 async def ingest_vector_store_step(
