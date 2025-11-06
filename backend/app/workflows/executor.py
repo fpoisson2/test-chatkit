@@ -3536,7 +3536,7 @@ async def run_workflow(
                                             thread_id=thread.id,
                                             created_at=datetime.now(),
                                             task=CustomTask(
-                                                title=f"**Enregistrements audio de l'appel :**",
+                                                title="**Enregistrements audio de l'appel :**",
                                                 content=json.dumps(outbound_call_end_event, ensure_ascii=False) + "\n\n" + "\n".join(audio_links),
                                             ),
                                         )

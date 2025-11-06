@@ -264,7 +264,7 @@ class CallDiagnosticsManager:
                 if degradation > 200:
                     report.extend([
                         "",
-                        f"🚨 DÉGRADATION DÉTECTÉE:",
+                        "🚨 DÉGRADATION DÉTECTÉE:",
                         f"  • TTS: +{degradation:.0f}ms entre l'appel 1 et {len(tts_times)}",
                     ])
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -49,7 +48,7 @@ except (
 
 
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
-    from ..chatkit import ChatKitRequestContext
+    pass
 
 try:  # pragma: no cover - dépendance optionnelle pour le SDK ChatKit
     from chatkit.store import NotFoundError
@@ -77,7 +76,7 @@ from ..database import SessionLocal, get_session
 from ..dependencies import get_current_user, get_optional_user
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
-from ..realtime_runner import close_voice_session, open_voice_session
+from ..realtime_runner import open_voice_session
 from ..schemas import (
     AppearanceSettingsResponse,
     ChatKitWorkflowResponse,

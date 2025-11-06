@@ -14,7 +14,6 @@ l'implémentation par rapport à une solution séparée.
 from __future__ import annotations
 
 import asyncio
-import audioop
 import logging
 import os
 import queue
@@ -1127,7 +1126,6 @@ class PJSUAAdapter:
         try:
             # Try to import and use the C-level pjsua API if available
             # This is the ONLY way to force ports on buggy PJSUA2 Python versions
-            import ctypes
 
             # Check if pjsua module (C API) is available
             try:
@@ -1210,16 +1208,16 @@ class PJSUAAdapter:
             if hasattr(media_cfg, 'rtpStart'):
                 media_cfg.rtpStart = 10000
                 logger.debug("Tentative: media_cfg.rtpStart = 10000")
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Failed to set media_cfg.rtpStart: %s", e)
 
         try:
             # Some versions use portRange instead of rtp_port_range
             if hasattr(media_cfg, 'portRange'):
                 media_cfg.portRange = 10000
                 logger.debug("Tentative: media_cfg.portRange = 10000")
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Failed to set media_cfg.portRange: %s", e)
 
         # Approach 3: Log what attributes are actually available
         logger.info(
@@ -1518,15 +1516,15 @@ class PJSUAAdapter:
                         old_call._audio_port = None
                         try:
                             old_call._disconnect_conference_bridge(call_info.id)
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug("Failed to disconnect conference bridge for call %d: %s", call_info.id, e)
                         self.release_audio_port(port)
 
                     # Hangup si nécessaire
                     try:
                         await self.hangup_call(old_call)
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug("Failed to hangup old call: %s", e)
 
                     # Détruire l'objet
                     del old_call

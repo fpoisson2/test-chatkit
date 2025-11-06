@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import audioop
-import base64
 import contextlib
 import json
 import logging
-import os
-import struct
 import time
 import uuid
 import wave
@@ -34,7 +31,6 @@ from agents.realtime.events import (
 from agents.realtime.model import RealtimePlaybackTracker, RealtimePlaybackState
 
 from ..config import Settings, get_settings
-from .call_transfer import transfer_call
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 

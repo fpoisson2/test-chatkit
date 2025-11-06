@@ -36,7 +36,6 @@ from .database import (
 )
 from .docs import DocumentationService
 from .model_providers import configure_model_provider
-from .telephony.call_diagnostics import get_diagnostics_manager
 from .models import (
     EMBEDDING_DIMENSION,
     AppSettings,
@@ -50,7 +49,7 @@ from .models import (
     VoiceSettings,
     Workflow,
 )
-from .realtime_runner import close_voice_session, open_voice_session
+from .realtime_runner import open_voice_session
 from .security import hash_password
 from .telephony.invite_handler import (
     InviteHandlingError,

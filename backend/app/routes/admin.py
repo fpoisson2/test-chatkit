@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import json
 import logging
 import re
 import uuid
@@ -901,8 +900,6 @@ async def list_languages(_admin: User = Depends(require_admin)):
     """
     Liste toutes les langues disponibles dans l'interface.
     """
-    import os
-    import json
     import re
     from pathlib import Path
 
@@ -1332,8 +1329,8 @@ async def activate_stored_language(
         try:
             if translation_file.exists():
                 translation_file.unlink()
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Failed to delete translation file: %s", e)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to update translations.ts: {str(e)}"

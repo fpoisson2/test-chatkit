@@ -12,10 +12,8 @@ import asyncio
 import audioop
 import logging
 import threading
-import time
-from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .audio_resampler import get_resampler
 from .audio_timestretch import create_timestretch

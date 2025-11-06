@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 from ..models import OutboundCall, SipAccount, WorkflowDefinition
 from ..database import SessionLocal
 from .rtp_server import RtpServer, RtpServerConfig
-from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks, VoiceBridgeMetricsRecorder
-from ..workflows.service import WorkflowService, resolve_start_telephony_config
+from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
+from ..workflows.service import resolve_start_telephony_config
 from ..config import get_settings
 from ..realtime_runner import open_voice_session, close_voice_session
 
