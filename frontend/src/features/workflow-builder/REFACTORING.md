@@ -119,36 +119,42 @@ Created service modules for business logic:
 - `readFileAsText()`: Read file as text
 - Location: `services/importExportService.ts`
 
-### Phase 4: Extract UI Components (PLANNED)
+### Phase 4: Extract UI Components (IN PROGRESS)
 
-Break down the monolithic UI into smaller components:
+Breaking down the monolithic UI into smaller components:
 
-#### 1. `WorkflowHeader` (TODO)
+#### 1. `SaveToast` ✅
+- Toast notification for save/deploy status
+- Color-coded by state (error, saving, saved)
+- Auto-dismisses when message is null
+- Location: `components/modals/SaveToast.tsx`
+
+#### 2. `DeployModal` ✅
+- Modal for deploying/publishing workflow versions
+- Dynamic content based on deployment type
+- Production toggle option
+- Visual workflow path indicator
+- Location: `components/modals/DeployModal.tsx`
+
+#### 3. `WorkflowHeader` (TODO)
 - Toolbar
 - Actions menu
 - Version selector
 - Deploy button
 
-#### 2. `WorkflowSidebar` (TODO)
+#### 4. `WorkflowSidebar` (TODO)
 - Workflow list
 - Search
 - Pinning interface
 - Create workflow button
 
-#### 3. `BlockLibraryPanel` (TODO)
+#### 5. `BlockLibraryPanel` (TODO)
 - Node types palette
 - Drag and drop interface
 
-#### 4. `PropertiesPanel` (TODO)
+#### 6. `PropertiesPanel` (TODO)
 - Wrapper for NodeInspector/EdgeInspector
 - Responsive behavior
-
-#### 5. `DeployModal` (TODO)
-- Extract inline modal JSX
-- Deployment configuration
-
-#### 6. `SaveToast` (TODO)
-- Save status notifications
 
 ### Phase 5: Performance Optimization (PLANNED)
 
@@ -211,15 +217,18 @@ workflow-builder/
 │   ├── versionService.ts
 │   └── importExportService.ts
 │
-└── components/                     # TODO: UI components
-    ├── header/
+└── components/                     # ⏳ UI components (IN PROGRESS)
+    ├── index.ts
+    ├── README.md
+    ├── header/                     # TODO
     │   └── WorkflowHeader.tsx
-    ├── sidebar/
+    ├── sidebar/                    # TODO
     │   └── WorkflowSidebar.tsx
-    ├── panels/
+    ├── panels/                     # TODO
     │   ├── BlockLibraryPanel.tsx
     │   └── PropertiesPanel.tsx
-    └── modals/
+    └── modals/                     # ✅ COMPLETED
+        ├── index.ts
         ├── DeployModal.tsx
         └── SaveToast.tsx
 ```
@@ -350,6 +359,43 @@ const WorkflowBuilderPage = () => {
   };
 
   // ... rest of component
+};
+```
+
+### Using Components
+
+Import and use extracted UI components:
+
+```typescript
+import { SaveToast, DeployModal } from "./components";
+
+const WorkflowBuilderPage = () => {
+  // ... state management with hooks
+
+  return (
+    <div>
+      {/* Main content */}
+
+      {/* Toast notifications */}
+      <SaveToast
+        saveState={saveState}
+        saveMessage={saveMessage}
+      />
+
+      {/* Deploy modal */}
+      <DeployModal
+        isOpen={isDeployModalOpen}
+        isDeploying={isDeploying}
+        deployToProduction={deployToProduction}
+        versionSummaryForPromotion={versionSummaryForPromotion}
+        isPromotingDraft={isPromotingDraft}
+        onClose={handleCloseDeployModal}
+        onConfirm={handleConfirmDeploy}
+        onProductionToggle={setDeployToProduction}
+        t={t}
+      />
+    </div>
+  );
 };
 ```
 
