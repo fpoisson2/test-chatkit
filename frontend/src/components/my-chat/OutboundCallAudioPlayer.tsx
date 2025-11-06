@@ -32,6 +32,16 @@ export const OutboundCallAudioPlayer = ({
   const gainNodeRef = useRef<GainNode | null>(null);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const nextPlayTimeRef = useRef<number>(0);
+  const lastLatencyResetRef = useRef<number>(0);
+  const playbackAnchorRef = useRef<{
+    serverStart: number;
+    contextStart: number;
+  } | null>(null);
+
+  const MIN_SCHEDULE_LEAD_SECONDS = 0.02;
+  const INITIAL_BUFFER_SECONDS = 0.08;
+  const MAX_SCHEDULE_LEAD_SECONDS = 0.35;
+  const LATENCY_RESET_DEBOUNCE_MS = 500;
 
   // Handle hang up
   const handleHangup = useCallback(async () => {
@@ -84,7 +94,7 @@ export const OutboundCallAudioPlayer = ({
   }, [volume]);
 
   // Play audio chunk
-  const playAudioChunk = useCallback((pcmData: Uint8Array) => {
+  const playAudioChunk = useCallback((pcmData: Uint8Array, packetTimestamp?: number) => {
     if (!audioContextRef.current || !gainNodeRef.current) {
       initializeAudioContext();
       if (!audioContextRef.current || !gainNodeRef.current) return;
@@ -109,9 +119,87 @@ export const OutboundCallAudioPlayer = ({
     source.buffer = audioBuffer;
     source.connect(gainNode);
 
-    // Schedule playback
     const now = audioContext.currentTime;
-    const startTime = Math.max(now, nextPlayTimeRef.current);
+
+    const ensureMinimumLead = (start: number) => {
+      const minLead = now + MIN_SCHEDULE_LEAD_SECONDS;
+      if (start < minLead) {
+        return minLead;
+      }
+      return start;
+    };
+
+    let startTime = ensureMinimumLead(nextPlayTimeRef.current || now);
+
+    if (typeof packetTimestamp === "number") {
+      if (!playbackAnchorRef.current) {
+        playbackAnchorRef.current = {
+          serverStart: packetTimestamp,
+          contextStart: now + INITIAL_BUFFER_SECONDS,
+        };
+        nextPlayTimeRef.current = playbackAnchorRef.current.contextStart;
+        startTime = playbackAnchorRef.current.contextStart;
+      }
+
+      const anchor = playbackAnchorRef.current;
+      if (anchor) {
+        const serverElapsed = Math.max(0, packetTimestamp - anchor.serverStart);
+        let idealStart = anchor.contextStart + serverElapsed;
+
+        const minAllowed = now + MIN_SCHEDULE_LEAD_SECONDS;
+        if (idealStart < minAllowed) {
+          const adjustment = minAllowed - idealStart;
+          playbackAnchorRef.current = {
+            serverStart: anchor.serverStart,
+            contextStart: anchor.contextStart + adjustment,
+          };
+          idealStart = minAllowed;
+        }
+
+        const maxAllowed = now + MAX_SCHEDULE_LEAD_SECONDS;
+        if (idealStart > maxAllowed) {
+          const adjustment = idealStart - maxAllowed;
+          playbackAnchorRef.current = {
+            serverStart: anchor.serverStart,
+            contextStart: anchor.contextStart - adjustment,
+          };
+          idealStart = maxAllowed;
+        }
+
+        startTime = Math.max(idealStart, ensureMinimumLead(nextPlayTimeRef.current));
+      }
+    }
+
+    const scheduledLead = startTime - now;
+    if (scheduledLead > MAX_SCHEDULE_LEAD_SECONDS) {
+      const nowMs = performance.now();
+      if (nowMs - lastLatencyResetRef.current > LATENCY_RESET_DEBOUNCE_MS) {
+        if (import.meta.env.DEV) {
+          console.warn(
+            "[OutboundCallAudioPlayer] Dropping buffered audio to reduce latency",
+            { scheduledLead },
+          );
+        }
+        audioQueueRef.current.forEach((sourceNode) => {
+          try {
+            sourceNode.stop();
+          } catch {
+            /* noop */
+          }
+        });
+        audioQueueRef.current = [];
+        playbackAnchorRef.current = playbackAnchorRef.current
+          ? {
+              serverStart: playbackAnchorRef.current.serverStart,
+              contextStart: now + MIN_SCHEDULE_LEAD_SECONDS,
+            }
+          : null;
+        nextPlayTimeRef.current = now + MIN_SCHEDULE_LEAD_SECONDS;
+        lastLatencyResetRef.current = nowMs;
+        startTime = nextPlayTimeRef.current;
+      }
+    }
+
     source.start(startTime);
 
     // Update next play time
@@ -175,7 +263,7 @@ export const OutboundCallAudioPlayer = ({
               for (let i = 0; i < binaryString.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
               }
-              playAudioChunk(bytes);
+              playAudioChunk(bytes, packet.timestamp);
             }
             break;
 
@@ -226,6 +314,9 @@ export const OutboundCallAudioPlayer = ({
         }
       });
       audioQueueRef.current = [];
+      playbackAnchorRef.current = null;
+      nextPlayTimeRef.current = 0;
+      lastLatencyResetRef.current = 0;
 
       // Close audio context
       if (audioContextRef.current) {
