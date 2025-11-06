@@ -5,20 +5,20 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import uuid
 import random
-from datetime import datetime, UTC
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from ..models import OutboundCall, SipAccount, WorkflowDefinition
+from ..config import get_settings
 from ..database import SessionLocal
+from ..models import OutboundCall, SipAccount, WorkflowDefinition
+from ..realtime_runner import close_voice_session, open_voice_session
+from ..workflows.service import resolve_start_telephony_config
 from .rtp_server import RtpServer, RtpServerConfig
 from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
-from ..workflows.service import resolve_start_telephony_config
-from ..config import get_settings
-from ..realtime_runner import open_voice_session, close_voice_session
 
 logger = logging.getLogger("chatkit.telephony.outbound")
 
@@ -34,7 +34,8 @@ logger.info(
 # PJSUA imports
 try:
     import pjsua2 as pj
-    from .pjsua_adapter import PJSUAAdapter, PJSUACall, PJSUA_AVAILABLE
+
+    from .pjsua_adapter import PJSUA_AVAILABLE, PJSUAAdapter, PJSUACall
     from .pjsua_audio_bridge import create_pjsua_audio_bridge
     if PJSUA_AVAILABLE:
         logger.info("PJSUA disponible pour les appels sortants")
@@ -604,11 +605,19 @@ class OutboundCallManager:
                         return
 
                     # Ajouter la transcription au thread ChatKit
+                    import uuid
+                    from datetime import datetime, timezone
+
+                    from chatkit.types import (
+                        AssistantMessageContent,
+                        AssistantMessageItem,
+                        InferenceOptions,
+                        UserMessageItem,
+                        UserMessageTextContent,
+                    )
+
                     from ..chatkit import get_chatkit_server
                     from ..chatkit_server.context import ChatKitRequestContext
-                    from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
-                    from datetime import datetime, timezone
-                    import uuid
                     from ..models import ChatThread
 
                     server = get_chatkit_server()
@@ -647,7 +656,7 @@ class OutboundCallManager:
                                 created_at=now,
                                 content=[UserMessageTextContent(text=text)],
                                 attachments=[],
-                                inference_options=None,
+                                inference_options=InferenceOptions(),
                                 quoted_text=None,
                             )
                             await server.store.add_thread_item(thread_id, user_msg, context)
@@ -1099,11 +1108,19 @@ class OutboundCallManager:
                             return
 
                         # Ajouter la transcription au thread ChatKit
+                        import uuid
+                        from datetime import datetime, timezone
+
+                        from chatkit.types import (
+                            AssistantMessageContent,
+                            AssistantMessageItem,
+                            InferenceOptions,
+                            UserMessageItem,
+                            UserMessageTextContent,
+                        )
+
                         from ..chatkit import get_chatkit_server
                         from ..chatkit_server.context import ChatKitRequestContext
-                        from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
-                        from datetime import datetime, timezone
-                        import uuid
                         from ..models import ChatThread
 
                         server = get_chatkit_server()
@@ -1142,7 +1159,7 @@ class OutboundCallManager:
                                     created_at=now,
                                     content=[UserMessageTextContent(text=text)],
                                     attachments=[],
-                                    inference_options=None,
+                                    inference_options=InferenceOptions(),
                                     quoted_text=None,
                                 )
                                 await server.store.add_thread_item(thread_id, user_msg, context)
