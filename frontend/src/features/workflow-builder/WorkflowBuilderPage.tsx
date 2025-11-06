@@ -28,34 +28,11 @@ import { ChevronDown } from "lucide-react";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout } from "../../components/AppLayout";
-import {
-  buildWorkflowOrderingTimestamps,
-  readStoredWorkflowSelection,
-  readStoredWorkflowLastUsedMap,
-  readWorkflowSidebarCache,
-  readStoredWorkflowPinnedLookup,
-  createEmptyStoredWorkflowPinned,
-  type StoredWorkflowPinned,
-  type StoredWorkflowPinnedLookup,
-  type StoredWorkflowLastUsedAt,
-  updateStoredWorkflowSelection,
-  WORKFLOW_SELECTION_CHANGED_EVENT,
-  writeWorkflowSidebarCache,
-} from "../workflows/utils";
-import {
-  chatkitApi,
-  makeApiEndpointCandidates,
-  modelRegistryApi,
-  widgetLibraryApi,
-  vectorStoreApi,
-  type AvailableModel,
-  type HostedWorkflowMetadata,
-  type WidgetTemplateSummary,
-  type VectorStoreSummary,
-} from "../../utils/backend";
+import { chatkitApi, makeApiEndpointCandidates } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
-import { useTokenResourceLoader } from "./hooks/useTokenResourceLoader";
 import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
+import useWorkflowResources from "./hooks/useWorkflowResources";
+import useWorkflowSidebarState from "./hooks/useWorkflowSidebarState";
 import {
   getAgentFileSearchConfig,
   getAgentWorkflowTools,
@@ -257,11 +234,39 @@ const WorkflowBuilderPage = () => {
     (list: FlowNode[]): FlowNode[] => list.map(decorateNode),
     [decorateNode],
   );
-  const initialSidebarCacheRef = useRef(readWorkflowSidebarCache());
-  const initialStoredSelectionRef = useRef(readStoredWorkflowSelection());
-  const initialSidebarCache = initialSidebarCacheRef.current;
-  const initialStoredSelection = initialStoredSelectionRef.current;
-  const initialSidebarCacheUsedRef = useRef(Boolean(initialSidebarCache));
+  const {
+    initialSidebarCache,
+    initialSidebarCacheUsedRef,
+    workflows,
+    setWorkflows,
+    workflowsRef,
+    hostedWorkflows,
+    setHostedWorkflows,
+    hostedWorkflowsRef,
+    lastUsedAt,
+    pinnedLookup,
+    toggleLocalPin,
+    toggleHostedPin,
+    workflowSortCollatorRef,
+    hasLoadedWorkflowsRef,
+    selectedWorkflowId,
+    setSelectedWorkflowId,
+  } = useWorkflowSidebarState({ token });
+
+  const {
+    vectorStores: vectorStoresState,
+    availableModels: availableModelsState,
+    widgets: widgetsState,
+  } = useWorkflowResources(token);
+
+  const { data: vectorStores, loading: vectorStoresLoading, error: vectorStoresError } =
+    vectorStoresState;
+  const {
+    data: availableModels,
+    loading: availableModelsLoading,
+    error: availableModelsError,
+  } = availableModelsState;
+  const { data: widgets, loading: widgetsLoading, error: widgetsError } = widgetsState;
 
   const [loading, setLoading] = useState(() => !initialSidebarCache);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -271,26 +276,6 @@ const WorkflowBuilderPage = () => {
   const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>(
-    () => initialSidebarCache?.workflows ?? [],
-  );
-  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>(
-    () => initialSidebarCache?.hostedWorkflows ?? [],
-  );
-  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(() =>
-    buildWorkflowOrderingTimestamps(
-      initialSidebarCache?.workflows ?? [],
-      initialSidebarCache?.hostedWorkflows ?? [],
-      readStoredWorkflowLastUsedMap(),
-    ),
-  );
-  const [pinnedLookup, setPinnedLookup] = useState<StoredWorkflowPinnedLookup>(() =>
-    readStoredWorkflowPinnedLookup(),
-  );
-  const workflowsRef = useRef(workflows);
-  const hostedWorkflowsRef = useRef(hostedWorkflows);
-  const workflowSortCollatorRef = useRef<Intl.Collator | null>(null);
-  const hasLoadedWorkflowsRef = useRef(false);
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
   const [isAppearanceModalOpen, setAppearanceModalOpen] = useState(false);
@@ -299,12 +284,6 @@ const WorkflowBuilderPage = () => {
   const appearanceModalTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(() => {
-    if (initialSidebarCache?.selectedWorkflowId != null) {
-      return initialSidebarCache.selectedWorkflowId;
-    }
-    return initialStoredSelection?.localWorkflowId ?? null;
-  });
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const updateHasPendingChanges = useCallback(
@@ -312,90 +291,6 @@ const WorkflowBuilderPage = () => {
       setHasPendingChanges(value);
     },
     [],
-  );
-  const persistPinnedLookup = useCallback(
-    (next: StoredWorkflowPinnedLookup) => {
-      const pinnedForStorage: StoredWorkflowPinned = {
-        local: Array.from(next.local),
-        hosted: Array.from(next.hosted),
-      };
-      updateStoredWorkflowSelection((previous) => ({
-        mode: previous?.mode ?? (selectedWorkflowId != null ? "local" : "hosted"),
-        localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
-        hostedSlug: previous?.hostedSlug ?? null,
-        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-        pinned: pinnedForStorage,
-      }));
-    },
-    [selectedWorkflowId],
-  );
-
-  const toggleLocalPin = useCallback(
-    (workflowId: number) => {
-      setPinnedLookup((current) => {
-        const next: StoredWorkflowPinnedLookup = {
-          local: new Set(current.local),
-          hosted: new Set(current.hosted),
-        };
-        if (next.local.has(workflowId)) {
-          next.local.delete(workflowId);
-        } else {
-          next.local.add(workflowId);
-        }
-        persistPinnedLookup(next);
-        return next;
-      });
-    },
-    [persistPinnedLookup],
-  );
-
-  const toggleHostedPin = useCallback(
-    (slug: string) => {
-      setPinnedLookup((current) => {
-        const next: StoredWorkflowPinnedLookup = {
-          local: new Set(current.local),
-          hosted: new Set(current.hosted),
-        };
-        if (next.hosted.has(slug)) {
-          next.hosted.delete(slug);
-        } else {
-          next.hosted.add(slug);
-        }
-        persistPinnedLookup(next);
-        return next;
-      });
-    },
-    [persistPinnedLookup],
-  );
-  const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
-  const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
-  const [vectorStoresError, setVectorStoresError] = useState<string | null>(null);
-  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
-  const [availableModelsLoading, setAvailableModelsLoading] = useState(false);
-  const [availableModelsError, setAvailableModelsError] = useState<string | null>(null);
-  const [widgets, setWidgets] = useState<WidgetTemplateSummary[]>([]);
-  const [widgetsLoading, setWidgetsLoading] = useState(false);
-  const [widgetsError, setWidgetsError] = useState<string | null>(null);
-  const resetVectorStores = useCallback(() => {
-    setVectorStores([]);
-  }, [setVectorStores]);
-  const loadVectorStores = useCallback(
-    () => vectorStoreApi.listStores(token as string),
-    [token],
-  );
-  const resetAvailableModels = useCallback(() => {
-    setAvailableModels([]);
-  }, [setAvailableModels]);
-  const loadAvailableModels = useCallback(
-    () => modelRegistryApi.list(token as string),
-    [token],
-  );
-  const resetWidgets = useCallback(() => {
-    setWidgets([]);
-  }, [setWidgets]);
-  const loadWidgets = useCallback(
-    () => widgetLibraryApi.listWorkflowWidgets(token as string),
-    [token],
   );
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
   const [isDeployModalOpen, setDeployModalOpen] = useState(false);
@@ -467,54 +362,6 @@ const WorkflowBuilderPage = () => {
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (typeof Intl === "undefined" || typeof Intl.Collator !== "function") {
-      return;
-    }
-
-    if (!workflowSortCollatorRef.current) {
-      workflowSortCollatorRef.current = new Intl.Collator(undefined, {
-        sensitivity: "base",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handleSelectionChange = () => {
-      setLastUsedAt(
-        buildWorkflowOrderingTimestamps(
-          workflowsRef.current,
-          hostedWorkflowsRef.current,
-          readStoredWorkflowLastUsedMap(),
-        ),
-      );
-      setPinnedLookup(readStoredWorkflowPinnedLookup());
-    };
-
-    window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
-    return () => {
-      window.removeEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    workflowsRef.current = workflows;
-  }, [workflows]);
-
-  useEffect(() => {
-    hostedWorkflowsRef.current = hostedWorkflows;
-  }, [hostedWorkflows]);
-
-  useEffect(() => {
-    setLastUsedAt(
-      buildWorkflowOrderingTimestamps(workflows, hostedWorkflows, readStoredWorkflowLastUsedMap()),
-    );
-  }, [hostedWorkflows, workflows]);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
@@ -894,81 +741,6 @@ const WorkflowBuilderPage = () => {
   }, [selectedWorkflowId]);
 
   useEffect(() => {
-    if (!token || !hasLoadedWorkflowsRef.current) {
-      return;
-    }
-
-    setPinnedLookup((current) => {
-      const availableLocalIds = new Set(workflows.map((workflow) => workflow.id));
-      const availableHostedSlugs = new Set(
-        hostedWorkflows.filter((workflow) => workflow.managed).map((workflow) => workflow.slug),
-      );
-
-      const nextLocal = Array.from(current.local).filter((id) => availableLocalIds.has(id));
-      const nextHosted = Array.from(current.hosted).filter((slug) => availableHostedSlugs.has(slug));
-
-      if (nextLocal.length === current.local.size && nextHosted.length === current.hosted.size) {
-        return current;
-      }
-
-      const next: StoredWorkflowPinnedLookup = {
-        local: new Set(nextLocal),
-        hosted: new Set(nextHosted),
-      };
-      persistPinnedLookup(next);
-      return next;
-    });
-  }, [hostedWorkflows, persistPinnedLookup, token, workflows]);
-
-  useEffect(() => {
-    updateStoredWorkflowSelection((previous) => {
-      if (selectedWorkflowId == null) {
-        if (!previous || previous.mode === "hosted" || previous.localWorkflowId == null) {
-          return previous;
-        }
-
-        return { ...previous, localWorkflowId: null };
-      }
-
-      const preservedHostedSlug = previous?.hostedSlug ?? null;
-
-      if (
-        previous &&
-        previous.mode === "local" &&
-        previous.localWorkflowId === selectedWorkflowId &&
-        previous.hostedSlug === preservedHostedSlug
-      ) {
-        return previous;
-      }
-
-      return {
-        mode: "local",
-        localWorkflowId: selectedWorkflowId,
-        hostedSlug: preservedHostedSlug,
-        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-        pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
-      };
-    });
-  }, [selectedWorkflowId]);
-
-  useEffect(() => {
-    if (workflows.length === 0 && hostedWorkflows.length === 0) {
-      return;
-    }
-
-    const existingCache = readWorkflowSidebarCache();
-    const storedSelection = initialStoredSelectionRef.current;
-
-    writeWorkflowSidebarCache({
-      workflows,
-      hostedWorkflows,
-      selectedWorkflowId,
-      selectedHostedSlug: existingCache?.selectedHostedSlug ?? storedSelection?.hostedSlug ?? null,
-      mode: existingCache?.mode ?? storedSelection?.mode ?? "local",
-    });
-  }, [hostedWorkflows, selectedWorkflowId, workflows]);
-
-  useEffect(() => {
     hasPendingChangesRef.current = hasPendingChanges;
   }, [hasPendingChanges]);
 
@@ -1228,36 +1000,6 @@ const WorkflowBuilderPage = () => {
     },
     [availableModels],
   );
-
-  useTokenResourceLoader<VectorStoreSummary[]>({
-    token,
-    setData: setVectorStores,
-    setLoading: setVectorStoresLoading,
-    setError: setVectorStoresError,
-    loadResource: loadVectorStores,
-    fallbackErrorMessage: "Impossible de charger les vector stores.",
-    resetData: resetVectorStores,
-  });
-
-  useTokenResourceLoader<AvailableModel[]>({
-    token,
-    setData: setAvailableModels,
-    setLoading: setAvailableModelsLoading,
-    setError: setAvailableModelsError,
-    loadResource: loadAvailableModels,
-    fallbackErrorMessage: "Impossible de charger les modèles autorisés.",
-    resetData: resetAvailableModels,
-  });
-
-  useTokenResourceLoader<WidgetTemplateSummary[]>({
-    token,
-    setData: setWidgets,
-    setLoading: setWidgetsLoading,
-    setError: setWidgetsError,
-    loadResource: loadWidgets,
-    fallbackErrorMessage: "Impossible de charger la bibliothèque de widgets.",
-    resetData: resetWidgets,
-  });
 
   const loadVersionDetail = useCallback(
     async (
