@@ -1390,6 +1390,9 @@ const useWorkflowNodeHandlers = ({
         } satisfies FlowNodeData;
       });
     },
+    [updateNodeData],
+  );
+
   const handleAddAgentNode = useCallback(() => {
     const slug = `agent-${Date.now()}`;
     const parameters = resolveAgentParameters(null, {});
