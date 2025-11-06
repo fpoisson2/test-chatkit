@@ -152,11 +152,13 @@ Breaking down the monolithic UI into smaller components:
 - Accessible ARIA labels and roles
 - Location: `components/panels/BlockLibraryPanel.tsx`
 
-#### 5. `WorkflowHeader` (TODO)
-- Toolbar
-- Actions menu
-- Version selector
-- Deploy button
+#### 5. `WorkflowHeader` ✅
+- Header component with toolbar and navigation
+- Version selector dropdown with draft/production indicators
+- Actions menu (import/export/deploy)
+- Responsive layouts (desktop buttons vs mobile overflow menu)
+- Accessible ARIA labels and roles
+- Location: `components/header/WorkflowHeader.tsx`
 
 #### 6. `WorkflowSidebar` (TODO)
 - Workflow list
@@ -228,7 +230,8 @@ workflow-builder/
 └── components/                     # ⏳ UI components (IN PROGRESS)
     ├── index.ts
     ├── README.md
-    ├── header/                     # TODO
+    ├── header/                     # ✅ COMPLETED
+    │   ├── index.ts
     │   └── WorkflowHeader.tsx
     ├── sidebar/                    # TODO
     │   └── WorkflowSidebar.tsx

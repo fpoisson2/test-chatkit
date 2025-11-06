@@ -170,10 +170,83 @@ interface BlockLibraryItem {
 />
 ```
 
-## Future Components (Planned)
-
 ### Header
-- **WorkflowHeader**: Toolbar, actions menu, version selector, deploy button
+
+#### WorkflowHeader
+
+A header component that displays the workflow toolbar with version selector and action buttons.
+
+**Props:**
+- `isMobileLayout`: `boolean` - Whether to use mobile layout
+- `loading`: `boolean` - Whether workflow data is loading
+- `isImporting`: `boolean` - Whether import is in progress
+- `isExporting`: `boolean` - Whether export is in progress
+- `isDeploying`: `boolean` - Whether deployment is in progress
+- `selectedWorkflowId`: `number | null` - Currently selected workflow ID
+- `selectedVersionId`: `number | null` - Currently selected version ID
+- `versions`: `WorkflowVersionSummary[]` - Array of available versions
+- `selectedWorkflow`: `WorkflowSummary | null` - Currently selected workflow
+- `draftVersionIdRef`: `React.MutableRefObject<number | null>` - Ref to draft version ID
+- `draftDisplayName`: `string` - Display name for draft versions
+- `isMobileActionsOpen`: `boolean` - Whether mobile actions menu is open
+- `headerStyle`: `CSSProperties | undefined` - Optional custom header style
+- `onOpenSidebar`: `() => void` - Callback to open sidebar navigation
+- `onVersionChange`: `(event: ChangeEvent<HTMLSelectElement>) => void` - Version change handler
+- `onTriggerImport`: `() => void` - Import file picker trigger handler
+- `onImportFileChange`: `(event: ChangeEvent<HTMLInputElement>) => Promise<void>` - Import file handler
+- `onExportWorkflow`: `() => Promise<void>` - Export workflow handler
+- `onOpenDeployModal`: `() => void` - Open deploy modal handler
+- `onToggleMobileActions`: `() => void` - Toggle mobile actions menu
+- `onCloseMobileActions`: `() => void` - Close mobile actions menu
+- `mobileActionsTriggerRef`: `RefObject<HTMLButtonElement>` - Ref for mobile menu trigger
+- `mobileActionsMenuRef`: `RefObject<HTMLDivElement>` - Ref for mobile menu content
+- `importFileInputRef`: `RefObject<HTMLInputElement>` - Ref for hidden file input
+- `t`: `(key: string) => string` - Translation function
+
+**Features:**
+- Responsive layouts:
+  - Desktop: Horizontal toolbar with version dropdown and action buttons
+  - Mobile: Compact layout with version selector and overflow menu
+- Version selector with draft/production indicators
+- Import/Export/Deploy actions with disabled states
+- Mobile actions menu with workflow description and publication reminder
+- Hidden file input for JSON import
+- Navigation button to open sidebar
+- Accessible ARIA labels and roles
+- Uses existing CSS module styles
+
+**Usage:**
+```tsx
+<WorkflowHeader
+  isMobileLayout={isMobile}
+  loading={loading}
+  isImporting={isImporting}
+  isExporting={isExporting}
+  isDeploying={isDeploying}
+  selectedWorkflowId={selectedWorkflowId}
+  selectedVersionId={selectedVersionId}
+  versions={versions}
+  selectedWorkflow={selectedWorkflow}
+  draftVersionIdRef={draftVersionIdRef}
+  draftDisplayName={draftDisplayName}
+  isMobileActionsOpen={isMobileActionsOpen}
+  headerStyle={headerStyle}
+  onOpenSidebar={openSidebar}
+  onVersionChange={handleVersionChange}
+  onTriggerImport={handleTriggerImport}
+  onImportFileChange={handleImportFileChange}
+  onExportWorkflow={handleExportWorkflow}
+  onOpenDeployModal={handleOpenDeployModal}
+  onToggleMobileActions={() => setIsMobileActionsOpen((prev) => !prev)}
+  onCloseMobileActions={() => setIsMobileActionsOpen(false)}
+  mobileActionsTriggerRef={mobileActionsTriggerRef}
+  mobileActionsMenuRef={mobileActionsMenuRef}
+  importFileInputRef={importFileInputRef}
+  t={t}
+/>
+```
+
+## Future Components (Planned)
 
 ### Sidebar
 - **WorkflowSidebar**: Workflow list, search, pinning interface, create button
@@ -203,7 +276,7 @@ import { SaveToast, DeployModal } from "./components";
 
 1. ✅ Extract PropertiesPanel component
 2. ✅ Extract BlockLibraryPanel component
-3. Extract WorkflowHeader component
+3. ✅ Extract WorkflowHeader component
 4. Extract WorkflowSidebar component
 5. Add unit tests for all components
 6. Update WorkflowBuilderPage to use extracted components
