@@ -17,6 +17,7 @@ from ..database import SessionLocal
 from ..models import OutboundCall, SipAccount, WorkflowDefinition
 from ..realtime_runner import close_voice_session, open_voice_session
 from ..workflows.service import resolve_start_telephony_config
+from .outbound_events_manager import get_outbound_events_manager
 from .rtp_server import RtpServer, RtpServerConfig
 from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
 
@@ -190,7 +191,6 @@ class OutboundCallManager:
         self.active_calls[call_id] = session
 
         # Émettre un événement call_started
-        from .outbound_events_manager import get_outbound_events_manager
         events_mgr = get_outbound_events_manager()
         asyncio.create_task(events_mgr.emit_event({
             "type": "call_started",
@@ -436,7 +436,6 @@ class OutboundCallManager:
             session.mark_complete()
 
             # Émettre un événement call_ended
-            from .outbound_events_manager import get_outbound_events_manager
             events_mgr = get_outbound_events_manager()
             try:
                 asyncio.create_task(events_mgr.emit_event({
@@ -668,6 +667,20 @@ class OutboundCallManager:
                                 content=[AssistantMessageContent(text=text)],
                             )
                             await server.store.add_thread_item(thread_id, assistant_msg, context)
+                        else:
+                            return
+
+                        events_mgr = get_outbound_events_manager()
+                        await events_mgr.emit_event(
+                            {
+                                "type": "transcript_delta",
+                                "call_id": session.call_id,
+                                "thread_id": thread_id,
+                                "message_id": message_id,
+                                "role": role,
+                                "text": text,
+                            }
+                        )
 
                         logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
                     except Exception as e:
@@ -1171,6 +1184,20 @@ class OutboundCallManager:
                                     content=[AssistantMessageContent(text=text)],
                                 )
                                 await server.store.add_thread_item(thread_id, assistant_msg, context)
+                            else:
+                                return
+
+                            events_mgr = get_outbound_events_manager()
+                            await events_mgr.emit_event(
+                                {
+                                    "type": "transcript_delta",
+                                    "call_id": session.call_id,
+                                    "thread_id": thread_id,
+                                    "message_id": message_id,
+                                    "role": role,
+                                    "text": text,
+                                }
+                            )
 
                             logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
                         except Exception as e:
@@ -1383,7 +1410,6 @@ class OutboundCallManager:
             session.mark_complete()
 
             # Émettre un événement call_ended
-            from .outbound_events_manager import get_outbound_events_manager
             events_mgr = get_outbound_events_manager()
             try:
                 asyncio.create_task(events_mgr.emit_event({
@@ -1601,7 +1627,6 @@ a=sendrecv
                 db.close()
 
             # 5. Émettre un événement call_ended
-            from .outbound_events_manager import get_outbound_events_manager
             events_mgr = get_outbound_events_manager()
             try:
                 asyncio.create_task(events_mgr.emit_event({
