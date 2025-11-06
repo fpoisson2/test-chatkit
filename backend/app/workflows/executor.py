@@ -28,12 +28,13 @@ from agents import (
     TResponseInputItem,
 )
 from agents.mcp import MCPServer
+from pydantic import BaseModel
+
 from chatkit.agents import (
     AgentContext,
     ThreadItemConverter,
     stream_agent_response,
 )
-from pydantic import BaseModel
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
@@ -71,15 +72,11 @@ from ..chatkit.agent_registry import (
     get_agent_provider_binding,
 )
 from ..chatkit_server.actions import (
-    _apply_widget_variable_values,
-    _collect_widget_bindings,
     _ensure_widget_output_model,
     _json_safe_copy,
-    _load_widget_definition,
     _parse_response_widget_config,
     _ResponseWidgetConfig,
     _should_wait_for_widget_action,
-    _WidgetBinding,
 )
 from ..chatkit_server.context import (
     _clone_conversation_history_snapshot,
@@ -101,7 +98,6 @@ from ..image_utils import (
 )
 from ..model_capabilities import ModelCapabilities, lookup_model_capabilities
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
-from ..realtime_runner import close_voice_session, open_voice_session
 from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
     evaluate_state_expression,
@@ -109,7 +105,16 @@ from ..vector_store.ingestion import (
     ingest_workflow_step,
     resolve_transform_value,
 )
-from ..widgets import WidgetLibraryService
+from .runtime import (
+    VoiceSessionManager,
+    _build_user_message_history_items,
+    _coerce_bool,
+    _extract_voice_overrides,
+    _resolve_voice_agent_configuration,
+    _stream_response_widget,
+    _VoicePreferenceOverrides,
+    ingest_vector_store_step,
+)
 from .service import (
     WorkflowNotFoundError,
     WorkflowService,
@@ -171,149 +176,6 @@ def _normalize_conversation_history_for_provider(
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class _VoicePreferenceOverrides:
-    model: str | None
-    instructions: str | None
-    voice: str | None
-    prompt_variables: dict[str, str]
-    provider_id: str | None
-    provider_slug: str | None
-
-    def is_empty(self) -> bool:
-        return not (
-            (self.model and self.model.strip())
-            or (self.instructions and self.instructions.strip())
-            or (self.voice and self.voice.strip())
-            or (self.provider_id and self.provider_id.strip())
-            or (self.provider_slug and self.provider_slug.strip())
-            or self.prompt_variables
-        )
-
-
-def _extract_voice_overrides(
-    agent_context: AgentContext[Any],
-) -> _VoicePreferenceOverrides | None:
-    request_context = getattr(agent_context, "request_context", None)
-    if request_context is None:
-        return None
-
-    model = getattr(request_context, "voice_model", None)
-    instructions = getattr(request_context, "voice_instructions", None)
-    voice = getattr(request_context, "voice_voice", None)
-    prompt_variables_raw = getattr(
-        request_context, "voice_prompt_variables", None
-    )
-    if isinstance(prompt_variables_raw, Mapping):
-        prompt_variables = {
-            str(key).strip(): "" if value is None else str(value)
-            for key, value in prompt_variables_raw.items()
-            if isinstance(key, str) and key.strip()
-        }
-    else:
-        prompt_variables = {}
-
-    provider_id_raw = getattr(request_context, "voice_model_provider_id", None)
-    provider_slug_raw = getattr(request_context, "voice_model_provider_slug", None)
-
-    sanitized_model = model if isinstance(model, str) and model.strip() else None
-    sanitized_instructions = (
-        instructions if isinstance(instructions, str) and instructions.strip() else None
-    )
-    sanitized_voice = voice if isinstance(voice, str) and voice.strip() else None
-    sanitized_provider_id = (
-        provider_id_raw.strip()
-        if isinstance(provider_id_raw, str) and provider_id_raw.strip()
-        else None
-    )
-    sanitized_provider_slug = (
-        provider_slug_raw.strip().lower()
-        if isinstance(provider_slug_raw, str) and provider_slug_raw.strip()
-        else None
-    )
-    overrides = _VoicePreferenceOverrides(
-        sanitized_model,
-        sanitized_instructions,
-        sanitized_voice,
-        prompt_variables,
-        sanitized_provider_id,
-        sanitized_provider_slug,
-    )
-
-    return None if overrides.is_empty() else overrides
-
-
-async def _build_user_message_history_items(
-    *,
-    converter: ThreadItemConverter | None,
-    message: UserMessageItem | None,
-    fallback_text: str,
-) -> list[TResponseInputItem]:
-    """Construit les éléments d'historique pour le message utilisateur courant."""
-
-    normalized_fallback = _normalize_user_text(fallback_text)
-
-    typed_parts: list[str] = []
-    attachments_present = False
-    if message is not None:
-        attachments = getattr(message, "attachments", None) or []
-        attachments_present = bool(attachments)
-        for part in getattr(message, "content", []) or []:
-            text_value = getattr(part, "text", None)
-            normalized = _normalize_user_text(text_value) if text_value else ""
-            if normalized:
-                typed_parts.append(normalized)
-
-    typed_text = "\n".join(typed_parts)
-
-    items: list[TResponseInputItem] = []
-
-    if converter is not None and message is not None:
-        try:
-            converted = await converter.to_agent_input(message)
-        except Exception as exc:  # pragma: no cover - dépend du SDK installé
-            logger.warning(
-                "Impossible de convertir le message utilisateur courant en "
-                "entrée agent",
-                exc_info=exc,
-            )
-        else:
-            if converted:
-                if isinstance(converted, list):
-                    items.extend(converted)
-                else:  # pragma: no cover - API accepte aussi un seul item
-                    items.append(converted)
-
-    if normalized_fallback:
-        if items:
-            if attachments_present and not typed_text:
-                items.append(
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": normalized_fallback,
-                            }
-                        ],
-                    }
-                )
-        else:
-            items.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": normalized_fallback,
-                        }
-                    ],
-                }
-            )
-
-    return items
 
 
 class WorkflowInput(BaseModel):
@@ -593,6 +455,7 @@ async def run_workflow(
     final_output: dict[str, Any] | None = None
 
     voice_overrides = _extract_voice_overrides(agent_context)
+    voice_session_manager = VoiceSessionManager()
 
     service = workflow_service or WorkflowService()
 
@@ -995,19 +858,6 @@ async def run_workflow(
 
     _DEFAULT_ASSISTANT_STREAM_DELAY_SECONDS = 0.03
 
-    def _coerce_bool(value: Any) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, int | float) and not isinstance(value, bool):
-            return value != 0
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"true", "1", "yes", "on"}:
-                return True
-            if normalized in {"false", "0", "no", "off"}:
-                return False
-        return False
-
     stop_at_slug = runtime_snapshot.stop_at_slug if runtime_snapshot else None
     active_branch_id = runtime_snapshot.branch_id if runtime_snapshot else None
     active_branch_label = (
@@ -1128,336 +978,6 @@ async def run_workflow(
             content=[AssistantMessageContent(text=text)],
         )
         await _emit_stream_event(ThreadItemDoneEvent(item=final_item))
-
-    _VOICE_DEFAULT_START_MODE = "auto"
-    _VOICE_DEFAULT_STOP_MODE = "manual"
-    _VOICE_TOOL_DEFAULTS: dict[str, bool] = {
-        "response": True,
-        "transcription": True,
-        "function_call": False,
-    }
-    _VOICE_DEFAULT_TURN_DETECTION: dict[str, Any] = {
-        "type": "semantic_vad",
-        "create_response": True,
-        "interrupt_response": True,
-    }
-    _VOICE_DEFAULT_INPUT_AUDIO_FORMAT: dict[str, Any] = {
-        "type": "audio/pcm",
-        "rate": 24_000,
-    }
-    _VOICE_DEFAULT_OUTPUT_AUDIO_FORMAT: dict[str, Any] = {
-        "type": "audio/pcm",
-        "rate": 24_000,
-    }
-    _VOICE_DEFAULT_INPUT_AUDIO_TRANSCRIPTION: dict[str, Any] = {
-        "model": "gpt-4o-mini-transcribe",
-        "language": "fr-CA",
-    }
-    _VOICE_DEFAULT_INPUT_AUDIO_NOISE_REDUCTION: dict[str, Any] = {
-        "type": "near_field",
-    }
-    _VOICE_DEFAULT_MODALITIES = ["audio"]
-    _VOICE_DEFAULT_SPEED = 1.0
-
-    def _resolve_voice_agent_configuration(
-        step: WorkflowStep,
-        *,
-        overrides: _VoicePreferenceOverrides | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        params_raw = step.parameters or {}
-        params = params_raw if isinstance(params_raw, Mapping) else {}
-
-        settings = get_settings()
-
-        def _sanitize_text(value: Any) -> str:
-            if isinstance(value, str):
-                candidate = value.strip()
-                if candidate:
-                    return candidate
-            return ""
-
-        def _resolve_value(
-            key: str,
-            *,
-            override_value: str | None,
-            fallback: str,
-        ) -> str:
-            override_candidate = (
-                override_value.strip() if isinstance(override_value, str) else None
-            )
-            if override_candidate:
-                return override_candidate
-            step_candidate = _sanitize_text(params.get(key))
-            if step_candidate:
-                return step_candidate
-            return fallback
-
-        def _merge_mapping(
-            default: Mapping[str, Any], override: Any
-        ) -> dict[str, Any]:
-            merged = copy.deepcopy(default)
-            if isinstance(override, Mapping):
-                for key, value in override.items():
-                    if isinstance(value, Mapping) and isinstance(
-                        merged.get(key), Mapping
-                    ):
-                        merged[key] = _merge_mapping(merged[key], value)
-                    else:
-                        merged[key] = value
-            return merged
-
-        voice_model = _resolve_value(
-            "model",
-            override_value=getattr(overrides, "model", None),
-            fallback=settings.chatkit_realtime_model,
-        )
-        instructions = _resolve_value(
-            "instructions",
-            override_value=getattr(overrides, "instructions", None),
-            fallback=settings.chatkit_realtime_instructions,
-        )
-        voice_id = _resolve_value(
-            "voice",
-            override_value=getattr(overrides, "voice", None),
-            fallback=settings.chatkit_realtime_voice,
-        )
-
-        provider_id_override = getattr(overrides, "provider_id", None)
-        provider_slug_override = getattr(overrides, "provider_slug", None)
-
-        raw_provider_id = params.get("model_provider_id")
-        step_provider_id = (
-            raw_provider_id.strip()
-            if isinstance(raw_provider_id, str) and raw_provider_id.strip()
-            else None
-        )
-        raw_provider_slug = params.get("model_provider_slug")
-        if not isinstance(raw_provider_slug, str) or not raw_provider_slug.strip():
-            fallback_slug = params.get("model_provider")
-            raw_provider_slug = (
-                fallback_slug if isinstance(fallback_slug, str) else None
-            )
-        step_provider_slug = (
-            raw_provider_slug.strip().lower()
-            if isinstance(raw_provider_slug, str) and raw_provider_slug.strip()
-            else None
-        )
-
-        provider_id = (
-            provider_id_override
-            if provider_id_override
-            else step_provider_id
-        )
-        provider_slug = (
-            provider_slug_override
-            if provider_slug_override
-            else step_provider_slug
-        )
-
-        realtime_raw = params.get("realtime")
-        realtime = realtime_raw if isinstance(realtime_raw, Mapping) else {}
-
-        def _sanitize_mode(value: Any, *, default: str) -> str:
-            if isinstance(value, str):
-                normalized = value.strip().lower()
-                if normalized in {"manual", "auto"}:
-                    return normalized
-            return default
-
-        start_mode = _sanitize_mode(
-            realtime.get("start_mode"), default=_VOICE_DEFAULT_START_MODE
-        )
-        stop_mode = _sanitize_mode(
-            realtime.get("stop_mode"), default=_VOICE_DEFAULT_STOP_MODE
-        )
-
-        tools_raw = realtime.get("tools")
-        tools_mapping = tools_raw if isinstance(tools_raw, Mapping) else {}
-        tools_permissions: dict[str, bool] = {}
-        for key, default in _VOICE_TOOL_DEFAULTS.items():
-            candidate = tools_mapping.get(key)
-            if candidate is None:
-                tools_permissions[key] = default
-            else:
-                tools_permissions[key] = _coerce_bool(candidate)
-
-        realtime_config = {
-            "start_mode": start_mode,
-            "stop_mode": stop_mode,
-            "tools": tools_permissions,
-        }
-
-        turn_detection_raw = realtime.get("turn_detection")
-        if turn_detection_raw is False:
-            pass
-        elif isinstance(turn_detection_raw, Mapping):
-            realtime_config["turn_detection"] = _merge_mapping(
-                _VOICE_DEFAULT_TURN_DETECTION, turn_detection_raw
-            )
-        else:
-            realtime_config["turn_detection"] = copy.deepcopy(
-                _VOICE_DEFAULT_TURN_DETECTION
-            )
-
-        input_format_raw = realtime.get("input_audio_format")
-        if isinstance(input_format_raw, Mapping):
-            realtime_config["input_audio_format"] = _merge_mapping(
-                _VOICE_DEFAULT_INPUT_AUDIO_FORMAT, input_format_raw
-            )
-        else:
-            realtime_config["input_audio_format"] = copy.deepcopy(
-                _VOICE_DEFAULT_INPUT_AUDIO_FORMAT
-            )
-
-        output_format_raw = realtime.get("output_audio_format")
-        if isinstance(output_format_raw, Mapping):
-            realtime_config["output_audio_format"] = _merge_mapping(
-                _VOICE_DEFAULT_OUTPUT_AUDIO_FORMAT, output_format_raw
-            )
-        else:
-            realtime_config["output_audio_format"] = copy.deepcopy(
-                _VOICE_DEFAULT_OUTPUT_AUDIO_FORMAT
-            )
-
-        noise_reduction_raw = realtime.get("input_audio_noise_reduction")
-        if isinstance(noise_reduction_raw, Mapping):
-            realtime_config["input_audio_noise_reduction"] = _merge_mapping(
-                _VOICE_DEFAULT_INPUT_AUDIO_NOISE_REDUCTION,
-                noise_reduction_raw,
-            )
-        else:
-            realtime_config["input_audio_noise_reduction"] = copy.deepcopy(
-                _VOICE_DEFAULT_INPUT_AUDIO_NOISE_REDUCTION
-            )
-
-        transcription_raw = realtime.get("input_audio_transcription")
-        if transcription_raw is False:
-            pass
-        else:
-            transcription_config = _merge_mapping(
-                _VOICE_DEFAULT_INPUT_AUDIO_TRANSCRIPTION,
-                transcription_raw if isinstance(transcription_raw, Mapping) else {},
-            )
-            if instructions and not transcription_config.get("prompt"):
-                transcription_config["prompt"] = instructions
-            realtime_config["input_audio_transcription"] = transcription_config
-
-        modalities_raw = realtime.get("modalities")
-        if isinstance(modalities_raw, Sequence) and not isinstance(
-            modalities_raw, (str, bytes, bytearray)
-        ):
-            sanitized_modalities: list[str] = []
-            for entry in modalities_raw:
-                if isinstance(entry, str):
-                    candidate = entry.strip().lower()
-                    if candidate and candidate not in sanitized_modalities:
-                        sanitized_modalities.append(candidate)
-            if "audio" not in sanitized_modalities:
-                sanitized_modalities.append("audio")
-            realtime_config["modalities"] = (
-                sanitized_modalities or list(_VOICE_DEFAULT_MODALITIES)
-            )
-        else:
-            realtime_config["modalities"] = list(_VOICE_DEFAULT_MODALITIES)
-
-        speed_raw = realtime.get("speed")
-        if isinstance(speed_raw, (int, float)):
-            realtime_config["speed"] = float(speed_raw)
-        else:
-            realtime_config["speed"] = _VOICE_DEFAULT_SPEED
-
-        tool_definitions = params.get("tools")
-        sanitized_candidate = _json_safe_copy(tool_definitions)
-        sanitized_tools = (
-            sanitized_candidate if isinstance(sanitized_candidate, list) else []
-        )
-
-        handoffs_definitions = params.get("handoffs")
-        sanitized_handoffs_candidate = _json_safe_copy(handoffs_definitions)
-        sanitized_handoffs = (
-            sanitized_handoffs_candidate
-            if isinstance(sanitized_handoffs_candidate, list)
-            else []
-        )
-
-        def _summarize_tool(entry: Any) -> dict[str, Any] | None:
-            if not isinstance(entry, Mapping):
-                return None
-            summary: dict[str, Any] = {}
-            tool_type = entry.get("type")
-            if isinstance(tool_type, str) and tool_type.strip():
-                summary["type"] = tool_type.strip()
-            name_value = entry.get("name")
-            if isinstance(name_value, str) and name_value.strip():
-                summary["name"] = name_value.strip()
-            title_value = entry.get("title") or entry.get("workflow_title")
-            if isinstance(title_value, str) and title_value.strip():
-                summary["title"] = title_value.strip()
-            identifier_value = entry.get("identifier") or entry.get(
-                "workflow_identifier"
-            )
-            if isinstance(identifier_value, str) and identifier_value.strip():
-                summary["identifier"] = identifier_value.strip()
-            description_value = entry.get("description")
-            if isinstance(description_value, str) and description_value.strip():
-                summary["description"] = description_value.strip()
-            workflow_ref = entry.get("workflow")
-            if isinstance(workflow_ref, Mapping):
-                workflow_slug = workflow_ref.get("slug")
-                if isinstance(workflow_slug, str) and workflow_slug.strip():
-                    summary["workflow_slug"] = workflow_slug.strip()
-                workflow_id = workflow_ref.get("id") or workflow_ref.get("workflow_id")
-                if isinstance(workflow_id, int) and workflow_id > 0:
-                    summary["workflow_id"] = workflow_id
-            return summary or None
-
-        tool_metadata = [
-            summary
-            for summary in (_summarize_tool(entry) for entry in sanitized_tools)
-            if summary
-        ]
-
-        voice_context = {
-            "model": voice_model,
-            "voice": voice_id,
-            "instructions": instructions,
-            "realtime": realtime_config,
-            "tools": sanitized_tools,
-        }
-        if sanitized_handoffs:
-            voice_context["handoffs"] = sanitized_handoffs
-        if provider_id:
-            voice_context["model_provider_id"] = provider_id
-        if provider_slug:
-            voice_context["model_provider_slug"] = provider_slug
-        if tool_metadata:
-            voice_context["tool_metadata"] = tool_metadata
-        prompt_variables: dict[str, str] = {}
-        if overrides is not None and overrides.prompt_variables:
-            prompt_variables = dict(overrides.prompt_variables)
-        if prompt_variables:
-            voice_context["prompt_variables"] = prompt_variables
-
-        event_context = {
-            "model": voice_model,
-            "voice": voice_id,
-            "instructions": instructions,
-            "realtime": realtime_config,
-            "tools": sanitized_tools,
-            "tool_definitions": sanitized_tools,
-        }
-        if sanitized_handoffs:
-            event_context["handoffs"] = sanitized_handoffs
-        if provider_id:
-            event_context["model_provider_id"] = provider_id
-        if provider_slug:
-            event_context["model_provider_slug"] = provider_slug
-        if tool_metadata:
-            event_context["tool_metadata"] = tool_metadata
-        if prompt_variables:
-            event_context["prompt_variables"] = prompt_variables
-
-        return voice_context, event_context
 
     def _resolve_user_message(step: WorkflowStep) -> str:
         raw_params = step.parameters or {}
@@ -1583,139 +1103,6 @@ async def run_workflow(
             if isinstance(update, AssistantMessageContentPartTextDelta):
                 return update.delta or ""
         return ""
-
-    def _stringify_widget_value(value: Any) -> str:
-        if value is None:
-            return ""
-        if isinstance(value, BaseModel):
-            try:
-                value = value.model_dump(by_alias=True)
-            except TypeError:
-                value = value.model_dump()
-        if isinstance(value, dict | list):
-            try:
-                return json.dumps(value, ensure_ascii=False)
-            except TypeError:
-                return str(value)
-        return str(value)
-
-    def _coerce_widget_binding_sequence_value(
-        items: Sequence[str], binding: _WidgetBinding
-    ) -> str | list[str]:
-        normalized_items = [item for item in items if isinstance(item, str)]
-        if not normalized_items:
-            return [] if isinstance(binding.sample, list) else ""
-
-        if isinstance(binding.sample, list):
-            return normalized_items
-
-        preferred_key = (binding.value_key or "").lower()
-        component_type = (binding.component_type or "").lower()
-
-        if preferred_key in {"src", "url", "href"} or component_type in {
-            "image",
-            "link",
-        }:
-            return normalized_items[0]
-
-        if isinstance(binding.sample, str):
-            return "\n".join(normalized_items)
-
-        return normalized_items
-
-    def _collect_widget_values_from_output(
-        output: Any,
-        *,
-        bindings: Mapping[str, _WidgetBinding] | None = None,
-    ) -> dict[str, str | list[str]]:
-        """Aplati les sorties structurées en valeurs consommables par un widget."""
-
-        collected: dict[str, str | list[str]] = {}
-
-        def _normalize(candidate: Any) -> Any:
-            if isinstance(candidate, BaseModel):
-                try:
-                    return candidate.model_dump(by_alias=True)
-                except TypeError:
-                    return candidate.model_dump()
-            return candidate
-
-        def _normalize_sequence_fields(
-            mapping: dict[str, str | list[str]],
-        ) -> dict[str, str | list[str]]:
-            if not mapping:
-                return mapping
-
-            normalized: dict[str, str | list[str]] = {}
-            for key, value in mapping.items():
-                if isinstance(value, list):
-                    suffix = key.rsplit(".", 1)[-1].lower()
-                    if suffix in {"src", "url", "href"}:
-                        normalized[key] = value[0] if value else ""
-                        continue
-                normalized[key] = value
-            return normalized
-
-        def _walk(current: Any, path: str) -> None:
-            current = _normalize(current)
-            if isinstance(current, dict):
-                for key, value in current.items():
-                    if not isinstance(key, str):
-                        continue
-                    next_path = f"{path}.{key}" if path else key
-                    _walk(value, next_path)
-                return
-            if isinstance(current, list):
-                simple_values: list[str] = []
-                has_complex_items = False
-                for item in current:
-                    normalized = _normalize(item)
-                    if isinstance(normalized, dict | list):
-                        has_complex_items = True
-                        break
-                    simple_values.append(_stringify_widget_value(normalized))
-                if simple_values and not has_complex_items and path:
-                    collected[path] = simple_values
-                    return
-                for index, item in enumerate(current):
-                    next_path = f"{path}.{index}" if path else str(index)
-                    _walk(item, next_path)
-                return
-            if path:
-                collected[path] = _stringify_widget_value(current)
-
-        _walk(output, "")
-
-        collected = _normalize_sequence_fields(collected)
-
-        if not bindings:
-            return collected
-
-        enriched = dict(collected)
-        consumed_keys: set[str] = set()
-        for identifier, binding in bindings.items():
-            path_parts: list[str] = []
-            for step in binding.path:
-                if isinstance(step, str):
-                    path_parts.append(step)
-                else:
-                    path_parts.append(str(step))
-            base_path = ".".join(path_parts)
-            for suffix in ("value", "text", "src", "url", "href"):
-                key = f"{base_path}.{suffix}" if base_path else suffix
-                if key in collected:
-                    value: str | list[str] = collected[key]
-                    if isinstance(value, list):
-                        value = _coerce_widget_binding_sequence_value(value, binding)
-                    enriched[identifier] = value
-                    if identifier != key:
-                        consumed_keys.add(key)
-                    break
-
-        for key in consumed_keys:
-            enriched.pop(key, None)
-
-        return _normalize_sequence_fields(enriched)
 
     agent_image_tasks: dict[tuple[str, int, str], dict[str, Any]] = {}
     agent_step_generated_images: dict[str, list[dict[str, Any]]] = {}
@@ -1936,203 +1323,6 @@ async def run_workflow(
             context.get("step_slug") or "inconnue",
             key[0],
         )
-
-    def _evaluate_widget_variable_expression(
-        expression: str, *, input_context: dict[str, Any] | None
-    ) -> str | None:
-        if not expression.strip():
-            return None
-        try:
-            raw_value = evaluate_state_expression(
-                expression,
-                state=state,
-                default_input_context=last_step_context,
-                input_context=input_context,
-            )
-        except Exception as exc:  # pragma: no cover - dépend du contenu utilisateur
-            logger.warning(
-                "Impossible d'évaluer l'expression %s pour un widget : %s",
-                expression,
-                exc,
-            )
-            return None
-        if raw_value is None:
-            return None
-        return _stringify_widget_value(raw_value)
-
-    async def _stream_response_widget(
-        config: _ResponseWidgetConfig,
-        *,
-        step_slug: str,
-        step_title: str,
-        step_context: dict[str, Any] | None,
-    ) -> dict[str, Any] | None:
-        widget_label = config.slug or config.definition_expression or step_slug
-
-        definition: Any
-        bindings = config.bindings
-
-        if config.source == "variable":
-            expression = config.definition_expression or ""
-            if not expression:
-                logger.warning(
-                    "Expression de widget manquante pour l'étape %s", step_slug
-                )
-                return None
-            try:
-                definition_candidate = evaluate_state_expression(
-                    expression,
-                    state=state,
-                    default_input_context=last_step_context,
-                    input_context=step_context,
-                )
-            except Exception as exc:  # pragma: no cover - dépend du contenu utilisateur
-                logger.warning(
-                    "Impossible d'évaluer l'expression %s pour l'étape %s : %s",
-                    expression,
-                    step_slug,
-                    exc,
-                )
-                return None
-
-            definition = definition_candidate
-            if isinstance(definition, BaseModel):
-                try:
-                    definition = definition.model_dump(by_alias=True)
-                except TypeError:
-                    definition = definition.model_dump()
-            if isinstance(definition, str):
-                try:
-                    definition = json.loads(definition)
-                except (
-                    json.JSONDecodeError
-                ) as exc:  # pragma: no cover - dépend du contenu
-                    logger.warning(
-                        "Le JSON renvoyé par %s est invalide pour l'étape %s : %s",
-                        expression,
-                        step_slug,
-                        exc,
-                    )
-                    return None
-            if not isinstance(definition, dict | list):
-                logger.warning(
-                    "L'expression %s doit renvoyer un objet JSON utilisable pour "
-                    "le widget de l'étape %s",
-                    expression,
-                    step_slug,
-                )
-                return None
-            if not bindings:
-                bindings = _collect_widget_bindings(definition)
-        else:
-            if not config.slug:
-                logger.warning("Slug de widget manquant pour l'étape %s", step_slug)
-                return None
-            definition = _load_widget_definition(
-                config.slug, context=f"étape {step_slug}"
-            )
-            if definition is None:
-                logger.warning(
-                    "Widget %s introuvable pour l'étape %s",
-                    config.slug,
-                    step_slug,
-                )
-                return None
-
-        resolved: dict[str, str | list[str]] = {}
-        for variable_id, expression in config.variables.items():
-            value = _evaluate_widget_variable_expression(
-                expression, input_context=step_context
-            )
-            if value is None:
-                continue
-            resolved[variable_id] = value
-
-        if step_context:
-            for key in ("output_structured", "output_parsed", "output"):
-                if key not in step_context:
-                    continue
-                auto_values = _collect_widget_values_from_output(
-                    step_context[key], bindings=bindings
-                )
-                for identifier, value in auto_values.items():
-                    resolved.setdefault(identifier, value)
-
-        if resolved:
-            matched = _apply_widget_variable_values(
-                definition, resolved, bindings=bindings
-            )
-            missing = set(resolved) - matched
-            if missing:
-                logger.warning(
-                    "Variables de widget non appliquées (%s) pour %s",
-                    ", ".join(sorted(missing)),
-                    widget_label,
-                )
-
-        try:
-            widget = WidgetLibraryService._validate_widget(definition)
-        except Exception as exc:  # pragma: no cover - dépend du SDK installé
-            logger.exception(
-                "Le widget %s est invalide après interpolation",
-                widget_label,
-                exc_info=exc,
-            )
-            return None
-
-        if _sdk_stream_widget is None:
-            logger.warning(
-                "Le SDK Agents installé ne supporte pas stream_widget : "
-                "impossible de diffuser %s",
-                widget_label,
-            )
-            return None
-
-        store = getattr(agent_context, "store", None)
-        thread_metadata = getattr(agent_context, "thread", None)
-        if store is None or thread_metadata is None:
-            logger.warning(
-                "Contexte Agent incomplet : impossible de diffuser le widget %s",
-                widget_label,
-            )
-            return
-
-        request_context = getattr(agent_context, "request_context", None)
-
-        def _generate_item_id(item_type: str) -> str:
-            try:
-                return store.generate_item_id(
-                    item_type,
-                    thread_metadata,
-                    request_context,
-                )
-            except (
-                Exception
-            ) as exc:  # pragma: no cover - dépend du stockage sous-jacent
-                logger.exception(
-                    "Impossible de générer un identifiant pour le widget %s",
-                    widget_label,
-                    exc_info=exc,
-                )
-                raise
-
-        try:
-            async for event in _sdk_stream_widget(
-                thread_metadata,
-                widget,
-                generate_id=_generate_item_id,
-            ):
-                await _emit_stream_event(event)
-        except Exception as exc:  # pragma: no cover - dépend du SDK Agents
-            logger.exception(
-                "Impossible de diffuser le widget %s pour %s",
-                widget_label,
-                step_title,
-                exc_info=exc,
-            )
-            return None
-
-        return widget
 
     def _should_forward_agent_event(
         event: ThreadStreamEvent, *, suppress: bool
@@ -2996,211 +2186,43 @@ async def run_workflow(
             ):
                 voice_wait_state = pending_wait_state
 
-            transcripts_payload = None
             if voice_wait_state is not None:
-                stored_session_context = voice_wait_state.get("voice_session")
-                if isinstance(stored_session_context, Mapping):
-                    for key, value in stored_session_context.items():
-                        if key not in voice_context or not voice_context[key]:
-                            voice_context[key] = value
-                transcripts_payload = voice_wait_state.get("voice_transcripts")
-                if not transcripts_payload:
-                    final_end_state = WorkflowEndState(
-                        slug=current_node.slug,
-                        status_type="waiting",
-                        status_reason="En attente des transcriptions vocales.",
-                        message="En attente des transcriptions vocales.",
-                    )
-                    break
-
-                status_info = voice_wait_state.get("voice_session_status")
-                if isinstance(status_info, Mapping):
-                    voice_context["session_status"] = dict(status_info)
-
-            if transcripts_payload is not None:
-                normalized_transcripts: list[dict[str, Any]] = []
-
-                is_sequence = isinstance(transcripts_payload, Sequence)
-                is_textual = isinstance(
-                    transcripts_payload, str | bytes | bytearray
-                )
-                iterable = (
-                    transcripts_payload if is_sequence and not is_textual else []
-                )
-
-                # Vérifier si les messages ont déjà été créés (via l'endpoint
-                # /transcripts). Si oui, ne pas les créer à nouveau pour éviter
-                # les doublons.
-                voice_messages_created = voice_wait_state.get(
-                    "voice_messages_created", False
-                )
-
-                for entry in iterable:
-                    if not isinstance(entry, Mapping):
-                        continue
-                    role_raw = entry.get("role")
-                    if not isinstance(role_raw, str):
-                        continue
-                    normalized_role = role_raw.strip().lower()
-                    if normalized_role not in {"user", "assistant"}:
-                        continue
-                    text_raw = entry.get("text")
-                    if not isinstance(text_raw, str):
-                        continue
-                    text_value = text_raw.strip()
-                    if not text_value:
-                        continue
-                    transcript_entry: dict[str, Any] = {
-                        "role": normalized_role,
-                        "text": text_value,
-                    }
-                    status_raw = entry.get("status")
-                    if isinstance(status_raw, str) and status_raw.strip():
-                        transcript_entry["status"] = status_raw.strip()
-                    normalized_transcripts.append(transcript_entry)
-
-                    if normalized_role == "user":
-                        conversation_history.append(
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "input_text",
-                                        "text": text_value,
-                                    }
-                                ],
-                            }
-                        )
-                        # Ne créer le message que s'il n'a pas déjà été ajouté au thread
-                        if (
-                            not voice_messages_created
-                            and on_stream_event is not None
-                            and agent_context.thread is not None
-                        ):
-                            user_item = UserMessageItem(
-                                id=agent_context.generate_id("message"),
-                                thread_id=agent_context.thread.id,
-                                created_at=datetime.now(),
-                                content=[UserMessageTextContent(text=text_value)],
-                                attachments=[],
-                                quoted_text=None,
-                                inference_options=InferenceOptions(),
-                            )
-                            await _emit_stream_event(
-                                ThreadItemAddedEvent(item=user_item)
-                            )
-                            await _emit_stream_event(
-                                ThreadItemDoneEvent(item=user_item)
-                            )
-                    else:
-                        conversation_history.append(
-                            {
-                                "role": "assistant",
-                                "content": [
-                                    {
-                                        "type": "output_text",
-                                        "text": text_value,
-                                    }
-                                ],
-                            }
-                        )
-                        # Ne créer le message que s'il n'a pas déjà été ajouté au thread
-                        if (
-                            not voice_messages_created
-                            and on_stream_event is not None
-                            and agent_context.thread is not None
-                        ):
-                            assistant_item = AssistantMessageItem(
-                                id=agent_context.generate_id("message"),
-                                thread_id=agent_context.thread.id,
-                                created_at=datetime.now(),
-                                content=[AssistantMessageContent(text=text_value)],
-                            )
-                            await _emit_stream_event(
-                                ThreadItemAddedEvent(item=assistant_item)
-                            )
-                            await _emit_stream_event(
-                                ThreadItemDoneEvent(item=assistant_item)
-                            )
-
-                if not normalized_transcripts:
-                    final_end_state = WorkflowEndState(
-                        slug=current_node.slug,
-                        status_type="waiting",
-                        status_reason="En attente des transcriptions vocales.",
-                        message="En attente des transcriptions vocales.",
-                    )
-                    break
-
-                step_output = {"transcripts": normalized_transcripts}
-                output_text = "\n\n".join(
-                    f"{entry['role']}: {entry['text']}"
-                    for entry in normalized_transcripts
-                )
-                last_step_context = {
-                    "voice_transcripts": normalized_transcripts,
-                    "voice_session": voice_context,
-                    "output": step_output,
-                    "output_parsed": step_output,
-                    "output_structured": step_output,
-                    "output_text": output_text,
-                }
-                agent_key = current_node.agent_key or current_node.slug
-                state["last_voice_session"] = voice_context
-                state["last_voice_transcripts"] = normalized_transcripts
-                state["last_agent_key"] = agent_key
-                state["last_agent_output"] = step_output
-                state["last_agent_output_text"] = output_text
-                state["last_agent_output_structured"] = step_output
-                state.pop("voice_session_active", None)
-
-                session_identifier = voice_context.get("session_id")
-                if not session_identifier:
-                    stored_session = voice_wait_state.get("voice_session")
-                    if isinstance(stored_session, Mapping):
-                        session_identifier = stored_session.get("session_id")
-                if not session_identifier:
-                    stored_event = voice_wait_state.get("voice_event")
-                    if isinstance(stored_event, Mapping):
-                        event_payload = stored_event.get("event")
-                        if isinstance(event_payload, Mapping):
-                            session_identifier = event_payload.get("session_id")
-
-                if session_identifier:
-                    try:
-                        await close_voice_session(
-                            session_id=str(session_identifier)
-                        )
-                    except Exception as exc:  # pragma: no cover - nettoyage best effort
-                        logger.debug(
-                            "Impossible de fermer la session Realtime %s : %s",
-                            voice_context.get("session_id"),
-                            exc,
-                        )
-
-                await record_step(current_node.slug, title, step_output)
-
-                await ingest_workflow_step(
-                    config=(current_node.parameters or {}).get(
+                resume_result = await voice_session_manager.resume_from_wait_state(
+                    current_step_slug=current_node.slug,
+                    title=title,
+                    voice_context=voice_context,
+                    voice_wait_state=voice_wait_state,
+                    conversation_history=conversation_history,
+                    state=state,
+                    agent_context=agent_context,
+                    record_step=record_step,
+                    emit_stream_event=_emit_stream_event,
+                    ingest_step=ingest_workflow_step,
+                    vector_config=(current_node.parameters or {}).get(
                         "vector_store_ingestion"
                     ),
-                    step_slug=_branch_prefixed_slug(current_node.slug),
-                    step_title=title,
-                    step_context=last_step_context,
-                    state=state,
-                    default_input_context=last_step_context,
+                    step_slug_for_ingestion=_branch_prefixed_slug(current_node.slug),
                     session_factory=SessionLocal,
+                    thread=thread,
+                    wait_reason="En attente des transcriptions vocales.",
+                    agent_key=current_node.agent_key or current_node.slug,
                 )
-
-                if thread is not None:
-                    _set_wait_state_metadata(thread, None)
-                pending_wait_state = None
-
-                transition = _next_edge(current_slug)
-                if transition is None:
+                if resume_result.processed:
+                    last_step_context = resume_result.last_step_context
+                    pending_wait_state = None
+                    transition = _next_edge(current_slug)
+                    if transition is None:
+                        break
+                    current_slug = transition.target_step.slug
+                    continue
+                if resume_result.wait_reason:
+                    final_end_state = WorkflowEndState(
+                        slug=current_node.slug,
+                        status_type="waiting",
+                        status_reason=resume_result.wait_reason,
+                        message=resume_result.wait_reason,
+                    )
                     break
-                current_slug = transition.target_step.slug
-                continue
 
             request_context = getattr(agent_context, "request_context", None)
             user_id = None
@@ -3211,95 +2233,29 @@ async def run_workflow(
                 fallback_id = getattr(thread_meta, "id", None)
                 user_id = str(fallback_id or "voice-user")
 
-            metadata_payload: dict[str, Any] = {
-                "step_slug": current_node.slug,
-            }
-            thread_meta = getattr(agent_context, "thread", None)
-            if thread_meta is not None and getattr(thread_meta, "id", None):
-                metadata_payload["thread_id"] = thread_meta.id
-            if title:
-                metadata_payload["step_title"] = title
-            realtime_config = event_context.get("realtime")
-            if isinstance(realtime_config, Mapping):
-                tool_permissions = realtime_config.get("tools")
-                if isinstance(tool_permissions, Mapping):
-                    metadata_payload["tool_permissions"] = dict(tool_permissions)
+            transition = _next_edge(current_slug)
+            next_step_slug = transition.target_step.slug if transition is not None else None
 
             try:
-                session_handle = await open_voice_session(
+                start_result = await voice_session_manager.start_voice_session(
+                    current_step_slug=current_node.slug,
+                    title=title,
+                    voice_context=voice_context,
+                    event_context=event_context,
+                    agent_context=agent_context,
                     user_id=user_id,
-                    model=event_context["model"],
-                    voice=event_context.get("voice"),
-                    instructions=event_context["instructions"],
-                    provider_id=event_context.get("model_provider_id"),
-                    provider_slug=event_context.get("model_provider_slug"),
-                    realtime=event_context.get("realtime"),
-                    tools=event_context.get("tools"),
-                    handoffs=event_context.get("handoffs"),
-                    metadata=metadata_payload,
+                    conversation_history=conversation_history,
+                    state=state,
+                    thread=thread,
+                    current_input_item_id=current_input_item_id,
+                    next_step_slug=next_step_slug,
+                    record_step=record_step,
+                    emit_stream_event=_emit_stream_event,
                 )
             except Exception as exc:
                 raise_step_error(current_node.slug, title or current_node.slug, exc)
 
-            realtime_secret = session_handle.payload
-            voice_context["session_id"] = session_handle.session_id
-            voice_context["client_secret"] = realtime_secret
-            event_context["session_id"] = session_handle.session_id
-
-            realtime_event = {
-                "type": "realtime.event",
-                "step": {"slug": current_node.slug, "title": title},
-                "event": {
-                    "type": "history",
-                    "session_id": session_handle.session_id,
-                    "session": event_context,
-                    "client_secret": realtime_secret,
-                    "tool_permissions": event_context["realtime"]["tools"],
-                },
-            }
-
-            if on_stream_event is not None and agent_context.thread is not None:
-                task_item = TaskItem(
-                    id=agent_context.generate_id("task"),
-                    thread_id=agent_context.thread.id,
-                    created_at=datetime.now(),
-                    task=CustomTask(
-                        title=title,
-                        content=json.dumps(realtime_event, ensure_ascii=False),
-                    ),
-                )
-                await _emit_stream_event(ThreadItemAddedEvent(item=task_item))
-                await _emit_stream_event(ThreadItemDoneEvent(item=task_item))
-
-            step_payload = {
-                "status": "waiting_for_voice",
-                "voice_session": voice_context,
-            }
-            await record_step(current_node.slug, title, step_payload)
-
-            last_step_context = {"voice_session": voice_context}
-            state["voice_session_active"] = True
-            state["last_voice_session"] = voice_context
-
-            wait_state_payload: dict[str, Any] = {
-                "slug": current_node.slug,
-                "input_item_id": current_input_item_id,
-                "type": "voice",
-                # Stocker l'événement pour que le frontend puisse le récupérer.
-                "voice_event": realtime_event,
-            }
-            conversation_snapshot = _clone_conversation_history_snapshot(
-                conversation_history
-            )
-            if conversation_snapshot:
-                wait_state_payload["conversation_history"] = conversation_snapshot
-            wait_state_payload["state"] = _json_safe_copy(state)
-
-            transition = _next_edge(current_slug)
-            if transition is not None:
-                wait_state_payload["next_step_slug"] = transition.target_step.slug
-            if thread is not None:
-                _set_wait_state_metadata(thread, wait_state_payload)
+            last_step_context = start_result.last_step_context
 
             final_end_state = WorkflowEndState(
                 slug=current_node.slug,
@@ -3310,8 +2266,8 @@ async def run_workflow(
             break
 
         if current_node.kind == "outbound_call":
-            from ..telephony.outbound_call_manager import get_outbound_call_manager
             from ..models import SipAccount
+            from ..telephony.outbound_call_manager import get_outbound_call_manager
 
             title = _node_title(current_node)
             params = current_node.parameters or {}
@@ -3349,7 +2305,7 @@ async def run_workflow(
 
             try:
                 # Vérifier que le workflow vocal existe et récupérer sa version active
-                from ..models import WorkflowDefinition, Workflow
+                from ..models import Workflow, WorkflowDefinition
 
                 # Le voice_workflow_id peut être soit un workflow.id, soit un workflow_definition.id
                 # On essaie d'abord comme workflow.id (cas le plus probable depuis le frontend)
@@ -3728,8 +2684,8 @@ async def run_workflow(
 
         if current_node.kind == "json_vector_store":
             title = _node_title(current_node)
-            await ingest_workflow_step(
-                config=current_node.parameters or {},
+            await ingest_vector_store_step(
+                current_node.parameters or {},
                 step_slug=_branch_prefixed_slug(current_node.slug),
                 step_title=title,
                 step_context=last_step_context,
@@ -3759,6 +2715,10 @@ async def run_workflow(
                     step_slug=_branch_prefixed_slug(current_node.slug),
                     step_title=title,
                     step_context=last_step_context,
+                    state=state,
+                    last_step_context=last_step_context,
+                    agent_context=agent_context,
+                    emit_stream_event=_emit_stream_event,
                 )
                 action_payload: dict[str, Any] | None = None
                 if on_widget_step is not None and _should_wait_for_widget_action(
@@ -4011,8 +2971,8 @@ async def run_workflow(
                 },
             )
 
-            await ingest_workflow_step(
-                config=(current_node.parameters or {}).get("vector_store_ingestion"),
+            await ingest_vector_store_step(
+                (current_node.parameters or {}).get("vector_store_ingestion"),
                 step_slug=_branch_prefixed_slug(current_node.slug),
                 step_title=title,
                 step_context=last_step_context,
@@ -4027,6 +2987,10 @@ async def run_workflow(
                     step_slug=_branch_prefixed_slug(current_node.slug),
                     step_title=title,
                     step_context=last_step_context,
+                    state=state,
+                    last_step_context=last_step_context,
+                    agent_context=agent_context,
+                    emit_stream_event=_emit_stream_event,
                 )
                 widget_identifier = (
                     widget_config.slug
@@ -4256,8 +3220,8 @@ async def run_workflow(
             await _emit_stream_event(ThreadItemAddedEvent(item=links_message))
             await _emit_stream_event(ThreadItemDoneEvent(item=links_message))
 
-        await ingest_workflow_step(
-            config=(current_node.parameters or {}).get("vector_store_ingestion"),
+        await ingest_vector_store_step(
+            (current_node.parameters or {}).get("vector_store_ingestion"),
             step_slug=_branch_prefixed_slug(current_node.slug),
             step_title=title,
             step_context=last_step_context,
@@ -4272,6 +3236,10 @@ async def run_workflow(
                 step_slug=_branch_prefixed_slug(current_node.slug),
                 step_title=title,
                 step_context=last_step_context,
+                state=state,
+                last_step_context=last_step_context,
+                agent_context=agent_context,
+                emit_stream_event=_emit_stream_event,
             )
             widget_identifier = (
                 widget_config.slug
