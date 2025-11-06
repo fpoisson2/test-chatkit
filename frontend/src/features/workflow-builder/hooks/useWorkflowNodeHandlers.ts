@@ -1837,4 +1837,6 @@ const useWorkflowNodeHandlers = ({
   };
 };
 
+export type WorkflowNodeHandlers = ReturnType<typeof useWorkflowNodeHandlers>;
+
 export default useWorkflowNodeHandlers;
