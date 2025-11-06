@@ -55,6 +55,7 @@ import {
 } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import { useTokenResourceLoader } from "./hooks/useTokenResourceLoader";
+import useModalState from "../../hooks/useModalState";
 import {
   getAgentFileSearchConfig,
   getAgentWorkflowTools,
@@ -300,7 +301,11 @@ const WorkflowBuilderPage = () => {
   const hasLoadedWorkflowsRef = useRef(false);
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
-  const [isAppearanceModalOpen, setAppearanceModalOpen] = useState(false);
+  const {
+    isOpen: isAppearanceModalOpen,
+    open: openAppearanceModalState,
+    close: closeAppearanceModalState,
+  } = useModalState(false);
   const [appearanceModalTarget, setAppearanceModalTarget] =
     useState<WorkflowAppearanceTarget | null>(null);
   const appearanceModalTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -405,8 +410,16 @@ const WorkflowBuilderPage = () => {
     [token],
   );
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
-  const [isDeployModalOpen, setDeployModalOpen] = useState(false);
-  const [isCreateModalOpen, setCreateModalOpen] = useState(false);
+  const {
+    isOpen: isDeployModalOpen,
+    open: openDeployModalState,
+    close: closeDeployModalState,
+  } = useModalState(false);
+  const {
+    isOpen: isCreateModalOpen,
+    open: openCreateModalState,
+    close: closeCreateModalState,
+  } = useModalState(false);
   const [createWorkflowKind, setCreateWorkflowKind] = useState<"local" | "hosted">("local");
   const [createWorkflowName, setCreateWorkflowName] = useState("");
   const [createWorkflowRemoteId, setCreateWorkflowRemoteId] = useState("");
@@ -416,7 +429,12 @@ const WorkflowBuilderPage = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
+  const {
+    isOpen: isMobileActionsOpen,
+    close: closeMobileActionsState,
+    toggle: toggleMobileActionsState,
+    setOpen: setMobileActionsOpen,
+  } = useModalState(false);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
     useState<ActionMenuPlacement>("up");
   const closeWorkflowMenu = useCallback(() => {
@@ -424,7 +442,7 @@ const WorkflowBuilderPage = () => {
     setWorkflowMenuPlacement("up");
   }, []);
   const handleCloseAppearanceModal = useCallback(() => {
-    setAppearanceModalOpen(false);
+    closeAppearanceModalState();
     setAppearanceModalTarget(null);
     const trigger = appearanceModalTriggerRef.current;
     appearanceModalTriggerRef.current = null;
@@ -440,15 +458,15 @@ const WorkflowBuilderPage = () => {
         trigger.focus();
       }
     }
-  }, []);
+  }, [closeAppearanceModalState]);
   const openAppearanceModal = useCallback(
     (target: WorkflowAppearanceTarget, trigger?: HTMLButtonElement | null) => {
       closeWorkflowMenu();
       setAppearanceModalTarget(target);
-      setAppearanceModalOpen(true);
+      openAppearanceModalState();
       appearanceModalTriggerRef.current = trigger ?? null;
     },
-    [closeWorkflowMenu],
+    [closeWorkflowMenu, openAppearanceModalState],
   );
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
@@ -793,11 +811,20 @@ const WorkflowBuilderPage = () => {
     [applyEdgesChange, updateHasPendingChanges],
   );
 
-  const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
+  const {
+    isOpen: isBlockLibraryOpen,
+    close: closeBlockLibraryState,
+    toggle: toggleBlockLibraryState,
+    setOpen: setBlockLibraryOpen,
+  } = useModalState(() => !isMobileLayout);
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
+  const {
+    isOpen: isPropertiesPanelOpen,
+    open: openPropertiesPanel,
+    close: closePropertiesPanel,
+  } = useModalState(false);
   const previousSelectedElementRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
   const selectedEdgeIdRef = useRef<string | null>(null);
@@ -839,24 +866,24 @@ const WorkflowBuilderPage = () => {
   const mobileActionsTitleId = `${mobileActionsDialogId}-title`;
   const closeMobileActions = useCallback(
     (options: { focusTrigger?: boolean } = {}) => {
-      setIsMobileActionsOpen(false);
+      closeMobileActionsState();
       if (options.focusTrigger && mobileActionsTriggerRef.current) {
         mobileActionsTriggerRef.current.focus();
       }
     },
-    [mobileActionsTriggerRef],
+    [closeMobileActionsState, mobileActionsTriggerRef],
   );
   const toggleBlockLibrary = useCallback(() => {
-    setBlockLibraryOpen((prev) => !prev);
-  }, []);
+    toggleBlockLibraryState();
+  }, [toggleBlockLibraryState]);
   const closeBlockLibrary = useCallback(
     (options: { focusToggle?: boolean } = {}) => {
-      setBlockLibraryOpen(false);
+      closeBlockLibraryState();
       if (options.focusToggle && blockLibraryToggleRef.current) {
         blockLibraryToggleRef.current.focus();
       }
     },
-    [blockLibraryToggleRef],
+    [blockLibraryToggleRef, closeBlockLibraryState],
   );
 
   useEffect(() => {
@@ -865,14 +892,14 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     setBlockLibraryOpen(!isMobileLayout);
-  }, [isMobileLayout]);
+  }, [isMobileLayout, setBlockLibraryOpen]);
 
   // Ferme les actions mobiles quand on n’est pas en layout mobile
   useEffect(() => {
     if (!isMobileLayout) {
-      setIsMobileActionsOpen(false);
+      setMobileActionsOpen(false);
     }
-  }, [isMobileLayout]);
+  }, [isMobileLayout, setMobileActionsOpen]);
 
   // Garde la ref des nodes à jour
   useEffect(() => {
@@ -1234,7 +1261,7 @@ const WorkflowBuilderPage = () => {
                 type="button"
                 ref={mobileActionsTriggerRef}
                 onClick={() => {
-                  setIsMobileActionsOpen((previous) => !previous);
+                  toggleMobileActionsState();
                 }}
                 aria-haspopup="menu"
                 aria-expanded={isMobileActionsOpen}
@@ -2150,10 +2177,10 @@ const WorkflowBuilderPage = () => {
       setSelectedNodeId(node.id);
       setSelectedEdgeId(null);
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setPropertiesPanelOpen(true);
+        openPropertiesPanel();
       }
     },
-    [isMobileLayout],
+    [isMobileLayout, openPropertiesPanel],
   );
 
   const handleEdgeClick = useCallback(
@@ -2165,10 +2192,10 @@ const WorkflowBuilderPage = () => {
       setSelectedEdgeId(edge.id);
       setSelectedNodeId(null);
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setPropertiesPanelOpen(true);
+        openPropertiesPanel();
       }
     },
-    [isMobileLayout],
+    [isMobileLayout, openPropertiesPanel],
   );
 
   const handleClearSelection = clearSelection;
@@ -2198,7 +2225,7 @@ const WorkflowBuilderPage = () => {
 
   const handleClosePropertiesPanel = useCallback(() => {
     if (isMobileLayout) {
-      setPropertiesPanelOpen(false);
+      closePropertiesPanel();
       if (typeof window !== "undefined") {
         window.setTimeout(() => {
           propertiesPanelToggleRef.current?.focus();
@@ -2209,14 +2236,14 @@ const WorkflowBuilderPage = () => {
       return;
     }
     handleClearSelection();
-  }, [handleClearSelection, isMobileLayout]);
+  }, [closePropertiesPanel, handleClearSelection, isMobileLayout]);
 
   const handleOpenPropertiesPanel = useCallback(() => {
     if (!selectedNode && !selectedEdge) {
       return;
     }
-    setPropertiesPanelOpen(true);
-  }, [selectedEdge, selectedNode]);
+    openPropertiesPanel();
+  }, [openPropertiesPanel, selectedEdge, selectedNode]);
 
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
 
@@ -2234,7 +2261,7 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     if (!selectedElementKey) {
-      setPropertiesPanelOpen(false);
+      closePropertiesPanel();
       lastTappedElementRef.current = null;
       previousSelectedElementRef.current = selectedElementKey;
       return;
@@ -2262,22 +2289,29 @@ const WorkflowBuilderPage = () => {
 
     if (isMobileLayout) {
       if (isNewSelection) {
-        setPropertiesPanelOpen(false);
+        closePropertiesPanel();
       }
     } else if (isNewSelection && !isNodeDragInProgressRef.current) {
-      setPropertiesPanelOpen(true);
+      openPropertiesPanel();
     }
 
     previousSelectedElementRef.current = selectedElementKey;
-  }, [isMobileLayout, selectedEdgeId, selectedElementKey, selectedNodeId]);
+  }, [
+    closePropertiesPanel,
+    isMobileLayout,
+    openPropertiesPanel,
+    selectedEdgeId,
+    selectedElementKey,
+    selectedNodeId,
+  ]);
 
   useEffect(() => {
     if (!isMobileLayout) {
       if (selectedElementKey) {
-        setPropertiesPanelOpen(true);
+        openPropertiesPanel();
       }
     }
-  }, [isMobileLayout, selectedElementKey]);
+  }, [isMobileLayout, openPropertiesPanel, selectedElementKey]);
 
   useEffect(() => {
     if (!isMobileLayout || !isPropertiesPanelOpen) {
@@ -2833,15 +2867,15 @@ const WorkflowBuilderPage = () => {
     setCreateWorkflowName("");
     setCreateWorkflowRemoteId("");
     setCreateWorkflowError(null);
-    setCreateModalOpen(true);
-  }, []);
+    openCreateModalState();
+  }, [openCreateModalState]);
 
   const handleCloseCreateModal = useCallback(() => {
     if (isCreatingWorkflow) {
       return;
     }
-    setCreateModalOpen(false);
-  }, [isCreatingWorkflow]);
+    closeCreateModalState();
+  }, [closeCreateModalState, isCreatingWorkflow]);
 
   const handleSubmitCreateWorkflow = useCallback(async () => {
     setCreateWorkflowError(null);
@@ -2883,7 +2917,7 @@ const WorkflowBuilderPage = () => {
           t("workflowBuilder.createWorkflow.successHosted", { label: created.label }),
         );
         setTimeout(() => setSaveState("idle"), 1500);
-        setCreateModalOpen(false);
+        closeCreateModalState();
         setCreateWorkflowName("");
         setCreateWorkflowRemoteId("");
       } catch (error) {
@@ -2934,7 +2968,7 @@ const WorkflowBuilderPage = () => {
             t("workflowBuilder.createWorkflow.successLocal", { name: trimmedName }),
           );
           setTimeout(() => setSaveState("idle"), 1500);
-          setCreateModalOpen(false);
+          closeCreateModalState();
           setCreateWorkflowName("");
           setCreateWorkflowRemoteId("");
           return;
@@ -3242,15 +3276,15 @@ const WorkflowBuilderPage = () => {
   const handleOpenDeployModal = useCallback(() => {
     setSaveMessage(null);
     setDeployToProduction(true);
-    setDeployModalOpen(true);
-  }, []);
+    openDeployModalState();
+  }, [openDeployModalState]);
 
   const handleCloseDeployModal = useCallback(() => {
     if (isDeploying) {
       return;
     }
-    setDeployModalOpen(false);
-  }, [isDeploying]);
+    closeDeployModalState();
+  }, [closeDeployModalState, isDeploying]);
 
   useEffect(() => {
     if (!isDeployModalOpen) {
@@ -3661,7 +3695,7 @@ const WorkflowBuilderPage = () => {
             : t("workflowBuilder.deploy.successPublished"),
         );
         setTimeout(() => setSaveState("idle"), 1500);
-        setDeployModalOpen(false);
+        closeDeployModalState();
         setIsDeploying(false);
         return;
       } catch (error) {
