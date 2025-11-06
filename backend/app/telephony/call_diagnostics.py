@@ -1,13 +1,13 @@
-"""
-Module de diagnostic pour tracer les problèmes de lag entre les appels.
-Collecte des métriques détaillées sur chaque phase de traitement.
-"""
+"""Module de diagnostic pour tracer les problèmes de lag entre les appels.
+Collecte des métriques détaillées sur chaque phase de traitement."""
 
-import time
+import asyncio
 import logging
+import queue
+import time
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
 from threading import Lock
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 class CallPhaseMetrics:
     """Métriques pour une phase spécifique d'un appel"""
     phase_name: str
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
-    duration_ms: Optional[float] = None
-    metadata: Dict = field(default_factory=dict)
+    start_time: float | None = None
+    end_time: float | None = None
+    duration_ms: float | None = None
+    metadata: dict = field(default_factory=dict)
 
     def start(self):
         """Démarre le chronomètre de la phase"""
@@ -37,10 +37,12 @@ class CallPhaseMetrics:
 
 @dataclass
 class CallDiagnostics:
-    """Collecte complète de diagnostics pour un appel"""
+    """Collecte complète de diagnostics pour un appel."""
+
     call_id: str
-    call_number: int  # Numéro séquentiel (1er, 2e, 3e appel, etc.)
-    session_id: Optional[str] = None
+    call_number: int = 0  # Numéro séquentiel (1er, 2e, 3e appel, etc.)
+    session_id: str | None = None
+    chatkit_call_id: str | None = None
 
     # Phases principales
     phase_ring: CallPhaseMetrics = field(default_factory=lambda: CallPhaseMetrics("ring"))
@@ -52,18 +54,27 @@ class CallDiagnostics:
     phase_response_create: CallPhaseMetrics = field(default_factory=lambda: CallPhaseMetrics("response_create"))
 
     # Métriques de ressources
-    buffers_state: Dict[str, int] = field(default_factory=dict)
+    buffers_state: dict[str, int] = field(default_factory=dict)
     port_reuse_count: int = 0
     port_recreated: bool = False
     none_packets_before_audio: int = 0
+    cleanup_done: bool = False
+    call_closed: bool = False
+    call_terminated: bool = False
+
+    # Compteurs runtime (encapsulent les métriques AudioMediaPort)
+    frames_requested: int = 0
+    outgoing_audio_frames: int = 0
+    outgoing_silence_frames: int = 0
+    incoming_frames: int = 0
 
     # OpenAI API
-    openai_response_times: List[float] = field(default_factory=list)
+    openai_response_times: list[float] = field(default_factory=list)
 
     # État final
-    total_duration_s: Optional[float] = None
+    total_duration_s: float | None = None
     lag_detected: bool = False
-    lag_sources: List[str] = field(default_factory=list)
+    lag_sources: list[str] = field(default_factory=list)
 
     def add_buffer_state(self, buffer_name: str, size: int):
         """Enregistre l'état d'un buffer"""
@@ -103,6 +114,134 @@ class CallDiagnostics:
         self.lag_detected = len(self.lag_sources) > 0
 
         return self.lag_sources
+
+    # === Gestion du cycle de vie ===
+
+    def set_chatkit_call_id(self, chatkit_call_id: str | None) -> None:
+        """Associe l'identifiant ChatKit à ce diagnostic."""
+
+        self.chatkit_call_id = chatkit_call_id
+
+    def mark_terminated(self) -> None:
+        """Marque l'appel comme terminé côté PJSUA."""
+
+        self.call_terminated = True
+
+    def mark_closed(self) -> None:
+        """Marque l'appel comme fermé côté adaptateur."""
+
+        self.call_closed = True
+
+    def mark_cleanup_done(self) -> None:
+        """Enregistre que le cleanup complet a été exécuté."""
+
+        self.cleanup_done = True
+
+    def reset_cleanup_state(self) -> None:
+        """Réinitialise les flags de cleanup (nouvelle session)."""
+
+        self.cleanup_done = False
+        self.call_closed = False
+        self.call_terminated = False
+
+    def should_skip_cleanup(self) -> bool:
+        """Indique si le cleanup a déjà été effectué."""
+
+        return self.cleanup_done or self.call_closed
+
+    # === Gestion des compteurs audio ===
+
+    def reset_frame_counters(self) -> None:
+        """Réinitialise tous les compteurs d'AudioMediaPort."""
+
+        self.frames_requested = 0
+        self.outgoing_audio_frames = 0
+        self.outgoing_silence_frames = 0
+        self.incoming_frames = 0
+
+    def record_frame_requested(self) -> int:
+        """Incrémente le compteur de frames demandées."""
+
+        self.frames_requested += 1
+        return self.frames_requested
+
+    def record_outgoing_frame(self, *, is_silence: bool) -> tuple[int, int]:
+        """Enregistre un frame sortant (total + silence)."""
+
+        self.outgoing_audio_frames += 1
+        if is_silence:
+            self.outgoing_silence_frames += 1
+        return self.outgoing_audio_frames, self.outgoing_silence_frames
+
+    def record_incoming_frame(self) -> int:
+        """Enregistre un frame entrant provenant du téléphone."""
+
+        self.incoming_frames += 1
+        return self.incoming_frames
+
+    # === Gestion des ports audio ===
+
+    @staticmethod
+    def _drain_queue(queue_obj: Any) -> int:
+        """Vide une queue de manière non bloquante et retourne le nombre d'éléments retirés."""
+
+        if queue_obj is None:
+            return 0
+
+        drained = 0
+        try:
+            while True:
+                queue_obj.get_nowait()
+                drained += 1
+        except queue.Empty:
+            pass
+        return drained
+
+    def prepare_audio_port(
+        self,
+        port: Any,
+        frame_requested_event: asyncio.Event | None,
+        audio_bridge: Any | None = None,
+    ) -> tuple[int, int]:
+        """Réinitialise l'état du port audio pour un nouvel appel."""
+
+        # Mettre à jour les références runtime
+        if port is None:
+            return (0, 0)
+
+        if frame_requested_event is not None:
+            port._frame_requested_event = frame_requested_event
+        else:
+            port._frame_requested_event = None
+
+        port._audio_bridge = audio_bridge
+        port._active = True
+
+        # Réinitialiser les compteurs
+        self.reset_frame_counters()
+        if hasattr(port, "_frame_count"):
+            port._frame_count = 0
+        if hasattr(port, "_audio_frame_count"):
+            port._audio_frame_count = 0
+        if hasattr(port, "_silence_frame_count"):
+            port._silence_frame_count = 0
+        if hasattr(port, "_frame_received_count"):
+            port._frame_received_count = 0
+
+        # Vider les queues et enregistrer leur état
+        incoming_drained = self._drain_queue(getattr(port, "_incoming_audio_queue", None))
+        outgoing_drained = self._drain_queue(getattr(port, "_outgoing_audio_queue", None))
+
+        self.add_buffer_state("incoming_queue_before_call", incoming_drained)
+        self.add_buffer_state("outgoing_queue_before_call", outgoing_drained)
+
+        return incoming_drained, outgoing_drained
+
+    def record_port_reuse(self, reuse_count: int, *, recreated: bool) -> None:
+        """Mise à jour des métriques liées à la réutilisation des ports."""
+
+        self.port_reuse_count = reuse_count
+        self.port_recreated = recreated
 
     def generate_report(self) -> str:
         """Génère un rapport détaillé des diagnostics"""
@@ -182,9 +321,9 @@ class CallDiagnosticsManager:
 
     def __init__(self):
         self._lock = Lock()
-        self._calls: Dict[str, CallDiagnostics] = {}
+        self._calls: dict[str, CallDiagnostics] = {}
         self._call_sequence = 0
-        self._comparison_data: List[Dict] = []
+        self._comparison_data: list[dict] = []
 
     def start_call(self, call_id: str) -> CallDiagnostics:
         """Démarre le diagnostic pour un nouvel appel"""
@@ -198,7 +337,7 @@ class CallDiagnosticsManager:
             logger.info(f"🎯 Diagnostic démarré pour appel #{self._call_sequence} (call_id={call_id})")
             return diag
 
-    def get_call(self, call_id: str) -> Optional[CallDiagnostics]:
+    def get_call(self, call_id: str) -> CallDiagnostics | None:
         """Récupère le diagnostic d'un appel"""
         with self._lock:
             return self._calls.get(call_id)
