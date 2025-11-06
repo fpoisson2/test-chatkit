@@ -4,7 +4,19 @@ import { useState, useEffect, useRef, useCallback } from "react";
  * Hook to detect active outbound calls via WebSocket events.
  * Similar to useWorkflowVoiceSession but for outbound calls.
  */
-export function useOutboundCallSession(): {
+type OutboundCallTranscriptPayload = {
+  callId: string | null;
+  messageId: string | null;
+  role: string | null;
+  text: string;
+  threadId: string | null;
+};
+
+type UseOutboundCallSessionOptions = {
+  onTranscript?: (payload: OutboundCallTranscriptPayload) => void;
+};
+
+export function useOutboundCallSession(options?: UseOutboundCallSessionOptions): {
   callId: string | null;
   isActive: boolean;
   sendCommand: (command: { type: string; [key: string]: any }) => void;
@@ -69,6 +81,24 @@ export function useOutboundCallSession(): {
             // Ignore pings
             break;
 
+          case "transcript_delta": {
+            const payload: OutboundCallTranscriptPayload = {
+              callId: typeof message.call_id === "string" ? message.call_id : null,
+              messageId: typeof message.message_id === "string" ? message.message_id : null,
+              role: typeof message.role === "string" ? message.role : null,
+              text: typeof message.text === "string" ? message.text : "",
+              threadId: typeof message.thread_id === "string" ? message.thread_id : null,
+            };
+            if (options?.onTranscript) {
+              try {
+                options.onTranscript(payload);
+              } catch (err) {
+                console.error("[OutboundCallSession] Transcript callback failed", err);
+              }
+            }
+            break;
+          }
+
           default:
             console.log("[OutboundCallSession] Unknown event type:", message.type);
         }
@@ -93,3 +123,5 @@ export function useOutboundCallSession(): {
 
   return { callId, isActive, sendCommand };
 }
+
+export type { UseOutboundCallSessionOptions, OutboundCallTranscriptPayload };

@@ -786,7 +786,6 @@ class TelephonyVoiceBridge:
                 logger.debug("Fin du flux audio RTP, attente de la fermeture de session")
                 await request_stop()
 
-        transcript_buffers: dict[str, list[str]] = {}
         last_response_id: str | None = None
         agent_is_speaking = False  # Track if agent is currently speaking
         user_speech_detected = False  # Track if we detected user speech
@@ -796,8 +795,11 @@ class TelephonyVoiceBridge:
         tool_call_detected = False  # Set to True when we detect a tool call
         last_assistant_message_was_short = False  # Track if last message was likely just a preamble
 
-        # Track processed history items to avoid re-processing replays
-        processed_item_ids: set[str] = set()  # Track item IDs we've already seen
+        # Track processed history items and their last processed transcript text. The
+        # Realtime API replays history entries as user transcription text becomes
+        # available, so we can't just skip duplicate IDs—we need to process updates
+        # when the text changes.
+        processed_history_texts: dict[str, str] = {}
 
         # Force immediate response after user speech (max 0.1s silence)
         # CRITICAL FIX: Track all watchdog tasks to prevent leaks
@@ -851,7 +853,7 @@ class TelephonyVoiceBridge:
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_tasks, audio_received_after_user_speech, response_started_after_user_speech
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_history_texts, response_watchdog_tasks, audio_received_after_user_speech, response_started_after_user_speech
             try:
                 async for event in session:
                     if not should_continue():
@@ -1149,16 +1151,17 @@ class TelephonyVoiceBridge:
                             # Debug: Log ALL history items to trace tool calls
                             item_id = getattr(item, "id", None)
 
-                            # Create a unique identifier for this item (even if id is None)
-                            # Use index in history + role + content_count as fallback
+                            # Build a stable key for replay detection. OpenAI replays the
+                            # same history entry once transcription text is ready, so we
+                            # compare the text we last processed for this key instead of
+                            # discarding the update outright.
+                            if isinstance(item_id, str) and item_id:
+                                history_key = item_id
+                            else:
+                                history_key = f"{idx}_{role or 'unknown'}"
+
+                            # Preserve the previous logging identifier for debugging.
                             item_unique_id = item_id if item_id else f"{idx}_{role}_{len(getattr(item, 'content', []))}"
-
-                            # DEDUPLICATION: Skip items we've already processed (filters out replays)
-                            if item_unique_id in processed_item_ids:
-                                continue  # Already processed this item
-
-                            # Mark this item as processed
-                            processed_item_ids.add(item_unique_id)
 
                             item_type = getattr(item, "type", None)
                             contents = getattr(item, "content", [])
@@ -1204,6 +1207,10 @@ class TelephonyVoiceBridge:
 
                             if text_parts:
                                 combined_text = "\n".join(text_parts)
+
+                                if processed_history_texts.get(history_key) == combined_text:
+                                    continue
+
                                 transcript_entry = {"role": role, "text": combined_text}
                                 transcripts.append(transcript_entry)
                                 # Log transcription to help debug tool usage
@@ -1215,6 +1222,8 @@ class TelephonyVoiceBridge:
                                         await self._hooks.on_transcript(transcript_entry)
                                     except Exception as e:
                                         logger.error("Erreur lors de l'envoi de la transcription en temps réel: %s", e)
+
+                                processed_history_texts[history_key] = combined_text
 
                                 # Track if assistant message is short (likely just a preamble)
                                 if role == "assistant":

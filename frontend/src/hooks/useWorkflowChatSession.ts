@@ -37,9 +37,13 @@ export const useWorkflowChatSession = ({
       // Force a full thread reload by re-setting the thread ID
       // This ensures new items added directly to the store are visible
       const currentThread = control.threadId;
-      if (currentThread && context?.includes('[Voice]')) {
+      const shouldForceReload =
+        context?.includes('[Voice]') || context?.includes('[OutboundCall]');
+      if (currentThread && shouldForceReload) {
         if (import.meta.env.DEV) {
-          console.log('[WorkflowChat] Forçant rechargement du thread pour transcriptions vocales', { threadId: currentThread });
+          console.log('[WorkflowChat] Forçant rechargement du thread pour transcriptions vocales ou sortantes', {
+            threadId: currentThread,
+          });
         }
         control.setThreadId(currentThread);
       }

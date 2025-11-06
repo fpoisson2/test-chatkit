@@ -5,20 +5,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import uuid
 import random
-from datetime import datetime, UTC
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from ..models import OutboundCall, SipAccount, WorkflowDefinition
+from ..config import get_settings
 from ..database import SessionLocal
+from ..models import OutboundCall, SipAccount, WorkflowDefinition
+from ..realtime_runner import close_voice_session, open_voice_session
+from ..workflows.service import resolve_start_telephony_config
+from .outbound_events_manager import get_outbound_events_manager
 from .rtp_server import RtpServer, RtpServerConfig
 from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
-from ..workflows.service import resolve_start_telephony_config
-from ..config import get_settings
-from ..realtime_runner import open_voice_session, close_voice_session
 
 logger = logging.getLogger("chatkit.telephony.outbound")
 
@@ -34,7 +35,8 @@ logger.info(
 # PJSUA imports
 try:
     import pjsua2 as pj
-    from .pjsua_adapter import PJSUAAdapter, PJSUACall, PJSUA_AVAILABLE
+
+    from .pjsua_adapter import PJSUA_AVAILABLE, PJSUAAdapter, PJSUACall
     from .pjsua_audio_bridge import create_pjsua_audio_bridge
     if PJSUA_AVAILABLE:
         logger.info("PJSUA disponible pour les appels sortants")
@@ -189,7 +191,6 @@ class OutboundCallManager:
         self.active_calls[call_id] = session
 
         # Émettre un événement call_started
-        from .outbound_events_manager import get_outbound_events_manager
         events_mgr = get_outbound_events_manager()
         asyncio.create_task(events_mgr.emit_event({
             "type": "call_started",
@@ -435,7 +436,6 @@ class OutboundCallManager:
             session.mark_complete()
 
             # Émettre un événement call_ended
-            from .outbound_events_manager import get_outbound_events_manager
             events_mgr = get_outbound_events_manager()
             try:
                 asyncio.create_task(events_mgr.emit_event({
@@ -603,12 +603,17 @@ class OutboundCallManager:
                         logger.debug("No thread_id in call metadata, skipping real-time transcript")
                         return
 
-                    # Ajouter la transcription au thread ChatKit
+                    from chatkit.store import NotFoundError
+                    from chatkit.types import (
+                        AssistantMessageContent,
+                        AssistantMessageItem,
+                        InferenceOptions,
+                        UserMessageInput,
+                        UserMessageTextContent,
+                    )
+
                     from ..chatkit import get_chatkit_server
                     from ..chatkit_server.context import ChatKitRequestContext
-                    from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
-                    from datetime import datetime, timezone
-                    import uuid
                     from ..models import ChatThread
 
                     server = get_chatkit_server()
@@ -627,6 +632,14 @@ class OutboundCallManager:
                         public_base_url=None,
                     )
 
+                    try:
+                        thread_metadata = await server.store.load_thread(
+                            thread_id, context=context
+                        )
+                    except NotFoundError:
+                        logger.warning("Thread %s not found in store", thread_id)
+                        return
+
                     # Ajouter le message de transcription
                     role = transcript.get("role")
                     text = transcript.get("text", "")
@@ -634,33 +647,55 @@ class OutboundCallManager:
                     if not text:
                         return
 
-                    # Créer un ID unique pour le message
-                    message_id = f"transcript_{session.call_id}_{uuid.uuid4().hex[:8]}"
-                    now = datetime.now(timezone.utc)
-
-                    # Ajouter le message via le store API
                     try:
                         if role == "user":
-                            user_msg = UserMessageItem(
-                                id=message_id,
-                                thread_id=thread_id,
-                                created_at=now,
+                            user_input = UserMessageInput(
                                 content=[UserMessageTextContent(text=text)],
                                 attachments=[],
-                                inference_options=None,
                                 quoted_text=None,
+                                inference_options=InferenceOptions(),
                             )
-                            await server.store.add_thread_item(thread_id, user_msg, context)
+                            user_item = await server._build_user_message_item(
+                                user_input, thread_metadata, context
+                            )
+                            await server.store.add_thread_item(
+                                thread_id, user_item, context
+                            )
+                            message_id = user_item.id
                         elif role == "assistant":
+                            message_id = server.store.generate_item_id(
+                                "message", thread_metadata, context
+                            )
                             assistant_msg = AssistantMessageItem(
                                 id=message_id,
                                 thread_id=thread_id,
-                                created_at=now,
+                                created_at=datetime.now(),
                                 content=[AssistantMessageContent(text=text)],
                             )
-                            await server.store.add_thread_item(thread_id, assistant_msg, context)
+                            await server.store.add_thread_item(
+                                thread_id, assistant_msg, context
+                            )
+                        else:
+                            return
 
-                        logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+                        events_mgr = get_outbound_events_manager()
+                        await events_mgr.emit_event(
+                            {
+                                "type": "transcript_delta",
+                                "call_id": session.call_id,
+                                "thread_id": thread_id,
+                                "message_id": message_id,
+                                "role": role,
+                                "text": text,
+                            }
+                        )
+
+                        logger.info(
+                            "Added real-time transcript to thread %s: %s: %s",
+                            thread_id,
+                            role,
+                            text[:50],
+                        )
                     except Exception as e:
                         logger.error("Failed to add transcript to thread: %s", e, exc_info=True)
 
@@ -1098,12 +1133,17 @@ class OutboundCallManager:
                             logger.debug("No thread_id in call metadata, skipping real-time transcript")
                             return
 
-                        # Ajouter la transcription au thread ChatKit
+                        from chatkit.store import NotFoundError
+                        from chatkit.types import (
+                            AssistantMessageContent,
+                            AssistantMessageItem,
+                            InferenceOptions,
+                            UserMessageInput,
+                            UserMessageTextContent,
+                        )
+
                         from ..chatkit import get_chatkit_server
                         from ..chatkit_server.context import ChatKitRequestContext
-                        from chatkit.types import UserMessageItem, AssistantMessageItem, UserMessageTextContent, AssistantMessageContent
-                        from datetime import datetime, timezone
-                        import uuid
                         from ..models import ChatThread
 
                         server = get_chatkit_server()
@@ -1122,6 +1162,14 @@ class OutboundCallManager:
                             public_base_url=None,
                         )
 
+                        try:
+                            thread_metadata = await server.store.load_thread(
+                                thread_id, context=context
+                            )
+                        except NotFoundError:
+                            logger.warning("Thread %s not found in store", thread_id)
+                            return
+
                         # Ajouter le message de transcription
                         role = transcript.get("role")
                         text = transcript.get("text", "")
@@ -1129,33 +1177,55 @@ class OutboundCallManager:
                         if not text:
                             return
 
-                        # Créer un ID unique pour le message
-                        message_id = f"transcript_{session.call_id}_{uuid.uuid4().hex[:8]}"
-                        now = datetime.now(timezone.utc)
-
-                        # Ajouter le message via le store API
                         try:
                             if role == "user":
-                                user_msg = UserMessageItem(
-                                    id=message_id,
-                                    thread_id=thread_id,
-                                    created_at=now,
+                                user_input = UserMessageInput(
                                     content=[UserMessageTextContent(text=text)],
                                     attachments=[],
-                                    inference_options=None,
                                     quoted_text=None,
+                                    inference_options=InferenceOptions(),
                                 )
-                                await server.store.add_thread_item(thread_id, user_msg, context)
+                                user_item = await server._build_user_message_item(
+                                    user_input, thread_metadata, context
+                                )
+                                await server.store.add_thread_item(
+                                    thread_id, user_item, context
+                                )
+                                message_id = user_item.id
                             elif role == "assistant":
+                                message_id = server.store.generate_item_id(
+                                    "message", thread_metadata, context
+                                )
                                 assistant_msg = AssistantMessageItem(
                                     id=message_id,
                                     thread_id=thread_id,
-                                    created_at=now,
+                                    created_at=datetime.now(),
                                     content=[AssistantMessageContent(text=text)],
                                 )
-                                await server.store.add_thread_item(thread_id, assistant_msg, context)
+                                await server.store.add_thread_item(
+                                    thread_id, assistant_msg, context
+                                )
+                            else:
+                                return
 
-                            logger.info("Added real-time transcript to thread %s: %s: %s", thread_id, role, text[:50])
+                            events_mgr = get_outbound_events_manager()
+                            await events_mgr.emit_event(
+                                {
+                                    "type": "transcript_delta",
+                                    "call_id": session.call_id,
+                                    "thread_id": thread_id,
+                                    "message_id": message_id,
+                                    "role": role,
+                                    "text": text,
+                                }
+                            )
+
+                            logger.info(
+                                "Added real-time transcript to thread %s: %s: %s",
+                                thread_id,
+                                role,
+                                text[:50],
+                            )
                         except Exception as e:
                             logger.error("Failed to add transcript to thread: %s", e, exc_info=True)
 
@@ -1366,7 +1436,6 @@ class OutboundCallManager:
             session.mark_complete()
 
             # Émettre un événement call_ended
-            from .outbound_events_manager import get_outbound_events_manager
             events_mgr = get_outbound_events_manager()
             try:
                 asyncio.create_task(events_mgr.emit_event({
@@ -1584,7 +1653,6 @@ a=sendrecv
                 db.close()
 
             # 5. Émettre un événement call_ended
-            from .outbound_events_manager import get_outbound_events_manager
             events_mgr = get_outbound_events_manager()
             try:
                 asyncio.create_task(events_mgr.emit_event({
