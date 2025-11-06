@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type CSSProperties } from "react";
 
 import { Star } from "lucide-react";
 
@@ -102,10 +102,10 @@ const WorkflowBuilderSidebar = ({
 
   const workflowSidebarContent = useMemo(() => {
     const sectionId = "workflow-builder-sidebar";
-    const warningStyle = {
+    const warningStyle: CSSProperties = {
       color: "var(--text-muted)",
       fontWeight: 600,
-    } as const;
+    };
     const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
 
     type CombinedEntry =
@@ -152,7 +152,7 @@ const WorkflowBuilderSidebar = ({
       if (loading && combinedEntries.length === 0) {
         return (
           <p className="chatkit-sidebar__section-text" aria-live="polite">
-            {t("workflowBuilder.localSection.loading")}
+            Chargement des workflows…
           </p>
         );
       }
