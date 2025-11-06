@@ -358,8 +358,6 @@ const WorkflowBuilderPage = () => {
   const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
-  const mobileActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
