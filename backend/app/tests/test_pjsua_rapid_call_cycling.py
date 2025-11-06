@@ -28,8 +28,7 @@ With fixes applied:
 import asyncio
 import logging
 import time
-from typing import Any
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 

@@ -417,16 +417,16 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
                 "type": "error",
                 "message": str(e)
             })
-        except:
-            pass
+        except Exception as send_error:
+            logger.debug("Failed to send error message to websocket: %s", send_error)
     finally:
         # Désenregistrer le listener
         if queue:
             await audio_stream_mgr.unregister_listener(call_id, queue)
         try:
             await websocket.close()
-        except:
-            pass
+        except Exception as close_error:
+            logger.debug("Failed to close websocket: %s", close_error)
 
 
 @router.websocket("/api/outbound/events")

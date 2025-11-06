@@ -4,11 +4,9 @@ import datetime
 import json
 import logging
 import math
-import os
 import re
 import uuid
 from dataclasses import dataclass
-from functools import lru_cache
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlparse
@@ -26,7 +24,6 @@ from .config import (
 )
 from .database import SessionLocal
 from .models import AppSettings, WorkflowAppearance
-from .models import AppSettings
 from .secret_utils import decrypt_secret as _decrypt_secret
 from .secret_utils import encrypt_secret as _encrypt_secret
 from .secret_utils import ensure_secret_key_available
@@ -419,7 +416,7 @@ def _build_model_provider_configs(
     settings: AppSettings | None,
 ) -> tuple[ModelProviderConfig, ...]:
     if not settings:
-        return tuple()
+        return ()
 
     records = _load_stored_model_providers(settings)
     configs: list[ModelProviderConfig] = []

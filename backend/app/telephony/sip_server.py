@@ -21,7 +21,6 @@ from ..workflows.service import (
     TelephonyStartConfiguration,
     WorkflowDefinition,
     WorkflowService,
-    resolve_start_telephony_config,
 )
 
 logger = logging.getLogger(__name__)
