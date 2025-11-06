@@ -153,6 +153,7 @@ import { parseWorkflowImport } from "./importWorkflow";
 import WorkflowAppearanceModal, {
   type WorkflowAppearanceTarget,
 } from "../workflows/WorkflowAppearanceModal";
+import { useClickOutsideHandler } from "../../hooks/useClickOutsideHandler";
 import type {
   AgentParameters,
   AgentNestedWorkflowSelection,
@@ -994,44 +995,37 @@ const WorkflowBuilderPage = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeBlockLibrary, isBlockLibraryOpen, isMobileLayout]);
 
-  useEffect(() => {
-    if (!isMobileActionsOpen) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeMobileActions({ focusTrigger: true });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [closeMobileActions, isMobileActionsOpen]);
+  const handleMobileActionsOutsideClick = useCallback(() => {
+    closeMobileActions();
+  }, [closeMobileActions]);
 
-  useEffect(() => {
-    if (!isMobileActionsOpen) {
-      return;
-    }
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return;
-      }
+  const handleMobileActionsEscape = useCallback(
+    (event: KeyboardEvent) => {
+      event.preventDefault();
+      closeMobileActions({ focusTrigger: true });
+    },
+    [closeMobileActions]
+  );
+
+  const shouldIgnoreMobileActionsEvent = useCallback(
+    (target: Node) => {
       if (mobileActionsTriggerRef.current?.contains(target)) {
-        return;
+        return true;
       }
       if (mobileActionsMenuRef.current?.contains(target)) {
-        return;
+        return true;
       }
-      closeMobileActions();
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [closeMobileActions, isMobileActionsOpen]);
+      return false;
+    },
+    []
+  );
+
+  useClickOutsideHandler({
+    enabled: isMobileActionsOpen,
+    onClickOutside: handleMobileActionsOutsideClick,
+    onEscape: handleMobileActionsEscape,
+    shouldIgnoreEvent: shouldIgnoreMobileActionsEvent,
+  });
 
   useEffect(() => {
     if (!isBlockLibraryOpen) {
@@ -1045,38 +1039,32 @@ const WorkflowBuilderPage = () => {
     }
   }, [closeWorkflowMenu, workflows.length]);
 
-  useEffect(() => {
-    if (openWorkflowMenuId === null) {
-      return;
+  const shouldIgnoreWorkflowMenuEvent = useCallback((target: Node) => {
+    if (!(target instanceof Element)) {
+      return false;
     }
+    if (target.closest('[data-workflow-menu]')) {
+      return true;
+    }
+    if (target.closest('[data-workflow-menu-trigger]')) {
+      return true;
+    }
+    return false;
+  }, []);
 
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target) {
-        return;
-      }
-      if (
-        target.closest('[data-workflow-menu]') ||
-        target.closest('[data-workflow-menu-trigger]')
-      ) {
-        return;
-      }
+  const handleWorkflowMenuEscape = useCallback(
+    (_event: KeyboardEvent) => {
       closeWorkflowMenu();
-    };
+    },
+    [closeWorkflowMenu]
+  );
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeWorkflowMenu();
-      }
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [closeWorkflowMenu, openWorkflowMenuId]);
+  useClickOutsideHandler({
+    enabled: openWorkflowMenuId !== null,
+    onClickOutside: closeWorkflowMenu,
+    onEscape: handleWorkflowMenuEscape,
+    shouldIgnoreEvent: shouldIgnoreWorkflowMenuEvent,
+  });
 
   const {
     applySelection,

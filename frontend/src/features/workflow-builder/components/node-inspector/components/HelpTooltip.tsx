@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 
 import styles from "../NodeInspector.module.css";
+import { useClickOutsideHandler } from "../../../../../hooks/useClickOutsideHandler";
 
 type HelpTooltipProps = {
   label: string;
@@ -11,32 +12,28 @@ export const HelpTooltip = ({ label }: HelpTooltipProps) => {
   const tooltipId = useId();
   const containerRef = useRef<HTMLSpanElement | null>(null);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
+  const closeTooltip = useCallback(() => {
+    setIsOpen(false);
+  }, []);
 
-    const handlePointerDown = (event: PointerEvent) => {
-      if (containerRef.current?.contains(event.target as Node)) {
-        return;
-      }
-      setIsOpen(false);
-    };
+  const shouldIgnoreTooltipEvent = useCallback(
+    (target: Node) => containerRef.current?.contains(target) ?? false,
+    []
+  );
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-      }
-    };
+  const handleTooltipEscape = useCallback(
+    (_event: KeyboardEvent) => {
+      closeTooltip();
+    },
+    [closeTooltip]
+  );
 
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
+  useClickOutsideHandler({
+    enabled: isOpen,
+    onClickOutside: closeTooltip,
+    onEscape: handleTooltipEscape,
+    shouldIgnoreEvent: shouldIgnoreTooltipEvent,
+  });
 
   const handleBlur = () => {
     requestAnimationFrame(() => {
