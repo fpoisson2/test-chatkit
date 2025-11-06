@@ -3066,6 +3066,23 @@ const WorkflowBuilderPage = () => {
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
 
+  const headerStyle = useMemo(() => {
+    const baseStyle = getHeaderContainerStyle(isMobileLayout);
+    return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
+  }, [isMobileLayout]);
+
+  const headerNavigationButtonStyle = useMemo(
+    () => getHeaderNavigationButtonStyle(isMobileLayout),
+    [isMobileLayout],
+  );
+
+  const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
+    if (isMobileLayout) {
+      return { position: "absolute", inset: 0, overflow: "hidden" };
+    }
+    return { position: "relative", flex: 1, overflow: "hidden", minHeight: 0 };
+  }, [isMobileLayout]);
+
   const workspaceContentStyle = useMemo<CSSProperties>(() => {
     if (isMobileLayout) {
       return {
