@@ -222,7 +222,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             from agents.realtime.agent import RealtimeAgent
             from agents.realtime.runner import RealtimeRunner
 
-            from .realtime_runner import (
+            from ..realtime_runner import (
                 _cleanup_mcp_servers,
                 _connect_mcp_servers,
                 _normalize_realtime_tools_payload,
