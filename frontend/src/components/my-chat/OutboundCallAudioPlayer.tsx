@@ -45,6 +45,7 @@ export const OutboundCallAudioPlayer = ({
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include", // Include cookies for authentication
       });
 
       if (!response.ok) {
