@@ -55,6 +55,7 @@ import {
 } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import { useTokenResourceLoader } from "./hooks/useTokenResourceLoader";
+import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
 import {
   getAgentFileSearchConfig,
   getAgentWorkflowTools,
@@ -980,35 +981,25 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
-  useEffect(() => {
-    if (!isMobileLayout || !isBlockLibraryOpen) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeBlockLibrary({ focusToggle: true });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeBlockLibrary, isBlockLibraryOpen, isMobileLayout]);
+  useEscapeKeyHandler(
+    () => {
+      closeBlockLibrary({ focusToggle: true });
+    },
+    {
+      enabled: isMobileLayout && isBlockLibraryOpen,
+      preventDefault: true,
+    },
+  );
 
-  useEffect(() => {
-    if (!isMobileActionsOpen) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeMobileActions({ focusTrigger: true });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [closeMobileActions, isMobileActionsOpen]);
+  useEscapeKeyHandler(
+    () => {
+      closeMobileActions({ focusTrigger: true });
+    },
+    {
+      enabled: isMobileActionsOpen,
+      preventDefault: true,
+    },
+  );
 
   useEffect(() => {
     if (!isMobileActionsOpen) {
@@ -1064,19 +1055,20 @@ const WorkflowBuilderPage = () => {
       closeWorkflowMenu();
     };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeWorkflowMenu();
-      }
-    };
-
     window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [closeWorkflowMenu, openWorkflowMenuId]);
+
+  useEscapeKeyHandler(
+    () => {
+      closeWorkflowMenu();
+    },
+    {
+      enabled: openWorkflowMenuId !== null,
+    },
+  );
 
   const {
     applySelection,
@@ -2286,22 +2278,15 @@ const WorkflowBuilderPage = () => {
     propertiesPanelCloseButtonRef.current?.focus();
   }, [isMobileLayout, isPropertiesPanelOpen]);
 
-  useEffect(() => {
-    if (!isMobileLayout || !isPropertiesPanelOpen) {
-      return;
-    }
-    if (typeof window === "undefined") {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        handleClosePropertiesPanel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleClosePropertiesPanel, isMobileLayout, isPropertiesPanelOpen]);
+  useEscapeKeyHandler(
+    () => {
+      handleClosePropertiesPanel();
+    },
+    {
+      enabled: isMobileLayout && isPropertiesPanelOpen,
+      preventDefault: true,
+    },
+  );
 
   const updateNodeData = useCallback(
     (nodeId: string, updater: (data: FlowNodeData) => FlowNodeData) => {
@@ -3252,22 +3237,9 @@ const WorkflowBuilderPage = () => {
     setDeployModalOpen(false);
   }, [isDeploying]);
 
-  useEffect(() => {
-    if (!isDeployModalOpen) {
-      return;
-    }
-
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        handleCloseDeployModal();
-      }
-    };
-
-    window.addEventListener("keydown", handleKey);
-    return () => {
-      window.removeEventListener("keydown", handleKey);
-    };
-  }, [handleCloseDeployModal, isDeployModalOpen]);
+  useEscapeKeyHandler(handleCloseDeployModal, {
+    enabled: isDeployModalOpen,
+  });
 
   const handleDuplicateWorkflow = useCallback(
     async (workflowId?: number) => {
