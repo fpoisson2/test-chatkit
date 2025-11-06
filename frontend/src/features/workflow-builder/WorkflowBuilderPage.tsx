@@ -6954,6 +6954,17 @@ const WorkflowBuilderPage = () => {
     [isMobileLayout],
   );
 
+  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
+    if (isMobileLayout) {
+      return undefined;
+    }
+
+    return {
+      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
+      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
+    };
+  }, [headerOverlayOffset, isMobileLayout]);
+
   const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
