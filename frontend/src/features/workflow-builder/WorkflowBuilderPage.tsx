@@ -6949,6 +6949,11 @@ const WorkflowBuilderPage = () => {
     return { position: "relative", flex: 1, overflow: "hidden", minHeight: 0 };
   }, [isMobileLayout]);
 
+  const headerOverlayOffset = useMemo(
+    () => (isMobileLayout ? "4rem" : "4.25rem"),
+    [isMobileLayout],
+  );
+
   const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
