@@ -6,7 +6,10 @@ from .service import (
     TelephonyRouteConfig,
     TelephonyRouteOverrides,
     TelephonyStartConfiguration,
+    WorkflowAppearanceService,
+    WorkflowGraphValidator,
     WorkflowNotFoundError,
+    WorkflowPersistenceService,
     WorkflowService,
     WorkflowValidationError,
     WorkflowVersionNotFoundError,
@@ -23,7 +26,10 @@ from .service import (
 )
 
 __all__ = [
+    "WorkflowAppearanceService",
+    "WorkflowGraphValidator",
     "WorkflowNotFoundError",
+    "WorkflowPersistenceService",
     "WorkflowService",
     "WorkflowVersionNotFoundError",
     "HostedWorkflowNotFoundError",

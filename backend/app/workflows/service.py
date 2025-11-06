@@ -635,6 +635,847 @@ class WorkflowVersionNotFoundError(LookupError):
         self.version_id = version_id
 
 
+class WorkflowGraphValidator:
+    """Valide et normalise les graphes de workflow."""
+
+    def __init__(self, workflow_defaults: WorkflowDefaults) -> None:
+        self._workflow_defaults = workflow_defaults
+
+    def validate_graph_payload(
+        self, graph_payload: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        if graph_payload is None:
+            payload_dict: dict[str, Any] | None = None
+        elif isinstance(graph_payload, Mapping):
+            payload_dict = dict(graph_payload)
+        else:
+            raise WorkflowValidationError(
+                "Le graphe de workflow doit être un objet JSON."
+            )
+
+        nodes, edges = self.normalize_graph(payload_dict)
+        return {
+            "nodes": [asdict(node) for node in nodes],
+            "edges": [asdict(edge) for edge in edges],
+        }
+
+    def normalize_graph(
+        self,
+        payload: dict[str, Any] | None,
+        *,
+        allow_empty: bool = False,
+    ) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
+        if not payload:
+            if allow_empty:
+                return self.build_minimal_graph()
+            raise WorkflowValidationError("Le workflow doit contenir un graphe valide.")
+
+        raw_nodes = payload.get("nodes") or []
+        raw_edges = payload.get("edges") or []
+        if not raw_nodes:
+            if allow_empty:
+                if raw_edges:
+                    raise WorkflowValidationError(
+                        "Impossible de définir des connexions sans nœuds."
+                    )
+                return self.build_minimal_graph()
+            raise WorkflowValidationError("Le workflow doit contenir au moins un nœud.")
+
+        defaults = self._workflow_defaults
+
+        normalized_nodes: list[NormalizedNode] = []
+        slugs: set[str] = set()
+        enabled_agent_slugs: set[str] = set()
+        enabled_agent_keys: set[str] = set()
+
+        for entry in raw_nodes:
+            if not isinstance(entry, dict):
+                raise WorkflowValidationError("Chaque nœud doit être un objet JSON.")
+
+            slug = str(entry.get("slug", "")).strip()
+            if not slug:
+                raise WorkflowValidationError(
+                    "Chaque nœud doit posséder un identifiant (slug)."
+                )
+            if slug in slugs:
+                raise WorkflowValidationError(f"Slug dupliqué détecté : {slug}")
+            slugs.add(slug)
+
+            kind = str(entry.get("kind", "")).strip().lower()
+            if kind not in {
+                "start",
+                "agent",
+                "voice_agent",
+                "outbound_call",
+                "condition",
+                "state",
+                "transform",
+                "watch",
+                "wait_for_user_input",
+                "assistant_message",
+                "user_message",
+                "json_vector_store",
+                "widget",
+                "parallel_split",
+                "parallel_join",
+                "end",
+            }:
+                raise WorkflowValidationError(
+                    f"Type de nœud invalide : {kind or 'inconnu'}"
+                )
+
+            agent_key: str | None = None
+            if kind in _AGENT_NODE_KINDS:
+                raw_agent_key = entry.get("agent_key")
+                if raw_agent_key is None:
+                    agent_key = None
+                elif isinstance(raw_agent_key, str):
+                    trimmed_key = raw_agent_key.strip()
+                    if trimmed_key:
+                        supported_keys = defaults.supported_agent_keys
+                        if supported_keys and trimmed_key not in supported_keys:
+                            raise WorkflowValidationError(
+                                f"Agent inconnu : {trimmed_key}"
+                            )
+                        agent_key = trimmed_key
+                else:
+                    raise WorkflowValidationError(
+                        f"Le nœud agent {slug} possède une clé d'agent invalide."
+                    )
+
+            display_name_raw = entry.get("display_name")
+            display_name = (
+                str(display_name_raw)
+                if display_name_raw is not None and str(display_name_raw).strip()
+                else None
+            )
+
+            is_enabled = bool(entry.get("is_enabled", True))
+
+            parameters = self.ensure_dict(entry.get("parameters"), "paramètres")
+            metadata = self.ensure_dict(entry.get("metadata"), "métadonnées")
+
+            if kind in _AGENT_NODE_KINDS and "workflow" in parameters:
+                normalized_reference = self.normalize_nested_workflow_reference(
+                    parameters.get("workflow"), node_slug=slug
+                )
+                if normalized_reference is None:
+                    parameters.pop("workflow", None)
+                else:
+                    parameters["workflow"] = normalized_reference
+
+            if kind in _AGENT_NODE_KINDS and "tools" in parameters:
+                normalized_tools = self.normalize_agent_tools(
+                    parameters.get("tools"), node_slug=f"{slug}.tools"
+                )
+                if normalized_tools is None:
+                    parameters.pop("tools", None)
+                else:
+                    parameters["tools"] = normalized_tools
+
+            if kind == "parallel_split":
+                join_slug_raw = parameters.get("join_slug")
+                if join_slug_raw is None:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit préciser la jointure à "
+                        "rejoindre."
+                    )
+                if not isinstance(join_slug_raw, str):
+                    raise WorkflowValidationError(
+                        f"La jointure du nœud parallel_split {slug} doit être une "
+                        "chaîne de caractères."
+                    )
+                join_slug = join_slug_raw.strip()
+                if not join_slug:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit préciser la jointure à "
+                        "rejoindre."
+                    )
+                parameters["join_slug"] = join_slug
+
+                raw_branches = parameters.get("branches")
+                if not isinstance(raw_branches, Sequence):
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit définir une liste de "
+                        "branches."
+                    )
+
+                sanitized_branches: list[dict[str, str]] = []
+                for raw_branch in raw_branches:
+                    if isinstance(raw_branch, Mapping):
+                        branch_slug_raw = raw_branch.get("slug")
+                        branch_label_raw = raw_branch.get("label")
+                    else:
+                        branch_slug_raw = raw_branch
+                        branch_label_raw = None
+
+                    branch_slug = (
+                        branch_slug_raw.strip()
+                        if isinstance(branch_slug_raw, str)
+                        else None
+                    )
+                    if not branch_slug:
+                        raise WorkflowValidationError(
+                            "Chaque branche parallel_split doit fournir un slug unique."
+                        )
+                    if branch_slug in slugs:
+                        raise WorkflowValidationError(
+                            f"Le slug {branch_slug} est déjà utilisé."
+                        )
+                    if branch_slug in {entry["slug"] for entry in sanitized_branches}:
+                        raise WorkflowValidationError(
+                            "La branche parallel_split "
+                            f"{branch_slug} est déclarée en double."
+                        )
+
+                    label = (
+                        branch_label_raw.strip()
+                        if isinstance(branch_label_raw, str)
+                        else None
+                    )
+
+                    payload: dict[str, str] = {"slug": branch_slug}
+                    if label is not None:
+                        payload["label"] = label
+                    sanitized_branches.append(payload)
+
+                if len(sanitized_branches) < 2:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit définir au moins deux "
+                        "branches."
+                    )
+
+                parameters["branches"] = sanitized_branches
+
+            node = NormalizedNode(
+                slug=slug,
+                kind=kind,
+                display_name=display_name,
+                agent_key=agent_key,
+                is_enabled=is_enabled,
+                parameters=parameters,
+                metadata=metadata,
+            )
+            normalized_nodes.append(node)
+
+            if node.kind in _AGENT_NODE_KINDS and node.is_enabled:
+                enabled_agent_slugs.add(node.slug)
+                if node.agent_key:
+                    enabled_agent_keys.add(node.agent_key)
+
+        if not any(
+            node.kind == "start" and node.is_enabled for node in normalized_nodes
+        ):
+            raise WorkflowValidationError(
+                "Le workflow doit contenir un nœud de début actif."
+            )
+        normalized_edges: list[NormalizedEdge] = []
+        for entry in raw_edges:
+            if not isinstance(entry, dict):
+                raise WorkflowValidationError(
+                    "Chaque connexion doit être un objet JSON."
+                )
+            source_slug = str(entry.get("source", "")).strip()
+            target_slug = str(entry.get("target", "")).strip()
+            if not source_slug or not target_slug:
+                raise WorkflowValidationError(
+                    "Chaque connexion doit préciser source et cible."
+                )
+            if source_slug not in slugs:
+                raise WorkflowValidationError(
+                    f"Connexion inconnue : source {source_slug} absente"
+                )
+            if target_slug not in slugs:
+                raise WorkflowValidationError(
+                    f"Connexion inconnue : cible {target_slug} absente"
+                )
+
+            condition_raw = entry.get("condition")
+            if condition_raw is None:
+                condition = None
+            else:
+                condition = str(condition_raw).strip()
+                if condition == "":
+                    condition = None
+
+            metadata = self.ensure_dict(entry.get("metadata"), "métadonnées")
+
+            normalized_edges.append(
+                NormalizedEdge(
+                    source_slug=source_slug,
+                    target_slug=target_slug,
+                    condition=condition,
+                    metadata=metadata,
+                )
+            )
+
+        minimal_skeleton = self.is_minimal_skeleton(normalized_nodes, normalized_edges)
+        has_enabled_widget = any(
+            node.kind == "widget" and node.is_enabled for node in normalized_nodes
+        )
+        has_enabled_assistant_message = any(
+            node.kind == "assistant_message" and node.is_enabled
+            for node in normalized_nodes
+        )
+        has_enabled_user_message = any(
+            node.kind == "user_message" and node.is_enabled for node in normalized_nodes
+        )
+        if not (
+            enabled_agent_slugs
+            or has_enabled_widget
+            or has_enabled_assistant_message
+            or has_enabled_user_message
+            or allow_empty
+            or minimal_skeleton
+        ):
+            raise WorkflowValidationError(
+                "Le workflow doit activer au moins un agent, un message "
+                "(assistant ou utilisateur) ou un widget."
+            )
+
+        self.validate_graph_structure(normalized_nodes, normalized_edges)
+        return normalized_nodes, normalized_edges
+
+    def build_minimal_graph(self) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
+        end_message = self._workflow_defaults.default_end_message
+        nodes = [
+            NormalizedNode(
+                slug="start",
+                kind="start",
+                display_name="Début",
+                agent_key=None,
+                is_enabled=True,
+                parameters={},
+                metadata={"position": {"x": 0, "y": 0}},
+            ),
+            NormalizedNode(
+                slug="end",
+                kind="end",
+                display_name="Fin",
+                agent_key=None,
+                is_enabled=True,
+                parameters={
+                    "message": end_message,
+                    "status": {"type": "closed", "reason": end_message},
+                },
+                metadata={"position": {"x": 320, "y": 0}},
+            ),
+        ]
+        edges = [
+            NormalizedEdge(
+                source_slug="start",
+                target_slug="end",
+                condition=None,
+                metadata={"label": ""},
+            )
+        ]
+        return nodes, edges
+
+    def ensure_dict(self, value: Any, label: str) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, BaseModel):
+            value = value.model_dump()
+        if isinstance(value, Mapping):
+            candidate = dict(value)
+            sanitized, _removed = sanitize_value(candidate)
+            if isinstance(sanitized, dict):
+                return sanitized
+            return candidate
+        raise WorkflowValidationError(f"Les {label} doivent être un objet JSON.")
+
+    def normalize_nested_workflow_reference(
+        self, value: Any, *, node_slug: str
+    ) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if isinstance(value, BaseModel):
+            value = value.model_dump()
+        if not isinstance(value, Mapping):
+            raise WorkflowValidationError(
+                "La configuration 'workflow' du nœud "
+                f"{node_slug} doit être un objet JSON."
+            )
+
+        raw_id = value.get("id")
+        workflow_id: int | None = None
+        if isinstance(raw_id, bool):
+            workflow_id = None
+        elif isinstance(raw_id, int):
+            workflow_id = raw_id
+        elif isinstance(raw_id, float) and math.isfinite(raw_id):
+            workflow_id = int(raw_id)
+        elif isinstance(raw_id, str):
+            trimmed_id = raw_id.strip()
+            if trimmed_id:
+                try:
+                    workflow_id = int(trimmed_id)
+                except ValueError as exc:
+                    raise WorkflowValidationError(
+                        "L'identifiant de workflow du nœud "
+                        f"{node_slug} doit être un entier."
+                    ) from exc
+        elif raw_id is not None:
+            raise WorkflowValidationError(
+                f"L'identifiant de workflow du nœud {node_slug} est invalide."
+            )
+
+        if workflow_id is not None and workflow_id <= 0:
+            raise WorkflowValidationError(
+                "L'identifiant de workflow du nœud "
+                f"{node_slug} doit être strictement positif."
+            )
+
+        raw_slug = value.get("slug")
+        workflow_slug: str | None = None
+        if raw_slug is None:
+            workflow_slug = None
+        elif isinstance(raw_slug, str):
+            slug_candidate = raw_slug.strip()
+            if not slug_candidate:
+                raise WorkflowValidationError(
+                    "Le slug de workflow du nœud "
+                    f"{node_slug} doit être une chaîne non vide."
+                )
+            workflow_slug = slug_candidate
+        else:
+            raise WorkflowValidationError(
+                "Le slug de workflow du nœud "
+                f"{node_slug} doit être une chaîne de caractères."
+            )
+
+        if workflow_id is None and workflow_slug is None:
+            raise WorkflowValidationError(
+                f"Le nœud {node_slug} doit préciser un identifiant "
+                "ou un slug de workflow."
+            )
+
+        sanitized: dict[str, Any] = {}
+        if workflow_id is not None:
+            sanitized["id"] = workflow_id
+        if workflow_slug is not None:
+            sanitized["slug"] = workflow_slug
+        return sanitized
+
+    def normalize_agent_tools(
+        self, value: Any, *, node_slug: str
+    ) -> list[dict[str, Any]] | None:
+        if value is None:
+            return None
+        if isinstance(value, BaseModel):
+            value = value.model_dump()
+        if not isinstance(value, Sequence) or isinstance(
+            value, str | bytes | bytearray
+        ):
+            raise WorkflowValidationError(
+                "Les outils du nœud "
+                f"{node_slug} doivent être fournis sous forme de liste."
+            )
+
+        normalized: list[dict[str, Any]] = []
+        for index, entry in enumerate(value, start=1):
+            tool_label = f"{node_slug}[{index}]"
+            current = entry
+            if isinstance(current, BaseModel):
+                current = current.model_dump()
+
+            if isinstance(current, Mapping):
+                sanitized = dict(current)
+
+                tool_type = sanitized.get("type")
+                if isinstance(tool_type, str) and tool_type.strip():
+                    sanitized["type"] = tool_type.strip()
+                else:
+                    for alias in ("tool", "name"):
+                        alias_value = sanitized.get(alias)
+                        if isinstance(alias_value, str) and alias_value.strip():
+                            sanitized["type"] = alias_value.strip()
+                            break
+
+                workflow_payload = sanitized.get("workflow")
+                if isinstance(workflow_payload, BaseModel):
+                    workflow_payload = workflow_payload.model_dump()
+                elif isinstance(workflow_payload, str):
+                    trimmed = workflow_payload.strip()
+                    workflow_payload = {"slug": trimmed} if trimmed else None
+
+                if workflow_payload is not None:
+                    normalized_reference = self.normalize_nested_workflow_reference(
+                        workflow_payload, node_slug=tool_label
+                    )
+                    if normalized_reference is None:
+                        sanitized.pop("workflow", None)
+                    else:
+                        sanitized["workflow"] = normalized_reference
+
+                normalized.append(sanitized)
+                continue
+
+            sanitized_value, _removed = sanitize_value(current)
+            if isinstance(sanitized_value, Mapping):
+                normalized.append(dict(sanitized_value))
+            elif sanitized_value is not None:
+                normalized.append(sanitized_value)
+
+        return normalized
+
+    def validate_nested_workflows_for_definition(
+        self, nodes: Iterable[NormalizedNode], workflow: Workflow | None
+    ) -> None:
+        if workflow is None:
+            return
+
+        workflow_id = getattr(workflow, "id", None)
+        workflow_slug = (getattr(workflow, "slug", "") or "").strip().lower()
+
+        for node in nodes:
+            if node.kind not in _AGENT_NODE_KINDS or not node.is_enabled:
+                continue
+            reference = node.parameters.get("workflow")
+            if not isinstance(reference, Mapping):
+                continue
+
+            reference_id = reference.get("id") if workflow_id is not None else None
+            if isinstance(reference_id, int) and reference_id == workflow_id:
+                raise WorkflowValidationError(
+                    f"Le nœud {node.slug} ne peut pas exécuter son propre workflow."
+                )
+
+            if workflow_slug:
+                reference_slug = reference.get("slug")
+                if (
+                    isinstance(reference_slug, str)
+                    and reference_slug.strip().lower() == workflow_slug
+                ):
+                    raise WorkflowValidationError(
+                        f"Le nœud {node.slug} ne peut pas exécuter son propre workflow."
+                    )
+
+    def is_minimal_skeleton(
+        self,
+        nodes: Iterable[NormalizedNode],
+        edges: Iterable[NormalizedEdge],
+    ) -> bool:
+        enabled_nodes = [node for node in nodes if node.is_enabled]
+        if not enabled_nodes:
+            return False
+
+        start_nodes = [node for node in enabled_nodes if node.kind == "start"]
+        end_nodes = [node for node in enabled_nodes if node.kind == "end"]
+        if len(start_nodes) != 1:
+            return False
+
+        if len(enabled_nodes) > 2:
+            return False
+
+        start_slug = start_nodes[0].slug
+        if not end_nodes:
+            return all(edge.source_slug != start_slug for edge in edges)
+
+        end_slug = end_nodes[0].slug
+
+        for edge in edges:
+            if edge.source_slug == start_slug and edge.target_slug == end_slug:
+                return True
+        return False
+
+    def validate_graph_structure(
+        self,
+        nodes: Iterable[NormalizedNode],
+        edges: Iterable[NormalizedEdge],
+    ) -> None:
+        nodes_by_slug = {node.slug: node for node in nodes if node.is_enabled}
+        if not nodes_by_slug:
+            raise WorkflowValidationError(
+                "Le workflow doit conserver au moins un nœud actif."
+            )
+
+        adjacency: dict[str, list[NormalizedEdge]] = {
+            slug: [] for slug in nodes_by_slug
+        }
+        reverse_adjacency: dict[str, list[NormalizedEdge]] = {
+            slug: [] for slug in nodes_by_slug
+        }
+        for edge in edges:
+            if (
+                edge.source_slug not in nodes_by_slug
+                or edge.target_slug not in nodes_by_slug
+            ):
+                continue
+            adjacency[edge.source_slug].append(edge)
+            reverse_adjacency[edge.target_slug].append(edge)
+
+        start_nodes = [
+            slug for slug, node in nodes_by_slug.items() if node.kind == "start"
+        ]
+        if not start_nodes:
+            raise WorkflowValidationError(
+                "Impossible d'identifier le nœud de début actif."
+            )
+        if len(start_nodes) > 1:
+            raise WorkflowValidationError(
+                "Un seul nœud de début actif est autorisé dans le workflow."
+            )
+
+        end_nodes = [slug for slug, node in nodes_by_slug.items() if node.kind == "end"]
+
+        join_to_split: dict[str, str] = {}
+
+        for slug, node in nodes_by_slug.items():
+            outgoing = adjacency.get(slug, [])
+            incoming = reverse_adjacency.get(slug, [])
+            if node.kind == "start" and incoming:
+                raise WorkflowValidationError(
+                    "Le nœud de début ne doit pas avoir d'entrée."
+                )
+            if node.kind == "end" and outgoing:
+                raise WorkflowValidationError(
+                    "Le nœud de fin ne doit pas avoir de sortie."
+                )
+            if node.kind == "condition":
+                if len(outgoing) < 2:
+                    raise WorkflowValidationError(
+                        f"Le nœud conditionnel {slug} doit comporter au moins deux "
+                        "sorties."
+                    )
+                seen_branches: set[str] = set()
+                default_count = 0
+                for edge in outgoing:
+                    normalized = (edge.condition or "default").strip().lower()
+                    if normalized == "default":
+                        default_count += 1
+                        if default_count > 1:
+                            raise WorkflowValidationError(
+                                f"Le nœud conditionnel {slug} ne peut contenir qu'une "
+                                "seule branche par défaut."
+                            )
+                    if normalized in seen_branches:
+                        raise WorkflowValidationError(
+                            f"Le nœud conditionnel {slug} contient des branches "
+                            "conditionnelles en double."
+                        )
+                    seen_branches.add(normalized)
+            if node.kind == "watch":
+                if len(incoming) != 1:
+                    raise WorkflowValidationError(
+                        f"Le bloc watch {slug} doit comporter exactement une entrée."
+                    )
+            if node.kind == "parallel_split":
+                if len(outgoing) < 2:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit comporter au moins deux "
+                        "sorties."
+                    )
+                join_slug_raw = node.parameters.get("join_slug")
+                join_slug = (
+                    join_slug_raw.strip()
+                    if isinstance(join_slug_raw, str)
+                    else ""
+                )
+                if not join_slug:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit préciser une jointure "
+                        "associée."
+                    )
+                join_node = nodes_by_slug.get(join_slug)
+                if join_node is None:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} référence une jointure "
+                        f"inconnue ({join_slug})."
+                    )
+                if join_node.kind != "parallel_join":
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit référencer un "
+                        "parallel_join valide."
+                    )
+                if join_slug == slug:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} ne peut pas se rejoindre "
+                        "lui-même."
+                    )
+                if join_slug in join_to_split and join_to_split[join_slug] != slug:
+                    raise WorkflowValidationError(
+                        f"La jointure {join_slug} est déjà associée au nœud "
+                        f"parallel_split {join_to_split[join_slug]}."
+                    )
+                join_to_split[join_slug] = slug
+
+                branches = node.parameters.get("branches")
+                branch_count = len(branches) if isinstance(branches, Sequence) else 0
+                if branch_count != len(outgoing):
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit définir autant de "
+                        "branches que de sorties."
+                    )
+            if node.kind == "parallel_join":
+                if len(incoming) < 2:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_join {slug} doit comporter au moins deux "
+                        "entrées."
+                    )
+
+        visited: set[str] = set()
+        stack: set[str] = set()
+
+        def dfs(slug: str) -> None:
+            if slug in stack:
+                raise WorkflowValidationError(
+                    "Une boucle a été détectée dans la configuration du workflow."
+                )
+            if slug in visited:
+                return
+            stack.add(slug)
+            for edge in adjacency.get(slug, []):
+                dfs(edge.target_slug)
+            stack.remove(slug)
+            visited.add(slug)
+
+        dfs(start_nodes[0])
+
+        for end_slug in end_nodes:
+            if end_slug not in visited:
+                raise WorkflowValidationError(
+                    f"Le nœud de fin {end_slug} n'est pas accessible depuis le "
+                    "début du workflow."
+                )
+
+        for join_slug, node in nodes_by_slug.items():
+            if node.kind != "parallel_join":
+                continue
+            if join_slug not in join_to_split:
+                raise WorkflowValidationError(
+                    f"Le nœud parallel_join {join_slug} doit être associé à un "
+                    "parallel_split."
+                )
+
+        reachable_terminals = [slug for slug in visited if not adjacency.get(slug)]
+        if not reachable_terminals:
+            raise WorkflowValidationError(
+                "Le workflow doit comporter au moins une sortie accessible sans "
+                "transition."
+            )
+
+
+class WorkflowAppearanceService:
+    """Gère les préférences d'apparence des workflows."""
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        self._session_factory = session_factory
+
+    def _get_session(self, session: Session | None) -> tuple[Session, bool]:
+        if session is not None:
+            return session, False
+        return self._session_factory(), True
+
+    def get_workflow_appearance(
+        self,
+        reference: int | str,
+        *,
+        session: Session | None = None,
+    ) -> dict[str, Any]:
+        return self._appearance_service.get_workflow_appearance(
+            reference, session=session
+        )
+
+    def update_workflow_appearance(
+        self,
+        reference: int | str,
+        values: Mapping[str, Any],
+        *,
+        session: Session | None = None,
+    ) -> dict[str, Any]:
+        return self._appearance_service.update_workflow_appearance(
+            reference, values, session=session
+        )
+
+    def _resolve_workflow_appearance_target(
+        self, reference: int | str, session: Session
+    ) -> WorkflowAppearanceTarget:
+        if isinstance(reference, int):
+            workflow = session.get(Workflow, reference)
+            if workflow is None:
+                raise WorkflowNotFoundError(reference)
+            return WorkflowAppearanceTarget(
+                kind="local",
+                workflow_id=workflow.id,
+                slug=workflow.slug,
+                label=workflow.display_name,
+            )
+
+        normalized_reference = reference.strip().lower()
+        workflow = session.scalar(
+            select(Workflow).where(Workflow.slug == normalized_reference)
+        )
+        if workflow is not None:
+            return WorkflowAppearanceTarget(
+                kind="local",
+                workflow_id=workflow.id,
+                slug=workflow.slug,
+                label=workflow.display_name,
+            )
+
+        hosted_by_remote = session.scalar(
+            select(HostedWorkflow).where(HostedWorkflow.slug == normalized_reference)
+        )
+        if hosted_by_remote is not None:
+            return WorkflowAppearanceTarget(
+                kind="hosted",
+                workflow_id=None,
+                slug=hosted_by_remote.slug,
+                label=hosted_by_remote.label or hosted_by_remote.slug,
+                remote_workflow_id=hosted_by_remote.remote_workflow_id,
+            )
+
+        raise WorkflowNotFoundError(reference)
+
+    def _get_workflow_appearance_entry(
+        self, session: Session, target: WorkflowAppearanceTarget
+    ) -> WorkflowAppearance | None:
+        if target.kind == "local" and target.workflow_id is not None:
+            return session.scalar(
+                select(WorkflowAppearance).where(
+                    WorkflowAppearance.workflow_id == target.workflow_id
+                )
+            )
+
+        normalized_slug = target.slug.strip().lower()
+        return session.scalar(
+            select(WorkflowAppearance).where(
+                WorkflowAppearance.hosted_workflow_slug == normalized_slug
+            )
+        )
+
+    @staticmethod
+    def _has_appearance_override_values(override: WorkflowAppearance) -> bool:
+        return any(
+            getattr(override, attribute, None) is not None
+            for attribute in _APPEARANCE_ATTRIBUTE_NAMES
+        )
+
+    @staticmethod
+    def _serialize_workflow_appearance_override(
+        override: WorkflowAppearance | None,
+    ) -> dict[str, Any] | None:
+        if override is None:
+            return None
+        return {
+            "color_scheme": override.appearance_color_scheme,
+            "accent_color": override.appearance_accent_color,
+            "use_custom_surface_colors": override.appearance_use_custom_surface,
+            "surface_hue": override.appearance_surface_hue,
+            "surface_tint": override.appearance_surface_tint,
+            "surface_shade": override.appearance_surface_shade,
+            "heading_font": override.appearance_heading_font,
+            "body_font": override.appearance_body_font,
+            "start_screen_greeting": override.appearance_start_greeting,
+            "start_screen_prompt": override.appearance_start_prompt,
+            "start_screen_placeholder": override.appearance_input_placeholder,
+            "start_screen_disclaimer": override.appearance_disclaimer,
+            "created_at": override.created_at,
+            "updated_at": override.updated_at,
+        }
+
+
 class WorkflowService:
     """Gestionnaire de persistance pour la configuration du workflow."""
 
@@ -657,26 +1498,15 @@ class WorkflowService:
                 )
             workflow_defaults = settings.workflow_defaults
         self._workflow_defaults = workflow_defaults
+        self._graph_validator = WorkflowGraphValidator(self._workflow_defaults)
+        self._appearance_service = WorkflowAppearanceService(self._session_factory)
 
     def validate_graph_payload(
         self, graph_payload: Mapping[str, Any] | None
     ) -> dict[str, Any]:
         """Normalise et valide la représentation graphe d'un workflow."""
 
-        if graph_payload is None:
-            payload_dict: dict[str, Any] | None = None
-        elif isinstance(graph_payload, Mapping):
-            payload_dict = dict(graph_payload)
-        else:
-            raise WorkflowValidationError(
-                "Le graphe de workflow doit être un objet JSON."
-            )
-
-        nodes, edges = self._normalize_graph(payload_dict)
-        return {
-            "nodes": [asdict(node) for node in nodes],
-            "edges": [asdict(edge) for edge in edges],
-        }
+        return self._graph_validator.validate_graph_payload(graph_payload)
 
     def _fully_load_definition(
         self, definition: WorkflowDefinition
@@ -967,7 +1797,9 @@ class WorkflowService:
         edges: list[NormalizedEdge],
         session: Session,
     ) -> WorkflowDefinition:
-        self._validate_nested_workflows_for_definition(nodes, definition.workflow)
+        self._graph_validator.validate_nested_workflows_for_definition(
+            nodes, definition.workflow
+        )
 
         # Extraire et mettre à jour le sip_account_id
         sip_account_id = self._extract_sip_account_id_from_nodes(nodes)
@@ -1217,7 +2049,9 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         db, owns_session = self._get_session(session)
         try:
-            normalized_nodes, normalized_edges = self._normalize_graph(graph_payload)
+            normalized_nodes, normalized_edges = self._graph_validator.normalize_graph(
+                graph_payload
+            )
             workflow = self._get_chatkit_workflow(db)
             definition = self._create_definition_from_graph(
                 workflow=workflow,
@@ -1236,7 +2070,7 @@ class WorkflowService:
     def _create_default_definition(
         self, session: Session, workflow: Workflow
     ) -> WorkflowDefinition:
-        nodes, edges = self._normalize_graph(
+        nodes, edges = self._graph_validator.normalize_graph(
             self._workflow_defaults.clone_workflow_graph()
         )
         definition = self._create_definition_from_graph(
@@ -1375,7 +2209,9 @@ class WorkflowService:
             db.add(workflow)
             db.flush()
 
-            nodes, edges = self._normalize_graph(graph_payload, allow_empty=True)
+            nodes, edges = self._graph_validator.normalize_graph(
+                graph_payload, allow_empty=True
+            )
 
             mark_active = bool(graph_payload and (graph_payload.get("nodes") or []))
 
@@ -1408,7 +2244,7 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         db, owns_session = self._get_session(session)
         try:
-            nodes, edges = self._normalize_graph(graph_payload)
+            nodes, edges = self._graph_validator.normalize_graph(graph_payload)
 
             slug_value = slug.strip() if isinstance(slug, str) else None
             display_name_value = (
@@ -1831,7 +2667,7 @@ class WorkflowService:
             workflow = db.get(Workflow, workflow_id)
             if workflow is None:
                 raise WorkflowNotFoundError(workflow_id)
-            nodes, edges = self._normalize_graph(graph_payload)
+            nodes, edges = self._graph_validator.normalize_graph(graph_payload)
             definition = self._create_definition_from_graph(
                 workflow=workflow,
                 nodes=nodes,
@@ -1871,7 +2707,7 @@ class WorkflowService:
             )
             if definition is None:
                 raise WorkflowVersionNotFoundError(workflow_id, version_id)
-            nodes, edges = self._normalize_graph(graph_payload)
+            nodes, edges = self._graph_validator.normalize_graph(graph_payload)
             if definition.is_active:
                 # Lorsqu'une version active est modifiée, on crée une nouvelle version
                 # brouillon pour conserver l'historique de la version de production.
@@ -2239,7 +3075,7 @@ class WorkflowService:
         definition.steps.clear()
         session.flush()
 
-        nodes, edges = self._normalize_graph(
+        nodes, edges = self._graph_validator.normalize_graph(
             self._workflow_defaults.clone_workflow_graph()
         )
         slug_to_step: dict[str, WorkflowStep] = {}
@@ -2288,716 +3124,8 @@ class WorkflowService:
         session.refresh(definition)
         return self._fully_load_definition(definition)
 
-    def _normalize_graph(
-        self,
-        payload: dict[str, Any] | None,
-        *,
-        allow_empty: bool = False,
-    ) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
-        if not payload:
-            if allow_empty:
-                return self._build_minimal_graph()
-            raise WorkflowValidationError("Le workflow doit contenir un graphe valide.")
-
-        raw_nodes = payload.get("nodes") or []
-        raw_edges = payload.get("edges") or []
-        if not raw_nodes:
-            if allow_empty:
-                if raw_edges:
-                    raise WorkflowValidationError(
-                        "Impossible de définir des connexions sans nœuds."
-                    )
-                return self._build_minimal_graph()
-            raise WorkflowValidationError("Le workflow doit contenir au moins un nœud.")
-
-        defaults = self._workflow_defaults
-
-        normalized_nodes: list[NormalizedNode] = []
-        slugs: set[str] = set()
-        enabled_agent_slugs: set[str] = set()
-        enabled_agent_keys: set[str] = set()
-
-        for entry in raw_nodes:
-            if not isinstance(entry, dict):
-                raise WorkflowValidationError("Chaque nœud doit être un objet JSON.")
-
-            slug = str(entry.get("slug", "")).strip()
-            if not slug:
-                raise WorkflowValidationError(
-                    "Chaque nœud doit posséder un identifiant (slug)."
-                )
-            if slug in slugs:
-                raise WorkflowValidationError(f"Slug dupliqué détecté : {slug}")
-            slugs.add(slug)
-
-            kind = str(entry.get("kind", "")).strip().lower()
-            if kind not in {
-                "start",
-                "agent",
-                "voice_agent",
-                "outbound_call",
-                "condition",
-                "state",
-                "transform",
-                "watch",
-                "wait_for_user_input",
-                "assistant_message",
-                "user_message",
-                "json_vector_store",
-                "widget",
-                "parallel_split",
-                "parallel_join",
-                "end",
-            }:
-                raise WorkflowValidationError(
-                    f"Type de nœud invalide : {kind or 'inconnu'}"
-                )
-
-            agent_key: str | None = None
-            if kind in _AGENT_NODE_KINDS:
-                raw_agent_key = entry.get("agent_key")
-                if raw_agent_key is None:
-                    agent_key = None
-                elif isinstance(raw_agent_key, str):
-                    trimmed_key = raw_agent_key.strip()
-                    if trimmed_key:
-                        supported_keys = defaults.supported_agent_keys
-                        if supported_keys and trimmed_key not in supported_keys:
-                            raise WorkflowValidationError(
-                                f"Agent inconnu : {trimmed_key}"
-                            )
-                        agent_key = trimmed_key
-                else:
-                    raise WorkflowValidationError(
-                        f"Le nœud agent {slug} possède une clé d'agent invalide."
-                    )
-
-            display_name_raw = entry.get("display_name")
-            display_name = (
-                str(display_name_raw)
-                if display_name_raw is not None and str(display_name_raw).strip()
-                else None
-            )
-
-            is_enabled = bool(entry.get("is_enabled", True))
-
-            parameters = self._ensure_dict(entry.get("parameters"), "paramètres")
-            metadata = self._ensure_dict(entry.get("metadata"), "métadonnées")
-
-            if kind in _AGENT_NODE_KINDS and "workflow" in parameters:
-                normalized_reference = self._normalize_nested_workflow_reference(
-                    parameters.get("workflow"), node_slug=slug
-                )
-                if normalized_reference is None:
-                    parameters.pop("workflow", None)
-                else:
-                    parameters["workflow"] = normalized_reference
-
-            if kind in _AGENT_NODE_KINDS and "tools" in parameters:
-                normalized_tools = self._normalize_agent_tools(
-                    parameters.get("tools"), node_slug=f"{slug}.tools"
-                )
-                if normalized_tools is None:
-                    parameters.pop("tools", None)
-                else:
-                    parameters["tools"] = normalized_tools
-
-            if kind == "parallel_split":
-                join_slug_raw = parameters.get("join_slug")
-                if join_slug_raw is None:
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} doit préciser la jointure à "
-                        "rejoindre."
-                    )
-                if not isinstance(join_slug_raw, str):
-                    raise WorkflowValidationError(
-                        f"La jointure du nœud parallel_split {slug} doit être une "
-                        "chaîne."
-                    )
-                join_slug = join_slug_raw.strip()
-                if not join_slug:
-                    raise WorkflowValidationError(
-                        f"La jointure du nœud parallel_split {slug} doit être "
-                        "renseignée."
-                    )
-                parameters["join_slug"] = join_slug
-
-                raw_branches = parameters.get("branches")
-                if raw_branches is None:
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} doit définir au moins deux "
-                        "branches."
-                    )
-                if not isinstance(raw_branches, Sequence) or isinstance(
-                    raw_branches, str | bytes | bytearray
-                ):
-                    raise WorkflowValidationError(
-                        f"Les branches du nœud parallel_split {slug} doivent être une "
-                        "liste."
-                    )
-
-                sanitized_branches: list[dict[str, str]] = []
-                seen_branch_slugs: set[str] = set()
-                for branch in raw_branches:
-                    if not isinstance(branch, Mapping):
-                        raise WorkflowValidationError(
-                            "Chaque branche parallèle doit être un objet JSON."
-                        )
-                    raw_branch_slug = branch.get("slug")
-                    if not isinstance(raw_branch_slug, str):
-                        raise WorkflowValidationError(
-                            "Chaque branche parallèle doit préciser un identifiant "
-                            "(slug)."
-                        )
-                    branch_slug = raw_branch_slug.strip()
-                    if not branch_slug:
-                        raise WorkflowValidationError(
-                            "Chaque branche parallèle doit posséder un identifiant non "
-                            "vide."
-                        )
-                    if branch_slug in seen_branch_slugs:
-                        raise WorkflowValidationError(
-                            f"Le nœud parallel_split {slug} contient des identifiants "
-                            "de branche en double."
-                        )
-                    seen_branch_slugs.add(branch_slug)
-
-                    label: str | None = None
-                    raw_label = branch.get("label")
-                    if raw_label is None:
-                        label = None
-                    elif isinstance(raw_label, str):
-                        stripped_label = raw_label.strip()
-                        label = stripped_label or None
-                    else:
-                        raise WorkflowValidationError(
-                            "Le libellé d'une branche parallèle doit être une chaîne."
-                        )
-
-                    payload: dict[str, str] = {"slug": branch_slug}
-                    if label is not None:
-                        payload["label"] = label
-                    sanitized_branches.append(payload)
-
-                if len(sanitized_branches) < 2:
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} doit définir au moins deux "
-                        "branches."
-                    )
-
-                parameters["branches"] = sanitized_branches
-
-            node = NormalizedNode(
-                slug=slug,
-                kind=kind,
-                display_name=display_name,
-                agent_key=agent_key,
-                is_enabled=is_enabled,
-                parameters=parameters,
-                metadata=metadata,
-            )
-            normalized_nodes.append(node)
-
-            if node.kind in _AGENT_NODE_KINDS and node.is_enabled:
-                enabled_agent_slugs.add(node.slug)
-                if node.agent_key:
-                    enabled_agent_keys.add(node.agent_key)
-
-        if not any(
-            node.kind == "start" and node.is_enabled for node in normalized_nodes
-        ):
-            raise WorkflowValidationError(
-                "Le workflow doit contenir un nœud de début actif."
-            )
-        normalized_edges: list[NormalizedEdge] = []
-        for entry in raw_edges:
-            if not isinstance(entry, dict):
-                raise WorkflowValidationError(
-                    "Chaque connexion doit être un objet JSON."
-                )
-            source_slug = str(entry.get("source", "")).strip()
-            target_slug = str(entry.get("target", "")).strip()
-            if not source_slug or not target_slug:
-                raise WorkflowValidationError(
-                    "Chaque connexion doit préciser source et cible."
-                )
-            if source_slug not in slugs:
-                raise WorkflowValidationError(
-                    f"Connexion inconnue : source {source_slug} absente"
-                )
-            if target_slug not in slugs:
-                raise WorkflowValidationError(
-                    f"Connexion inconnue : cible {target_slug} absente"
-                )
-
-            condition_raw = entry.get("condition")
-            if condition_raw is None:
-                condition = None
-            else:
-                condition = str(condition_raw).strip()
-                if condition == "":
-                    condition = None
-
-            metadata = self._ensure_dict(entry.get("metadata"), "métadonnées")
-
-            normalized_edges.append(
-                NormalizedEdge(
-                    source_slug=source_slug,
-                    target_slug=target_slug,
-                    condition=condition,
-                    metadata=metadata,
-                )
-            )
-
-        minimal_skeleton = self._is_minimal_skeleton(normalized_nodes, normalized_edges)
-        has_enabled_widget = any(
-            node.kind == "widget" and node.is_enabled for node in normalized_nodes
-        )
-        has_enabled_assistant_message = any(
-            node.kind == "assistant_message" and node.is_enabled
-            for node in normalized_nodes
-        )
-        has_enabled_user_message = any(
-            node.kind == "user_message" and node.is_enabled for node in normalized_nodes
-        )
-        if not (
-            enabled_agent_slugs
-            or has_enabled_widget
-            or has_enabled_assistant_message
-            or has_enabled_user_message
-            or allow_empty
-            or minimal_skeleton
-        ):
-            raise WorkflowValidationError(
-                "Le workflow doit activer au moins un agent, un message "
-                "(assistant ou utilisateur) ou un widget."
-            )
-        # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
-        # bibliothèque permet désormais de créer des workflows plus simples.
-        # Nous conservons uniquement la vérification d'au moins un agent actif.
-
-        self._validate_graph_structure(normalized_nodes, normalized_edges)
-        return normalized_nodes, normalized_edges
-
-    def _build_minimal_graph(self) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
-        end_message = self._workflow_defaults.default_end_message
-        nodes = [
-            NormalizedNode(
-                slug="start",
-                kind="start",
-                display_name="Début",
-                agent_key=None,
-                is_enabled=True,
-                parameters={},
-                metadata={"position": {"x": 0, "y": 0}},
-            ),
-            NormalizedNode(
-                slug="end",
-                kind="end",
-                display_name="Fin",
-                agent_key=None,
-                is_enabled=True,
-                parameters={
-                    "message": end_message,
-                    "status": {"type": "closed", "reason": end_message},
-                },
-                metadata={"position": {"x": 320, "y": 0}},
-            ),
-        ]
-        edges = [
-            NormalizedEdge(
-                source_slug="start",
-                target_slug="end",
-                condition=None,
-                metadata={"label": ""},
-            )
-        ]
-        return nodes, edges
-
-    def _is_minimal_skeleton(
-        self,
-        nodes: Iterable[NormalizedNode],
-        edges: Iterable[NormalizedEdge],
-    ) -> bool:
-        enabled_nodes = [node for node in nodes if node.is_enabled]
-        if not enabled_nodes:
-            return False
-
-        start_nodes = [node for node in enabled_nodes if node.kind == "start"]
-        end_nodes = [node for node in enabled_nodes if node.kind == "end"]
-        if len(start_nodes) != 1:
-            return False
-
-        # Autorise uniquement le couple Début / Fin comme nœuds actifs.
-        if len(enabled_nodes) > 2:
-            return False
-
-        start_slug = start_nodes[0].slug
-        if not end_nodes:
-            return all(edge.source_slug != start_slug for edge in edges)
-
-        end_slug = end_nodes[0].slug
-
-        for edge in edges:
-            if edge.source_slug == start_slug and edge.target_slug == end_slug:
-                return True
-        return False
-
-    def _ensure_dict(self, value: Any, label: str) -> dict[str, Any]:
-        if value is None:
-            return {}
-        if isinstance(value, BaseModel):
-            value = value.model_dump()
-        if isinstance(value, Mapping):
-            candidate = dict(value)
-            sanitized, _removed = sanitize_value(candidate)
-            if isinstance(sanitized, dict):
-                return sanitized
-            # Par sécurité, revenir à l'objet d'origine si la structure change.
-            return candidate
-        raise WorkflowValidationError(f"Les {label} doivent être un objet JSON.")
-
-    def _normalize_nested_workflow_reference(
-        self, value: Any, *, node_slug: str
-    ) -> dict[str, Any] | None:
-        if value is None:
-            return None
-        if isinstance(value, BaseModel):
-            value = value.model_dump()
-        if not isinstance(value, Mapping):
-            raise WorkflowValidationError(
-                "La configuration 'workflow' du nœud "
-                f"{node_slug} doit être un objet JSON."
-            )
-
-        raw_id = value.get("id")
-        workflow_id: int | None = None
-        if isinstance(raw_id, bool):
-            workflow_id = None
-        elif isinstance(raw_id, int):
-            workflow_id = raw_id
-        elif isinstance(raw_id, float) and math.isfinite(raw_id):
-            workflow_id = int(raw_id)
-        elif isinstance(raw_id, str):
-            trimmed_id = raw_id.strip()
-            if trimmed_id:
-                try:
-                    workflow_id = int(trimmed_id)
-                except ValueError as exc:  # pragma: no cover - message détaillé
-                    raise WorkflowValidationError(
-                        "L'identifiant de workflow du nœud "
-                        f"{node_slug} doit être un entier."
-                    ) from exc
-        elif raw_id is not None:
-            raise WorkflowValidationError(
-                f"L'identifiant de workflow du nœud {node_slug} est invalide."
-            )
-
-        if workflow_id is not None and workflow_id <= 0:
-            raise WorkflowValidationError(
-                "L'identifiant de workflow du nœud "
-                f"{node_slug} doit être strictement positif."
-            )
-
-        raw_slug = value.get("slug")
-        workflow_slug: str | None = None
-        if raw_slug is None:
-            workflow_slug = None
-        elif isinstance(raw_slug, str):
-            slug_candidate = raw_slug.strip()
-            if not slug_candidate:
-                raise WorkflowValidationError(
-                    "Le slug de workflow du nœud "
-                    f"{node_slug} doit être une chaîne non vide."
-                )
-            workflow_slug = slug_candidate
-        else:
-            raise WorkflowValidationError(
-                "Le slug de workflow du nœud "
-                f"{node_slug} doit être une chaîne de caractères."
-            )
-
-        if workflow_id is None and workflow_slug is None:
-            raise WorkflowValidationError(
-                f"Le nœud {node_slug} doit préciser un identifiant "
-                "ou un slug de workflow."
-            )
-
-        sanitized: dict[str, Any] = {}
-        if workflow_id is not None:
-            sanitized["id"] = workflow_id
-        if workflow_slug is not None:
-            sanitized["slug"] = workflow_slug
-        return sanitized
-
-    def _normalize_agent_tools(
-        self, value: Any, *, node_slug: str
-    ) -> list[dict[str, Any]] | None:
-        if value is None:
-            return None
-        if isinstance(value, BaseModel):
-            value = value.model_dump()
-        if not isinstance(value, Sequence) or isinstance(
-            value, str | bytes | bytearray
-        ):
-            raise WorkflowValidationError(
-                "Les outils du nœud "
-                f"{node_slug} doivent être fournis sous forme de liste."
-            )
-
-        normalized: list[dict[str, Any]] = []
-        for index, entry in enumerate(value, start=1):
-            tool_label = f"{node_slug}[{index}]"
-            current = entry
-            if isinstance(current, BaseModel):
-                current = current.model_dump()
-
-            if isinstance(current, Mapping):
-                sanitized = dict(current)
-
-                tool_type = sanitized.get("type")
-                if isinstance(tool_type, str) and tool_type.strip():
-                    sanitized["type"] = tool_type.strip()
-                else:
-                    for alias in ("tool", "name"):
-                        alias_value = sanitized.get(alias)
-                        if isinstance(alias_value, str) and alias_value.strip():
-                            sanitized["type"] = alias_value.strip()
-                            break
-
-                workflow_payload = sanitized.get("workflow")
-                if isinstance(workflow_payload, BaseModel):
-                    workflow_payload = workflow_payload.model_dump()
-                elif isinstance(workflow_payload, str):
-                    trimmed = workflow_payload.strip()
-                    workflow_payload = {"slug": trimmed} if trimmed else None
-
-                if workflow_payload is not None:
-                    normalized_reference = self._normalize_nested_workflow_reference(
-                        workflow_payload, node_slug=tool_label
-                    )
-                    if normalized_reference is None:
-                        sanitized.pop("workflow", None)
-                    else:
-                        sanitized["workflow"] = normalized_reference
-
-                normalized.append(sanitized)
-                continue
-
-            sanitized_value, _removed = sanitize_value(current)
-            if isinstance(sanitized_value, Mapping):
-                normalized.append(dict(sanitized_value))
-            elif sanitized_value is not None:
-                normalized.append(sanitized_value)
-
-        return normalized
-
-    def _validate_nested_workflows_for_definition(
-        self, nodes: Iterable[NormalizedNode], workflow: Workflow | None
-    ) -> None:
-        if workflow is None:
-            return
-
-        workflow_id = getattr(workflow, "id", None)
-        workflow_slug = (getattr(workflow, "slug", "") or "").strip().lower()
-
-        for node in nodes:
-            if node.kind not in _AGENT_NODE_KINDS or not node.is_enabled:
-                continue
-            reference = node.parameters.get("workflow")
-            if not isinstance(reference, Mapping):
-                continue
-
-            reference_id = reference.get("id") if workflow_id is not None else None
-            if isinstance(reference_id, int) and reference_id == workflow_id:
-                raise WorkflowValidationError(
-                    f"Le nœud {node.slug} ne peut pas exécuter son propre workflow."
-                )
-
-            if workflow_slug:
-                reference_slug = reference.get("slug")
-                if (
-                    isinstance(reference_slug, str)
-                    and reference_slug.strip().lower() == workflow_slug
-                ):
-                    raise WorkflowValidationError(
-                        f"Le nœud {node.slug} ne peut pas exécuter son propre workflow."
-                    )
-
-    def _validate_graph_structure(
-        self, nodes: Iterable[NormalizedNode], edges: Iterable[NormalizedEdge]
-    ) -> None:
-        nodes_by_slug = {node.slug: node for node in nodes if node.is_enabled}
-        if not nodes_by_slug:
-            raise WorkflowValidationError(
-                "Le workflow doit conserver au moins un nœud actif."
-            )
-
-        adjacency: dict[str, list[NormalizedEdge]] = {
-            slug: [] for slug in nodes_by_slug
-        }
-        reverse_adjacency: dict[str, list[NormalizedEdge]] = {
-            slug: [] for slug in nodes_by_slug
-        }
-        for edge in edges:
-            if (
-                edge.source_slug not in nodes_by_slug
-                or edge.target_slug not in nodes_by_slug
-            ):
-                # Ignore edges reliant un nœud désactivé
-                continue
-            adjacency[edge.source_slug].append(edge)
-            reverse_adjacency[edge.target_slug].append(edge)
-
-        start_nodes = [
-            slug for slug, node in nodes_by_slug.items() if node.kind == "start"
-        ]
-        if not start_nodes:
-            raise WorkflowValidationError(
-                "Impossible d'identifier le nœud de début actif."
-            )
-        if len(start_nodes) > 1:
-            raise WorkflowValidationError(
-                "Un seul nœud de début actif est autorisé dans le workflow."
-            )
-
-        end_nodes = [slug for slug, node in nodes_by_slug.items() if node.kind == "end"]
-
-        join_to_split: dict[str, str] = {}
-
-        for slug, node in nodes_by_slug.items():
-            outgoing = adjacency.get(slug, [])
-            incoming = reverse_adjacency.get(slug, [])
-            if node.kind == "start" and incoming:
-                raise WorkflowValidationError(
-                    "Le nœud de début ne doit pas avoir d'entrée."
-                )
-            if node.kind == "end" and outgoing:
-                raise WorkflowValidationError(
-                    "Le nœud de fin ne doit pas avoir de sortie."
-                )
-            if node.kind == "condition":
-                if len(outgoing) < 2:
-                    raise WorkflowValidationError(
-                        f"Le nœud conditionnel {slug} doit comporter au moins deux "
-                        "sorties."
-                    )
-                seen_branches: set[str] = set()
-                default_count = 0
-                for edge in outgoing:
-                    normalized = (edge.condition or "default").strip().lower()
-                    if normalized == "default":
-                        default_count += 1
-                        if default_count > 1:
-                            raise WorkflowValidationError(
-                                f"Le nœud conditionnel {slug} ne peut contenir qu'une "
-                                "seule branche par défaut."
-                            )
-                    if normalized in seen_branches:
-                        raise WorkflowValidationError(
-                            f"Le nœud conditionnel {slug} contient des branches "
-                            "conditionnelles en double."
-                        )
-                    seen_branches.add(normalized)
-            if node.kind == "watch":
-                if len(incoming) != 1:
-                    raise WorkflowValidationError(
-                        f"Le bloc watch {slug} doit comporter exactement une entrée."
-                    )
-            if node.kind == "parallel_split":
-                if len(outgoing) < 2:
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} doit comporter au moins deux "
-                        "sorties."
-                    )
-                join_slug_raw = node.parameters.get("join_slug")
-                join_slug = (
-                    join_slug_raw.strip()
-                    if isinstance(join_slug_raw, str)
-                    else ""
-                )
-                if not join_slug:
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} doit préciser une jointure "
-                        "associée."
-                    )
-                join_node = nodes_by_slug.get(join_slug)
-                if join_node is None:
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} référence une jointure "
-                        f"inconnue ({join_slug})."
-                    )
-                if join_node.kind != "parallel_join":
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} doit référencer un "
-                        "parallel_join valide."
-                    )
-                if join_slug == slug:
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} ne peut pas se rejoindre "
-                        "lui-même."
-                    )
-                if join_slug in join_to_split and join_to_split[join_slug] != slug:
-                    raise WorkflowValidationError(
-                        f"La jointure {join_slug} est déjà associée au nœud "
-                        f"parallel_split {join_to_split[join_slug]}."
-                    )
-                join_to_split[join_slug] = slug
-
-                branches = node.parameters.get("branches")
-                branch_count = len(branches) if isinstance(branches, Sequence) else 0
-                if branch_count != len(outgoing):
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_split {slug} doit définir autant de "
-                        "branches que de sorties."
-                    )
-            if node.kind == "parallel_join":
-                if len(incoming) < 2:
-                    raise WorkflowValidationError(
-                        f"Le nœud parallel_join {slug} doit comporter au moins deux "
-                        "entrées."
-                    )
-
-        visited: set[str] = set()
-        stack: set[str] = set()
-
-        def dfs(slug: str) -> None:
-            if slug in stack:
-                raise WorkflowValidationError(
-                    "Une boucle a été détectée dans la configuration du workflow."
-                )
-            if slug in visited:
-                return
-            stack.add(slug)
-            for edge in adjacency.get(slug, []):
-                dfs(edge.target_slug)
-            stack.remove(slug)
-            visited.add(slug)
-
-        dfs(start_nodes[0])
-
-        for end_slug in end_nodes:
-            if end_slug not in visited:
-                raise WorkflowValidationError(
-                    f"Le nœud de fin {end_slug} n'est pas accessible depuis le "
-                    "début du workflow."
-                )
-
-        for join_slug, node in nodes_by_slug.items():
-            if node.kind != "parallel_join":
-                continue
-            if join_slug not in join_to_split:
-                raise WorkflowValidationError(
-                    f"Le nœud parallel_join {join_slug} doit être associé à un "
-                    "parallel_split."
-                )
-
-        reachable_terminals = [slug for slug in visited if not adjacency.get(slug)]
-        if not reachable_terminals:
-            raise WorkflowValidationError(
-                "Le workflow doit comporter au moins une sortie accessible sans "
-                "transition."
-            )
+class WorkflowPersistenceService(WorkflowService):
+    """Alias explicite pour les opérations de persistance de workflows."""
 
 
 def serialize_definition_graph(

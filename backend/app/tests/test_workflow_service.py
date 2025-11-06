@@ -19,6 +19,9 @@ from backend.app.config import WorkflowDefaults  # noqa: E402 - import après ma
 from backend.app.models import Base  # noqa: E402 - import après maj du path
 from backend.app.workflows.service import (  # noqa: E402 - import après maj du path
     HostedWorkflowNotFoundError,
+    WorkflowAppearanceService,
+    WorkflowGraphValidator,
+    WorkflowPersistenceService,
     WorkflowService,
     WorkflowValidationError,
     serialize_definition,
@@ -85,7 +88,14 @@ def _build_parallel_graph() -> dict[str, object]:
 
 
 @pytest.fixture()
-def workflow_service(tmp_path: Path) -> WorkflowService:
+def workflow_defaults() -> WorkflowDefaults:
+    return _load_workflow_defaults()
+
+
+@pytest.fixture()
+def workflow_service(
+    tmp_path: Path, workflow_defaults: WorkflowDefaults
+) -> WorkflowService:
     database_path = tmp_path / "workflow.db"
     connect_args = {"check_same_thread": False}
     engine = create_engine(
@@ -93,9 +103,8 @@ def workflow_service(tmp_path: Path) -> WorkflowService:
     )
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    defaults = _load_workflow_defaults()
     service = WorkflowService(
-        session_factory=session_factory, workflow_defaults=defaults
+        session_factory=session_factory, workflow_defaults=workflow_defaults
     )
     try:
         yield service
@@ -434,3 +443,71 @@ def test_delete_hosted_workflow_removes_entry(
     with pytest.raises(HostedWorkflowNotFoundError):
         workflow_service.delete_hosted_workflow("to-remove")
 
+
+
+def test_graph_validator_rejects_duplicate_slug(
+    workflow_defaults: WorkflowDefaults,
+) -> None:
+    validator = WorkflowGraphValidator(workflow_defaults)
+    graph_payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start"},
+            {"slug": "start", "kind": "end"},
+        ],
+        "edges": [],
+    }
+
+    with pytest.raises(WorkflowValidationError):
+        validator.validate_graph_payload(graph_payload)
+
+
+def test_appearance_service_override_roundtrip(
+    workflow_service: WorkflowService,
+) -> None:
+    appearance_service = WorkflowAppearanceService(workflow_service._session_factory)
+
+    definition = workflow_service.create_workflow(
+        slug="appearance-workflow",
+        display_name="Appearance Workflow",
+        graph_payload={
+            "nodes": [
+                {"slug": "start", "kind": "start", "is_enabled": True},
+                {"slug": "end", "kind": "end", "is_enabled": True},
+            ],
+            "edges": [{"source": "start", "target": "end"}],
+        },
+    )
+
+    baseline = appearance_service.get_workflow_appearance(definition.workflow_id)
+    assert baseline["inherited_from_global"] is True
+
+    updated = appearance_service.update_workflow_appearance(
+        definition.workflow_id,
+        {"color_scheme": "dark", "start_screen_greeting": "Bonjour"},
+    )
+    assert updated["inherited_from_global"] is False
+    assert updated["effective"]["color_scheme"] == "dark"
+    assert updated["effective"]["start_screen_greeting"] == "Bonjour"
+
+    reset = appearance_service.update_workflow_appearance(
+        definition.workflow_id, {"inherit_from_global": True}
+    )
+    assert reset["inherited_from_global"] is True
+
+
+def test_persistence_service_create_and_delete(
+    workflow_service: WorkflowService, workflow_defaults: WorkflowDefaults
+) -> None:
+    persistence = WorkflowPersistenceService(
+        session_factory=workflow_service._session_factory,
+        workflow_defaults=workflow_defaults,
+    )
+    definition = persistence.create_workflow(
+        slug="temporary", display_name="Temp", graph_payload=None
+    )
+    assert definition.workflow.slug == "temporary"
+
+    persistence.delete_workflow(definition.workflow_id)
+
+    with pytest.raises(WorkflowValidationError):
+        persistence.get_definition_by_slug("temporary")
