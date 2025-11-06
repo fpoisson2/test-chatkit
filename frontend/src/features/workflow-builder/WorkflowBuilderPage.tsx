@@ -305,6 +305,8 @@ const WorkflowBuilderPage = () => {
   const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
     useState<ActionMenuPlacement>("up");
+  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("up");
@@ -359,8 +361,6 @@ const WorkflowBuilderPage = () => {
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const mobileActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
-  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
@@ -2956,6 +2956,22 @@ const WorkflowBuilderPage = () => {
       ? `${selectedEdge.source} → ${selectedEdge.target}`
       : "";
 
+  const headerOverlayOffset = useMemo(
+    () => (isMobileLayout ? "4rem" : "4.25rem"),
+    [isMobileLayout],
+  );
+
+  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
+    if (isMobileLayout) {
+      return undefined;
+    }
+
+    return {
+      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
+      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
+    };
+  }, [headerOverlayOffset, isMobileLayout]);
+
   const propertiesPanelElement = (
     <aside
       id={propertiesPanelId}
@@ -3050,6 +3066,23 @@ const WorkflowBuilderPage = () => {
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
 
+  const headerStyle = useMemo(() => {
+    const baseStyle = getHeaderContainerStyle(isMobileLayout);
+    return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
+  }, [isMobileLayout]);
+
+  const headerNavigationButtonStyle = useMemo(
+    () => getHeaderNavigationButtonStyle(isMobileLayout),
+    [isMobileLayout],
+  );
+
+  const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
+    if (isMobileLayout) {
+      return { position: "absolute", inset: 0, overflow: "hidden" };
+    }
+    return { position: "relative", flex: 1, overflow: "hidden", minHeight: 0 };
+  }, [isMobileLayout]);
+
   const workspaceContentStyle = useMemo<CSSProperties>(() => {
     if (isMobileLayout) {
       return {
@@ -3112,6 +3145,17 @@ const WorkflowBuilderPage = () => {
     shouldShowPublicationReminder,
     shouldShowWorkflowDescription,
   ]);
+
+  const mobileActionLabels = useMemo<MobileActionLabels>(
+    () => ({
+      redo: t("workflowBuilder.mobileActions.redo"),
+      undo: t("workflowBuilder.mobileActions.undo"),
+      duplicate: t("workflowBuilder.mobileActions.duplicate"),
+      delete: t("workflowBuilder.mobileActions.delete"),
+      properties: t("workflowBuilder.mobileActions.properties"),
+    }),
+    [t],
+  );
 
   return (
     <ReactFlowProvider>
