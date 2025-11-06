@@ -7545,59 +7545,59 @@ const WorkflowBuilderPage = () => {
           mobileActionLabels={mobileActionLabels}
         />
       </div>
-        {saveMessage ? (
+      {saveMessage ? (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "1.5rem",
+            left: "50%",
+            transform: "translateX(-50%)",
+            padding: "0.65rem 1.25rem",
+            borderRadius: "9999px",
+            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+            zIndex: 30,
+            ...toastStyles,
+          }}
+          role={saveState === "error" ? "alert" : "status"}
+        >
+          {saveMessage}
+        </div>
+      ) : null}
+      <WorkflowAppearanceModal
+        token={token ?? null}
+        isOpen={isAppearanceModalOpen}
+        target={appearanceModalTarget}
+        onClose={handleCloseAppearanceModal}
+      />
+      <CreateWorkflowModal
+        isOpen={isCreateModalOpen}
+        kind={createWorkflowKind}
+        name={createWorkflowName}
+        remoteId={createWorkflowRemoteId}
+        error={createWorkflowError}
+        isSubmitting={isCreatingWorkflow}
+        onClose={handleCloseCreateModal}
+        onSubmit={handleSubmitCreateWorkflow}
+        onKindChange={setCreateWorkflowKind}
+        onNameChange={setCreateWorkflowName}
+        onRemoteIdChange={setCreateWorkflowRemoteId}
+      />
+      {isDeployModalOpen ? (
+        <div
+          role="presentation"
+          onClick={handleCloseDeployModal}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1.5rem",
+            zIndex: 30,
+          }}
+        >
           <div
-            style={{
-              position: "absolute",
-              bottom: "1.5rem",
-              left: "50%",
-                transform: "translateX(-50%)",
-                padding: "0.65rem 1.25rem",
-                borderRadius: "9999px",
-                boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
-                zIndex: 30,
-                ...toastStyles,
-              }}
-              role={saveState === "error" ? "alert" : "status"}
-            >
-              {saveMessage}
-            </div>
-          ) : null}
-        <WorkflowAppearanceModal
-          token={token ?? null}
-          isOpen={isAppearanceModalOpen}
-          target={appearanceModalTarget}
-          onClose={handleCloseAppearanceModal}
-        />
-        <CreateWorkflowModal
-          isOpen={isCreateModalOpen}
-          kind={createWorkflowKind}
-          name={createWorkflowName}
-          remoteId={createWorkflowRemoteId}
-          error={createWorkflowError}
-          isSubmitting={isCreatingWorkflow}
-          onClose={handleCloseCreateModal}
-          onSubmit={handleSubmitCreateWorkflow}
-          onKindChange={setCreateWorkflowKind}
-          onNameChange={setCreateWorkflowName}
-          onRemoteIdChange={setCreateWorkflowRemoteId}
-        />
-        {isDeployModalOpen ? (
-            <div
-              role="presentation"
-              onClick={handleCloseDeployModal}
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(15, 23, 42, 0.45)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "1.5rem",
-                zIndex: 30,
-              }}
-            >
-              <div
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="deploy-dialog-title"
@@ -7710,7 +7710,6 @@ const WorkflowBuilderPage = () => {
               </div>
             </div>
           ) : null}
-        </div>
       </ReactFlowProvider>
   );
 };
