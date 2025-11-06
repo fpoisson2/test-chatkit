@@ -2956,6 +2956,22 @@ const WorkflowBuilderPage = () => {
       ? `${selectedEdge.source} → ${selectedEdge.target}`
       : "";
 
+  const headerOverlayOffset = useMemo(
+    () => (isMobileLayout ? "4rem" : "4.25rem"),
+    [isMobileLayout],
+  );
+
+  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
+    if (isMobileLayout) {
+      return undefined;
+    }
+
+    return {
+      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
+      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
+    };
+  }, [headerOverlayOffset, isMobileLayout]);
+
   const propertiesPanelElement = (
     <aside
       id={propertiesPanelId}
@@ -3045,22 +3061,6 @@ const WorkflowBuilderPage = () => {
         } as const;
     }
   }, [saveState]);
-
-  const headerOverlayOffset = useMemo(
-    () => (isMobileLayout ? "4rem" : "4.25rem"),
-    [isMobileLayout],
-  );
-
-  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
-    if (isMobileLayout) {
-      return undefined;
-    }
-
-    return {
-      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
-      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
-    };
-  }, [headerOverlayOffset, isMobileLayout]);
 
   const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
   const shouldShowPublicationReminder =
