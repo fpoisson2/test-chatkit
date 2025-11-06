@@ -211,6 +211,7 @@ import {
   useUIContext,
   useModalContext,
   useSelectionContext,
+  useGraphContext,
 } from "./contexts";
 
 const WorkflowBuilderPage = () => {
@@ -293,6 +294,22 @@ const WorkflowBuilderPage = () => {
     handleSelectionChange: handleSelectionChangeContext,
   } = useSelectionContext();
 
+  const {
+    nodes,
+    setNodes,
+    edges,
+    setEdges,
+    onNodesChange,
+    applyEdgesChange,
+    hasPendingChanges,
+    updateHasPendingChanges,
+    nodesRef,
+    edgesRef,
+    hasPendingChangesRef,
+    isNodeDragInProgressRef,
+    setIsNodeDragInProgress,
+  } = useGraphContext();
+
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
       return {
@@ -344,25 +361,17 @@ const WorkflowBuilderPage = () => {
   } = availableModelsState;
   const { data: widgets, loading: widgetsLoading, error: widgetsError } = widgetsState;
 
-  // Phase 4: State migrated to contexts (SaveContext, UIContext, ModalContext)
+  // Phase 4: State migrated to contexts (SaveContext, UIContext, ModalContext, SelectionContext, GraphContext)
   // Remaining local state that doesn't fit in current contexts:
   const [loading, setLoading] = useState(() => !initialSidebarCache);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
-  const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
-  // Note: selectedNodeId and selectedEdgeId now come from SelectionContext (above)
+  // Note: selectedNodeId and selectedEdgeId come from SelectionContext (above)
+  // Note: nodes, edges, hasPendingChanges come from GraphContext (above)
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [hasPendingChanges, setHasPendingChanges] = useState(false);
-  const updateHasPendingChanges = useCallback(
-    (value: boolean | ((previous: boolean) => boolean)) => {
-      setHasPendingChanges(value);
-    },
-    [],
-  );
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
@@ -408,9 +417,8 @@ const WorkflowBuilderPage = () => {
   const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
   const versionsRef = useRef<WorkflowVersionSummary[]>([]);
   const selectedWorkflowIdRef = useRef<number | null>(null);
-  const hasPendingChangesRef = useRef(hasPendingChanges);
-  const saveStateRef = useRef<SaveState>(saveState);
-
+  // Note: hasPendingChangesRef comes from GraphContext (above)
+  // Note: saveStateRef comes from SaveContext (above)
   const selectedVersionIdRef = useRef<number | null>(null);
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
@@ -479,14 +487,13 @@ const WorkflowBuilderPage = () => {
     id: string;
     tapCount: number;
   } | null>(null);
-  const isNodeDragInProgressRef = useRef(false);
+  // Note: isNodeDragInProgressRef comes from GraphContext (above)
   const copySequenceRef = useRef<{ count: number; lastTimestamp: number }>({
     count: 0,
     lastTimestamp: 0,
   });
   const workflowBusyRef = useRef(false);
-  const nodesRef = useRef<FlowNode[]>([]);
-  const edgesRef = useRef<FlowEdge[]>([]);
+  // Note: nodesRef and edgesRef come from GraphContext (above)
 
   // Use workflow history hook for undo/redo functionality
   const { historyRef, resetHistory, restoreGraphFromSnapshot, undoHistory, redoHistory } =
