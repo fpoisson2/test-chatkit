@@ -20,11 +20,10 @@ from urllib.parse import quote
 
 from agents.realtime.model import RealtimePlaybackState, RealtimePlaybackTracker
 
-from ..config import Settings, get_settings
-
-__path__ = [str(Path(__file__).resolve().parent / "voice_bridge")]
-
-from .voice_bridge import AudioStreamManager, RealtimeEventRouter, SipSyncController
+from ...config import Settings, get_settings
+from .audio_pipeline import AudioStreamManager
+from .event_router import RealtimeEventRouter
+from .sip_sync import SipSyncController
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 
