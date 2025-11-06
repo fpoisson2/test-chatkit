@@ -3146,6 +3146,17 @@ const WorkflowBuilderPage = () => {
     shouldShowWorkflowDescription,
   ]);
 
+  const mobileActionLabels = useMemo<MobileActionLabels>(
+    () => ({
+      redo: t("workflowBuilder.mobileActions.redo"),
+      undo: t("workflowBuilder.mobileActions.undo"),
+      duplicate: t("workflowBuilder.mobileActions.duplicate"),
+      delete: t("workflowBuilder.mobileActions.delete"),
+      properties: t("workflowBuilder.mobileActions.properties"),
+    }),
+    [t],
+  );
+
   return (
     <ReactFlowProvider>
       <WorkflowBuilderSidebar
