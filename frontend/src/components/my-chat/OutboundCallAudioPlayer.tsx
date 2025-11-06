@@ -6,11 +6,10 @@ interface OutboundCallAudioPlayerProps {
   authToken: string | null;
 }
 
-interface AudioPacket {
-  type: "audio" | "connected" | "end" | "ping" | "error";
-  channel?: "inbound" | "outbound" | "mixed";
-  data?: string; // Base64 encoded PCM
-  timestamp?: number;
+type AudioChannel = "inbound" | "outbound" | "mixed";
+
+interface ControlPacket {
+  type: "connected" | "end" | "ping" | "error";
   message?: string;
   call_id?: string;
 }
@@ -90,7 +89,7 @@ export const OutboundCallAudioPlayer = ({
 
   // Play audio chunk
   const playAudioChunk = useCallback(
-    (pcmData: Uint8Array, channel: AudioPacket["channel"]) => {
+    (pcmData: Int16Array, channel: AudioChannel | undefined) => {
       if (!audioContextRef.current || !gainNodeRef.current) {
         initializeAudioContext();
         if (!audioContextRef.current || !gainNodeRef.current) return;
@@ -105,19 +104,18 @@ export const OutboundCallAudioPlayer = ({
       }
 
       // Convert PCM16 to Float32
-      const float32Array = new Float32Array(pcmData.length / 2);
+      const float32Array = new Float32Array(pcmData.length);
       for (let i = 0; i < float32Array.length; i++) {
-        const int16 = (pcmData[i * 2 + 1] << 8) | pcmData[i * 2];
-      float32Array[i] = int16 < 0x8000 ? int16 / 0x8000 : (int16 - 0x10000) / 0x8000;
-    }
+        float32Array[i] = Math.max(-1, Math.min(1, pcmData[i] / 0x8000));
+      }
 
-    // Create audio buffer
-    const audioBuffer = audioContext.createBuffer(1, float32Array.length, 24000);
-    audioBuffer.getChannelData(0).set(float32Array);
+      // Create audio buffer
+      const audioBuffer = audioContext.createBuffer(1, float32Array.length, 24000);
+      audioBuffer.getChannelData(0).set(float32Array);
 
-    // Create source node
-    const source = audioContext.createBufferSource();
-    source.buffer = audioBuffer;
+      // Create source node
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
       source.connect(gainNode);
 
       // Schedule playback
@@ -157,6 +155,45 @@ export const OutboundCallAudioPlayer = ({
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    ws.binaryType = "arraybuffer";
+
+    const decodeChannel = (code: number): AudioChannel | undefined => {
+      switch (code) {
+        case 1:
+          return "inbound";
+        case 2:
+          return "outbound";
+        case 3:
+          return "mixed";
+        default:
+          return undefined;
+      }
+    };
+
+    const handleAudioFrame = (buffer: ArrayBuffer) => {
+      if (buffer.byteLength <= 2) {
+        return;
+      }
+
+      const view = new DataView(buffer);
+      const channel = decodeChannel(view.getUint8(0));
+
+      if (isMuted) {
+        return;
+      }
+
+      if (channelFilter !== "all" && channel !== channelFilter) {
+        return;
+      }
+
+      const audioSlice = buffer.slice(2);
+      if (audioSlice.byteLength === 0) {
+        return;
+      }
+
+      const pcm16 = new Int16Array(audioSlice);
+      playAudioChunk(pcm16, channel);
+    };
 
     ws.onopen = () => {
       console.log("[OutboundCallAudioPlayer] WebSocket connected");
@@ -166,52 +203,51 @@ export const OutboundCallAudioPlayer = ({
     };
 
     ws.onmessage = (event) => {
-      try {
-        const packet: AudioPacket = JSON.parse(event.data);
+      if (typeof event.data === "string") {
+        try {
+          const packet: ControlPacket = JSON.parse(event.data);
 
-        switch (packet.type) {
-          case "connected":
-            console.log("[OutboundCallAudioPlayer] Stream connected:", packet.message);
-            break;
-
-          case "audio":
-            if (isMuted) break;
-
-            // Filter by channel if needed
-            if (channelFilter !== "all" && packet.channel !== channelFilter) {
+          switch (packet.type) {
+            case "connected":
+              console.log("[OutboundCallAudioPlayer] Stream connected:", packet.message);
               break;
-            }
 
-            // Decode base64 PCM data
-            if (packet.data) {
-              const binaryString = atob(packet.data);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-              playAudioChunk(bytes, packet.channel);
-            }
-            break;
+            case "end":
+              console.log("[OutboundCallAudioPlayer] Call ended");
+              onCallEnd?.();
+              break;
 
-          case "end":
-            console.log("[OutboundCallAudioPlayer] Call ended");
-            onCallEnd?.();
-            break;
+            case "ping":
+              // Keep-alive
+              break;
 
-          case "ping":
-            // Keep-alive
-            break;
+            case "error":
+              console.error("[OutboundCallAudioPlayer] Error:", packet.message);
+              setError(packet.message || "Une erreur s'est produite");
+              break;
 
-          case "error":
-            console.error("[OutboundCallAudioPlayer] Error:", packet.message);
-            setError(packet.message || "Une erreur s'est produite");
-            break;
-
-          default:
-            console.warn("[OutboundCallAudioPlayer] Unknown packet type:", packet.type);
+            default:
+              console.warn("[OutboundCallAudioPlayer] Unknown control packet type:", packet.type);
+          }
+        } catch (err) {
+          console.error("[OutboundCallAudioPlayer] Failed to process control message:", err);
         }
-      } catch (err) {
-        console.error("[OutboundCallAudioPlayer] Failed to process message:", err);
+        return;
+      }
+
+      if (event.data instanceof ArrayBuffer) {
+        handleAudioFrame(event.data);
+        return;
+      }
+
+      if (event.data instanceof Blob) {
+        event.data
+          .arrayBuffer()
+          .then(handleAudioFrame)
+          .catch((err) => {
+            console.error("[OutboundCallAudioPlayer] Failed to read audio blob:", err);
+          });
+        return;
       }
     };
 

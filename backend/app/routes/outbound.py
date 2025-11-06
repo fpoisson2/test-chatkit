@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 import os
@@ -16,10 +15,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_session
-from ..dependencies import require_admin, get_current_user
+from ..dependencies import get_current_user, require_admin
 from ..models import OutboundCall, SipAccount, User, WorkflowDefinition
-from ..telephony.outbound_call_manager import get_outbound_call_manager
 from ..telephony.audio_stream_manager import get_audio_stream_manager
+from ..telephony.outbound_call_manager import get_outbound_call_manager
 
 logger = logging.getLogger("chatkit.routes.outbound")
 
@@ -87,7 +86,11 @@ async def initiate_single_call(
         HTTPException: Si validation échoue ou erreur d'initiation
     """
     # Valider le workflow
-    workflow = db.query(WorkflowDefinition).filter_by(id=request.voice_workflow_id).first()
+    workflow = (
+        db.query(WorkflowDefinition)
+        .filter_by(id=request.voice_workflow_id)
+        .first()
+    )
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
@@ -128,7 +131,7 @@ async def initiate_single_call(
         }
     except Exception as e:
         logger.error("Failed to initiate outbound call: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/api/outbound/call/{call_id}")
@@ -222,7 +225,12 @@ async def list_outbound_calls(
         query = query.filter_by(status=status)
 
     total = query.count()
-    calls = query.order_by(OutboundCall.queued_at.desc()).offset(skip).limit(limit).all()
+    calls = (
+        query.order_by(OutboundCall.queued_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
     return CallListResponse(
         total=total,
@@ -355,11 +363,10 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
     """
     Stream audio en temps réel d'un appel sortant via WebSocket.
 
-    Le client reçoit des paquets JSON avec :
-    - type: "audio" pour les chunks audio
-    - channel: "inbound", "outbound" ou "mixed"
-    - data: Audio PCM encodé en base64
-    - timestamp: Timestamp du paquet
+    Le client reçoit :
+    - Des messages texte JSON pour les notifications ("connected", "end",
+      "ping", "error")
+    - Des trames binaires pour l'audio, avec deux octets d'entête pour le canal
 
     Args:
         websocket: Connexion WebSocket
@@ -374,7 +381,7 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
         queue = await audio_stream_mgr.register_listener(call_id)
         logger.info("WebSocket client connected for call %s audio stream", call_id)
 
-        # Envoyer un message de confirmation
+        # Envoyer un message de confirmation (canal texte)
         await websocket.send_json({
             "type": "connected",
             "call_id": call_id,
@@ -388,21 +395,35 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
                 packet = await asyncio.wait_for(queue.get(), timeout=30.0)
 
                 if packet["type"] == "end":
-                    # Fin de l'appel
+                    # Fin de l'appel (canal texte)
                     await websocket.send_json({
                         "type": "end",
                         "message": "Call ended"
                     })
                     break
 
-                # Encoder l'audio en base64 pour le transport JSON
-                audio_b64 = base64.b64encode(packet["data"]).decode('utf-8')
-                await websocket.send_json({
-                    "type": "audio",
-                    "channel": packet["channel"],
-                    "data": audio_b64,
-                    "timestamp": packet["timestamp"],
-                })
+                if packet["type"] != "audio":
+                    logger.debug(
+                        "Ignoring unsupported packet type %s on outbound audio stream",
+                        packet["type"],
+                    )
+                    continue
+
+                channel = packet.get("channel", "mixed")
+                channel_map = {"inbound": 1, "outbound": 2, "mixed": 3}
+                channel_code = channel_map.get(channel, 0)
+
+                audio_data = packet.get("data")
+                if not isinstance(audio_data, bytes | bytearray):
+                    logger.warning(
+                        "Received audio packet with invalid payload type %s",
+                        type(audio_data),
+                    )
+                    continue
+
+                # Entête binaire : 1=inbound, 2=outbound, 3=mixed (2e octet réservé)
+                header = bytes([channel_code, 0])
+                await websocket.send_bytes(header + audio_data)
 
             except asyncio.TimeoutError:
                 # Envoyer un ping pour maintenir la connexion
@@ -411,7 +432,12 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected from call %s audio stream", call_id)
     except Exception as e:
-        logger.error("Error in audio stream WebSocket for call %s: %s", call_id, e, exc_info=True)
+        logger.error(
+            "Error in audio stream WebSocket for call %s: %s",
+            call_id,
+            e,
+            exc_info=True,
+        )
         try:
             await websocket.send_json({
                 "type": "error",
@@ -431,7 +457,7 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
 
 @router.websocket("/api/outbound/events")
 async def outbound_call_events_websocket(websocket: WebSocket):
-    """WebSocket pour recevoir les événements d'appels sortants et envoyer des commandes."""
+    """WebSocket pour les événements et commandes d'appels sortants."""
     from ..telephony.outbound_events_manager import get_outbound_events_manager
 
     events_mgr = get_outbound_events_manager()
