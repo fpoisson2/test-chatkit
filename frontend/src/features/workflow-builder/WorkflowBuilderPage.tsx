@@ -6965,6 +6965,164 @@ const WorkflowBuilderPage = () => {
     };
   }, [headerOverlayOffset, isMobileLayout]);
 
+  const renderBlockLibraryContent = useCallback(() => {
+    if (isMobileLayout) {
+      return (
+        <div className={styles.blockLibraryContent}>
+          <div
+            ref={(element) => {
+              blockLibraryScrollRef.current = element;
+              if (element && isBlockLibraryOpen) {
+                scheduleBlockLibraryTransformUpdate();
+              }
+            }}
+            className={styles.blockLibraryScroller}
+            role="list"
+            aria-label="Blocs disponibles"
+          >
+            {blockLibraryItems.map((item) => {
+              const disabled = loading || !selectedWorkflowId;
+              return (
+                <div
+                  key={item.key}
+                  role="listitem"
+                  className={styles.blockLibraryItemWrapper}
+                  ref={(node) => {
+                    if (node) {
+                      blockLibraryItemRefs.current[item.key] = node;
+                      scheduleBlockLibraryTransformUpdate();
+                    } else {
+                      delete blockLibraryItemRefs.current[item.key];
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => item.onClick()}
+                    disabled={disabled}
+                    style={getBlockLibraryButtonStyle(disabled)}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "2.85rem",
+                        height: "2.85rem",
+                        borderRadius: "0.95rem",
+                        background: item.color,
+                        color: "#fff",
+                        display: "grid",
+                        placeItems: "center",
+                        fontWeight: 700,
+                        fontSize: "1.25rem",
+                      }}
+                    >
+                      {item.shortLabel}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "1.05rem",
+                        fontWeight: 600,
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {item.label}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    const primaryTextColor = "var(--text-color)";
+    return (
+      <div className={styles.blockLibraryDesktopContent}>
+        <div className={styles.blockLibraryDesktopHeader}>
+          <span>Bibliothèque de blocs</span>
+          <button
+            type="button"
+            ref={blockLibraryToggleRef}
+            className={styles.blockLibraryDesktopToggle}
+            onClick={toggleBlockLibrary}
+            aria-controls={blockLibraryContentId}
+            aria-expanded={isBlockLibraryOpen}
+          >
+            <span className={styles.srOnly}>
+              {isBlockLibraryOpen
+                ? "Masquer la bibliothèque de blocs"
+                : "Afficher la bibliothèque de blocs"}
+            </span>
+            <ChevronDown
+              aria-hidden="true"
+              className={styles.blockLibraryDesktopToggleIcon}
+              data-expanded={isBlockLibraryOpen ? "true" : "false"}
+              size={18}
+            />
+          </button>
+        </div>
+        <div
+          id={blockLibraryContentId}
+          className={styles.blockLibraryDesktopScroller}
+          role="list"
+          aria-label="Blocs disponibles"
+          hidden={!isBlockLibraryOpen}
+        >
+          {isBlockLibraryOpen
+            ? blockLibraryItems.map((item) => {
+                const disabled = loading || !selectedWorkflowId;
+                return (
+                  <div
+                    key={item.key}
+                    className={styles.blockLibraryDesktopItem}
+                    role="listitem"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => item.onClick()}
+                      disabled={disabled}
+                      style={getBlockLibraryButtonStyle(disabled)}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: "2.35rem",
+                          height: "2.35rem",
+                          borderRadius: "0.75rem",
+                          background: item.color,
+                          color: "#fff",
+                          display: "grid",
+                          placeItems: "center",
+                          fontWeight: 700,
+                          fontSize: "1.05rem",
+                        }}
+                      >
+                        {item.shortLabel}
+                      </span>
+                      <div style={{ textAlign: "left", color: primaryTextColor }}>
+                        <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
+                      </div>
+                    </button>
+                  </div>
+                );
+              })
+            : null}
+        </div>
+      </div>
+    );
+  }, [
+    blockLibraryContentId,
+    blockLibraryItems,
+    getBlockLibraryButtonStyle,
+    isBlockLibraryOpen,
+    isMobileLayout,
+    loading,
+    scheduleBlockLibraryTransformUpdate,
+    selectedWorkflowId,
+    toggleBlockLibrary,
+  ]);
+
   const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
