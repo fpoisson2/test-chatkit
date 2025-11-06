@@ -2423,14 +2423,7 @@ class WorkflowService:
             workflow = db.get(Workflow, workflow_id)
             if workflow is None:
                 raise WorkflowNotFoundError(workflow_id)
-            defaults = self._workflow_defaults
-            if (
-                workflow.slug == defaults.default_workflow_slug
-                or workflow.is_chatkit_default
-            ):
-                raise WorkflowValidationError(
-                    "Le workflow sélectionné pour ChatKit ne peut pas être supprimé."
-                )
+
             db.delete(workflow)
             db.commit()
         finally:

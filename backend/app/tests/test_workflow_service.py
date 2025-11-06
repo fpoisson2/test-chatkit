@@ -511,3 +511,29 @@ def test_persistence_service_create_and_delete(
 
     with pytest.raises(WorkflowValidationError):
         persistence.get_definition_by_slug("temporary")
+
+
+def test_delete_workflow_allows_chatkit_default_removal(
+    workflow_service: WorkflowService,
+) -> None:
+
+    graph_payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [{"source": "start", "target": "end"}],
+    }
+
+    custom_definition = workflow_service.create_workflow(
+        slug="custom-production",
+        display_name="Workflow de production",
+        graph_payload=graph_payload,
+    )
+
+    workflow_service.set_chatkit_workflow(custom_definition.workflow_id)
+
+    workflow_service.delete_workflow(custom_definition.workflow_id)
+
+    remaining = workflow_service.list_workflows()
+    assert all(w.id != custom_definition.workflow_id for w in remaining)
