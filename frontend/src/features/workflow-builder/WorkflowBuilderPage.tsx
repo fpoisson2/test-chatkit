@@ -133,7 +133,7 @@ import WorkflowBuilderCanvas, {
 import WorkflowBuilderToast from "./components/WorkflowBuilderToast";
 import WorkflowBuilderModals from "./components/WorkflowBuilderModals";
 import WorkflowBuilderPropertiesPanel from "./components/WorkflowBuilderPropertiesPanel";
-import WorkflowBuilderHeaderControls from "./components/WorkflowBuilderHeaderControls";
+import WorkflowBuilderHeader from "./components/WorkflowBuilderHeader";
 import useWorkflowNodeHandlers from "./hooks/useWorkflowNodeHandlers";
 import useGraphEditor from "./hooks/useGraphEditor";
 import useWorkflowPersistence from "./hooks/useWorkflowPersistence";
@@ -749,57 +749,24 @@ const WorkflowBuilderPage = () => {
       </div>
     ) : null;
 
+  // Phase 4: Utiliser WorkflowBuilderHeader qui gère lui-même la logique via les contextes
   const renderHeaderControls = () => {
-    const importDisabled = loading || isImporting;
-    const exportDisabled =
-      loading || !selectedWorkflowId || !selectedVersionId || isExporting;
-    const deployDisabled =
-      loading || !selectedWorkflowId || versions.length === 0 || isDeploying;
-
     return (
-      <WorkflowBuilderHeaderControls
-        isMobileLayout={isMobileLayout}
-        loading={loading}
-        versions={versions}
-        selectedVersionId={selectedVersionId}
-        draftVersionId={draftVersionIdRef.current}
-        draftDisplayName={draftDisplayName}
-        importDisabled={importDisabled}
-        exportDisabled={exportDisabled}
-        deployDisabled={deployDisabled}
-        importLabel={
-          isImporting
-            ? t("workflowBuilder.import.inProgress")
-            : t("workflowBuilder.actions.importJson")
-        }
-        exportLabel={
-          isExporting
-            ? t("workflowBuilder.export.preparing")
-            : t("workflowBuilder.actions.exportJson")
-        }
-        onVersionChange={handleVersionChange}
+      <WorkflowBuilderHeader
+        selectedWorkflow={selectedWorkflow ?? null}
         importFileInputRef={importFileInputRef}
+        mobileActionsTriggerRef={mobileActionsTriggerRef}
+        mobileActionsMenuRef={mobileActionsMenuRef}
+        onVersionChange={handleVersionChange}
         onImportFileChange={handleImportFileChange}
         onTriggerImport={handleTriggerImport}
         onExportWorkflow={handleExportWorkflow}
         onOpenDeployModal={handleOpenDeployModalWithSetup}
-        mobileActionsTriggerRef={mobileActionsTriggerRef}
-        mobileActionsMenuRef={mobileActionsMenuRef}
+        renderWorkflowDescription={renderWorkflowDescription}
+        renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
         isMobileActionsOpen={isMobileActionsOpen}
         onToggleMobileActions={toggleMobileActions}
         closeMobileActions={closeMobileActions}
-        mobileActionsDialogId={mobileActionsDialogId}
-        mobileActionsTitleId={mobileActionsTitleId}
-        mobileActionsOpenLabel={t("workflowBuilder.mobileActions.open")}
-        mobileActionsTitle={t("workflowBuilder.mobileActions.title")}
-        renderWorkflowDescription={renderWorkflowDescription}
-        renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
-        showWorkflowDescription={Boolean(selectedWorkflow?.description)}
-        showWorkflowPublicationReminder={Boolean(
-          selectedWorkflow && !selectedWorkflow.active_version_id,
-        )}
-        isImporting={isImporting}
-        isExporting={isExporting}
       />
     );
   };
