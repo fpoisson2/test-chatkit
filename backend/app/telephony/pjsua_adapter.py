@@ -139,7 +139,7 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
             schedule_coroutine_from_thread(
                 self.adapter._on_reg_state(ai.regIsActive),
                 self.adapter._loop,
-                "onRegState",
+                callback_name="onRegState",
                 logger=logger,
             )
 
@@ -162,7 +162,7 @@ class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
             schedule_coroutine_from_thread(
                 self.adapter._on_incoming_call(call, call_info),
                 self.adapter._loop,
-                "onIncomingCall",
+                callback_name="onIncomingCall",
                 logger=logger,
             )
 
@@ -444,7 +444,7 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                     schedule_coroutine_from_thread(
                         self.adapter._on_audio_received(audio_pcm),
                         self.adapter._loop,
-                        "onAudioReceived",
+                        callback_name="onAudioReceived",
                         logger=logger,
                     )
             except queue.Full:
@@ -774,7 +774,7 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
             schedule_coroutine_from_thread(
                 self.adapter._on_call_state(self, ci),
                 self.adapter._loop,
-                "onCallState",
+                callback_name="onCallState",
                 logger=logger,
             )
 
@@ -1090,7 +1090,7 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                         schedule_coroutine_from_thread(
                             self.adapter._on_media_active(self, mi),
                             self.adapter._loop,
-                            "onCallMediaState",
+                            callback_name="onCallMediaState",
                             logger=logger,
                         )
 
