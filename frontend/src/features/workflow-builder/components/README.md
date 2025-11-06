@@ -116,10 +116,61 @@ A wrapper component for displaying node and edge properties with responsive beha
 </PropertiesPanel>
 ```
 
-## Future Components (Planned)
+#### BlockLibraryPanel
 
-### Panels
-- **BlockLibraryPanel**: Node types palette with drag and drop
+A panel displaying the available node types (blocks) that can be added to the workflow.
+
+**Props:**
+- `isMobileLayout`: `boolean` - Whether to use mobile layout
+- `isOpen`: `boolean` - Whether the panel is open (desktop only)
+- `items`: `BlockLibraryItem[]` - Array of available blocks
+- `loading`: `boolean` - Whether the workflow is loading
+- `selectedWorkflowId`: `number | null` - Currently selected workflow
+- `onToggle`: `() => void` - Toggle handler (desktop only)
+- `toggleRef`: `React.RefObject<HTMLButtonElement>` - Ref for toggle button
+- `scrollRef`: `React.RefObject<HTMLDivElement>` - Ref for scroll container (mobile)
+- `itemRefs`: `React.MutableRefObject<Record<string, HTMLDivElement | null>>` - Refs for items (mobile)
+- `onItemRefSet`: `(key: string, node: HTMLDivElement | null) => void` - Callback when item ref is set
+- `contentId`: `string` - ID for content container
+
+**BlockLibraryItem Type:**
+```ts
+interface BlockLibraryItem {
+  key: string;
+  label: string;
+  shortLabel: string;
+  color: string;
+  onClick: () => void;
+}
+```
+
+**Features:**
+- Responsive layouts:
+  - Mobile: Scrollable list with transform animations
+  - Desktop: Collapsible panel with toggle button
+- Visual node representation with colors and short labels
+- Disabled state when workflow is loading or not selected
+- Accessible ARIA labels and roles
+- Uses existing CSS module styles
+
+**Usage:**
+```tsx
+<BlockLibraryPanel
+  isMobileLayout={isMobile}
+  isOpen={isBlockLibraryOpen}
+  items={blockLibraryItems}
+  loading={loading}
+  selectedWorkflowId={selectedWorkflowId}
+  onToggle={toggleBlockLibrary}
+  toggleRef={blockLibraryToggleRef}
+  scrollRef={blockLibraryScrollRef}
+  itemRefs={blockLibraryItemRefs}
+  onItemRefSet={handleItemRefSet}
+  contentId="block-library-content"
+/>
+```
+
+## Future Components (Planned)
 
 ### Header
 - **WorkflowHeader**: Toolbar, actions menu, version selector, deploy button
@@ -151,7 +202,7 @@ import { SaveToast, DeployModal } from "./components";
 ## Next Steps
 
 1. ✅ Extract PropertiesPanel component
-2. Extract BlockLibraryPanel component
+2. ✅ Extract BlockLibraryPanel component
 3. Extract WorkflowHeader component
 4. Extract WorkflowSidebar component
 5. Add unit tests for all components

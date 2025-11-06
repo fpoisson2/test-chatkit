@@ -143,21 +143,26 @@ Breaking down the monolithic UI into smaller components:
 - Header with element label and close button
 - Location: `components/panels/PropertiesPanel.tsx`
 
-#### 4. `WorkflowHeader` (TODO)
+#### 4. `BlockLibraryPanel` ✅
+- Panel displaying available node types (blocks)
+- Responsive layouts:
+  - Mobile: Scrollable list with transform animations
+  - Desktop: Collapsible panel with toggle button
+- Visual node representation with colors and short labels
+- Accessible ARIA labels and roles
+- Location: `components/panels/BlockLibraryPanel.tsx`
+
+#### 5. `WorkflowHeader` (TODO)
 - Toolbar
 - Actions menu
 - Version selector
 - Deploy button
 
-#### 5. `WorkflowSidebar` (TODO)
+#### 6. `WorkflowSidebar` (TODO)
 - Workflow list
 - Search
 - Pinning interface
 - Create workflow button
-
-#### 6. `BlockLibraryPanel` (TODO)
-- Node types palette
-- Drag and drop interface
 
 ### Phase 5: Performance Optimization (PLANNED)
 
@@ -227,10 +232,10 @@ workflow-builder/
     │   └── WorkflowHeader.tsx
     ├── sidebar/                    # TODO
     │   └── WorkflowSidebar.tsx
-    ├── panels/                     # ⏳ IN PROGRESS
+    ├── panels/                     # ✅ COMPLETED
     │   ├── index.ts
-    │   ├── PropertiesPanel.tsx     # ✅
-    │   └── BlockLibraryPanel.tsx   # TODO
+    │   ├── PropertiesPanel.tsx
+    │   └── BlockLibraryPanel.tsx
     └── modals/                     # ✅ COMPLETED
         ├── index.ts
         ├── DeployModal.tsx
