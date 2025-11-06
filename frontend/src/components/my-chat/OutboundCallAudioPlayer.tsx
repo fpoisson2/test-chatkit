@@ -31,7 +31,12 @@ export const OutboundCallAudioPlayer = ({
   const audioContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
-  const nextPlayTimeRef = useRef<number>(0);
+  const nextPlayTimeRefs = useRef<Record<string, number>>({
+    default: 0,
+    inbound: 0,
+    outbound: 0,
+    mixed: 0,
+  });
 
   // Handle hang up
   const handleHangup = useCallback(async () => {
@@ -84,19 +89,25 @@ export const OutboundCallAudioPlayer = ({
   }, [volume]);
 
   // Play audio chunk
-  const playAudioChunk = useCallback((pcmData: Uint8Array) => {
-    if (!audioContextRef.current || !gainNodeRef.current) {
-      initializeAudioContext();
-      if (!audioContextRef.current || !gainNodeRef.current) return;
-    }
+  const playAudioChunk = useCallback(
+    (pcmData: Uint8Array, channel: AudioPacket["channel"]) => {
+      if (!audioContextRef.current || !gainNodeRef.current) {
+        initializeAudioContext();
+        if (!audioContextRef.current || !gainNodeRef.current) return;
+      }
 
-    const audioContext = audioContextRef.current;
-    const gainNode = gainNodeRef.current;
+      const audioContext = audioContextRef.current;
+      const gainNode = gainNodeRef.current;
 
-    // Convert PCM16 to Float32
-    const float32Array = new Float32Array(pcmData.length / 2);
-    for (let i = 0; i < float32Array.length; i++) {
-      const int16 = (pcmData[i * 2 + 1] << 8) | pcmData[i * 2];
+      const channelKey = channel ?? "default";
+      if (!(channelKey in nextPlayTimeRefs.current)) {
+        nextPlayTimeRefs.current[channelKey] = 0;
+      }
+
+      // Convert PCM16 to Float32
+      const float32Array = new Float32Array(pcmData.length / 2);
+      for (let i = 0; i < float32Array.length; i++) {
+        const int16 = (pcmData[i * 2 + 1] << 8) | pcmData[i * 2];
       float32Array[i] = int16 < 0x8000 ? int16 / 0x8000 : (int16 - 0x10000) / 0x8000;
     }
 
@@ -107,26 +118,29 @@ export const OutboundCallAudioPlayer = ({
     // Create source node
     const source = audioContext.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(gainNode);
+      source.connect(gainNode);
 
-    // Schedule playback
-    const now = audioContext.currentTime;
-    const startTime = Math.max(now, nextPlayTimeRef.current);
-    source.start(startTime);
+      // Schedule playback
+      const now = audioContext.currentTime;
+      const startTime = Math.max(now, nextPlayTimeRefs.current[channelKey]);
+      source.start(startTime);
 
-    // Update next play time
-    nextPlayTimeRef.current = startTime + audioBuffer.duration;
+      // Update next play time
+      nextPlayTimeRefs.current[channelKey] =
+        startTime + audioBuffer.duration;
 
-    // Clean up after playback
-    source.onended = () => {
-      const index = audioQueueRef.current.indexOf(source);
-      if (index > -1) {
-        audioQueueRef.current.splice(index, 1);
-      }
-    };
+      // Clean up after playback
+      source.onended = () => {
+        const index = audioQueueRef.current.indexOf(source);
+        if (index > -1) {
+          audioQueueRef.current.splice(index, 1);
+        }
+      };
 
-    audioQueueRef.current.push(source);
-  }, [initializeAudioContext]);
+      audioQueueRef.current.push(source);
+    },
+    [initializeAudioContext]
+  );
 
   // Connect to WebSocket
   useEffect(() => {
@@ -175,7 +189,7 @@ export const OutboundCallAudioPlayer = ({
               for (let i = 0; i < binaryString.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
               }
-              playAudioChunk(bytes);
+              playAudioChunk(bytes, packet.channel);
             }
             break;
 
@@ -226,6 +240,7 @@ export const OutboundCallAudioPlayer = ({
         }
       });
       audioQueueRef.current = [];
+      nextPlayTimeRefs.current = { default: 0, inbound: 0, outbound: 0, mixed: 0 };
 
       // Close audio context
       if (audioContextRef.current) {
