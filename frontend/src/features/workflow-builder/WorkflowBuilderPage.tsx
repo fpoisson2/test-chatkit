@@ -7123,6 +7123,227 @@ const WorkflowBuilderPage = () => {
     toggleBlockLibrary,
   ]);
 
+  const workflowBusy = loading || isImporting || isExporting;
+  const editingLocked = false;
+  const hasSelectedElement = !editingLocked && Boolean(selectedNode || selectedEdge);
+  const canDeleteSelection = hasSelectedElement && !workflowBusy;
+  const canDuplicateSelection = hasSelectedElement && !workflowBusy;
+  const canUndoHistory = !workflowBusy && !editingLocked && historyRef.current.past.length > 0;
+  const canRedoHistory = !workflowBusy && !editingLocked && historyRef.current.future.length > 0;
+  const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
+
+  const versionIdToPromote = useMemo(
+    () => resolveVersionIdToPromote(false, { selectedId: selectedVersionId }),
+    [resolveVersionIdToPromote, selectedVersionId],
+  );
+
+  const versionSummaryForPromotion = useMemo(() => {
+    if (versionIdToPromote == null) {
+      return null;
+    }
+    return versions.find((version) => version.id === versionIdToPromote) ?? null;
+  }, [versionIdToPromote, versions]);
+
+  const isPromotingDraft = Boolean(
+    versionSummaryForPromotion && draftVersionIdRef.current === versionSummaryForPromotion.id,
+  );
+
+  const deployModalTitle = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.titlePublishDraft")
+      : t("workflowBuilder.deploy.modal.titlePromoteSelected")
+    : t("workflowBuilder.deploy.modal.titleMissing");
+
+  const deployModalDescription = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.descriptionPublishDraft")
+      : t("workflowBuilder.deploy.modal.descriptionPromoteSelected", {
+          version: versionSummaryForPromotion.version,
+        })
+    : t("workflowBuilder.deploy.modal.descriptionMissing");
+
+  const deployModalSourceLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.path.draft")
+      : t("workflowBuilder.deploy.modal.path.selectedWithVersion", {
+          version: versionSummaryForPromotion.version,
+        })
+    : t("workflowBuilder.deploy.modal.path.draft");
+
+  const deployModalTargetLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.path.newVersion")
+      : t("workflowBuilder.deploy.modal.path.production")
+    : t("workflowBuilder.deploy.modal.path.production");
+
+  const deployModalPrimaryLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.action.publish")
+      : t("workflowBuilder.deploy.modal.action.deploy")
+    : t("workflowBuilder.deploy.modal.action.publish");
+
+  const isPrimaryActionDisabled = !versionSummaryForPromotion || isDeploying;
+  const selectedElementLabel = selectedNode
+    ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind, t)
+    : selectedEdge
+      ? `${selectedEdge.source} → ${selectedEdge.target}`
+      : "";
+
+  const headerOverlayOffset = useMemo(
+    () => (isMobileLayout ? "4rem" : "4.25rem"),
+    [isMobileLayout],
+  );
+
+  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
+    if (isMobileLayout) {
+      return undefined;
+    }
+
+    return {
+      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
+      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
+    };
+  }, [headerOverlayOffset, isMobileLayout]);
+
+  const propertiesPanelElement = (
+    <aside
+      id={propertiesPanelId}
+      aria-label="Propriétés du bloc sélectionné"
+      aria-labelledby={propertiesPanelTitleId}
+      className={isMobileLayout ? styles.propertiesPanelMobile : styles.propertiesPanel}
+      role={isMobileLayout ? "dialog" : undefined}
+      aria-modal={isMobileLayout ? true : undefined}
+      onClick={isMobileLayout ? (event) => event.stopPropagation() : undefined}
+      style={!isMobileLayout ? floatingPanelStyle : undefined}
+    >
+      <header className={styles.propertiesPanelHeader}>
+        <div className={styles.propertiesPanelHeaderMeta}>
+          <p className={styles.propertiesPanelOverline}>Propriétés du bloc</p>
+          <h2 id={propertiesPanelTitleId} className={styles.propertiesPanelTitle}>
+            {selectedElementLabel || "Bloc"}
+          </h2>
+        </div>
+        <button
+          type="button"
+          ref={propertiesPanelCloseButtonRef}
+          onClick={handleClosePropertiesPanel}
+          aria-label="Fermer le panneau de propriétés"
+          className={styles.propertiesPanelCloseButton}
+        >
+          ×
+        </button>
+      </header>
+      <div className={styles.propertiesPanelBody}>
+        {selectedNode ? (
+          <NodeInspector
+            node={selectedNode}
+            onDisplayNameChange={handleDisplayNameChange}
+            onAgentMessageChange={handleAgentMessageChange}
+            onAgentModelChange={handleAgentModelChange}
+            onAgentProviderChange={handleAgentProviderChange}
+            onAgentNestedWorkflowChange={handleAgentNestedWorkflowChange}
+            onAgentReasoningChange={handleAgentReasoningChange}
+            onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
+            onAgentTextVerbosityChange={handleAgentTextVerbosityChange}
+            onAgentTemperatureChange={handleAgentTemperatureChange}
+            onAgentTopPChange={handleAgentTopPChange}
+            onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
+            onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
+            onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
+            onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+            onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+            onAgentResponseWidgetSourceChange={handleAgentResponseWidgetSourceChange}
+            onAgentResponseWidgetDefinitionChange={
+              handleAgentResponseWidgetDefinitionChange
+            }
+            onWidgetNodeSlugChange={handleWidgetNodeSlugChange}
+            onWidgetNodeSourceChange={handleWidgetNodeSourceChange}
+            onWidgetNodeDefinitionExpressionChange={
+              handleWidgetNodeDefinitionExpressionChange
+            }
+            onWidgetNodeVariablesChange={handleWidgetNodeVariablesChange}
+            onWidgetNodeAwaitActionChange={handleWidgetNodeAwaitActionChange}
+            onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
+            onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
+            onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
+            onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
+            onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
+            onAgentWebSearchChange={handleAgentWebSearchChange}
+            onAgentFileSearchChange={handleAgentFileSearchChange}
+            onAgentImageGenerationChange={handleAgentImageGenerationChange}
+            onAgentComputerUseChange={handleAgentComputerUseChange}
+            onAgentMcpServersChange={handleAgentMcpServersChange}
+            workflows={workflows}
+            currentWorkflowId={selectedWorkflowId}
+            hostedWorkflows={hostedWorkflows}
+            hostedWorkflowsLoading={hostedLoading}
+            hostedWorkflowsError={hostedError}
+            onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
+            onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
+            onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}
+            onVoiceAgentToolChange={handleVoiceAgentToolChange}
+            onTranscriptionModelChange={handleTranscriptionModelChange}
+            onTranscriptionLanguageChange={handleTranscriptionLanguageChange}
+            onTranscriptionPromptChange={handleTranscriptionPromptChange}
+            onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
+            onParametersChange={handleOutboundCallParametersChange}
+            onTransformExpressionsChange={handleTransformExpressionsChange}
+            onStartAutoRunChange={handleStartAutoRunChange}
+            onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
+            onStartAutoRunAssistantMessageChange={
+              handleStartAutoRunAssistantMessageChange
+            }
+            onStartTelephonySipAccountIdChange={handleStartTelephonySipAccountIdChange}
+            onStartTelephonyRingTimeoutChange={handleStartTelephonyRingTimeoutChange}
+            onStartTelephonySpeakFirstChange={handleStartTelephonySpeakFirstChange}
+            onConditionPathChange={handleConditionPathChange}
+            onConditionModeChange={handleConditionModeChange}
+            onConditionValueChange={handleConditionValueChange}
+            onParallelJoinSlugChange={handleParallelJoinSlugChange}
+            onParallelBranchesChange={handleParallelBranchesChange}
+            availableModels={availableModels}
+            availableModelsLoading={availableModelsLoading}
+            availableModelsError={availableModelsError}
+            isReasoningModel={isReasoningModel}
+            onAgentWeatherToolChange={handleAgentWeatherToolChange}
+            onAgentWidgetValidationToolChange={handleAgentWidgetValidationToolChange}
+            onAgentWorkflowValidationToolChange={
+              handleAgentWorkflowValidationToolChange
+            }
+            onAgentWorkflowToolToggle={handleAgentWorkflowToolToggle}
+            vectorStores={vectorStores}
+            vectorStoresLoading={vectorStoresLoading}
+            vectorStoresError={vectorStoresError}
+            widgets={widgets}
+            widgetsLoading={widgetsLoading}
+            widgetsError={widgetsError}
+            onStateAssignmentsChange={handleStateAssignmentsChange}
+            onEndMessageChange={handleEndMessageChange}
+            onAssistantMessageChange={handleAssistantMessageChange}
+            onAssistantMessageStreamEnabledChange={
+              handleAssistantMessageStreamEnabledChange
+            }
+            onAssistantMessageStreamDelayChange={
+              handleAssistantMessageStreamDelayChange
+            }
+            onWaitForUserInputMessageChange={
+              handleWaitForUserInputMessageChange
+            }
+            onUserMessageChange={handleUserMessageChange}
+            onRemove={handleRemoveNode}
+          />
+        ) : selectedEdge ? (
+          <EdgeInspector
+            edge={selectedEdge}
+            onConditionChange={handleConditionChange}
+            onLabelChange={handleEdgeLabelChange}
+            onRemove={handleRemoveEdge}
+          />
+        ) : null}
+      </div>
+    </aside>
+  );
+
   const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
