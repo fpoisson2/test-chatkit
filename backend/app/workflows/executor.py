@@ -107,14 +107,13 @@ from ..vector_store.ingestion import (
 )
 from .runtime import (
     VoiceSessionManager,
-    _build_user_message_history_items,
     _coerce_bool,
     _extract_voice_overrides,
     _resolve_voice_agent_configuration,
     _stream_response_widget,
-    _VoicePreferenceOverrides,
     ingest_vector_store_step,
 )
+from .runtime.state_manager import StateInitializer
 from .service import (
     WorkflowNotFoundError,
     WorkflowService,
@@ -356,108 +355,40 @@ async def run_workflow(
     workflow_call_stack: tuple[tuple[str, str | int], ...] | None = None,
     runtime_snapshot: WorkflowRuntimeSnapshot | None = None,
 ) -> WorkflowRunSummary:
-    workflow_payload = workflow_input.model_dump()
-    steps: list[WorkflowStepSummary] = (
-        runtime_snapshot.steps if runtime_snapshot is not None else []
-    )
-    auto_started = False
     thread = getattr(agent_context, "thread", None)
-    pending_wait_state: Mapping[str, Any] | None = None
     resume_from_wait_slug: str | None = None
-    conversation_history: list[TResponseInputItem]
-    state: dict[str, Any]
-    last_step_context: dict[str, Any] | None
 
-    current_input_item_id = workflow_payload.get("source_item_id")
+    service = workflow_service or WorkflowService()
+    state_initializer = StateInitializer(service)
+    runtime_context = await state_initializer.initialize(
+        workflow_input=workflow_input,
+        agent_context=agent_context,
+        thread_item_converter=thread_item_converter,
+        thread_items_history=thread_items_history,
+        current_user_message=current_user_message,
+        runtime_snapshot=runtime_snapshot,
+        workflow_definition=workflow_definition,
+        workflow_slug=workflow_slug,
+        workflow_call_stack=workflow_call_stack,
+    )
 
-    if runtime_snapshot is None:
-        auto_started = bool(workflow_payload.get("auto_start_was_triggered"))
-        initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])
-        workflow_payload["input_as_text"] = initial_user_text
-        conversation_history = []
-        pending_wait_state = (
-            _get_wait_state_metadata(thread) if thread is not None else None
-        )
-        if (
-            not isinstance(current_input_item_id, str)
-            and current_user_message is not None
-        ):
-            candidate_id = getattr(current_user_message, "id", None)
-            current_input_item_id = (
-                candidate_id if isinstance(candidate_id, str) else None
-            )
-
-        if pending_wait_state:
-            restored_history = _clone_conversation_history_snapshot(
-                pending_wait_state.get("conversation_history")
-            )
-            if restored_history:
-                conversation_history.extend(restored_history)
-
-        if thread_items_history and thread_item_converter:
-            try:
-                filtered_history = [
-                    item
-                    for item in thread_items_history
-                    if not (
-                        isinstance(current_input_item_id, str)
-                        and item.id == current_input_item_id
-                    )
-                ]
-                if filtered_history:
-                    converted_history = await thread_item_converter.to_agent_input(
-                        filtered_history
-                    )
-                    if converted_history:
-                        conversation_history.extend(converted_history)
-            except Exception as exc:
-                logger.warning(
-                    "Impossible de convertir l'historique des thread items, poursuite "
-                    "sans historique",
-                    exc_info=exc,
-                )
-
-        user_history_items = await _build_user_message_history_items(
-            converter=thread_item_converter,
-            message=current_user_message,
-            fallback_text=initial_user_text,
-        )
-        if user_history_items:
-            conversation_history.extend(user_history_items)
-
-        restored_state: dict[str, Any] | None = None
-        if pending_wait_state:
-            stored_state = pending_wait_state.get("state")
-            if isinstance(stored_state, Mapping):
-                restored_state = copy.deepcopy(dict(stored_state))
-
-        state = {
-            "has_all_details": False,
-            "infos_manquantes": initial_user_text,
-            "should_finalize": False,
-        }
-        if restored_state:
-            state.update(restored_state)
-            state["infos_manquantes"] = initial_user_text
-        last_step_context = None
-    else:
-        initial_user_text = _normalize_user_text(
-            workflow_payload.get("input_as_text", "")
-        )
-        conversation_history = copy.deepcopy(runtime_snapshot.conversation_history)
-        state = copy.deepcopy(runtime_snapshot.state)
-        last_step_context = (
-            copy.deepcopy(runtime_snapshot.last_step_context)
-            if runtime_snapshot.last_step_context is not None
-            else None
-        )
+    workflow_payload = runtime_context.workflow_payload
+    steps = runtime_context.steps
+    auto_started = runtime_context.auto_started
+    conversation_history = runtime_context.conversation_history
+    state = runtime_context.state
+    last_step_context = runtime_context.last_step_context
+    pending_wait_state = runtime_context.pending_wait_state
+    workflow_call_stack = runtime_context.workflow_call_stack
+    current_input_item_id = runtime_context.current_input_item_id
+    definition = runtime_context.definition
+    runtime_snapshot = runtime_context.runtime_snapshot
+    initial_user_text = runtime_context.initial_user_text
 
     final_output: dict[str, Any] | None = None
 
     voice_overrides = _extract_voice_overrides(agent_context)
     voice_session_manager = VoiceSessionManager()
-
-    service = workflow_service or WorkflowService()
 
     model_capability_index: dict[tuple[str, str, str], ModelCapabilities] = {}
     get_capabilities = getattr(service, "get_available_model_capabilities", None)
@@ -470,24 +401,6 @@ async def run_workflow(
                 exc_info=True,
             )
             model_capability_index = {}
-
-    definition: WorkflowDefinition
-    if workflow_definition is not None:
-        definition = workflow_definition
-    else:
-        if isinstance(workflow_slug, str) and workflow_slug.strip():
-            definition = service.get_definition_by_slug(workflow_slug)
-        else:
-            definition = service.get_current()
-
-    if workflow_call_stack is None:
-        identifiers: list[tuple[str, str | int]] = []
-        if definition.workflow_id is not None:
-            identifiers.append(("id", int(definition.workflow_id)))
-        workflow_slug_value = getattr(definition.workflow, "slug", None)
-        if isinstance(workflow_slug_value, str) and workflow_slug_value.strip():
-            identifiers.append(("slug", workflow_slug_value.strip().lower()))
-        workflow_call_stack = tuple(identifiers)
 
     should_auto_start = resolve_start_auto_start(definition)
     if not auto_started and not initial_user_text.strip() and should_auto_start:
@@ -2234,7 +2147,9 @@ async def run_workflow(
                 user_id = str(fallback_id or "voice-user")
 
             transition = _next_edge(current_slug)
-            next_step_slug = transition.target_step.slug if transition is not None else None
+            next_step_slug = (
+                transition.target_step.slug if transition is not None else None
+            )
 
             try:
                 start_result = await voice_session_manager.start_voice_session(
@@ -2307,8 +2222,10 @@ async def run_workflow(
                 # Vérifier que le workflow vocal existe et récupérer sa version active
                 from ..models import Workflow, WorkflowDefinition
 
-                # Le voice_workflow_id peut être soit un workflow.id, soit un workflow_definition.id
-                # On essaie d'abord comme workflow.id (cas le plus probable depuis le frontend)
+                # Le voice_workflow_id peut être soit un workflow.id,
+                # soit un workflow_definition.id.
+                # On essaie d'abord comme workflow.id (cas le plus probable
+                # depuis le frontend).
                 workflow = database_session.query(Workflow).filter_by(
                     id=voice_workflow_id
                 ).first()
@@ -2317,7 +2234,8 @@ async def run_workflow(
                     # On a trouvé un workflow parent, utiliser sa version active
                     voice_workflow_definition_id = workflow.active_version_id
                 elif workflow:
-                    # Workflow existe mais pas de version active, chercher une version active
+                    # Workflow existe mais pas de version active, chercher
+                    # une version active
                     active_def = database_session.query(WorkflowDefinition).filter_by(
                         workflow_id=workflow.id,
                         is_active=True
@@ -2326,27 +2244,39 @@ async def run_workflow(
                         raise WorkflowExecutionError(
                             current_node.slug,
                             title,
-                            Exception(f"Le workflow '{workflow.display_name}' (ID: {voice_workflow_id}) n'a pas de version active. Veuillez activer une version."),
+                            Exception(
+                                f"Le workflow '{workflow.display_name}' "
+                                f"(ID: {voice_workflow_id}) n'a pas de version "
+                                "active. Veuillez activer une version."
+                            ),
                             list(steps),
                         )
                     voice_workflow_definition_id = active_def.id
                 else:
                     # Peut-être que c'est directement un workflow_definition.id
-                    voice_workflow_def = database_session.query(WorkflowDefinition).filter_by(
-                        id=voice_workflow_id
-                    ).first()
+                    voice_workflow_def = (
+                        database_session.query(WorkflowDefinition)
+                        .filter_by(id=voice_workflow_id)
+                        .first()
+                    )
                     if not voice_workflow_def:
                         raise WorkflowExecutionError(
                             current_node.slug,
                             title,
-                            Exception(f"Le workflow avec l'ID {voice_workflow_id} n'existe pas. Veuillez créer ou sélectionner un workflow valide."),
+                            Exception(
+                                "Le workflow avec l'ID "
+                                f"{voice_workflow_id} n'existe pas. "
+                                "Veuillez créer ou sélectionner un "
+                                "workflow valide."
+                            ),
                             list(steps),
                         )
                     voice_workflow_definition_id = voice_workflow_def.id
 
-                # Utiliser voice_workflow_definition_id pour l'appel sortant
-                # Note: On accepte n'importe quel type de workflow tant qu'il existe
-                # La validation du contenu (présence d'un bloc vocal) sera faite à l'exécution
+                # Utiliser voice_workflow_definition_id pour l'appel sortant.
+                # On accepte n'importe quel type de workflow tant qu'il existe.
+                # La validation du contenu (présence d'un bloc vocal) sera
+                # faite à l'exécution.
 
                 # Récupérer le compte SIP (ou utiliser le défaut)
                 if not sip_account_id and database_session:
@@ -2375,8 +2305,12 @@ async def run_workflow(
 
                 # Préparer les métadonnées
                 metadata = {
-                    "triggered_by_workflow_id": workflow_definition.id if workflow_definition else None,
-                    "triggered_by_session_id": agent_context.thread.id if agent_context else None,
+                    "triggered_by_workflow_id": (
+                        workflow_definition.id if workflow_definition else None
+                    ),
+                    "triggered_by_session_id": (
+                        agent_context.thread.id if agent_context else None
+                    ),
                     "trigger_node_slug": current_node.slug,
                     "trigger_context": params.get("metadata", {}),
                 }
@@ -2400,7 +2334,8 @@ async def run_workflow(
                     metadata=metadata,
                 )
 
-                # Émettre un événement d'appel sortant (similaire à realtime.event pour voice_agent)
+                # Émettre un événement d'appel sortant (similaire à
+                # realtime.event pour voice_agent)
                 if on_stream_event is not None and agent_context.thread is not None:
                     try:
                         outbound_call_event = {
@@ -2420,7 +2355,10 @@ async def run_workflow(
                             created_at=datetime.now(),
                             task=CustomTask(
                                 title=f"📞 Appel en cours vers {to_number}...",
-                                content=json.dumps(outbound_call_event, ensure_ascii=False),
+                                content=json.dumps(
+                                    outbound_call_event,
+                                    ensure_ascii=False,
+                                ),
                             ),
                         )
                         await _emit_stream_event(ThreadItemAddedEvent(item=task_item))
@@ -2432,7 +2370,10 @@ async def run_workflow(
                         )
                     except Exception as e:
                         logger.error(
-                            "Erreur lors de l'émission de l'événement d'appel sortant : %s",
+                            (
+                                "Erreur lors de l'émission de l'événement "
+                                "d'appel sortant : %s"
+                            ),
                             e,
                         )
 
@@ -2456,67 +2397,114 @@ async def run_workflow(
                     )
 
                     if call_result:
-                        # Les transcriptions sont déjà ajoutées en temps réel via on_transcript_hook
-                        # On récupère juste les métadonnées pour le contexte
+                        # Les transcriptions sont déjà ajoutées en temps réel
+                        # via on_transcript_hook. On récupère juste les
+                        # métadonnées pour le contexte.
                         transcripts = call_result.get("transcripts", [])
                         audio_recordings = call_result.get("audio_recordings", {})
 
-                        # Ajouter un message avec les liens audio à la fin de l'appel
-                        if audio_recordings and thread is not None and on_stream_event is not None:
+                        # Ajouter un message avec les liens audio à la fin de
+                        # l'appel
+                        if (
+                            audio_recordings
+                            and thread is not None
+                            and on_stream_event is not None
+                        ):
                             try:
                                 call_id = call_result["call_id"]
                                 audio_links = []
                                 if audio_recordings.get("inbound"):
-                                    audio_links.append(f"🎤 [Audio entrant](/api/outbound/call/{call_id}/audio/inbound)")
+                                    audio_links.append(
+                                        "🎤 [Audio entrant]"
+                                        f"(/api/outbound/call/{call_id}/audio/inbound)"
+                                    )
                                 if audio_recordings.get("outbound"):
-                                    audio_links.append(f"🔊 [Audio sortant](/api/outbound/call/{call_id}/audio/outbound)")
+                                    audio_links.append(
+                                        "🔊 [Audio sortant]"
+                                        f"(/api/outbound/call/{call_id}/audio/outbound)"
+                                    )
                                 if audio_recordings.get("mixed"):
-                                    audio_links.append(f"🎧 [Audio mixé](/api/outbound/call/{call_id}/audio/mixed)")
+                                    audio_links.append(
+                                        "🎧 [Audio mixé]"
+                                        f"(/api/outbound/call/{call_id}/audio/mixed)"
+                                    )
 
                                 if audio_links:
                                     # Émettre un événement de fin d'appel
                                     try:
                                         outbound_call_end_event = {
                                             "type": "outbound_call.event",
-                                            "step": {"slug": current_node.slug, "title": title},
+                                            "step": {
+                                                "slug": current_node.slug,
+                                                "title": title,
+                                            },
                                             "event": {
                                                 "type": "call_ended",
                                                 "call_id": call_id,
                                                 "status": call_result.get("status"),
-                                                "duration_seconds": call_result.get("duration_seconds"),
+                                                "duration_seconds": call_result.get(
+                                                    "duration_seconds"
+                                                ),
                                             },
                                         }
 
+                                        audio_links_text = "\n".join(audio_links)
                                         task_item = TaskItem(
                                             id=agent_context.generate_id("task"),
                                             thread_id=thread.id,
                                             created_at=datetime.now(),
                                             task=CustomTask(
-                                                title="**Enregistrements audio de l'appel :**",
-                                                content=json.dumps(outbound_call_end_event, ensure_ascii=False) + "\n\n" + "\n".join(audio_links),
+                                                title=(
+                                                    "**Enregistrements audio de "
+                                                    "l'appel :**"
+                                                ),
+                                                content=(
+                                                    json.dumps(
+                                                        outbound_call_end_event,
+                                                        ensure_ascii=False,
+                                                    )
+                                                    + "\n\n"
+                                                    + audio_links_text
+                                                ),
                                             ),
                                         )
-                                        await _emit_stream_event(ThreadItemAddedEvent(item=task_item))
-                                        await _emit_stream_event(ThreadItemDoneEvent(item=task_item))
+                                        await _emit_stream_event(
+                                            ThreadItemAddedEvent(item=task_item)
+                                        )
+                                        await _emit_stream_event(
+                                            ThreadItemDoneEvent(item=task_item)
+                                        )
 
                                         logger.info(
-                                            "Événement de fin d'appel émis pour call_id=%s",
+                                            (
+                                                "Événement de fin d'appel émis "
+                                                "pour call_id=%s"
+                                            ),
                                             call_id,
                                         )
                                     except Exception as e:
                                         logger.error(
-                                            "Erreur lors de l'émission de l'événement de fin d'appel : %s",
+                                            (
+                                                "Erreur lors de l'émission de "
+                                                "l'événement de fin d'appel : %s"
+                                            ),
                                             e,
                                         )
 
                                     logger.info(
-                                        "Liens audio ajoutés au thread %s pour l'appel %s",
+                                        (
+                                            "Liens audio ajoutés au thread %s "
+                                            "pour l'appel %s"
+                                        ),
                                         thread.id,
                                         call_session.call_id,
                                     )
                             except Exception as e:
                                 logger.error(
-                                    "Erreur lors de l'ajout des liens audio au thread : %s",
+                                    (
+                                        "Erreur lors de l'ajout des liens "
+                                        "audio au thread : %s"
+                                    ),
                                     e,
                                 )
 
