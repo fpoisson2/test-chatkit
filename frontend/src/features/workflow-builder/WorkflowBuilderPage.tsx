@@ -8,11 +8,8 @@ import {
   type CSSProperties,
 } from "react";
 
-import ReactFlow, {
-  Background,
-  Controls,
+import {
   MarkerType,
-  MiniMap,
   addEdge,
   type Connection,
   type EdgeChange,
@@ -26,7 +23,7 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { ChevronDown, Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -144,6 +141,9 @@ import EdgeInspector from "./components/EdgeInspector";
 import CreateWorkflowModal from "./components/CreateWorkflowModal";
 import NodeInspector from "./components/NodeInspector";
 import WorkflowBuilderSidebar from "./components/WorkflowBuilderSidebar";
+import WorkflowBuilderCanvas, {
+  type MobileActionLabels,
+} from "./components/WorkflowBuilderCanvas";
 import WorkflowAppearanceModal, {
   type WorkflowAppearanceTarget,
 } from "../workflows/WorkflowAppearanceModal";
@@ -182,7 +182,6 @@ import {
   buildEdgeStyle,
   buildGraphPayloadFrom,
   buildNodeStyle,
-  connectionLineStyle,
   extractPosition,
   humanizeSlug,
   labelForKind,
@@ -204,7 +203,6 @@ import {
   getHeaderNavigationButtonStyle,
   getMobileActionButtonStyle,
   getVersionSelectStyle,
-  loadingStyle,
   type ActionMenuPlacement,
 } from "./styles";
 import styles from "./WorkflowBuilderPage.module.css";
@@ -6942,6 +6940,11 @@ const WorkflowBuilderPage = () => {
     return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
   }, [isMobileLayout]);
 
+  const headerNavigationButtonStyle = useMemo(
+    () => getHeaderNavigationButtonStyle(isMobileLayout),
+    [isMobileLayout],
+  );
+
   const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
     if (isMobileLayout) {
       return { position: "absolute", inset: 0, overflow: "hidden" };
@@ -6964,6 +6967,17 @@ const WorkflowBuilderPage = () => {
       maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
     };
   }, [headerOverlayOffset, isMobileLayout]);
+
+  const mobileActionLabels = useMemo<MobileActionLabels>(
+    () => ({
+      redo: t("workflowBuilder.mobileActions.redo"),
+      undo: t("workflowBuilder.mobileActions.undo"),
+      duplicate: t("workflowBuilder.mobileActions.duplicate"),
+      delete: t("workflowBuilder.mobileActions.delete"),
+      properties: t("workflowBuilder.mobileActions.properties"),
+    }),
+    [t],
+  );
 
   const renderBlockLibraryContent = useCallback(() => {
     if (isMobileLayout) {
@@ -7423,8 +7437,6 @@ const WorkflowBuilderPage = () => {
     shouldShowWorkflowDescription,
   ]);
 
-  const editorContainerClassName = styles.editorContainer;
-
   return (
     <ReactFlowProvider>
       <WorkflowBuilderSidebar
@@ -7468,284 +7480,124 @@ const WorkflowBuilderPage = () => {
           overflow: "hidden",
         }}
       >
-        <header style={headerStyle}>
-          <button
-            type="button"
-            onClick={openSidebar}
-            aria-label="Ouvrir la navigation générale"
-            style={getHeaderNavigationButtonStyle(isMobileLayout)}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </button>
-          {renderHeaderControls()}
-        </header>
-
-        <div style={workspaceWrapperStyle}>
-          <div style={workspaceContentStyle}>
-            {shouldShowWorkflowDescription ? renderWorkflowDescription() : null}
-            {shouldShowPublicationReminder ? renderWorkflowPublicationReminder() : null}
-            <div
-              ref={reactFlowContainerRef}
-              style={editorContainerStyle}
-              className={editorContainerClassName}
-              aria-label="Éditeur visuel du workflow"
-            >
-              <div className={styles.editorSplit}>
-                <div className={styles.flowViewport}>
-                  {loading ? (
-                    <div style={loadingStyle}>Chargement du workflow…</div>
-                  ) : loadError ? (
-                    <div style={loadingStyle} role="alert">
-                      {loadError}
-                    </div>
-                  ) : (
-                    <ReactFlow
-                      nodes={nodes}
-                      edges={edges}
-                      onNodesChange={handleNodesChange}
-                      onEdgesChange={handleEdgesChange}
-                      onNodeDragStart={handleNodeDragStart}
-                      onNodeDragStop={handleNodeDragStop}
-                      onNodeClick={handleNodeClick}
-                      onEdgeClick={handleEdgeClick}
-                      onPaneClick={handleClearSelection}
-                      onConnect={onConnect}
-                      defaultEdgeOptions={defaultEdgeOptions}
-                      connectionLineStyle={connectionLineStyle}
-                      selectionOnDrag={!isMobileLayout}
-                      panOnDrag={isMobileLayout ? true : [1, 2]}
-                      multiSelectionKeyCode={['Meta', 'Control']}
-                      onSelectionChange={handleSelectionChange}
-                      style={{
-                        background: isMobileLayout ? "transparent" : "var(--color-surface-subtle)",
-                        height: "100%",
-                      }}
-                      minZoom={minViewportZoom}
-                      defaultViewport={initialViewport}
-                      fitView={false}
-                      onInit={(instance) => {
-                        reactFlowInstanceRef.current = instance;
-                        refreshViewportConstraints(instance);
-                        if (pendingViewportRestoreRef.current) {
-                          restoreViewport();
-                        }
-                      }}
-                      onMoveEnd={(_, viewport) => {
-                        if (isHydratingRef.current) {
-                          return;
-                        }
-                        viewportRef.current = viewport;
-                        hasUserViewportChangeRef.current = true;
-                        const key = viewportKeyRef.current;
-                        if (key) {
-                          viewportMemoryRef.current.set(key, { ...viewport });
-                          persistViewportMemory();
-                        }
-                      }}
-                    >
-                      <Background gap={18} size={1} />
-                      {!isMobileLayout ? (
-                        <MiniMap
-                          nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-                          nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-                        />
-                      ) : null}
-                      <Controls />
-                    </ReactFlow>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-          {isMobileLayout ? (
-            <>
-              {isBlockLibraryOpen ? (
-                <div
-                  className={styles.mobileOverlay}
-                  role="presentation"
-                  onClick={(event) => {
-                    if (event.target === event.currentTarget) {
-                      closeBlockLibrary({ focusToggle: true });
-                    }
-                  }}
-                >
-                  <aside
-                    id={blockLibraryId}
-                    aria-label="Bibliothèque de blocs"
-                    className={`${styles.blockLibrary} ${styles.blockLibraryMobile}`}
-                    role="dialog"
-                    aria-modal="true"
-                  >
-                    {renderBlockLibraryContent()}
-                  </aside>
-                </div>
-              ) : null}
-              <div className={styles.mobileActionStack}>
-                <button
-                  type="button"
-                  className={styles.mobileActionButton}
-                  onClick={() => {
-                    redoHistory();
-                  }}
-                  disabled={!canRedoHistory}
-                >
-                  <Redo2 aria-hidden="true" size={20} />
-                  <span className={styles.srOnly}>
-                    {t("workflowBuilder.mobileActions.redo")}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.mobileActionButton}
-                  onClick={() => {
-                    undoHistory();
-                  }}
-                  disabled={!canUndoHistory}
-                >
-                  <Undo2 aria-hidden="true" size={20} />
-                  <span className={styles.srOnly}>
-                    {t("workflowBuilder.mobileActions.undo")}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.mobileActionButton}
-                  onClick={() => {
-                    handleDuplicateSelection();
-                  }}
-                  disabled={!canDuplicateSelection}
-                >
-                  <Copy aria-hidden="true" size={20} />
-                  <span className={styles.srOnly}>
-                    {t("workflowBuilder.mobileActions.duplicate")}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.mobileActionButton}
-                  onClick={() => {
-                    handleDeleteSelection();
-                  }}
-                  disabled={!canDeleteSelection}
-                >
-                  <Trash2 aria-hidden="true" size={20} />
-                  <span className={styles.srOnly}>
-                    {t("workflowBuilder.mobileActions.delete")}
-                  </span>
-                </button>
-                {hasSelectedElement ? (
-                  <button
-                    type="button"
-                    ref={propertiesPanelToggleRef}
-                    className={styles.mobileActionButton}
-                    onClick={
-                      isPropertiesPanelOpen ? handleClosePropertiesPanel : handleOpenPropertiesPanel
-                    }
-                    aria-controls={propertiesPanelId}
-                    aria-expanded={isPropertiesPanelOpen}
-                  >
-                    <PenSquare aria-hidden="true" size={20} />
-                    <span className={styles.srOnly}>
-                      {t("workflowBuilder.mobileActions.properties")}
-                    </span>
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  ref={blockLibraryToggleRef}
-                  className={styles.mobileToggleButton}
-                  onClick={toggleBlockLibrary}
-                  aria-controls={blockLibraryId}
-                  aria-expanded={isBlockLibraryOpen}
-                >
-                  <span aria-hidden="true">{isBlockLibraryOpen ? "×" : "+"}</span>
-                  <span className={styles.srOnly}>
-                    {isBlockLibraryOpen
-                      ? "Fermer la bibliothèque de blocs"
-                      : "Ouvrir la bibliothèque de blocs"}
-                  </span>
-                </button>
-              </div>
-            </>
-          ) : (
-            <aside
-              id={blockLibraryId}
-              aria-label="Bibliothèque de blocs"
-              className={styles.blockLibrary}
-              style={floatingPanelStyle}
-            >
-              {renderBlockLibraryContent()}
-            </aside>
-          )}
-          {showPropertiesPanel ? (
-            isMobileLayout ? (
-              <div
-                className={styles.propertiesPanelOverlay}
-                role="presentation"
-                onClick={handleClosePropertiesPanel}
-              >
-                {propertiesPanelElement}
-              </div>
-            ) : (
-              propertiesPanelElement
-            )
-          ) : null}
+        <WorkflowBuilderCanvas
+          openSidebar={openSidebar}
+          headerStyle={headerStyle}
+          headerNavigationButtonStyle={headerNavigationButtonStyle}
+          renderHeaderControls={renderHeaderControls}
+          workspaceWrapperStyle={workspaceWrapperStyle}
+          workspaceContentStyle={workspaceContentStyle}
+          shouldShowWorkflowDescription={shouldShowWorkflowDescription}
+          renderWorkflowDescription={renderWorkflowDescription}
+          shouldShowPublicationReminder={shouldShowPublicationReminder}
+          renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
+          reactFlowContainerRef={reactFlowContainerRef}
+          editorContainerStyle={editorContainerStyle}
+          loading={loading}
+          loadError={loadError}
+          nodes={nodes}
+          edges={edges}
+          handleNodesChange={handleNodesChange}
+          handleEdgesChange={handleEdgesChange}
+          handleNodeDragStart={handleNodeDragStart}
+          handleNodeDragStop={handleNodeDragStop}
+          handleNodeClick={handleNodeClick}
+          handleEdgeClick={handleEdgeClick}
+          handleClearSelection={handleClearSelection}
+          onConnect={onConnect}
+          handleSelectionChange={handleSelectionChange}
+          isMobileLayout={isMobileLayout}
+          minViewportZoom={minViewportZoom}
+          initialViewport={initialViewport}
+          reactFlowInstanceRef={reactFlowInstanceRef}
+          refreshViewportConstraints={refreshViewportConstraints}
+          pendingViewportRestoreRef={pendingViewportRestoreRef}
+          restoreViewport={restoreViewport}
+          isHydratingRef={isHydratingRef}
+          viewportRef={viewportRef}
+          hasUserViewportChangeRef={hasUserViewportChangeRef}
+          viewportKeyRef={viewportKeyRef}
+          viewportMemoryRef={viewportMemoryRef}
+          persistViewportMemory={persistViewportMemory}
+          isBlockLibraryOpen={isBlockLibraryOpen}
+          closeBlockLibrary={closeBlockLibrary}
+          blockLibraryId={blockLibraryId}
+          renderBlockLibraryContent={renderBlockLibraryContent}
+          redoHistory={redoHistory}
+          undoHistory={undoHistory}
+          handleDuplicateSelection={handleDuplicateSelection}
+          handleDeleteSelection={handleDeleteSelection}
+          canRedoHistory={canRedoHistory}
+          canUndoHistory={canUndoHistory}
+          canDuplicateSelection={canDuplicateSelection}
+          canDeleteSelection={canDeleteSelection}
+          hasSelectedElement={hasSelectedElement}
+          propertiesPanelToggleRef={propertiesPanelToggleRef}
+          isPropertiesPanelOpen={isPropertiesPanelOpen}
+          handleClosePropertiesPanel={handleClosePropertiesPanel}
+          handleOpenPropertiesPanel={handleOpenPropertiesPanel}
+          propertiesPanelId={propertiesPanelId}
+          blockLibraryToggleRef={blockLibraryToggleRef}
+          toggleBlockLibrary={toggleBlockLibrary}
+          floatingPanelStyle={floatingPanelStyle}
+          showPropertiesPanel={showPropertiesPanel}
+          propertiesPanelElement={propertiesPanelElement}
+          mobileActionLabels={mobileActionLabels}
+        />
+      </div>
+      {saveMessage ? (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "1.5rem",
+            left: "50%",
+            transform: "translateX(-50%)",
+            padding: "0.65rem 1.25rem",
+            borderRadius: "9999px",
+            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+            zIndex: 30,
+            ...toastStyles,
+          }}
+          role={saveState === "error" ? "alert" : "status"}
+        >
+          {saveMessage}
         </div>
-        {saveMessage ? (
+      ) : null}
+      <WorkflowAppearanceModal
+        token={token ?? null}
+        isOpen={isAppearanceModalOpen}
+        target={appearanceModalTarget}
+        onClose={handleCloseAppearanceModal}
+      />
+      <CreateWorkflowModal
+        isOpen={isCreateModalOpen}
+        kind={createWorkflowKind}
+        name={createWorkflowName}
+        remoteId={createWorkflowRemoteId}
+        error={createWorkflowError}
+        isSubmitting={isCreatingWorkflow}
+        onClose={handleCloseCreateModal}
+        onSubmit={handleSubmitCreateWorkflow}
+        onKindChange={setCreateWorkflowKind}
+        onNameChange={setCreateWorkflowName}
+        onRemoteIdChange={setCreateWorkflowRemoteId}
+      />
+      {isDeployModalOpen ? (
+        <div
+          role="presentation"
+          onClick={handleCloseDeployModal}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1.5rem",
+            zIndex: 30,
+          }}
+        >
           <div
-            style={{
-              position: "absolute",
-              bottom: "1.5rem",
-              left: "50%",
-                transform: "translateX(-50%)",
-                padding: "0.65rem 1.25rem",
-                borderRadius: "9999px",
-                boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
-                zIndex: 30,
-                ...toastStyles,
-              }}
-              role={saveState === "error" ? "alert" : "status"}
-            >
-              {saveMessage}
-            </div>
-          ) : null}
-        <WorkflowAppearanceModal
-          token={token ?? null}
-          isOpen={isAppearanceModalOpen}
-          target={appearanceModalTarget}
-          onClose={handleCloseAppearanceModal}
-        />
-        <CreateWorkflowModal
-          isOpen={isCreateModalOpen}
-          kind={createWorkflowKind}
-          name={createWorkflowName}
-          remoteId={createWorkflowRemoteId}
-          error={createWorkflowError}
-          isSubmitting={isCreatingWorkflow}
-          onClose={handleCloseCreateModal}
-          onSubmit={handleSubmitCreateWorkflow}
-          onKindChange={setCreateWorkflowKind}
-          onNameChange={setCreateWorkflowName}
-          onRemoteIdChange={setCreateWorkflowRemoteId}
-        />
-        {isDeployModalOpen ? (
-            <div
-              role="presentation"
-              onClick={handleCloseDeployModal}
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(15, 23, 42, 0.45)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "1.5rem",
-                zIndex: 30,
-              }}
-            >
-              <div
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="deploy-dialog-title"
@@ -7858,7 +7710,6 @@ const WorkflowBuilderPage = () => {
               </div>
             </div>
           ) : null}
-        </div>
       </ReactFlowProvider>
   );
 };
