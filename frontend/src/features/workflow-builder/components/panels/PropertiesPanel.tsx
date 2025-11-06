@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 import styles from "../../WorkflowBuilderPage.module.css";
 
 interface PropertiesPanelProps {
@@ -13,8 +13,9 @@ interface PropertiesPanelProps {
 /**
  * Properties panel wrapper for NodeInspector and EdgeInspector
  * Handles responsive layout (desktop vs mobile) and panel styling
+ * Memoized to prevent unnecessary re-renders
  */
-export const PropertiesPanel = ({
+const PropertiesPanelComponent = ({
   isMobileLayout,
   selectedElementLabel,
   floatingPanelStyle,
@@ -57,3 +58,9 @@ export const PropertiesPanel = ({
     </aside>
   );
 };
+
+/**
+ * Memoized PropertiesPanel component
+ * Only re-renders when props change
+ */
+export const PropertiesPanel = memo(PropertiesPanelComponent);

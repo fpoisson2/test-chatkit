@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { ChevronDown } from "lucide-react";
 import type { CSSProperties } from "react";
 import styles from "../../WorkflowBuilderPage.module.css";
@@ -42,8 +43,9 @@ const getBlockLibraryButtonStyle = (disabled: boolean): CSSProperties => ({
 /**
  * Block library panel component - displays available node types
  * Handles both mobile (scrollable with animations) and desktop (collapsible) layouts
+ * Memoized to prevent unnecessary re-renders
  */
-export const BlockLibraryPanel = ({
+const BlockLibraryPanelComponent = ({
   isMobileLayout,
   isOpen,
   items,
@@ -189,3 +191,9 @@ export const BlockLibraryPanel = ({
     </div>
   );
 };
+
+/**
+ * Memoized BlockLibraryPanel component
+ * Only re-renders when props change, improving performance with large item lists
+ */
+export const BlockLibraryPanel = memo(BlockLibraryPanelComponent);

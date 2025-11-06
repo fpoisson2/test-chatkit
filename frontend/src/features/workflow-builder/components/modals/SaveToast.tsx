@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from "react";
+import { memo, useMemo, type CSSProperties } from "react";
 import type { SaveState } from "../../types";
 
 interface SaveToastProps {
@@ -8,8 +8,9 @@ interface SaveToastProps {
 
 /**
  * Toast notification component for save/deploy status messages
+ * Memoized to prevent unnecessary re-renders
  */
-export const SaveToast = ({ saveState, saveMessage }: SaveToastProps) => {
+const SaveToastComponent = ({ saveState, saveMessage }: SaveToastProps) => {
   const toastStyles = useMemo(() => {
     switch (saveState) {
       case "error":
@@ -61,3 +62,9 @@ export const SaveToast = ({ saveState, saveMessage }: SaveToastProps) => {
     </div>
   );
 };
+
+/**
+ * Memoized SaveToast component
+ * Only re-renders when saveState or saveMessage changes
+ */
+export const SaveToast = memo(SaveToastComponent);

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { WorkflowVersionSummary } from "../../types";
 
 interface DeployModalProps {
@@ -14,8 +15,9 @@ interface DeployModalProps {
 
 /**
  * Modal for deploying/publishing workflow versions
+ * Memoized to prevent unnecessary re-renders when closed
  */
-export const DeployModal = ({
+const DeployModalComponent = ({
   isOpen,
   isDeploying,
   deployToProduction,
@@ -203,3 +205,9 @@ export const DeployModal = ({
     </div>
   );
 };
+
+/**
+ * Memoized DeployModal component
+ * Only re-renders when props change
+ */
+export const DeployModal = memo(DeployModalComponent);

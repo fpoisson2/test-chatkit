@@ -1,4 +1,4 @@
-import type { ChangeEvent, CSSProperties } from "react";
+import { memo, type ChangeEvent, type CSSProperties } from "react";
 import type { WorkflowVersionSummary, WorkflowSummary } from "../../types";
 import {
   getHeaderContainerStyle,
@@ -89,8 +89,9 @@ const renderWorkflowPublicationReminder = (
 /**
  * WorkflowHeader component - displays toolbar with version selector and actions
  * Handles both mobile (menu-based) and desktop (button-based) layouts
+ * Memoized to prevent unnecessary re-renders with complex props
  */
-export const WorkflowHeader = ({
+const WorkflowHeaderComponent = ({
   isMobileLayout,
   loading,
   isImporting,
@@ -376,3 +377,9 @@ export const WorkflowHeader = ({
     </header>
   );
 };
+
+/**
+ * Memoized WorkflowHeader component
+ * Only re-renders when props change
+ */
+export const WorkflowHeader = memo(WorkflowHeaderComponent);
