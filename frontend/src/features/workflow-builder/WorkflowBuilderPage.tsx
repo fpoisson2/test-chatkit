@@ -26,16 +26,13 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { ChevronDown, Copy, PenSquare, Redo2, Star, Trash2, Undo2 } from "lucide-react";
+import { ChevronDown, Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
 import {
   buildWorkflowOrderingTimestamps,
-  getWorkflowInitials,
-  isWorkflowPinned,
-  orderWorkflowEntries,
   readStoredWorkflowSelection,
   readStoredWorkflowLastUsedMap,
   readWorkflowSidebarCache,
@@ -226,18 +223,7 @@ import {
   resolveSelectionAfterLoad,
 } from "./utils";
 import {
-  controlLabelStyle,
-  getActionMenuItemStyle,
-  getActionMenuStyle,
-  getActionMenuWrapperStyle,
-  getDeployButtonStyle,
-  getHeaderActionAreaStyle,
   getHeaderContainerStyle,
-  getHeaderGroupStyle,
-  getHeaderLayoutStyle,
-  getHeaderNavigationButtonStyle,
-  getMobileActionButtonStyle,
-  getVersionSelectStyle,
   loadingStyle,
   type ActionMenuPlacement,
 } from "./styles";
