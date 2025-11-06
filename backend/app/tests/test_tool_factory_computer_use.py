@@ -21,7 +21,7 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
 from app.computer import hosted_browser  # noqa: E402
-from app.tool_factory import build_computer_use_tool  # noqa: E402
+from app.tool_builders.computer_use import build_computer_use_tool  # noqa: E402
 
 
 def test_build_computer_use_tool_returns_computer_tool() -> None:

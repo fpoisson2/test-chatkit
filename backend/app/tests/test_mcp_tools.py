@@ -21,13 +21,13 @@ os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
 from app import realtime_runner as realtime_runner_module  # noqa: E402
-from app import tool_factory as tool_factory_module  # noqa: E402
 from app.chatkit import agent_registry  # noqa: E402
 from app.database import SessionLocal, engine  # noqa: E402
 from app.mcp import connection as mcp_connection  # noqa: E402
 from app.mcp import oauth as oauth_module  # noqa: E402
 from app.models import Base, McpServer  # noqa: E402
 from app.secret_utils import encrypt_secret  # noqa: E402
+from app.tool_builders import mcp as mcp_module  # noqa: E402
 
 FASTAPI_AVAILABLE = importlib.util.find_spec("fastapi") is not None
 if FASTAPI_AVAILABLE:  # pragma: no branch - dépendances optionnelles
@@ -63,7 +63,7 @@ def test_build_mcp_tool_constructs_server(monkeypatch: pytest.MonkeyPatch) -> No
             created["name"] = name
             created["client_session_timeout_seconds"] = client_session_timeout_seconds
 
-    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _StubServer)
+    monkeypatch.setattr(mcp_module, "MCPServerSse", _StubServer)
 
     payload = {
         "type": "mcp",
@@ -76,7 +76,7 @@ def test_build_mcp_tool_constructs_server(monkeypatch: pytest.MonkeyPatch) -> No
         "name": "Example",
     }
 
-    server = tool_factory_module.build_mcp_tool(payload)
+    server = mcp_module.build_mcp_tool(payload)
 
     assert isinstance(server, _StubServer)
     params = created["params"]
@@ -100,7 +100,7 @@ def test_build_mcp_tool_adds_bearer_prefix(monkeypatch: pytest.MonkeyPatch) -> N
             captured["params"] = params
             captured["cache_tools_list"] = cache_tools_list
 
-    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _StubServer)
+    monkeypatch.setattr(mcp_module, "MCPServerSse", _StubServer)
 
     payload = {
         "type": "mcp",
@@ -109,7 +109,7 @@ def test_build_mcp_tool_adds_bearer_prefix(monkeypatch: pytest.MonkeyPatch) -> N
         "authorization": "token-value",
     }
 
-    server = tool_factory_module.build_mcp_tool(payload)
+    server = mcp_module.build_mcp_tool(payload)
 
     assert isinstance(server, _StubServer)
     params = captured["params"]
@@ -129,7 +129,7 @@ def test_build_mcp_tool_supports_legacy_payload(
             captured["params"] = params
             captured["cache_tools_list"] = cache_tools_list
 
-    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _StubServer)
+    monkeypatch.setattr(mcp_module, "MCPServerSse", _StubServer)
 
     payload = {
         "type": "mcp",
@@ -138,7 +138,7 @@ def test_build_mcp_tool_supports_legacy_payload(
         "authorization": "legacy-token",
     }
 
-    server = tool_factory_module.build_mcp_tool(payload)
+    server = mcp_module.build_mcp_tool(payload)
 
     assert isinstance(server, _StubServer)
     params = captured["params"]
@@ -154,7 +154,7 @@ def test_build_mcp_tool_rejects_empty_bearer(monkeypatch: pytest.MonkeyPatch) ->
         def __init__(self, **_kwargs: Any) -> None:  # pragma: no cover - garde-fou
             raise AssertionError("MCPServerSse ne doit pas être instancié")
 
-    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _FailingServer)
+    monkeypatch.setattr(mcp_module, "MCPServerSse", _FailingServer)
 
     payload = {
         "type": "mcp",
@@ -164,7 +164,7 @@ def test_build_mcp_tool_rejects_empty_bearer(monkeypatch: pytest.MonkeyPatch) ->
     }
 
     with pytest.raises(ValueError):
-        tool_factory_module.build_mcp_tool(payload)
+        mcp_module.build_mcp_tool(payload)
 
 
 def test_build_mcp_tool_supports_server_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -195,9 +195,9 @@ def test_build_mcp_tool_supports_server_id(monkeypatch: pytest.MonkeyPatch) -> N
             created["cache_tools_list"] = cache_tools_list
             created["name"] = name
 
-    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _StubServer)
+    monkeypatch.setattr(mcp_module, "MCPServerSse", _StubServer)
 
-    server = tool_factory_module.build_mcp_tool({"type": "mcp", "server_id": record.id})
+    server = mcp_module.build_mcp_tool({"type": "mcp", "server_id": record.id})
 
     assert isinstance(server, _StubServer)
     params = created["params"]
@@ -208,7 +208,7 @@ def test_build_mcp_tool_supports_server_id(monkeypatch: pytest.MonkeyPatch) -> N
     assert headers.get("Accept") == "text/event-stream"
     assert headers.get("Cache-Control") == "no-cache"
 
-    context = tool_factory_module.get_mcp_runtime_context(server)
+    context = mcp_module.get_mcp_runtime_context(server)
     assert context is not None
     assert context.server_id == record.id
     assert context.server_url == "https://stored.example/mcp"

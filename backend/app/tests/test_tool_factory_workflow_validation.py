@@ -13,7 +13,7 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from backend.app.tool_factory import (  # noqa: E402 - import après ajustement du path
+from backend.app.tool_builders.workflow import (  # noqa: E402 - import après ajustement du path
     WorkflowValidationResult,
     validate_workflow_graph,
 )
