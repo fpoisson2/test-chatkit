@@ -92,32 +92,32 @@ Organized utilities into logical modules in `utils-internal/`:
 #### 5. `helpers.ts` ✅
 - `cx`: Conditional className utility
 
-### Phase 3: Extract Services (PLANNED)
+### Phase 3: Extract Services ✅ COMPLETED
 
-Create service modules for business logic:
+Created service modules for business logic:
 
-#### 1. `workflowService.ts` (TODO)
-- Create workflow
-- Update workflow
-- Delete workflow
-- Deploy workflow
+#### 1. `workflowService.ts` ✅
+- `fetchWorkflows()`: Fetch all workflows
+- `createWorkflow()`: Create a new workflow
+- `deleteWorkflow()`: Delete a workflow
+- `deployWorkflow()`: Deploy/promote a version to production
+- `renameWorkflow()`: Rename a workflow
+- Location: `services/workflowService.ts`
 
-#### 2. `versionService.ts` (TODO)
-- Fetch versions
-- Publish version
-- Create draft
-- Load version details
+#### 2. `versionService.ts` ✅
+- `fetchVersions()`: Fetch all versions for a workflow
+- `fetchVersionDetail()`: Fetch specific version details
+- `createVersion()`: Create a new version (draft)
+- `updateVersion()`: Update an existing version
+- `deleteVersion()`: Delete a version
+- Location: `services/versionService.ts`
 
-#### 3. `importExportService.ts` (TODO)
-- Import workflow from JSON
-- Export workflow to JSON
-- Validation logic
-
-#### 4. `flowOperationsService.ts` (TODO)
-- Add node
-- Delete node
-- Connect nodes
-- Disconnect edges
+#### 3. `importExportService.ts` ✅
+- `exportWorkflow()`: Export workflow version as JSON
+- `downloadWorkflowAsFile()`: Download workflow as JSON file
+- `importWorkflow()`: Import workflow from JSON payload
+- `readFileAsText()`: Read file as text
+- Location: `services/importExportService.ts`
 
 ### Phase 4: Extract UI Components (PLANNED)
 
@@ -205,11 +205,11 @@ workflow-builder/
 │   ├── version-helpers.ts
 │   └── helpers.ts
 │
-├── services/                       # TODO: Business logic
+├── services/                       # ✅ Business logic
+│   ├── index.ts
 │   ├── workflowService.ts
 │   ├── versionService.ts
-│   ├── importExportService.ts
-│   └── flowOperationsService.ts
+│   └── importExportService.ts
 │
 └── components/                     # TODO: UI components
     ├── header/
@@ -295,6 +295,64 @@ import {
 } from "./utils-internal";
 ```
 
+### Using Services
+
+Create service instances and use them for API operations:
+
+```typescript
+import {
+  createWorkflowService,
+  createVersionService,
+  createImportExportService,
+} from "./services";
+
+const WorkflowBuilderPage = () => {
+  const { token } = useAuth();
+  const authHeader = useMemo(
+    () => (token ? { Authorization: `Bearer ${token}` } : {}),
+    [token],
+  );
+
+  // Create service instances
+  const workflowService = useMemo(
+    () => createWorkflowService(backendUrl, authHeader),
+    [authHeader],
+  );
+
+  const versionService = useMemo(
+    () => createVersionService(backendUrl, authHeader),
+    [authHeader],
+  );
+
+  const importExportService = useMemo(
+    () => createImportExportService(backendUrl, authHeader),
+    [authHeader],
+  );
+
+  // Use services in handlers
+  const handleCreateWorkflow = async (payload) => {
+    try {
+      const created = await workflowService.createWorkflow(payload);
+      // Handle success...
+    } catch (error) {
+      // Handle error...
+    }
+  };
+
+  const handleExportWorkflow = async (workflowId, versionId) => {
+    try {
+      const graph = await importExportService.exportWorkflow(workflowId, versionId);
+      importExportService.downloadWorkflowAsFile(graph, workflowLabel, versionLabel);
+      // Handle success...
+    } catch (error) {
+      // Handle error...
+    }
+  };
+
+  // ... rest of component
+};
+```
+
 ## Benefits
 
 1. **Improved Maintainability**: Smaller, focused modules are easier to understand and modify
@@ -308,7 +366,7 @@ import {
 
 1. ✅ Complete Phase 1: Extract Custom Hooks
 2. ✅ Complete Phase 2: Extract Utilities
-3. TODO: Implement Phase 3: Extract Services
+3. ✅ Complete Phase 3: Extract Services
 4. TODO: Implement Phase 4: Extract UI Components
 5. TODO: Implement Phase 5: Performance Optimization
 6. TODO: Implement Phase 6: Testing
