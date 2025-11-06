@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 interface OutboundCallAudioPlayerProps {
   callId: string | null;
   onCallEnd?: () => void;
-  authToken: string | null;
 }
 
 interface AudioPacket {
@@ -18,7 +17,6 @@ interface AudioPacket {
 export const OutboundCallAudioPlayer = ({
   callId,
   onCallEnd,
-  authToken,
 }: OutboundCallAudioPlayerProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -35,33 +33,20 @@ export const OutboundCallAudioPlayer = ({
 
   // Handle hang up
   const handleHangup = useCallback(async () => {
-    console.log("[OutboundCallAudioPlayer] handleHangup called", { callId, isHangingUp, hasToken: !!authToken });
-
-    if (!callId) {
-      console.error("[OutboundCallAudioPlayer] No callId");
-      return;
-    }
-    if (isHangingUp) {
-      console.warn("[OutboundCallAudioPlayer] Already hanging up");
+    if (!callId || isHangingUp) {
       return;
     }
 
     setIsHangingUp(true);
     try {
-      console.log("[OutboundCallAudioPlayer] Sending hangup request for call", callId, "with auth:", !!authToken);
-
-      // Build headers - include auth token if available
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (authToken) {
-        headers["Authorization"] = `Bearer ${authToken}`;
-      }
+      console.log("[OutboundCallAudioPlayer] Sending hangup request for call", callId);
 
       // Use HTTP POST instead of WebSocket for reliability
       const response = await fetch(`/api/outbound/call/${callId}/hangup`, {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
       if (!response.ok) {
@@ -77,7 +62,7 @@ export const OutboundCallAudioPlayer = ({
       setError(`Échec du raccrochage: ${err instanceof Error ? err.message : String(err)}`);
       setIsHangingUp(false);
     }
-  }, [callId, isHangingUp, onCallEnd, authToken]);
+  }, [callId, isHangingUp, onCallEnd]);
 
   // Initialize Audio Context
   const initializeAudioContext = useCallback(() => {

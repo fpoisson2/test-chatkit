@@ -171,16 +171,12 @@ async def get_call_status(
 @router.post("/api/outbound/call/{call_id}/hangup")
 async def hangup_call(
     call_id: str,
-    user: User | None = Depends(get_optional_user),
-    db: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """
     Raccroche un appel en cours.
 
     Args:
         call_id: ID de l'appel
-        user: Utilisateur authentifié (optionnel)
-        db: Session de base de données
 
     Returns:
         Message de confirmation
@@ -188,17 +184,6 @@ async def hangup_call(
     Raises:
         HTTPException: Si l'appel n'est pas trouvé
     """
-    # Vérifier que l'appel existe
-    call_record = db.query(OutboundCall).filter_by(call_sid=call_id).first()
-    if not call_record:
-        raise HTTPException(status_code=404, detail="Call not found")
-
-    # Log qui raccroche l'appel
-    import logging
-    logger = logging.getLogger("chatkit.routes.outbound")
-    user_info = f"user {user.id}" if user else "unauthenticated"
-    logger.info(f"Hangup request for call {call_id} from {user_info}")
-
     call_manager = get_outbound_call_manager()
     success = await call_manager.hangup_call(call_id)
 
