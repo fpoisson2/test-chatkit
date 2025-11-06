@@ -212,6 +212,8 @@ import {
   useModalContext,
   useSelectionContext,
   useGraphContext,
+  useViewportContext,
+  useWorkflowContext,
 } from "./contexts";
 
 const WorkflowBuilderPage = () => {
@@ -251,6 +253,10 @@ const WorkflowBuilderPage = () => {
     setOpenWorkflowMenuId,
     isMobileLayout: contextIsMobileLayout,
     setIsMobileLayout: setContextIsMobileLayout,
+    isExporting,
+    setIsExporting,
+    isImporting,
+    setIsImporting,
   } = useUIContext();
 
   const {
@@ -310,6 +316,59 @@ const WorkflowBuilderPage = () => {
     setIsNodeDragInProgress,
   } = useGraphContext();
 
+  // Phase 4: ViewportContext for viewport-related state
+  const {
+    viewport,
+    minViewportZoom,
+    initialViewport,
+    hasUserViewportChange,
+    pendingViewportRestore,
+    viewportRef,
+    viewportMemoryRef,
+    viewportKeyRef,
+    hasUserViewportChangeRef,
+    pendingViewportRestoreRef,
+    setViewport,
+    setMinViewportZoom,
+    setInitialViewport,
+    setHasUserViewportChange,
+    setPendingViewportRestore,
+    saveViewport,
+    restoreViewport,
+    clearViewport,
+    updateViewport,
+    calculateMinZoom,
+    refreshViewportConstraints,
+    generateViewportKey,
+  } = useViewportContext();
+
+  // Phase 4: WorkflowContext for workflow/version-related state
+  // Note: workflows/hostedWorkflows still come from useWorkflowSidebarState for sidebar management
+  const {
+    versions,
+    selectedVersionId,
+    selectedVersionDetail,
+    draftVersionId,
+    draftVersionSummary,
+    loading,
+    loadError,
+    hostedLoading,
+    hostedError,
+    versionsRef,
+    selectedVersionIdRef,
+    draftVersionIdRef,
+    draftVersionSummaryRef,
+    setVersions,
+    setSelectedVersionId,
+    setSelectedVersionDetail,
+    setDraftVersionId,
+    setDraftVersionSummary,
+    setLoading,
+    setLoadError,
+    setHostedLoading,
+    setHostedError,
+  } = useWorkflowContext();
+
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
       return {
@@ -361,19 +420,16 @@ const WorkflowBuilderPage = () => {
   } = availableModelsState;
   const { data: widgets, loading: widgetsLoading, error: widgetsError } = widgetsState;
 
-  // Phase 4: State migrated to contexts (SaveContext, UIContext, ModalContext, SelectionContext, GraphContext)
-  // Remaining local state that doesn't fit in current contexts:
-  const [loading, setLoading] = useState(() => !initialSidebarCache);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // Note: selectedNodeId and selectedEdgeId come from SelectionContext (above)
-  // Note: nodes, edges, hasPendingChanges come from GraphContext (above)
-  const [hostedLoading, setHostedLoading] = useState(false);
-  const [hostedError, setHostedError] = useState<string | null>(null);
-  const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
-  const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
-  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
+  // Phase 4: State fully migrated to contexts!
+  // - SaveContext: saveState, saveMessage, lastSavedSnapshotRef
+  // - UIContext: isBlockLibraryOpen, isPropertiesPanelOpen, openWorkflowMenuId, isExporting, isImporting
+  // - ModalContext: createWorkflow*, isCreatingWorkflow, deployToProduction, isDeploying, modal open states
+  // - SelectionContext: selectedNodeId, selectedEdgeId, selectedNodeIds, selectedEdgeIds, refs
+  // - GraphContext: nodes, edges, hasPendingChanges, nodesRef, edgesRef, hasPendingChangesRef, isNodeDragInProgressRef
+  // - ViewportContext: viewport, minViewportZoom, initialViewport, hasUserViewportChange, pendingViewportRestore, refs
+  // - WorkflowContext: versions, selectedVersionId, selectedVersionDetail, loading, loadError, hostedLoading, hostedError, refs
+
+  // Remaining local state (UI-specific):
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
     useState<ActionMenuPlacement>("up");
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -412,22 +468,19 @@ const WorkflowBuilderPage = () => {
     isCreatingWorkflow,
     isDeploying,
   });
-  const lastSavedSnapshotRef = useRef<string | null>(null);
-  const draftVersionIdRef = useRef<number | null>(null);
-  const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
-  const versionsRef = useRef<WorkflowVersionSummary[]>([]);
-  const selectedWorkflowIdRef = useRef<number | null>(null);
-  // Note: hasPendingChangesRef comes from GraphContext (above)
-  // Note: saveStateRef comes from SaveContext (above)
-  const selectedVersionIdRef = useRef<number | null>(null);
+
+  // Phase 4: Refs migrated to contexts
+  // - SaveContext: lastSavedSnapshotRef, saveStateRef
+  // - SelectionContext: selectedNodeIdRef, selectedEdgeIdRef, previousSelectedElementRef
+  // - GraphContext: nodesRef, edgesRef, hasPendingChangesRef, isNodeDragInProgressRef
+  // - ViewportContext: viewportRef, viewportMemoryRef, viewportKeyRef, hasUserViewportChangeRef, pendingViewportRestoreRef
+  // - WorkflowContext: versionsRef, selectedVersionIdRef, draftVersionIdRef, draftVersionSummaryRef
+  // Note: selectedWorkflowIdRef comes from useWorkflowSidebarState
+
+  // Remaining local refs:
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
-  const viewportRef = useRef<Viewport | null>(null);
-  const viewportMemoryRef = useRef(new Map<string, Viewport>());
-  const viewportKeyRef = useRef<string | null>(null);
-  const hasUserViewportChangeRef = useRef(false);
-  const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -438,12 +491,14 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     setContextIsMobileLayout(isMobileLayout);
   }, [isMobileLayout, setContextIsMobileLayout]);
+
+  // Calculate base min zoom (used by viewport persistence hook)
   const baseMinViewportZoom = useMemo(
     () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
     [isMobileLayout],
   );
-  const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
-  const [initialViewport, setInitialViewport] = useState<Viewport | undefined>(undefined);
+
+  // Note: minViewportZoom and initialViewport come from ViewportContext
 
   const { persistViewportMemory, refreshViewportConstraints, restoreViewport } =
     useWorkflowViewportPersistence({
