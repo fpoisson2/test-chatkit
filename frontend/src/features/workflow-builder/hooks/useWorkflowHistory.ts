@@ -7,10 +7,9 @@ import {
   humanizeSlug,
   buildEdgeStyle,
   defaultEdgeOptions,
-  isValidNodeKind,
 } from "../utils";
 import { stringifyAgentParameters } from "../../../utils/workflows";
-import { HISTORY_LIMIT } from "../WorkflowBuilderUtils";
+import { HISTORY_LIMIT, isValidNodeKind } from "../WorkflowBuilderUtils";
 import type { FlowNode, FlowEdge } from "../types";
 
 interface HistoryState {
