@@ -10,7 +10,7 @@ import {
   isValidNodeKind,
 } from "../utils";
 import { stringifyAgentParameters } from "../../../utils/workflows";
-import { HISTORY_LIMIT } from "../../../utils";
+import { HISTORY_LIMIT } from "../WorkflowBuilderUtils";
 import type { FlowNode, FlowEdge } from "../types";
 
 interface HistoryState {
