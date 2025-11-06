@@ -6,8 +6,6 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
-  type Dispatch,
-  type SetStateAction,
 } from "react";
 
 import {
@@ -56,6 +54,7 @@ import {
   type VectorStoreSummary,
 } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
+import { useTokenResourceLoader } from "./hooks/useTokenResourceLoader";
 import {
   getAgentFileSearchConfig,
   getAgentWorkflowTools,
@@ -230,67 +229,6 @@ import {
   type WorkflowViewportListResponse,
   type WorkflowViewportRecord,
 } from "./WorkflowBuilderUtils";
-
-type TokenResourceLoaderOptions<T> = {
-  token: string | null;
-  setData: Dispatch<SetStateAction<T>>;
-  setLoading: Dispatch<SetStateAction<boolean>>;
-  setError: Dispatch<SetStateAction<string | null>>;
-  loadResource: () => Promise<T>;
-  fallbackErrorMessage: string;
-  resetData: () => void;
-};
-
-function useTokenResourceLoader<T>({
-  token,
-  setData,
-  setLoading,
-  setError,
-  loadResource,
-  fallbackErrorMessage,
-  resetData,
-}: TokenResourceLoaderOptions<T>) {
-  useEffect(() => {
-    let isMounted = true;
-
-    if (!token) {
-      resetData();
-      setLoading(false);
-      setError(null);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    setLoading(true);
-    setError(null);
-
-    loadResource()
-      .then((result) => {
-        if (isMounted) {
-          setData(result);
-        }
-      })
-      .catch((error) => {
-        if (!isMounted) {
-          return;
-        }
-        const message =
-          error instanceof Error ? error.message : fallbackErrorMessage;
-        setError(message);
-        resetData();
-      })
-      .finally(() => {
-        if (isMounted) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [fallbackErrorMessage, loadResource, resetData, setData, setError, setLoading, token]);
-}
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
