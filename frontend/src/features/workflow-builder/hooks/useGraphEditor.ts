@@ -13,9 +13,9 @@ import {
   defaultEdgeOptions,
   extractPosition,
   humanizeSlug,
-  isValidNodeKind,
   stringifyAgentParameters,
 } from "../utils";
+import { isValidNodeKind } from "../WorkflowBuilderUtils";
 import {
   getVectorStoreNodeConfig,
   resolveStartParameters,
