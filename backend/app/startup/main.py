@@ -4,54 +4,55 @@ import asyncio
 import logging
 import os
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from .admin_settings import (
+from ..admin_settings import (
     apply_runtime_model_overrides,
     get_thread_title_prompt_override,
 )
-from .config import settings_proxy
-from .database import (
+from ..config import settings_proxy
+from ..database import (
     SessionLocal,
     engine,
     ensure_database_extensions,
     ensure_vector_indexes,
     wait_for_database,
 )
-from .database.ad_hoc_migrations import run_ad_hoc_migrations
-from .docs import DocumentationService
-from .model_providers import configure_model_provider
-from .models import (
+from ..database.ad_hoc_migrations import run_ad_hoc_migrations
+from ..docs import DocumentationService
+from ..model_providers import configure_model_provider
+from ..models import (
     AppSettings,
     Base,
     User,
 )
-from .security import hash_password
-from .telephony.invite_runtime import InviteRuntime
-from .telephony.multi_sip_manager import MultiSIPRegistrationManager
-from .telephony.registration import SIPRegistrationManager
-from .telephony.sip_server import resolve_workflow_for_phone_number
-from .telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
+from ..security import hash_password
+from ..telephony.invite_runtime import InviteRuntime
+from ..telephony.multi_sip_manager import MultiSIPRegistrationManager
+from ..telephony.registration import SIPRegistrationManager
+from ..telephony.sip_server import resolve_workflow_for_phone_number
+from ..telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
 
 # PJSUA imports
 try:
-    from .telephony.pjsua_adapter import PJSUA_AVAILABLE, PJSUAAdapter
-    from .telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
+    from ..telephony.pjsua_adapter import PJSUA_AVAILABLE, PJSUAAdapter
+    from ..telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
 except ImportError:
     PJSUA_AVAILABLE = False
     PJSUAAdapter = None  # type: ignore
     create_pjsua_audio_bridge = None  # type: ignore
-from .vector_store import (
+from ..vector_store import (
     WORKFLOW_VECTOR_STORE_DESCRIPTION,
     WORKFLOW_VECTOR_STORE_METADATA,
     WORKFLOW_VECTOR_STORE_SLUG,
     WORKFLOW_VECTOR_STORE_TITLE,
     JsonVectorStoreService,
 )
-from .workflows.service import WorkflowService
+from ..workflows.service import WorkflowService
 
 logger = logging.getLogger("chatkit.server")
 
@@ -76,6 +77,12 @@ for noisy_logger in (
     if logger_instance.level == logging.NOTSET:
         logger_instance.setLevel(logging.INFO)
 settings = settings_proxy
+
+
+InviteHandlerFactory = Callable[
+    [MultiSIPRegistrationManager | SIPRegistrationManager],
+    Any,
+]
 
 
 def _build_invite_handler(
@@ -146,7 +153,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
         logger.info("📞 De: %s", call_info.remoteUri)
         logger.info("📞 Call ID: %s", call_id)
 
-        from .telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
+        from ..telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
 
         pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
         chatkit_call_id = str(uuid.uuid4())
@@ -368,7 +375,13 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
     return _handle_pjsua_incoming_call
 
 
-def register_startup_events(app: FastAPI) -> None:
+def configure_sip_layer(
+    app: FastAPI,
+    *,
+    invite_handler_factory: InviteHandlerFactory = _build_invite_handler,
+) -> tuple[str | None, int | None]:
+    """Configure les composants SIP et retourne les paramètres de contact."""
+
     sip_contact_host = settings.sip_contact_host
     sip_contact_port = (
         settings.sip_contact_port
@@ -396,10 +409,16 @@ def register_startup_events(app: FastAPI) -> None:
             bind_host=settings.sip_bind_host,
         )
         sip_registration_manager.set_invite_handler(
-            _build_invite_handler(sip_registration_manager)
+            invite_handler_factory(sip_registration_manager)
         )
         app.state.sip_registration = sip_registration_manager
         app.state.pjsua_adapter = None
+
+    return sip_contact_host, sip_contact_port
+
+
+def register_database_startup(app: FastAPI) -> None:
+    """Enregistre l'événement de démarrage lié à la base de données."""
 
     @app.on_event("startup")
     def _on_startup() -> None:
@@ -473,6 +492,16 @@ def register_startup_events(app: FastAPI) -> None:
                             exc,
                         )
 
+
+def register_telephony_events(
+    app: FastAPI,
+    *,
+    sip_contact_host: str | None,
+    sip_contact_port: int | None,
+    invite_handler_factory: InviteHandlerFactory = _build_invite_handler,
+) -> None:
+    """Enregistre les événements de démarrage/arrêt liés à la téléphonie."""
+
     @app.on_event("startup")
     async def _start_sip_registration() -> None:
         if USE_PJSUA:
@@ -495,7 +524,8 @@ def register_startup_events(app: FastAPI) -> None:
                         )
 
                 # Initialiser le gestionnaire d'appels sortants avec PJSUA
-                from .telephony.outbound_call_manager import get_outbound_call_manager
+                from ..telephony.outbound_call_manager import get_outbound_call_manager
+
                 get_outbound_call_manager(pjsua_adapter=pjsua_adapter)
                 logger.info("OutboundCallManager initialisé avec PJSUA")
 
@@ -524,7 +554,7 @@ def register_startup_events(app: FastAPI) -> None:
                     # anciens paramètres
                     stored_settings = session.scalar(select(AppSettings).limit(1))
                     if stored_settings and stored_settings.sip_trunk_uri:
-                        from .telephony.registration import SIPRegistrationConfig
+                        from ..telephony.registration import SIPRegistrationConfig
 
                         # Créer un compte SIP temporaire depuis AppSettings
                         fallback_config = SIPRegistrationConfig(
@@ -553,7 +583,7 @@ def register_startup_events(app: FastAPI) -> None:
                             contact_port=sip_contact_port,
                             contact_transport=settings.sip_contact_transport,
                             bind_host=settings.sip_bind_host,
-                            invite_handler=_build_invite_handler(manager),
+                            invite_handler=invite_handler_factory(manager),
                         )
                         fallback_manager.apply_config(fallback_config)
                         # Stocker temporairement le gestionnaire fallback
@@ -582,3 +612,15 @@ def register_startup_events(app: FastAPI) -> None:
                     "Arrêt du gestionnaire d'enregistrement SIP échoué",
                     exc_info=exc,
                 )
+
+
+def register_startup_events(app: FastAPI) -> None:
+    """Configure les événements de démarrage pour l'application FastAPI."""
+
+    sip_contact_host, sip_contact_port = configure_sip_layer(app)
+    register_database_startup(app)
+    register_telephony_events(
+        app,
+        sip_contact_host=sip_contact_host,
+        sip_contact_port=sip_contact_port,
+    )

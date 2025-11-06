@@ -99,6 +99,52 @@ def test_cleanup_duplicate_mcp_servers_deduplicates(
     ]
 
 
+def test_configure_sip_layer_uses_invite_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    monkeypatch.setattr(startup, "USE_PJSUA", False)
+
+    settings_stub = SimpleNamespace(
+        sip_contact_host="example.com",
+        sip_contact_port=5062,
+        sip_bind_port=5060,
+        sip_contact_transport="udp",
+        sip_bind_host="0.0.0.0",
+    )
+    monkeypatch.setattr(startup, "settings", settings_stub)
+
+    class DummyManager:
+        def __init__(self, *args, **kwargs):
+            self.kwargs = kwargs
+            self.invite_handler = None
+
+        def set_invite_handler(self, handler: object) -> None:
+            self.invite_handler = handler
+
+    monkeypatch.setattr(startup, "MultiSIPRegistrationManager", DummyManager)
+
+    sentinel_handler = object()
+
+    def fake_factory(manager: DummyManager) -> object:
+        calls.append(manager)
+        return sentinel_handler
+
+    app = FastAPI()
+
+    host, port = startup.configure_sip_layer(
+        app, invite_handler_factory=fake_factory
+    )
+
+    assert host == "example.com"
+    assert port == 5062
+    assert isinstance(app.state.sip_registration, DummyManager)
+    assert calls == [app.state.sip_registration]
+    assert app.state.sip_registration.invite_handler is sentinel_handler
+    assert app.state.pjsua_adapter is None
+
+
 def test_register_startup_events_uses_ad_hoc_migrations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
