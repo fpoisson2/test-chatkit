@@ -32,8 +32,9 @@ os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
 
 import_module("backend.app.chatkit")
+from backend.app.workflows.runtime import _build_user_message_history_items
 executor_module = import_module("backend.app.workflows.executor")
-_build_user_message_history_items = executor_module._build_user_message_history_items
+
 WorkflowInput = executor_module.WorkflowInput
 WorkflowExecutionError = executor_module.WorkflowExecutionError
 run_workflow = executor_module.run_workflow

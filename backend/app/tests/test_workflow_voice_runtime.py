@@ -31,6 +31,7 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 import_module("backend.app.chatkit")
 executor_module = import_module("backend.app.workflows.executor")
 context_module = import_module("backend.app.chatkit_server.context")
+voice_session_module = import_module("backend.app.workflows.runtime.voice_session")
 
 ChatKitRequestContext = context_module.ChatKitRequestContext
 _WAIT_STATE_METADATA_KEY = context_module._WAIT_STATE_METADATA_KEY
@@ -184,10 +185,14 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     async def _on_stream(event: ThreadStreamEvent) -> None:
         events.append(event)
 
+    class _StubVoiceSessionManager(voice_session_module.VoiceSessionManager):
+        def __init__(self) -> None:
+            super().__init__(open_session=_fake_open_session)
+
     monkeypatch.setattr(
         executor_module,
-        "open_voice_session",
-        _fake_open_session,
+        "VoiceSessionManager",
+        _StubVoiceSessionManager,
     )
     monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
 
@@ -297,10 +302,14 @@ async def test_voice_agent_processes_transcripts(
             session_id="session-voice",
         )
 
+    class _StubStartManager(voice_session_module.VoiceSessionManager):
+        def __init__(self) -> None:
+            super().__init__(open_session=_fake_open_session)
+
     monkeypatch.setattr(
         executor_module,
-        "open_voice_session",
-        _fake_open_session,
+        "VoiceSessionManager",
+        _StubStartManager,
     )
     monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
 
@@ -339,16 +348,24 @@ async def test_voice_agent_processes_transcripts(
     async def _fail_open_session(**kwargs: Any) -> Any:  # pragma: no cover
         raise AssertionError("open_voice_session should not be called")
 
-    monkeypatch.setattr(executor_module, "open_voice_session", _fail_open_session)
-
     closed: list[dict[str, Any]] = []
 
     async def _close_session(**kwargs: Any) -> bool:
         closed.append(kwargs)
         return True
 
-    monkeypatch.setattr(executor_module, "close_voice_session", _close_session)
-    assert executor_module.close_voice_session is _close_session
+    class _StubVoiceSessionManager(voice_session_module.VoiceSessionManager):
+        def __init__(self) -> None:
+            super().__init__(
+                open_session=_fail_open_session,
+                close_session=_close_session,
+            )
+
+    monkeypatch.setattr(
+        executor_module,
+        "VoiceSessionManager",
+        _StubVoiceSessionManager,
+    )
 
     resume_input = WorkflowInput(
         input_as_text="",
