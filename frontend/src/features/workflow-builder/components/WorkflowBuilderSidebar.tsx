@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type CSSProperties } from "react";
+import { useEffect, useMemo, type CSSProperties, type MutableRefObject } from "react";
 
 import { Star } from "lucide-react";
 
@@ -51,6 +51,8 @@ export type WorkflowBuilderSidebarProps = {
   ) => void;
   onExportWorkflow: (workflowId?: number) => void | Promise<void>;
   closeWorkflowMenu: () => void;
+  workflowMenuTriggerRef: MutableRefObject<HTMLButtonElement | null>;
+  workflowMenuRef: MutableRefObject<HTMLDivElement | null>;
   setWorkflowMenuPlacement: (placement: ActionMenuPlacement) => void;
   setOpenWorkflowMenuId: (value: string | number | null) => void;
 };
@@ -83,6 +85,8 @@ const WorkflowBuilderSidebar = ({
   onOpenAppearanceModal,
   onExportWorkflow,
   closeWorkflowMenu,
+  workflowMenuTriggerRef,
+  workflowMenuRef,
   setWorkflowMenuPlacement,
   setOpenWorkflowMenuId,
 }: WorkflowBuilderSidebarProps) => {
@@ -228,20 +232,21 @@ const WorkflowBuilderSidebar = ({
                 </span>
               </button>
               <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
-                <button
-                  type="button"
-                  className="chatkit-sidebar__workflow-action-button"
-                  data-workflow-menu-trigger=""
-                  aria-haspopup="true"
-                  aria-expanded={isMenuOpen}
-                  aria-controls={menuId}
-                  disabled={hostedLoading}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (openWorkflowMenuId === menuKey) {
-                      closeWorkflowMenu();
-                      return;
-                    }
+              <button
+                type="button"
+                className="chatkit-sidebar__workflow-action-button"
+                data-workflow-menu-trigger=""
+                aria-haspopup="true"
+                aria-expanded={isMenuOpen}
+                aria-controls={menuId}
+                disabled={hostedLoading}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  workflowMenuTriggerRef.current = event.currentTarget;
+                  if (openWorkflowMenuId === menuKey) {
+                    closeWorkflowMenu();
+                    return;
+                  }
 
                     if (isMobileLayout && typeof window !== "undefined") {
                       const triggerRect = event.currentTarget.getBoundingClientRect();
@@ -280,6 +285,13 @@ const WorkflowBuilderSidebar = ({
                   data-workflow-menu=""
                   className="chatkit-sidebar__workflow-menu"
                   style={menuStyle}
+                  ref={(node) => {
+                    if (node) {
+                      workflowMenuRef.current = node;
+                    } else if (workflowMenuRef.current) {
+                      workflowMenuRef.current = null;
+                    }
+                  }}
                 >
                   <button
                     type="button"
@@ -372,14 +384,15 @@ const WorkflowBuilderSidebar = ({
                 data-workflow-menu-trigger=""
                 aria-haspopup="true"
                 aria-expanded={isMenuOpen}
-                aria-controls={menuId}
-                disabled={loading}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (openWorkflowMenuId === workflow.id) {
-                    closeWorkflowMenu();
-                    return;
-                  }
+              aria-controls={menuId}
+              disabled={loading}
+              onClick={(event) => {
+                event.stopPropagation();
+                workflowMenuTriggerRef.current = event.currentTarget;
+                if (openWorkflowMenuId === workflow.id) {
+                  closeWorkflowMenu();
+                  return;
+                }
 
                   if (isMobileLayout && typeof window !== "undefined") {
                     const triggerRect = event.currentTarget.getBoundingClientRect();
@@ -420,6 +433,13 @@ const WorkflowBuilderSidebar = ({
                 data-workflow-menu=""
                 className="chatkit-sidebar__workflow-menu"
                 style={menuStyle}
+                ref={(node) => {
+                  if (node) {
+                    workflowMenuRef.current = node;
+                  } else if (workflowMenuRef.current) {
+                    workflowMenuRef.current = null;
+                  }
+                }}
               >
                 <button
                   type="button"
@@ -594,6 +614,8 @@ const WorkflowBuilderSidebar = ({
     setWorkflowMenuPlacement,
     t,
     workflowMenuPlacement,
+    workflowMenuRef,
+    workflowMenuTriggerRef,
     workflows,
   ]);
 

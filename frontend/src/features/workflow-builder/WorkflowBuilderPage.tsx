@@ -31,6 +31,7 @@ import { useAppLayout } from "../../components/AppLayout";
 import { chatkitApi, makeApiEndpointCandidates } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
+import { useOutsidePointerDown } from "./hooks/useOutsidePointerDown";
 import useWorkflowResources from "./hooks/useWorkflowResources";
 import useWorkflowSidebarState from "./hooks/useWorkflowSidebarState";
 import {
@@ -310,7 +311,9 @@ const WorkflowBuilderPage = () => {
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("up");
-  }, []);
+    workflowMenuTriggerRef.current = null;
+    workflowMenuRef.current = null;
+  }, [workflowMenuRef, workflowMenuTriggerRef]);
   const handleCloseAppearanceModal = useCallback(() => {
     setAppearanceModalOpen(false);
     setAppearanceModalTarget(null);
@@ -359,6 +362,8 @@ const WorkflowBuilderPage = () => {
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const mobileActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
+  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
@@ -768,28 +773,13 @@ const WorkflowBuilderPage = () => {
     },
   );
 
-  useEffect(() => {
-    if (!isMobileActionsOpen) {
-      return;
-    }
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return;
-      }
-      if (mobileActionsTriggerRef.current?.contains(target)) {
-        return;
-      }
-      if (mobileActionsMenuRef.current?.contains(target)) {
-        return;
-      }
+  useOutsidePointerDown(
+    [mobileActionsTriggerRef, mobileActionsMenuRef],
+    () => {
       closeMobileActions();
-    };
-    window.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [closeMobileActions, isMobileActionsOpen]);
+    },
+    { enabled: isMobileActionsOpen },
+  );
 
   useEffect(() => {
     if (!isBlockLibraryOpen) {
@@ -803,30 +793,13 @@ const WorkflowBuilderPage = () => {
     }
   }, [closeWorkflowMenu, workflows.length]);
 
-  useEffect(() => {
-    if (openWorkflowMenuId === null) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target) {
-        return;
-      }
-      if (
-        target.closest('[data-workflow-menu]') ||
-        target.closest('[data-workflow-menu-trigger]')
-      ) {
-        return;
-      }
+  useOutsidePointerDown(
+    [workflowMenuTriggerRef, workflowMenuRef],
+    () => {
       closeWorkflowMenu();
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [closeWorkflowMenu, openWorkflowMenuId]);
+    },
+    { enabled: openWorkflowMenuId !== null },
+  );
 
   useEscapeKeyHandler(
     () => {
@@ -3826,6 +3799,8 @@ const WorkflowBuilderPage = () => {
         onOpenAppearanceModal={openAppearanceModal}
         onExportWorkflow={handleExportWorkflow}
         closeWorkflowMenu={closeWorkflowMenu}
+        workflowMenuTriggerRef={workflowMenuTriggerRef}
+        workflowMenuRef={workflowMenuRef}
         setWorkflowMenuPlacement={setWorkflowMenuPlacement}
         setOpenWorkflowMenuId={setOpenWorkflowMenuId}
       />
