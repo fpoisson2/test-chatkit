@@ -86,7 +86,7 @@ interface WorkflowBuilderCanvasProps {
   isBlockLibraryOpen: boolean;
   closeBlockLibrary: (options?: { focusToggle?: boolean }) => void;
   blockLibraryId: string;
-  renderBlockLibraryContent: () => ReactNode;
+  blockLibraryContent: ReactNode;
   redoHistory: () => void;
   undoHistory: () => void;
   handleDuplicateSelection: () => void;
@@ -151,7 +151,7 @@ const WorkflowBuilderCanvas = ({
   isBlockLibraryOpen,
   closeBlockLibrary,
   blockLibraryId,
-  renderBlockLibraryContent,
+  blockLibraryContent,
   redoHistory,
   undoHistory,
   handleDuplicateSelection,
@@ -296,7 +296,7 @@ const WorkflowBuilderCanvas = ({
                   role="dialog"
                   aria-modal="true"
                 >
-                  {renderBlockLibraryContent()}
+                  {blockLibraryContent}
                 </aside>
               </div>
             ) : null}
@@ -386,7 +386,7 @@ const WorkflowBuilderCanvas = ({
             className={styles.blockLibrary}
             style={floatingPanelStyle}
           >
-            {renderBlockLibraryContent()}
+            {blockLibraryContent}
           </aside>
         )}
         {showPropertiesPanel ? (

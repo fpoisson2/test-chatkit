@@ -23,8 +23,6 @@ import {
 
 import "reactflow/dist/style.css";
 
-import { ChevronDown } from "lucide-react";
-
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout } from "../../components/AppLayout";
@@ -123,6 +121,7 @@ import CreateWorkflowModal from "./components/CreateWorkflowModal";
 import DeployWorkflowModal from "./components/DeployWorkflowModal";
 import NodeInspector from "./components/NodeInspector";
 import WorkflowBuilderSidebar from "./components/WorkflowBuilderSidebar";
+import BlockLibrary, { type BlockLibraryItem } from "./components/BlockLibrary";
 import WorkflowBuilderCanvas, {
   type MobileActionLabels,
 } from "./components/WorkflowBuilderCanvas";
@@ -365,9 +364,6 @@ const WorkflowBuilderPage = () => {
   const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
-  const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
-  const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const blockLibraryAnimationFrameRef = useRef<number | null>(null);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
@@ -2987,7 +2983,7 @@ const WorkflowBuilderPage = () => {
     t,
   ]);
 
-  const blockLibraryItems = useMemo(() => {
+  const blockLibraryItems = useMemo<BlockLibraryItem[]>(() => {
     const definitions: Array<{
       key: string;
       kind: NodeKind;
@@ -3074,348 +3070,30 @@ const WorkflowBuilderPage = () => {
     nodeHandlers.handleAddEndNode,
   ]);
 
-  const updateBlockLibraryTransforms = useCallback(() => {
-    if (!isMobileLayout || typeof window === "undefined") {
-      return;
-    }
-    const container = blockLibraryScrollRef.current;
-    if (!container) {
-      return;
-    }
-    const containerRect = container.getBoundingClientRect();
-    if (containerRect.height === 0) {
-      return;
-    }
-    const containerCenter = containerRect.top + containerRect.height / 2;
-    const maxDistance = Math.max(containerRect.height / 2, 1);
-
-    blockLibraryItems.forEach((item) => {
-      const element = blockLibraryItemRefs.current[item.key];
-      if (!element) {
-        return;
-      }
-      const rect = element.getBoundingClientRect();
-      const elementCenter = rect.top + rect.height / 2;
-      const distance = Math.abs(elementCenter - containerCenter);
-      const normalized = Math.min(distance / maxDistance, 1);
-      const eased = 1 - Math.pow(normalized, 1.6);
-      const scale = 0.82 + eased * 0.38;
-      const arcOffset = Math.pow(normalized, 1.5) * 32;
-      const opacity = 0.55 + eased * 0.45;
-
-      element.style.transform = `translateX(${arcOffset}px) scale(${scale})`;
-      element.style.opacity = opacity.toFixed(3);
-      element.style.zIndex = String(100 + Math.round(eased * 100));
-    });
-  }, [blockLibraryItems, isMobileLayout]);
-
-  const scheduleBlockLibraryTransformUpdate = useCallback(() => {
-    if (!isMobileLayout || typeof window === "undefined") {
-      return;
-    }
-    if (blockLibraryAnimationFrameRef.current !== null) {
-      cancelAnimationFrame(blockLibraryAnimationFrameRef.current);
-    }
-    blockLibraryAnimationFrameRef.current = requestAnimationFrame(updateBlockLibraryTransforms);
-  }, [isMobileLayout, updateBlockLibraryTransforms]);
-
-  useEffect(() => {
-    if (!isMobileLayout || !isBlockLibraryOpen) {
-      return () => {};
-    }
-    const container = blockLibraryScrollRef.current;
-    if (!container) {
-      return () => {};
-    }
-
-    const handleScroll = () => {
-      scheduleBlockLibraryTransformUpdate();
-    };
-
-    scheduleBlockLibraryTransformUpdate();
-
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("resize", handleScroll);
-
-    return () => {
-      container.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("resize", handleScroll);
-    };
-  }, [isBlockLibraryOpen, isMobileLayout, scheduleBlockLibraryTransformUpdate]);
-
-  useEffect(() => {
-    if (!isMobileLayout || !isBlockLibraryOpen || typeof document === "undefined") {
-      return;
-    }
-    const { style } = document.body;
-    const previousOverflow = style.overflow;
-    style.overflow = "hidden";
-
-    return () => {
-      style.overflow = previousOverflow;
-    };
-  }, [isBlockLibraryOpen, isMobileLayout]);
-
-  useEffect(() => {
-    if (!isMobileLayout || !isBlockLibraryOpen) {
-      return () => {
-        if (blockLibraryAnimationFrameRef.current !== null) {
-          cancelAnimationFrame(blockLibraryAnimationFrameRef.current);
-          blockLibraryAnimationFrameRef.current = null;
-        }
-      };
-    }
-
-    scheduleBlockLibraryTransformUpdate();
-    return () => {
-      if (blockLibraryAnimationFrameRef.current !== null) {
-        cancelAnimationFrame(blockLibraryAnimationFrameRef.current);
-        blockLibraryAnimationFrameRef.current = null;
-      }
-    };
-  }, [
-    blockLibraryItems,
-    isBlockLibraryOpen,
-    isMobileLayout,
-    scheduleBlockLibraryTransformUpdate,
-  ]);
-
-  const getBlockLibraryButtonStyle = useCallback(
-    (disabled: boolean): CSSProperties => {
-      if (isMobileLayout) {
-        return {
-          display: "flex",
-          alignItems: "center",
-          gap: "1rem",
-          padding: "1.15rem 1.1rem",
-          border: "none",
-          background: "rgba(15, 23, 42, 0.28)",
-          borderRadius: "1.1rem",
-          cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.45 : 1,
-          width: "100%",
-          textAlign: "left",
-          transition: "background 0.3s ease, transform 0.3s ease",
-          color: "#f8fafc",
-        };
-      }
-      return {
-        display: "flex",
-        alignItems: "center",
-        gap: "0.75rem",
-        padding: "0.5rem 0",
-        border: "none",
-        background: "transparent",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
-        width: "100%",
-        textAlign: "left",
-      };
-    },
-    [isMobileLayout],
+  const blockLibraryContent = useMemo(
+    () => (
+      <BlockLibrary
+        contentId={blockLibraryContentId}
+        isOpen={isBlockLibraryOpen}
+        isMobileLayout={isMobileLayout}
+        items={blockLibraryItems}
+        loading={loading}
+        selectedWorkflowId={selectedWorkflowId}
+        toggleBlockLibrary={toggleBlockLibrary}
+        toggleRef={blockLibraryToggleRef}
+      />
+    ),
+    [
+      blockLibraryContentId,
+      blockLibraryItems,
+      blockLibraryToggleRef,
+      isBlockLibraryOpen,
+      isMobileLayout,
+      loading,
+      selectedWorkflowId,
+      toggleBlockLibrary,
+    ],
   );
-
-  const headerStyle = useMemo(() => {
-    const baseStyle = getHeaderContainerStyle(isMobileLayout);
-    return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
-  }, [isMobileLayout]);
-
-  const headerNavigationButtonStyle = useMemo(
-    () => getHeaderNavigationButtonStyle(isMobileLayout),
-    [isMobileLayout],
-  );
-
-  const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
-    if (isMobileLayout) {
-      return { position: "absolute", inset: 0, overflow: "hidden" };
-    }
-    return { position: "relative", flex: 1, overflow: "hidden", minHeight: 0 };
-  }, [isMobileLayout]);
-
-  const headerOverlayOffset = useMemo(
-    () => (isMobileLayout ? "4rem" : "4.25rem"),
-    [isMobileLayout],
-  );
-
-  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
-    if (isMobileLayout) {
-      return undefined;
-    }
-
-    return {
-      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
-      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
-    };
-  }, [headerOverlayOffset, isMobileLayout]);
-
-  const mobileActionLabels = useMemo<MobileActionLabels>(
-    () => ({
-      redo: t("workflowBuilder.mobileActions.redo"),
-      undo: t("workflowBuilder.mobileActions.undo"),
-      duplicate: t("workflowBuilder.mobileActions.duplicate"),
-      delete: t("workflowBuilder.mobileActions.delete"),
-      properties: t("workflowBuilder.mobileActions.properties"),
-    }),
-    [t],
-  );
-
-  const renderBlockLibraryContent = useCallback(() => {
-    if (isMobileLayout) {
-      return (
-        <div className={styles.blockLibraryContent}>
-          <div
-            ref={(element) => {
-              blockLibraryScrollRef.current = element;
-              if (element && isBlockLibraryOpen) {
-                scheduleBlockLibraryTransformUpdate();
-              }
-            }}
-            className={styles.blockLibraryScroller}
-            role="list"
-            aria-label="Blocs disponibles"
-          >
-            {blockLibraryItems.map((item) => {
-              const disabled = loading || !selectedWorkflowId;
-              return (
-                <div
-                  key={item.key}
-                  role="listitem"
-                  className={styles.blockLibraryItemWrapper}
-                  ref={(node) => {
-                    if (node) {
-                      blockLibraryItemRefs.current[item.key] = node;
-                      scheduleBlockLibraryTransformUpdate();
-                    } else {
-                      delete blockLibraryItemRefs.current[item.key];
-                    }
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => item.onClick()}
-                    disabled={disabled}
-                    style={getBlockLibraryButtonStyle(disabled)}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: "2.85rem",
-                        height: "2.85rem",
-                        borderRadius: "0.95rem",
-                        background: item.color,
-                        color: "#fff",
-                        display: "grid",
-                        placeItems: "center",
-                        fontWeight: 700,
-                        fontSize: "1.25rem",
-                      }}
-                    >
-                      {item.shortLabel}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "1.05rem",
-                        fontWeight: 600,
-                        lineHeight: 1.1,
-                      }}
-                    >
-                      {item.label}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-
-    const primaryTextColor = "var(--text-color)";
-    return (
-      <div className={styles.blockLibraryDesktopContent}>
-        <div className={styles.blockLibraryDesktopHeader}>
-          <span>Bibliothèque de blocs</span>
-          <button
-            type="button"
-            ref={blockLibraryToggleRef}
-            className={styles.blockLibraryDesktopToggle}
-            onClick={toggleBlockLibrary}
-            aria-controls={blockLibraryContentId}
-            aria-expanded={isBlockLibraryOpen}
-          >
-            <span className={styles.srOnly}>
-              {isBlockLibraryOpen
-                ? "Masquer la bibliothèque de blocs"
-                : "Afficher la bibliothèque de blocs"}
-            </span>
-            <ChevronDown
-              aria-hidden="true"
-              className={styles.blockLibraryDesktopToggleIcon}
-              data-expanded={isBlockLibraryOpen ? "true" : "false"}
-              size={18}
-            />
-          </button>
-        </div>
-        <div
-          id={blockLibraryContentId}
-          className={styles.blockLibraryDesktopScroller}
-          role="list"
-          aria-label="Blocs disponibles"
-          hidden={!isBlockLibraryOpen}
-        >
-          {isBlockLibraryOpen
-            ? blockLibraryItems.map((item) => {
-                const disabled = loading || !selectedWorkflowId;
-                return (
-                  <div
-                    key={item.key}
-                    className={styles.blockLibraryDesktopItem}
-                    role="listitem"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => item.onClick()}
-                      disabled={disabled}
-                      style={getBlockLibraryButtonStyle(disabled)}
-                    >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          width: "2.35rem",
-                          height: "2.35rem",
-                          borderRadius: "0.75rem",
-                          background: item.color,
-                          color: "#fff",
-                          display: "grid",
-                          placeItems: "center",
-                          fontWeight: 700,
-                          fontSize: "1.05rem",
-                        }}
-                      >
-                        {item.shortLabel}
-                      </span>
-                      <div style={{ textAlign: "left", color: primaryTextColor }}>
-                        <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
-                      </div>
-                    </button>
-                  </div>
-                );
-              })
-            : null}
-        </div>
-      </div>
-    );
-  }, [
-    blockLibraryContentId,
-    blockLibraryItems,
-    getBlockLibraryButtonStyle,
-    isBlockLibraryOpen,
-    isMobileLayout,
-    loading,
-    scheduleBlockLibraryTransformUpdate,
-    selectedWorkflowId,
-    toggleBlockLibrary,
-  ]);
 
   const workflowBusy = loading || isImporting || isExporting;
   const editingLocked = false;
@@ -3727,7 +3405,7 @@ const WorkflowBuilderPage = () => {
           isBlockLibraryOpen={isBlockLibraryOpen}
           closeBlockLibrary={closeBlockLibrary}
           blockLibraryId={blockLibraryId}
-          renderBlockLibraryContent={renderBlockLibraryContent}
+          blockLibraryContent={blockLibraryContent}
           redoHistory={redoHistory}
           undoHistory={undoHistory}
           handleDuplicateSelection={handleDuplicateSelection}
