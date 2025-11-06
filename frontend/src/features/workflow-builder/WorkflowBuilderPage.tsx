@@ -150,8 +150,9 @@ import WorkflowAppearanceModal, {
 // ============================================================================
 // Extracted Modules (Custom Hooks, Services, Components)
 // ============================================================================
-// TODO: Replace inline code with these extracted modules
-// See MIGRATION_GUIDE.md for step-by-step migration instructions
+// Components integrated: useMediaQuery, SaveToast, DeployModal, WorkflowHeader,
+// WorkflowSidebar, PropertiesPanel
+// TODO: Integrate remaining hooks and services
 
 // Custom Hooks - Extracted state management
 import { useWorkflowState } from "./hooks/useWorkflowState";
@@ -992,9 +993,7 @@ const WorkflowBuilderPage = () => {
   const blockLibraryId = "workflow-builder-block-library";
   const blockLibraryContentId = "workflow-builder-block-library-content";
   const propertiesPanelId = "workflow-builder-properties-panel";
-  const propertiesPanelTitleId = `${propertiesPanelId}-title`;
-  const mobileActionsDialogId = "workflow-builder-mobile-actions";
-  const mobileActionsTitleId = `${mobileActionsDialogId}-title`;
+  // propertiesPanelTitleId, mobileActionsDialogId, mobileActionsTitleId removed - now handled by extracted components
   const closeMobileActions = useCallback(
     (options: { focusTrigger?: boolean } = {}) => {
       setIsMobileActionsOpen(false);
