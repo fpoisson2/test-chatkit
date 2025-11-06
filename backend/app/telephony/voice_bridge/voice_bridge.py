@@ -21,55 +21,13 @@ from urllib.parse import quote
 from agents.realtime.model import RealtimePlaybackState, RealtimePlaybackTracker
 
 from ...config import Settings, get_settings
+from ..task_utils import AsyncTaskLimiter, StopController
 from .audio_pipeline import AudioStreamManager
 from .event_router import RealtimeEventRouter
 from .sip_sync import SipSyncController
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 
-
-class _AsyncTaskLimiter:
-    """Utility to throttle background tasks while ensuring cleanup on shutdown."""
-
-    def __init__(self, *, name: str, max_pending: int) -> None:
-        self._name = name
-        self._semaphore = asyncio.Semaphore(max_pending)
-        self._tasks: set[asyncio.Task[None]] = set()
-
-    @property
-    def pending(self) -> int:
-        return len(self._tasks)
-
-    async def submit(self, coro: Awaitable[None]) -> None:
-        """Schedule *coro* once a slot is available."""
-
-        await self._semaphore.acquire()
-
-        async def _runner() -> None:
-            try:
-                await coro
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # pragma: no cover - defensive logging
-                logger.error("Erreur dans %s: %s", self._name, exc)
-            finally:
-                self._semaphore.release()
-
-        task = asyncio.create_task(_runner())
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
-
-    async def cancel_pending(self) -> None:
-        """Cancel all running tasks and wait for their completion."""
-
-        if not self._tasks:
-            return
-
-        for task in list(self._tasks):
-            task.cancel()
-
-        await asyncio.gather(*self._tasks, return_exceptions=True)
-        self._tasks.clear()
 
 class TelephonyPlaybackTracker(RealtimePlaybackTracker):
     """Track audio playback progress for telephony calls.
@@ -588,57 +546,20 @@ class TelephonyVoiceBridge:
                 )
                 return True
 
-        stop_requested = [False]
-
-        inbound_audio_dispatcher = _AsyncTaskLimiter(
+        inbound_audio_dispatcher = AsyncTaskLimiter(
             name="on_audio_inbound",
             max_pending=8,
         )
 
+        stop_controller = StopController(
+            stop_event=stop_event,
+            session_getter=lambda: session,
+            task_limiter=inbound_audio_dispatcher,
+            logger_=logger,
+        )
+
         async def request_stop() -> None:
-            if stop_requested[0]:
-                logger.debug("request_stop() déjà appelé, ignorer")
-                return
-            stop_requested[0] = True
-
-            stop_event.set()
-
-            if session is None:
-                logger.debug("Session non créée, ignorer request_stop()")
-                return
-
-            try:
-                from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-
-                await session._model.send_event(  # type: ignore[protected-access]
-                    RealtimeModelSendRawMessage(message={"type": "response.cancel"})
-                )
-                logger.debug("✅ Réponse en cours annulée avant fermeture")
-            except asyncio.CancelledError:
-                logger.debug("response.cancel annulé (task en cours d'annulation)")
-            except Exception as exc:
-                logger.debug(
-                    "response.cancel échoué (peut-être pas de réponse active): %s",
-                    exc,
-                )
-
-            try:
-                from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-
-                await session._model.send_event(  # type: ignore[protected-access]
-                    RealtimeModelSendRawMessage(
-                        message={"type": "input_audio_buffer.clear"}
-                    )
-                )
-                logger.debug("✅ Buffer audio d'entrée vidé avant fermeture")
-            except asyncio.CancelledError:
-                logger.debug(
-                    "input_audio_buffer.clear annulé (task en cours d'annulation)"
-                )
-            except Exception as exc:
-                logger.debug("input_audio_buffer.clear échoué: %s", exc)
-
-            await inbound_audio_dispatcher.cancel_pending()
+            await stop_controller.request_stop()
 
         sip_sync = SipSyncController(
             speak_first=speak_first,

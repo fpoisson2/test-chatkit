@@ -107,17 +107,17 @@ ensure_backend_package_stub()
 from backend.app.telephony.call_diagnostics import (  # noqa: E402
     get_diagnostics_manager,
 )
+from backend.app.telephony.task_utils import AsyncTaskLimiter  # noqa: E402
 from backend.app.telephony.voice_bridge import (  # noqa: E402
     RtpPacket,
     TelephonyVoiceBridge,
     VoiceBridgeHooks,
-    _AsyncTaskLimiter,
 )
 
 
 def test_async_task_limiter_throttles_concurrency():
     async def scenario() -> None:
-        limiter = _AsyncTaskLimiter(name="test", max_pending=2)
+        limiter = AsyncTaskLimiter(name="test", max_pending=2)
         active = 0
         peak_active = 0
         finished = asyncio.Event()
@@ -192,7 +192,7 @@ def test_forward_audio_dispatches_hook_before_send(monkeypatch):
             return None
 
         monkeypatch.setattr(
-            _AsyncTaskLimiter, "submit", tracking_submit
+            AsyncTaskLimiter, "submit", tracking_submit
         )
 
         class FakeModel:
