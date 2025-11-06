@@ -2732,6 +2732,42 @@ const WorkflowBuilderPage = () => {
     },
     [applySelection, setEdges, setNodes, setSaveMessage, setSaveState],
   );
+
+  const handleRemoveNode = useCallback(
+    (nodeId: string) => {
+      const node = nodesRef.current.find((currentNode) => currentNode.id === nodeId);
+      let confirmed = true;
+      if (node) {
+        const trimmedDisplayName =
+          typeof node.data.displayName === "string" ? node.data.displayName.trim() : "";
+        const displayName = trimmedDisplayName || node.data.slug || nodeId;
+        confirmed = window.confirm(t("workflowBuilder.deleteBlock.confirm", { name: displayName }));
+      } else {
+        confirmed = window.confirm(t("workflowBuilder.deleteSelection.confirmSingle"));
+      }
+      if (!confirmed) {
+        return;
+      }
+      removeElements({ nodeIds: [nodeId] });
+      updateHasPendingChanges(true);
+      if (selectedNodeId === nodeId) {
+        setSelectedNodeId(null);
+      }
+    },
+    [removeElements, selectedNodeId, t, updateHasPendingChanges],
+  );
+
+  const handleRemoveEdge = useCallback(
+    (edgeId: string) => {
+      removeElements({ edgeIds: [edgeId] });
+      setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
+      updateHasPendingChanges(true);
+      if (selectedEdgeId === edgeId) {
+        setSelectedEdgeId(null);
+      }
+    },
+    [removeElements, selectedEdgeId, setEdges, updateHasPendingChanges],
+  );
   type InsertGraphResult =
     | { success: true; nodeIds: string[]; edgeIds: string[] }
     | { success: false; reason: "nothing_to_insert" | "error" };
