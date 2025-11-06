@@ -1,9 +1,11 @@
 import type { CSSProperties } from "react";
 import { MarkerType, type EdgeOptions } from "reactflow";
 
-import { getParallelSplitBranches, getParallelSplitJoinSlug, getStateAssignments } from "../../utils/workflows";
+import { getParallelSplitBranches, getParallelSplitJoinSlug, getStateAssignments, stringifyAgentParameters as stringifyAgentParametersUtil } from "../../utils/workflows";
 import type { AgentParameters } from "./types";
 import type { FlowEdge, FlowNode, NodeKind } from "./types";
+
+export { stringifyAgentParametersUtil as stringifyAgentParameters };
 
 export const NODE_COLORS: Record<NodeKind, string> = {
   start: "#2563eb",
