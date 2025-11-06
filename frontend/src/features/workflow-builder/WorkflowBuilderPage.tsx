@@ -305,6 +305,8 @@ const WorkflowBuilderPage = () => {
   const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
     useState<ActionMenuPlacement>("up");
+  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("up");
@@ -359,8 +361,6 @@ const WorkflowBuilderPage = () => {
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const mobileActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
-  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
