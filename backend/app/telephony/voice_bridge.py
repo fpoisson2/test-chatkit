@@ -35,6 +35,49 @@ from ..config import Settings, get_settings
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 
 
+class _AsyncTaskLimiter:
+    """Utility to throttle background tasks while ensuring cleanup on shutdown."""
+
+    def __init__(self, *, name: str, max_pending: int) -> None:
+        self._name = name
+        self._semaphore = asyncio.Semaphore(max_pending)
+        self._tasks: set[asyncio.Task[None]] = set()
+
+    @property
+    def pending(self) -> int:
+        return len(self._tasks)
+
+    async def submit(self, coro: Awaitable[None]) -> None:
+        """Schedule *coro* once a slot is available."""
+
+        await self._semaphore.acquire()
+
+        async def _runner() -> None:
+            try:
+                await coro
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.error("Erreur dans %s: %s", self._name, exc)
+            finally:
+                self._semaphore.release()
+
+        task = asyncio.create_task(_runner())
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def cancel_pending(self) -> None:
+        """Cancel all running tasks and wait for their completion."""
+
+        if not self._tasks:
+            return
+
+        for task in list(self._tasks):
+            task.cancel()
+
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks.clear()
+
 class TelephonyPlaybackTracker(RealtimePlaybackTracker):
     """Tracks audio playback progress for telephony to enable proper interruption handling.
 
@@ -540,6 +583,12 @@ class TelephonyVoiceBridge:
         # Flag pour s'assurer que request_stop() n'est appelé qu'une seule fois
         stop_requested = [False]
 
+        # Limiter pour éviter une accumulation infinie des hooks inbound
+        inbound_audio_dispatcher = _AsyncTaskLimiter(
+            name="on_audio_inbound",
+            max_pending=8,
+        )
+
         async def request_stop() -> None:
             """Request immediate stop of both audio forwarding and event handling."""
             # Éviter les nettoyages multiples
@@ -582,6 +631,8 @@ class TelephonyVoiceBridge:
                 logger.debug("input_audio_buffer.clear annulé (task en cours d'annulation)")
             except Exception as e:
                 logger.debug("input_audio_buffer.clear échoué: %s", e)
+
+            await inbound_audio_dispatcher.cancel_pending()
             # Note: Ne pas fermer la session ici car __aexit__ doit être appelé depuis la même tâche que __aenter__
             # La session sera fermée automatiquement par le context manager 'async with'
 
@@ -591,6 +642,8 @@ class TelephonyVoiceBridge:
             # Note: turn_detection est déjà activé dans la configuration initiale de session (_build_session_update)
             # Track if we've sent response.create when phone became ready
             response_create_sent_on_ready = False
+            first_hook_dispatched_at: float | None = None
+            browser_stream_metric_recorded = False
 
             try:
                 async for packet in rtp_stream:
@@ -648,7 +701,6 @@ class TelephonyVoiceBridge:
 
                                 # Timing diagnostic: envoi response.create (t1)
                                 if audio_bridge:
-                                    import time
                                     audio_bridge._t1_response_create = time.monotonic()
                                     if audio_bridge._t0_first_rtp is not None:
                                         delta = (audio_bridge._t1_response_create - audio_bridge._t0_first_rtp) * 1000
@@ -664,19 +716,61 @@ class TelephonyVoiceBridge:
                             except Exception as exc:
                                 logger.warning("⚠️ Erreur lors de l'amorçage et envoi response.create: %s", exc)
 
+                    hook_task: Awaitable[None] | None = None
+                    hook_dispatch_time: float | None = None
+                    if self._hooks.on_audio_inbound:
+                        hook_dispatch_time = time.perf_counter()
+                        if first_hook_dispatched_at is None and packet_count == 1:
+                            first_hook_dispatched_at = hook_dispatch_time
+                        try:
+                            hook_task = inbound_audio_dispatcher.submit(
+                                self._hooks.on_audio_inbound(pcm)
+                            )
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as exc:
+                            logger.error(
+                                "Erreur lors de l'ordonnancement du streaming audio entrant: %s",
+                                exc,
+                            )
+
+                    send_audio_start = time.perf_counter()
+
                     # Always send audio with commit=False - let turn_detection handle commits
-                    await session.send_audio(pcm, commit=False)
+                    if hook_task is not None:
+                        async with asyncio.TaskGroup() as tg:
+                            tg.create_task(hook_task)
+                            tg.create_task(session.send_audio(pcm, commit=False))
+                    else:
+                        await session.send_audio(pcm, commit=False)
+
+                    if first_hook_dispatched_at is None and packet_count == 1:
+                        first_hook_dispatched_at = hook_dispatch_time or send_audio_start
+
+                    if (
+                        not browser_stream_metric_recorded
+                        and packet_count == 1
+                        and first_hook_dispatched_at is not None
+                    ):
+                        browser_stream_metric_recorded = True
+                        hook_lead_ms = (send_audio_start - first_hook_dispatched_at) * 1000
+                        if audio_bridge and hasattr(audio_bridge, "_chatkit_call_id"):
+                            from .call_diagnostics import get_diagnostics_manager
+
+                            diag_manager = get_diagnostics_manager()
+                            diag = diag_manager.get_call(audio_bridge._chatkit_call_id)
+                            if diag:
+                                diag.phase_first_rtp.metadata[
+                                    "browser_stream_lead_ms"
+                                ] = hook_lead_ms
+                                logger.info(
+                                    "📊 Latence stream navigateur réduite: %.1fms d'avance",
+                                    hook_lead_ms,
+                                )
 
                     # Record inbound audio
                     if audio_recorder:
                         audio_recorder.write_inbound(pcm)
-
-                    # Stream inbound audio en temps réel
-                    if self._hooks.on_audio_inbound:
-                        try:
-                            await self._hooks.on_audio_inbound(pcm)
-                        except Exception as e:
-                            logger.error("Erreur lors du streaming audio entrant: %s", e)
 
                     # Note: turn_detection est déjà activé dans la configuration initiale de session
                     # (voir _build_session_update), donc on n'a pas besoin de l'activer ici.
@@ -984,7 +1078,6 @@ class TelephonyVoiceBridge:
                             if pcm_data:
                                 # Timing diagnostic: premier chunk TTS (t2)
                                 if audio_bridge and audio_bridge._t2_first_tts_chunk is None:
-                                    import time
                                     audio_bridge._t2_first_tts_chunk = time.monotonic()
                                     if audio_bridge._t1_response_create is not None:
                                         delta = (audio_bridge._t2_first_tts_chunk - audio_bridge._t1_response_create) * 1000
