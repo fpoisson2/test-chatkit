@@ -10,69 +10,30 @@ permettant de gérer:
 PJSUA gère nativement le SIP et le RTP, ce qui simplifie grandement
 l'implémentation par rapport à une solution séparée.
 """
+# ruff: noqa: E501
 
 from __future__ import annotations
 
 import asyncio
-import logging
 import queue
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from .async_helpers import schedule_coroutine_from_thread
 from .call_diagnostics import CallDiagnostics
+from .callbacks import PJSUAAccount, PJSUACall
+from .config import (
+    jitter_buffer_settings,
+    logging_settings,
+    media_feature_settings,
+    rtp_settings,
+    session_timer_settings,
+    transport_settings,
+)
+from .media import AudioMediaPort
 from .pjsua_config import ensure_environment_overrides
-
-logger = logging.getLogger("chatkit.telephony.pjsua")
-logger.setLevel(logging.INFO)  # Niveau INFO pour diagnostics du conference bridge
-
-# Import conditionnel de pjsua2
-PJSUA_AVAILABLE = False
-try:
-    import pjsua2 as pj
-    PJSUA_AVAILABLE = True
-    logger.info("PJSUA2 chargé avec succès")
-except ImportError as e:
-    logger.warning("pjsua2 n'est pas disponible: %s", e)
-    pj = None  # type: ignore
-
-
-def _is_invalid_conference_disconnect_error(error: Exception) -> bool:
-    """Return True if the exception represents a benign PJ_EINVAL error."""
-
-    message = str(error) if error else ""
-    if "EINVAL" in message or "70004" in message:
-        return True
-
-    if PJSUA_AVAILABLE and isinstance(error, pj.Error):  # type: ignore[has-type]
-        status = getattr(error, "status", None)
-        if status in {getattr(pj, "PJ_EINVAL", 70004), 70004}:
-            return True
-
-    return False
-
-
-def _is_session_terminated_error(error: Exception) -> bool:
-    """Return True if the exception represents ESESSIONTERMINATED (171140).
-
-    Ces erreurs sont normales quand on tente d'opérer sur un appel déjà terminé
-    et doivent être loggées en DEBUG au lieu de WARNING pour éviter le bruit.
-    """
-    message = str(error).lower() if error else ""
-
-    # Vérifier le message d'erreur
-    if "already terminated" in message or "esessionterminated" in message or "171140" in message:
-        return True
-
-    # Vérifier le code d'erreur PJSIP
-    if PJSUA_AVAILABLE and isinstance(error, pj.Error):  # type: ignore[has-type]
-        status = getattr(error, "status", None)
-        # PJSIP_ESESSIONTERMINATED = 171140
-        if status == 171140:
-            return True
-
-    return False
+from .pjsua_errors import _is_session_terminated_error
+from .pjsua_lib import PJSUA_AVAILABLE, logger, pj
 
 
 @dataclass
@@ -110,1010 +71,6 @@ class CallInfo:
     local_contact: str
     remote_contact: str
     has_media: bool = False
-
-
-class PJSUAAccount(pj.Account if PJSUA_AVAILABLE else object):
-    """Callback pour un compte SIP PJSUA."""
-
-    def __init__(self, adapter: PJSUAAdapter):
-        if PJSUA_AVAILABLE:
-            super().__init__()
-        self.adapter = adapter
-        self._call_id: int | None = None
-
-    def onRegState(self, prm: Any) -> None:
-        """Appelé lors d'un changement d'état d'enregistrement."""
-        if not PJSUA_AVAILABLE:
-            return
-
-        ai = self.getInfo()
-        logger.info(
-            "Enregistrement SIP: %s (code=%d, reason=%s)",
-            ai.regStatusText,
-            ai.regStatus,
-            ai.regLastErr,
-        )
-
-        # Notifier l'adaptateur du changement d'état
-        if hasattr(self.adapter, '_on_reg_state'):
-            schedule_coroutine_from_thread(
-                self.adapter._on_reg_state(ai.regIsActive),
-                self.adapter._loop,
-                callback_name="onRegState",
-                logger=logger,
-            )
-
-    def onIncomingCall(self, prm: Any) -> None:
-        """Appelé lors d'un appel entrant."""
-        if not PJSUA_AVAILABLE:
-            return
-
-        diagnostics = CallDiagnostics(call_id=str(prm.callId))
-        call = PJSUACall(self.adapter, call_id=prm.callId, diagnostics=diagnostics)
-        call_info = call.getInfo()
-
-        logger.info(
-            "Appel SIP entrant de %s",
-            call_info.remoteUri,
-        )
-
-        # Notifier l'adaptateur de l'appel entrant
-        if hasattr(self.adapter, '_on_incoming_call'):
-            schedule_coroutine_from_thread(
-                self.adapter._on_incoming_call(call, call_info),
-                self.adapter._loop,
-                callback_name="onIncomingCall",
-                logger=logger,
-            )
-
-
-class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
-    """Port audio personnalisé pour capturer et injecter l'audio.
-
-    Supporte deux modes:
-    - Mode PULL (recommandé): utilise audio_bridge.get_next_frame_8k()
-    - Mode PUSH (legacy): utilise _outgoing_audio_queue
-    """
-
-    def __init__(
-        self,
-        adapter: PJSUAAdapter,
-        frame_requested_event: asyncio.Event | None = None,
-        audio_bridge: Any | None = None,
-        diagnostics: CallDiagnostics | None = None,
-    ):
-        if not PJSUA_AVAILABLE:
-            return
-
-        # Configuration du port audio
-        # PJSUA utilise 8kHz, 16-bit, mono pour la téléphonie
-        self.adapter = adapter
-        self._frame_requested_event = frame_requested_event  # Event spécifique à cet appel
-        self._audio_bridge = audio_bridge  # Bridge pour mode PULL (optionnel)
-        self._diagnostics: CallDiagnostics | None = diagnostics
-        self.sample_rate = 8000
-        self.channels = 1
-        self.samples_per_frame = 160  # 20ms @ 8kHz
-        self.bits_per_sample = 16
-
-        # Files pour l'audio (mode PUSH legacy)
-        # NOTE: Si audio_bridge est fourni, ces queues ne sont plus utilisées
-        self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
-        self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone - 20s max
-
-        # Compteurs pour diagnostics
-        self._frame_count = 0
-        self._audio_frame_count = 0
-        self._silence_frame_count = 0
-        self._frame_received_count = 0
-
-        # Flag pour arrêter le traitement après la déconnexion de l'appel
-        self._active = True
-
-        # Cooldown counter: force recreate après 2 réutilisations
-        self._reuse_count = 0  # Nombre de fois que ce port a été réutilisé
-
-        # Initialiser le port parent
-        super().__init__()
-
-        # CRITICAL FIX: Utiliser la méthode init() de MediaFormatAudio
-        # qui initialise correctement type et detail_type
-        audio_fmt = pj.MediaFormatAudio()
-        audio_fmt.clockRate = self.sample_rate
-        audio_fmt.channelCount = self.channels
-        audio_fmt.bitsPerSample = self.bits_per_sample
-        audio_fmt.frameTimeUsec = 20000  # 20ms
-        audio_fmt.avgBps = self.sample_rate * self.channels * self.bits_per_sample
-        audio_fmt.maxBps = audio_fmt.avgBps
-
-        # Appeler init() pour initialiser correctement les champs internes
-        # Cela définit fmt.type et fmt.detail_type correctement
-        # Signature: init(formatId, clockRate, channelCount, frameTimeUsec, bitsPerSample, avgBps, maxBps)
-        audio_fmt.init(
-            pj.PJMEDIA_FORMAT_L16,  # format ID (PCM 16-bit)
-            self.sample_rate,        # clockRate
-            self.channels,           # channelCount
-            20000,                   # frameTimeUsec (20ms)
-            self.bits_per_sample,    # bitsPerSample
-            self.sample_rate * self.channels * self.bits_per_sample,  # avgBps
-            self.sample_rate * self.channels * self.bits_per_sample   # maxBps
-        )
-
-        self.createPort("chatkit_audio", audio_fmt)
-
-        # Préparer l'état runtime via l'objet de diagnostics (si disponible)
-        self.prepare_for_new_call(
-            frame_requested_event,
-            audio_bridge,
-            diagnostics=diagnostics,
-        )
-
-    def onFrameRequested(self, frame: pj.MediaFrame) -> None:
-        """Appelé par PJSUA pour obtenir de l'audio à envoyer au téléphone.
-
-        Mode PULL (recommandé): utilise audio_bridge.get_next_frame_8k()
-        Mode PUSH (legacy): utilise _outgoing_audio_queue
-
-        Note: PJSUA gère automatiquement l'encodage du codec (PCM → PCMU).
-        Ce callback doit fournir du PCM linéaire 16-bit, pas du µ-law.
-        """
-        if not PJSUA_AVAILABLE:
-            return
-
-        # Si le port a été désactivé (appel terminé), envoyer du silence sans incrémenter les compteurs
-        if not self._active:
-            expected_size = self.samples_per_frame * 2  # 320 bytes
-            frame.buf.clear()
-            for _ in range(expected_size):
-                frame.buf.append(0)
-            frame.size = expected_size
-            frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
-            return
-
-        diag = getattr(self, "_diagnostics", None)
-        if diag is not None:
-            frame_count = diag.record_frame_requested()
-            self._frame_count = frame_count
-        else:
-            self._frame_count += 1
-            frame_count = self._frame_count
-
-        # Au premier appel, signaler que PJSUA est prêt à consommer l'audio
-        # CRITIQUE: Utiliser l'event spécifique à cet appel, pas un event global
-        if frame_count == 1 and self._frame_requested_event and not self._frame_requested_event.is_set():
-            logger.info("🎬 Premier onFrameRequested - PJSUA est prêt à consommer l'audio (mode %s)",
-                       "PULL" if self._audio_bridge else "PUSH")
-            self._frame_requested_event.set()
-
-        expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
-
-        # MODE PULL: utiliser audio_bridge.get_next_frame_8k()
-        if self._audio_bridge:
-            try:
-                audio_data = self._audio_bridge.get_next_frame_8k()
-                # Vérifier si c'est du silence
-                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
-
-                if diag is not None:
-                    total_frames, silence_frames = diag.record_outgoing_frame(is_silence=is_silence)
-                    self._audio_frame_count = total_frames
-                    self._silence_frame_count = silence_frames
-                else:
-                    self._audio_frame_count += 1
-                    if is_silence:
-                        self._silence_frame_count += 1
-
-                if not is_silence:
-                    if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20):
-                        logger.info("📢 PULL #%d: audio frame (%d bytes)",
-                                   frame_count, len(audio_data))
-
-                # S'assurer que la taille est correcte
-                if len(audio_data) < expected_size:
-                    audio_data += b'\x00' * (expected_size - len(audio_data))
-                elif len(audio_data) > expected_size:
-                    audio_data = audio_data[:expected_size]
-
-                # Copier les données PCM
-                frame.buf.clear()
-                for byte in audio_data:
-                    frame.buf.append(byte)
-
-                frame.size = len(audio_data)
-                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
-
-            except Exception as e:
-                logger.warning("Erreur PULL get_next_frame_8k: %s, envoi silence", e)
-                if diag is not None:
-                    _, silence_frames = diag.record_outgoing_frame(is_silence=True)
-                    self._silence_frame_count = silence_frames
-                    self._audio_frame_count = diag.outgoing_audio_frames
-                else:
-                    self._silence_frame_count += 1
-                    self._audio_frame_count += 1
-                frame.buf.clear()
-                for _ in range(expected_size):
-                    frame.buf.append(0)
-                frame.size = expected_size
-                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
-
-        # MODE PUSH (legacy): utiliser _outgoing_audio_queue
-        else:
-            try:
-                # Récupérer l'audio de la queue (non-bloquant)
-                audio_data = self._outgoing_audio_queue.get_nowait()
-                # Vérifier si c'est vraiment de l'audio (pas du silence)
-                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
-
-                if diag is not None:
-                    total_frames, silence_frames = diag.record_outgoing_frame(is_silence=is_silence)
-                    self._audio_frame_count = total_frames
-                    self._silence_frame_count = silence_frames
-                else:
-                    self._audio_frame_count += 1
-                    if is_silence:
-                        self._silence_frame_count += 1
-
-                if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20 and not is_silence):
-                    logger.info("📢 PUSH #%d: audio trouvé (%d bytes) - %s",
-                               frame_count, len(audio_data),
-                               "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
-
-                # S'assurer que la taille est correcte
-                if len(audio_data) < expected_size:
-                    # Padding avec du silence si nécessaire
-                    audio_data += b'\x00' * (expected_size - len(audio_data))
-                elif len(audio_data) > expected_size:
-                    # Tronquer si trop long
-                    audio_data = audio_data[:expected_size]
-
-                # Redimensionner le buffer et copier les données PCM
-                frame.buf.clear()
-                for byte in audio_data:
-                    frame.buf.append(byte)
-
-                frame.size = len(audio_data)
-                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
-
-            except queue.Empty:
-                # Pas d'audio disponible, envoyer du silence PCM (0x00)
-                if diag is not None:
-                    _, silence_frames = diag.record_outgoing_frame(is_silence=True)
-                    self._silence_frame_count = silence_frames
-                    self._audio_frame_count = diag.outgoing_audio_frames
-                else:
-                    self._silence_frame_count += 1
-                    self._audio_frame_count += 1
-
-                if self._silence_frame_count <= 5 or self._silence_frame_count % 50 == 0:
-                    logger.debug("🔇 PUSH #%d: queue vide, envoi silence (total silence: %d)",
-                               frame_count, self._silence_frame_count)
-
-                frame.buf.clear()
-                for _ in range(expected_size):
-                    frame.buf.append(0)
-
-                frame.size = expected_size
-                frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
-
-    def onFrameReceived(self, frame: pj.MediaFrame) -> None:
-        """Appelé par PJSUA quand de l'audio est reçu du téléphone.
-
-        Note: PJSUA gère automatiquement le décodage du codec (PCMU → PCM).
-        Ce callback reçoit déjà du PCM linéaire 16-bit décodé.
-
-        CRITIQUE: Avec null sound device, ce callback N'EST APPELÉ QUE SI:
-        - Les connexions conference bridge sont établies (startTransmit)
-        - Le slot de l'appel est connecté à notre port custom
-        Si on reçoit du silence ici, c'est que le conference mixer n'est pas armé!
-        """
-        if not PJSUA_AVAILABLE:
-            return
-
-        diag = getattr(self, "_diagnostics", None)
-        if diag is not None:
-            received_count = diag.record_incoming_frame()
-            self._frame_received_count = received_count
-        else:
-            if not hasattr(self, '_frame_received_count'):
-                self._frame_received_count = 0
-            self._frame_received_count += 1
-            received_count = self._frame_received_count
-
-        if received_count <= 10:
-            logger.info("📥 onFrameReceived appelé #%d: type=%s, size=%d, buf_len=%d",
-                       received_count, frame.type, frame.size, len(frame.buf) if frame.buf else 0)
-
-        if frame.type == pj.PJMEDIA_FRAME_TYPE_AUDIO and frame.buf:
-            try:
-                # OPTIMISATION CRITIQUE: Minimiser le traitement dans le callback pour libérer le GIL rapidement
-                # Ne faire que la copie minimale + put_nowait(), pas de calculs coûteux ici
-                audio_pcm = bytes(frame.buf[:frame.size])
-
-                # Ajouter l'audio PCM à la queue pour traitement async
-                # IMPORTANT: Ceci doit être ULTRA-RAPIDE pour éviter de bloquer PJSUA
-                self._incoming_audio_queue.put_nowait(audio_pcm)
-
-                # Logging minimal (seulement pour debug)
-                if received_count <= 5:
-                    logger.info("✅ Frame #%d ajoutée à queue (%d bytes, queue=%d)",
-                               received_count, len(audio_pcm), self._incoming_audio_queue.qsize())
-
-                # Notifier l'adaptateur qu'il y a de l'audio
-                if hasattr(self.adapter, '_on_audio_received'):
-                    schedule_coroutine_from_thread(
-                        self.adapter._on_audio_received(audio_pcm),
-                        self.adapter._loop,
-                        callback_name="onAudioReceived",
-                        logger=logger,
-                    )
-            except queue.Full:
-                logger.warning("Queue audio entrante pleine, frame ignorée")
-        else:
-            if received_count <= 10:
-                logger.warning("⚠️ Frame reçue mais type=%s ou buf vide", frame.type)
-
-    def send_audio(self, audio_data: bytes) -> None:
-        """Envoie de l'audio vers le téléphone (appelé depuis l'async loop)."""
-        try:
-            diag = getattr(self, "_diagnostics", None)
-            self._outgoing_audio_queue.put_nowait(audio_data)
-
-            # Log des premières fois pour confirmer que l'audio arrive
-            queue_size = self._outgoing_audio_queue.qsize()
-            audio_counter = diag.outgoing_audio_frames if diag else self._audio_frame_count
-            if audio_counter < 5:
-                # Vérifier si c'est du silence
-                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
-                logger.info("📥 send_audio: %d bytes ajoutés à queue (taille: %d) - %s",
-                           len(audio_data), queue_size,
-                           "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
-        except queue.Full:
-            logger.warning("⚠️ Queue audio sortante pleine, frame ignorée")
-
-    async def get_audio(self) -> bytes | None:
-        """Récupère l'audio reçu du téléphone (appelé depuis l'async loop)."""
-        try:
-            return self._incoming_audio_queue.get_nowait()
-        except queue.Empty:
-            return None
-
-    def clear_incoming_audio_queue(self) -> int:
-        """Vide la queue audio entrante (utilisé pour supprimer le silence initial).
-
-        Returns:
-            Nombre de frames vidées
-        """
-        count = 0
-        try:
-            while True:
-                self._incoming_audio_queue.get_nowait()
-                count += 1
-        except queue.Empty:
-            pass
-        return count
-
-    def clear_outgoing_audio_queue(self) -> int:
-        """Vide la queue audio sortante (utilisé lors d'interruptions).
-
-        Returns:
-            Nombre de frames vidées
-        """
-        count = 0
-        try:
-            while True:
-                self._outgoing_audio_queue.get_nowait()
-                count += 1
-        except queue.Empty:
-            pass
-
-        if count > 0:
-            logger.info("🗑️  Queue audio sortante vidée: %d frames supprimées", count)
-
-        return count
-
-    def disable(self) -> None:
-        """Désactive IMMÉDIATEMENT le port (ferme la porte à PJSUA).
-
-        CRITICAL: Cette méthode doit être appelée EN PREMIER lors du DISCONNECTED,
-        AVANT toute autre opération de nettoyage. Elle empêche les trames orphelines
-        en disant à PJSUA "n'envoie plus rien".
-
-        Cette méthode ne fait QUE désactiver le flag _active. Le vidage des queues
-        et le nettoyage complet sont faits plus tard par deactivate() ou prepare_for_pool().
-        """
-        logger.info("🛑 Port audio désactivé IMMÉDIATEMENT (fermeture porte PJSUA)")
-        self._active = False
-
-    def deactivate(self, *, destroy_port: bool = True) -> None:
-        """Désactive le port audio et vide les queues (appelé quand l'appel se termine).
-
-        Cela empêche PJSUA de continuer à envoyer de l'audio depuis ce port même après
-        la déconnexion de l'appel, ce qui causait l'envoi continu de silence.
-        """
-        logger.info("🛑 Désactivation du port audio (arrêt du traitement des frames)")
-        self._active = False
-
-        # Vider les queues pour libérer la mémoire
-        incoming_cleared = 0
-        outgoing_cleared = 0
-
-        try:
-            while True:
-                self._incoming_audio_queue.get_nowait()
-                incoming_cleared += 1
-        except queue.Empty:
-            pass
-
-        try:
-            while True:
-                self._outgoing_audio_queue.get_nowait()
-                outgoing_cleared += 1
-        except queue.Empty:
-            pass
-
-        if incoming_cleared > 0 or outgoing_cleared > 0:
-            logger.info(
-                "🗑️  Queues audio vidées: %d frames entrantes, %d frames sortantes",
-                incoming_cleared,
-                outgoing_cleared,
-            )
-
-        # Détruire explicitement le port si l'API pjsua2 expose destroyPort().
-        destroy_port_fn = getattr(self, "destroyPort", None)
-        if destroy_port and callable(destroy_port_fn):
-            try:
-                destroy_port_fn()
-                logger.debug("🗑️  Port audio détruit (destroyPort)")
-            except Exception as exc:  # pragma: no cover - dépend du backend C++
-                logger.debug("Ignorer erreur destroyPort: %s", exc)
-
-    def prepare_for_pool(self) -> None:
-        """Stop activity but keep the port alive for future reuse.
-
-        IMPORTANT: Si disable() a déjà été appelé (cas DISCONNECTED), le port
-        est déjà désactivé et les queues ont déjà été vidées. Dans ce cas,
-        on fait juste un nettoyage minimal.
-
-        Si disable() n'a PAS été appelé (cas rares), on fait le drain actif complet.
-
-        CRITICAL FIX: More aggressive queue draining to prevent accumulation.
-        """
-        import time
-
-        # Si le port n'est pas encore désactivé, le faire maintenant
-        already_disabled = not self._active
-        if not already_disabled:
-            self.deactivate(destroy_port=False)
-            logger.debug("prepare_for_pool: port n'était pas désactivé, deactivate() appelé")
-        else:
-            logger.debug("prepare_for_pool: port déjà désactivé via disable(), skip deactivate()")
-
-        self._frame_requested_event = None
-
-        # CRITICAL FIX: Break circular reference to audio bridge to allow GC
-        # The port holds a reference to the bridge, which holds a reference to the call,
-        # which holds a reference to the port -> circular reference prevents GC!
-        self._audio_bridge = None
-
-        # CRITICAL FIX: ALWAYS drain queues aggressively, even if already disabled
-        # Residual frames can accumulate and cause slowdown on next call
-        drain_timeout = 0.1  # Increased to 100ms for more thorough draining
-        drain_start = time.monotonic()
-        total_incoming_drained = 0
-        total_outgoing_drained = 0
-
-        logger.debug("prepare_for_pool: drain agressif de 100ms pour éliminer toute accumulation")
-
-        while (time.monotonic() - drain_start) < drain_timeout:
-            drained_this_pass = 0
-
-            # Drain incoming queue
-            try:
-                while True:
-                    self._incoming_audio_queue.get_nowait()
-                    drained_this_pass += 1
-                    total_incoming_drained += 1
-            except queue.Empty:
-                pass
-
-            # CRITICAL FIX: Also drain OUTGOING queue (was not drained before!)
-            # Outgoing queue can have up to 1000 frames (20+ seconds) accumulated
-            try:
-                while True:
-                    self._outgoing_audio_queue.get_nowait()
-                    drained_this_pass += 1
-                    total_outgoing_drained += 1
-            except queue.Empty:
-                pass
-
-            # If we drained something, reset timeout to catch more
-            if drained_this_pass > 0:
-                drain_start = time.monotonic()
-                logger.debug(
-                    "🔄 Active drain: cleared %d residual frames, continuing...",
-                    drained_this_pass
-                )
-            else:
-                # Nothing drained - sleep briefly before retry
-                time.sleep(0.005)  # 5ms
-
-        if total_incoming_drained > 0 or total_outgoing_drained > 0:
-            logger.info(
-                "✅ Drain agressif terminé: %d frames entrantes + %d frames sortantes vidées",
-                total_incoming_drained,
-                total_outgoing_drained
-            )
-
-            # Log warning if large accumulation detected (indicates potential issue)
-            if total_outgoing_drained > 50:
-                logger.warning(
-                    "⚠️ ACCUMULATION EXCESSIVE DÉTECTÉE: %d frames sortantes vidées (>50) - possible problème",
-                    total_outgoing_drained
-                )
-
-    def prepare_for_new_call(
-        self,
-        frame_requested_event: asyncio.Event | None,
-        audio_bridge: Any | None = None,
-        *,
-        diagnostics: CallDiagnostics | None = None,
-    ) -> None:
-        """Reset counters and state before reusing the port."""
-
-        if diagnostics is not None:
-            self._diagnostics = diagnostics
-
-        diag = self._diagnostics
-        if diag is not None:
-            diag.prepare_audio_port(self, frame_requested_event, audio_bridge)
-        else:
-            self._frame_requested_event = frame_requested_event
-            self._audio_bridge = audio_bridge
-            self._frame_count = 0
-            self._audio_frame_count = 0
-            self._silence_frame_count = 0
-            self._frame_received_count = 0
-            self._active = True
-
-            try:
-                while True:
-                    self._incoming_audio_queue.get_nowait()
-            except queue.Empty:
-                pass
-
-            try:
-                while True:
-                    self._outgoing_audio_queue.get_nowait()
-            except queue.Empty:
-                pass
-
-
-class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
-    """Callback pour un appel PJSUA."""
-
-    def __init__(
-        self,
-        adapter: PJSUAAdapter,
-        call_id: int | None = None,
-        acc: Any = None,
-        diagnostics: CallDiagnostics | None = None,
-    ):
-        if PJSUA_AVAILABLE:
-            if call_id is not None:
-                super().__init__(acc or adapter._account, call_id)
-            else:
-                super().__init__(acc or adapter._account)
-        self.adapter = adapter
-        self._diagnostics: CallDiagnostics = diagnostics or CallDiagnostics(
-            call_id=str(call_id) if call_id is not None else "pjsua-pending"
-        )
-        self._diagnostics.reset_cleanup_state()
-        self._media_active = False
-        self._audio_port: AudioMediaPort | None = None
-        self._audio_media: Any = None  # Référence au AudioMedia pour stopTransmit()
-        self._conference_connected = False
-        self._call_slot_id: int | None = None
-        self._custom_port_slot_id: int | None = None
-
-        # CRITIQUE: Chaque appel doit avoir son propre event pour savoir quand PJSUA est prêt
-        # Utiliser un event partagé cause des problèmes sur les 2e/3e appels
-        self._frame_requested_event = asyncio.Event() if adapter._loop else None
-
-        # Flags de statut pour éviter les appels post-mortem
-        # _terminated: True dès DISCONNECTED - empêche tout hangup/getInfo ultérieur
-        # _closed: True après close_pipeline - empêche double cleanup
-        # _cleanup_done: True après cleanup complet - pour backward compat
-        self._terminated = False
-        self._closed = False
-        self._cleanup_done = False
-
-    @property
-    def diagnostics(self) -> CallDiagnostics:
-        """Retourne l'objet de diagnostics associé à cet appel."""
-
-        return self._diagnostics
-
-    @property
-    def chatkit_call_id(self) -> str | None:
-        """Expose l'identifiant ChatKit via l'objet de diagnostics."""
-
-        return self._diagnostics.chatkit_call_id
-
-    @chatkit_call_id.setter
-    def chatkit_call_id(self, value: str | None) -> None:
-        self._diagnostics.set_chatkit_call_id(value)
-
-    @property
-    def _cleanup_done(self) -> bool:  # type: ignore[override]
-        return self._diagnostics.cleanup_done
-
-    @_cleanup_done.setter
-    def _cleanup_done(self, value: bool) -> None:  # type: ignore[override]
-        if value:
-            self._diagnostics.mark_cleanup_done()
-        else:
-            self._diagnostics.cleanup_done = False
-
-    def onCallState(self, prm: Any) -> None:
-        """Appelé lors d'un changement d'état d'appel."""
-        if not PJSUA_AVAILABLE:
-            return
-
-        ci = self.getInfo()
-        logger.info(
-            "📞 onCallState - call_id=%s, state=%d (%s), remote=%s",
-            ci.id,
-            ci.state,
-            ci.stateText,
-            ci.remoteUri,
-        )
-
-        # Notifier l'adaptateur du changement d'état
-        if hasattr(self.adapter, '_on_call_state'):
-            schedule_coroutine_from_thread(
-                self.adapter._on_call_state(self, ci),
-                self.adapter._loop,
-                callback_name="onCallState",
-                logger=logger,
-            )
-
-    def _disconnect_conference_bridge(self, call_id: int) -> None:
-        """Disconnect the conference bridge if it is still active."""
-
-        endpoint = getattr(self.adapter, "_ep", None)
-        call_slot = self._call_slot_id
-        custom_slot = self._custom_port_slot_id
-
-        def _disconnect_slots(src: int | None, dst: int | None) -> bool:
-            if (
-                endpoint is None
-                or not hasattr(endpoint, "confDisconnect")
-                or src is None
-                or dst is None
-            ):
-                return False
-
-            try:
-                endpoint.confDisconnect(src, dst)  # type: ignore[attr-defined]
-                logger.debug(
-                    "✅ confDisconnect(%s → %s) exécuté (call_id=%s)", src, dst, call_id
-                )
-                return True
-            except Exception as error:
-                if not _is_invalid_conference_disconnect_error(error):
-                    logger.warning(
-                        "Erreur confDisconnect %s→%s (call_id=%s): %s",
-                        src,
-                        dst,
-                        call_id,
-                        error,
-                    )
-                return False
-
-        slots_disconnected = False
-        slots_disconnected |= _disconnect_slots(call_slot, custom_slot)
-        slots_disconnected |= _disconnect_slots(custom_slot, call_slot)
-
-        if not self._conference_connected:
-            logger.debug(
-                "Conference bridge déjà déconnecté (call_id=%s) — aucun stopTransmit nécessaire",
-                call_id,
-            )
-        elif self._audio_port is not None and self._audio_media is not None:
-            try:
-                self._audio_media.stopTransmit(self._audio_port)
-                logger.debug("✅ Déconnexion call → port réussie (call_id=%s)", call_id)
-            except Exception as error:
-                if not _is_invalid_conference_disconnect_error(error):
-                    logger.warning(
-                        "Erreur stopTransmit call→port (call_id=%s): %s",
-                        call_id,
-                        error,
-                    )
-
-            try:
-                self._audio_port.stopTransmit(self._audio_media)
-                logger.debug("✅ Déconnexion port → call réussie (call_id=%s)", call_id)
-            except Exception as error:
-                if not _is_invalid_conference_disconnect_error(error):
-                    logger.warning(
-                        "Erreur stopTransmit port→call (call_id=%s): %s",
-                        call_id,
-                        error,
-                    )
-
-        if slots_disconnected or self._conference_connected:
-            logger.info("✅ Conference bridge déconnecté (call_id=%s)", call_id)
-
-        # CRITIQUE: Retirer le port custom du bridge conference
-        # Après confDisconnect, il faut aussi confRemovePort pour libérer complètement la ressource
-        # CRITICAL FIX: Verify confRemovePort success to detect conference slot leaks
-        remove_port_success = False
-        if endpoint is not None and hasattr(endpoint, "confRemovePort") and custom_slot is not None:
-            try:
-                endpoint.confRemovePort(custom_slot)  # type: ignore[attr-defined]
-                remove_port_success = True
-                logger.debug("✅ confRemovePort(slot=%s) exécuté (call_id=%s)", custom_slot, call_id)
-            except Exception as error:
-                # EINVAL peut arriver si le port est déjà retiré, c'est ok
-                if not _is_invalid_conference_disconnect_error(error):
-                    logger.error("⚠️ CRITIQUE: confRemovePort ÉCHEC slot=%s (call_id=%s): %s - POSSIBLE FUITE DE SLOT CONFERENCE", custom_slot, call_id, error)
-                else:
-                    # Port déjà retiré = succès
-                    remove_port_success = True
-                    logger.debug("confRemovePort: port déjà retiré (EINVAL), considéré comme succès")
-
-        # Log critical warning if confRemovePort failed (conference slot leak detected)
-        if custom_slot is not None and not remove_port_success:
-            logger.error("🚨 FUITE DE SLOT CONFERENCE DÉTECTÉE: slot=%s (call_id=%s) N'A PAS ÉTÉ LIBÉRÉ!", custom_slot, call_id)
-
-        self._conference_connected = False
-        self._audio_media = None
-        self._call_slot_id = None
-        self._custom_port_slot_id = None
-
-    def onCallMediaState(self, prm: Any) -> None:
-        """Appelé lors d'un changement d'état média."""
-        if not PJSUA_AVAILABLE:
-            return
-
-        ci = self.getInfo()
-
-        logger.info("🎵 onCallMediaState appelé pour call_id=%s, state=%s", ci.id, ci.state)
-
-        # Vérifier si le média est actif
-        media_is_active = False
-        if ci.media:
-            logger.info("📊 Nombre de médias: %d", len(ci.media))
-            for mi in ci.media:
-                if mi.type == pj.PJMEDIA_TYPE_AUDIO and mi.status == pj.PJSUA_CALL_MEDIA_ACTIVE:
-                    media_is_active = True
-                    self._media_active = True
-                    logger.info("✅ Média audio actif pour call_id=%s, index=%d", ci.id, mi.index)
-
-                    # Créer et connecter le port audio personnalisé
-                    # IMPORTANT: Toujours recréer le port car PJSUA peut détruire et recréer
-                    # le stream audio lors des UPDATE SIP (changement de codec)
-                    if self._audio_port is not None:
-                        logger.info(
-                            "🔄 Port audio existe déjà, déconnexion conference bridge avant recréation (call_id=%s)",
-                            ci.id,
-                        )
-                        try:
-                            self._disconnect_conference_bridge(ci.id)
-                        except Exception as e:
-                            logger.warning("Erreur désactivation ancien port: %s", e)
-                        finally:
-                            old_port = self._audio_port
-                            self._audio_port = None
-                            if old_port is not None:
-                                self.adapter.release_audio_port(old_port)
-
-                    self._conference_connected = False
-
-                    # Passer le bridge si disponible pour activer le mode PULL
-                    bridge = getattr(self, '_audio_bridge', None)
-                    self._audio_port = self.adapter.acquire_audio_port(
-                        self._frame_requested_event,
-                        call_id=ci.id,
-                        audio_bridge=bridge,
-                    )
-
-                    if bridge:
-                        logger.info("✅ Bridge connecté à AudioMediaPort (mode PULL activé)")
-
-                    # Obtenir le média audio de l'appel
-                    call_media = self.getMedia(mi.index)
-                    audio_media = pj.AudioMedia.typecastFromMedia(call_media)
-
-                    # Sauvegarder la référence pour pouvoir déconnecter plus tard
-                    self._audio_media = audio_media
-
-                    # CRITIQUE: Avec null sound device, le conference mixer n'est PAS automatiquement armé
-                    # Il faut EXPLICITEMENT connecter les slots de conférence pour activer le traitement audio
-
-                    # Log des slots de conférence AVANT connexion
-                    try:
-                        call_port_info = audio_media.getPortInfo()
-                        custom_port_info = self._audio_port.getPortInfo()
-                        self._call_slot_id = getattr(call_port_info, "portId", None)
-                        self._custom_port_slot_id = getattr(
-                            custom_port_info, "portId", None
-                        )
-                        logger.info("🔍 Slots de conférence AVANT connexion:")
-                        logger.info("   - Call audio slot: %d (name=%s)", call_port_info.portId, call_port_info.name)
-                        logger.info("   - Custom port slot: %d (name=%s)", custom_port_info.portId, custom_port_info.name)
-                    except Exception as e:
-                        logger.warning("⚠️ Impossible de lire les infos de port: %s", e)
-                        self._call_slot_id = None
-                        self._custom_port_slot_id = None
-
-                    # Connecter : téléphone -> notre port (pour recevoir/capturer l'audio)
-                    # Ceci active onFrameReceived() sur notre port
-                    try:
-                        audio_media.startTransmit(self._audio_port)
-                        logger.info(
-                            "✅ Connexion conference bridge: call (slot %d) → custom port (slot %d)",
-                            call_port_info.portId if 'call_port_info' in locals() else -1,
-                            custom_port_info.portId if 'custom_port_info' in locals() else -1,
-                        )
-
-                        # Connecter : notre port -> téléphone (pour envoyer/lecture l'audio)
-                        # Ceci permet à onFrameRequested() d'envoyer l'audio au téléphone
-                        self._audio_port.startTransmit(audio_media)
-                        logger.info(
-                            "✅ Connexion conference bridge: custom port (slot %d) → call (slot %d)",
-                            custom_port_info.portId if 'custom_port_info' in locals() else -1,
-                            call_port_info.portId if 'call_port_info' in locals() else -1,
-                        )
-                        self._conference_connected = True
-                    except Exception as exc:
-                        self._conference_connected = False
-                        logger.warning("Erreur lors de la connexion du conference bridge: %s", exc)
-                        raise
-
-                    # Vérifier que les connexions sont établies au niveau du conference bridge
-                    # Avec null sound device, c'est CRITIQUE - sinon on obtient du silence
-                    try:
-                        # Récupérer les infos après connexion pour vérifier
-                        call_port_info_after = audio_media.getPortInfo()
-                        custom_port_info_after = self._audio_port.getPortInfo()
-                        self._call_slot_id = getattr(call_port_info_after, "portId", None)
-                        self._custom_port_slot_id = getattr(
-                            custom_port_info_after, "portId", None
-                        )
-                        logger.info("🎵 Connexions conference bridge établies (call_id=%s):", ci.id)
-                        logger.info("   - Call audio: slot=%d, name=%s",
-                                   call_port_info_after.portId, call_port_info_after.name)
-                        logger.info("   - Custom port: slot=%d, name=%s",
-                                   custom_port_info_after.portId, custom_port_info_after.name)
-
-                        # 📊 DIAGNOSTIC: Trouver le VRAI port RTP local via psutil (infaillible)
-                        logger.warning("🔍 Recherche du port RTP local via psutil (call_id=%s)...", ci.id)
-
-                        try:
-                            import re
-
-                            # Récupérer le port distant depuis StreamInfo
-                            stream_info = self.getStreamInfo(mi.index)
-                            remote_rtp = None
-                            remote_ip = None
-                            remote_port = None
-
-                            # 🎵 DIAGNOSTIC: Codec et qualité audio
-                            if hasattr(stream_info, 'codecName'):
-                                logger.warning("🎵 CODEC NÉGOCIÉ: %s @ %d Hz",
-                                             stream_info.codecName,
-                                             getattr(stream_info, 'codecClockRate', 0))
-
-                            # 📊 DIAGNOSTIC: Stats RTP (packet loss, jitter)
-                            if hasattr(stream_info, 'rtpStat'):
-                                rtp_stat = stream_info.rtpStat
-                                logger.warning("📊 RTP STATS: loss=%d packets (%.1f%%), jitter_ms=%.1f, avg_burst=%d",
-                                             getattr(rtp_stat, 'loss', 0),
-                                             getattr(rtp_stat, 'lossPct', 0.0) / 65536.0,  # Fixed point to float
-                                             getattr(rtp_stat, 'jitter', 0) / 16.0,  # Jitter en ms
-                                             getattr(rtp_stat, 'avgBurst', 0))
-
-                            if hasattr(stream_info, 'remoteRtpAddress'):
-                                remote_rtp = stream_info.remoteRtpAddress
-                                logger.warning("🔌 PORT RTP DISTANT: %s", remote_rtp)
-
-                                # Parser IP:port
-                                match = re.match(r'(.+):(\d+)$', remote_rtp)
-                                if match:
-                                    remote_ip = match.group(1)
-                                    remote_port = int(match.group(2))
-
-                            # Utiliser psutil pour trouver la socket RTP locale
-                            # Les sockets UDP PJSUA ne sont pas "connectées" donc pas de raddr
-                            # On cherche les sockets qui écoutent sur le range RTP (10000-20000)
-                            try:
-                                import psutil
-
-                                # Obtenir le processus actuel
-                                current_process = psutil.Process()
-
-                                # DEBUG: Lister TOUTES les sockets UDP pour voir ce qui se passe
-                                all_udp = []
-                                for conn in current_process.connections(kind='udp'):
-                                    all_udp.append(conn.laddr.port)
-
-                                logger.warning("📋 DEBUG: Toutes les sockets UDP du processus (%d): %s",
-                                             len(all_udp), sorted(all_udp))
-
-                                # Lister toutes les sockets UDP du processus dans le range RTP
-                                rtp_sockets = []
-                                for conn in current_process.connections(kind='udp'):
-                                    local_port = conn.laddr.port
-                                    # Range RTP: 10000-20000 (pairs pour RTP, impairs pour RTCP)
-                                    if 10000 <= local_port <= 20000:
-                                        rtp_sockets.append((local_port, conn))
-
-                                if rtp_sockets:
-                                    # Trier par port (ordre d'allocation)
-                                    rtp_sockets.sort(key=lambda x: x[0])
-
-                                    # Filtrer uniquement les ports RTP (pairs)
-                                    rtp_only = [p for p, _ in rtp_sockets if p % 2 == 0]
-
-                                    if rtp_only:
-                                        actual_port = rtp_only[-1]  # Le plus récent
-                                        logger.warning("🔌 PORT RTP LOCAL (réel via psutil): 0.0.0.0:%d", actual_port)
-                                        logger.warning("   Sockets RTP actives dans range: %s", rtp_only)
-                                    else:
-                                        logger.warning("⚠️ Aucun socket RTP pair trouvé dans range 10000-20000")
-                                        logger.warning("   Sockets trouvées dans range: %s", [p for p, _ in rtp_sockets])
-                                else:
-                                    logger.warning("⚠️ Aucune socket UDP dans le range 10000-20000")
-                                    logger.warning("   Peut-être que PJSUA utilise un range différent?")
-
-                            except ImportError:
-                                logger.warning("⚠️ psutil non disponible - impossible de trouver le port local")
-                            except Exception as psutil_err:
-                                logger.warning("⚠️ Erreur psutil: %s", psutil_err)
-                                import traceback
-                                logger.warning("Traceback: %s", traceback.format_exc())
-
-                        except Exception as port_err:
-                            logger.warning("⚠️ Erreur recherche port RTP: %s", port_err)
-                            import traceback
-                            logger.warning("Traceback: %s", traceback.format_exc())
-
-                        logger.info("✅ Null sound device + conference bridge correctement armé")
-                    except Exception as e:
-                        logger.warning("⚠️ Impossible de vérifier les connexions conference bridge: %s", e)
-
-                    # Notifier l'adaptateur que le média est prêt
-                    if hasattr(self.adapter, '_on_media_active'):
-                        schedule_coroutine_from_thread(
-                            self.adapter._on_media_active(self, mi),
-                            self.adapter._loop,
-                            callback_name="onCallMediaState",
-                            logger=logger,
-                        )
-
-        # IMPORTANT: Si le média n'est plus actif et qu'on a un port audio, le désactiver
-        # Cela évite les "ports zombies" qui continuent d'envoyer du silence après la fin de l'appel
-        if not media_is_active and self._audio_port is not None:
-            logger.warning("⚠️ Média désactivé mais port audio encore actif (call_id=%s) - nettoyage", ci.id)
-            try:
-                self._disconnect_conference_bridge(ci.id)
-                port = self._audio_port
-                self._audio_port = None
-                if port is not None:
-                    self.adapter.release_audio_port(port)
-                logger.info("✅ Port audio zombie désactivé (call_id=%s)", ci.id)
-            except Exception as e:
-                # DEBUG si erreur post-mortem 171140, WARNING sinon
-                if _is_session_terminated_error(e):
-                    logger.debug("Erreur attendue désactivation port audio zombie (call_id=%s, déjà terminé): %s", ci.id, e)
-                else:
-                    logger.warning("Erreur désactivation port audio zombie (call_id=%s): %s", ci.id, e)
-            finally:
-                if self._audio_port is None:
-                    self._conference_connected = False
 
 
 class PJSUAAdapter:
@@ -1200,115 +157,84 @@ class PJSUAAdapter:
         except Exception as e:
             logger.warning("⚠️ Impossible d'accéder à l'API PJSUA C: %s", e)
 
-        # Configuration de l'endpoint
         ep_cfg = pj.EpConfig()
-        # Niveau 1 = ERROR only (ne pas afficher les warnings "already terminated")
-        # Ces "erreurs" sont normales quand on raccroche un appel déjà terminé
-        ep_cfg.logConfig.level = 1  # ERROR level only
-        ep_cfg.logConfig.consoleLevel = 1
+        log_cfg = logging_settings()
+        ep_cfg.logConfig.level = log_cfg.level
+        ep_cfg.logConfig.consoleLevel = log_cfg.console_level
 
-        # CRITICAL FIX: Aggressive SIP timers for immediate teardown
-        # Force session timer to quickly detect and cleanup stale sessions
-        # This eliminates the "ghost session" problem when rapidly cycling calls
         ua_cfg = ep_cfg.uaConfig
-        ua_cfg.mainThreadOnly = False  # Allow async callbacks
+        timer_cfg = session_timer_settings()
+        ua_cfg.mainThreadOnly = timer_cfg.main_thread_only
+        ua_cfg.natTypeInSdp = timer_cfg.nat_type_in_sdp
 
-        # NAT keepalive (not needed in LAN bridge mode, but harmless)
-        # Set to 15s to quickly detect dead connections
-        ua_cfg.natTypeInSdp = 0  # Don't put NAT type in SDP
-
-        # SIP Session Timers: Force aggressive timeout for rapid teardown
-        # When call ends, session timer ensures complete cleanup within 90s
         try:
-            # timerUse options: 0=No, 1=Optional, 2=Required, 3=Always
-            ua_cfg.timerUse = 3  # PJSUA_SIP_TIMER_ALWAYS - Force session timer
-            ua_cfg.timerMinSE = 90  # Minimum 90s (RFC minimum)
-            ua_cfg.timerSessExpires = 180  # Session expires in 180s
-            logger.info("🔧 SIP Session Timers: FORCED mode, minSE=90s, expires=180s")
+            ua_cfg.timerUse = timer_cfg.timer_use
+            ua_cfg.timerMinSE = timer_cfg.timer_min_se
+            ua_cfg.timerSessExpires = timer_cfg.timer_sess_expires
+            logger.info(
+                "🔧 SIP Session Timers: FORCED mode, minSE=%ds, expires=%ds",
+                timer_cfg.timer_min_se,
+                timer_cfg.timer_sess_expires,
+            )
         except AttributeError:
-            # Older PJSUA2 versions may not have these attributes
             logger.warning("⚠️ SIP Session Timers not available in this PJSUA2 version")
 
-        # Configuration du jitter buffer pour éviter l'accumulation de latence
-        # CRITICAL: Sans cette config, le JB peut gonfler jusqu'à 200 frames (4 secondes!)
-        # causant un lag progressif aux appels 2, 3, 4...
-        # NOUVELLE CONFIG: réduire l'inertie du JB avec ptime fixe 20ms
         media_cfg = ep_cfg.medConfig
-        media_cfg.jb_init = 1          # Démarrer à 1 frame (20ms) - rapide
-        media_cfg.jb_min_pre = 1       # Minimum 1 frame en précharge
-        media_cfg.jb_max_pre = 4       # Maximum 4 frames (80ms) en prefetch - réduit inertie
-        media_cfg.jb_max = 10          # Maximum 10 frames (200ms) absolu
-        media_cfg.snd_auto_close_time = 0  # Ne jamais fermer automatiquement le device
+        jitter_cfg = jitter_buffer_settings()
+        media_cfg.jb_init = jitter_cfg.jb_init
+        media_cfg.jb_min_pre = jitter_cfg.jb_min_pre
+        media_cfg.jb_max_pre = jitter_cfg.jb_max_pre
+        media_cfg.jb_max = jitter_cfg.jb_max
+        media_cfg.snd_auto_close_time = jitter_cfg.snd_auto_close_time
 
-        # CRITICAL FIX: Force RTP ports with explicit attribute names
-        # PJSUA2 sometimes requires specific attribute names depending on version
-        # Try multiple approaches to ensure ports are set correctly
-
-        # Approach 1: Standard attributes (may not work on all versions)
-        media_cfg.rtp_port = 10000
-        media_cfg.rtp_port_range = 10000
-
-        # Approach 2: Try alternative attribute names used in some PJSUA2 versions
-        try:
-            # Some versions use rtpStart instead of rtp_port
-            if hasattr(media_cfg, 'rtpStart'):
-                media_cfg.rtpStart = 10000
-                logger.debug("Tentative: media_cfg.rtpStart = 10000")
-        except Exception as e:
-            logger.debug("Failed to set media_cfg.rtpStart: %s", e)
+        rtp_cfg = rtp_settings()
+        media_cfg.rtp_port = rtp_cfg.start_port
+        media_cfg.rtp_port_range = rtp_cfg.port_range
 
         try:
-            # Some versions use portRange instead of rtp_port_range
-            if hasattr(media_cfg, 'portRange'):
-                media_cfg.portRange = 10000
-                logger.debug("Tentative: media_cfg.portRange = 10000")
-        except Exception as e:
-            logger.debug("Failed to set media_cfg.portRange: %s", e)
+            if hasattr(media_cfg, "rtpStart"):
+                media_cfg.rtpStart = rtp_cfg.start_port
+                logger.debug("Tentative: media_cfg.rtpStart = %d", rtp_cfg.start_port)
+        except Exception as error:  # pragma: no cover - defensive logging
+            logger.debug("Failed to set media_cfg.rtpStart: %s", error)
 
-        # Approach 3: Log what attributes are actually available
+        try:
+            if hasattr(media_cfg, "portRange"):
+                media_cfg.portRange = rtp_cfg.port_range
+                logger.debug("Tentative: media_cfg.portRange = %d", rtp_cfg.port_range)
+        except Exception as error:  # pragma: no cover - defensive logging
+            logger.debug("Failed to set media_cfg.portRange: %s", error)
+
         logger.info(
             "📋 Attributs medConfig disponibles: %s",
-            [attr for attr in dir(media_cfg) if not attr.startswith('_') and 'port' in attr.lower()]
+            [attr for attr in dir(media_cfg) if not attr.startswith("_") and "port" in attr.lower()],
         )
 
-        # OPTIMISATION: ICE selon le mode
-        # Mode passerelle (défaut): ICE désactivé - pas besoin de négociation NAT sur serveur
-        # Mode nomade: ICE activé - nécessaire pour traverser les NAT en mobilité
-        media_cfg.enable_ice = nomadic_mode
+        feature_cfg = media_feature_settings(nomadic_mode=nomadic_mode)
+        media_cfg.enable_ice = feature_cfg.enable_ice
+        media_cfg.enable_rtcp_mux = feature_cfg.enable_rtcp_mux
+        media_cfg.no_vad = feature_cfg.no_vad
 
-        # OPTIMISATION: Activer RTCP mux pour multiplexer RTP+RTCP sur même port
-        # Réduit l'utilisation de ports et simplifie le firewall
-        media_cfg.enable_rtcp_mux = True
+        if feature_cfg.ice_no_host_cands is not None:
+            try:
+                media_cfg.ice_no_host_cands = feature_cfg.ice_no_host_cands
+                logger.info("🔧 ICE host candidates: DISABLED (faster media setup)")
+            except AttributeError:
+                logger.debug("ice_no_host_cands not available")
 
-        # OPTIMISATION CRITIQUE: Désactiver VAD (Voice Activity Detection)
-        # On fait du pontage audio vers OpenAI - ne pas couper l'audio sur les silences!
-        media_cfg.no_vad = True
+        if feature_cfg.ec_tail_len is not None:
+            try:
+                media_cfg.ecTailLen = feature_cfg.ec_tail_len
+                logger.info("🔧 Echo canceller: DISABLED (ecTailLen=0, bridge mode)")
+            except AttributeError:
+                logger.debug("ecTailLen not available")
 
-        # CRITICAL FIX: Minimize RTP learning delay for rapid call cycling
-        # These settings eliminate the "strict RTP learning" delay when reusing ports
-        try:
-            # Disable ICE host candidates to skip local network discovery
-            # This speeds up media negotiation significantly
-            media_cfg.ice_no_host_cands = True
-            logger.info("🔧 ICE host candidates: DISABLED (faster media setup)")
-        except AttributeError:
-            logger.debug("ice_no_host_cands not available")
-
-        try:
-            # Disable echo canceller tail (not needed in bridge mode)
-            # ecTailLen=0 eliminates echo canceller processing delay
-            media_cfg.ecTailLen = 0
-            logger.info("🔧 Echo canceller: DISABLED (ecTailLen=0, bridge mode)")
-        except AttributeError:
-            logger.debug("ecTailLen not available")
-
-        try:
-            # Make SRTP optional (clarifies RTP state even without encryption)
-            # This prevents SRTP negotiation delays
-            media_cfg.srtpOpt = 1  # PJMEDIA_SRTP_OPTIONAL
-            logger.info("🔧 SRTP: OPTIONAL (no negotiation delay)")
-        except AttributeError:
-            logger.debug("srtpOpt not available")
+        if feature_cfg.srtp_opt is not None:
+            try:
+                media_cfg.srtpOpt = feature_cfg.srtp_opt
+                logger.info("🔧 SRTP: OPTIONAL (no negotiation delay)")
+            except AttributeError:
+                logger.debug("srtpOpt not available")
 
         logger.info(
             "📊 Jitter buffer configuré: init=%dms, min_pre=%dms, max_pre=%dms, max=%dms, auto_close=%d",
@@ -1327,7 +253,7 @@ class PJSUAAdapter:
         )
         logger.info(
             "🔧 Optimisations audio: mode=%s, ICE=%s, RTCP_mux=%s, VAD=%s",
-            "nomade" if nomadic_mode else "passerelle",
+            "nomade" if feature_cfg.enable_ice else "passerelle",
             "enabled" if media_cfg.enable_ice else "disabled",
             "enabled" if media_cfg.enable_rtcp_mux else "disabled",
             "disabled" if media_cfg.no_vad else "enabled",
@@ -1343,7 +269,10 @@ class PJSUAAdapter:
 
         # Créer le transport UDP
         transport_cfg = pj.TransportConfig()
-        transport_cfg.port = port if config is None else config.port
+        transport_values = transport_settings(
+            port=config.port if config is not None else port
+        )
+        transport_cfg.port = transport_values.port
         self._transport = self._ep.transportCreate(pj.PJSIP_TRANSPORT_UDP, transport_cfg)
 
         # Démarrer l'endpoint
@@ -1351,7 +280,7 @@ class PJSUAAdapter:
 
         logger.info(
             "PJSUA endpoint démarré sur UDP:%d",
-            port if config is None else config.port,
+            transport_values.port,
         )
 
         # CRITICAL DIAGNOSTIC: Verify actual RTP ports being used after libStart()
@@ -2194,3 +1123,14 @@ def get_pjsua_adapter() -> PJSUAAdapter:
     if _pjsua_adapter is None:
         _pjsua_adapter = PJSUAAdapter()
     return _pjsua_adapter
+
+
+__all__ = [
+    "AudioMediaPort",
+    "CallInfo",
+    "PJSUAAccount",
+    "PJSUACall",
+    "PJSUAAdapter",
+    "PJSUAConfig",
+    "get_pjsua_adapter",
+]
