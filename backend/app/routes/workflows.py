@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from ..database import get_session
-from ..dependencies import get_current_user
+from ..dependencies import (
+    get_current_user,
+    get_workflow_appearance_service,
+    get_workflow_persistence_service,
+)
 from ..models import User
 from ..schemas import (
     WorkflowAppearanceResponse,
@@ -27,8 +31,9 @@ from ..schemas import (
 )
 from ..workflows import (
     HostedWorkflowNotFoundError,
+    WorkflowAppearanceService,
     WorkflowNotFoundError,
-    WorkflowService,
+    WorkflowPersistenceService,
     WorkflowValidationError,
     WorkflowVersionNotFoundError,
     serialize_definition,
@@ -52,9 +57,11 @@ def _ensure_admin(user: User) -> None:
 async def get_current_workflow(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowDefinitionResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     definition = service.get_current(session)
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
@@ -64,9 +71,11 @@ async def update_current_workflow(
     payload: WorkflowDefinitionUpdate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowDefinitionResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         definition = service.update_current(payload.graph.model_dump(), session=session)
     except WorkflowValidationError as exc:
@@ -80,9 +89,11 @@ async def update_current_workflow(
 async def list_workflows(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> list[WorkflowSummaryResponse]:
     _ensure_admin(current_user)
-    service = WorkflowService()
     workflows = service.list_workflows(session)
     return [
         WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
@@ -97,9 +108,11 @@ async def list_workflows(
 async def list_workflow_viewports(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowViewportListResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     viewports = service.list_user_viewports(current_user.id, session=session)
     return WorkflowViewportListResponse(
         viewports=[serialize_viewport(entry) for entry in viewports]
@@ -114,9 +127,11 @@ async def replace_workflow_viewports(
     payload: WorkflowViewportReplaceRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowViewportListResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     viewports = service.replace_user_viewports(
         current_user.id,
         [entry.model_dump() for entry in payload.viewports],
@@ -136,9 +151,11 @@ async def create_workflow(
     payload: WorkflowCreateRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowDefinitionResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         definition = service.create_workflow(
             slug=payload.slug,
@@ -160,9 +177,11 @@ async def update_workflow(
     payload: WorkflowUpdateRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowSummaryResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         workflow = service.update_workflow(
             workflow_id,
@@ -189,9 +208,11 @@ async def import_workflow_definition(
     payload: WorkflowImportRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowDefinitionResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         definition = service.import_workflow(
             workflow_id=payload.workflow_id,
@@ -219,9 +240,11 @@ async def delete_workflow(
     workflow_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> Response:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         service.delete_workflow(workflow_id, session=session)
     except WorkflowNotFoundError as exc:
@@ -243,9 +266,11 @@ async def list_workflow_versions(
     workflow_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> list[WorkflowVersionSummaryResponse]:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         versions = service.list_versions(workflow_id, session)
     except WorkflowNotFoundError as exc:
@@ -267,9 +292,11 @@ async def get_workflow_version(
     version_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowDefinitionResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         definition = service.get_version(workflow_id, version_id, session)
     except WorkflowVersionNotFoundError as exc:
@@ -285,9 +312,11 @@ async def export_workflow_version(
     version_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> dict[str, Any]:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         definition = service.get_version(workflow_id, version_id, session)
     except WorkflowVersionNotFoundError as exc:
@@ -309,9 +338,11 @@ async def create_workflow_version(
     payload: WorkflowVersionCreateRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowDefinitionResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         definition = service.create_version(
             workflow_id,
@@ -341,9 +372,11 @@ async def update_workflow_version(
     payload: WorkflowVersionUpdateRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowDefinitionResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         definition = service.update_version(
             workflow_id,
@@ -371,9 +404,11 @@ async def set_workflow_production_version(
     payload: WorkflowProductionUpdate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowDefinitionResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         definition = service.set_production_version(
             workflow_id,
@@ -392,9 +427,11 @@ async def set_chatkit_workflow(
     payload: WorkflowChatKitUpdate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
 ) -> WorkflowSummaryResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         workflow = service.set_chatkit_workflow(payload.workflow_id, session=session)
     except WorkflowNotFoundError as exc:
@@ -416,15 +453,17 @@ async def get_workflow_appearance(
     workflow_reference: str,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    appearance_service: WorkflowAppearanceService = Depends(
+        get_workflow_appearance_service
+    ),
 ) -> WorkflowAppearanceResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         reference: int | str = int(workflow_reference)
     except ValueError:
         reference = workflow_reference
     try:
-        payload = service.get_workflow_appearance(reference, session=session)
+        payload = appearance_service.get_workflow_appearance(reference, session=session)
     except (WorkflowNotFoundError, HostedWorkflowNotFoundError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
@@ -441,15 +480,17 @@ async def update_workflow_appearance(
     payload: WorkflowAppearanceUpdateRequest,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
+    appearance_service: WorkflowAppearanceService = Depends(
+        get_workflow_appearance_service
+    ),
 ) -> WorkflowAppearanceResponse:
     _ensure_admin(current_user)
-    service = WorkflowService()
     try:
         reference: int | str = int(workflow_reference)
     except ValueError:
         reference = workflow_reference
     try:
-        data = service.update_workflow_appearance(
+        data = appearance_service.update_workflow_appearance(
             reference, payload.model_dump(exclude_unset=True), session=session
         )
     except (WorkflowNotFoundError, HostedWorkflowNotFoundError) as exc:

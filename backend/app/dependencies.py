@@ -4,9 +4,15 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from .database import get_session
+from .config import get_settings
+from .database import SessionLocal, get_session
 from .models import User
 from .security import decode_access_token
+from .workflows import (
+    WorkflowAppearanceService,
+    WorkflowGraphValidator,
+    WorkflowPersistenceService,
+)
 
 http_bearer = HTTPBearer(auto_error=False)
 
@@ -60,3 +66,17 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
             status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis"
         )
     return current_user
+
+
+def get_workflow_persistence_service() -> WorkflowPersistenceService:
+    settings = get_settings()
+    return WorkflowPersistenceService(settings=settings)
+
+
+def get_workflow_appearance_service() -> WorkflowAppearanceService:
+    return WorkflowAppearanceService(SessionLocal)
+
+
+def get_workflow_graph_validator() -> WorkflowGraphValidator:
+    settings = get_settings()
+    return WorkflowGraphValidator(settings.workflow_defaults)
