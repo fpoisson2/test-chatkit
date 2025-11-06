@@ -411,12 +411,9 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       setLoading(false);
     }
   }, [
-    hostedWorkflows.length,
     isAdmin,
-    mode,
     setMode,
     token,
-    workflows.length,
   ]);
 
   useEffect(() => {
@@ -473,7 +470,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         return;
       }
 
-      const previousMode = mode;
       setIsUpdating(true);
       setError(null);
       try {
@@ -501,9 +497,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
           pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
         }));
-        if (mode !== "local") {
-          setMode("local");
-        }
         onWorkflowActivatedRef.current(
           { kind: "local", workflow: updated.active_version_id ? updated : null },
           { reason: "user" },
@@ -522,9 +515,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           message = "Publiez une version de production avant d'activer ce workflow.";
         }
         setError(message);
-        if (previousMode !== "local") {
-          setMode(previousMode);
-        }
       } finally {
         setIsUpdating(false);
       }
@@ -534,9 +524,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       isAdmin,
       isDesktopLayout,
       isUpdating,
-      mode,
       selectedWorkflowId,
-      setMode,
       token,
       workflows,
     ],
@@ -551,9 +539,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
       hostedInitialAnnouncedRef.current = true;
       setSelectedHostedSlug(slug);
-      if (mode !== "hosted") {
-        setMode("hosted");
-      }
       updateStoredWorkflowSelection((previous) => ({
         mode: "hosted",
         localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
@@ -574,7 +559,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         closeSidebar();
       }
     },
-    [closeSidebar, hostedWorkflows, isDesktopLayout, mode, selectedWorkflowId, setMode],
+    [closeSidebar, hostedWorkflows, isDesktopLayout, selectedWorkflowId],
   );
 
   const sortedWorkflowEntries = useMemo(() => {
