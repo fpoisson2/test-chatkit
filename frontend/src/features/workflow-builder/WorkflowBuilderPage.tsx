@@ -26,7 +26,7 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { ChevronDown, Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
+import { Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -151,7 +151,7 @@ import WorkflowAppearanceModal, {
 // Extracted Modules (Custom Hooks, Services, Components)
 // ============================================================================
 // Components integrated: useMediaQuery, SaveToast, DeployModal, WorkflowHeader,
-// WorkflowSidebar, PropertiesPanel
+// WorkflowSidebar, PropertiesPanel, BlockLibraryPanel
 // TODO: Integrate remaining hooks and services
 
 // Custom Hooks - Extracted state management
