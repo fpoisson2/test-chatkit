@@ -6,6 +6,7 @@ type OutsidePointerDownRef =
 
 type UseOutsidePointerDownOptions = {
   enabled?: boolean;
+  excludeSelectors?: string[];
 };
 
 const isNode = (value: unknown): value is Node =>
@@ -16,11 +17,13 @@ export const useOutsidePointerDown = (
   onOutsidePointerDown: () => void,
   options: UseOutsidePointerDownOptions = {},
 ): void => {
-  const { enabled = true } = options;
+  const { enabled = true, excludeSelectors = [] } = options;
   const refsRef = useRef(refs);
   const handlerRef = useRef(onOutsidePointerDown);
+  const excludeSelectorsRef = useRef(excludeSelectors);
 
   refsRef.current = refs;
+  excludeSelectorsRef.current = excludeSelectors;
 
   useEffect(() => {
     handlerRef.current = onOutsidePointerDown;
@@ -39,6 +42,15 @@ export const useOutsidePointerDown = (
       const target = event.target;
       if (!isNode(target)) {
         return;
+      }
+
+      // Check if target matches any excluded selectors
+      if (target instanceof Element && excludeSelectorsRef.current.length > 0) {
+        for (const selector of excludeSelectorsRef.current) {
+          if (target.closest(selector)) {
+            return;
+          }
+        }
       }
 
       for (const ref of refsRef.current) {

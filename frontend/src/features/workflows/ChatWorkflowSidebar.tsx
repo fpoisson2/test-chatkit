@@ -174,22 +174,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   useOutsidePointerDown(
     [workflowMenuTriggerRef, workflowMenuRef],
-    () => {
-      // Don't close menu when clicking navigation elements (app switcher, etc.)
-      // This preserves menu state when navigating between pages
-      if (typeof window !== "undefined" && document.activeElement) {
-        const activeEl = document.activeElement;
-        // Check if clicked element is part of navigation (app switcher, sidebar nav)
-        if (
-          activeEl.closest(".chatkit-sidebar__app-switcher") ||
-          activeEl.closest(".chatkit-sidebar__nav")
-        ) {
-          return;
-        }
-      }
-      closeWorkflowMenu();
+    closeWorkflowMenu,
+    {
+      enabled: openWorkflowMenuId !== null,
+      excludeSelectors: [".chatkit-sidebar__app-switcher", ".chatkit-sidebar__nav"],
     },
-    { enabled: openWorkflowMenuId !== null },
   );
 
   useEscapeKeyHandler(
