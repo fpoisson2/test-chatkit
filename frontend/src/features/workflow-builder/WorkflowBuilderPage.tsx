@@ -897,6 +897,12 @@ const WorkflowBuilderPage = () => {
     }
   }, [t, token, setHostedWorkflows, setHostedError, setHostedLoading]);
 
+  // Define buildGraphPayload before useWorkflowCRUD needs it
+  const buildGraphPayload = useCallback(
+    () => buildGraphPayloadFrom(nodes, edges),
+    [edges, nodes],
+  );
+
   // Phase 1: Extract workflow CRUD operations into useWorkflowCRUD hook
   const {
     handleSubmitCreateWorkflow,
@@ -1330,11 +1336,7 @@ const WorkflowBuilderPage = () => {
   // handleCloseCreateModal is provided by useWorkflowBuilderModals hook
   // handleSubmitCreateWorkflow, handleDeleteWorkflow, handleDeleteHostedWorkflow
   // now provided by useWorkflowCRUD hook (Phase 1)
-
-  const buildGraphPayload = useCallback(
-    () => buildGraphPayloadFrom(nodes, edges),
-    [edges, nodes],
-  );
+  // buildGraphPayload is now defined earlier (before useWorkflowCRUD)
 
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
 
