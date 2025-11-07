@@ -2,7 +2,6 @@ import { useEffect, useMemo, type CSSProperties, type MutableRefObject } from "r
 
 import { useSidebarPortal } from "../../../components/AppLayout";
 import { useI18n } from "../../../i18n";
-import type { HostedWorkflowMetadata } from "../../../utils/backend";
 import {
   getWorkflowInitials,
   isWorkflowPinned,
@@ -11,28 +10,27 @@ import {
   type StoredWorkflowPinnedLookup,
 } from "../../workflows/utils";
 import type { WorkflowAppearanceTarget } from "../../workflows/WorkflowAppearanceModal";
-import type { WorkflowSummary } from "../types";
 import type {
   ActionMenuPlacement,
-  WorkflowActionMenuItem,
 } from "../../workflows/WorkflowActionMenu";
 import WorkflowSidebarListItem from "../../workflows/WorkflowSidebarListItem";
+import { useWorkflowContext } from "../contexts/WorkflowContext";
+import { useModalContext } from "../contexts/ModalContext";
+import { useUIContext } from "../contexts/UIContext";
 
+// Phase 4.5: Reduced from 28 props to 13 props (-54%)
+// Migrated to contexts:
+// - workflows, hostedWorkflows → WorkflowContext
+// - loading, loadError, hostedLoading, hostedError → WorkflowContext
+// - selectedWorkflowId → WorkflowContext
+// - selectedWorkflow → Derived from WorkflowContext (workflows + selectedWorkflowId)
+// - isCreatingWorkflow → ModalContext
+// - openWorkflowMenuId, isMobileLayout → UIContext
+// - closeWorkflowMenu, setOpenWorkflowMenuId → UIContext
 export type WorkflowBuilderSidebarProps = {
-  workflows: WorkflowSummary[];
-  hostedWorkflows: HostedWorkflowMetadata[];
   lastUsedAt: StoredWorkflowLastUsedAt;
   pinnedLookup: StoredWorkflowPinnedLookup;
-  loading: boolean;
-  loadError: string | null;
-  hostedLoading: boolean;
-  hostedError: string | null;
-  isCreatingWorkflow: boolean;
-  selectedWorkflow: WorkflowSummary | null;
-  selectedWorkflowId: number | null;
-  openWorkflowMenuId: string | number | null;
   workflowMenuPlacement: ActionMenuPlacement;
-  isMobileLayout: boolean;
   isSidebarCollapsed: boolean;
   workflowSortCollator: Intl.Collator | null;
   onSelectWorkflow: (workflowId: number) => void;
@@ -48,28 +46,15 @@ export type WorkflowBuilderSidebarProps = {
     trigger?: HTMLButtonElement | null,
   ) => void;
   onExportWorkflow: (workflowId?: number) => void | Promise<void>;
-  closeWorkflowMenu: () => void;
   workflowMenuTriggerRef: MutableRefObject<HTMLButtonElement | null>;
   workflowMenuRef: MutableRefObject<HTMLDivElement | null>;
   setWorkflowMenuPlacement: (placement: ActionMenuPlacement) => void;
-  setOpenWorkflowMenuId: (value: string | number | null) => void;
 };
 
 const WorkflowBuilderSidebar = ({
-  workflows,
-  hostedWorkflows,
   lastUsedAt,
   pinnedLookup,
-  loading,
-  loadError,
-  hostedLoading,
-  hostedError,
-  isCreatingWorkflow,
-  selectedWorkflow,
-  selectedWorkflowId,
-  openWorkflowMenuId,
   workflowMenuPlacement,
-  isMobileLayout,
   isSidebarCollapsed,
   workflowSortCollator,
   onSelectWorkflow,
@@ -82,15 +67,39 @@ const WorkflowBuilderSidebar = ({
   onOpenCreateModal,
   onOpenAppearanceModal,
   onExportWorkflow,
-  closeWorkflowMenu,
   workflowMenuTriggerRef,
   workflowMenuRef,
   setWorkflowMenuPlacement,
-  setOpenWorkflowMenuId,
 }: WorkflowBuilderSidebarProps) => {
   const { t } = useI18n();
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } =
     useSidebarPortal();
+
+  // Phase 4.5: Use contexts instead of props
+  const {
+    workflows,
+    hostedWorkflows,
+    loading,
+    loadError,
+    hostedLoading,
+    hostedError,
+    selectedWorkflowId,
+  } = useWorkflowContext();
+
+  const { isCreatingWorkflow } = useModalContext();
+
+  const {
+    openWorkflowMenuId,
+    isMobileLayout,
+    closeWorkflowMenu,
+    setOpenWorkflowMenuId,
+  } = useUIContext();
+
+  // Phase 4.5: Derive selectedWorkflow from context data
+  const selectedWorkflow = useMemo(
+    () => workflows.find((w) => w.id === selectedWorkflowId) || null,
+    [workflows, selectedWorkflowId]
+  );
 
   const orderingCollator = useMemo(() => {
     if (workflowSortCollator) {
