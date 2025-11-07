@@ -200,7 +200,12 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     if (isDesktopLayout) {
       if (!wasDesktop) {
         const storedPreference = readStoredSidebarOpen();
-        setIsSidebarOpen(storedPreference ?? true);
+        const nextIsSidebarOpen = storedPreference ?? true;
+        setIsSidebarOpen(nextIsSidebarOpen);
+
+        if (storedPreference === null) {
+          writeStoredSidebarOpen(nextIsSidebarOpen);
+        }
       }
     } else {
       setIsSidebarOpen(false);
@@ -209,21 +214,19 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     previousIsDesktopRef.current = isDesktopLayout;
   }, [isDesktopLayout]);
 
-  useEffect(() => {
-    if (!isDesktopLayout) {
-      return;
-    }
-
-    writeStoredSidebarOpen(isSidebarOpen);
-  }, [isDesktopLayout, isSidebarOpen]);
-
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);
-  }, []);
+    if (isDesktopLayout) {
+      writeStoredSidebarOpen(true);
+    }
+  }, [isDesktopLayout]);
 
   const closeSidebar = useCallback(() => {
     setIsSidebarOpen(false);
-  }, []);
+    if (isDesktopLayout) {
+      writeStoredSidebarOpen(false);
+    }
+  }, [isDesktopLayout]);
 
   const handleMainInteraction = useCallback(() => {
     if (!isDesktopLayout && isSidebarOpen) {
