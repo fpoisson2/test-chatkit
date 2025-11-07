@@ -256,7 +256,7 @@ const WorkflowBuilderPage = () => {
   } = useUIContext();
 
   // Use global workflow menu context
-  const { openWorkflowMenuId } = useWorkflowMenuContext();
+  const { openWorkflowMenuId, closeWorkflowMenu: closeWorkflowMenuContext } = useWorkflowMenuContext();
 
   const {
     createWorkflowKind,
@@ -444,11 +444,11 @@ const WorkflowBuilderPage = () => {
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const closeWorkflowMenu = useCallback(() => {
-    setOpenWorkflowMenuId(null);
+    closeWorkflowMenuContext();
     setWorkflowMenuPlacement("up");
     workflowMenuTriggerRef.current = null;
     workflowMenuRef.current = null;
-  }, [workflowMenuRef, workflowMenuTriggerRef]);
+  }, [closeWorkflowMenuContext]);
 
   // Use modal management hook for mobile actions only
   // Note: Modal states (Appearance, Create, Deploy) come from ModalContext above
