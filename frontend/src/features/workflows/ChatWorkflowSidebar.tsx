@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Star } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -11,10 +10,11 @@ import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
 import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
-import WorkflowActionMenu, {
-  type ActionMenuPlacement,
-  type WorkflowActionMenuItem,
+import type {
+  ActionMenuPlacement,
+  WorkflowActionMenuItem,
 } from "./WorkflowActionMenu";
+import WorkflowSidebarListItem from "./WorkflowSidebarListItem";
 import {
   buildWorkflowOrderingTimestamps,
   clearWorkflowSidebarCache,
@@ -834,33 +834,52 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           },
         ];
         return (
-          <li
-            className="chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin"
+          <WorkflowSidebarListItem
             key={`hosted:${option.slug}`}
-            data-hosted-workflow=""
-            data-pinned={isPinned ? "" : undefined}
-            data-has-actions={isAdmin ? "" : undefined}
+            isPinned={isPinned}
+            pinLabel={pinLabel}
+            onTogglePin={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              toggleHostedPin(option.slug);
+            }}
+            menuProps={
+              isAdmin
+                ? {
+                    menuId,
+                    isOpen: isMenuOpen,
+                    isMobileLayout,
+                    placement: isMenuOpen ? workflowMenuPlacement : "down",
+                    triggerDisabled: loading || isUpdating,
+                    triggerLabel: t("workflowBuilder.hostedSection.openActions", {
+                      label: option.label,
+                    }),
+                    onOpen: (placement) => {
+                      setWorkflowMenuPlacement(placement);
+                      setOpenWorkflowMenuId(menuKey);
+                    },
+                    onClose: closeWorkflowMenu,
+                    triggerRef: workflowMenuTriggerRef,
+                    menuRef: workflowMenuRef,
+                    items: hostedMenuItems,
+                  }
+                : null
+            }
+            hasActions={isAdmin}
+            dataAttributes={{ "data-hosted-workflow": "" }}
+            trailingContent={
+              <>
+                {!option.available ? (
+                  <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
+                    {t("workflows.hostedUnavailable")}
+                  </p>
+                ) : null}
+                {option.description ? (
+                  <p className="chatkit-sidebar__workflow-meta">{option.description}</p>
+                ) : null}
+              </>
+            }
           >
-            <button
-              type="button"
-              className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                toggleHostedPin(option.slug);
-              }}
-              aria-pressed={isPinned}
-              aria-label={pinLabel}
-              title={pinLabel}
-            >
-              <Star
-                aria-hidden="true"
-                className="chatkit-sidebar__workflow-pin-icon"
-                size={18}
-                strokeWidth={isPinned ? 1.75 : 2}
-                fill={isPinned ? "currentColor" : "none"}
-              />
-            </button>
             <button
               type="button"
               className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
@@ -876,33 +895,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                 {t("workflows.hostedBadge")}
               </span>
             </button>
-            {!option.available ? (
-              <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
-                {t("workflows.hostedUnavailable")}
-              </p>
-            ) : null}
-            {option.description ? (
-              <p className="chatkit-sidebar__workflow-meta">{option.description}</p>
-            ) : null}
-            {isAdmin ? (
-              <WorkflowActionMenu
-                menuId={menuId}
-                isOpen={isMenuOpen}
-                isMobileLayout={isMobileLayout}
-                placement={isMenuOpen ? workflowMenuPlacement : "down"}
-                triggerDisabled={loading || isUpdating}
-                triggerLabel={t("workflowBuilder.hostedSection.openActions", { label: option.label })}
-                onOpen={(placement) => {
-                  setWorkflowMenuPlacement(placement);
-                  setOpenWorkflowMenuId(menuKey);
-                }}
-                onClose={closeWorkflowMenu}
-                triggerRef={workflowMenuTriggerRef}
-                menuRef={workflowMenuRef}
-                items={hostedMenuItems}
-              />
-            ) : null}
-          </li>
+          </WorkflowSidebarListItem>
         );
       }
 
@@ -943,32 +936,39 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         },
       ];
       return (
-        <li
+        <WorkflowSidebarListItem
           key={`local:${workflow.id}`}
-          className="chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin"
-          data-pinned={isPinned ? "" : undefined}
-          data-has-actions={isAdmin ? "" : undefined}
+          isPinned={isPinned}
+          pinLabel={pinLabel}
+          onTogglePin={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleLocalPin(workflow.id);
+          }}
+          menuProps={
+            isAdmin
+              ? {
+                  menuId,
+                  isOpen: isMenuOpen,
+                  isMobileLayout,
+                  placement: isMenuOpen ? workflowMenuPlacement : "down",
+                  triggerDisabled: loading || isUpdating,
+                  triggerLabel: t("workflowBuilder.localSection.openActions", {
+                    label: workflow.display_name,
+                  }),
+                  onOpen: (placement) => {
+                    setWorkflowMenuPlacement(placement);
+                    setOpenWorkflowMenuId(workflow.id);
+                  },
+                  onClose: closeWorkflowMenu,
+                  triggerRef: workflowMenuTriggerRef,
+                  menuRef: workflowMenuRef,
+                  items: localMenuItems,
+                }
+              : null
+          }
+          hasActions={isAdmin}
         >
-          <button
-            type="button"
-            className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              toggleLocalPin(workflow.id);
-            }}
-            aria-pressed={isPinned}
-            aria-label={pinLabel}
-            title={pinLabel}
-          >
-            <Star
-              aria-hidden="true"
-              className="chatkit-sidebar__workflow-pin-icon"
-              size={18}
-              strokeWidth={isPinned ? 1.75 : 2}
-              fill={isPinned ? "currentColor" : "none"}
-            />
-          </button>
           <button
             type="button"
             className={`chatkit-sidebar__workflow-button${
@@ -980,27 +980,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           >
             <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
           </button>
-          {isAdmin ? (
-            <WorkflowActionMenu
-              menuId={menuId}
-              isOpen={isMenuOpen}
-              isMobileLayout={isMobileLayout}
-              placement={isMenuOpen ? workflowMenuPlacement : "down"}
-              triggerDisabled={loading || isUpdating}
-              triggerLabel={t("workflowBuilder.localSection.openActions", {
-                label: workflow.display_name,
-              })}
-              onOpen={(placement) => {
-                setWorkflowMenuPlacement(placement);
-                setOpenWorkflowMenuId(workflow.id);
-              }}
-              onClose={closeWorkflowMenu}
-              triggerRef={workflowMenuTriggerRef}
-              menuRef={workflowMenuRef}
-              items={localMenuItems}
-            />
-          ) : null}
-        </li>
+        </WorkflowSidebarListItem>
       );
     };
 
