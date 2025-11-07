@@ -9,6 +9,8 @@ type UIContextValue = {
   isMobileLayout: boolean;
   deviceType: DeviceType;
   openWorkflowMenuId: string | number | null;
+  isExporting: boolean;
+  isImporting: boolean;
 
   // Block Library Methods
   toggleBlockLibrary: () => void;
@@ -30,6 +32,10 @@ type UIContextValue = {
   openWorkflowMenu: (id: string | number) => void;
   closeWorkflowMenu: () => void;
   setOpenWorkflowMenuId: (id: string | number | null) => void;
+
+  // Import/Export Methods
+  setIsExporting: (isExporting: boolean) => void;
+  setIsImporting: (isImporting: boolean) => void;
 };
 
 const UIContext = createContext<UIContextValue | null>(null);
@@ -53,6 +59,8 @@ export const UIProvider = ({ children }: UIProviderProps) => {
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [deviceType, setDeviceType] = useState<DeviceType>("desktop");
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Block Library Methods
   const toggleBlockLibrary = useCallback(() => {
@@ -98,6 +106,8 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       isMobileLayout,
       deviceType,
       openWorkflowMenuId,
+      isExporting,
+      isImporting,
 
       // Block Library Methods
       toggleBlockLibrary,
@@ -119,6 +129,10 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       openWorkflowMenu,
       closeWorkflowMenu,
       setOpenWorkflowMenuId,
+
+      // Import/Export Methods
+      setIsExporting,
+      setIsImporting,
     }),
     [
       isBlockLibraryOpen,
@@ -126,6 +140,8 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       isMobileLayout,
       deviceType,
       openWorkflowMenuId,
+      isExporting,
+      isImporting,
       toggleBlockLibrary,
       openBlockLibrary,
       closeBlockLibrary,

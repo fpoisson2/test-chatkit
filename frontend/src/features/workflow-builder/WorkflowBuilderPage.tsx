@@ -130,7 +130,10 @@ import BlockLibrary, { type BlockLibraryItem } from "./components/BlockLibrary";
 import WorkflowBuilderCanvas, {
   type MobileActionLabels,
 } from "./components/WorkflowBuilderCanvas";
-import WorkflowBuilderHeaderControls from "./components/WorkflowBuilderHeaderControls";
+import WorkflowBuilderToast from "./components/WorkflowBuilderToast";
+import WorkflowBuilderModals from "./components/WorkflowBuilderModals";
+import WorkflowBuilderPropertiesPanel from "./components/WorkflowBuilderPropertiesPanel";
+import WorkflowBuilderHeader from "./components/WorkflowBuilderHeader";
 import useWorkflowNodeHandlers from "./hooks/useWorkflowNodeHandlers";
 import useGraphEditor from "./hooks/useGraphEditor";
 import useWorkflowPersistence from "./hooks/useWorkflowPersistence";
@@ -202,8 +205,16 @@ import {
   type DeviceType,
 } from "./WorkflowBuilderUtils";
 import { useWorkflowViewportPersistence } from "./hooks/useWorkflowViewportPersistence";
-// Contexts will be imported when components are extracted in Phase 4
-// import { useWorkflowContext, useSelectionContext, ... } from "./contexts";
+// Phase 4: Import and use contexts
+import {
+  useSaveContext,
+  useUIContext,
+  useModalContext,
+  useSelectionContext,
+  useGraphContext,
+  useViewportContext,
+  useWorkflowContext,
+} from "./contexts";
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
@@ -221,6 +232,146 @@ const WorkflowBuilderPage = () => {
     [token],
   );
   const { openSidebar, closeSidebar, isSidebarCollapsed } = useAppLayout();
+
+  // Phase 4: Use contexts instead of local state
+  const {
+    saveState,
+    saveMessage,
+    setSaveState,
+    setSaveMessage,
+    saveStateRef,
+    lastSavedSnapshotRef,
+    setLastSavedSnapshot,
+  } = useSaveContext();
+
+  const {
+    isBlockLibraryOpen,
+    setIsBlockLibraryOpen,
+    isPropertiesPanelOpen,
+    setIsPropertiesPanelOpen,
+    openWorkflowMenuId,
+    setOpenWorkflowMenuId,
+    isMobileLayout: contextIsMobileLayout,
+    setIsMobileLayout: setContextIsMobileLayout,
+    isExporting,
+    setIsExporting,
+    isImporting,
+    setIsImporting,
+  } = useUIContext();
+
+  const {
+    createWorkflowKind,
+    setCreateWorkflowKind,
+    createWorkflowName,
+    setCreateWorkflowName,
+    createWorkflowRemoteId,
+    setCreateWorkflowRemoteId,
+    createWorkflowError,
+    setCreateWorkflowError,
+    isCreatingWorkflow,
+    setIsCreatingWorkflow,
+    deployToProduction,
+    setDeployToProduction,
+    isDeploying,
+    setIsDeploying,
+    isCreateModalOpen,
+    closeCreateModal: handleCloseCreateModal,
+    isDeployModalOpen,
+    openDeployModal,
+    closeDeployModal: handleCloseDeployModal,
+    isAppearanceModalOpen,
+    closeAppearanceModal: handleCloseAppearanceModal,
+  } = useModalContext();
+
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedEdgeId,
+    setSelectedEdgeId,
+    selectedNodeIdRef,
+    selectedEdgeIdRef,
+    selectedNodeIds,
+    setSelectedNodeIds,
+    selectedEdgeIds,
+    setSelectedEdgeIds,
+    selectedNodeIdsRef,
+    selectedEdgeIdsRef,
+    previousSelectedElementRef,
+    selectNode,
+    selectEdge,
+    clearSelection: clearSelectionContext,
+    handleSelectionChange: handleSelectionChangeContext,
+  } = useSelectionContext();
+
+  const {
+    nodes,
+    setNodes,
+    edges,
+    setEdges,
+    onNodesChange,
+    applyEdgesChange,
+    hasPendingChanges,
+    updateHasPendingChanges,
+    nodesRef,
+    edgesRef,
+    hasPendingChangesRef,
+    isNodeDragInProgressRef,
+    setIsNodeDragInProgress,
+  } = useGraphContext();
+
+  // Phase 4: ViewportContext for viewport-related state
+  const {
+    viewport,
+    minViewportZoom,
+    initialViewport,
+    hasUserViewportChange,
+    pendingViewportRestore,
+    viewportRef,
+    viewportMemoryRef,
+    viewportKeyRef,
+    hasUserViewportChangeRef,
+    pendingViewportRestoreRef,
+    setViewport,
+    setMinViewportZoom,
+    setInitialViewport,
+    setHasUserViewportChange,
+    setPendingViewportRestore,
+    saveViewport,
+    restoreViewport,
+    clearViewport,
+    updateViewport,
+    calculateMinZoom,
+    refreshViewportConstraints,
+    generateViewportKey,
+  } = useViewportContext();
+
+  // Phase 4: WorkflowContext for workflow/version-related state
+  // Note: workflows/hostedWorkflows still come from useWorkflowSidebarState for sidebar management
+  const {
+    versions,
+    selectedVersionId,
+    selectedVersionDetail,
+    draftVersionId,
+    draftVersionSummary,
+    loading,
+    loadError,
+    hostedLoading,
+    hostedError,
+    versionsRef,
+    selectedWorkflowIdRef,
+    selectedVersionIdRef,
+    draftVersionIdRef,
+    draftVersionSummaryRef,
+    setVersions,
+    setSelectedVersionId,
+    setSelectedVersionDetail,
+    setDraftVersionId,
+    setDraftVersionSummary,
+    setLoading,
+    setLoadError,
+    setHostedLoading,
+    setHostedError,
+  } = useWorkflowContext();
 
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
@@ -273,49 +424,16 @@ const WorkflowBuilderPage = () => {
   } = availableModelsState;
   const { data: widgets, loading: widgetsLoading, error: widgetsError } = widgetsState;
 
-  // NOTE: Contexts created in Phase 2 are ready but not yet used in this component
-  // They will be used when we extract components in Phase 4
-  // For now, using existing hooks (useWorkflowSidebarState, etc.) to avoid breaking changes
+  // Phase 4: State fully migrated to contexts!
+  // - SaveContext: saveState, saveMessage, lastSavedSnapshotRef
+  // - UIContext: isBlockLibraryOpen, isPropertiesPanelOpen, openWorkflowMenuId, isExporting, isImporting
+  // - ModalContext: createWorkflow*, isCreatingWorkflow, deployToProduction, isDeploying, modal open states
+  // - SelectionContext: selectedNodeId, selectedEdgeId, selectedNodeIds, selectedEdgeIds, refs
+  // - GraphContext: nodes, edges, hasPendingChanges, nodesRef, edgesRef, hasPendingChangesRef, isNodeDragInProgressRef
+  // - ViewportContext: viewport, minViewportZoom, initialViewport, hasUserViewportChange, pendingViewportRestore, refs
+  // - WorkflowContext: versions, selectedVersionId, selectedVersionDetail, loading, loadError, hostedLoading, hostedError, refs
 
-  // Available contexts for future use:
-  // - WorkflowContext: workflows, versions, CRUD operations
-  // - SelectionContext: node/edge selection
-  // - GraphContext: ReactFlow nodes/edges
-  // - SaveContext: save state management
-  // - ModalContext: modal states
-  // - ViewportContext: viewport management
-  // - UIContext: UI panel states
-
-  const [loading, setLoading] = useState(() => !initialSidebarCache);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
-  const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [hostedLoading, setHostedLoading] = useState(false);
-  const [hostedError, setHostedError] = useState<string | null>(null);
-  const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
-  const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
-  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [hasPendingChanges, setHasPendingChanges] = useState(false);
-  const updateHasPendingChanges = useCallback(
-    (value: boolean | ((previous: boolean) => boolean)) => {
-      setHasPendingChanges(value);
-    },
-    [],
-  );
-  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
-  const [createWorkflowKind, setCreateWorkflowKind] = useState<"local" | "hosted">("local");
-  const [createWorkflowName, setCreateWorkflowName] = useState("");
-  const [createWorkflowRemoteId, setCreateWorkflowRemoteId] = useState("");
-  const [createWorkflowError, setCreateWorkflowError] = useState<string | null>(null);
-  const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
-  const [deployToProduction, setDeployToProduction] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
+  // Remaining local state (UI-specific):
   const [workflowMenuPlacement, setWorkflowMenuPlacement] =
     useState<ActionMenuPlacement>("up");
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -327,21 +445,16 @@ const WorkflowBuilderPage = () => {
     workflowMenuRef.current = null;
   }, [workflowMenuRef, workflowMenuTriggerRef]);
 
-  // Use modal management hook for all modals and mobile actions
+  // Use modal management hook for mobile actions only
+  // Note: Modal states (Appearance, Create, Deploy) come from ModalContext above
   const {
-    isAppearanceModalOpen,
     appearanceModalTarget,
     appearanceModalTriggerRef,
-    handleCloseAppearanceModal,
     openAppearanceModal,
     setAppearanceModalTarget,
-    isCreateModalOpen,
     handleOpenCreateModal,
-    handleCloseCreateModal,
     setCreateModalOpen,
-    isDeployModalOpen,
     handleOpenDeployModal,
-    handleCloseDeployModal,
     setDeployModalOpen,
     isMobileActionsOpen,
     toggleMobileActions,
@@ -354,36 +467,38 @@ const WorkflowBuilderPage = () => {
     isCreatingWorkflow,
     isDeploying,
   });
-  const lastSavedSnapshotRef = useRef<string | null>(null);
-  const draftVersionIdRef = useRef<number | null>(null);
-  const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
-  const versionsRef = useRef<WorkflowVersionSummary[]>([]);
-  const selectedWorkflowIdRef = useRef<number | null>(null);
-  const hasPendingChangesRef = useRef(hasPendingChanges);
-  const saveStateRef = useRef<SaveState>(saveState);
 
-  const selectedVersionIdRef = useRef<number | null>(null);
+  // Phase 4: Refs migrated to contexts
+  // - SaveContext: lastSavedSnapshotRef, saveStateRef
+  // - SelectionContext: selectedNodeIdRef, selectedEdgeIdRef, selectedNodeIdsRef, selectedEdgeIdsRef, previousSelectedElementRef
+  // - GraphContext: nodesRef, edgesRef, hasPendingChangesRef, isNodeDragInProgressRef
+  // - ViewportContext: viewportRef, viewportMemoryRef, viewportKeyRef, hasUserViewportChangeRef, pendingViewportRestoreRef
+  // - WorkflowContext: versionsRef, selectedWorkflowIdRef, selectedVersionIdRef, draftVersionIdRef, draftVersionSummaryRef
+
+  // Remaining local refs:
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
-  const viewportRef = useRef<Viewport | null>(null);
-  const viewportMemoryRef = useRef(new Map<string, Viewport>());
-  const viewportKeyRef = useRef<string | null>(null);
-  const hasUserViewportChangeRef = useRef(false);
-  const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
+
+  // Sync isMobileLayout with UIContext
+  useEffect(() => {
+    setContextIsMobileLayout(isMobileLayout);
+  }, [isMobileLayout, setContextIsMobileLayout]);
+
+  // Calculate base min zoom (used by viewport persistence hook)
   const baseMinViewportZoom = useMemo(
     () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
     [isMobileLayout],
   );
-  const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
-  const [initialViewport, setInitialViewport] = useState<Viewport | undefined>(undefined);
 
-  const { persistViewportMemory, refreshViewportConstraints, restoreViewport } =
+  // Note: minViewportZoom, initialViewport, refreshViewportConstraints, restoreViewport come from ViewportContext
+
+  const { persistViewportMemory } =
     useWorkflowViewportPersistence({
       authHeader,
       backendUrl,
@@ -415,29 +530,23 @@ const WorkflowBuilderPage = () => {
     [applyEdgesChange, updateHasPendingChanges],
   );
 
-  const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
+  // Note: isBlockLibraryOpen and isPropertiesPanelOpen come from UIContext (imported above)
+  // Note: selectedNodeId, selectedEdgeId and their refs come from SelectionContext (imported above)
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
-  const previousSelectedElementRef = useRef<string | null>(null);
-  const selectedNodeIdRef = useRef<string | null>(null);
-  const selectedEdgeIdRef = useRef<string | null>(null);
   const lastTappedElementRef = useRef<{
     kind: "node" | "edge";
     id: string;
     tapCount: number;
   } | null>(null);
-  const selectedNodeIdsRef = useRef<Set<string>>(new Set());
-  const selectedEdgeIdsRef = useRef<Set<string>>(new Set());
-  const isNodeDragInProgressRef = useRef(false);
+  // Note: isNodeDragInProgressRef comes from GraphContext (above)
   const copySequenceRef = useRef<{ count: number; lastTimestamp: number }>({
     count: 0,
     lastTimestamp: 0,
   });
   const workflowBusyRef = useRef(false);
-  const nodesRef = useRef<FlowNode[]>([]);
-  const edgesRef = useRef<FlowEdge[]>([]);
+  // Note: nodesRef and edgesRef come from GraphContext (above)
 
   // Use workflow history hook for undo/redo functionality
   const { historyRef, resetHistory, restoreGraphFromSnapshot, undoHistory, redoHistory } =
@@ -463,11 +572,11 @@ const WorkflowBuilderPage = () => {
   // Mobile actions handlers now provided by useWorkflowBuilderModals hook
 
   const toggleBlockLibrary = useCallback(() => {
-    setBlockLibraryOpen((prev) => !prev);
+    setIsBlockLibraryOpen((prev) => !prev);
   }, []);
   const closeBlockLibrary = useCallback(
     (options: { focusToggle?: boolean } = {}) => {
-      setBlockLibraryOpen(false);
+      setIsBlockLibraryOpen(false);
       if (options.focusToggle && blockLibraryToggleRef.current) {
         blockLibraryToggleRef.current.focus();
       }
@@ -480,7 +589,7 @@ const WorkflowBuilderPage = () => {
   }, [baseMinViewportZoom]);
 
   useEffect(() => {
-    setBlockLibraryOpen(!isMobileLayout);
+    setIsBlockLibraryOpen(!isMobileLayout);
   }, [isMobileLayout]);
 
   // Ferme les actions mobiles quand on n’est pas en layout mobile
@@ -638,57 +747,24 @@ const WorkflowBuilderPage = () => {
       </div>
     ) : null;
 
+  // Phase 4: Utiliser WorkflowBuilderHeader qui gère lui-même la logique via les contextes
   const renderHeaderControls = () => {
-    const importDisabled = loading || isImporting;
-    const exportDisabled =
-      loading || !selectedWorkflowId || !selectedVersionId || isExporting;
-    const deployDisabled =
-      loading || !selectedWorkflowId || versions.length === 0 || isDeploying;
-
     return (
-      <WorkflowBuilderHeaderControls
-        isMobileLayout={isMobileLayout}
-        loading={loading}
-        versions={versions}
-        selectedVersionId={selectedVersionId}
-        draftVersionId={draftVersionIdRef.current}
-        draftDisplayName={draftDisplayName}
-        importDisabled={importDisabled}
-        exportDisabled={exportDisabled}
-        deployDisabled={deployDisabled}
-        importLabel={
-          isImporting
-            ? t("workflowBuilder.import.inProgress")
-            : t("workflowBuilder.actions.importJson")
-        }
-        exportLabel={
-          isExporting
-            ? t("workflowBuilder.export.preparing")
-            : t("workflowBuilder.actions.exportJson")
-        }
-        onVersionChange={handleVersionChange}
+      <WorkflowBuilderHeader
+        selectedWorkflow={selectedWorkflow ?? null}
         importFileInputRef={importFileInputRef}
+        mobileActionsTriggerRef={mobileActionsTriggerRef}
+        mobileActionsMenuRef={mobileActionsMenuRef}
+        onVersionChange={handleVersionChange}
         onImportFileChange={handleImportFileChange}
         onTriggerImport={handleTriggerImport}
         onExportWorkflow={handleExportWorkflow}
         onOpenDeployModal={handleOpenDeployModalWithSetup}
-        mobileActionsTriggerRef={mobileActionsTriggerRef}
-        mobileActionsMenuRef={mobileActionsMenuRef}
+        renderWorkflowDescription={renderWorkflowDescription}
+        renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
         isMobileActionsOpen={isMobileActionsOpen}
         onToggleMobileActions={toggleMobileActions}
         closeMobileActions={closeMobileActions}
-        mobileActionsDialogId={mobileActionsDialogId}
-        mobileActionsTitleId={mobileActionsTitleId}
-        mobileActionsOpenLabel={t("workflowBuilder.mobileActions.open")}
-        mobileActionsTitle={t("workflowBuilder.mobileActions.title")}
-        renderWorkflowDescription={renderWorkflowDescription}
-        renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
-        showWorkflowDescription={Boolean(selectedWorkflow?.description)}
-        showWorkflowPublicationReminder={Boolean(
-          selectedWorkflow && !selectedWorkflow.active_version_id,
-        )}
-        isImporting={isImporting}
-        isExporting={isExporting}
       />
     );
   };
@@ -1328,7 +1404,7 @@ const WorkflowBuilderPage = () => {
       setSelectedNodeId(node.id);
       setSelectedEdgeId(null);
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setPropertiesPanelOpen(true);
+        setIsPropertiesPanelOpen(true);
       }
     },
     [isMobileLayout],
@@ -1343,7 +1419,7 @@ const WorkflowBuilderPage = () => {
       setSelectedEdgeId(edge.id);
       setSelectedNodeId(null);
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setPropertiesPanelOpen(true);
+        setIsPropertiesPanelOpen(true);
       }
     },
     [isMobileLayout],
@@ -1376,7 +1452,7 @@ const WorkflowBuilderPage = () => {
 
   const handleClosePropertiesPanel = useCallback(() => {
     if (isMobileLayout) {
-      setPropertiesPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       if (typeof window !== "undefined") {
         window.setTimeout(() => {
           propertiesPanelToggleRef.current?.focus();
@@ -1393,7 +1469,7 @@ const WorkflowBuilderPage = () => {
     if (!selectedNode && !selectedEdge) {
       return;
     }
-    setPropertiesPanelOpen(true);
+    setIsPropertiesPanelOpen(true);
   }, [selectedEdge, selectedNode]);
 
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
@@ -1412,7 +1488,7 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     if (!selectedElementKey) {
-      setPropertiesPanelOpen(false);
+      setIsPropertiesPanelOpen(false);
       lastTappedElementRef.current = null;
       previousSelectedElementRef.current = selectedElementKey;
       return;
@@ -1440,10 +1516,10 @@ const WorkflowBuilderPage = () => {
 
     if (isMobileLayout) {
       if (isNewSelection) {
-        setPropertiesPanelOpen(false);
+        setIsPropertiesPanelOpen(false);
       }
     } else if (isNewSelection && !isNodeDragInProgressRef.current) {
-      setPropertiesPanelOpen(true);
+      setIsPropertiesPanelOpen(true);
     }
 
     previousSelectedElementRef.current = selectedElementKey;
@@ -1452,7 +1528,7 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     if (!isMobileLayout) {
       if (selectedElementKey) {
-        setPropertiesPanelOpen(true);
+        setIsPropertiesPanelOpen(true);
       }
     }
   }, [isMobileLayout, selectedElementKey]);
@@ -1968,12 +2044,11 @@ const WorkflowBuilderPage = () => {
 
   const conditionGraphError = useMemo(() => validateGraphStructure(nodes, edges), [edges, nodes]);
 
-  // Override handleOpenDeployModal to include additional setup logic
+  // Phase 4: Use openDeployModal from ModalContext instead of handleOpenDeployModal from useWorkflowBuilderModals
   const handleOpenDeployModalWithSetup = useCallback(() => {
     setSaveMessage(null);
-    setDeployToProduction(true);
-    handleOpenDeployModal();
-  }, [handleOpenDeployModal]);
+    openDeployModal(true); // true = deployToProduction
+  }, [openDeployModal, setSaveMessage]);
 
   // handleCloseDeployModal is provided by useWorkflowBuilderModals hook
 
@@ -2659,34 +2734,6 @@ const WorkflowBuilderPage = () => {
       </div>
     </aside>
   );
-  const toastStyles = useMemo(() => {
-    switch (saveState) {
-      case "error":
-        return {
-          background: "rgba(239, 68, 68, 0.18)",
-          color: "#b91c1c",
-          border: "1px solid rgba(248, 113, 113, 0.35)",
-        } as const;
-      case "saving":
-        return {
-          background: "rgba(14, 165, 233, 0.18)",
-          color: "#0284c7",
-          border: "1px solid rgba(56, 189, 248, 0.35)",
-        } as const;
-      case "saved":
-        return {
-          background: "rgba(34, 197, 94, 0.18)",
-          color: "#15803d",
-          border: "1px solid rgba(74, 222, 128, 0.35)",
-        } as const;
-      default:
-        return {
-          background: "var(--color-surface-subtle)",
-          color: "var(--text-color)",
-          border: "1px solid var(--surface-border)",
-        } as const;
-    }
-  }, [saveState]);
 
   const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
   const shouldShowPublicationReminder =
@@ -2893,61 +2940,21 @@ const WorkflowBuilderPage = () => {
           mobileActionLabels={mobileActionLabels}
         />
       </div>
-      {saveMessage ? (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "1.5rem",
-            left: "50%",
-            transform: "translateX(-50%)",
-            padding: "0.65rem 1.25rem",
-            borderRadius: "9999px",
-            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
-            zIndex: 30,
-            ...toastStyles,
-          }}
-          role={saveState === "error" ? "alert" : "status"}
-        >
-          {saveMessage}
-        </div>
-      ) : null}
-      <WorkflowAppearanceModal
-        token={token ?? null}
-        isOpen={isAppearanceModalOpen}
-        target={appearanceModalTarget}
-        onClose={handleCloseAppearanceModal}
-      />
-      <CreateWorkflowModal
-        isOpen={isCreateModalOpen}
-        kind={createWorkflowKind}
-        name={createWorkflowName}
-        remoteId={createWorkflowRemoteId}
-        error={createWorkflowError}
-        isSubmitting={isCreatingWorkflow}
-        onClose={handleCloseCreateModal}
-        onSubmit={handleSubmitCreateWorkflow}
-        onKindChange={setCreateWorkflowKind}
-        onNameChange={setCreateWorkflowName}
-        onRemoteIdChange={setCreateWorkflowRemoteId}
-      />
-      <DeployWorkflowModal
-        isOpen={isDeployModalOpen}
-        isDeploying={isDeploying}
-        deployToProduction={deployToProduction}
-        setDeployToProduction={setDeployToProduction}
-        onClose={handleCloseDeployModal}
-        onConfirm={handleConfirmDeploy}
-        title={deployModalTitle}
-        description={deployModalDescription}
-        shouldShowVersionPath={versionSummaryForPromotion != null}
-        sourceLabel={deployModalSourceLabel}
-        targetLabel={deployModalTargetLabel}
-        productionToggleLabel={t("workflowBuilder.deploy.modal.productionToggle")}
-        cancelLabel={t("workflowBuilder.deploy.modal.action.cancel")}
-        primaryActionLabel={deployModalPrimaryLabel}
+      <WorkflowBuilderToast />
+      <WorkflowBuilderModals
+        onSubmitCreateWorkflow={handleSubmitCreateWorkflow}
+        onConfirmDeploy={handleConfirmDeploy}
+        deployModalTitle={deployModalTitle}
+        deployModalDescription={deployModalDescription}
+        deployModalSourceLabel={deployModalSourceLabel}
+        deployModalTargetLabel={deployModalTargetLabel}
+        deployModalPrimaryLabel={deployModalPrimaryLabel}
         isPrimaryActionDisabled={isPrimaryActionDisabled}
+        shouldShowVersionPath={versionSummaryForPromotion != null}
+        appearanceModalTarget={appearanceModalTarget}
+        onCloseAppearanceModal={handleCloseAppearanceModal}
       />
-      </ReactFlowProvider>
+    </ReactFlowProvider>
   );
 };
 

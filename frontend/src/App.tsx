@@ -6,7 +6,7 @@ import { useAuth } from "./auth";
 import { MyChat } from "./MyChat";
 import { LoginPage } from "./pages/LoginPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import WorkflowBuilderPage from "./features/workflow-builder/WorkflowBuilderPage";
+import WorkflowBuilderPage from "./pages/WorkflowBuilderPage"; // Phase 4: Import via pages/ to get WorkflowBuilderContainer with all providers
 import { VectorStoresPage } from "./pages/VectorStoresPage";
 import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 import { AdminPage } from "./pages/AdminPage";
