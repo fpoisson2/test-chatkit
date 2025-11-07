@@ -5,7 +5,6 @@ import {
   useCallback,
   useMemo,
   useRef,
-  useEffect,
   type ReactNode,
 } from "react";
 import type { DeviceType } from "../WorkflowBuilderUtils";
@@ -76,31 +75,6 @@ export const UIProvider = ({ children }: UIProviderProps) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
-
-  // Sync openWorkflowMenuId with localStorage to persist across pages
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('chatkit.workflow.openMenuId');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setOpenWorkflowMenuId(parsed);
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (openWorkflowMenuId !== null) {
-        localStorage.setItem('chatkit.workflow.openMenuId', JSON.stringify(openWorkflowMenuId));
-      } else {
-        localStorage.removeItem('chatkit.workflow.openMenuId');
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  }, [openWorkflowMenuId]);
 
   // Block Library Methods
   const toggleBlockLibrary = useCallback(() => {
