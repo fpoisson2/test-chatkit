@@ -117,7 +117,7 @@
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
-  touch-action: pan-y;
+  touch-action: manipulation;
 }
 
 .blockLibraryScroller::-webkit-scrollbar {
