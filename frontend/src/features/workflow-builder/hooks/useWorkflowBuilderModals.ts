@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef } from "react";
 import type { WorkflowAppearanceTarget } from "../../workflows/WorkflowAppearanceModal";
+import { useModalContext } from "../contexts/ModalContext";
 
 interface UseWorkflowBuilderModalsProps {
   closeWorkflowMenu: () => void;
@@ -20,13 +21,11 @@ interface UseWorkflowBuilderModalsReturn {
   isCreateModalOpen: boolean;
   handleOpenCreateModal: () => void;
   handleCloseCreateModal: () => void;
-  setCreateModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
 
   // Deploy Modal
   isDeployModalOpen: boolean;
   handleOpenDeployModal: () => void;
   handleCloseDeployModal: () => void;
-  setDeployModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
 
   // Mobile Actions
   isMobileActionsOpen: boolean;
@@ -42,16 +41,26 @@ export function useWorkflowBuilderModals({
   isCreatingWorkflow,
   isDeploying,
 }: UseWorkflowBuilderModalsProps): UseWorkflowBuilderModalsReturn {
+  const {
+    // Appearance Modal
+    isAppearanceModalOpen,
+    openAppearanceModal: openAppearanceModalFromContext,
+    closeAppearanceModal: closeAppearanceModalFromContext,
+
+    // Create Modal
+    isCreateModalOpen,
+    openCreateModal,
+    closeCreateModal,
+
+    // Deploy Modal
+    isDeployModalOpen,
+    openDeployModal,
+    closeDeployModal,
+  } = useModalContext();
+
   // Appearance Modal State
-  const [isAppearanceModalOpen, setAppearanceModalOpen] = useState(false);
   const [appearanceModalTarget, setAppearanceModalTarget] = useState<WorkflowAppearanceTarget | null>(null);
   const appearanceModalTriggerRef = useRef<HTMLButtonElement | null>(null);
-
-  // Create Modal State
-  const [isCreateModalOpen, setCreateModalOpen] = useState(false);
-
-  // Deploy Modal State
-  const [isDeployModalOpen, setDeployModalOpen] = useState(false);
 
   // Mobile Actions State
   const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
@@ -60,7 +69,7 @@ export function useWorkflowBuilderModals({
 
   // Appearance Modal Handlers
   const handleCloseAppearanceModal = useCallback(() => {
-    setAppearanceModalOpen(false);
+    closeAppearanceModalFromContext();
     setAppearanceModalTarget(null);
     const trigger = appearanceModalTriggerRef.current;
     appearanceModalTriggerRef.current = null;
@@ -76,41 +85,41 @@ export function useWorkflowBuilderModals({
         trigger.focus();
       }
     }
-  }, []);
+  }, [closeAppearanceModalFromContext]);
 
   const openAppearanceModal = useCallback(
     (target: WorkflowAppearanceTarget, trigger?: HTMLButtonElement | null) => {
       closeWorkflowMenu();
       setAppearanceModalTarget(target);
-      setAppearanceModalOpen(true);
+      openAppearanceModalFromContext();
       appearanceModalTriggerRef.current = trigger ?? null;
     },
-    [closeWorkflowMenu],
+    [closeWorkflowMenu, openAppearanceModalFromContext],
   );
 
   // Create Modal Handlers
   const handleOpenCreateModal = useCallback(() => {
-    setCreateModalOpen(true);
-  }, []);
+    openCreateModal();
+  }, [openCreateModal]);
 
   const handleCloseCreateModal = useCallback(() => {
     if (isCreatingWorkflow) {
       return;
     }
-    setCreateModalOpen(false);
-  }, [isCreatingWorkflow]);
+    closeCreateModal();
+  }, [closeCreateModal, isCreatingWorkflow]);
 
   // Deploy Modal Handlers
   const handleOpenDeployModal = useCallback(() => {
-    setDeployModalOpen(true);
-  }, []);
+    openDeployModal();
+  }, [openDeployModal]);
 
   const handleCloseDeployModal = useCallback(() => {
     if (isDeploying) {
       return;
     }
-    setDeployModalOpen(false);
-  }, [isDeploying]);
+    closeDeployModal();
+  }, [closeDeployModal, isDeploying]);
 
   // Mobile Actions Handlers
   const toggleMobileActions = useCallback(() => {
@@ -140,13 +149,11 @@ export function useWorkflowBuilderModals({
     isCreateModalOpen,
     handleOpenCreateModal,
     handleCloseCreateModal,
-    setCreateModalOpen,
 
     // Deploy Modal
     isDeployModalOpen,
     handleOpenDeployModal,
     handleCloseDeployModal,
-    setDeployModalOpen,
 
     // Mobile Actions
     isMobileActionsOpen,
