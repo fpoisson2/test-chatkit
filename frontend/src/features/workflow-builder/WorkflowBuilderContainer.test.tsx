@@ -1,7 +1,17 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
+import React from "react";
 import WorkflowBuilderContainer from "./WorkflowBuilderContainer";
+import { useViewportContext } from "./contexts";
+
+const capturedViewportValues: {
+  persistViewportMemory?: unknown;
+  reactFlowInstanceRef?: unknown;
+  viewportRef?: unknown;
+  pendingViewportRestoreRef?: unknown;
+  isHydratingRef?: unknown;
+} = {};
 
 // Mock des modules externes
 vi.mock("../../auth", () => ({
@@ -24,6 +34,31 @@ vi.mock("../../components/AppLayout", () => ({
     closeSidebar: vi.fn(),
     isSidebarCollapsed: false,
   }),
+  useSidebarPortal: () => ({
+    setSidebarContent: vi.fn(),
+    clearSidebarContent: vi.fn(),
+    setCollapsedSidebarContent: vi.fn(),
+    clearCollapsedSidebarContent: vi.fn(),
+  }),
+}));
+
+vi.mock("./components/WorkflowBuilderCanvas", () => ({
+  __esModule: true,
+  default: () => {
+    const {
+      persistViewportMemory,
+      reactFlowInstanceRef,
+      viewportRef,
+      pendingViewportRestoreRef,
+      isHydratingRef,
+    } = useViewportContext();
+    capturedViewportValues.persistViewportMemory = persistViewportMemory;
+    capturedViewportValues.reactFlowInstanceRef = reactFlowInstanceRef;
+    capturedViewportValues.viewportRef = viewportRef;
+    capturedViewportValues.pendingViewportRestoreRef = pendingViewportRestoreRef;
+    capturedViewportValues.isHydratingRef = isHydratingRef;
+    return <div data-testid="mock-workflow-builder-canvas" />;
+  },
 }));
 
 // Mock fetch global
@@ -38,6 +73,11 @@ global.fetch = vi.fn(() =>
 describe("WorkflowBuilderContainer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    capturedViewportValues.persistViewportMemory = undefined;
+    capturedViewportValues.reactFlowInstanceRef = undefined;
+    capturedViewportValues.viewportRef = undefined;
+    capturedViewportValues.pendingViewportRestoreRef = undefined;
+    capturedViewportValues.isHydratingRef = undefined;
   });
 
   test("se monte sans erreur avec tous les contextes", () => {
@@ -80,5 +120,19 @@ describe("WorkflowBuilderContainer", () => {
     // Si tous les contextes sont montés, le composant se rend sans erreur
     expect(container).toBeTruthy();
     expect(container.querySelector('[data-testid], [role], [aria-label]')).toBeTruthy();
+  });
+
+  test("expose les refs de viewport et la persistance au canvas", () => {
+    render(
+      <BrowserRouter>
+        <WorkflowBuilderContainer />
+      </BrowserRouter>,
+    );
+
+    expect(typeof capturedViewportValues.persistViewportMemory).toBe("function");
+    expect(capturedViewportValues.reactFlowInstanceRef).toBeTruthy();
+    expect(capturedViewportValues.viewportRef).toBeTruthy();
+    expect(capturedViewportValues.pendingViewportRestoreRef).toBeTruthy();
+    expect(capturedViewportValues.isHydratingRef).toBeTruthy();
   });
 });
