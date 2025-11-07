@@ -351,7 +351,7 @@ const WorkflowBuilderCanvas = ({
                     selectionOnDrag={!isMobileLayout}
                     panOnDrag={isMobileLayout ? true : [1, 2]}
                     multiSelectionKeyCode={["Meta", "Control"]}
-                    onSelectionChange={handleSelectionChange}
+                    {...(!isMobileLayout && { onSelectionChange: handleSelectionChange })}
                     style={{
                       background: isMobileLayout
                         ? "transparent"
