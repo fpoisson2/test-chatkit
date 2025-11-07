@@ -14,11 +14,10 @@ import {
 } from "../../workflows/utils";
 import type { WorkflowAppearanceTarget } from "../../workflows/WorkflowAppearanceModal";
 import type { WorkflowSummary } from "../types";
-import {
-  getActionMenuItemStyle,
-  getActionMenuStyle,
+import WorkflowActionMenu, {
   type ActionMenuPlacement,
-} from "../styles";
+  type WorkflowActionMenuItem,
+} from "../../workflows/WorkflowActionMenu";
 
 export type WorkflowBuilderSidebarProps = {
   workflows: WorkflowSummary[];
@@ -183,12 +182,30 @@ const WorkflowBuilderSidebar = ({
           const menuKey = `hosted:${hosted.slug}`;
           const isMenuOpen = openWorkflowMenuId === menuKey;
           const menuId = `workflow-actions-${hosted.slug}`;
-          const placement =
-            isMobileLayout && isMenuOpen ? workflowMenuPlacement : "down";
-          const menuStyle = getActionMenuStyle(isMobileLayout, placement);
           const pinLabel = isPinned
             ? t("workflows.unpinAction", { label: hosted.label })
             : t("workflows.pinAction", { label: hosted.label });
+          const hostedMenuItems: WorkflowActionMenuItem[] = [
+            {
+              key: "appearance",
+              label: t("workflowBuilder.hostedSection.customizeAction"),
+              onSelect: (event) =>
+                onOpenAppearanceModal(
+                  {
+                    kind: "hosted",
+                    slug: hosted.slug,
+                    label: hosted.label,
+                  },
+                  event.currentTarget,
+                ),
+            },
+            {
+              key: "delete",
+              label: t("workflowBuilder.hostedSection.deleteAction"),
+              onSelect: () => void onDeleteHostedWorkflow(hosted.slug),
+              danger: true,
+            },
+          ];
 
           return (
             <li
@@ -231,93 +248,22 @@ const WorkflowBuilderSidebar = ({
                   {t("workflows.hostedBadge")}
                 </span>
               </button>
-              <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
-              <button
-                type="button"
-                className="chatkit-sidebar__workflow-action-button"
-                data-workflow-menu-trigger=""
-                aria-haspopup="true"
-                aria-expanded={isMenuOpen}
-                aria-controls={menuId}
-                disabled={hostedLoading}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  workflowMenuTriggerRef.current = event.currentTarget;
-                  if (openWorkflowMenuId === menuKey) {
-                    closeWorkflowMenu();
-                    return;
-                  }
-
-                    if (isMobileLayout && typeof window !== "undefined") {
-                      const triggerRect = event.currentTarget.getBoundingClientRect();
-                      const viewport = window.visualViewport;
-                      const viewportHeight =
-                        viewport?.height ??
-                        window.innerHeight ??
-                        document.documentElement.clientHeight ??
-                        0;
-                      const viewportOffsetTop = viewport?.offsetTop ?? 0;
-                      const adjustedTop = triggerRect.top - viewportOffsetTop;
-                      const adjustedBottom = triggerRect.bottom - viewportOffsetTop;
-                      const spaceAbove = Math.max(0, adjustedTop);
-                      const spaceBelow = Math.max(0, viewportHeight - adjustedBottom);
-                      const estimatedMenuHeight = 180;
-                      const shouldOpenUpwards =
-                        spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
-                      setWorkflowMenuPlacement(shouldOpenUpwards ? "up" : "down");
-                    } else {
-                      setWorkflowMenuPlacement("down");
-                    }
-
-                    setOpenWorkflowMenuId(menuKey);
-                  }}
-                >
-                  <span aria-hidden="true">…</span>
-                  <span className="visually-hidden">
-                    {t("workflowBuilder.hostedSection.openActions", { label: hosted.label })}
-                  </span>
-                </button>
-              </div>
-              {isMenuOpen ? (
-                <div
-                  id={menuId}
-                  role="menu"
-                  data-workflow-menu=""
-                  className="chatkit-sidebar__workflow-menu"
-                  style={menuStyle}
-                  ref={(node) => {
-                    if (node) {
-                      workflowMenuRef.current = node;
-                    } else if (workflowMenuRef.current) {
-                      workflowMenuRef.current = null;
-                    }
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={(event) =>
-                      onOpenAppearanceModal(
-                        {
-                          kind: "hosted",
-                          slug: hosted.slug,
-                          label: hosted.label,
-                        },
-                        event.currentTarget,
-                      )
-                    }
-                    style={getActionMenuItemStyle(isMobileLayout)}
-                  >
-                    {t("workflowBuilder.hostedSection.customizeAction")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void onDeleteHostedWorkflow(hosted.slug)}
-                    style={getActionMenuItemStyle(isMobileLayout, { danger: true })}
-                  >
-                    {t("workflowBuilder.hostedSection.deleteAction")}
-                  </button>
-                </div>
-              ) : null}
+              <WorkflowActionMenu
+                menuId={menuId}
+                isOpen={isMenuOpen}
+                isMobileLayout={isMobileLayout}
+                placement={isMenuOpen ? workflowMenuPlacement : "down"}
+                triggerDisabled={hostedLoading}
+                triggerLabel={t("workflowBuilder.hostedSection.openActions", { label: hosted.label })}
+                onOpen={(placement) => {
+                  setWorkflowMenuPlacement(placement);
+                  setOpenWorkflowMenuId(menuKey);
+                }}
+                onClose={closeWorkflowMenu}
+                triggerRef={workflowMenuTriggerRef}
+                menuRef={workflowMenuRef}
+                items={hostedMenuItems}
+              />
             </li>
           );
         }
@@ -326,14 +272,53 @@ const WorkflowBuilderSidebar = ({
         const isActive = workflow.id === selectedWorkflowId;
         const menuId = `workflow-actions-${workflow.id}`;
         const isMenuOpen = openWorkflowMenuId === workflow.id;
-        const placement =
-          isMobileLayout && isMenuOpen ? workflowMenuPlacement : "down";
-        const menuStyle = getActionMenuStyle(isMobileLayout, placement);
         const canDelete = !workflow.is_chatkit_default && !loading;
         const canDuplicate = Boolean(selectedWorkflowId === workflow.id && !loading);
         const pinLabel = isPinned
           ? t("workflows.unpinAction", { label: workflow.display_name })
           : t("workflows.pinAction", { label: workflow.display_name });
+        const localMenuItems: WorkflowActionMenuItem[] = [
+          {
+            key: "duplicate",
+            label: t("workflowBuilder.localSection.duplicateAction"),
+            onSelect: () => void onDuplicateWorkflow(workflow.id),
+            disabled: !canDuplicate,
+          },
+          {
+            key: "rename",
+            label: t("workflowBuilder.localSection.renameAction"),
+            onSelect: () => void onRenameWorkflow(workflow.id),
+            disabled: loading,
+          },
+          {
+            key: "export",
+            label: t("workflowBuilder.localSection.exportAction"),
+            onSelect: () => void onExportWorkflow(workflow.id),
+            disabled: loading,
+          },
+          {
+            key: "appearance",
+            label: t("workflowBuilder.localSection.customizeAction"),
+            onSelect: (event) =>
+              onOpenAppearanceModal(
+                {
+                  kind: "local",
+                  workflowId: workflow.id,
+                  slug: workflow.slug,
+                  label: workflow.display_name,
+                },
+                event.currentTarget,
+              ),
+            disabled: loading,
+          },
+          {
+            key: "delete",
+            label: t("workflowBuilder.localSection.deleteAction"),
+            onSelect: () => void onDeleteWorkflow(workflow.id),
+            disabled: !canDelete,
+            danger: true,
+          },
+        ];
 
         return (
           <li
@@ -378,124 +363,25 @@ const WorkflowBuilderSidebar = ({
               </span>
             </button>
             <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
-              <button
-                type="button"
-                className="chatkit-sidebar__workflow-action-button"
-                data-workflow-menu-trigger=""
-                aria-haspopup="true"
-                aria-expanded={isMenuOpen}
-              aria-controls={menuId}
-              disabled={loading}
-              onClick={(event) => {
-                event.stopPropagation();
-                workflowMenuTriggerRef.current = event.currentTarget;
-                if (openWorkflowMenuId === workflow.id) {
-                  closeWorkflowMenu();
-                  return;
-                }
-
-                  if (isMobileLayout && typeof window !== "undefined") {
-                    const triggerRect = event.currentTarget.getBoundingClientRect();
-                    const viewport = window.visualViewport;
-                    const viewportHeight =
-                      viewport?.height ??
-                      window.innerHeight ??
-                      document.documentElement.clientHeight ??
-                      0;
-                    const viewportOffsetTop = viewport?.offsetTop ?? 0;
-                    const adjustedTop = triggerRect.top - viewportOffsetTop;
-                    const adjustedBottom = triggerRect.bottom - viewportOffsetTop;
-                    const spaceAbove = Math.max(0, adjustedTop);
-                    const spaceBelow = Math.max(0, viewportHeight - adjustedBottom);
-                    const estimatedMenuHeight = 180;
-                    const shouldOpenUpwards =
-                      spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
-                    setWorkflowMenuPlacement(shouldOpenUpwards ? "up" : "down");
-                  } else {
-                    setWorkflowMenuPlacement("down");
-                  }
-
+              <WorkflowActionMenu
+                menuId={menuId}
+                isOpen={isMenuOpen}
+                isMobileLayout={isMobileLayout}
+                placement={isMenuOpen ? workflowMenuPlacement : "down"}
+                triggerDisabled={loading}
+                triggerLabel={t("workflowBuilder.localSection.openActions", {
+                  label: workflow.display_name,
+                })}
+                onOpen={(placement) => {
+                  setWorkflowMenuPlacement(placement);
                   setOpenWorkflowMenuId(workflow.id);
                 }}
-              >
-                <span aria-hidden="true">…</span>
-                <span className="visually-hidden">
-                  {t("workflowBuilder.localSection.openActions", {
-                    label: workflow.display_name,
-                  })}
-                </span>
-              </button>
+                onClose={closeWorkflowMenu}
+                triggerRef={workflowMenuTriggerRef}
+                menuRef={workflowMenuRef}
+                items={localMenuItems}
+              />
             </div>
-            {isMenuOpen ? (
-              <div
-                id={menuId}
-                role="menu"
-                data-workflow-menu=""
-                className="chatkit-sidebar__workflow-menu"
-                style={menuStyle}
-                ref={(node) => {
-                  if (node) {
-                    workflowMenuRef.current = node;
-                  } else if (workflowMenuRef.current) {
-                    workflowMenuRef.current = null;
-                  }
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => void onDuplicateWorkflow(workflow.id)}
-                  disabled={!canDuplicate}
-                  style={getActionMenuItemStyle(isMobileLayout, { disabled: !canDuplicate })}
-                >
-                  {t("workflowBuilder.localSection.duplicateAction")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void onRenameWorkflow(workflow.id)}
-                  disabled={loading}
-                  style={getActionMenuItemStyle(isMobileLayout, { disabled: loading })}
-                >
-                  {t("workflowBuilder.localSection.renameAction")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void onExportWorkflow(workflow.id)}
-                  disabled={loading}
-                  style={getActionMenuItemStyle(isMobileLayout, { disabled: loading })}
-                >
-                  {t("workflowBuilder.localSection.exportAction")}
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) =>
-                    onOpenAppearanceModal(
-                      {
-                        kind: "local",
-                        workflowId: workflow.id,
-                        slug: workflow.slug,
-                        label: workflow.display_name,
-                      },
-                      event.currentTarget,
-                    )
-                  }
-                  disabled={loading}
-                  style={getActionMenuItemStyle(isMobileLayout, { disabled: loading })}
-                >
-                  {t("workflowBuilder.localSection.customizeAction")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void onDeleteWorkflow(workflow.id)}
-                  disabled={!canDelete}
-                  style={getActionMenuItemStyle(isMobileLayout, {
-                    disabled: !canDelete,
-                    danger: true,
-                  })}
-                >
-                  {t("workflowBuilder.localSection.deleteAction")}
-                </button>
-              </div>
-            ) : null}
             {!workflow.is_chatkit_default && !workflow.active_version_id ? (
               <p className="chatkit-sidebar__workflow-meta" aria-live="polite" style={warningStyle}>
                 {t("workflowBuilder.localSection.missingProduction")}

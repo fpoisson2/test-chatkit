@@ -9,6 +9,12 @@ import { chatkitApi, workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
+import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
+import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
+import WorkflowActionMenu, {
+  type ActionMenuPlacement,
+  type WorkflowActionMenuItem,
+} from "./WorkflowActionMenu";
 import {
   buildWorkflowOrderingTimestamps,
   clearWorkflowSidebarCache,
@@ -58,6 +64,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const { t } = useI18n();
   const navigate = useNavigate();
   const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
+  const isMobileLayout = !isDesktopLayout;
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
@@ -94,6 +101,16 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const workflowCollatorRef = useRef<Intl.Collator | null>(null);
   const previousTokenRef = useRef<string | null>(token ?? null);
   const hasLoadedWorkflowsRef = useRef(false);
+  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
+  const [workflowMenuPlacement, setWorkflowMenuPlacement] = useState<ActionMenuPlacement>("down");
+  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
+  const closeWorkflowMenu = useCallback(() => {
+    setOpenWorkflowMenuId(null);
+    setWorkflowMenuPlacement("down");
+    workflowMenuTriggerRef.current = null;
+    workflowMenuRef.current = null;
+  }, []);
 
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {
@@ -154,6 +171,19 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     onWorkflowActivatedRef.current = onWorkflowActivated;
   }, [onWorkflowActivated]);
 
+  useOutsidePointerDown(
+    [workflowMenuTriggerRef, workflowMenuRef],
+    closeWorkflowMenu,
+    { enabled: openWorkflowMenuId !== null },
+  );
+
+  useEscapeKeyHandler(
+    () => {
+      closeWorkflowMenu();
+    },
+    { enabled: openWorkflowMenuId !== null },
+  );
+
   useEffect(() => {
     if (typeof Intl === "undefined" || typeof Intl.Collator !== "function") {
       return;
@@ -195,6 +225,32 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   useEffect(() => {
     hostedWorkflowsRef.current = hostedWorkflows;
   }, [hostedWorkflows]);
+
+  useEffect(() => {
+    if (openWorkflowMenuId === null) {
+      return;
+    }
+
+    if (typeof openWorkflowMenuId === "number") {
+      if (!workflows.some((workflow) => workflow.id === openWorkflowMenuId)) {
+        closeWorkflowMenu();
+      }
+      return;
+    }
+
+    if (typeof openWorkflowMenuId === "string" && openWorkflowMenuId.startsWith("hosted:")) {
+      const slug = openWorkflowMenuId.slice("hosted:".length);
+      if (!hostedWorkflows.some((entry) => entry.slug === slug)) {
+        closeWorkflowMenu();
+      }
+    }
+  }, [closeWorkflowMenu, hostedWorkflows, openWorkflowMenuId, workflows]);
+
+  useEffect(() => {
+    if (!isAdmin && openWorkflowMenuId !== null) {
+      closeWorkflowMenu();
+    }
+  }, [closeWorkflowMenu, isAdmin, openWorkflowMenuId]);
 
   useEffect(() => {
     setLastUsedAt(
@@ -758,15 +814,32 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (entry.kind === "hosted") {
         const { option, isPinned } = entry;
         const isSelected = mode === "hosted" && selectedHostedSlug === option.slug;
+        const menuKey = `hosted:${option.slug}`;
+        const isMenuOpen = openWorkflowMenuId === menuKey;
+        const menuId = `workflow-actions-${option.slug}`;
         const pinLabel = isPinned
           ? t("workflows.unpinAction", { label: option.label })
           : t("workflows.pinAction", { label: option.label });
+        const hostedMenuItems: WorkflowActionMenuItem[] = [
+          {
+            key: "appearance",
+            label: t("workflowBuilder.hostedSection.customizeAction"),
+            disabled: true,
+          },
+          {
+            key: "delete",
+            label: t("workflowBuilder.hostedSection.deleteAction"),
+            disabled: true,
+            danger: true,
+          },
+        ];
         return (
           <li
             className="chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin"
             key={`hosted:${option.slug}`}
             data-hosted-workflow=""
             data-pinned={isPinned ? "" : undefined}
+            data-has-actions={isAdmin ? "" : undefined}
           >
             <button
               type="button"
@@ -811,6 +884,24 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             {option.description ? (
               <p className="chatkit-sidebar__workflow-meta">{option.description}</p>
             ) : null}
+            {isAdmin ? (
+              <WorkflowActionMenu
+                menuId={menuId}
+                isOpen={isMenuOpen}
+                isMobileLayout={isMobileLayout}
+                placement={isMenuOpen ? workflowMenuPlacement : "down"}
+                triggerDisabled={loading || isUpdating}
+                triggerLabel={t("workflowBuilder.hostedSection.openActions", { label: option.label })}
+                onOpen={(placement) => {
+                  setWorkflowMenuPlacement(placement);
+                  setOpenWorkflowMenuId(menuKey);
+                }}
+                onClose={closeWorkflowMenu}
+                triggerRef={workflowMenuTriggerRef}
+                menuRef={workflowMenuRef}
+                items={hostedMenuItems}
+              />
+            ) : null}
           </li>
         );
       }
@@ -818,14 +909,45 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       const { workflow, isPinned } = entry;
       const isActive = mode === "local" && workflow.id === selectedWorkflowId;
       const hasProduction = workflow.active_version_id !== null;
+      const menuId = `workflow-actions-${workflow.id}`;
+      const isMenuOpen = openWorkflowMenuId === workflow.id;
       const pinLabel = isPinned
         ? t("workflows.unpinAction", { label: workflow.display_name })
         : t("workflows.pinAction", { label: workflow.display_name });
+      const localMenuItems: WorkflowActionMenuItem[] = [
+        {
+          key: "duplicate",
+          label: t("workflowBuilder.localSection.duplicateAction"),
+          disabled: true,
+        },
+        {
+          key: "rename",
+          label: t("workflowBuilder.localSection.renameAction"),
+          disabled: true,
+        },
+        {
+          key: "export",
+          label: t("workflowBuilder.localSection.exportAction"),
+          disabled: true,
+        },
+        {
+          key: "appearance",
+          label: t("workflowBuilder.localSection.customizeAction"),
+          disabled: true,
+        },
+        {
+          key: "delete",
+          label: t("workflowBuilder.localSection.deleteAction"),
+          disabled: true,
+          danger: true,
+        },
+      ];
       return (
         <li
           key={`local:${workflow.id}`}
           className="chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin"
           data-pinned={isPinned ? "" : undefined}
+          data-has-actions={isAdmin ? "" : undefined}
         >
           <button
             type="button"
@@ -858,6 +980,26 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           >
             <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
           </button>
+          {isAdmin ? (
+            <WorkflowActionMenu
+              menuId={menuId}
+              isOpen={isMenuOpen}
+              isMobileLayout={isMobileLayout}
+              placement={isMenuOpen ? workflowMenuPlacement : "down"}
+              triggerDisabled={loading || isUpdating}
+              triggerLabel={t("workflowBuilder.localSection.openActions", {
+                label: workflow.display_name,
+              })}
+              onOpen={(placement) => {
+                setWorkflowMenuPlacement(placement);
+                setOpenWorkflowMenuId(workflow.id);
+              }}
+              onClose={closeWorkflowMenu}
+              triggerRef={workflowMenuTriggerRef}
+              menuRef={workflowMenuRef}
+              items={localMenuItems}
+            />
+          ) : null}
         </li>
       );
     };
@@ -909,13 +1051,18 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     handleOpenBuilder,
     handleHostedWorkflowClick,
     handleWorkflowClick,
+    closeWorkflowMenu,
     hostedWorkflows,
     isAdmin,
+    isMobileLayout,
+    isUpdating,
     loadWorkflows,
     loading,
     mode,
+    openWorkflowMenuId,
     pinnedCombinedEntries,
     regularCombinedEntries,
+    workflowMenuPlacement,
     toggleHostedPin,
     toggleLocalPin,
     selectedHostedSlug,

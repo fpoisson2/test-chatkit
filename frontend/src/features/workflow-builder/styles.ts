@@ -179,69 +179,8 @@ export const actionMenuTriggerLabelStyle: CSSProperties = {
   color: "var(--text-color)",
 };
 
-export type ActionMenuPlacement = "up" | "down";
-
-export const getActionMenuStyle = (
-  isMobile: boolean,
-  placement: ActionMenuPlacement = "down",
-): CSSProperties => ({
-  position: "absolute",
-  ...(isMobile
-    ? placement === "up"
-      ? {
-          top: "auto",
-          bottom: "calc(100% + 0.5rem)",
-          right: "0",
-          left: "0",
-        }
-      : {
-          top: "calc(100% + 0.5rem)",
-          bottom: "auto",
-          right: "0",
-          left: "0",
-        }
-    : placement === "up"
-      ? {
-          top: "auto",
-          bottom: "calc(100% + 0.5rem)",
-          right: "var(--chatkit-sidebar-content-padding-x)",
-          left: "auto",
-        }
-      : {
-          top: "calc(100% + 0.5rem)",
-          bottom: "auto",
-          right: "var(--chatkit-sidebar-content-padding-x)",
-          left: "auto",
-        }),
-  background: "var(--surface-strong)",
-  borderRadius: "0.75rem",
-  border: "1px solid var(--surface-border)",
-  boxShadow: "var(--shadow-card)",
-  padding: "0.5rem",
-  minWidth: isMobile ? "0" : "220px",
-  width: isMobile ? "auto" : "max-content",
-  maxWidth: isMobile ? "none" : "min(320px, 100%)",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.25rem",
-  zIndex: 40,
-  pointerEvents: "auto",
-});
-
-export const getActionMenuItemStyle = (
-  isMobile: boolean,
-  options?: DisabledOptions & { danger?: boolean },
-): CSSProperties => ({
-  width: "100%",
-  textAlign: "left",
-  padding: "0.6rem 0.75rem",
-  borderRadius: "0.6rem",
-  border: "none",
-  background: "transparent",
-  color: options?.danger ? "#b91c1c" : "var(--text-color)",
-  fontWeight: 500,
-  ...pointerState(options),
-});
+export { getActionMenuStyle, getActionMenuItemStyle } from "../workflows/WorkflowActionMenu";
+export type { ActionMenuPlacement } from "../workflows/WorkflowActionMenu";
 
 export const controlLabelStyle: CSSProperties = {
   fontSize: "0.75rem",
