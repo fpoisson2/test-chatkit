@@ -1401,13 +1401,12 @@ const WorkflowBuilderPage = () => {
       const isSameElement = lastTapped?.kind === "node" && lastTapped.id === node.id;
       const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
       lastTappedElementRef.current = { kind: "node", id: node.id, tapCount: nextTapCount };
-      setSelectedNodeId(node.id);
-      setSelectedEdgeId(null);
+      selectNode(node.id);  // Use selectNode to update both selectedNodeId and selectedNodeIds
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
         setIsPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout, setSelectedNodeId, setSelectedEdgeId, setIsPropertiesPanelOpen],
+    [isMobileLayout, selectNode, setIsPropertiesPanelOpen],
   );
 
   const handleEdgeClick = useCallback(
@@ -1416,13 +1415,12 @@ const WorkflowBuilderPage = () => {
       const isSameElement = lastTapped?.kind === "edge" && lastTapped.id === edge.id;
       const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
       lastTappedElementRef.current = { kind: "edge", id: edge.id, tapCount: nextTapCount };
-      setSelectedEdgeId(edge.id);
-      setSelectedNodeId(null);
+      selectEdge(edge.id);  // Use selectEdge to update both selectedEdgeId and selectedEdgeIds
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
         setIsPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout, setSelectedEdgeId, setSelectedNodeId, setIsPropertiesPanelOpen],
+    [isMobileLayout, selectEdge, setIsPropertiesPanelOpen],
   );
 
   const handleClearSelection = clearSelection;
