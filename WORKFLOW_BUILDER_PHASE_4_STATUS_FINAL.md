@@ -138,6 +138,7 @@
 
 ## 📝 Commits de la Phase 4
 
+### Commits Initiaux (Fonctionnalités)
 1. ✅ `7b39a49` - Create 3 UI components (Toast, Modals, PropertiesPanel)
 2. ✅ `76ab60c` - Migrate SaveContext, UIContext, ModalContext
 3. ✅ `b981534` - Migrate SelectionContext
@@ -146,7 +147,93 @@
 6. ✅ `90356d7` - Add Phase 4 verification report
 7. ✅ `7d297e0` - Create WorkflowBuilderHeader component
 
-**Total: 7 commits, tous pushés sur GitHub**
+### Commits de Runtime Fixes (Corrections)
+8. ✅ `255f5bd` - Export WorkflowBuilderContainer instead of WorkflowBuilderPage
+9. ✅ `5ed68d1` - Remove duplicate modal state declarations
+10. ✅ `6f61b8a` - Remove duplicate viewport function declarations
+11. ✅ `0631cd9` - Fix App.tsx to import WorkflowBuilderContainer with all providers (CRITICAL)
+12. ✅ `155b8ef` - Add missing selectedNodeIdsRef and selectedEdgeIdsRef from SelectionContext
+13. ✅ `abf31c5` - Add missing selectedWorkflowIdRef from WorkflowContext
+14. ✅ `45a70cf` - Fix deploy modal to use ModalContext.openDeployModal
+
+**Total: 14 commits (7 fonctionnalités + 7 runtime fixes), tous pushés sur GitHub**
+
+---
+
+## 🐛 Runtime Fixes - Corrections après Migration
+
+Après la création de WorkflowBuilderHeader et la migration vers les 7 contextes, plusieurs erreurs de runtime ont été découvertes et corrigées:
+
+### 1. ❌ SaveContext not found (CRITIQUE)
+**Erreur:** `Uncaught Error: useSaveContext must be used within SaveProvider`
+
+**Cause:** App.tsx importait WorkflowBuilderPage directement, contournant WorkflowBuilderContainer qui fournit tous les providers.
+
+**Solution:** Changé App.tsx pour importer via `pages/WorkflowBuilderPage.tsx` qui exporte WorkflowBuilderContainer.
+
+**Commit:** `0631cd9`
+
+### 2. ❌ Duplicate modal state declarations
+**Erreur:** `Identifier 'isAppearanceModalOpen' has already been declared`
+
+**Cause:** États des modales déclarés deux fois:
+- Une fois via `useModalContext()`
+- Une fois via `useWorkflowBuilderModals()`
+
+**Solution:** Supprimé les déclarations dupliquées de `useWorkflowBuilderModals()`. Les états viennent maintenant exclusivement de ModalContext.
+
+**Commit:** `5ed68d1`
+
+### 3. ❌ Duplicate viewport function declarations
+**Erreur:** `Identifier 'refreshViewportConstraints' has already been declared`
+
+**Cause:** Fonctions `refreshViewportConstraints` et `restoreViewport` déclarées deux fois:
+- Une fois via `useViewportContext()`
+- Une fois via `useWorkflowViewportPersistence()`
+
+**Solution:** Supprimé ces fonctions de la déstructuration de `useWorkflowViewportPersistence()`. Elles viennent maintenant exclusivement de ViewportContext.
+
+**Commit:** `6f61b8a`
+
+### 4. ❌ Missing selectedNodeIdsRef and selectedEdgeIdsRef
+**Erreur:** `Uncaught ReferenceError: selectedNodeIdsRef is not defined`
+
+**Cause:** `useWorkflowHistory()` nécessitait ces refs mais elles n'étaient pas déstructurées de `useSelectionContext()`.
+
+**Solution:** Ajouté `selectedNodeIdsRef` et `selectedEdgeIdsRef` à la déstructuration de SelectionContext.
+
+**Commit:** `155b8ef`
+
+### 5. ❌ Missing selectedWorkflowIdRef
+**Erreur:** `Uncaught ReferenceError: selectedWorkflowIdRef is not defined`
+
+**Cause:** `selectedWorkflowIdRef` était utilisé dans un useEffect mais pas déstructuré de `useWorkflowContext()`.
+
+**Solution:** Ajouté `selectedWorkflowIdRef` à la déstructuration de WorkflowContext.
+
+**Commit:** `abf31c5`
+
+### 6. ❌ Deploy modal not opening
+**Problème:** Le bouton déployer n'ouvrait plus le modal.
+
+**Cause:** `handleOpenDeployModalWithSetup` appelait `handleOpenDeployModal()` du hook local `useWorkflowBuilderModals()`, mais l'état du modal (`isDeployModalOpen`) était lu depuis ModalContext. Déconnexion entre la mise à jour d'état et le rendu du modal.
+
+**Solution:** Changé pour utiliser `openDeployModal(true)` directement depuis ModalContext. Le paramètre `true` configure `deployToProduction`.
+
+**Commit:** `45a70cf`
+
+### 📊 Résumé des Runtime Fixes
+
+| Erreur | Type | Sévérité | Statut |
+|--------|------|----------|--------|
+| SaveContext not found | Provider manquant | CRITIQUE | ✅ Corrigé |
+| Duplicate modal states | Déclarations dupliquées | Haute | ✅ Corrigé |
+| Duplicate viewport functions | Déclarations dupliquées | Haute | ✅ Corrigé |
+| Missing selectedNodeIdsRef | Ref manquant | Moyenne | ✅ Corrigé |
+| Missing selectedWorkflowIdRef | Ref manquant | Moyenne | ✅ Corrigé |
+| Deploy modal not opening | État déconnecté | Haute | ✅ Corrigé |
+
+**Résultat:** L'application fonctionne maintenant correctement avec tous les 7 contextes actifs. ✅
 
 ---
 
@@ -264,7 +351,7 @@
 
 ## 🎯 Conclusion
 
-**La Phase 4 est un succès majeur**, même si tous les composants ne sont pas refactorisés:
+**La Phase 4 est un succès majeur**, avec tous les contextes actifs et l'application entièrement fonctionnelle:
 
 ### Accomplissements Clés
 
@@ -273,6 +360,18 @@
 3. ✅ **5 composants UI structurés** (~494 lignes)
 4. ✅ **Pattern démontré** avec WorkflowBuilderHeader (-74% props)
 5. ✅ **Architecture solide** pour la suite
+6. ✅ **Application fonctionnelle** - Tous les runtime fixes appliqués (6 corrections)
+7. ✅ **14 commits** pushés avec succès sur GitHub
+
+### Runtime Validation
+
+Après la migration vers les contextes, **6 erreurs de runtime** ont été identifiées et **100% corrigées**:
+- ❌→✅ SaveContext provider manquant (CRITIQUE)
+- ❌→✅ Déclarations dupliquées (modales + viewport)
+- ❌→✅ Refs manquants (selection + workflow)
+- ❌→✅ Deploy modal déconnecté
+
+**Résultat:** L'application démarre et fonctionne correctement avec tous les 7 contextes. ✅
 
 ### Travaux Restants
 
@@ -282,6 +381,6 @@ Les composants non refactorisés (Canvas, Sidebar, BlockLibrary) nécessitent un
 
 ---
 
-**Date du rapport:** 2025-11-06
+**Date du rapport:** 2025-11-07 (mis à jour après runtime fixes)
 **Auteur:** Claude (AI Assistant)
-**Statut Phase 4:** ✅ **Objectifs principaux ATTEINTS**
+**Statut Phase 4:** ✅ **Objectifs principaux ATTEINTS + Application Fonctionnelle**
