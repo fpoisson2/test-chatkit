@@ -71,9 +71,27 @@ interface WorkflowBuilderCanvasProps {
   // Refs (callbacks)
   reactFlowContainerRef: RefCallback<HTMLDivElement>;
 
+  // Graph handlers (from hooks in Page)
+  handleNodesChange: (changes: NodeChange<FlowNodeData>[]) => void;
+  handleEdgesChange: (changes: EdgeChange<FlowEdgeData>[]) => void;
+
   // Drag handlers (complex external logic)
   handleNodeDragStart: NodeDragHandler<FlowNode>;
   handleNodeDragStop: NodeDragHandler<FlowNode>;
+
+  // History operations (from useWorkflowHistory hook)
+  redoHistory: () => void;
+  undoHistory: () => void;
+
+  // Selection operations (from useGraphEditor hook)
+  handleDuplicateSelection: () => void;
+  handleDeleteSelection: () => void;
+
+  // Operation availability flags (calculated in Page)
+  canRedoHistory: boolean;
+  canUndoHistory: boolean;
+  canDuplicateSelection: boolean;
+  canDeleteSelection: boolean;
 
   // Configuration labels
   mobileActionLabels: MobileActionLabels;
@@ -87,7 +105,7 @@ interface WorkflowBuilderCanvasProps {
 }
 
 const WorkflowBuilderCanvas = ({
-  // Props from parent (14 legitimate props)
+  // Props from parent (23 props)
   openSidebar,
   renderHeaderControls,
   renderWorkflowDescription,
@@ -95,28 +113,28 @@ const WorkflowBuilderCanvas = ({
   blockLibraryContent,
   propertiesPanelElement,
   reactFlowContainerRef,
+  handleNodesChange,
+  handleEdgesChange,
   handleNodeDragStart,
   handleNodeDragStop,
+  redoHistory,
+  undoHistory,
+  handleDuplicateSelection,
+  handleDeleteSelection,
+  canRedoHistory,
+  canUndoHistory,
+  canDuplicateSelection,
+  canDeleteSelection,
   mobileActionLabels,
   shouldShowWorkflowDescription,
   shouldShowPublicationReminder,
   isMobileLayout,
 }: WorkflowBuilderCanvasProps) => {
-  // GraphContext - Graph state and operations (13 values)
+  // GraphContext - Graph state and connection (3 values)
   const {
     nodes,
     edges,
-    handleNodesChange,
-    handleEdgesChange,
     onConnect,
-    redoHistory,
-    undoHistory,
-    handleDuplicateSelection,
-    handleDeleteSelection,
-    canRedoHistory,
-    canUndoHistory,
-    canDuplicateSelection,
-    canDeleteSelection,
   } = useGraphContext();
 
   // ViewportContext - Viewport state and persistence (12 values)
