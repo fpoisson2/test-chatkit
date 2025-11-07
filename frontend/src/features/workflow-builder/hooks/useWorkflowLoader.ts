@@ -54,6 +54,7 @@ type UseWorkflowLoaderParams = {
   t: TranslationFunction;
   deviceType: DeviceType;
   isHydratingRef: React.MutableRefObject<boolean>;
+  reactFlowInstanceRef: React.MutableRefObject<any | null>;
   resetHistory: (snapshot: string) => void;
   restoreViewport: () => void;
   applySelection: (selection: {
@@ -120,6 +121,7 @@ function resolveSelectionAfterLoad({
  *   t,
  *   deviceType,
  *   isHydratingRef,
+ *   reactFlowInstanceRef,
  *   resetHistory,
  *   restoreViewport,
  *   applySelection,
@@ -142,6 +144,7 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
     t,
     deviceType,
     isHydratingRef,
+    reactFlowInstanceRef,
     resetHistory,
     restoreViewport,
     applySelection,
@@ -162,7 +165,6 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
     hasUserViewportChangeRef,
     pendingViewportRestoreRef,
     setInitialViewport,
-    reactFlowInstanceRef,
   } = useViewportContext();
   const {
     setSelectedVersionDetail,

@@ -856,6 +856,7 @@ const WorkflowBuilderPage = () => {
     t,
     deviceType,
     isHydratingRef,
+    reactFlowInstanceRef,
     resetHistory,
     restoreViewport,
     applySelection,
