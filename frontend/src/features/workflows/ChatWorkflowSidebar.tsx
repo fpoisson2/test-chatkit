@@ -227,6 +227,10 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     hostedWorkflowsRef.current = hostedWorkflows;
   }, [hostedWorkflows]);
 
+  // Removed: This effect was closing the menu when navigating from workflow builder to chat
+  // because unpublished workflows aren't in the chat's workflow list.
+  // The menu can safely remain "open" even if the workflow isn't visible in this view.
+  /*
   useEffect(() => {
     if (openWorkflowMenuId === null) {
       return;
@@ -251,6 +255,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       }
     }
   }, [closeWorkflowMenu, hostedWorkflows, loading, openWorkflowMenuId, workflows]);
+  */
 
   useEffect(() => {
     if (!isAdmin && openWorkflowMenuId !== null) {
