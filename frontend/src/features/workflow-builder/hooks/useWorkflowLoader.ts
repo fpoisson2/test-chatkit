@@ -23,8 +23,6 @@ import type { MarkerType } from "reactflow";
 import { makeApiEndpointCandidates } from "../../../utils/backend";
 import {
   backendUrl,
-  extractPosition,
-  humanizeSlug,
   isAgentKind,
   resolveDraftCandidate,
   sortVersionsWithDraftFirst,
@@ -33,7 +31,13 @@ import {
 } from "../WorkflowBuilderUtils";
 import { resolveNodeParameters } from "../utils/parameterResolver";
 import { stringifyAgentParameters } from "../../../utils/workflows";
-import { buildEdgeStyle, buildGraphPayloadFrom, defaultEdgeOptions } from "../utils";
+import {
+  buildEdgeStyle,
+  buildGraphPayloadFrom,
+  defaultEdgeOptions,
+  extractPosition,
+  humanizeSlug,
+} from "../utils";
 import type {
   FlowNode,
   FlowEdge,
