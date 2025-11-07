@@ -636,7 +636,6 @@ const WorkflowBuilderSidebar = ({
     workflows,
   ]);
 
-  // Update sidebar content when it changes
   useEffect(() => {
     setSidebarContent(workflowSidebarContent);
     setCollapsedSidebarContent(collapsedWorkflowShortcuts);
@@ -646,16 +645,6 @@ const WorkflowBuilderSidebar = ({
     setSidebarContent,
     workflowSidebarContent,
   ]);
-
-  // Clear sidebar content only on unmount, with a delay to allow smooth transition
-  useEffect(() => {
-    return () => {
-      const timeoutId = setTimeout(() => {
-        clearSidebarContent();
-      }, 50);
-      // Note: We don't clear the timeout because the component is unmounting anyway
-    };
-  }, [clearSidebarContent]);
 
   return null;
 };

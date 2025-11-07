@@ -1149,7 +1149,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     user,
   ]);
 
-  // Update sidebar content when it changes
   useEffect(() => {
     setSidebarContent(sidebarContent);
     setCollapsedSidebarContent(collapsedSidebarContent);
@@ -1159,16 +1158,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     setSidebarContent,
     sidebarContent,
   ]);
-
-  // Clear sidebar content only on unmount, with a delay to allow smooth transition
-  useEffect(() => {
-    return () => {
-      const timeoutId = setTimeout(() => {
-        clearSidebarContent();
-      }, 50);
-      // Note: We don't clear the timeout because the component is unmounting anyway
-    };
-  }, [clearSidebarContent]);
 
   return null;
 };
