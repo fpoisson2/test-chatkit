@@ -275,6 +275,12 @@ button {
   }
 }
 
+@media (max-width: 480px) {
+  .chatkit-layout {
+    --chatkit-sidebar-width: 100vw;
+  }
+}
+
 .chatkit-layout__main {
   position: relative;
   display: flex;
