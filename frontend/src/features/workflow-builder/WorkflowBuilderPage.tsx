@@ -214,6 +214,9 @@ import {
   useGraphContext,
   useViewportContext,
   useWorkflowContext,
+  // Phase 5: Import providers for enricher pattern
+  GraphProvider,
+  SelectionProvider,
 } from "./contexts";
 
 const WorkflowBuilderPage = () => {
