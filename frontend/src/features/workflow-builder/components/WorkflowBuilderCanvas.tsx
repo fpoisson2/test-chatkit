@@ -348,6 +348,7 @@ const WorkflowBuilderCanvas = ({
                     onConnect={onConnect}
                     defaultEdgeOptions={defaultEdgeOptions}
                     connectionLineStyle={connectionLineStyle}
+                    nodesDraggable={!isMobileLayout}
                     selectionOnDrag={!isMobileLayout}
                     panOnDrag={isMobileLayout ? true : [1, 2]}
                     multiSelectionKeyCode={["Meta", "Control"]}

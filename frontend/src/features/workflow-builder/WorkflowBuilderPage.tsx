@@ -1401,12 +1401,16 @@ const WorkflowBuilderPage = () => {
       const isSameElement = lastTapped?.kind === "node" && lastTapped.id === node.id;
       const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
       lastTappedElementRef.current = { kind: "node", id: node.id, tapCount: nextTapCount };
-      selectNode(node.id);  // Use selectNode to update both selectedNodeId and selectedNodeIds
+      selectNode(node.id);  // Update selection state
+      // On mobile, applySelection is not called by ReactFlow, so we call it manually to apply visual styling
+      if (isMobileLayout) {
+        applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
+      }
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
         setIsPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout, selectNode, setIsPropertiesPanelOpen],
+    [isMobileLayout, selectNode, applySelection, setIsPropertiesPanelOpen],
   );
 
   const handleEdgeClick = useCallback(
@@ -1415,12 +1419,16 @@ const WorkflowBuilderPage = () => {
       const isSameElement = lastTapped?.kind === "edge" && lastTapped.id === edge.id;
       const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
       lastTappedElementRef.current = { kind: "edge", id: edge.id, tapCount: nextTapCount };
-      selectEdge(edge.id);  // Use selectEdge to update both selectedEdgeId and selectedEdgeIds
+      selectEdge(edge.id);  // Update selection state
+      // On mobile, applySelection is not called by ReactFlow, so we call it manually to apply visual styling
+      if (isMobileLayout) {
+        applySelection({ edgeIds: [edge.id], primaryEdgeId: edge.id });
+      }
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
         setIsPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout, selectEdge, setIsPropertiesPanelOpen],
+    [isMobileLayout, selectEdge, applySelection, setIsPropertiesPanelOpen],
   );
 
   const handleClearSelection = clearSelection;
