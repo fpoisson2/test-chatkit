@@ -59,13 +59,24 @@ export interface MobileActionLabels {
   properties: string;
 }
 
-// Phase 4.5: Reduced from 26 props to 21 props (-19%)
-// Migrated to contexts or derived:
+// Phase 5: Canvas Refactor - Reduced from 21 props to 10 props (-52%)
+// Migrated to contexts:
+// Phase 4.5:
 // - isMobileLayout → UIContext
 // - workflowBusy → Derived from WorkflowContext.loading + UIContext.isExporting + UIContext.isImporting
 // - mobileActionLabels → Calculated with useI18n
 // - shouldShowWorkflowDescription → Derived from WorkflowContext + UIContext.isMobileLayout
 // - shouldShowPublicationReminder → Derived from WorkflowContext + UIContext.isMobileLayout
+// Phase 5 (this refactor):
+// - handleNodesChange → GraphContext.onNodesChange
+// - handleEdgesChange → GraphContext.onEdgesChange
+// - handleNodeClick → SelectionContext.handleNodeClick
+// - handleEdgeClick → SelectionContext.handleEdgeClick
+// - handleClearSelection → SelectionContext.handleClearSelection
+// - handleSelectionChange → SelectionContext.onSelectionChange
+// - redoHistory, undoHistory → GraphContext
+// - handleDuplicateSelection, handleDeleteSelection → GraphContext
+// - canRedoHistory, canUndoHistory → GraphContext
 interface WorkflowBuilderCanvasProps {
   // Sidebar navigation
   openSidebar: () => void;
@@ -80,35 +91,13 @@ interface WorkflowBuilderCanvasProps {
   // Refs (callbacks)
   reactFlowContainerRef: RefCallback<HTMLDivElement>;
 
-  // Graph handlers (from hooks in Page)
-  handleNodesChange: (changes: NodeChange<FlowNodeData>[]) => void;
-  handleEdgesChange: (changes: EdgeChange<FlowEdgeData>[]) => void;
-
-  // Selection handlers (from Page - include double-tap logic)
-  handleNodeClick: NodeMouseHandler<FlowNode>;
-  handleEdgeClick: EdgeMouseHandler<FlowEdge>;
-  handleClearSelection: PaneClickHandler;
-  handleSelectionChange: OnSelectionChangeFunc<FlowNode, FlowEdge>;
-
-  // Drag handlers (complex external logic)
+  // Drag handlers (complex external logic - remains as prop due to complexity)
   handleNodeDragStart: NodeDragHandler<FlowNode>;
   handleNodeDragStop: NodeDragHandler<FlowNode>;
-
-  // History operations (from useWorkflowHistory hook)
-  redoHistory: () => void;
-  undoHistory: () => void;
-
-  // Selection operations (from useGraphEditor hook)
-  handleDuplicateSelection: () => void;
-  handleDeleteSelection: () => void;
-
-  // Operation availability flags (calculated in Page)
-  canRedoHistory: boolean;
-  canUndoHistory: boolean;
 }
 
 const WorkflowBuilderCanvas = ({
-  // Phase 4.5: Reduced to 21 props
+  // Phase 5: Reduced to 10 props
   openSidebar,
   renderHeaderControls,
   renderWorkflowDescription,
@@ -116,28 +105,26 @@ const WorkflowBuilderCanvas = ({
   blockLibraryContent,
   propertiesPanelElement,
   reactFlowContainerRef,
-  handleNodesChange,
-  handleEdgesChange,
-  handleNodeClick,
-  handleEdgeClick,
-  handleClearSelection,
-  handleSelectionChange,
   handleNodeDragStart,
   handleNodeDragStop,
-  redoHistory,
-  undoHistory,
-  handleDuplicateSelection,
-  handleDeleteSelection,
-  canRedoHistory,
-  canUndoHistory,
 }: WorkflowBuilderCanvasProps) => {
   const { t } = useI18n();
 
-  // GraphContext - Graph state and connection (3 values)
+  // GraphContext - Graph state, handlers, and operations (Phase 5: expanded)
   const {
     nodes,
     edges,
     onConnect,
+    onNodesChange,
+    onEdgesChange,
+    undoHistory,
+    redoHistory,
+    canUndoHistory,
+    canRedoHistory,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    canDuplicateSelection: canDuplicateFromContext,
+    canDeleteSelection: canDeleteFromContext,
   } = useGraphContext();
 
   // ViewportContext - Viewport state and persistence (12 values)
@@ -175,10 +162,14 @@ const WorkflowBuilderCanvas = ({
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
 
-  // SelectionContext - Selection state (2 values)
+  // SelectionContext - Selection state and handlers (Phase 5: expanded)
   const {
     selectedNodeId,
     selectedEdgeId,
+    handleNodeClick,
+    handleEdgeClick,
+    handleClearSelection,
+    onSelectionChange,
   } = useSelectionContext();
 
   // WorkflowContext - Workflow loading state (5 values) - Phase 4.5: Added workflows, selectedWorkflowId
@@ -215,9 +206,9 @@ const WorkflowBuilderCanvas = ({
   // Computed selection state
   const hasSelectedElement = Boolean(selectedNodeId || selectedEdgeId);
 
-  // Computed operation availability (must use Canvas's hasSelectedElement)
-  const canDeleteSelection = hasSelectedElement && !workflowBusy;
-  const canDuplicateSelection = hasSelectedElement && !workflowBusy;
+  // Phase 5: Operation availability from context (fallback to local calculation)
+  const canDeleteSelection = canDeleteFromContext ?? (hasSelectedElement && !workflowBusy);
+  const canDuplicateSelection = canDuplicateFromContext ?? (hasSelectedElement && !workflowBusy);
 
   // Style calculations (moved from WorkflowBuilderPage)
   const headerOverlayOffset = useMemo(
@@ -361,8 +352,8 @@ const WorkflowBuilderCanvas = ({
                   <ReactFlow<FlowNode, FlowEdge>
                     nodes={nodes}
                     edges={edges}
-                    onNodesChange={handleNodesChange}
-                    onEdgesChange={handleEdgesChange}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
                     onNodeDragStart={handleNodeDragStart}
                     onNodeDragStop={handleNodeDragStop}
                     onNodeClick={handleNodeClick}
@@ -375,7 +366,7 @@ const WorkflowBuilderCanvas = ({
                     selectionOnDrag={!isMobileLayout}
                     panOnDrag={isMobileLayout ? true : [1, 2]}
                     multiSelectionKeyCode={["Meta", "Control"]}
-                    {...(!isMobileLayout && { onSelectionChange: handleSelectionChange })}
+                    {...(!isMobileLayout && onSelectionChange && { onSelectionChange })}
                     style={{
                       background: isMobileLayout
                         ? "transparent"
@@ -451,7 +442,7 @@ const WorkflowBuilderCanvas = ({
                 type="button"
                 className={styles.mobileActionButton}
                 onClick={() => {
-                  redoHistory();
+                  redoHistory?.();
                 }}
                 disabled={!canRedoHistory}
               >
@@ -462,7 +453,7 @@ const WorkflowBuilderCanvas = ({
                 type="button"
                 className={styles.mobileActionButton}
                 onClick={() => {
-                  undoHistory();
+                  undoHistory?.();
                 }}
                 disabled={!canUndoHistory}
               >
@@ -473,7 +464,7 @@ const WorkflowBuilderCanvas = ({
                 type="button"
                 className={styles.mobileActionButton}
                 onClick={() => {
-                  handleDuplicateSelection();
+                  handleDuplicateSelection?.();
                 }}
                 disabled={!canDuplicateSelection}
               >
@@ -484,7 +475,7 @@ const WorkflowBuilderCanvas = ({
                 type="button"
                 className={styles.mobileActionButton}
                 onClick={() => {
-                  handleDeleteSelection();
+                  handleDeleteSelection?.();
                 }}
                 disabled={!canDeleteSelection}
               >
