@@ -671,6 +671,10 @@ const WorkflowBuilderPage = () => {
     { enabled: isMobileActionsOpen },
   );
 
+  // Removed: These effects were closing the workflow menu based on local WorkflowBuilderPage state
+  // Now that menu state is global (WorkflowMenuContext), these effects cause the menu to close
+  // when navigating between pages because they react to state changes during unmount/mount.
+  /*
   useEffect(() => {
     if (!isBlockLibraryOpen) {
       closeWorkflowMenu();
@@ -682,6 +686,7 @@ const WorkflowBuilderPage = () => {
       closeWorkflowMenu();
     }
   }, [closeWorkflowMenu, workflows.length]);
+  */
 
   useOutsidePointerDown(
     [workflowMenuTriggerRef, workflowMenuRef],
