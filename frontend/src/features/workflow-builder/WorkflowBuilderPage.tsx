@@ -379,6 +379,9 @@ const WorkflowBuilderPage = () => {
     setLoadError,
     setHostedLoading,
     setHostedError,
+    setWorkflows: setWorkflowsContext,
+    setHostedWorkflows: setHostedWorkflowsContext,
+    setSelectedWorkflowId: setSelectedWorkflowIdContext,
   } = useWorkflowContext();
 
   const decorateNode = useCallback(
@@ -627,6 +630,11 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     selectedWorkflowIdRef.current = selectedWorkflowId;
   }, [selectedWorkflowId]);
+
+  // Synchronize local selectedWorkflowId with WorkflowContext
+  useEffect(() => {
+    setSelectedWorkflowIdContext(selectedWorkflowId);
+  }, [selectedWorkflowId, setSelectedWorkflowIdContext]);
 
   useEffect(() => {
     hasPendingChangesRef.current = hasPendingChanges;
