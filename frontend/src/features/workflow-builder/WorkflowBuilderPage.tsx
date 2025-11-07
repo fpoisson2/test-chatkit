@@ -254,6 +254,8 @@ const WorkflowBuilderPage = () => {
   const {
     isBlockLibraryOpen,
     setIsBlockLibraryOpen,
+    closeBlockLibrary,
+    registerBlockLibraryToggle,
     isPropertiesPanelOpen,
     setIsPropertiesPanelOpen,
     openWorkflowMenuId,
@@ -588,19 +590,6 @@ const WorkflowBuilderPage = () => {
   const mobileActionsTitleId = `${mobileActionsDialogId}-title`;
   // Mobile actions handlers now provided by useWorkflowBuilderModals hook
 
-  const toggleBlockLibrary = useCallback(() => {
-    setIsBlockLibraryOpen((prev) => !prev);
-  }, []);
-  const closeBlockLibrary = useCallback(
-    (options: { focusToggle?: boolean } = {}) => {
-      setIsBlockLibraryOpen(false);
-      if (options.focusToggle && blockLibraryToggleRef.current) {
-        blockLibraryToggleRef.current.focus();
-      }
-    },
-    [blockLibraryToggleRef],
-  );
-
   useEffect(() => {
     setMinViewportZoom(baseMinViewportZoom);
   }, [baseMinViewportZoom]);
@@ -608,6 +597,13 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     setIsBlockLibraryOpen(!isMobileLayout);
   }, [isMobileLayout]);
+
+  useEffect(() => {
+    registerBlockLibraryToggle(blockLibraryToggleRef.current);
+    return () => {
+      registerBlockLibraryToggle(null);
+    };
+  }, [registerBlockLibraryToggle]);
 
   // Ferme les actions mobiles quand on n’est pas en layout mobile
   useEffect(() => {

@@ -1,7 +1,19 @@
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 import type { DeviceType } from "../WorkflowBuilderUtils";
 
 // Context types
+export type CloseBlockLibraryOptions = {
+  focusToggle?: boolean;
+};
+
 type UIContextValue = {
   // State
   isBlockLibraryOpen: boolean;
@@ -15,8 +27,9 @@ type UIContextValue = {
   // Block Library Methods
   toggleBlockLibrary: () => void;
   openBlockLibrary: () => void;
-  closeBlockLibrary: (returnFocus?: boolean) => void;
+  closeBlockLibrary: (options?: CloseBlockLibraryOptions) => void;
   setIsBlockLibraryOpen: (open: boolean) => void;
+  registerBlockLibraryToggle: (element: HTMLButtonElement | null) => void;
 
   // Properties Panel Methods
   togglePropertiesPanel: () => void;
@@ -61,6 +74,7 @@ export const UIProvider = ({ children }: UIProviderProps) => {
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
 
   // Block Library Methods
   const toggleBlockLibrary = useCallback(() => {
@@ -71,9 +85,18 @@ export const UIProvider = ({ children }: UIProviderProps) => {
     setIsBlockLibraryOpen(true);
   }, []);
 
-  const closeBlockLibrary = useCallback((returnFocus: boolean = false) => {
-    setIsBlockLibraryOpen(false);
-    // returnFocus can be used to manage focus restoration
+  const closeBlockLibrary = useCallback(
+    (options: CloseBlockLibraryOptions = {}) => {
+      setIsBlockLibraryOpen(false);
+      if (options.focusToggle && blockLibraryToggleRef.current) {
+        blockLibraryToggleRef.current.focus();
+      }
+    },
+    [],
+  );
+
+  const registerBlockLibraryToggle = useCallback((element: HTMLButtonElement | null) => {
+    blockLibraryToggleRef.current = element;
   }, []);
 
   // Properties Panel Methods
@@ -114,6 +137,7 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       openBlockLibrary,
       closeBlockLibrary,
       setIsBlockLibraryOpen,
+      registerBlockLibraryToggle,
 
       // Properties Panel Methods
       togglePropertiesPanel,
@@ -145,6 +169,7 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       toggleBlockLibrary,
       openBlockLibrary,
       closeBlockLibrary,
+      registerBlockLibraryToggle,
       togglePropertiesPanel,
       openPropertiesPanel,
       closePropertiesPanel,
