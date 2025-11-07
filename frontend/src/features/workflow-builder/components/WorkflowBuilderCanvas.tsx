@@ -470,8 +470,8 @@ const WorkflowBuilderCanvas = ({
                   className={styles.mobileActionButton}
                   onClick={
                     isPropertiesPanelOpen
-                      ? handleClosePropertiesPanel
-                      : handleOpenPropertiesPanel
+                      ? closePropertiesPanel
+                      : openPropertiesPanel
                   }
                   aria-controls={propertiesPanelId}
                   aria-expanded={isPropertiesPanelOpen}
@@ -512,7 +512,7 @@ const WorkflowBuilderCanvas = ({
             <div
               className={styles.propertiesPanelOverlay}
               role="presentation"
-              onClick={handleClosePropertiesPanel}
+              onClick={closePropertiesPanel}
             >
               {propertiesPanelElement}
             </div>
