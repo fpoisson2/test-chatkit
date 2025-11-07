@@ -15,7 +15,6 @@ import {
   type EdgeChange,
   type NodeChange,
   type ReactFlowInstance,
-  ReactFlowProvider,
   type Viewport,
   useEdgesState,
   useNodesState,
@@ -1891,75 +1890,74 @@ const WorkflowBuilderPage = () => {
   );
 
   return (
-    <ReactFlowProvider>
-      <ViewportProvider
-        reactFlowInstanceRef={reactFlowInstanceRef}
-        isHydratingRef={isHydratingRef}
-        persistViewportMemory={persistViewportMemory}
-        restoreViewport={restoreViewport}
-        refreshViewportConstraints={refreshViewportConstraints}
+    <ViewportProvider
+      reactFlowInstanceRef={reactFlowInstanceRef}
+      isHydratingRef={isHydratingRef}
+      persistViewportMemory={persistViewportMemory}
+      restoreViewport={restoreViewport}
+      refreshViewportConstraints={refreshViewportConstraints}
+    >
+      {/* Phase 5: Enrich contexts with handlers from hooks */}
+      <GraphProvider
+        undoHistory={undoHistory}
+        redoHistory={redoHistory}
+        canUndoHistory={canUndoHistory}
+        canRedoHistory={canRedoHistory}
+        handleDuplicateSelection={handleDuplicateSelection}
+        handleDeleteSelection={handleDeleteSelection}
+        canDuplicateSelection={canDuplicateSelection}
+        canDeleteSelection={canDeleteSelection}
       >
-        {/* Phase 5: Enrich contexts with handlers from hooks */}
-        <GraphProvider
-          undoHistory={undoHistory}
-          redoHistory={redoHistory}
-          canUndoHistory={canUndoHistory}
-          canRedoHistory={canRedoHistory}
-          handleDuplicateSelection={handleDuplicateSelection}
-          handleDeleteSelection={handleDeleteSelection}
-          canDuplicateSelection={canDuplicateSelection}
-          canDeleteSelection={canDeleteSelection}
+        <SelectionProvider
+          handleNodeClick={handleNodeClick}
+          handleEdgeClick={handleEdgeClick}
+          handleClearSelection={handleClearSelection}
+          onSelectionChange={handleSelectionChange}
         >
-          <SelectionProvider
-            handleNodeClick={handleNodeClick}
-            handleEdgeClick={handleEdgeClick}
-            handleClearSelection={handleClearSelection}
-            onSelectionChange={handleSelectionChange}
-          >
           {/* Phase 4.5: WorkflowBuilderSidebar now uses contexts (28 → 13 props, -54%) */}
           <WorkflowBuilderSidebar
             lastUsedAt={lastUsedAt}
             pinnedLookup={pinnedLookup}
             workflowMenuPlacement={workflowMenuPlacement}
-        isSidebarCollapsed={isSidebarCollapsed}
-        workflowSortCollator={workflowSortCollatorRef.current}
-        onSelectWorkflow={handleSelectWorkflow}
-        onRenameWorkflow={handleRenameWorkflow}
-        onDeleteWorkflow={handleDeleteWorkflow}
-        onDuplicateWorkflow={handleDuplicateWorkflow}
-        onDeleteHostedWorkflow={handleDeleteHostedWorkflow}
-        onToggleLocalPin={toggleLocalPin}
-        onToggleHostedPin={toggleHostedPin}
-        onOpenCreateModal={handleOpenCreateModalWithReset}
-        onOpenAppearanceModal={openAppearanceModal}
-        onExportWorkflow={handleExportWorkflow}
-        workflowMenuTriggerRef={workflowMenuTriggerRef}
-        workflowMenuRef={workflowMenuRef}
-        setWorkflowMenuPlacement={setWorkflowMenuPlacement}
-      />
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
-          flexDirection: "column",
-          height: "100vh",
-          background: isMobileLayout ? "transparent" : "var(--color-surface-subtle)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Phase 5: WorkflowBuilderCanvas now uses contexts (21 → 10 props, -52%) */}
-        <WorkflowBuilderCanvas
-          openSidebar={openSidebar}
-          renderHeaderControls={renderHeaderControls}
-          renderWorkflowDescription={renderWorkflowDescription}
-          renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
-          blockLibraryContent={blockLibraryContent}
-          propertiesPanelElement={propertiesPanelElement}
-          reactFlowContainerRef={reactFlowContainerRef}
-          handleNodeDragStart={handleNodeDragStart}
-          handleNodeDragStop={handleNodeDragStop}
-        />
-      </div>
+            isSidebarCollapsed={isSidebarCollapsed}
+            workflowSortCollator={workflowSortCollatorRef.current}
+            onSelectWorkflow={handleSelectWorkflow}
+            onRenameWorkflow={handleRenameWorkflow}
+            onDeleteWorkflow={handleDeleteWorkflow}
+            onDuplicateWorkflow={handleDuplicateWorkflow}
+            onDeleteHostedWorkflow={handleDeleteHostedWorkflow}
+            onToggleLocalPin={toggleLocalPin}
+            onToggleHostedPin={toggleHostedPin}
+            onOpenCreateModal={handleOpenCreateModalWithReset}
+            onOpenAppearanceModal={openAppearanceModal}
+            onExportWorkflow={handleExportWorkflow}
+            workflowMenuTriggerRef={workflowMenuTriggerRef}
+            workflowMenuRef={workflowMenuRef}
+            setWorkflowMenuPlacement={setWorkflowMenuPlacement}
+          />
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              height: "100vh",
+              background: isMobileLayout ? "transparent" : "var(--color-surface-subtle)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Phase 5: WorkflowBuilderCanvas now uses contexts (21 → 10 props, -52%) */}
+            <WorkflowBuilderCanvas
+              openSidebar={openSidebar}
+              renderHeaderControls={renderHeaderControls}
+              renderWorkflowDescription={renderWorkflowDescription}
+              renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
+              blockLibraryContent={blockLibraryContent}
+              propertiesPanelElement={propertiesPanelElement}
+              reactFlowContainerRef={reactFlowContainerRef}
+              handleNodeDragStart={handleNodeDragStart}
+              handleNodeDragStop={handleNodeDragStop}
+            />
+          </div>
           <WorkflowBuilderToast />
           <WorkflowBuilderModals
             onSubmitCreateWorkflow={handleSubmitCreateWorkflow}
@@ -1974,10 +1972,9 @@ const WorkflowBuilderPage = () => {
             appearanceModalTarget={appearanceModalTarget}
             onCloseAppearanceModal={handleCloseAppearanceModal}
           />
-          </SelectionProvider>
-        </GraphProvider>
-      </ViewportProvider>
-    </ReactFlowProvider>
+        </SelectionProvider>
+      </GraphProvider>
+    </ViewportProvider>
   );
 };
 
