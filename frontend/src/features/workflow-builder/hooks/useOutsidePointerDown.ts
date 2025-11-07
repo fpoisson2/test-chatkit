@@ -47,7 +47,9 @@ export const useOutsidePointerDown = (
       // Check if target matches any excluded selectors
       if (target instanceof Element && excludeSelectorsRef.current.length > 0) {
         for (const selector of excludeSelectorsRef.current) {
-          if (target.closest(selector)) {
+          const closest = target.closest(selector);
+          if (closest) {
+            console.log('[useOutsidePointerDown] Ignoring click on excluded selector:', selector, 'target:', target, 'closest:', closest);
             return;
           }
         }
@@ -60,6 +62,7 @@ export const useOutsidePointerDown = (
         }
       }
 
+      console.log('[useOutsidePointerDown] Outside click detected, calling handler. Target:', target, 'excludeSelectors:', excludeSelectorsRef.current);
       handlerRef.current();
     };
 
