@@ -277,6 +277,7 @@ const WorkflowBuilderPage = () => {
     isCreateModalOpen,
     closeCreateModal: handleCloseCreateModal,
     isDeployModalOpen,
+    openDeployModal,
     closeDeployModal: handleCloseDeployModal,
     isAppearanceModalOpen,
     closeAppearanceModal: handleCloseAppearanceModal,
@@ -2043,12 +2044,11 @@ const WorkflowBuilderPage = () => {
 
   const conditionGraphError = useMemo(() => validateGraphStructure(nodes, edges), [edges, nodes]);
 
-  // Override handleOpenDeployModal to include additional setup logic
+  // Phase 4: Use openDeployModal from ModalContext instead of handleOpenDeployModal from useWorkflowBuilderModals
   const handleOpenDeployModalWithSetup = useCallback(() => {
     setSaveMessage(null);
-    setDeployToProduction(true);
-    handleOpenDeployModal();
-  }, [handleOpenDeployModal]);
+    openDeployModal(true); // true = deployToProduction
+  }, [openDeployModal, setSaveMessage]);
 
   // handleCloseDeployModal is provided by useWorkflowBuilderModals hook
 
