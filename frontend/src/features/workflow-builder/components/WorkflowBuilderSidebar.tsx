@@ -362,26 +362,24 @@ const WorkflowBuilderSidebar = ({
                 {workflow.display_name}
               </span>
             </button>
-            <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
-              <WorkflowActionMenu
-                menuId={menuId}
-                isOpen={isMenuOpen}
-                isMobileLayout={isMobileLayout}
-                placement={isMenuOpen ? workflowMenuPlacement : "down"}
-                triggerDisabled={loading}
-                triggerLabel={t("workflowBuilder.localSection.openActions", {
-                  label: workflow.display_name,
-                })}
-                onOpen={(placement) => {
-                  setWorkflowMenuPlacement(placement);
-                  setOpenWorkflowMenuId(workflow.id);
-                }}
-                onClose={closeWorkflowMenu}
-                triggerRef={workflowMenuTriggerRef}
-                menuRef={workflowMenuRef}
-                items={localMenuItems}
-              />
-            </div>
+            <WorkflowActionMenu
+              menuId={menuId}
+              isOpen={isMenuOpen}
+              isMobileLayout={isMobileLayout}
+              placement={isMenuOpen ? workflowMenuPlacement : "down"}
+              triggerDisabled={loading}
+              triggerLabel={t("workflowBuilder.localSection.openActions", {
+                label: workflow.display_name,
+              })}
+              onOpen={(placement) => {
+                setWorkflowMenuPlacement(placement);
+                setOpenWorkflowMenuId(workflow.id);
+              }}
+              onClose={closeWorkflowMenu}
+              triggerRef={workflowMenuTriggerRef}
+              menuRef={workflowMenuRef}
+              items={localMenuItems}
+            />
             {!workflow.is_chatkit_default && !workflow.active_version_id ? (
               <p className="chatkit-sidebar__workflow-meta" aria-live="polite" style={warningStyle}>
                 {t("workflowBuilder.localSection.missingProduction")}
