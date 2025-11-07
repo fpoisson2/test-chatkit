@@ -95,6 +95,17 @@ const WorkflowBuilderSidebar = ({
     setOpenWorkflowMenuId,
   } = useUIContext();
 
+  // Memoize ordering collator for consistent sorting across full and compact lists
+  const orderingCollator = useMemo(() => {
+    if (workflowSortCollator) {
+      return workflowSortCollator;
+    }
+    if (typeof Intl !== "undefined" && typeof Intl.Collator === "function") {
+      return new Intl.Collator(undefined, { sensitivity: "base" });
+    }
+    return null;
+  }, [workflowSortCollator]);
+
   // Phase 4.5: Derive selectedWorkflow from context data
   const selectedWorkflow = useMemo(
     () => workflows.find((w) => w.id === selectedWorkflowId) || null,
