@@ -96,8 +96,9 @@ interface WorkflowBuilderCanvasProps {
   // Operation availability flags (calculated in Page)
   canRedoHistory: boolean;
   canUndoHistory: boolean;
-  canDuplicateSelection: boolean;
-  canDeleteSelection: boolean;
+
+  // Workflow state for operation availability
+  workflowBusy: boolean;
 
   // Configuration labels
   mobileActionLabels: MobileActionLabels;
@@ -111,7 +112,7 @@ interface WorkflowBuilderCanvasProps {
 }
 
 const WorkflowBuilderCanvas = ({
-  // Props from parent (27 props)
+  // Props from parent (25 props)
   openSidebar,
   renderHeaderControls,
   renderWorkflowDescription,
@@ -133,8 +134,7 @@ const WorkflowBuilderCanvas = ({
   handleDeleteSelection,
   canRedoHistory,
   canUndoHistory,
-  canDuplicateSelection,
-  canDeleteSelection,
+  workflowBusy,
   mobileActionLabels,
   shouldShowWorkflowDescription,
   shouldShowPublicationReminder,
@@ -191,6 +191,10 @@ const WorkflowBuilderCanvas = ({
 
   // Computed selection state
   const hasSelectedElement = Boolean(selectedNodeId || selectedEdgeId);
+
+  // Computed operation availability (must use Canvas's hasSelectedElement)
+  const canDeleteSelection = hasSelectedElement && !workflowBusy;
+  const canDuplicateSelection = hasSelectedElement && !workflowBusy;
 
   // Style calculations (moved from WorkflowBuilderPage)
   const headerOverlayOffset = useMemo(

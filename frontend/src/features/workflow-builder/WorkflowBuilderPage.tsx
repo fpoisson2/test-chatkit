@@ -2897,8 +2897,7 @@ const WorkflowBuilderPage = () => {
           handleDeleteSelection={handleDeleteSelection}
           canRedoHistory={canRedoHistory}
           canUndoHistory={canUndoHistory}
-          canDuplicateSelection={canDuplicateSelection}
-          canDeleteSelection={canDeleteSelection}
+          workflowBusy={workflowBusy}
           mobileActionLabels={mobileActionLabels}
           shouldShowWorkflowDescription={shouldShowWorkflowDescription}
           shouldShowPublicationReminder={shouldShowPublicationReminder}
