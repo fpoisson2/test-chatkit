@@ -11,10 +11,10 @@ import type { HostedFlowMode } from "../../hooks/useHostedFlow";
 import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
 import type {
-  ActionMenuPlacement,
   WorkflowActionMenuItem,
 } from "./WorkflowActionMenu";
 import { WorkflowList } from "./WorkflowList";
+import { useWorkflowMenuContext } from "./WorkflowMenuContext";
 import {
   buildWorkflowOrderingTimestamps,
   clearWorkflowSidebarCache,
@@ -101,42 +101,17 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const workflowCollatorRef = useRef<Intl.Collator | null>(null);
   const previousTokenRef = useRef<string | null>(token ?? null);
   const hasLoadedWorkflowsRef = useRef(false);
-  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
-  const [workflowMenuPlacement, setWorkflowMenuPlacement] = useState<ActionMenuPlacement>("down");
-  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
-  // Sync openWorkflowMenuId with localStorage to persist across pages
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('chatkit.workflow.openMenuId');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setOpenWorkflowMenuId(parsed);
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (openWorkflowMenuId !== null) {
-        localStorage.setItem('chatkit.workflow.openMenuId', JSON.stringify(openWorkflowMenuId));
-      } else {
-        localStorage.removeItem('chatkit.workflow.openMenuId');
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  }, [openWorkflowMenuId]);
-
-  const closeWorkflowMenu = useCallback(() => {
-    setOpenWorkflowMenuId(null);
-    setWorkflowMenuPlacement("down");
-    workflowMenuTriggerRef.current = null;
-    workflowMenuRef.current = null;
-  }, []);
+  // Use global workflow menu context to persist state across navigation
+  const {
+    openWorkflowMenuId,
+    setOpenWorkflowMenuId,
+    workflowMenuPlacement,
+    setWorkflowMenuPlacement,
+    closeWorkflowMenu,
+    workflowMenuTriggerRef,
+    workflowMenuRef,
+  } = useWorkflowMenuContext();
 
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {

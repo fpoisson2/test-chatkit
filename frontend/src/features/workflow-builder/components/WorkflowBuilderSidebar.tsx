@@ -10,10 +10,8 @@ import {
   type StoredWorkflowPinnedLookup,
 } from "../../workflows/utils";
 import type { WorkflowAppearanceTarget } from "../../workflows/WorkflowAppearanceModal";
-import type {
-  ActionMenuPlacement,
-} from "../../workflows/WorkflowActionMenu";
 import { WorkflowList } from "../../workflows/WorkflowList";
+import { useWorkflowMenuContext } from "../../workflows/WorkflowMenuContext";
 import { useWorkflowContext } from "../contexts/WorkflowContext";
 import { useModalContext } from "../contexts/ModalContext";
 import { useUIContext } from "../contexts/UIContext";
@@ -30,7 +28,6 @@ import { useUIContext } from "../contexts/UIContext";
 export type WorkflowBuilderSidebarProps = {
   lastUsedAt: StoredWorkflowLastUsedAt;
   pinnedLookup: StoredWorkflowPinnedLookup;
-  workflowMenuPlacement: ActionMenuPlacement;
   isSidebarCollapsed: boolean;
   workflowSortCollator: Intl.Collator | null;
   onSelectWorkflow: (workflowId: number) => void;
@@ -46,15 +43,11 @@ export type WorkflowBuilderSidebarProps = {
     trigger?: HTMLButtonElement | null,
   ) => void;
   onExportWorkflow: (workflowId?: number) => void | Promise<void>;
-  workflowMenuTriggerRef: MutableRefObject<HTMLButtonElement | null>;
-  workflowMenuRef: MutableRefObject<HTMLDivElement | null>;
-  setWorkflowMenuPlacement: (placement: ActionMenuPlacement) => void;
 };
 
 const WorkflowBuilderSidebar = ({
   lastUsedAt,
   pinnedLookup,
-  workflowMenuPlacement,
   isSidebarCollapsed,
   workflowSortCollator,
   onSelectWorkflow,
@@ -67,9 +60,6 @@ const WorkflowBuilderSidebar = ({
   onOpenCreateModal,
   onOpenAppearanceModal,
   onExportWorkflow,
-  workflowMenuTriggerRef,
-  workflowMenuRef,
-  setWorkflowMenuPlacement,
 }: WorkflowBuilderSidebarProps) => {
   const { t } = useI18n();
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } =
@@ -88,12 +78,18 @@ const WorkflowBuilderSidebar = ({
 
   const { isCreatingWorkflow } = useModalContext();
 
+  const { isMobileLayout } = useUIContext();
+
+  // Use global workflow menu context to persist state across navigation
   const {
     openWorkflowMenuId,
-    isMobileLayout,
-    closeWorkflowMenu,
     setOpenWorkflowMenuId,
-  } = useUIContext();
+    workflowMenuPlacement,
+    setWorkflowMenuPlacement,
+    closeWorkflowMenu,
+    workflowMenuTriggerRef,
+    workflowMenuRef,
+  } = useWorkflowMenuContext();
 
   // Memoize ordering collator for consistent sorting across full and compact lists
   const orderingCollator = useMemo(() => {

@@ -18,6 +18,7 @@ import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import type { SettingsSectionId } from "../features/settings/sections";
 import { useI18n } from "../i18n";
+import { WorkflowMenuProvider } from "../features/workflows/WorkflowMenuContext";
 
 type NavigationItem = {
   key: string;
@@ -560,7 +561,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   return (
     <SidebarPortalContext.Provider value={sidebarPortalValue}>
       <AppLayoutContext.Provider value={contextValue}>
-        <div className={layoutClassName}>
+        <WorkflowMenuProvider>
+          <div className={layoutClassName}>
           <aside
             className={sidebarClassName}
             aria-label={t("app.sidebar.ariaLabel")}
@@ -737,6 +739,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             {children ?? <Outlet />}
           </div>
         </div>
+        </WorkflowMenuProvider>
       </AppLayoutContext.Provider>
     </SidebarPortalContext.Provider>
   );
