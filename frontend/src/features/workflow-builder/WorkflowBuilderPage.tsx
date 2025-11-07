@@ -371,6 +371,8 @@ const WorkflowBuilderPage = () => {
     setLoadError,
     setHostedLoading,
     setHostedError,
+    setWorkflows: setWorkflowsContext,
+    setHostedWorkflows: setHostedWorkflowsContext,
   } = useWorkflowContext();
 
   const decorateNode = useCallback(
@@ -1220,6 +1222,7 @@ const WorkflowBuilderPage = () => {
           const data: WorkflowSummary[] = await response.json();
           hasLoadedWorkflowsRef.current = true;
           setWorkflows(data);
+          setWorkflowsContext(data);
           if (data.length === 0) {
             setSelectedWorkflowId(null);
             setSelectedVersionId(null);
@@ -1313,6 +1316,7 @@ const WorkflowBuilderPage = () => {
   const loadHostedWorkflows = useCallback(async () => {
     if (!token) {
       setHostedWorkflows([]);
+      setHostedWorkflowsContext([]);
       setHostedError(null);
       setHostedLoading(false);
       return;
@@ -1324,11 +1328,14 @@ const WorkflowBuilderPage = () => {
       const response = await chatkitApi.getHostedWorkflows(token, { cache: false });
       if (!response) {
         setHostedWorkflows([]);
+        setHostedWorkflowsContext([]);
       } else {
         setHostedWorkflows(response);
+        setHostedWorkflowsContext(response);
       }
     } catch (error) {
       setHostedWorkflows([]);
+      setHostedWorkflowsContext([]);
       const message =
         error instanceof Error
           ? error.message
