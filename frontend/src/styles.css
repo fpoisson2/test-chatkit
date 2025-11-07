@@ -287,7 +287,7 @@ button {
   transform: translate3d(0, 0, 0);
   transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
-  z-index: 0;
+  z-index: 2;
   backface-visibility: hidden;
   -webkit-tap-highlight-color: transparent;
   background: var(--main-background);
@@ -322,6 +322,7 @@ button {
 .chatkit-layout--sidebar-open .chatkit-layout__scrim {
   pointer-events: auto;
   opacity: 1;
+  z-index: 3;
 }
 
 .chatkit-layout__widget {
