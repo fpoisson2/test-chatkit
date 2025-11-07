@@ -1,8 +1,11 @@
 import {
   type CSSProperties,
+  type MouseEventHandler,
   type MutableRefObject,
+  type PointerEventHandler,
   type ReactNode,
   type RefCallback,
+  useCallback,
   useMemo,
 } from "react";
 import ReactFlow, {
@@ -195,6 +198,22 @@ const WorkflowBuilderCanvas = ({
   // Computed operation availability (must use Canvas's hasSelectedElement)
   const canDeleteSelection = hasSelectedElement && !workflowBusy;
   const canDuplicateSelection = hasSelectedElement && !workflowBusy;
+
+  const handleMobileActionPointerDown = useCallback<PointerEventHandler<HTMLButtonElement>>(
+    (event) => {
+      event.stopPropagation();
+    },
+    [],
+  );
+
+  const getMobileActionClickHandler = useCallback(
+    (action: () => void): MouseEventHandler<HTMLButtonElement> =>
+      (event) => {
+        event.stopPropagation();
+        action();
+      },
+    [],
+  );
 
   // Style calculations (moved from WorkflowBuilderPage)
   const headerOverlayOffset = useMemo(
@@ -426,9 +445,8 @@ const WorkflowBuilderCanvas = ({
               <button
                 type="button"
                 className={styles.mobileActionButton}
-                onClick={() => {
-                  redoHistory();
-                }}
+                onPointerDown={handleMobileActionPointerDown}
+                onClick={getMobileActionClickHandler(redoHistory)}
                 disabled={!canRedoHistory}
               >
                 <Redo2 aria-hidden="true" size={20} />
@@ -437,9 +455,8 @@ const WorkflowBuilderCanvas = ({
               <button
                 type="button"
                 className={styles.mobileActionButton}
-                onClick={() => {
-                  undoHistory();
-                }}
+                onPointerDown={handleMobileActionPointerDown}
+                onClick={getMobileActionClickHandler(undoHistory)}
                 disabled={!canUndoHistory}
               >
                 <Undo2 aria-hidden="true" size={20} />
@@ -448,9 +465,8 @@ const WorkflowBuilderCanvas = ({
               <button
                 type="button"
                 className={styles.mobileActionButton}
-                onClick={() => {
-                  handleDuplicateSelection();
-                }}
+                onPointerDown={handleMobileActionPointerDown}
+                onClick={getMobileActionClickHandler(handleDuplicateSelection)}
                 disabled={!canDuplicateSelection}
               >
                 <Copy aria-hidden="true" size={20} />
@@ -459,9 +475,8 @@ const WorkflowBuilderCanvas = ({
               <button
                 type="button"
                 className={styles.mobileActionButton}
-                onClick={() => {
-                  handleDeleteSelection();
-                }}
+                onPointerDown={handleMobileActionPointerDown}
+                onClick={getMobileActionClickHandler(handleDeleteSelection)}
                 disabled={!canDeleteSelection}
               >
                 <Trash2 aria-hidden="true" size={20} />
@@ -472,11 +487,10 @@ const WorkflowBuilderCanvas = ({
                   type="button"
                   ref={propertiesPanelToggleRef}
                   className={styles.mobileActionButton}
-                  onClick={
-                    isPropertiesPanelOpen
-                      ? closePropertiesPanel
-                      : openPropertiesPanel
-                  }
+                  onPointerDown={handleMobileActionPointerDown}
+                  onClick={getMobileActionClickHandler(
+                    isPropertiesPanelOpen ? closePropertiesPanel : openPropertiesPanel,
+                  )}
                   aria-controls={propertiesPanelId}
                   aria-expanded={isPropertiesPanelOpen}
                 >
@@ -488,7 +502,8 @@ const WorkflowBuilderCanvas = ({
                 type="button"
                 ref={blockLibraryToggleRef}
                 className={styles.mobileToggleButton}
-                onClick={toggleBlockLibrary}
+                onPointerDown={handleMobileActionPointerDown}
+                onClick={getMobileActionClickHandler(toggleBlockLibrary)}
                 aria-controls={blockLibraryId}
                 aria-expanded={isBlockLibraryOpen}
               >
