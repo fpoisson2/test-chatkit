@@ -127,8 +127,6 @@ const useSidebarInteractions = ({
 
     return {
       onClick: onInteract,
-      onPointerDown: onInteract,
-      onTouchStart: onInteract,
     };
   }, [isDesktopLayout, onInteract]);
 
@@ -189,6 +187,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     return getDesktopLayoutPreference();
   });
   const keepSidebarOpenOnNavigationRef = useRef(false);
+  const ignoreMainInteractionRef = useRef(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
@@ -219,18 +218,24 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   }, [isDesktopLayout, isSidebarOpen]);
 
   const openSidebar = useCallback(() => {
+    ignoreMainInteractionRef.current = true;
     setIsSidebarOpen(true);
-  }, []);
+  }, [ignoreMainInteractionRef]);
 
   const closeSidebar = useCallback(() => {
     setIsSidebarOpen(false);
   }, []);
 
   const handleMainInteraction = useCallback(() => {
+    if (ignoreMainInteractionRef.current) {
+      ignoreMainInteractionRef.current = false;
+      return;
+    }
+
     if (!isDesktopLayout && isSidebarOpen) {
       closeSidebar();
     }
-  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
+  }, [closeSidebar, ignoreMainInteractionRef, isDesktopLayout, isSidebarOpen]);
 
   const mainInteractionHandlers = useSidebarInteractions({
     isDesktopLayout,
