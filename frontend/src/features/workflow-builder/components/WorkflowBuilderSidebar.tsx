@@ -101,6 +101,16 @@ const WorkflowBuilderSidebar = ({
     [workflows, selectedWorkflowId]
   );
 
+  const orderingCollator = useMemo(() => {
+    if (workflowSortCollator) {
+      return workflowSortCollator;
+    }
+    if (typeof Intl !== "undefined" && typeof Intl.Collator === "function") {
+      return new Intl.Collator(undefined, { sensitivity: "base" });
+    }
+    return null;
+  }, [workflowSortCollator]);
+
   const workflowSidebarContent = useMemo(() => {
     return (
       <WorkflowList
