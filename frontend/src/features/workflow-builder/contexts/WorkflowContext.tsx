@@ -165,7 +165,7 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
       setLoading(true);
       setLoadError(null);
 
-      const endpoint = "/workflows";
+      const endpoint = "/api/workflows";
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
 
       let lastError: string | null = null;
@@ -229,7 +229,7 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
   // Load versions for a workflow
   const loadVersions = useCallback(
     async (workflowId: string | number, authHeader: Record<string, string>, options?: LoadVersionsOptions) => {
-      const endpoint = `/workflows/${workflowId}/versions`;
+      const endpoint = `/api/workflows/${workflowId}/versions`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
 
       let lastError: string | null = null;
@@ -281,7 +281,7 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
   // Load version detail
   const loadVersionDetail = useCallback(
     async (versionId: number, authHeader: Record<string, string>, options?: LoadVersionDetailOptions) => {
-      const endpoint = `/workflow_versions/${versionId}`;
+      const endpoint = `/api/workflow_versions/${versionId}`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
 
       let lastError: string | null = null;
@@ -348,7 +348,7 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
         }
       } else {
         // Local workflow
-        const endpoint = "/workflows";
+        const endpoint = "/api/workflows";
         const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
 
         let lastError: Error | null = null;
@@ -392,7 +392,7 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
   // Delete workflow
   const deleteWorkflow = useCallback(
     async (id: string | number, authHeader: Record<string, string>) => {
-      const endpoint = `/workflows/${id}`;
+      const endpoint = `/api/workflows/${id}`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
 
       let lastError: Error | null = null;
@@ -448,7 +448,7 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
   // Duplicate workflow
   const duplicateWorkflow = useCallback(
     async (id: string | number, newName: string, authHeader: Record<string, string>) => {
-      const endpoint = `/workflows/${id}/duplicate`;
+      const endpoint = `/api/workflows/${id}/duplicate`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
 
       let lastError: Error | null = null;
@@ -491,7 +491,7 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
   // Rename workflow
   const renameWorkflow = useCallback(
     async (id: string | number, name: string, authHeader: Record<string, string>) => {
-      const endpoint = `/workflows/${id}`;
+      const endpoint = `/api/workflows/${id}`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
 
       let lastError: Error | null = null;
