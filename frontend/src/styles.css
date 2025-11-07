@@ -349,7 +349,7 @@ button {
 .chatkit-sidebar {
   position: absolute;
   inset: 0 auto 0 0;
-  z-index: 2;
+  z-index: 4;
   width: var(--chatkit-sidebar-width);
   margin: 0;
   max-width: 100%;
