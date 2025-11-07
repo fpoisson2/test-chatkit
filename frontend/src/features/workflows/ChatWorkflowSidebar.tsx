@@ -261,10 +261,12 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   */
 
   useEffect(() => {
-    if (!isAdmin && openWorkflowMenuId !== null) {
+    // Only close menu if user is loaded and confirmed to not be admin
+    // This prevents closing the menu during navigation when user might be temporarily undefined
+    if (user && !isAdmin && openWorkflowMenuId !== null) {
       closeWorkflowMenu();
     }
-  }, [closeWorkflowMenu, isAdmin, openWorkflowMenuId]);
+  }, [closeWorkflowMenu, isAdmin, openWorkflowMenuId, user]);
 
   useEffect(() => {
     setLastUsedAt(

@@ -20,6 +20,7 @@ export const WorkflowMenuProvider = ({ children }: { children: ReactNode }) => {
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
   const closeWorkflowMenu = useCallback(() => {
+    console.log('[WorkflowMenuContext] closeWorkflowMenu called, stack:', new Error().stack);
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("down");
     workflowMenuTriggerRef.current = null;
