@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import React from "react";
 import WorkflowBuilderContainer from "./WorkflowBuilderContainer";
-import { useViewportContext } from "./contexts";
+import { useViewportContext, useUIContext } from "./contexts";
 
 const capturedViewportValues: {
   persistViewportMemory?: unknown;
@@ -11,6 +11,11 @@ const capturedViewportValues: {
   viewportRef?: unknown;
   pendingViewportRestoreRef?: unknown;
   isHydratingRef?: unknown;
+} = {};
+
+const capturedUIValues: {
+  closeBlockLibrary?: unknown;
+  registerBlockLibraryToggle?: unknown;
 } = {};
 
 // Mock des modules externes
@@ -52,11 +57,14 @@ vi.mock("./components/WorkflowBuilderCanvas", () => ({
       pendingViewportRestoreRef,
       isHydratingRef,
     } = useViewportContext();
+    const { closeBlockLibrary, registerBlockLibraryToggle } = useUIContext();
     capturedViewportValues.persistViewportMemory = persistViewportMemory;
     capturedViewportValues.reactFlowInstanceRef = reactFlowInstanceRef;
     capturedViewportValues.viewportRef = viewportRef;
     capturedViewportValues.pendingViewportRestoreRef = pendingViewportRestoreRef;
     capturedViewportValues.isHydratingRef = isHydratingRef;
+    capturedUIValues.closeBlockLibrary = closeBlockLibrary;
+    capturedUIValues.registerBlockLibraryToggle = registerBlockLibraryToggle;
     return <div data-testid="mock-workflow-builder-canvas" />;
   },
 }));
@@ -78,6 +86,8 @@ describe("WorkflowBuilderContainer", () => {
     capturedViewportValues.viewportRef = undefined;
     capturedViewportValues.pendingViewportRestoreRef = undefined;
     capturedViewportValues.isHydratingRef = undefined;
+    capturedUIValues.closeBlockLibrary = undefined;
+    capturedUIValues.registerBlockLibraryToggle = undefined;
   });
 
   test("se monte sans erreur avec tous les contextes", () => {
@@ -134,5 +144,16 @@ describe("WorkflowBuilderContainer", () => {
     expect(capturedViewportValues.viewportRef).toBeTruthy();
     expect(capturedViewportValues.pendingViewportRestoreRef).toBeTruthy();
     expect(capturedViewportValues.isHydratingRef).toBeTruthy();
+  });
+
+  test("expose les helpers de focus de la bibliothèque de blocs", () => {
+    render(
+      <BrowserRouter>
+        <WorkflowBuilderContainer />
+      </BrowserRouter>,
+    );
+
+    expect(typeof capturedUIValues.closeBlockLibrary).toBe("function");
+    expect(typeof capturedUIValues.registerBlockLibraryToggle).toBe("function");
   });
 });
