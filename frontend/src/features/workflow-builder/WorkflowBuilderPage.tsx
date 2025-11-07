@@ -2885,6 +2885,10 @@ const WorkflowBuilderPage = () => {
           reactFlowContainerRef={reactFlowContainerRef}
           handleNodesChange={handleNodesChange}
           handleEdgesChange={handleEdgesChange}
+          handleNodeClick={handleNodeClick}
+          handleEdgeClick={handleEdgeClick}
+          handleClearSelection={handleClearSelection}
+          handleSelectionChange={handleSelectionChange}
           handleNodeDragStart={handleNodeDragStart}
           handleNodeDragStop={handleNodeDragStop}
           redoHistory={redoHistory}

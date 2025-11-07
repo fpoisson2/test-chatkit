@@ -75,6 +75,12 @@ interface WorkflowBuilderCanvasProps {
   handleNodesChange: (changes: NodeChange<FlowNodeData>[]) => void;
   handleEdgesChange: (changes: EdgeChange<FlowEdgeData>[]) => void;
 
+  // Selection handlers (from Page - include double-tap logic)
+  handleNodeClick: NodeMouseHandler<FlowNode>;
+  handleEdgeClick: EdgeMouseHandler<FlowEdge>;
+  handleClearSelection: PaneClickHandler;
+  handleSelectionChange: OnSelectionChangeFunc<FlowNode, FlowEdge>;
+
   // Drag handlers (complex external logic)
   handleNodeDragStart: NodeDragHandler<FlowNode>;
   handleNodeDragStop: NodeDragHandler<FlowNode>;
@@ -105,7 +111,7 @@ interface WorkflowBuilderCanvasProps {
 }
 
 const WorkflowBuilderCanvas = ({
-  // Props from parent (23 props)
+  // Props from parent (27 props)
   openSidebar,
   renderHeaderControls,
   renderWorkflowDescription,
@@ -115,6 +121,10 @@ const WorkflowBuilderCanvas = ({
   reactFlowContainerRef,
   handleNodesChange,
   handleEdgesChange,
+  handleNodeClick,
+  handleEdgeClick,
+  handleClearSelection,
+  handleSelectionChange,
   handleNodeDragStart,
   handleNodeDragStop,
   redoHistory,
@@ -167,12 +177,8 @@ const WorkflowBuilderCanvas = ({
     blockLibraryToggleRef,
   } = useUIContext();
 
-  // SelectionContext - Selection handlers (5 values)
+  // SelectionContext - Selection state (1 value)
   const {
-    handleNodeClick,
-    handleEdgeClick,
-    handleClearSelection,
-    handleSelectionChange,
     hasSelectedElement,
   } = useSelectionContext();
 
