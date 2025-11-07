@@ -238,7 +238,7 @@ const BlockLibrary = ({
           aria-label="Blocs disponibles"
         >
           {items.map((item) => {
-            const disabled = loading || !selectedWorkflowId;
+            const disabled = loading || selectedWorkflowId == null;
             return (
               <div
                 key={item.key}
@@ -325,7 +325,7 @@ const BlockLibrary = ({
       >
         {isOpen
           ? items.map((item) => {
-              const disabled = loading || !selectedWorkflowId;
+              const disabled = loading || selectedWorkflowId == null;
               return (
                 <div key={item.key} className={styles.blockLibraryDesktopItem} role="listitem">
                   <button
