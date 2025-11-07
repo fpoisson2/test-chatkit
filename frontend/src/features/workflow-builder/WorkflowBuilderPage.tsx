@@ -293,6 +293,8 @@ const WorkflowBuilderPage = () => {
     setSelectedNodeIds,
     selectedEdgeIds,
     setSelectedEdgeIds,
+    selectedNodeIdsRef,
+    selectedEdgeIdsRef,
     previousSelectedElementRef,
     selectNode,
     selectEdge,
