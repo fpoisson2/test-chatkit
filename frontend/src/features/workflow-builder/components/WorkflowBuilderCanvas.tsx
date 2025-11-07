@@ -3,6 +3,7 @@ import {
   type MutableRefObject,
   type ReactNode,
   type RefCallback,
+  useMemo,
 } from "react";
 import ReactFlow, {
   Background,
@@ -34,7 +35,19 @@ import type {
   FlowNode,
   FlowNodeData,
 } from "../types";
-import { loadingStyle } from "../styles";
+import {
+  loadingStyle,
+  getHeaderContainerStyle,
+  getHeaderNavigationButtonStyle,
+} from "../styles";
+import {
+  useGraphContext,
+  useViewportContext,
+  useUIContext,
+  useSelectionContext,
+  useWorkflowContext,
+} from "../contexts";
+import { DESKTOP_WORKSPACE_HORIZONTAL_PADDING } from "../WorkflowBuilderUtils";
 
 export interface MobileActionLabels {
   redo: string;
@@ -45,134 +58,211 @@ export interface MobileActionLabels {
 }
 
 interface WorkflowBuilderCanvasProps {
+  // Sidebar navigation
   openSidebar: () => void;
-  headerStyle: CSSProperties;
-  headerNavigationButtonStyle: CSSProperties;
+
+  // Render props (delegated rendering)
   renderHeaderControls: () => ReactNode;
-  workspaceWrapperStyle: CSSProperties;
-  workspaceContentStyle: CSSProperties;
-  shouldShowWorkflowDescription: boolean;
   renderWorkflowDescription: () => ReactNode;
-  shouldShowPublicationReminder: boolean;
   renderWorkflowPublicationReminder: () => ReactNode;
+  blockLibraryContent: ReactNode;
+  propertiesPanelElement: ReactNode;
+
+  // Refs (callbacks)
   reactFlowContainerRef: RefCallback<HTMLDivElement>;
-  editorContainerStyle: CSSProperties;
-  loading: boolean;
-  loadError: string | null;
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-  handleNodesChange: (changes: NodeChange<FlowNodeData>[]) => void;
-  handleEdgesChange: (changes: EdgeChange<FlowEdgeData>[]) => void;
+
+  // Drag handlers (complex external logic)
   handleNodeDragStart: NodeDragHandler<FlowNode>;
   handleNodeDragStop: NodeDragHandler<FlowNode>;
-  handleNodeClick: NodeMouseHandler<FlowNode>;
-  handleEdgeClick: EdgeMouseHandler<FlowEdge>;
-  handleClearSelection: PaneClickHandler;
-  onConnect: (connection: Connection) => void;
-  handleSelectionChange: OnSelectionChangeFunc<FlowNode, FlowEdge>;
-  isMobileLayout: boolean;
-  minViewportZoom: number;
-  initialViewport: Viewport | undefined;
-  reactFlowInstanceRef: MutableRefObject<ReactFlowInstance | null>;
-  refreshViewportConstraints: (instance?: ReactFlowInstance | null) => number;
-  pendingViewportRestoreRef: MutableRefObject<boolean>;
-  restoreViewport: () => void;
-  isHydratingRef: MutableRefObject<boolean>;
-  viewportRef: MutableRefObject<Viewport | null>;
-  hasUserViewportChangeRef: MutableRefObject<boolean>;
-  viewportKeyRef: MutableRefObject<string | null>;
-  viewportMemoryRef: MutableRefObject<Map<string, Viewport>>;
-  persistViewportMemory: () => void;
-  isBlockLibraryOpen: boolean;
-  closeBlockLibrary: (options?: { focusToggle?: boolean }) => void;
-  blockLibraryId: string;
-  blockLibraryContent: ReactNode;
-  redoHistory: () => void;
-  undoHistory: () => void;
-  handleDuplicateSelection: () => void;
-  handleDeleteSelection: () => void;
-  canRedoHistory: boolean;
-  canUndoHistory: boolean;
-  canDuplicateSelection: boolean;
-  canDeleteSelection: boolean;
-  hasSelectedElement: boolean;
-  propertiesPanelToggleRef: MutableRefObject<HTMLButtonElement | null>;
-  isPropertiesPanelOpen: boolean;
-  handleClosePropertiesPanel: () => void;
-  handleOpenPropertiesPanel: () => void;
-  propertiesPanelId: string;
-  blockLibraryToggleRef: MutableRefObject<HTMLButtonElement | null>;
-  toggleBlockLibrary: () => void;
-  floatingPanelStyle: CSSProperties | undefined;
-  showPropertiesPanel: boolean;
-  propertiesPanelElement: ReactNode;
+
+  // Configuration labels
   mobileActionLabels: MobileActionLabels;
+
+  // Render conditions (calculated in parent)
+  shouldShowWorkflowDescription: boolean;
+  shouldShowPublicationReminder: boolean;
+
+  // Layout flag
+  isMobileLayout: boolean;
 }
 
 const WorkflowBuilderCanvas = ({
+  // Props from parent (14 legitimate props)
   openSidebar,
-  headerStyle,
-  headerNavigationButtonStyle,
   renderHeaderControls,
-  workspaceWrapperStyle,
-  workspaceContentStyle,
-  shouldShowWorkflowDescription,
   renderWorkflowDescription,
-  shouldShowPublicationReminder,
   renderWorkflowPublicationReminder,
+  blockLibraryContent,
+  propertiesPanelElement,
   reactFlowContainerRef,
-  editorContainerStyle,
-  loading,
-  loadError,
-  nodes,
-  edges,
-  handleNodesChange,
-  handleEdgesChange,
   handleNodeDragStart,
   handleNodeDragStop,
-  handleNodeClick,
-  handleEdgeClick,
-  handleClearSelection,
-  onConnect,
-  handleSelectionChange,
-  isMobileLayout,
-  minViewportZoom,
-  initialViewport,
-  reactFlowInstanceRef,
-  refreshViewportConstraints,
-  pendingViewportRestoreRef,
-  restoreViewport,
-  isHydratingRef,
-  viewportRef,
-  hasUserViewportChangeRef,
-  viewportKeyRef,
-  viewportMemoryRef,
-  persistViewportMemory,
-  isBlockLibraryOpen,
-  closeBlockLibrary,
-  blockLibraryId,
-  blockLibraryContent,
-  redoHistory,
-  undoHistory,
-  handleDuplicateSelection,
-  handleDeleteSelection,
-  canRedoHistory,
-  canUndoHistory,
-  canDuplicateSelection,
-  canDeleteSelection,
-  hasSelectedElement,
-  propertiesPanelToggleRef,
-  isPropertiesPanelOpen,
-  handleClosePropertiesPanel,
-  handleOpenPropertiesPanel,
-  propertiesPanelId,
-  blockLibraryToggleRef,
-  toggleBlockLibrary,
-  floatingPanelStyle,
-  showPropertiesPanel,
-  propertiesPanelElement,
   mobileActionLabels,
+  shouldShowWorkflowDescription,
+  shouldShowPublicationReminder,
+  isMobileLayout,
 }: WorkflowBuilderCanvasProps) => {
+  // GraphContext - Graph state and operations (13 values)
+  const {
+    nodes,
+    edges,
+    handleNodesChange,
+    handleEdgesChange,
+    onConnect,
+    redoHistory,
+    undoHistory,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    canRedoHistory,
+    canUndoHistory,
+    canDuplicateSelection,
+    canDeleteSelection,
+  } = useGraphContext();
+
+  // ViewportContext - Viewport state and persistence (12 values)
+  const {
+    minViewportZoom,
+    initialViewport,
+    reactFlowInstanceRef,
+    refreshViewportConstraints,
+    pendingViewportRestoreRef,
+    restoreViewport,
+    isHydratingRef,
+    viewportRef,
+    hasUserViewportChangeRef,
+    viewportKeyRef,
+    viewportMemoryRef,
+    persistViewportMemory,
+  } = useViewportContext();
+
+  // UIContext - UI panel state (11 values)
+  const {
+    isBlockLibraryOpen,
+    closeBlockLibrary,
+    blockLibraryId,
+    isPropertiesPanelOpen,
+    closePropertiesPanel,
+    openPropertiesPanel,
+    propertiesPanelId,
+    toggleBlockLibrary,
+    propertiesPanelToggleRef,
+    blockLibraryToggleRef,
+  } = useUIContext();
+
+  // SelectionContext - Selection handlers (5 values)
+  const {
+    handleNodeClick,
+    handleEdgeClick,
+    handleClearSelection,
+    handleSelectionChange,
+    hasSelectedElement,
+  } = useSelectionContext();
+
+  // WorkflowContext - Workflow loading state (2 values)
+  const {
+    loading,
+    loadError,
+  } = useWorkflowContext();
+
+  // Style calculations (moved from WorkflowBuilderPage)
+  const headerOverlayOffset = useMemo(
+    () => (isMobileLayout ? "4rem" : "4.25rem"),
+    [isMobileLayout],
+  );
+
+  const headerStyle = useMemo(() => {
+    const baseStyle = getHeaderContainerStyle(isMobileLayout);
+    return { ...baseStyle, position: "absolute" as const, top: 0, left: 0, right: 0 };
+  }, [isMobileLayout]);
+
+  const headerNavigationButtonStyle = useMemo(
+    () => getHeaderNavigationButtonStyle(isMobileLayout),
+    [isMobileLayout],
+  );
+
+  const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
+    if (isMobileLayout) {
+      return { position: "absolute" as const, inset: 0, overflow: "hidden" };
+    }
+    return { position: "relative" as const, flex: 1, overflow: "hidden", minHeight: 0 };
+  }, [isMobileLayout]);
+
+  const workspaceContentStyle = useMemo<CSSProperties>(() => {
+    if (isMobileLayout) {
+      return {
+        position: "absolute" as const,
+        inset: 0,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0",
+      };
+    }
+
+    const hasWorkflowMeta = shouldShowWorkflowDescription || shouldShowPublicationReminder;
+
+    return {
+      position: "absolute" as const,
+      inset: 0,
+      overflow: "hidden",
+      display: "flex",
+      flexDirection: "column",
+      gap: hasWorkflowMeta ? "1rem" : "0",
+      paddingTop: `calc(${headerOverlayOffset}${
+        hasWorkflowMeta ? ` + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}` : ""
+      })`,
+      paddingBottom: 0,
+      paddingLeft: DESKTOP_WORKSPACE_HORIZONTAL_PADDING,
+      paddingRight: DESKTOP_WORKSPACE_HORIZONTAL_PADDING,
+    };
+  }, [
+    headerOverlayOffset,
+    isMobileLayout,
+    shouldShowPublicationReminder,
+    shouldShowWorkflowDescription,
+  ]);
+
+  const editorContainerStyle = useMemo<CSSProperties>(() => {
+    const baseStyle: CSSProperties = {
+      flex: 1,
+      minHeight: 0,
+      borderRadius: isMobileLayout ? 0 : "1.25rem",
+      border: isMobileLayout ? "none" : "1px solid var(--surface-border)",
+      background: "var(--surface-strong)",
+      overflow: "hidden",
+      boxShadow: isMobileLayout ? "none" : "var(--shadow-card)",
+    };
+
+    if (!isMobileLayout) {
+      baseStyle.marginLeft = `calc(-1 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`;
+      baseStyle.marginRight = `calc(-1 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`;
+    }
+
+    if (!isMobileLayout && !(shouldShowWorkflowDescription || shouldShowPublicationReminder)) {
+      baseStyle.marginTop = `calc(-1 * ${headerOverlayOffset})`;
+    }
+
+    return baseStyle;
+  }, [
+    headerOverlayOffset,
+    isMobileLayout,
+    shouldShowPublicationReminder,
+    shouldShowWorkflowDescription,
+  ]);
+
+  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
+    if (isMobileLayout) {
+      return undefined;
+    }
+
+    return {
+      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
+      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
+    };
+  }, [headerOverlayOffset, isMobileLayout]);
+
+  const showPropertiesPanel = isPropertiesPanelOpen && hasSelectedElement;
+
   return (
     <>
       <header style={headerStyle}>
