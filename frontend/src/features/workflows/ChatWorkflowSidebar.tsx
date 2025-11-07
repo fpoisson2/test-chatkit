@@ -1004,11 +1004,28 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       );
     };
 
+    const sectionClassName = isAdmin
+      ? "chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
+      : "chatkit-sidebar__section";
+
     return (
-      <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
+      <section className={sectionClassName} aria-labelledby={`${sectionId}-title`}>
         <h2 id={`${sectionId}-title`} className="visually-hidden">
           {t("workflows.defaultSectionTitle")}
         </h2>
+        {isAdmin ? (
+          <div className="chatkit-sidebar__section-floating-action">
+            <button
+              type="button"
+              className="chatkit-sidebar__section-icon-button"
+              onClick={handleOpenBuilder}
+              aria-label={t("workflowBuilder.createWorkflow.openModal")}
+              title={t("workflowBuilder.createWorkflow.openModal")}
+            >
+              <span aria-hidden="true">+</span>
+            </button>
+          </div>
+        ) : null}
         {pinnedCombinedEntries.length > 0 ? (
           <div
             className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
