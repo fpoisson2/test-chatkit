@@ -441,21 +441,16 @@ const WorkflowBuilderPage = () => {
     workflowMenuRef.current = null;
   }, [workflowMenuRef, workflowMenuTriggerRef]);
 
-  // Use modal management hook for all modals and mobile actions
+  // Use modal management hook for mobile actions only
+  // Note: Modal states (Appearance, Create, Deploy) come from ModalContext above
   const {
-    isAppearanceModalOpen,
     appearanceModalTarget,
     appearanceModalTriggerRef,
-    handleCloseAppearanceModal,
     openAppearanceModal,
     setAppearanceModalTarget,
-    isCreateModalOpen,
     handleOpenCreateModal,
-    handleCloseCreateModal,
     setCreateModalOpen,
-    isDeployModalOpen,
     handleOpenDeployModal,
-    handleCloseDeployModal,
     setDeployModalOpen,
     isMobileActionsOpen,
     toggleMobileActions,
