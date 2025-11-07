@@ -8,17 +8,7 @@ import {
   type CSSProperties,
 } from "react";
 
-import {
-  MarkerType,
-  addEdge,
-  type Connection,
-  type EdgeChange,
-  type NodeChange,
-  type ReactFlowInstance,
-  type Viewport,
-  useEdgesState,
-  useNodesState,
-} from "reactflow";
+import { type EdgeChange, type NodeChange, type ReactFlowInstance, type Viewport } from "reactflow";
 
 import "reactflow/dist/style.css";
 
@@ -169,7 +159,6 @@ import type {
   ParallelBranch,
 } from "./types";
 import {
-  buildEdgeStyle,
   buildGraphPayloadFrom,
   buildNodeStyle,
   extractPosition,
@@ -317,6 +306,8 @@ const WorkflowBuilderPage = () => {
     edges,
     setEdges,
     onNodesChange,
+    onEdgesChange,
+    onConnect,
     applyEdgesChange,
     hasPendingChanges,
     updateHasPendingChanges,
@@ -931,28 +922,6 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     void loadHostedWorkflows();
   }, [loadHostedWorkflows]);
-
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      setEdges((current) =>
-        addEdge<FlowEdgeData>(
-          {
-            ...connection,
-            id: `edge-${Date.now()}`,
-            label: "",
-            data: { condition: "", metadata: {} },
-            markerEnd: defaultEdgeOptions.markerEnd
-              ? { ...defaultEdgeOptions.markerEnd }
-              : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
-            style: buildEdgeStyle({ isSelected: false }),
-          },
-          current
-        )
-      );
-      updateHasPendingChanges(true);
-    },
-    [setEdges, updateHasPendingChanges]
-  );
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? null,
