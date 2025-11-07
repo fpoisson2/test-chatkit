@@ -105,6 +105,32 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const [workflowMenuPlacement, setWorkflowMenuPlacement] = useState<ActionMenuPlacement>("down");
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Sync openWorkflowMenuId with localStorage to persist across pages
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('chatkit.workflow.openMenuId');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setOpenWorkflowMenuId(parsed);
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (openWorkflowMenuId !== null) {
+        localStorage.setItem('chatkit.workflow.openMenuId', JSON.stringify(openWorkflowMenuId));
+      } else {
+        localStorage.removeItem('chatkit.workflow.openMenuId');
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+  }, [openWorkflowMenuId]);
+
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("down");
