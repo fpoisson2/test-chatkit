@@ -138,6 +138,7 @@ import useWorkflowNodeHandlers from "./hooks/useWorkflowNodeHandlers";
 import useGraphEditor from "./hooks/useGraphEditor";
 import useWorkflowPersistence from "./hooks/useWorkflowPersistence";
 import { useWorkflowLoader } from "./hooks/useWorkflowLoader";
+import { useWorkflowCRUD } from "./hooks/useWorkflowCRUD";
 import { useWorkflowDeployment } from "./hooks/useWorkflowDeployment";
 import { parseWorkflowImport } from "./importWorkflow";
 import WorkflowAppearanceModal, {
@@ -851,7 +852,7 @@ const WorkflowBuilderPage = () => {
   );
 
   // Phase 6: Extract complex loading logic into useWorkflowLoader hook
-  const { loadVersionDetail, loadVersions } = useWorkflowLoader({
+  const { loadVersionDetail, loadVersions, loadWorkflows } = useWorkflowLoader({
     authHeader,
     t,
     deviceType,
@@ -864,137 +865,8 @@ const WorkflowBuilderPage = () => {
     draftDisplayName,
     persistViewportMemory,
     buildGraphPayloadFrom,
+    hasLoadedWorkflowsRef,
   });
-
-  const loadWorkflows = useCallback(
-    async (
-      options: {
-        selectWorkflowId?: number | null;
-        selectVersionId?: number | null;
-        excludeWorkflowId?: number | null;
-        suppressLoadingState?: boolean;
-      } = {},
-    ): Promise<void> => {
-      const {
-        selectWorkflowId,
-        selectVersionId,
-        excludeWorkflowId,
-        suppressLoadingState = false,
-      } = options;
-      hasLoadedWorkflowsRef.current = false;
-      if (!suppressLoadingState) {
-        setLoading(true);
-      }
-      setLoadError(null);
-      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
-      let lastError: Error | null = null;
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(
-              t("workflowBuilder.errors.loadLibraryFailedWithStatus", {
-                status: response.status,
-              }),
-            );
-          }
-          const data: WorkflowSummary[] = await response.json();
-          hasLoadedWorkflowsRef.current = true;
-          setWorkflows(data);
-          if (data.length === 0) {
-            setSelectedWorkflowId(null);
-            setSelectedVersionId(null);
-            setVersions([]);
-            setNodes([]);
-            setEdges([]);
-            isHydratingRef.current = true;
-            setTimeout(() => {
-              isHydratingRef.current = false;
-            }, 100);
-            const emptySnapshot = JSON.stringify(buildGraphPayloadFrom([], []));
-            lastSavedSnapshotRef.current = emptySnapshot;
-            resetHistory(emptySnapshot);
-            updateHasPendingChanges(false);
-            setLoading(false);
-            viewportKeyRef.current = null;
-            viewportRef.current = null;
-            viewportMemoryRef.current.clear();
-            persistViewportMemory();
-            hasUserViewportChangeRef.current = false;
-            pendingViewportRestoreRef.current = true;
-            restoreViewport();
-            return;
-          }
-          const availableIds = new Set(data.map((workflow) => workflow.id));
-          const excluded = excludeWorkflowId ?? null;
-          const chatkitWorkflow = data.find(
-            (workflow) =>
-              workflow.is_chatkit_default &&
-              workflow.id !== excluded &&
-              availableIds.has(workflow.id),
-          );
-          let nextWorkflowId = selectWorkflowId ?? null;
-          if (
-            nextWorkflowId &&
-            (!availableIds.has(nextWorkflowId) || (excluded != null && nextWorkflowId === excluded))
-          ) {
-            nextWorkflowId = null;
-          }
-          if (
-            nextWorkflowId == null &&
-            selectedWorkflowId &&
-            availableIds.has(selectedWorkflowId) &&
-            (excluded == null || selectedWorkflowId !== excluded)
-          ) {
-            nextWorkflowId = selectedWorkflowId;
-          }
-          if (nextWorkflowId == null) {
-            const fallback = chatkitWorkflow ?? data.find((workflow) => workflow.id !== excluded);
-            nextWorkflowId = fallback?.id ?? data[0]?.id ?? null;
-          }
-          setSelectedWorkflowId(nextWorkflowId);
-          if (nextWorkflowId != null) {
-            await loadVersions(nextWorkflowId, selectVersionId ?? null, {
-              background: suppressLoadingState,
-            });
-          } else {
-            setLoading(false);
-          }
-          return;
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
-            continue;
-          }
-          lastError =
-            error instanceof Error
-              ? error
-              : new Error(t("workflowBuilder.errors.unknown"));
-        }
-      }
-      if (lastError) {
-        setLoadError(lastError.message);
-      }
-      setLoading(false);
-      hasLoadedWorkflowsRef.current = false;
-    },
-    [
-      authHeader,
-      loadVersions,
-      persistViewportMemory,
-      resetHistory,
-      restoreViewport,
-      selectedWorkflowId,
-      setEdges,
-      t,
-      updateHasPendingChanges,
-      setNodes,
-    ],
-  );
 
   const loadHostedWorkflows = useCallback(async () => {
     if (!token) {
@@ -1024,6 +896,30 @@ const WorkflowBuilderPage = () => {
       setHostedLoading(false);
     }
   }, [t, token, setHostedWorkflows, setHostedError, setHostedLoading]);
+
+  // Define buildGraphPayload before useWorkflowCRUD needs it
+  const buildGraphPayload = useCallback(
+    () => buildGraphPayloadFrom(nodes, edges),
+    [edges, nodes],
+  );
+
+  // Phase 1: Extract workflow CRUD operations into useWorkflowCRUD hook
+  const {
+    handleSubmitCreateWorkflow,
+    handleDeleteWorkflow,
+    handleDeleteHostedWorkflow,
+    handleDuplicateWorkflow,
+    handleRenameWorkflow,
+  } = useWorkflowCRUD({
+    authHeader,
+    token,
+    t,
+    loadWorkflows,
+    loadHostedWorkflows,
+    closeWorkflowMenu,
+    applySelection,
+    buildGraphPayload,
+  });
 
   useEffect(() => {
     void loadWorkflows({ suppressLoadingState: initialSidebarCacheUsedRef.current });
@@ -1438,260 +1334,9 @@ const WorkflowBuilderPage = () => {
   }, [handleOpenCreateModal]);
 
   // handleCloseCreateModal is provided by useWorkflowBuilderModals hook
-
-  const handleSubmitCreateWorkflow = useCallback(async () => {
-    setCreateWorkflowError(null);
-    const trimmedName = createWorkflowName.trim();
-    if (!trimmedName) {
-      setCreateWorkflowError(t("workflowBuilder.createWorkflow.errorMissingName"));
-      return;
-    }
-
-    if (createWorkflowKind === "hosted") {
-      const remoteId = createWorkflowRemoteId.trim();
-      if (!remoteId) {
-        setCreateWorkflowError(t("workflowBuilder.createWorkflow.errorMissingRemoteId"));
-        return;
-      }
-      if (!token) {
-        const message = t("workflowBuilder.createWorkflow.errorAuthentication");
-        setSaveState("error");
-        setSaveMessage(message);
-        setCreateWorkflowError(message);
-        return;
-      }
-
-      setIsCreatingWorkflow(true);
-      const slug = slugifyWorkflowName(trimmedName);
-      setSaveState("saving");
-      setSaveMessage(t("workflowBuilder.createWorkflow.creatingHosted"));
-      try {
-        const created = await chatkitApi.createHostedWorkflow(token, {
-          slug,
-          workflow_id: remoteId,
-          label: trimmedName,
-          description: undefined,
-        });
-        chatkitApi.invalidateHostedWorkflowCache();
-        await loadHostedWorkflows();
-        setSaveState("saved");
-        setSaveMessage(
-          t("workflowBuilder.createWorkflow.successHosted", { label: created.label }),
-        );
-        setTimeout(() => setSaveState("idle"), 1500);
-        setCreateModalOpen(false);
-        setCreateWorkflowName("");
-        setCreateWorkflowRemoteId("");
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : t("workflowBuilder.createWorkflow.errorCreateHosted");
-        setSaveState("error");
-        setSaveMessage(message);
-        setCreateWorkflowError(message);
-      } finally {
-        setIsCreatingWorkflow(false);
-      }
-      return;
-    }
-
-    setIsCreatingWorkflow(true);
-    try {
-      const slug = slugifyWorkflowName(trimmedName);
-      const payload = {
-        slug,
-        display_name: trimmedName,
-        description: null,
-        graph: null,
-      };
-      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
-      let lastError: Error | null = null;
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-            body: JSON.stringify(payload),
-          });
-          if (!response.ok) {
-            throw new Error(`Échec de la création (${response.status})`);
-          }
-          const data: WorkflowVersionResponse = await response.json();
-          await loadWorkflows({
-            selectWorkflowId: data.workflow_id,
-            selectVersionId: data.id,
-          });
-          setSaveState("saved");
-          setSaveMessage(
-            t("workflowBuilder.createWorkflow.successLocal", { name: trimmedName }),
-          );
-          setTimeout(() => setSaveState("idle"), 1500);
-          setCreateModalOpen(false);
-          setCreateWorkflowName("");
-          setCreateWorkflowRemoteId("");
-          return;
-        } catch (error) {
-          lastError =
-            error instanceof Error
-              ? error
-              : new Error(t("workflowBuilder.createWorkflow.errorCreateLocal"));
-        }
-      }
-      const message = lastError?.message ?? t("workflowBuilder.createWorkflow.errorCreateLocal");
-      setSaveState("error");
-      setSaveMessage(message);
-      setCreateWorkflowError(message);
-    } finally {
-      setIsCreatingWorkflow(false);
-    }
-  }, [
-    authHeader,
-    backendUrl,
-    createWorkflowKind,
-    createWorkflowName,
-    createWorkflowRemoteId,
-    loadHostedWorkflows,
-    loadWorkflows,
-    t,
-    token,
-  ]);
-
-  const handleDeleteWorkflow = useCallback(
-    async (workflowId?: number) => {
-      const targetId = workflowId ?? selectedWorkflowId;
-      if (!targetId) {
-        return;
-      }
-      const current = workflows.find((workflow) => workflow.id === targetId);
-      if (!current) {
-        return;
-      }
-      if (current.is_chatkit_default) {
-        setSaveState("error");
-        setSaveMessage(
-          "Sélectionnez un autre workflow pour ChatKit avant de supprimer celui-ci.",
-        );
-        return;
-      }
-      const confirmed = window.confirm(
-        `Supprimer le workflow "${current.display_name}" ? Cette action est irréversible.`,
-      );
-      if (!confirmed) {
-        return;
-      }
-      closeWorkflowMenu();
-      const endpoint = `/api/workflows/${targetId}`;
-      const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-      let lastError: Error | null = null;
-      setSaveState("saving");
-      setSaveMessage("Suppression en cours…");
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            method: "DELETE",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-          });
-          if (response.status === 204) {
-            applySelection({ nodeIds: [], edgeIds: [] });
-            const nextSelection = targetId === selectedWorkflowId ? null : selectedWorkflowId;
-            await loadWorkflows({
-              excludeWorkflowId: current.id,
-              selectWorkflowId: nextSelection ?? undefined,
-            });
-            setSaveState("saved");
-            setSaveMessage(`Workflow "${current.display_name}" supprimé.`);
-            setTimeout(() => setSaveState("idle"), 1500);
-            return;
-          }
-        if (response.status === 400) {
-          let message = "Impossible de supprimer le workflow.";
-          try {
-            const detail = (await response.json()) as { detail?: unknown };
-            if (detail && typeof detail.detail === "string") {
-              message = detail.detail;
-            }
-          } catch (parseError) {
-            console.error(parseError);
-          }
-          throw new Error(message);
-        }
-        if (response.status === 404) {
-          throw new Error("Le workflow n'existe plus.");
-        }
-        throw new Error(`Impossible de supprimer le workflow (${response.status}).`);
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          continue;
-        }
-        lastError = error instanceof Error ? error : new Error("Impossible de supprimer le workflow.");
-      }
-      }
-      setSaveState("error");
-      setSaveMessage(lastError?.message ?? "Impossible de supprimer le workflow.");
-    },
-    [
-      authHeader,
-      backendUrl,
-      applySelection,
-      closeWorkflowMenu,
-      loadWorkflows,
-      selectedWorkflowId,
-      workflows,
-    ],
-  );
-
-  const handleDeleteHostedWorkflow = useCallback(
-    async (slug: string) => {
-      if (!token) {
-        setSaveState("error");
-        setSaveMessage(t("workflowBuilder.createWorkflow.errorAuthentication"));
-        return;
-      }
-      const entry = hostedWorkflows.find((workflow) => workflow.slug === slug);
-      if (!entry) {
-        return;
-      }
-      closeWorkflowMenu();
-      const confirmed = window.confirm(
-        t("workflowBuilder.hostedSection.confirmDelete", { label: entry.label }),
-      );
-      if (!confirmed) {
-        return;
-      }
-      setSaveState("saving");
-      setSaveMessage(t("workflowBuilder.hostedSection.deleting"));
-      try {
-        await chatkitApi.deleteHostedWorkflow(token, slug);
-        chatkitApi.invalidateHostedWorkflowCache();
-        await loadHostedWorkflows();
-        setSaveState("saved");
-        setSaveMessage(
-          t("workflowBuilder.hostedSection.deleteSuccess", { label: entry.label }),
-        );
-        setTimeout(() => setSaveState("idle"), 1500);
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : t("workflowBuilder.hostedSection.deleteError");
-        setSaveState("error");
-        setSaveMessage(message);
-      }
-    },
-    [closeWorkflowMenu, hostedWorkflows, loadHostedWorkflows, t, token],
-  );
-
-  const buildGraphPayload = useCallback(
-    () => buildGraphPayloadFrom(nodes, edges),
-    [edges, nodes],
-  );
+  // handleSubmitCreateWorkflow, handleDeleteWorkflow, handleDeleteHostedWorkflow
+  // now provided by useWorkflowCRUD hook (Phase 1)
+  // buildGraphPayload is now defined earlier (before useWorkflowCRUD)
 
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
 
@@ -1748,173 +1393,8 @@ const WorkflowBuilderPage = () => {
     enabled: isDeployModalOpen,
   });
 
-  const handleDuplicateWorkflow = useCallback(
-    async (workflowId?: number) => {
-      const targetId = workflowId ?? selectedWorkflowId;
-      if (!targetId || !selectedWorkflow || targetId !== selectedWorkflowId) {
-        closeWorkflowMenu();
-        if (targetId && targetId !== selectedWorkflowId) {
-          setSaveState("error");
-          setSaveMessage("Sélectionnez le workflow avant de le dupliquer.");
-          setTimeout(() => setSaveState("idle"), 1500);
-        }
-        return;
-      }
-
-      const baseName = selectedWorkflow.display_name?.trim() || "Workflow sans nom";
-      const proposed = window.prompt("Nom du duplicata ?", `${baseName} (copie)`);
-      if (!proposed) {
-        return;
-      }
-
-      const displayName = proposed.trim();
-      if (!displayName) {
-        return;
-      }
-
-      const payload = {
-        slug: slugifyWorkflowName(displayName),
-        display_name: displayName,
-        description: selectedWorkflow.description,
-        graph: buildGraphPayload(),
-      };
-
-      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
-      let lastError: Error | null = null;
-      setSaveState("saving");
-      setSaveMessage("Duplication en cours…");
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-            body: JSON.stringify(payload),
-          });
-
-          if (!response.ok) {
-            throw new Error(`Échec de la duplication (${response.status})`);
-          }
-
-          const data: WorkflowVersionResponse = await response.json();
-          closeWorkflowMenu();
-          await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
-          setSaveState("saved");
-          setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
-          setTimeout(() => setSaveState("idle"), 1500);
-          return;
-        } catch (error) {
-          lastError = error instanceof Error ? error : new Error("Impossible de dupliquer le workflow.");
-        }
-      }
-
-      setSaveState("error");
-      setSaveMessage(lastError?.message ?? "Impossible de dupliquer le workflow.");
-    },
-    [
-      authHeader,
-      buildGraphPayload,
-      closeWorkflowMenu,
-      loadWorkflows,
-      selectedWorkflow,
-      selectedWorkflowId,
-    ],
-  );
-
-  const handleRenameWorkflow = useCallback(
-    async (workflowId?: number) => {
-      const targetId = workflowId ?? selectedWorkflowId;
-      if (!targetId) {
-        return;
-      }
-
-      const target = workflows.find((workflow) => workflow.id === targetId);
-      if (!target) {
-        closeWorkflowMenu();
-        return;
-      }
-
-      closeWorkflowMenu();
-
-      const baseName = target.display_name?.trim() || "Workflow sans nom";
-      const proposed = window.prompt("Nouveau nom du workflow ?", baseName);
-      if (proposed === null) {
-        return;
-      }
-
-      const displayName = proposed.trim();
-      if (!displayName || displayName === target.display_name) {
-        return;
-      }
-
-      const slug =
-        target.slug === "workflow-par-defaut"
-          ? target.slug
-          : slugifyWorkflowName(displayName);
-      if (!slug) {
-        setSaveState("error");
-        setSaveMessage("Impossible de renommer le workflow.");
-        return;
-      }
-
-      const payload = {
-        display_name: displayName,
-        slug,
-      };
-
-      const candidates = makeApiEndpointCandidates(backendUrl, `/api/workflows/${targetId}`);
-      let lastError: Error | null = null;
-
-      setSaveState("saving");
-      setSaveMessage("Renommage en cours…");
-
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-            body: JSON.stringify(payload),
-          });
-
-          if (!response.ok) {
-            throw new Error(`Échec du renommage (${response.status})`);
-          }
-
-          const summary: WorkflowSummary = await response.json();
-          await loadWorkflows({
-            selectWorkflowId: summary.id,
-            selectVersionId: selectedVersionId ?? null,
-          });
-          setSaveState("saved");
-          setSaveMessage(`Workflow renommé en "${summary.display_name}".`);
-          setTimeout(() => setSaveState("idle"), 1500);
-          return;
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
-            continue;
-          }
-          lastError = error instanceof Error ? error : new Error("Impossible de renommer le workflow.");
-        }
-      }
-
-      setSaveState("error");
-      setSaveMessage(lastError?.message ?? "Impossible de renommer le workflow.");
-    },
-    [
-      authHeader,
-      backendUrl,
-      closeWorkflowMenu,
-      loadWorkflows,
-      selectedVersionId,
-      selectedWorkflowId,
-      workflows,
-    ],
-  );
+  // handleDuplicateWorkflow and handleRenameWorkflow
+  // now provided by useWorkflowCRUD hook (Phase 1)
 
   const disableSave = useMemo(() => {
     if (!selectedWorkflowId) {
