@@ -782,38 +782,44 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (!user) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">
-            Connectez-vous pour choisir le workflow utilisé par ChatKit.
-          </p>
-        </section>
+        <div key="workflow-sidebar-content" data-sidebar-type="workflows">
+          <section className="chatkit-sidebar__section" aria-live="polite">
+            <h2 className="chatkit-sidebar__section-title">Workflow</h2>
+            <p className="chatkit-sidebar__section-text">
+              Connectez-vous pour choisir le workflow utilisé par ChatKit.
+            </p>
+          </section>
+        </div>
       );
     }
 
     if (error) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-error">{error}</p>
-          <button
-            type="button"
-            className="chatkit-sidebar__section-button"
-            onClick={() => void loadWorkflows()}
-            disabled={loading}
-          >
-            Réessayer
-          </button>
-        </section>
+        <div key="workflow-sidebar-content" data-sidebar-type="workflows">
+          <section className="chatkit-sidebar__section" aria-live="polite">
+            <h2 className="chatkit-sidebar__section-title">Workflow</h2>
+            <p className="chatkit-sidebar__section-error">{error}</p>
+            <button
+              type="button"
+              className="chatkit-sidebar__section-button"
+              onClick={() => void loadWorkflows()}
+              disabled={loading}
+            >
+              Réessayer
+            </button>
+          </section>
+        </div>
       );
     }
 
     if (loading) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">Chargement des workflows…</p>
-        </section>
+        <div key="workflow-sidebar-content" data-sidebar-type="workflows">
+          <section className="chatkit-sidebar__section" aria-live="polite">
+            <h2 className="chatkit-sidebar__section-title">Workflow</h2>
+            <p className="chatkit-sidebar__section-text">Chargement des workflows…</p>
+          </section>
+        </div>
       );
     }
 
@@ -822,17 +828,19 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (!hasHostedWorkflow && !hasLocalWorkflows) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">
-            Publiez un workflow pour qu'il soit disponible dans le chat.
-          </p>
-          {isAdmin ? (
-            <button type="button" className="chatkit-sidebar__section-button" onClick={handleOpenBuilder}>
-              Ouvrir le workflow builder
-            </button>
-          ) : null}
-        </section>
+        <div key="workflow-sidebar-content" data-sidebar-type="workflows">
+          <section className="chatkit-sidebar__section" aria-live="polite">
+            <h2 className="chatkit-sidebar__section-title">Workflow</h2>
+            <p className="chatkit-sidebar__section-text">
+              Publiez un workflow pour qu'il soit disponible dans le chat.
+            </p>
+            {isAdmin ? (
+              <button type="button" className="chatkit-sidebar__section-button" onClick={handleOpenBuilder}>
+                Ouvrir le workflow builder
+              </button>
+            ) : null}
+          </section>
+        </div>
       );
     }
 
@@ -1015,59 +1023,61 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       : "chatkit-sidebar__section";
 
     return (
-      <section className={sectionClassName} aria-labelledby={`${sectionId}-title`}>
-        <h2 id={`${sectionId}-title`} className="visually-hidden">
-          {t("workflows.defaultSectionTitle")}
-        </h2>
-        {isAdmin ? (
-          <div className="chatkit-sidebar__section-floating-action">
+      <div key="workflow-sidebar-content" data-sidebar-type="workflows">
+        <section className={sectionClassName} aria-labelledby={`${sectionId}-title`}>
+          <h2 id={`${sectionId}-title`} className="visually-hidden">
+            {t("workflows.defaultSectionTitle")}
+          </h2>
+          {isAdmin ? (
+            <div className="chatkit-sidebar__section-floating-action">
+              <button
+                type="button"
+                className="chatkit-sidebar__section-icon-button"
+                onClick={handleOpenBuilder}
+                aria-label={t("workflowBuilder.createWorkflow.openModal")}
+                title={t("workflowBuilder.createWorkflow.openModal")}
+              >
+                <span aria-hidden="true">+</span>
+              </button>
+            </div>
+          ) : null}
+          {pinnedCombinedEntries.length > 0 ? (
+            <div
+              className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
+              data-workflow-group="pinned"
+            >
+              <h3 className="chatkit-sidebar__workflow-group-title">
+                {t("workflows.pinnedSectionTitle")}
+              </h3>
+              <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+                {pinnedCombinedEntries.map((entry) => renderEntry(entry))}
+              </ul>
+            </div>
+          ) : null}
+          {regularCombinedEntries.length > 0 ? (
+            <div
+              className="chatkit-sidebar__workflow-group"
+              data-workflow-group="default"
+            >
+              <h3 className="chatkit-sidebar__workflow-group-title">
+                {t("workflows.defaultSectionTitle")}
+              </h3>
+              <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+                {regularCombinedEntries.map((entry) => renderEntry(entry))}
+              </ul>
+            </div>
+          ) : null}
+          {!hasLocalWorkflows && isAdmin ? (
             <button
               type="button"
-              className="chatkit-sidebar__section-icon-button"
+              className="chatkit-sidebar__section-button"
               onClick={handleOpenBuilder}
-              aria-label={t("workflowBuilder.createWorkflow.openModal")}
-              title={t("workflowBuilder.createWorkflow.openModal")}
             >
-              <span aria-hidden="true">+</span>
+              Ouvrir le workflow builder
             </button>
-          </div>
-        ) : null}
-        {pinnedCombinedEntries.length > 0 ? (
-          <div
-            className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
-            data-workflow-group="pinned"
-          >
-            <h3 className="chatkit-sidebar__workflow-group-title">
-              {t("workflows.pinnedSectionTitle")}
-            </h3>
-            <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
-              {pinnedCombinedEntries.map((entry) => renderEntry(entry))}
-            </ul>
-          </div>
-        ) : null}
-        {regularCombinedEntries.length > 0 ? (
-          <div
-            className="chatkit-sidebar__workflow-group"
-            data-workflow-group="default"
-          >
-            <h3 className="chatkit-sidebar__workflow-group-title">
-              {t("workflows.defaultSectionTitle")}
-            </h3>
-            <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
-              {regularCombinedEntries.map((entry) => renderEntry(entry))}
-            </ul>
-          </div>
-        ) : null}
-        {!hasLocalWorkflows && isAdmin ? (
-          <button
-            type="button"
-            className="chatkit-sidebar__section-button"
-            onClick={handleOpenBuilder}
-          >
-            Ouvrir le workflow builder
-          </button>
-        ) : null}
-      </section>
+          ) : null}
+        </section>
+      </div>
     );
   }, [
     error,

@@ -421,37 +421,39 @@ const WorkflowBuilderSidebar = ({
     };
 
     return (
-      <section
-        className="chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
-        aria-labelledby={`${sectionId}-title`}
-      >
-        <h2 id={`${sectionId}-title`} className="visually-hidden">
-          {t("workflows.defaultSectionTitle")}
-        </h2>
-        <div className="chatkit-sidebar__section-floating-action">
-          <button
-            type="button"
-            className="chatkit-sidebar__section-icon-button"
-            onClick={onOpenCreateModal}
-            aria-label={t("workflowBuilder.createWorkflow.openModal")}
-            title={t("workflowBuilder.createWorkflow.openModal")}
-            disabled={isCreatingWorkflow}
-          >
-            <span aria-hidden="true">+</span>
-          </button>
-        </div>
-        {renderWorkflowList()}
-        {selectedWorkflow?.description ? (
-          <p className="chatkit-sidebar__section-text">
-            {selectedWorkflow.description}
-          </p>
-        ) : null}
-        {selectedWorkflow && !selectedWorkflow.active_version_id ? (
-          <p className="chatkit-sidebar__section-text" style={warningStyle}>
-            Publiez une version pour l'utiliser.
-          </p>
-        ) : null}
-      </section>
+      <div key="workflow-sidebar-content" data-sidebar-type="workflows">
+        <section
+          className="chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
+          aria-labelledby={`${sectionId}-title`}
+        >
+          <h2 id={`${sectionId}-title`} className="visually-hidden">
+            {t("workflows.defaultSectionTitle")}
+          </h2>
+          <div className="chatkit-sidebar__section-floating-action">
+            <button
+              type="button"
+              className="chatkit-sidebar__section-icon-button"
+              onClick={onOpenCreateModal}
+              aria-label={t("workflowBuilder.createWorkflow.openModal")}
+              title={t("workflowBuilder.createWorkflow.openModal")}
+              disabled={isCreatingWorkflow}
+            >
+              <span aria-hidden="true">+</span>
+            </button>
+          </div>
+          {renderWorkflowList()}
+          {selectedWorkflow?.description ? (
+            <p className="chatkit-sidebar__section-text">
+              {selectedWorkflow.description}
+            </p>
+          ) : null}
+          {selectedWorkflow && !selectedWorkflow.active_version_id ? (
+            <p className="chatkit-sidebar__section-text" style={warningStyle}>
+              Publiez une version pour l'utiliser.
+            </p>
+          ) : null}
+        </section>
+      </div>
     );
   }, [
     closeWorkflowMenu,
