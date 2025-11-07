@@ -179,6 +179,7 @@ export const WorkflowProvider = ({ children }: WorkflowProviderProps) => {
           if (response.status === 401) {
             setLoadError("Unauthorized");
             options?.onError?.("Unauthorized");
+            setLoading(false);
             return;
           }
 
