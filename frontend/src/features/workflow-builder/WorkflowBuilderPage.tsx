@@ -1401,13 +1401,16 @@ const WorkflowBuilderPage = () => {
       const isSameElement = lastTapped?.kind === "node" && lastTapped.id === node.id;
       const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
       lastTappedElementRef.current = { kind: "node", id: node.id, tapCount: nextTapCount };
-      setSelectedNodeId(node.id);
-      setSelectedEdgeId(null);
+      selectNode(node.id);  // Update selection state
+      // On mobile, applySelection is not called by ReactFlow, so we call it manually to apply visual styling
+      if (isMobileLayout) {
+        applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
+      }
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
         setIsPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout],
+    [isMobileLayout, selectNode, applySelection, setIsPropertiesPanelOpen],
   );
 
   const handleEdgeClick = useCallback(
@@ -1416,13 +1419,16 @@ const WorkflowBuilderPage = () => {
       const isSameElement = lastTapped?.kind === "edge" && lastTapped.id === edge.id;
       const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
       lastTappedElementRef.current = { kind: "edge", id: edge.id, tapCount: nextTapCount };
-      setSelectedEdgeId(edge.id);
-      setSelectedNodeId(null);
+      selectEdge(edge.id);  // Update selection state
+      // On mobile, applySelection is not called by ReactFlow, so we call it manually to apply visual styling
+      if (isMobileLayout) {
+        applySelection({ edgeIds: [edge.id], primaryEdgeId: edge.id });
+      }
       if (isMobileLayout && isSameElement && nextTapCount >= 2) {
         setIsPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout],
+    [isMobileLayout, selectEdge, applySelection, setIsPropertiesPanelOpen],
   );
 
   const handleClearSelection = clearSelection;
@@ -2877,67 +2883,31 @@ const WorkflowBuilderPage = () => {
       >
         <WorkflowBuilderCanvas
           openSidebar={openSidebar}
-          headerStyle={headerStyle}
-          headerNavigationButtonStyle={headerNavigationButtonStyle}
           renderHeaderControls={renderHeaderControls}
-          workspaceWrapperStyle={workspaceWrapperStyle}
-          workspaceContentStyle={workspaceContentStyle}
-          shouldShowWorkflowDescription={shouldShowWorkflowDescription}
           renderWorkflowDescription={renderWorkflowDescription}
-          shouldShowPublicationReminder={shouldShowPublicationReminder}
           renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
+          blockLibraryContent={blockLibraryContent}
+          propertiesPanelElement={propertiesPanelElement}
           reactFlowContainerRef={reactFlowContainerRef}
-          editorContainerStyle={editorContainerStyle}
-          loading={loading}
-          loadError={loadError}
-          nodes={nodes}
-          edges={edges}
           handleNodesChange={handleNodesChange}
           handleEdgesChange={handleEdgesChange}
-          handleNodeDragStart={handleNodeDragStart}
-          handleNodeDragStop={handleNodeDragStop}
           handleNodeClick={handleNodeClick}
           handleEdgeClick={handleEdgeClick}
           handleClearSelection={handleClearSelection}
-          onConnect={onConnect}
           handleSelectionChange={handleSelectionChange}
-          isMobileLayout={isMobileLayout}
-          minViewportZoom={minViewportZoom}
-          initialViewport={initialViewport}
-          reactFlowInstanceRef={reactFlowInstanceRef}
-          refreshViewportConstraints={refreshViewportConstraints}
-          pendingViewportRestoreRef={pendingViewportRestoreRef}
-          restoreViewport={restoreViewport}
-          isHydratingRef={isHydratingRef}
-          viewportRef={viewportRef}
-          hasUserViewportChangeRef={hasUserViewportChangeRef}
-          viewportKeyRef={viewportKeyRef}
-          viewportMemoryRef={viewportMemoryRef}
-          persistViewportMemory={persistViewportMemory}
-          isBlockLibraryOpen={isBlockLibraryOpen}
-          closeBlockLibrary={closeBlockLibrary}
-          blockLibraryId={blockLibraryId}
-          blockLibraryContent={blockLibraryContent}
+          handleNodeDragStart={handleNodeDragStart}
+          handleNodeDragStop={handleNodeDragStop}
           redoHistory={redoHistory}
           undoHistory={undoHistory}
           handleDuplicateSelection={handleDuplicateSelection}
           handleDeleteSelection={handleDeleteSelection}
           canRedoHistory={canRedoHistory}
           canUndoHistory={canUndoHistory}
-          canDuplicateSelection={canDuplicateSelection}
-          canDeleteSelection={canDeleteSelection}
-          hasSelectedElement={hasSelectedElement}
-          propertiesPanelToggleRef={propertiesPanelToggleRef}
-          isPropertiesPanelOpen={isPropertiesPanelOpen}
-          handleClosePropertiesPanel={handleClosePropertiesPanel}
-          handleOpenPropertiesPanel={handleOpenPropertiesPanel}
-          propertiesPanelId={propertiesPanelId}
-          blockLibraryToggleRef={blockLibraryToggleRef}
-          toggleBlockLibrary={toggleBlockLibrary}
-          floatingPanelStyle={floatingPanelStyle}
-          showPropertiesPanel={showPropertiesPanel}
-          propertiesPanelElement={propertiesPanelElement}
+          workflowBusy={workflowBusy}
           mobileActionLabels={mobileActionLabels}
+          shouldShowWorkflowDescription={shouldShowWorkflowDescription}
+          shouldShowPublicationReminder={shouldShowPublicationReminder}
+          isMobileLayout={isMobileLayout}
         />
       </div>
       <WorkflowBuilderToast />
