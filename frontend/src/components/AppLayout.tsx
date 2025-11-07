@@ -126,7 +126,6 @@ const useSidebarInteractions = ({
     }
 
     return {
-      onClick: onInteract,
       onPointerDown: onInteract,
       onTouchStart: onInteract,
     };
