@@ -346,8 +346,17 @@ const WorkflowBuilderPage = () => {
   } = useViewportContext();
 
   // Phase 4: WorkflowContext for workflow/version-related state
-  // Note: workflows/hostedWorkflows still come from useWorkflowSidebarState for sidebar management
+  // NOW FULLY MIGRATED: workflows, hostedWorkflows, selectedWorkflowId come from WorkflowContext
   const {
+    workflows,
+    setWorkflows,
+    workflowsRef,
+    hostedWorkflows,
+    setHostedWorkflows,
+    hostedWorkflowsRef,
+    selectedWorkflowId,
+    setSelectedWorkflowId,
+    selectedWorkflowIdRef,
     versions,
     selectedVersionId,
     selectedVersionDetail,
@@ -358,7 +367,6 @@ const WorkflowBuilderPage = () => {
     hostedLoading,
     hostedError,
     versionsRef,
-    selectedWorkflowIdRef,
     selectedVersionIdRef,
     draftVersionIdRef,
     draftVersionSummaryRef,
@@ -371,8 +379,6 @@ const WorkflowBuilderPage = () => {
     setLoadError,
     setHostedLoading,
     setHostedError,
-    setWorkflows: setWorkflowsContext,
-    setHostedWorkflows: setHostedWorkflowsContext,
   } = useWorkflowContext();
 
   const decorateNode = useCallback(
@@ -392,23 +398,21 @@ const WorkflowBuilderPage = () => {
     (list: FlowNode[]): FlowNode[] => list.map(decorateNode),
     [decorateNode],
   );
+
+  // useWorkflowSidebarState now only provides sidebar-specific functionality
+  // workflows, hostedWorkflows, selectedWorkflowId come from WorkflowContext above
   const {
     initialSidebarCache,
     initialSidebarCacheUsedRef,
-    workflows,
-    setWorkflows,
-    workflowsRef,
-    hostedWorkflows,
-    setHostedWorkflows,
-    hostedWorkflowsRef,
+    setWorkflows: setSidebarWorkflows,
+    setHostedWorkflows: setSidebarHostedWorkflows,
+    setSelectedWorkflowId: setSidebarSelectedWorkflowId,
     lastUsedAt,
     pinnedLookup,
     toggleLocalPin,
     toggleHostedPin,
     workflowSortCollatorRef,
     hasLoadedWorkflowsRef,
-    selectedWorkflowId,
-    setSelectedWorkflowId,
   } = useWorkflowSidebarState({ token });
 
   const {
@@ -631,6 +635,19 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     saveStateRef.current = saveState;
   }, [saveState]);
+
+  // Synchronize WorkflowContext state with useWorkflowSidebarState for cache/persistence
+  useEffect(() => {
+    setSidebarWorkflows(workflows);
+  }, [workflows, setSidebarWorkflows]);
+
+  useEffect(() => {
+    setSidebarHostedWorkflows(hostedWorkflows);
+  }, [hostedWorkflows, setSidebarHostedWorkflows]);
+
+  useEffect(() => {
+    setSidebarSelectedWorkflowId(selectedWorkflowId as number | null);
+  }, [selectedWorkflowId, setSidebarSelectedWorkflowId]);
 
   useEscapeKeyHandler(
     () => {
@@ -1222,7 +1239,6 @@ const WorkflowBuilderPage = () => {
           const data: WorkflowSummary[] = await response.json();
           hasLoadedWorkflowsRef.current = true;
           setWorkflows(data);
-          setWorkflowsContext(data);
           if (data.length === 0) {
             setSelectedWorkflowId(null);
             setSelectedVersionId(null);
@@ -1316,7 +1332,6 @@ const WorkflowBuilderPage = () => {
   const loadHostedWorkflows = useCallback(async () => {
     if (!token) {
       setHostedWorkflows([]);
-      setHostedWorkflowsContext([]);
       setHostedError(null);
       setHostedLoading(false);
       return;
@@ -1328,14 +1343,11 @@ const WorkflowBuilderPage = () => {
       const response = await chatkitApi.getHostedWorkflows(token, { cache: false });
       if (!response) {
         setHostedWorkflows([]);
-        setHostedWorkflowsContext([]);
       } else {
         setHostedWorkflows(response);
-        setHostedWorkflowsContext(response);
       }
     } catch (error) {
       setHostedWorkflows([]);
-      setHostedWorkflowsContext([]);
       const message =
         error instanceof Error
           ? error.message
@@ -1344,7 +1356,7 @@ const WorkflowBuilderPage = () => {
     } finally {
       setHostedLoading(false);
     }
-  }, [t, token]);
+  }, [t, token, setHostedWorkflows, setHostedError, setHostedLoading]);
 
   useEffect(() => {
     void loadWorkflows({ suppressLoadingState: initialSidebarCacheUsedRef.current });
