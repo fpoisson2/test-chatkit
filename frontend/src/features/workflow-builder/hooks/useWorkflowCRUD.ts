@@ -118,7 +118,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
     createWorkflowRemoteId,
     setCreateWorkflowError,
     setIsCreatingWorkflow,
-    setCreateModalOpen,
+    closeCreateModal,
     setCreateWorkflowName,
     setCreateWorkflowRemoteId,
   } = useModalContext();
@@ -173,7 +173,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
           t("workflowBuilder.createWorkflow.successHosted", { label: created.label }),
         );
         setTimeout(() => setSaveState("idle"), 1500);
-        setCreateModalOpen(false);
+        closeCreateModal();
         setCreateWorkflowName("");
         setCreateWorkflowRemoteId("");
       } catch (error) {
@@ -224,7 +224,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
             t("workflowBuilder.createWorkflow.successLocal", { name: trimmedName }),
           );
           setTimeout(() => setSaveState("idle"), 1500);
-          setCreateModalOpen(false);
+          closeCreateModal();
           setCreateWorkflowName("");
           setCreateWorkflowRemoteId("");
           return;
@@ -244,12 +244,12 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
     }
   }, [
     authHeader,
+    closeCreateModal,
     createWorkflowKind,
     createWorkflowName,
     createWorkflowRemoteId,
     loadHostedWorkflows,
     loadWorkflows,
-    setCreateModalOpen,
     setCreateWorkflowError,
     setCreateWorkflowName,
     setCreateWorkflowRemoteId,
