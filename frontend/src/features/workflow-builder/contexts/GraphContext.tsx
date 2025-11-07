@@ -40,6 +40,18 @@ type GraphContextValue = {
   updateHasPendingChanges: (value: boolean | ((prev: boolean) => boolean)) => void;
   setGraphSnapshot: (snapshot: string) => void;
   setIsNodeDragInProgress: (inProgress: boolean) => void;
+
+  // History Operations (provided by WorkflowBuilderPage via props)
+  undoHistory?: () => boolean;
+  redoHistory?: () => boolean;
+  canUndoHistory?: boolean;
+  canRedoHistory?: boolean;
+
+  // Selection Operations (provided by WorkflowBuilderPage via props)
+  handleDuplicateSelection?: () => boolean;
+  handleDeleteSelection?: () => boolean;
+  canDuplicateSelection?: boolean;
+  canDeleteSelection?: boolean;
 };
 
 const GraphContext = createContext<GraphContextValue | null>(null);
@@ -54,9 +66,68 @@ export const useGraphContext = () => {
 
 type GraphProviderProps = {
   children: ReactNode;
+  // Optional history handlers (from useWorkflowHistory)
+  undoHistory?: () => boolean;
+  redoHistory?: () => boolean;
+  canUndoHistory?: boolean;
+  canRedoHistory?: boolean;
+  // Optional selection handlers (from useGraphEditor)
+  handleDuplicateSelection?: () => boolean;
+  handleDeleteSelection?: () => boolean;
+  canDuplicateSelection?: boolean;
+  canDeleteSelection?: boolean;
 };
 
-export const GraphProvider = ({ children }: GraphProviderProps) => {
+export const GraphProvider = ({
+  children,
+  undoHistory,
+  redoHistory,
+  canUndoHistory,
+  canRedoHistory,
+  handleDuplicateSelection,
+  handleDeleteSelection,
+  canDuplicateSelection,
+  canDeleteSelection,
+}: GraphProviderProps) => {
+  // Check if we're nested inside another GraphProvider
+  const parentContext = useContext(GraphContext);
+  const isEnricher = parentContext !== null && (
+    undoHistory !== undefined ||
+    redoHistory !== undefined ||
+    handleDuplicateSelection !== undefined ||
+    handleDeleteSelection !== undefined
+  );
+
+  // If we're an enricher, inherit state from parent and only add handlers
+  if (isEnricher && parentContext) {
+    const value = useMemo<GraphContextValue>(
+      () => ({
+        ...parentContext,
+        undoHistory: undoHistory ?? parentContext.undoHistory,
+        redoHistory: redoHistory ?? parentContext.redoHistory,
+        canUndoHistory: canUndoHistory ?? parentContext.canUndoHistory,
+        canRedoHistory: canRedoHistory ?? parentContext.canRedoHistory,
+        handleDuplicateSelection: handleDuplicateSelection ?? parentContext.handleDuplicateSelection,
+        handleDeleteSelection: handleDeleteSelection ?? parentContext.handleDeleteSelection,
+        canDuplicateSelection: canDuplicateSelection ?? parentContext.canDuplicateSelection,
+        canDeleteSelection: canDeleteSelection ?? parentContext.canDeleteSelection,
+      }),
+      [
+        parentContext,
+        undoHistory,
+        redoHistory,
+        canUndoHistory,
+        canRedoHistory,
+        handleDuplicateSelection,
+        handleDeleteSelection,
+        canDuplicateSelection,
+        canDeleteSelection,
+      ],
+    );
+    return <GraphContext.Provider value={value}>{children}</GraphContext.Provider>;
+  }
+
+  // Otherwise, create full state (base provider)
   // ReactFlow state
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
@@ -246,6 +317,18 @@ export const GraphProvider = ({ children }: GraphProviderProps) => {
       updateHasPendingChanges,
       setGraphSnapshot,
       setIsNodeDragInProgress,
+
+      // History Operations
+      undoHistory,
+      redoHistory,
+      canUndoHistory,
+      canRedoHistory,
+
+      // Selection Operations
+      handleDuplicateSelection,
+      handleDeleteSelection,
+      canDuplicateSelection,
+      canDeleteSelection,
     }),
     [
       nodes,
@@ -267,6 +350,14 @@ export const GraphProvider = ({ children }: GraphProviderProps) => {
       removeEdge,
       buildGraphPayload,
       updateHasPendingChanges,
+      undoHistory,
+      redoHistory,
+      canUndoHistory,
+      canRedoHistory,
+      handleDuplicateSelection,
+      handleDeleteSelection,
+      canDuplicateSelection,
+      canDeleteSelection,
     ],
   );
 

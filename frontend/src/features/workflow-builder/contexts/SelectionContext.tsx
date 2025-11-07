@@ -1,4 +1,9 @@
 import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import type { EdgeMouseHandler, NodeMouseHandler, OnSelectionChangeFunc, PaneClickHandler } from "reactflow";
+
+// Generic types for ReactFlow handlers
+type FlowNode = any;
+type FlowEdge = any;
 
 // Context types
 type SelectionContextValue = {
@@ -30,6 +35,12 @@ type SelectionContextValue = {
   setSelectedNodeIds: (ids: Set<string>) => void;
   setSelectedEdgeIds: (ids: Set<string>) => void;
   setPreviousSelectedElement: (element: { type: "node" | "edge"; id: string } | null) => void;
+
+  // ReactFlow handlers (provided by WorkflowBuilderPage via props)
+  handleNodeClick?: NodeMouseHandler<FlowNode>;
+  handleEdgeClick?: EdgeMouseHandler<FlowEdge>;
+  handleClearSelection?: PaneClickHandler;
+  onSelectionChange?: OnSelectionChangeFunc<FlowNode, FlowEdge>;
 };
 
 const SelectionContext = createContext<SelectionContextValue | null>(null);
@@ -44,9 +55,51 @@ export const useSelectionContext = () => {
 
 type SelectionProviderProps = {
   children: ReactNode;
+  // Optional ReactFlow handlers (from WorkflowBuilderPage)
+  handleNodeClick?: NodeMouseHandler<FlowNode>;
+  handleEdgeClick?: EdgeMouseHandler<FlowEdge>;
+  handleClearSelection?: PaneClickHandler;
+  onSelectionChange?: OnSelectionChangeFunc<FlowNode, FlowEdge>;
 };
 
-export const SelectionProvider = ({ children }: SelectionProviderProps) => {
+export const SelectionProvider = ({
+  children,
+  handleNodeClick,
+  handleEdgeClick,
+  handleClearSelection,
+  onSelectionChange,
+}: SelectionProviderProps) => {
+  // Check if we're nested inside another SelectionProvider
+  const parentContext = useContext(SelectionContext);
+  const isEnricher = parentContext !== null && (
+    handleNodeClick !== undefined ||
+    handleEdgeClick !== undefined ||
+    handleClearSelection !== undefined ||
+    onSelectionChange !== undefined
+  );
+
+  // If we're an enricher, inherit state from parent and only add handlers
+  if (isEnricher && parentContext) {
+    const value = useMemo<SelectionContextValue>(
+      () => ({
+        ...parentContext,
+        handleNodeClick: handleNodeClick ?? parentContext.handleNodeClick,
+        handleEdgeClick: handleEdgeClick ?? parentContext.handleEdgeClick,
+        handleClearSelection: handleClearSelection ?? parentContext.handleClearSelection,
+        onSelectionChange: onSelectionChange ?? parentContext.onSelectionChange,
+      }),
+      [
+        parentContext,
+        handleNodeClick,
+        handleEdgeClick,
+        handleClearSelection,
+        onSelectionChange,
+      ],
+    );
+    return <SelectionContext.Provider value={value}>{children}</SelectionContext.Provider>;
+  }
+
+  // Otherwise, create full state (base provider)
   // State
   const [selectedNodeId, setSelectedNodeIdState] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeIdState] = useState<string | null>(null);
@@ -210,6 +263,12 @@ export const SelectionProvider = ({ children }: SelectionProviderProps) => {
       setSelectedNodeIds,
       setSelectedEdgeIds,
       setPreviousSelectedElement,
+
+      // ReactFlow handlers (passed from WorkflowBuilderPage)
+      handleNodeClick,
+      handleEdgeClick,
+      handleClearSelection,
+      onSelectionChange,
     }),
     [
       selectedNodeId,
@@ -228,6 +287,10 @@ export const SelectionProvider = ({ children }: SelectionProviderProps) => {
       setSelectedNodeIds,
       setSelectedEdgeIds,
       setPreviousSelectedElement,
+      handleNodeClick,
+      handleEdgeClick,
+      handleClearSelection,
+      onSelectionChange,
     ],
   );
 

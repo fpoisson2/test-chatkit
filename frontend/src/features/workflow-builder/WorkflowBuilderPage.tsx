@@ -2852,8 +2852,25 @@ const WorkflowBuilderPage = () => {
 
   return (
     <ReactFlowProvider>
-      {/* Phase 4.5: WorkflowBuilderSidebar now uses contexts (28 → 13 props, -54%) */}
-      <WorkflowBuilderSidebar
+      {/* Phase 5: Enrich contexts with handlers from hooks */}
+      <GraphProvider
+        undoHistory={undoHistory}
+        redoHistory={redoHistory}
+        canUndoHistory={canUndoHistory}
+        canRedoHistory={canRedoHistory}
+        handleDuplicateSelection={handleDuplicateSelection}
+        handleDeleteSelection={handleDeleteSelection}
+        canDuplicateSelection={canDuplicateSelection}
+        canDeleteSelection={canDeleteSelection}
+      >
+        <SelectionProvider
+          handleNodeClick={handleNodeClick}
+          handleEdgeClick={handleEdgeClick}
+          handleClearSelection={handleClearSelection}
+          onSelectionChange={handleSelectionChange}
+        >
+          {/* Phase 4.5: WorkflowBuilderSidebar now uses contexts (28 → 13 props, -54%) */}
+          <WorkflowBuilderSidebar
         lastUsedAt={lastUsedAt}
         pinnedLookup={pinnedLookup}
         workflowMenuPlacement={workflowMenuPlacement}
@@ -2883,7 +2900,7 @@ const WorkflowBuilderPage = () => {
           overflow: "hidden",
         }}
       >
-        {/* Phase 4.5: WorkflowBuilderCanvas now uses contexts (26 → 21 props, -19%) */}
+        {/* Phase 5: WorkflowBuilderCanvas now uses contexts (21 → 10 props, -52%) */}
         <WorkflowBuilderCanvas
           openSidebar={openSidebar}
           renderHeaderControls={renderHeaderControls}
@@ -2892,20 +2909,8 @@ const WorkflowBuilderPage = () => {
           blockLibraryContent={blockLibraryContent}
           propertiesPanelElement={propertiesPanelElement}
           reactFlowContainerRef={reactFlowContainerRef}
-          handleNodesChange={handleNodesChange}
-          handleEdgesChange={handleEdgesChange}
-          handleNodeClick={handleNodeClick}
-          handleEdgeClick={handleEdgeClick}
-          handleClearSelection={handleClearSelection}
-          handleSelectionChange={handleSelectionChange}
           handleNodeDragStart={handleNodeDragStart}
           handleNodeDragStop={handleNodeDragStop}
-          redoHistory={redoHistory}
-          undoHistory={undoHistory}
-          handleDuplicateSelection={handleDuplicateSelection}
-          handleDeleteSelection={handleDeleteSelection}
-          canRedoHistory={canRedoHistory}
-          canUndoHistory={canUndoHistory}
         />
       </div>
       <WorkflowBuilderToast />
@@ -2922,6 +2927,8 @@ const WorkflowBuilderPage = () => {
         appearanceModalTarget={appearanceModalTarget}
         onCloseAppearanceModal={handleCloseAppearanceModal}
       />
+        </SelectionProvider>
+      </GraphProvider>
     </ReactFlowProvider>
   );
 };
