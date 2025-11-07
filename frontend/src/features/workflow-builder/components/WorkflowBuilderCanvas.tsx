@@ -177,9 +177,10 @@ const WorkflowBuilderCanvas = ({
     blockLibraryToggleRef,
   } = useUIContext();
 
-  // SelectionContext - Selection state (1 value)
+  // SelectionContext - Selection state (2 values)
   const {
-    hasSelectedElement,
+    selectedNodeId,
+    selectedEdgeId,
   } = useSelectionContext();
 
   // WorkflowContext - Workflow loading state (2 values)
@@ -187,6 +188,9 @@ const WorkflowBuilderCanvas = ({
     loading,
     loadError,
   } = useWorkflowContext();
+
+  // Computed selection state
+  const hasSelectedElement = Boolean(selectedNodeId || selectedEdgeId);
 
   // Style calculations (moved from WorkflowBuilderPage)
   const headerOverlayOffset = useMemo(

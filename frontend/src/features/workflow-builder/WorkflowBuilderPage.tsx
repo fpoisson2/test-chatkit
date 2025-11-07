@@ -1407,7 +1407,7 @@ const WorkflowBuilderPage = () => {
         setIsPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout],
+    [isMobileLayout, setSelectedNodeId, setSelectedEdgeId, setIsPropertiesPanelOpen],
   );
 
   const handleEdgeClick = useCallback(
@@ -1422,7 +1422,7 @@ const WorkflowBuilderPage = () => {
         setIsPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout],
+    [isMobileLayout, setSelectedEdgeId, setSelectedNodeId, setIsPropertiesPanelOpen],
   );
 
   const handleClearSelection = clearSelection;
