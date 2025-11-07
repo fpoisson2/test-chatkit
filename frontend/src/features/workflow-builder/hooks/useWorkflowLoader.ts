@@ -43,6 +43,7 @@ import type {
   FlowEdge,
   WorkflowVersionResponse,
   WorkflowVersionSummary,
+  WorkflowSummary,
 } from "../types";
 import { useGraphContext } from "../contexts/GraphContext";
 import { useSaveContext } from "../contexts/SaveContext";
@@ -71,6 +72,7 @@ type UseWorkflowLoaderParams = {
   draftDisplayName: string;
   persistViewportMemory: () => void;
   buildGraphPayloadFrom: typeof buildGraphPayloadFrom;
+  hasLoadedWorkflowsRef: React.MutableRefObject<boolean>;
 };
 
 type UseWorkflowLoaderReturn = {
@@ -84,6 +86,12 @@ type UseWorkflowLoaderReturn = {
     preferredVersionId: number | null,
     options?: { preserveViewport?: boolean; background?: boolean },
   ) => Promise<boolean>;
+  loadWorkflows: (options?: {
+    selectWorkflowId?: number | null;
+    selectVersionId?: number | null;
+    excludeWorkflowId?: number | null;
+    suppressLoadingState?: boolean;
+  }) => Promise<void>;
 };
 
 /**
@@ -156,6 +164,7 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
     draftDisplayName,
     persistViewportMemory,
     buildGraphPayloadFrom: buildGraphPayloadFromFn,
+    hasLoadedWorkflowsRef,
   } = params;
 
   // Access contexts
@@ -180,6 +189,8 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
     draftVersionSummaryRef,
     selectedWorkflowId,
     selectedVersionId,
+    setWorkflows,
+    setSelectedWorkflowId,
   } = useWorkflowContext();
 
   /**
@@ -632,8 +643,158 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
     ],
   );
 
+  /**
+   * Load workflows list with selection management
+   * Extracted from WorkflowBuilderPage.tsx lines 869-997 (129 lines)
+   */
+  const loadWorkflows = useCallback(
+    async (
+      options: {
+        selectWorkflowId?: number | null;
+        selectVersionId?: number | null;
+        excludeWorkflowId?: number | null;
+        suppressLoadingState?: boolean;
+      } = {},
+    ): Promise<void> => {
+      const {
+        selectWorkflowId,
+        selectVersionId,
+        excludeWorkflowId,
+        suppressLoadingState = false,
+      } = options;
+      hasLoadedWorkflowsRef.current = false;
+      if (!suppressLoadingState) {
+        setLoading(true);
+      }
+      setLoadError(null);
+      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
+      let lastError: Error | null = null;
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(
+              t("workflowBuilder.errors.loadLibraryFailedWithStatus", {
+                status: response.status,
+              }),
+            );
+          }
+          const data: WorkflowSummary[] = await response.json();
+          hasLoadedWorkflowsRef.current = true;
+          setWorkflows(data);
+          if (data.length === 0) {
+            setSelectedWorkflowId(null);
+            setSelectedVersionId(null);
+            setVersions([]);
+            setNodes([]);
+            setEdges([]);
+            isHydratingRef.current = true;
+            setTimeout(() => {
+              isHydratingRef.current = false;
+            }, 100);
+            const emptySnapshot = JSON.stringify(buildGraphPayloadFromFn([], []));
+            lastSavedSnapshotRef.current = emptySnapshot;
+            resetHistory(emptySnapshot);
+            updateHasPendingChanges(false);
+            setLoading(false);
+            viewportKeyRef.current = null;
+            viewportRef.current = null;
+            viewportMemoryRef.current.clear();
+            persistViewportMemory();
+            hasUserViewportChangeRef.current = false;
+            pendingViewportRestoreRef.current = true;
+            restoreViewport();
+            return;
+          }
+          const availableIds = new Set(data.map((workflow) => workflow.id));
+          const excluded = excludeWorkflowId ?? null;
+          const chatkitWorkflow = data.find(
+            (workflow) =>
+              workflow.is_chatkit_default &&
+              workflow.id !== excluded &&
+              availableIds.has(workflow.id),
+          );
+          let nextWorkflowId = selectWorkflowId ?? null;
+          if (
+            nextWorkflowId &&
+            (!availableIds.has(nextWorkflowId) || (excluded != null && nextWorkflowId === excluded))
+          ) {
+            nextWorkflowId = null;
+          }
+          if (
+            nextWorkflowId == null &&
+            selectedWorkflowId &&
+            availableIds.has(selectedWorkflowId) &&
+            (excluded == null || selectedWorkflowId !== excluded)
+          ) {
+            nextWorkflowId = selectedWorkflowId;
+          }
+          if (nextWorkflowId == null) {
+            const fallback = chatkitWorkflow ?? data.find((workflow) => workflow.id !== excluded);
+            nextWorkflowId = fallback?.id ?? data[0]?.id ?? null;
+          }
+          setSelectedWorkflowId(nextWorkflowId);
+          if (nextWorkflowId != null) {
+            await loadVersions(nextWorkflowId, selectVersionId ?? null, {
+              background: suppressLoadingState,
+            });
+          } else {
+            setLoading(false);
+          }
+          return;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            continue;
+          }
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error(t("workflowBuilder.errors.unknown"));
+        }
+      }
+      if (lastError) {
+        setLoadError(lastError.message);
+      }
+      setLoading(false);
+      hasLoadedWorkflowsRef.current = false;
+    },
+    [
+      authHeader,
+      buildGraphPayloadFromFn,
+      hasLoadedWorkflowsRef,
+      hasUserViewportChangeRef,
+      isHydratingRef,
+      lastSavedSnapshotRef,
+      loadVersions,
+      pendingViewportRestoreRef,
+      persistViewportMemory,
+      resetHistory,
+      restoreViewport,
+      selectedWorkflowId,
+      setEdges,
+      setLoadError,
+      setLoading,
+      setNodes,
+      setSelectedVersionId,
+      setSelectedWorkflowId,
+      setVersions,
+      setWorkflows,
+      t,
+      updateHasPendingChanges,
+      viewportKeyRef,
+      viewportMemoryRef,
+      viewportRef,
+    ],
+  );
+
   return {
     loadVersionDetail,
     loadVersions,
+    loadWorkflows,
   };
 }
