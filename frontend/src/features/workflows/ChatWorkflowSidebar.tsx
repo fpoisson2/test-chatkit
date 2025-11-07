@@ -109,9 +109,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     workflowMenuPlacement,
     setWorkflowMenuPlacement,
     closeWorkflowMenu,
-    workflowMenuTriggerRef,
-    workflowMenuRef,
   } = useWorkflowMenuContext();
+
+  // Local refs for this sidebar's menu positioning
+  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {

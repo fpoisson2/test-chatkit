@@ -1,11 +1,9 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import type { ActionMenuPlacement } from "./WorkflowActionMenu";
 
 type WorkflowMenuContextType = {
   openWorkflowMenuId: string | number | null;
   workflowMenuPlacement: ActionMenuPlacement;
-  workflowMenuTriggerRef: React.MutableRefObject<HTMLButtonElement | null>;
-  workflowMenuRef: React.MutableRefObject<HTMLDivElement | null>;
   setOpenWorkflowMenuId: (id: string | number | null) => void;
   setWorkflowMenuPlacement: (placement: ActionMenuPlacement) => void;
   closeWorkflowMenu: () => void;
@@ -16,8 +14,6 @@ const WorkflowMenuContext = createContext<WorkflowMenuContextType | null>(null);
 export const WorkflowMenuProvider = ({ children }: { children: ReactNode }) => {
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] = useState<ActionMenuPlacement>("down");
-  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Debug: Log when provider mounts/unmounts and when state changes
   useEffect(() => {
@@ -35,8 +31,6 @@ export const WorkflowMenuProvider = ({ children }: { children: ReactNode }) => {
     console.log('[WorkflowMenuContext] closeWorkflowMenu called, stack:', new Error().stack);
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("down");
-    workflowMenuTriggerRef.current = null;
-    workflowMenuRef.current = null;
   }, []);
 
   return (
@@ -44,8 +38,6 @@ export const WorkflowMenuProvider = ({ children }: { children: ReactNode }) => {
       value={{
         openWorkflowMenuId,
         workflowMenuPlacement,
-        workflowMenuTriggerRef,
-        workflowMenuRef,
         setOpenWorkflowMenuId,
         setWorkflowMenuPlacement,
         closeWorkflowMenu,
