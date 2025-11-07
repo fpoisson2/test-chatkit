@@ -3,6 +3,8 @@ import type { CSSProperties, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import styles from "../WorkflowBuilderPage.module.css";
+import { useUIContext } from "../contexts/UIContext";
+import { useWorkflowContext } from "../contexts/WorkflowContext";
 
 export interface BlockLibraryItem {
   key: string;
@@ -12,14 +14,16 @@ export interface BlockLibraryItem {
   onClick: () => void;
 }
 
+// Phase 4.5: Reduced from 8 props to 3 props (-62.5%)
+// Migrated to contexts:
+// - isOpen → UIContext.isBlockLibraryOpen
+// - isMobileLayout → UIContext.isMobileLayout
+// - toggleBlockLibrary → UIContext.toggleBlockLibrary
+// - loading → WorkflowContext.loading
+// - selectedWorkflowId → WorkflowContext.selectedWorkflowId
 export interface BlockLibraryProps {
   contentId: string;
-  isOpen: boolean;
-  isMobileLayout: boolean;
   items: BlockLibraryItem[];
-  loading: boolean;
-  selectedWorkflowId: string | null;
-  toggleBlockLibrary: () => void;
   toggleRef: RefObject<HTMLButtonElement>;
 }
 
@@ -84,14 +88,13 @@ const getBlockLibraryButtonStyle = (
 
 const BlockLibrary = ({
   contentId,
-  isOpen,
-  isMobileLayout,
   items,
-  loading,
-  selectedWorkflowId,
-  toggleBlockLibrary,
   toggleRef,
 }: BlockLibraryProps) => {
+  // Phase 4.5: Use contexts instead of props
+  const { isBlockLibraryOpen: isOpen, isMobileLayout, toggleBlockLibrary } = useUIContext();
+  const { loading, selectedWorkflowId } = useWorkflowContext();
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement>>({});
   const animationFrameRef = useRef<number | null>(null);

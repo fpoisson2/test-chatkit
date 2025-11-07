@@ -4,6 +4,7 @@ import {
   type ReactNode,
   type RefCallback,
   useMemo,
+  useRef,
 } from "react";
 import ReactFlow, {
   Background,
@@ -48,6 +49,7 @@ import {
   useWorkflowContext,
 } from "../contexts";
 import { DESKTOP_WORKSPACE_HORIZONTAL_PADDING } from "../WorkflowBuilderUtils";
+import { useI18n } from "../../../i18n";
 
 export interface MobileActionLabels {
   redo: string;
@@ -57,6 +59,13 @@ export interface MobileActionLabels {
   properties: string;
 }
 
+// Phase 4.5: Reduced from 26 props to 21 props (-19%)
+// Migrated to contexts or derived:
+// - isMobileLayout → UIContext
+// - workflowBusy → Derived from WorkflowContext.loading + UIContext.isExporting + UIContext.isImporting
+// - mobileActionLabels → Calculated with useI18n
+// - shouldShowWorkflowDescription → Derived from WorkflowContext + UIContext.isMobileLayout
+// - shouldShowPublicationReminder → Derived from WorkflowContext + UIContext.isMobileLayout
 interface WorkflowBuilderCanvasProps {
   // Sidebar navigation
   openSidebar: () => void;
@@ -96,23 +105,10 @@ interface WorkflowBuilderCanvasProps {
   // Operation availability flags (calculated in Page)
   canRedoHistory: boolean;
   canUndoHistory: boolean;
-
-  // Workflow state for operation availability
-  workflowBusy: boolean;
-
-  // Configuration labels
-  mobileActionLabels: MobileActionLabels;
-
-  // Render conditions (calculated in parent)
-  shouldShowWorkflowDescription: boolean;
-  shouldShowPublicationReminder: boolean;
-
-  // Layout flag
-  isMobileLayout: boolean;
 }
 
 const WorkflowBuilderCanvas = ({
-  // Props from parent (25 props)
+  // Phase 4.5: Reduced to 21 props
   openSidebar,
   renderHeaderControls,
   renderWorkflowDescription,
@@ -134,12 +130,9 @@ const WorkflowBuilderCanvas = ({
   handleDeleteSelection,
   canRedoHistory,
   canUndoHistory,
-  workflowBusy,
-  mobileActionLabels,
-  shouldShowWorkflowDescription,
-  shouldShowPublicationReminder,
-  isMobileLayout,
 }: WorkflowBuilderCanvasProps) => {
+  const { t } = useI18n();
+
   // GraphContext - Graph state and connection (3 values)
   const {
     nodes,
@@ -163,19 +156,24 @@ const WorkflowBuilderCanvas = ({
     persistViewportMemory,
   } = useViewportContext();
 
-  // UIContext - UI panel state (11 values)
+  // UIContext - UI panel state (8 values) - Phase 4.5: Added isMobileLayout, isExporting, isImporting
   const {
     isBlockLibraryOpen,
     closeBlockLibrary,
-    blockLibraryId,
     isPropertiesPanelOpen,
     closePropertiesPanel,
     openPropertiesPanel,
-    propertiesPanelId,
     toggleBlockLibrary,
-    propertiesPanelToggleRef,
-    blockLibraryToggleRef,
+    isMobileLayout,
+    isExporting,
+    isImporting,
   } = useUIContext();
+
+  // Phase 4.5: Local constants for accessibility IDs (no longer passed as props)
+  const blockLibraryId = "workflow-builder-block-library";
+  const propertiesPanelId = "workflow-builder-properties-panel";
+  const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
+  const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
 
   // SelectionContext - Selection state (2 values)
   const {
@@ -183,11 +181,36 @@ const WorkflowBuilderCanvas = ({
     selectedEdgeId,
   } = useSelectionContext();
 
-  // WorkflowContext - Workflow loading state (2 values)
+  // WorkflowContext - Workflow loading state (5 values) - Phase 4.5: Added workflows, selectedWorkflowId
   const {
     loading,
     loadError,
+    workflows,
+    selectedWorkflowId,
   } = useWorkflowContext();
+
+  // Phase 4.5: Derived values from contexts
+  const selectedWorkflow = useMemo(
+    () => workflows.find((w) => w.id === selectedWorkflowId) || null,
+    [workflows, selectedWorkflowId]
+  );
+
+  const workflowBusy = loading || isImporting || isExporting;
+
+  const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
+  const shouldShowPublicationReminder =
+    !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
+
+  const mobileActionLabels = useMemo<MobileActionLabels>(
+    () => ({
+      redo: t("workflowBuilder.mobileActions.redo"),
+      undo: t("workflowBuilder.mobileActions.undo"),
+      duplicate: t("workflowBuilder.mobileActions.duplicate"),
+      delete: t("workflowBuilder.mobileActions.delete"),
+      properties: t("workflowBuilder.mobileActions.properties"),
+    }),
+    [t]
+  );
 
   // Computed selection state
   const hasSelectedElement = Boolean(selectedNodeId || selectedEdgeId);

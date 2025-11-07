@@ -2572,29 +2572,16 @@ const WorkflowBuilderPage = () => {
     nodeHandlers.handleAddEndNode,
   ]);
 
+  // Phase 4.5: BlockLibrary now uses contexts (8 → 3 props, -62.5%)
   const blockLibraryContent = useMemo(
     () => (
       <BlockLibrary
         contentId={blockLibraryContentId}
-        isOpen={isBlockLibraryOpen}
-        isMobileLayout={isMobileLayout}
         items={blockLibraryItems}
-        loading={loading}
-        selectedWorkflowId={selectedWorkflowId}
-        toggleBlockLibrary={toggleBlockLibrary}
         toggleRef={blockLibraryToggleRef}
       />
     ),
-    [
-      blockLibraryContentId,
-      blockLibraryItems,
-      blockLibraryToggleRef,
-      isBlockLibraryOpen,
-      isMobileLayout,
-      loading,
-      selectedWorkflowId,
-      toggleBlockLibrary,
-    ],
+    [blockLibraryContentId, blockLibraryItems, blockLibraryToggleRef],
   );
 
   const workflowBusy = loading || isImporting || isExporting;
@@ -2838,21 +2825,11 @@ const WorkflowBuilderPage = () => {
 
   return (
     <ReactFlowProvider>
+      {/* Phase 4.5: WorkflowBuilderSidebar now uses contexts (28 → 13 props, -54%) */}
       <WorkflowBuilderSidebar
-        workflows={workflows}
-        hostedWorkflows={hostedWorkflows}
         lastUsedAt={lastUsedAt}
         pinnedLookup={pinnedLookup}
-        loading={loading}
-        loadError={loadError}
-        hostedLoading={hostedLoading}
-        hostedError={hostedError}
-        isCreatingWorkflow={isCreatingWorkflow}
-        selectedWorkflow={selectedWorkflow}
-        selectedWorkflowId={selectedWorkflowId}
-        openWorkflowMenuId={openWorkflowMenuId}
         workflowMenuPlacement={workflowMenuPlacement}
-        isMobileLayout={isMobileLayout}
         isSidebarCollapsed={isSidebarCollapsed}
         workflowSortCollator={workflowSortCollatorRef.current}
         onSelectWorkflow={handleSelectWorkflow}
@@ -2865,11 +2842,9 @@ const WorkflowBuilderPage = () => {
         onOpenCreateModal={handleOpenCreateModalWithReset}
         onOpenAppearanceModal={openAppearanceModal}
         onExportWorkflow={handleExportWorkflow}
-        closeWorkflowMenu={closeWorkflowMenu}
         workflowMenuTriggerRef={workflowMenuTriggerRef}
         workflowMenuRef={workflowMenuRef}
         setWorkflowMenuPlacement={setWorkflowMenuPlacement}
-        setOpenWorkflowMenuId={setOpenWorkflowMenuId}
       />
       <div
         style={{
@@ -2881,6 +2856,7 @@ const WorkflowBuilderPage = () => {
           overflow: "hidden",
         }}
       >
+        {/* Phase 4.5: WorkflowBuilderCanvas now uses contexts (26 → 21 props, -19%) */}
         <WorkflowBuilderCanvas
           openSidebar={openSidebar}
           renderHeaderControls={renderHeaderControls}
@@ -2903,11 +2879,6 @@ const WorkflowBuilderPage = () => {
           handleDeleteSelection={handleDeleteSelection}
           canRedoHistory={canRedoHistory}
           canUndoHistory={canUndoHistory}
-          workflowBusy={workflowBusy}
-          mobileActionLabels={mobileActionLabels}
-          shouldShowWorkflowDescription={shouldShowWorkflowDescription}
-          shouldShowPublicationReminder={shouldShowPublicationReminder}
-          isMobileLayout={isMobileLayout}
         />
       </div>
       <WorkflowBuilderToast />
