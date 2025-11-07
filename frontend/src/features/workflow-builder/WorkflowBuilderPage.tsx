@@ -357,6 +357,7 @@ const WorkflowBuilderPage = () => {
     hostedLoading,
     hostedError,
     versionsRef,
+    selectedWorkflowIdRef,
     selectedVersionIdRef,
     draftVersionIdRef,
     draftVersionSummaryRef,
@@ -468,11 +469,10 @@ const WorkflowBuilderPage = () => {
 
   // Phase 4: Refs migrated to contexts
   // - SaveContext: lastSavedSnapshotRef, saveStateRef
-  // - SelectionContext: selectedNodeIdRef, selectedEdgeIdRef, previousSelectedElementRef
+  // - SelectionContext: selectedNodeIdRef, selectedEdgeIdRef, selectedNodeIdsRef, selectedEdgeIdsRef, previousSelectedElementRef
   // - GraphContext: nodesRef, edgesRef, hasPendingChangesRef, isNodeDragInProgressRef
   // - ViewportContext: viewportRef, viewportMemoryRef, viewportKeyRef, hasUserViewportChangeRef, pendingViewportRestoreRef
-  // - WorkflowContext: versionsRef, selectedVersionIdRef, draftVersionIdRef, draftVersionSummaryRef
-  // Note: selectedWorkflowIdRef comes from useWorkflowSidebarState
+  // - WorkflowContext: versionsRef, selectedWorkflowIdRef, selectedVersionIdRef, draftVersionIdRef, draftVersionSummaryRef
 
   // Remaining local refs:
   const isCreatingDraftRef = useRef(false);
