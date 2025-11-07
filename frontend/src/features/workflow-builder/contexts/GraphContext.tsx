@@ -1,6 +1,15 @@
 import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
-import { useNodesState, useEdgesState, addEdge, type NodeChange, type EdgeChange, type Connection } from "reactflow";
+import {
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  MarkerType,
+  type NodeChange,
+  type EdgeChange,
+  type Connection,
+} from "reactflow";
 import type { FlowNode, FlowEdge, FlowNodeData, FlowEdgeData } from "../types";
+import { buildEdgeStyle, defaultEdgeOptions } from "../utils";
 
 // Context types
 type GraphContextValue = {
@@ -171,7 +180,22 @@ export const GraphProvider = ({
   // Connect two nodes
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => addEdge(connection, eds));
+      const edgeId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? `edge-${crypto.randomUUID()}`
+        : `edge-${Date.now()}`;
+
+      const edge = {
+        ...connection,
+        id: edgeId,
+        label: "",
+        data: { condition: "", metadata: {} },
+        markerEnd: defaultEdgeOptions.markerEnd
+          ? { ...defaultEdgeOptions.markerEnd }
+          : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+        style: buildEdgeStyle(),
+      };
+
+      setEdges((eds) => addEdge<FlowEdgeData>(edge, eds));
       updateHasPendingChanges(true);
     },
     [setEdges, updateHasPendingChanges],
