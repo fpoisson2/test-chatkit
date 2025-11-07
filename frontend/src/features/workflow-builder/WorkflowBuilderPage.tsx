@@ -220,6 +220,7 @@ import {
   // Phase 5: Import providers for enricher pattern
   GraphProvider,
   SelectionProvider,
+  ViewportProvider,
 } from "./contexts";
 
 const WorkflowBuilderPage = () => {
@@ -343,11 +344,9 @@ const WorkflowBuilderPage = () => {
     setHasUserViewportChange,
     setPendingViewportRestore,
     saveViewport,
-    restoreViewport,
     clearViewport,
     updateViewport,
     calculateMinZoom,
-    refreshViewportConstraints,
     generateViewportKey,
   } = useViewportContext();
 
@@ -511,22 +510,25 @@ const WorkflowBuilderPage = () => {
     [isMobileLayout],
   );
 
-  // Note: minViewportZoom, initialViewport, refreshViewportConstraints, restoreViewport come from ViewportContext
+  // Note: minViewportZoom and initialViewport come from ViewportContext.
 
-  const { persistViewportMemory } =
-    useWorkflowViewportPersistence({
-      authHeader,
-      backendUrl,
-      baseMinViewportZoom,
-      hasUserViewportChangeRef,
-      pendingViewportRestoreRef,
-      reactFlowInstanceRef,
-      setMinViewportZoom,
-      token,
-      viewportKeyRef,
-      viewportMemoryRef,
-      viewportRef,
-    });
+  const {
+    persistViewportMemory,
+    refreshViewportConstraints,
+    restoreViewport,
+  } = useWorkflowViewportPersistence({
+    authHeader,
+    backendUrl,
+    baseMinViewportZoom,
+    hasUserViewportChangeRef,
+    pendingViewportRestoreRef,
+    reactFlowInstanceRef,
+    setMinViewportZoom,
+    token,
+    viewportKeyRef,
+    viewportMemoryRef,
+    viewportRef,
+  });
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<FlowNodeData>[]) => {
@@ -1896,28 +1898,35 @@ const WorkflowBuilderPage = () => {
 
   return (
     <ReactFlowProvider>
-      {/* Phase 5: Enrich contexts with handlers from hooks */}
-      <GraphProvider
-        undoHistory={undoHistory}
-        redoHistory={redoHistory}
-        canUndoHistory={canUndoHistory}
-        canRedoHistory={canRedoHistory}
-        handleDuplicateSelection={handleDuplicateSelection}
-        handleDeleteSelection={handleDeleteSelection}
-        canDuplicateSelection={canDuplicateSelection}
-        canDeleteSelection={canDeleteSelection}
+      <ViewportProvider
+        reactFlowInstanceRef={reactFlowInstanceRef}
+        isHydratingRef={isHydratingRef}
+        persistViewportMemory={persistViewportMemory}
+        restoreViewport={restoreViewport}
+        refreshViewportConstraints={refreshViewportConstraints}
       >
-        <SelectionProvider
-          handleNodeClick={handleNodeClick}
-          handleEdgeClick={handleEdgeClick}
-          handleClearSelection={handleClearSelection}
-          onSelectionChange={handleSelectionChange}
+        {/* Phase 5: Enrich contexts with handlers from hooks */}
+        <GraphProvider
+          undoHistory={undoHistory}
+          redoHistory={redoHistory}
+          canUndoHistory={canUndoHistory}
+          canRedoHistory={canRedoHistory}
+          handleDuplicateSelection={handleDuplicateSelection}
+          handleDeleteSelection={handleDeleteSelection}
+          canDuplicateSelection={canDuplicateSelection}
+          canDeleteSelection={canDeleteSelection}
         >
+          <SelectionProvider
+            handleNodeClick={handleNodeClick}
+            handleEdgeClick={handleEdgeClick}
+            handleClearSelection={handleClearSelection}
+            onSelectionChange={handleSelectionChange}
+          >
           {/* Phase 4.5: WorkflowBuilderSidebar now uses contexts (28 → 13 props, -54%) */}
           <WorkflowBuilderSidebar
-        lastUsedAt={lastUsedAt}
-        pinnedLookup={pinnedLookup}
-        workflowMenuPlacement={workflowMenuPlacement}
+            lastUsedAt={lastUsedAt}
+            pinnedLookup={pinnedLookup}
+            workflowMenuPlacement={workflowMenuPlacement}
         isSidebarCollapsed={isSidebarCollapsed}
         workflowSortCollator={workflowSortCollatorRef.current}
         onSelectWorkflow={handleSelectWorkflow}
@@ -1957,22 +1966,23 @@ const WorkflowBuilderPage = () => {
           handleNodeDragStop={handleNodeDragStop}
         />
       </div>
-      <WorkflowBuilderToast />
-      <WorkflowBuilderModals
-        onSubmitCreateWorkflow={handleSubmitCreateWorkflow}
-        onConfirmDeploy={handleConfirmDeploy}
-        deployModalTitle={deployModalTitle}
-        deployModalDescription={deployModalDescription}
-        deployModalSourceLabel={deployModalSourceLabel}
-        deployModalTargetLabel={deployModalTargetLabel}
-        deployModalPrimaryLabel={deployModalPrimaryLabel}
-        isPrimaryActionDisabled={isPrimaryActionDisabled}
-        shouldShowVersionPath={versionSummaryForPromotion != null}
-        appearanceModalTarget={appearanceModalTarget}
-        onCloseAppearanceModal={handleCloseAppearanceModal}
-      />
-        </SelectionProvider>
-      </GraphProvider>
+          <WorkflowBuilderToast />
+          <WorkflowBuilderModals
+            onSubmitCreateWorkflow={handleSubmitCreateWorkflow}
+            onConfirmDeploy={handleConfirmDeploy}
+            deployModalTitle={deployModalTitle}
+            deployModalDescription={deployModalDescription}
+            deployModalSourceLabel={deployModalSourceLabel}
+            deployModalTargetLabel={deployModalTargetLabel}
+            deployModalPrimaryLabel={deployModalPrimaryLabel}
+            isPrimaryActionDisabled={isPrimaryActionDisabled}
+            shouldShowVersionPath={versionSummaryForPromotion != null}
+            appearanceModalTarget={appearanceModalTarget}
+            onCloseAppearanceModal={handleCloseAppearanceModal}
+          />
+          </SelectionProvider>
+        </GraphProvider>
+      </ViewportProvider>
     </ReactFlowProvider>
   );
 };
