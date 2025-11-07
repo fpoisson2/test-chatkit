@@ -493,9 +493,9 @@ const WorkflowBuilderPage = () => {
     [isMobileLayout],
   );
 
-  // Note: minViewportZoom and initialViewport come from ViewportContext
+  // Note: minViewportZoom, initialViewport, refreshViewportConstraints, restoreViewport come from ViewportContext
 
-  const { persistViewportMemory, refreshViewportConstraints, restoreViewport } =
+  const { persistViewportMemory } =
     useWorkflowViewportPersistence({
       authHeader,
       backendUrl,
