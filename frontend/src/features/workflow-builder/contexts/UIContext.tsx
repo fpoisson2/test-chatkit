@@ -5,7 +5,6 @@ import {
   useCallback,
   useMemo,
   useRef,
-  useEffect,
   type ReactNode,
 } from "react";
 import type { DeviceType } from "../WorkflowBuilderUtils";
@@ -21,7 +20,6 @@ type UIContextValue = {
   isPropertiesPanelOpen: boolean;
   isMobileLayout: boolean;
   deviceType: DeviceType;
-  openWorkflowMenuId: string | number | null;
   isExporting: boolean;
   isImporting: boolean;
 
@@ -41,11 +39,6 @@ type UIContextValue = {
   // Layout Methods
   setIsMobileLayout: (mobile: boolean) => void;
   setDeviceType: (deviceType: DeviceType) => void;
-
-  // Workflow Menu Methods
-  openWorkflowMenu: (id: string | number) => void;
-  closeWorkflowMenu: () => void;
-  setOpenWorkflowMenuId: (id: string | number | null) => void;
 
   // Import/Export Methods
   setIsExporting: (isExporting: boolean) => void;
@@ -72,35 +65,9 @@ export const UIProvider = ({ children }: UIProviderProps) => {
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [deviceType, setDeviceType] = useState<DeviceType>("desktop");
-  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
-
-  // Sync openWorkflowMenuId with localStorage to persist across pages
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('chatkit.workflow.openMenuId');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setOpenWorkflowMenuId(parsed);
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (openWorkflowMenuId !== null) {
-        localStorage.setItem('chatkit.workflow.openMenuId', JSON.stringify(openWorkflowMenuId));
-      } else {
-        localStorage.removeItem('chatkit.workflow.openMenuId');
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  }, [openWorkflowMenuId]);
 
   // Block Library Methods
   const toggleBlockLibrary = useCallback(() => {
@@ -138,15 +105,6 @@ export const UIProvider = ({ children }: UIProviderProps) => {
     setIsPropertiesPanelOpen(false);
   }, []);
 
-  // Workflow Menu Methods
-  const openWorkflowMenu = useCallback((id: string | number) => {
-    setOpenWorkflowMenuId(id);
-  }, []);
-
-  const closeWorkflowMenu = useCallback(() => {
-    setOpenWorkflowMenuId(null);
-  }, []);
-
   const value = useMemo<UIContextValue>(
     () => ({
       // State
@@ -154,7 +112,6 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       isPropertiesPanelOpen,
       isMobileLayout,
       deviceType,
-      openWorkflowMenuId,
       isExporting,
       isImporting,
 
@@ -175,11 +132,6 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       setIsMobileLayout,
       setDeviceType,
 
-      // Workflow Menu Methods
-      openWorkflowMenu,
-      closeWorkflowMenu,
-      setOpenWorkflowMenuId,
-
       // Import/Export Methods
       setIsExporting,
       setIsImporting,
@@ -189,7 +141,6 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       isPropertiesPanelOpen,
       isMobileLayout,
       deviceType,
-      openWorkflowMenuId,
       isExporting,
       isImporting,
       toggleBlockLibrary,
@@ -199,8 +150,6 @@ export const UIProvider = ({ children }: UIProviderProps) => {
       togglePropertiesPanel,
       openPropertiesPanel,
       closePropertiesPanel,
-      openWorkflowMenu,
-      closeWorkflowMenu,
     ],
   );
 

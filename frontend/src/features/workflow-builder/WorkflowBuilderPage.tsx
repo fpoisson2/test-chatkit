@@ -196,6 +196,7 @@ import {
   type DeviceType,
 } from "./WorkflowBuilderUtils";
 import { useWorkflowViewportPersistence } from "./hooks/useWorkflowViewportPersistence";
+import { useWorkflowMenuContext } from "../workflows/WorkflowMenuContext";
 // Phase 4: Import and use contexts
 import {
   useSaveContext,
@@ -246,8 +247,6 @@ const WorkflowBuilderPage = () => {
     registerBlockLibraryToggle,
     isPropertiesPanelOpen,
     setIsPropertiesPanelOpen,
-    openWorkflowMenuId,
-    setOpenWorkflowMenuId,
     isMobileLayout: contextIsMobileLayout,
     setIsMobileLayout: setContextIsMobileLayout,
     isExporting,
@@ -255,6 +254,9 @@ const WorkflowBuilderPage = () => {
     isImporting,
     setIsImporting,
   } = useUIContext();
+
+  // Use global workflow menu context
+  const { openWorkflowMenuId } = useWorkflowMenuContext();
 
   const {
     createWorkflowKind,

@@ -232,6 +232,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       return;
     }
 
+    // Don't close menu while workflows are loading
+    if (loading) {
+      return;
+    }
+
     if (typeof openWorkflowMenuId === "number") {
       if (!workflows.some((workflow) => workflow.id === openWorkflowMenuId)) {
         closeWorkflowMenu();
@@ -245,7 +250,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         closeWorkflowMenu();
       }
     }
-  }, [closeWorkflowMenu, hostedWorkflows, openWorkflowMenuId, workflows]);
+  }, [closeWorkflowMenu, hostedWorkflows, loading, openWorkflowMenuId, workflows]);
 
   useEffect(() => {
     if (!isAdmin && openWorkflowMenuId !== null) {
