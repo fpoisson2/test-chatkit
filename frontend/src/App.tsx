@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
+import { WorkflowMenuProvider } from "./features/workflows/WorkflowMenuContext";
 import { useAuth } from "./auth";
 import { MyChat } from "./MyChat";
 import { LoginPage } from "./pages/LoginPage";
@@ -56,7 +57,8 @@ const RequireUser = ({ children }: { children: ReactElement }) => {
 const HomePage = () => <MyChat />;
 
 export const App = () => (
-  <Routes>
+  <WorkflowMenuProvider>
+    <Routes>
     <Route
       path="/login"
       element={
@@ -183,5 +185,6 @@ export const App = () => (
         </RequireUser>
       }
     />
-  </Routes>
+    </Routes>
+  </WorkflowMenuProvider>
 );
