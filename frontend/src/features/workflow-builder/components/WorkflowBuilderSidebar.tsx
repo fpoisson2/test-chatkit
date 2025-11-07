@@ -639,7 +639,15 @@ const WorkflowBuilderSidebar = ({
   useEffect(() => {
     setSidebarContent(workflowSidebarContent);
     setCollapsedSidebarContent(collapsedWorkflowShortcuts);
-    return () => clearSidebarContent();
+
+    return () => {
+      // Delay clearing to allow smooth transition when navigating between pages
+      const timeoutId = setTimeout(() => {
+        clearSidebarContent();
+      }, 50);
+
+      return () => clearTimeout(timeoutId);
+    };
   }, [
     clearSidebarContent,
     collapsedWorkflowShortcuts,
