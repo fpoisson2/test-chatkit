@@ -106,72 +106,18 @@ export const App = () => (
       path="/admin"
       element={
         <RequireAdmin>
-          <AppLayout>
-            <AdminPage />
-          </AppLayout>
+          <AppLayout />
         </RequireAdmin>
       }
-    />
-    <Route
-      path="/admin/settings"
-      element={
-        <RequireAdmin>
-          <AppLayout>
-            <AdminAppSettingsPage />
-          </AppLayout>
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/admin/appearance"
-      element={
-        <RequireAdmin>
-          <AppLayout>
-            <AdminAppearancePage />
-          </AppLayout>
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/admin/models"
-      element={
-        <RequireAdmin>
-          <AppLayout>
-            <AdminModelsPage />
-          </AppLayout>
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/admin/sip-accounts"
-      element={
-        <RequireAdmin>
-          <AppLayout>
-            <AdminTelephonyPage />
-          </AppLayout>
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/admin/mcp-servers"
-      element={
-        <RequireAdmin>
-          <AppLayout>
-            <AdminMcpServersPage />
-          </AppLayout>
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/admin/languages"
-      element={
-        <RequireAdmin>
-          <AppLayout>
-            <AdminLanguagesPage />
-          </AppLayout>
-        </RequireAdmin>
-      }
-    />
+    >
+      <Route index element={<AdminPage />} />
+      <Route path="settings" element={<AdminAppSettingsPage />} />
+      <Route path="appearance" element={<AdminAppearancePage />} />
+      <Route path="models" element={<AdminModelsPage />} />
+      <Route path="sip-accounts" element={<AdminTelephonyPage />} />
+      <Route path="mcp-servers" element={<AdminMcpServersPage />} />
+      <Route path="languages" element={<AdminLanguagesPage />} />
+    </Route>
     <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
     <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
     <Route path="/admin/workflows" element={<Navigate to="/workflows" replace />} />
