@@ -461,6 +461,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       event.stopPropagation();
 
       if (ignoreNextMainInteractionRef.current) {
+        ignoreNextMainInteractionRef.current = false;
         return;
       }
 
