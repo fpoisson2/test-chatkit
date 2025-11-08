@@ -630,45 +630,34 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
-  // Bidirectional synchronization between WorkflowContext and WorkflowSidebarProvider
-  const previousWorkflowsRef = useRef<WorkflowSummary[]>([]);
-  const previousHostedWorkflowsRef = useRef<HostedWorkflowMetadata[]>([]);
+  // ONE-TIME initialization from provider, then ONLY sync back when WorkflowBuilder loads
   const initializedFromProviderRef = useRef(false);
 
-  // Initialize WorkflowContext from provider if it has data
+  // Initialize WorkflowContext from provider ONCE
   useEffect(() => {
-    if (!initializedFromProviderRef.current &&
-        sidebarWorkflows.length > 0 &&
-        workflows.length === 0) {
+    if (!initializedFromProviderRef.current && sidebarWorkflows.length > 0) {
       initializedFromProviderRef.current = true;
       setWorkflows(sidebarWorkflows);
-      previousWorkflowsRef.current = sidebarWorkflows;
-    }
-  }, [sidebarWorkflows, workflows.length, setWorkflows]);
-
-  useEffect(() => {
-    if (!initializedFromProviderRef.current &&
-        sidebarHostedWorkflows.length > 0 &&
-        hostedWorkflows.length === 0) {
       setHostedWorkflows(sidebarHostedWorkflows);
-      previousHostedWorkflowsRef.current = sidebarHostedWorkflows;
     }
-  }, [sidebarHostedWorkflows, hostedWorkflows.length, setHostedWorkflows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - run only once on mount
 
-  // Sync from WorkflowContext to provider (when WorkflowBuilder loads new data)
+  // Sync TO provider when WorkflowContext loads (not from provider)
+  const workflowsStringified = JSON.stringify(workflows.map((w) => w.id));
+  const hostedWorkflowsStringified = JSON.stringify(hostedWorkflows.map((w) => w.slug));
+
   useEffect(() => {
-    if (workflows.length > 0 && workflows !== previousWorkflowsRef.current) {
-      previousWorkflowsRef.current = workflows;
+    if (workflows.length > 0 && initializedFromProviderRef.current) {
       setSidebarWorkflows(workflows);
     }
-  }, [workflows, setSidebarWorkflows]);
+  }, [workflowsStringified, setSidebarWorkflows, workflows]);
 
   useEffect(() => {
-    if (hostedWorkflows.length > 0 && hostedWorkflows !== previousHostedWorkflowsRef.current) {
-      previousHostedWorkflowsRef.current = hostedWorkflows;
+    if (hostedWorkflows.length > 0 && initializedFromProviderRef.current) {
       setSidebarHostedWorkflows(hostedWorkflows);
     }
-  }, [hostedWorkflows, setSidebarHostedWorkflows]);
+  }, [hostedWorkflowsStringified, setSidebarHostedWorkflows, hostedWorkflows]);
 
   useEffect(() => {
     setSidebarSelectedWorkflowId(selectedWorkflowId as number | null);
