@@ -1,7 +1,7 @@
 import React, { Fragment, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 
-import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react";
 
 import { renderWidgetIcon } from "./widgetIcons";
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react";
 import {
   Atom,
   BadgeCheck,
