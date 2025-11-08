@@ -284,18 +284,15 @@ button {
   width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  transform: translate3d(0, 0, 0);
-  transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform;
+  transition: none;
   z-index: 0;
-  backface-visibility: hidden;
   -webkit-tap-highlight-color: transparent;
   background: var(--main-background);
   border-left: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .app-layout--sidebar-open .app-layout__main {
-  transform: translate3d(var(--app-sidebar-width), 0, 0);
+  /* Transform removed to prevent black rectangle artifact */
 }
 
 .app-layout__scrim {
@@ -308,7 +305,7 @@ button {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.4s ease;
+  transition: none;
   z-index: 1;
   appearance: none;
   -webkit-tap-highlight-color: transparent;
@@ -369,10 +366,9 @@ button {
   --app-sidebar-content-padding-x: var(--app-sidebar-padding-x);
   overflow: hidden;
   transform: translateX(calc(-1 * var(--app-sidebar-width))) !important;
-  transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: none !important;
   pointer-events: none !important;
   /* Prevent external CSS from affecting sidebar positioning */
-  will-change: transform;
 }
 
 .app-sidebar__scroll-area {
@@ -456,7 +452,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, var(--app-sidebar-collapsed-width)) 1fr;
   align-items: stretch;
-  transition: grid-template-columns 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: none;
 }
 
 .app-layout--desktop.app-layout--sidebar-open {
