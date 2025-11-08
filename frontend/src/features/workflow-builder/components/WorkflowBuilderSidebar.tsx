@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 
 import { useSidebarPortal } from "../../../components/AppLayout";
 import { useI18n } from "../../../i18n";
@@ -87,9 +87,11 @@ const WorkflowBuilderSidebar = ({
     workflowMenuPlacement,
     setWorkflowMenuPlacement,
     closeWorkflowMenu,
-    workflowMenuTriggerRef,
-    workflowMenuRef,
   } = useWorkflowMenuContext();
+
+  // Local refs for this sidebar's menu positioning
+  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Memoize ordering collator for consistent sorting across full and compact lists
   const orderingCollator = useMemo(() => {
@@ -163,8 +165,6 @@ const WorkflowBuilderSidebar = ({
     setOpenWorkflowMenuId,
     setWorkflowMenuPlacement,
     closeWorkflowMenu,
-    workflowMenuTriggerRef,
-    workflowMenuRef,
     onSelectWorkflow,
     onRenameWorkflow,
     onDeleteWorkflow,
