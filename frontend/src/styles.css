@@ -292,7 +292,7 @@ button {
 }
 
 .app-layout--sidebar-open .app-layout__main {
-  /* Transform removed to prevent black rectangle artifact */
+  transform: translate3d(var(--app-sidebar-width), 0, 0);
 }
 
 .app-layout__scrim {
