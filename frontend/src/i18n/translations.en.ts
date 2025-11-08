@@ -549,8 +549,6 @@ export const en: TranslationDictionary = {
     "Unable to create the workflow.",
   "workflowBuilder.hostedSection.title": "Hosted workflows",
   "workflowBuilder.hostedSection.loading": "Loading hosted workflows…",
-  "workflowBuilder.hostedSection.empty":
-    "No hosted workflow managed from the interface yet.",
   "workflowBuilder.hostedSection.customizeAction": "Customize appearance",
   "workflowBuilder.hostedSection.deleteAction": "Delete",
   "workflowBuilder.hostedSection.openActions": "Actions for {label}",
