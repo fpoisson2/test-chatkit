@@ -584,16 +584,22 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                   isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
                 }`}
                 onPointerDown={() => {
-                  if (!isDesktopLayout) {
+                  if (!isDesktopLayout && !isActive) {
                     ignoreNextMainInteractionRef.current = true;
                   }
                 }}
                 onTouchStart={() => {
-                  if (!isDesktopLayout) {
+                  if (!isDesktopLayout && !isActive) {
                     ignoreNextMainInteractionRef.current = true;
                   }
                 }}
-                onClick={() => handleApplicationNavigate(application)}
+                onClick={() => {
+                  if (!isDesktopLayout && !isActive) {
+                    ignoreNextMainInteractionRef.current = true;
+                  }
+
+                  handleApplicationNavigate(application);
+                }}
                 tabIndex={sidebarTabIndex}
                 aria-current={isActive ? "page" : undefined}
                 aria-label={application.label}
