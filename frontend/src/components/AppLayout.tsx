@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -173,6 +174,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
   const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
   const appSwitcherLabelId = useId();
+  const scrimPointerTypeRef = useRef<string | null>(null);
 
   useEffect(() => {
     const wasDesktop = previousIsDesktopRef.current;
@@ -382,22 +384,49 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const handleScrimPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (isDesktopLayout) {
+        scrimPointerTypeRef.current = null;
         return;
       }
 
+      scrimPointerTypeRef.current = event.pointerType || null;
       event.preventDefault();
       event.stopPropagation();
     },
     [isDesktopLayout],
   );
 
+  const handleScrimPointerCancel = useCallback(() => {
+    scrimPointerTypeRef.current = null;
+  }, []);
+
   const handleScrimClick = useCallback(() => {
+    const pointerType = scrimPointerTypeRef.current;
+    scrimPointerTypeRef.current = null;
+
     if (isDesktopLayout) {
+      return;
+    }
+
+    if (pointerType && pointerType !== "touch" && pointerType !== "pen") {
       return;
     }
 
     closeSidebar();
   }, [closeSidebar, isDesktopLayout]);
+
+  const handleScrimKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if (isDesktopLayout) {
+        return;
+      }
+
+      if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        closeSidebar();
+      }
+    },
+    [closeSidebar, isDesktopLayout],
+  );
 
   const contextValue = useMemo(
     () => ({
@@ -666,7 +695,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             aria-hidden={!isSidebarOpen || isDesktopLayout}
             aria-label={t("app.sidebar.close")}
             onPointerDown={handleScrimPointerDown}
+            onPointerCancel={handleScrimPointerCancel}
             onClick={handleScrimClick}
+            onKeyDown={handleScrimKeyDown}
             tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
           />
           <div className="chatkit-layout__main">
