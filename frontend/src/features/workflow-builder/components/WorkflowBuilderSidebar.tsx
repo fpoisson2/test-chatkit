@@ -1,13 +1,9 @@
 import { useEffect, useMemo, type CSSProperties, type MutableRefObject } from "react";
-
-import { useSidebarPortal } from "../../../components/AppLayout";
 import { useI18n } from "../../../i18n";
 import {
   getWorkflowInitials,
   isWorkflowPinned,
   orderWorkflowEntries,
-  type StoredWorkflowLastUsedAt,
-  type StoredWorkflowPinnedLookup,
 } from "../../workflows/utils";
 import type { WorkflowAppearanceTarget } from "../../workflows/WorkflowAppearanceModal";
 import type {
@@ -17,6 +13,7 @@ import WorkflowSidebarListItem from "../../workflows/WorkflowSidebarListItem";
 import { useWorkflowContext } from "../contexts/WorkflowContext";
 import { useModalContext } from "../contexts/ModalContext";
 import { useUIContext } from "../contexts/UIContext";
+import { useWorkflowSidebar } from "../../workflows/WorkflowSidebarProvider";
 
 // Phase 4.5: Reduced from 28 props to 13 props (-54%)
 // Migrated to contexts:
@@ -28,18 +25,13 @@ import { useUIContext } from "../contexts/UIContext";
 // - openWorkflowMenuId, isMobileLayout → UIContext
 // - closeWorkflowMenu, setOpenWorkflowMenuId → UIContext
 export type WorkflowBuilderSidebarProps = {
-  lastUsedAt: StoredWorkflowLastUsedAt;
-  pinnedLookup: StoredWorkflowPinnedLookup;
   workflowMenuPlacement: ActionMenuPlacement;
   isSidebarCollapsed: boolean;
-  workflowSortCollator: Intl.Collator | null;
   onSelectWorkflow: (workflowId: number) => void;
   onRenameWorkflow: (workflowId: number) => void;
   onDeleteWorkflow: (workflowId: number) => void | Promise<void>;
   onDuplicateWorkflow: (workflowId?: number) => void | Promise<void>;
   onDeleteHostedWorkflow: (slug: string) => void | Promise<void>;
-  onToggleLocalPin: (workflowId: number) => void;
-  onToggleHostedPin: (slug: string) => void;
   onOpenCreateModal: () => void;
   onOpenAppearanceModal: (
     target: WorkflowAppearanceTarget,
@@ -52,18 +44,13 @@ export type WorkflowBuilderSidebarProps = {
 };
 
 const WorkflowBuilderSidebar = ({
-  lastUsedAt,
-  pinnedLookup,
   workflowMenuPlacement,
   isSidebarCollapsed,
-  workflowSortCollator,
   onSelectWorkflow,
   onRenameWorkflow,
   onDeleteWorkflow,
   onDuplicateWorkflow,
   onDeleteHostedWorkflow,
-  onToggleLocalPin,
-  onToggleHostedPin,
   onOpenCreateModal,
   onOpenAppearanceModal,
   onExportWorkflow,
@@ -72,10 +59,6 @@ const WorkflowBuilderSidebar = ({
   setWorkflowMenuPlacement,
 }: WorkflowBuilderSidebarProps) => {
   const { t } = useI18n();
-  const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } =
-    useSidebarPortal();
-
-  // Phase 4.5: Use contexts instead of props
   const {
     workflows,
     hostedWorkflows,
@@ -95,6 +78,17 @@ const WorkflowBuilderSidebar = ({
     setOpenWorkflowMenuId,
   } = useUIContext();
 
+  const {
+    lastUsedAt,
+    pinnedLookup,
+    toggleLocalPin,
+    toggleHostedPin,
+    workflowCollatorRef,
+    registerSidebarContent,
+    registerCollapsedContent,
+    clearRegisteredSidebarContent,
+  } = useWorkflowSidebar();
+
   // Phase 4.5: Derive selectedWorkflow from context data
   const selectedWorkflow = useMemo(
     () => workflows.find((w) => w.id === selectedWorkflowId) || null,
@@ -102,14 +96,14 @@ const WorkflowBuilderSidebar = ({
   );
 
   const orderingCollator = useMemo(() => {
-    if (workflowSortCollator) {
-      return workflowSortCollator;
+    if (workflowCollatorRef.current) {
+      return workflowCollatorRef.current;
     }
     if (typeof Intl !== "undefined" && typeof Intl.Collator === "function") {
       return new Intl.Collator(undefined, { sensitivity: "base" });
     }
     return null;
-  }, [workflowSortCollator]);
+  }, [workflowCollatorRef]);
 
   const workflowSidebarContent = useMemo(() => {
     const sectionId = "workflow-builder-sidebar";
@@ -220,10 +214,10 @@ const WorkflowBuilderSidebar = ({
               key={`hosted:${hosted.slug}`}
               isPinned={isPinned}
               pinLabel={pinLabel}
-              onTogglePin={(event) => {
-                event.stopPropagation();
-                onToggleHostedPin(hosted.slug);
-              }}
+            onTogglePin={(event) => {
+              event.stopPropagation();
+              toggleHostedPin(hosted.slug);
+            }}
               menuProps={{
                 menuId,
                 isOpen: isMenuOpen,
@@ -321,7 +315,7 @@ const WorkflowBuilderSidebar = ({
             pinLabel={pinLabel}
             onTogglePin={(event) => {
               event.stopPropagation();
-              onToggleLocalPin(workflow.id);
+              toggleLocalPin(workflow.id);
             }}
             menuProps={{
               menuId,
@@ -471,8 +465,8 @@ const WorkflowBuilderSidebar = ({
     onOpenCreateModal,
     onRenameWorkflow,
     onSelectWorkflow,
-    onToggleHostedPin,
-    onToggleLocalPin,
+    toggleHostedPin,
+    toggleLocalPin,
     openWorkflowMenuId,
     orderingCollator,
     pinnedLookup,
@@ -637,14 +631,18 @@ const WorkflowBuilderSidebar = ({
   ]);
 
   useEffect(() => {
-    setSidebarContent(workflowSidebarContent);
-    setCollapsedSidebarContent(collapsedWorkflowShortcuts);
-    return () => clearSidebarContent();
+    const cleanupMain = registerSidebarContent(workflowSidebarContent);
+    const cleanupCollapsed = registerCollapsedContent(collapsedWorkflowShortcuts);
+    return () => {
+      cleanupMain();
+      cleanupCollapsed();
+      clearRegisteredSidebarContent();
+    };
   }, [
-    clearSidebarContent,
+    clearRegisteredSidebarContent,
     collapsedWorkflowShortcuts,
-    setCollapsedSidebarContent,
-    setSidebarContent,
+    registerCollapsedContent,
+    registerSidebarContent,
     workflowSidebarContent,
   ]);
 

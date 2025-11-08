@@ -4,6 +4,7 @@ import { render, screen, waitFor, within, cleanup } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 
 import { I18nProvider } from "../../../i18n";
+import { WorkflowSidebarProvider } from "../WorkflowSidebarProvider";
 import { WORKFLOW_SELECTION_STORAGE_KEY } from "../utils";
 import type { StoredWorkflowSelection } from "../utils";
 import type { HostedWorkflowMetadata } from "../../../utils/backend";
@@ -166,7 +167,9 @@ describe("ChatWorkflowSidebar pinning", () => {
     const user = userEvent.setup();
     const { unmount: unmountSidebar } = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -230,7 +233,9 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     const rerendered = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -302,7 +307,9 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -346,7 +353,9 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     const rendered = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -358,7 +367,9 @@ describe("ChatWorkflowSidebar pinning", () => {
     authState.token = "token";
     rendered.rerender(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 

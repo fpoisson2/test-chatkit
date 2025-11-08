@@ -13,7 +13,7 @@ import {
 } from "./features/appearance/AppearanceSettingsContext";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
-import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
+import { type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
@@ -27,6 +27,7 @@ import {
 } from "./utils/chatkitThread";
 import type { WorkflowSummary } from "./types/workflows";
 import type { AppearanceSettings } from "./utils/backend";
+import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -250,9 +251,15 @@ export function MyChat() {
     });
   }, []);
 
-  const { mode, setMode, hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
-    onDisable: handleHostedFlowDisabled,
-  });
+  const { mode, setMode, hostedFlowEnabled, disableHostedFlow } = useWorkflowSidebar();
+  const previousHostedModeRef = useRef<HostedFlowMode>(mode);
+
+  useEffect(() => {
+    if (previousHostedModeRef.current === "hosted" && mode === "local") {
+      handleHostedFlowDisabled();
+    }
+    previousHostedModeRef.current = mode;
+  }, [handleHostedFlowDisabled, mode]);
 
   const appearanceWorkflowReference = useMemo<AppearanceWorkflowReference>(() => {
     if (mode === "hosted") {
@@ -660,11 +667,7 @@ export function MyChat() {
 
   return (
     <>
-      <ChatSidebar
-        mode={mode}
-        setMode={setMode}
-        onWorkflowActivated={handleWorkflowActivated}
-      />
+      <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
       <ChatKitHost
         control={control}
         chatInstanceKey={chatInstanceKey}

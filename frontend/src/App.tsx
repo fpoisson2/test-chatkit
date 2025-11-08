@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
 import { useAuth } from "./auth";
@@ -18,6 +18,7 @@ import { AdminAppearancePage } from "./pages/AdminAppearancePage";
 import { AdminLanguagesPage } from "./pages/AdminLanguagesPage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
+import { WorkflowSidebarProvider } from "./features/workflows/WorkflowSidebarProvider";
 
 const RequireAdmin = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
@@ -55,6 +56,16 @@ const RequireUser = ({ children }: { children: ReactElement }) => {
 
 const HomePage = () => <MyChat />;
 
+const AuthenticatedAppLayout = () => (
+  <RequireUser>
+    <AppLayout>
+      <WorkflowSidebarProvider>
+        <Outlet />
+      </WorkflowSidebarProvider>
+    </AppLayout>
+  </RequireUser>
+);
+
 export const App = () => (
   <Routes>
     <Route
@@ -65,14 +76,7 @@ export const App = () => (
         </RequireGuest>
       }
     />
-    <Route
-      path="/"
-      element={
-        <RequireUser>
-          <AppLayout />
-        </RequireUser>
-      }
-    >
+    <Route path="/" element={<AuthenticatedAppLayout />}>
       <Route index element={<HomePage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="docs" element={<DocsPage />} />

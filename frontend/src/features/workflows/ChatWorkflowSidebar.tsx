@@ -3,11 +3,8 @@ import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
-import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
-import { chatkitApi, workflowsApi } from "../../utils/backend";
-import type { HostedWorkflowMetadata } from "../../utils/backend";
-import type { WorkflowSummary } from "../../types/workflows";
-import type { HostedFlowMode } from "../../hooks/useHostedFlow";
+import { useAppLayout } from "../../components/AppLayout";
+import { useWorkflowSidebar } from "./WorkflowSidebarProvider";
 import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
 import type {
@@ -15,29 +12,9 @@ import type {
   WorkflowActionMenuItem,
 } from "./WorkflowActionMenu";
 import WorkflowSidebarListItem from "./WorkflowSidebarListItem";
-import {
-  buildWorkflowOrderingTimestamps,
-  clearWorkflowSidebarCache,
-  getWorkflowInitials,
-  isWorkflowPinned,
-  orderWorkflowEntries,
-  recordWorkflowLastUsedAt,
-  readStoredWorkflowSelection,
-  readStoredWorkflowLastUsedMap,
-  readWorkflowSidebarCache,
-  readStoredWorkflowPinnedLookup,
-  createEmptyStoredWorkflowPinned,
-  type StoredWorkflowPinned,
-  type StoredWorkflowPinnedLookup,
-  type StoredWorkflowLastUsedAt,
-  updateStoredWorkflowSelection,
-  WORKFLOW_SELECTION_CHANGED_EVENT,
-  writeStoredWorkflowSelection,
-  writeWorkflowSidebarCache,
-} from "./utils";
-
-const isApiError = (error: unknown): error is { status?: number; message?: string } =>
-  Boolean(error) && typeof error === "object" && "status" in error;
+import { getWorkflowInitials, isWorkflowPinned, orderWorkflowEntries } from "./utils";
+import type { HostedWorkflowMetadata } from "../../utils/backend";
+import type { WorkflowSummary } from "../../types/workflows";
 
 type ActivationContext = { reason: "initial" | "user" };
 
@@ -55,121 +32,55 @@ type LocalWorkflowSelection = {
 export type WorkflowActivation = HostedWorkflowSelection | LocalWorkflowSelection;
 
 type ChatWorkflowSidebarProps = {
-  mode: HostedFlowMode;
-  setMode: (mode: HostedFlowMode) => void;
   onWorkflowActivated: (selection: WorkflowActivation, context: ActivationContext) => void;
 };
 
-export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
+export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
   const isMobileLayout = !isDesktopLayout;
-  const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
-  const cachedState = useMemo(() => (token ? readWorkflowSidebarCache() : null), [token]);
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>(
-    () => cachedState?.workflows ?? [],
-  );
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(
-    () => cachedState?.selectedWorkflowId ?? null,
-  );
-  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>(
-    () => cachedState?.hostedWorkflows ?? [],
-  );
-  const [selectedHostedSlug, setSelectedHostedSlug] = useState<string | null>(
-    () => cachedState?.selectedHostedSlug ?? null,
-  );
-  const [loading, setLoading] = useState(() => !cachedState);
-  const [error, setError] = useState<string | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(() =>
-    buildWorkflowOrderingTimestamps(
-      cachedState?.workflows ?? [],
-      cachedState?.hostedWorkflows ?? [],
-      readStoredWorkflowLastUsedMap(),
-    ),
-  );
-  const [pinnedLookup, setPinnedLookup] = useState<StoredWorkflowPinnedLookup>(() =>
-    readStoredWorkflowPinnedLookup(),
-  );
-  const workflowsRef = useRef(workflows);
-  const hostedWorkflowsRef = useRef(hostedWorkflows);
+  const {
+    workflows,
+    hostedWorkflows,
+    selectedWorkflowId,
+    selectedHostedSlug,
+    mode,
+    loading,
+    error,
+    isUpdating,
+    lastUsedAt,
+    pinnedLookup,
+    toggleLocalPin,
+    toggleHostedPin,
+    workflowCollatorRef,
+    selectLocalWorkflow,
+    selectHostedWorkflow,
+    registerSidebarContent,
+    registerCollapsedContent,
+    clearRegisteredSidebarContent,
+    loadWorkflows,
+    setSelectedHostedSlug,
+  } = useWorkflowSidebar();
   const hostedInitialAnnouncedRef = useRef(false);
   const onWorkflowActivatedRef = useRef(onWorkflowActivated);
-  const workflowCollatorRef = useRef<Intl.Collator | null>(null);
-  const previousTokenRef = useRef<string | null>(token ?? null);
-  const hasLoadedWorkflowsRef = useRef(false);
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] = useState<ActionMenuPlacement>("down");
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    onWorkflowActivatedRef.current = onWorkflowActivated;
+  }, [onWorkflowActivated]);
+
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("down");
     workflowMenuTriggerRef.current = null;
     workflowMenuRef.current = null;
   }, []);
-
-  const persistPinnedLookup = useCallback(
-    (next: StoredWorkflowPinnedLookup) => {
-      const pinnedForStorage: StoredWorkflowPinned = {
-        local: Array.from(next.local),
-        hosted: Array.from(next.hosted),
-      };
-      updateStoredWorkflowSelection((previous) => ({
-        mode: previous?.mode ?? mode,
-        localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
-        hostedSlug: previous?.hostedSlug ?? selectedHostedSlug ?? null,
-        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-        pinned: pinnedForStorage,
-      }));
-    },
-    [mode, selectedHostedSlug, selectedWorkflowId],
-  );
-
-  const toggleLocalPin = useCallback(
-    (workflowId: number) => {
-      setPinnedLookup((current) => {
-        const next: StoredWorkflowPinnedLookup = {
-          local: new Set(current.local),
-          hosted: new Set(current.hosted),
-        };
-        if (next.local.has(workflowId)) {
-          next.local.delete(workflowId);
-        } else {
-          next.local.add(workflowId);
-        }
-        persistPinnedLookup(next);
-        return next;
-      });
-    },
-    [persistPinnedLookup],
-  );
-
-  const toggleHostedPin = useCallback(
-    (slug: string) => {
-      setPinnedLookup((current) => {
-        const next: StoredWorkflowPinnedLookup = {
-          local: new Set(current.local),
-          hosted: new Set(current.hosted),
-        };
-        if (next.hosted.has(slug)) {
-          next.hosted.delete(slug);
-        } else {
-          next.hosted.add(slug);
-        }
-        persistPinnedLookup(next);
-        return next;
-      });
-    },
-    [persistPinnedLookup],
-  );
-
-  useEffect(() => {
-    onWorkflowActivatedRef.current = onWorkflowActivated;
-  }, [onWorkflowActivated]);
 
   useOutsidePointerDown(
     [workflowMenuTriggerRef, workflowMenuRef],
@@ -183,48 +94,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     },
     { enabled: openWorkflowMenuId !== null },
   );
-
-  useEffect(() => {
-    if (typeof Intl === "undefined" || typeof Intl.Collator !== "function") {
-      return;
-    }
-
-    if (!workflowCollatorRef.current) {
-      workflowCollatorRef.current = new Intl.Collator(undefined, {
-        sensitivity: "base",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handleSelectionChange = () => {
-      setLastUsedAt(
-        buildWorkflowOrderingTimestamps(
-          workflowsRef.current,
-          hostedWorkflowsRef.current,
-          readStoredWorkflowLastUsedMap(),
-        ),
-      );
-      setPinnedLookup(readStoredWorkflowPinnedLookup());
-    };
-
-    window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
-    return () => {
-      window.removeEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    workflowsRef.current = workflows;
-  }, [workflows]);
-
-  useEffect(() => {
-    hostedWorkflowsRef.current = hostedWorkflows;
-  }, [hostedWorkflows]);
 
   useEffect(() => {
     if (openWorkflowMenuId === null) {
@@ -246,237 +115,156 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     }
   }, [closeWorkflowMenu, hostedWorkflows, openWorkflowMenuId, workflows]);
 
-  useEffect(() => {
-    if (!isAdmin && openWorkflowMenuId !== null) {
-      closeWorkflowMenu();
-    }
-  }, [closeWorkflowMenu, isAdmin, openWorkflowMenuId]);
+  const handleWorkflowClick = useCallback(
+    async (workflowId: number) => {
+      const workflow = await selectLocalWorkflow(workflowId);
+      if (!workflow) {
+        return;
+      }
 
-  useEffect(() => {
-    setLastUsedAt(
-      buildWorkflowOrderingTimestamps(workflows, hostedWorkflows, readStoredWorkflowLastUsedMap()),
+      onWorkflowActivatedRef.current(
+        { kind: "local", workflow: workflow.active_version_id ? workflow : null },
+        { reason: "user" },
+      );
+
+      if (!isDesktopLayout) {
+        closeSidebar();
+      }
+    },
+    [closeSidebar, isDesktopLayout, selectLocalWorkflow],
+  );
+
+  const handleHostedWorkflowClick = useCallback(
+    (slug: string) => {
+      const option = selectHostedWorkflow(slug);
+      if (!option) {
+        return;
+      }
+
+      hostedInitialAnnouncedRef.current = true;
+      onWorkflowActivatedRef.current(
+        { kind: "hosted", slug: option.slug, option },
+        { reason: "user" },
+      );
+
+      if (!isDesktopLayout) {
+        closeSidebar();
+      }
+    },
+    [closeSidebar, isDesktopLayout, selectHostedWorkflow],
+  );
+
+  const sortedWorkflowEntries = useMemo(() => {
+    const collator =
+      workflowCollatorRef.current ?? new Intl.Collator(undefined, { sensitivity: "base" });
+    return orderWorkflowEntries(
+      [
+        ...hostedWorkflows.map((workflow) => ({ kind: "hosted" as const, workflow })),
+        ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
+      ],
+      lastUsedAt,
+      { collator, pinnedLookup },
     );
-  }, [hostedWorkflows, workflows]);
+  }, [hostedWorkflows, lastUsedAt, pinnedLookup, workflows, workflowCollatorRef]);
 
-  useEffect(() => {
-    if (!token || !hasLoadedWorkflowsRef.current) {
-      return;
-    }
+  type CombinedEntry =
+    | { kind: "hosted"; option: HostedWorkflowMetadata; isPinned: boolean }
+    | { kind: "local"; workflow: WorkflowSummary; isPinned: boolean };
 
-    setPinnedLookup((current) => {
-      const availableLocalIds = new Set(workflows.map((workflow) => workflow.id));
-      const availableHostedSlugs = new Set(hostedWorkflows.map((workflow) => workflow.slug));
-      const nextLocal = Array.from(current.local).filter((id) => availableLocalIds.has(id));
-      const nextHosted = Array.from(current.hosted).filter((slug) => availableHostedSlugs.has(slug));
+  const combinedEntries: CombinedEntry[] = useMemo(
+    () =>
+      sortedWorkflowEntries.map((entry) =>
+        entry.kind === "hosted"
+          ? ({
+              kind: "hosted",
+              option: entry.workflow,
+              isPinned: isWorkflowPinned(entry, pinnedLookup),
+            } satisfies CombinedEntry)
+          : ({
+              kind: "local",
+              workflow: entry.workflow,
+              isPinned: isWorkflowPinned(entry, pinnedLookup),
+            } satisfies CombinedEntry),
+      ),
+    [pinnedLookup, sortedWorkflowEntries],
+  );
 
-      if (nextLocal.length === current.local.size && nextHosted.length === current.hosted.size) {
-        return current;
+  const { pinnedCombinedEntries, regularCombinedEntries } = useMemo(() => {
+    const pinned: CombinedEntry[] = [];
+    const regular: CombinedEntry[] = [];
+    for (const entry of combinedEntries) {
+      if (entry.isPinned) {
+        pinned.push(entry);
+      } else {
+        regular.push(entry);
       }
-
-      const next: StoredWorkflowPinnedLookup = {
-        local: new Set(nextLocal),
-        hosted: new Set(nextHosted),
-      };
-      persistPinnedLookup(next);
-      return next;
-    });
-  }, [hostedWorkflows, persistPinnedLookup, token, workflows]);
-
-  const loadWorkflows = useCallback(async () => {
-    const previousToken = previousTokenRef.current;
-    previousTokenRef.current = token ?? null;
-
-    if (!token) {
-      clearWorkflowSidebarCache();
-      hasLoadedWorkflowsRef.current = false;
-      if (previousToken) {
-        writeStoredWorkflowSelection(null);
-      }
-      setWorkflows([]);
-      setHostedWorkflows([]);
-      setSelectedHostedSlug(null);
-      setSelectedWorkflowId(null);
-      setPinnedLookup({ local: new Set<number>(), hosted: new Set<string>() });
-      setLastUsedAt(
-        buildWorkflowOrderingTimestamps(
-          [],
-          [],
-          readStoredWorkflowLastUsedMap(),
-        ),
-      );
-      setError(null);
-      setLoading(false);
-      hostedInitialAnnouncedRef.current = false;
-      if (mode !== "local") {
-        setMode("local");
-      }
-      onWorkflowActivatedRef.current({ kind: "local", workflow: null }, { reason: "initial" });
-      return;
     }
+    return { pinnedCombinedEntries: pinned, regularCombinedEntries: regular };
+  }, [combinedEntries]);
 
-    const hasExistingData = workflows.length > 0 || hostedWorkflows.length > 0;
-    if (!hasExistingData) {
-      setLoading(true);
-    }
-    setError(null);
+  type CompactEntry = {
+    key: string | number;
+    label: string;
+    onClick: (() => void) | undefined;
+    disabled: boolean;
+    isActive: boolean;
+    initials: string;
+    kind: "hosted" | "local";
+    isPinned: boolean;
+  };
 
-    try {
-      const workflowsPromise = isAdmin
-        ? workflowsApi.list(token)
-        : Promise.resolve<WorkflowSummary[]>([]);
-      const hostedPromise = chatkitApi
-        .getHostedWorkflows(token)
-        .catch((err) => {
-          if (isApiError(err) && err.status === 404) {
-            return null;
-          }
-          if (import.meta.env.DEV) {
-            console.warn("Impossible de charger le workflow hébergé.", err);
-          }
-          return null;
+  const compactEntries: CompactEntry[] = useMemo(() => {
+    const entries: CompactEntry[] = [];
+    for (const entry of combinedEntries) {
+      if (entry.kind === "hosted") {
+        const option = entry.option;
+        entries.push({
+          key: `hosted:${option.slug}`,
+          label: option.label,
+          onClick: () => void handleHostedWorkflowClick(option.slug),
+          disabled: !option.available,
+          isActive: mode === "hosted" && selectedHostedSlug === option.slug,
+          initials: getWorkflowInitials(option.label),
+          kind: "hosted",
+          isPinned: entry.isPinned,
         });
-
-      const [items, hosted] = await Promise.all([workflowsPromise, hostedPromise]);
-      const hostedList = Array.isArray(hosted) ? hosted : [];
-
-      hasLoadedWorkflowsRef.current = true;
-
-      const storedSelection = readStoredWorkflowSelection();
-      const defaultLocal =
-        items.find((workflow) => workflow.is_chatkit_default && workflow.active_version_id !== null) ??
-        items.find((workflow) => workflow.active_version_id !== null) ??
-        null;
-
-      let resolvedLocalWorkflow: WorkflowSummary | null = defaultLocal;
-      if (storedSelection?.localWorkflowId != null) {
-        const matchingLocal = items.find((workflow) => workflow.id === storedSelection.localWorkflowId);
-        if (matchingLocal && matchingLocal.active_version_id !== null) {
-          resolvedLocalWorkflow = matchingLocal;
-        }
+        continue;
       }
 
-      let resolvedHostedSlug: string | null = null;
-      if (storedSelection?.hostedSlug) {
-        const matchingHosted = hostedList.find((entry) => entry.slug === storedSelection.hostedSlug);
-        if (matchingHosted) {
-          resolvedHostedSlug = matchingHosted.slug;
-        }
-      }
-
-      const fallbackHosted =
-        hostedList.find((entry) => entry.available) ?? hostedList[0] ?? null;
-      if (!resolvedHostedSlug && fallbackHosted) {
-        resolvedHostedSlug = fallbackHosted.slug;
-      }
-
-      let resolvedMode: HostedFlowMode = mode;
-      if (storedSelection) {
-        if (storedSelection.mode === "hosted" && resolvedHostedSlug) {
-          resolvedMode = "hosted";
-        } else if (storedSelection.mode === "local" && resolvedLocalWorkflow) {
-          resolvedMode = "local";
-        }
-      }
-
-      if (resolvedMode === "hosted" && !resolvedHostedSlug) {
-        resolvedMode = "local";
-      }
-
-      if (resolvedMode === "local" && !resolvedLocalWorkflow) {
-        resolvedLocalWorkflow = defaultLocal;
-      }
-
-      const resolvedLocalId = resolvedLocalWorkflow?.id ?? null;
-
-      setWorkflows(items);
-      setHostedWorkflows(hostedList);
-      setSelectedHostedSlug(resolvedHostedSlug ?? null);
-      setSelectedWorkflowId(resolvedLocalId);
-
-      if (resolvedMode !== mode) {
-        setMode(resolvedMode);
-      }
-
-      hostedInitialAnnouncedRef.current = false;
-
-      const availableLocalIds = new Set(items.map((workflow) => workflow.id));
-      const availableHostedSlugs = new Set(hostedList.map((entry) => entry.slug));
-      let sanitizedPinned: StoredWorkflowPinned | null = null;
-
-      updateStoredWorkflowSelection((previous) => {
-        const preservedHostedSlug =
-          resolvedHostedSlug ??
-          (previous?.hostedSlug &&
-          hostedList.some((entry) => entry.slug === previous.hostedSlug)
-            ? previous.hostedSlug
-            : null);
-
-        const basePinned = previous?.pinned ?? createEmptyStoredWorkflowPinned();
-        sanitizedPinned = {
-          local: basePinned.local.filter((id) => availableLocalIds.has(id)),
-          hosted: basePinned.hosted.filter((slug) => availableHostedSlugs.has(slug)),
-        };
-
-        return {
-          mode: resolvedMode,
-          localWorkflowId: resolvedLocalId,
-          hostedSlug: preservedHostedSlug,
-          lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-          pinned: sanitizedPinned,
-        };
+      const workflow = entry.workflow;
+      entries.push({
+        key: `local:${workflow.id}`,
+        label: workflow.display_name,
+        onClick: () => void handleWorkflowClick(workflow.id),
+        disabled: workflow.active_version_id === null,
+        isActive: mode === "local" && workflow.id === selectedWorkflowId,
+        initials: getWorkflowInitials(workflow.display_name),
+        kind: "local",
+        isPinned: entry.isPinned,
       });
-
-      if (sanitizedPinned) {
-        setPinnedLookup({
-          local: new Set<number>(sanitizedPinned.local),
-          hosted: new Set<string>(sanitizedPinned.hosted),
-        });
-      }
-
-      setLastUsedAt(
-        buildWorkflowOrderingTimestamps(
-          items,
-          hostedList,
-          readStoredWorkflowLastUsedMap(),
-        ),
-      );
-
-      if (resolvedMode === "local") {
-        onWorkflowActivatedRef.current(
-          { kind: "local", workflow: resolvedLocalWorkflow ?? null },
-          { reason: "initial" },
-        );
-      }
-    } catch (err) {
-      let message = err instanceof Error ? err.message : "Impossible de charger les workflows.";
-      if (isApiError(err) && err.status === 403) {
-        message = "Vous n'avez pas les droits pour consulter les workflows.";
-      }
-      setError(message);
-      setWorkflows([]);
-      setHostedWorkflows([]);
-      setSelectedHostedSlug(null);
-      setSelectedWorkflowId(null);
-      hostedInitialAnnouncedRef.current = false;
-      if (mode !== "local") {
-        setMode("local");
-      }
-      onWorkflowActivatedRef.current({ kind: "local", workflow: null }, { reason: "initial" });
-      hasLoadedWorkflowsRef.current = false;
-    } finally {
-      setLoading(false);
     }
-  }, [
-    isAdmin,
-    setMode,
-    token,
-  ]);
+    return entries;
+  }, [combinedEntries, handleHostedWorkflowClick, handleWorkflowClick, mode, selectedHostedSlug, selectedWorkflowId]);
+
+  const { pinnedCompactEntries, regularCompactEntries } = useMemo(() => {
+    const pinned: CompactEntry[] = [];
+    const regular: CompactEntry[] = [];
+    for (const entry of compactEntries) {
+      if (entry.isPinned) {
+        pinned.push(entry);
+      } else {
+        regular.push(entry);
+      }
+    }
+    return { pinnedCompactEntries: pinned, regularCompactEntries: regular };
+  }, [compactEntries]);
 
   useEffect(() => {
-    void loadWorkflows();
-  }, [loadWorkflows]);
+    if (!user) {
+      hostedInitialAnnouncedRef.current = false;
+      return;
+    }
 
-  useEffect(() => {
     if (mode !== "hosted") {
       hostedInitialAnnouncedRef.current = false;
       return;
@@ -513,236 +301,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         );
       }
     }
-  }, [hostedWorkflows, mode, selectedHostedSlug]);
-
-  const handleWorkflowClick = useCallback(
-    async (workflowId: number) => {
-      if (!token || !isAdmin || workflowId === selectedWorkflowId || isUpdating) {
-        return;
-      }
-
-      const workflowToActivate = workflows.find((workflow) => workflow.id === workflowId);
-      if (!workflowToActivate || workflowToActivate.active_version_id === null) {
-        return;
-      }
-
-      setIsUpdating(true);
-      setError(null);
-      try {
-        const updated = await workflowsApi.setChatkitWorkflow(token, workflowId);
-        setWorkflows((current) => {
-          const exists = current.some((workflow) => workflow.id === updated.id);
-          if (!exists) {
-            return [
-              ...current.map((workflow) => ({
-                ...workflow,
-                is_chatkit_default: false,
-              })),
-              updated,
-            ];
-          }
-          return current.map((workflow) =>
-            workflow.id === updated.id ? updated : { ...workflow, is_chatkit_default: false },
-          );
-        });
-        setSelectedWorkflowId(updated.id);
-        updateStoredWorkflowSelection((previous) => ({
-          mode: "local",
-          localWorkflowId: updated.id,
-          hostedSlug: previous?.hostedSlug ?? null,
-          lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-          pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
-        }));
-        onWorkflowActivatedRef.current(
-          { kind: "local", workflow: updated.active_version_id ? updated : null },
-          { reason: "user" },
-        );
-        if (!isDesktopLayout) {
-          closeSidebar();
-        }
-        const updatedLastUsed = recordWorkflowLastUsedAt({
-          kind: "local",
-          workflow: updated,
-        });
-        setLastUsedAt(updatedLastUsed);
-      } catch (err) {
-        let message = err instanceof Error ? err.message : "Impossible de sélectionner le workflow.";
-        if (isApiError(err) && err.status === 400) {
-          message = "Publiez une version de production avant d'activer ce workflow.";
-        }
-        setError(message);
-      } finally {
-        setIsUpdating(false);
-      }
-    },
-    [
-      closeSidebar,
-      isAdmin,
-      isDesktopLayout,
-      isUpdating,
-      selectedWorkflowId,
-      token,
-      workflows,
-    ],
-  );
-
-  const handleHostedWorkflowClick = useCallback(
-    (slug: string) => {
-      const option = hostedWorkflows.find((entry) => entry.slug === slug);
-      if (!option || !option.available) {
-        return;
-      }
-
-      hostedInitialAnnouncedRef.current = true;
-      setSelectedHostedSlug(slug);
-      updateStoredWorkflowSelection((previous) => ({
-        mode: "hosted",
-        localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
-        hostedSlug: option.slug,
-        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-        pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
-      }));
-      onWorkflowActivatedRef.current(
-        { kind: "hosted", slug: option.slug, option },
-        { reason: "user" },
-      );
-      const updatedLastUsed = recordWorkflowLastUsedAt({
-        kind: "hosted",
-        workflow: option,
-      });
-      setLastUsedAt(updatedLastUsed);
-      if (!isDesktopLayout) {
-        closeSidebar();
-      }
-    },
-    [closeSidebar, hostedWorkflows, isDesktopLayout, selectedWorkflowId],
-  );
-
-  const sortedWorkflowEntries = useMemo(() => {
-    const collator =
-      workflowCollatorRef.current ?? new Intl.Collator(undefined, { sensitivity: "base" });
-    return orderWorkflowEntries(
-      [
-        ...hostedWorkflows.map((workflow) => ({ kind: "hosted" as const, workflow })),
-        ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
-      ],
-      lastUsedAt,
-      { collator, pinnedLookup },
-    );
-  }, [hostedWorkflows, lastUsedAt, pinnedLookup, workflows]);
-
-  type CombinedEntry =
-    | { kind: "hosted"; option: HostedWorkflowMetadata; isPinned: boolean }
-    | { kind: "local"; workflow: WorkflowSummary; isPinned: boolean };
-
-  const combinedEntries: CombinedEntry[] = useMemo(
-    () =>
-      sortedWorkflowEntries.map((entry) =>
-        entry.kind === "hosted"
-          ? ({
-              kind: "hosted" as const,
-              option: entry.workflow,
-              isPinned: isWorkflowPinned(entry, pinnedLookup),
-            })
-          : ({
-              kind: "local" as const,
-              workflow: entry.workflow,
-              isPinned: isWorkflowPinned(entry, pinnedLookup),
-            })
-      ),
-    [pinnedLookup, sortedWorkflowEntries],
-  );
-
-  const { pinnedCombinedEntries, regularCombinedEntries } = useMemo(() => {
-    const pinned: CombinedEntry[] = [];
-    const regular: CombinedEntry[] = [];
-    for (const entry of combinedEntries) {
-      if (entry.isPinned) {
-        pinned.push(entry);
-      } else {
-        regular.push(entry);
-      }
-    }
-    return { pinnedCombinedEntries: pinned, regularCombinedEntries: regular };
-  }, [combinedEntries]);
-
-  type CompactEntry = {
-    key: string;
-    label: string;
-    onClick: () => void;
-    disabled: boolean;
-    isActive: boolean;
-    initials: string;
-    kind: "hosted" | "local";
-    isPinned: boolean;
-  };
-
-  const compactEntries: CompactEntry[] = useMemo(
-    () =>
-      combinedEntries.map((entry) => {
-        if (entry.kind === "hosted") {
-          const option = entry.option;
-          return {
-            key: `hosted:${option.slug}`,
-            label: option.label,
-            onClick: () => void handleHostedWorkflowClick(option.slug),
-            disabled: !option.available,
-            isActive: mode === "hosted" && selectedHostedSlug === option.slug,
-            initials: getWorkflowInitials(option.label),
-            kind: "hosted" as const,
-            isPinned: entry.isPinned,
-          };
-        }
-
-        const workflow = entry.workflow;
-        return {
-          key: `local:${workflow.id}`,
-          label: workflow.display_name,
-          onClick: () => void handleWorkflowClick(workflow.id),
-          disabled: workflow.active_version_id === null,
-          isActive: mode === "local" && workflow.id === selectedWorkflowId,
-          initials: getWorkflowInitials(workflow.display_name),
-          kind: "local" as const,
-          isPinned: entry.isPinned,
-        };
-      }),
-    [
-      combinedEntries,
-      handleHostedWorkflowClick,
-      handleWorkflowClick,
-      mode,
-      selectedHostedSlug,
-      selectedWorkflowId,
-    ],
-  );
-
-  const { pinnedCompactEntries, regularCompactEntries } = useMemo(() => {
-    const pinned: CompactEntry[] = [];
-    const regular: CompactEntry[] = [];
-    for (const entry of compactEntries) {
-      if (entry.isPinned) {
-        pinned.push(entry);
-      } else {
-        regular.push(entry);
-      }
-    }
-    return { pinnedCompactEntries: pinned, regularCompactEntries: regular };
-  }, [compactEntries]);
-
-  useEffect(() => {
-    if (!token) {
-      clearWorkflowSidebarCache();
-      return;
-    }
-
-    writeWorkflowSidebarCache({
-      workflows,
-      hostedWorkflows,
-      selectedWorkflowId,
-      selectedHostedSlug,
-      mode,
-    });
-  }, [hostedWorkflows, mode, selectedHostedSlug, selectedWorkflowId, token, workflows]);
+  }, [hostedWorkflows, mode, selectedHostedSlug, setSelectedHostedSlug, user]);
 
   const handleOpenBuilder = useCallback(() => {
     navigate("/workflows");
@@ -901,7 +460,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
       const { workflow, isPinned } = entry;
       const isActive = mode === "local" && workflow.id === selectedWorkflowId;
-      const hasProduction = workflow.active_version_id !== null;
       const menuId = `workflow-actions-${workflow.id}`;
       const isMenuOpen = openWorkflowMenuId === workflow.id;
       const pinLabel = isPinned
@@ -935,6 +493,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           danger: true,
         },
       ];
+
       return (
         <WorkflowSidebarListItem
           key={`local:${workflow.id}`}
@@ -968,15 +527,32 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
               : null
           }
           hasActions={isAdmin}
+          dataAttributes={{
+            "data-local-workflow": "",
+            "data-selected": isActive ? "" : undefined,
+          }}
+          trailingContent={
+            <>
+              {!workflow.is_chatkit_default && !workflow.active_version_id ? (
+                <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
+                  {t("workflowBuilder.localSection.missingProduction")}
+                </p>
+              ) : null}
+              {workflow.description ? (
+                <p className="chatkit-sidebar__workflow-meta">{workflow.description}</p>
+              ) : null}
+            </>
+          }
         >
           <button
             type="button"
             className={`chatkit-sidebar__workflow-button${
-              isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
-            }`}
+              isActive ? " chatkit-sidebar__workflow-button--active" : ""
+            }${isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""}`}
             onClick={() => void handleWorkflowClick(workflow.id)}
-            disabled={!hasProduction}
+            disabled={workflow.active_version_id === null || isUpdating}
             aria-current={isActive ? "true" : undefined}
+            title={workflow.description ?? undefined}
           >
             <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
           </button>
@@ -984,33 +560,27 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       );
     };
 
-    const sectionClassName = isAdmin
-      ? "chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
-      : "chatkit-sidebar__section";
-
     return (
-      <section className={sectionClassName} aria-labelledby={`${sectionId}-title`}>
+      <section
+        className="chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
+        aria-labelledby={`${sectionId}-title`}
+      >
         <h2 id={`${sectionId}-title`} className="visually-hidden">
           {t("workflows.defaultSectionTitle")}
         </h2>
-        {isAdmin ? (
-          <div className="chatkit-sidebar__section-floating-action">
+        <div className="chatkit-sidebar__section-floating-action">
+          {isAdmin ? (
             <button
               type="button"
-              className="chatkit-sidebar__section-icon-button"
+              className="chatkit-sidebar__section-button"
               onClick={handleOpenBuilder}
-              aria-label={t("workflowBuilder.createWorkflow.openModal")}
-              title={t("workflowBuilder.createWorkflow.openModal")}
             >
-              <span aria-hidden="true">+</span>
+              {t("workflowBuilder.localSection.manageWorkflows")}
             </button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
         {pinnedCombinedEntries.length > 0 ? (
-          <div
-            className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
-            data-workflow-group="pinned"
-          >
+          <div className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned">
             <h3 className="chatkit-sidebar__workflow-group-title">
               {t("workflows.pinnedSectionTitle")}
             </h3>
@@ -1020,10 +590,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           </div>
         ) : null}
         {regularCombinedEntries.length > 0 ? (
-          <div
-            className="chatkit-sidebar__workflow-group"
-            data-workflow-group="default"
-          >
+          <div className="chatkit-sidebar__workflow-group" data-workflow-group="default">
             <h3 className="chatkit-sidebar__workflow-group-title">
               {t("workflows.defaultSectionTitle")}
             </h3>
@@ -1032,25 +599,16 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             </ul>
           </div>
         ) : null}
-        {!hasLocalWorkflows && isAdmin ? (
-          <button
-            type="button"
-            className="chatkit-sidebar__section-button"
-            onClick={handleOpenBuilder}
-          >
-            Ouvrir le workflow builder
-          </button>
-        ) : null}
       </section>
     );
   }, [
     error,
-    handleOpenBuilder,
     handleHostedWorkflowClick,
+    handleOpenBuilder,
     handleWorkflowClick,
-    closeWorkflowMenu,
     hostedWorkflows,
     isAdmin,
+    isDesktopLayout,
     isMobileLayout,
     isUpdating,
     loadWorkflows,
@@ -1059,14 +617,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     openWorkflowMenuId,
     pinnedCombinedEntries,
     regularCombinedEntries,
-    workflowMenuPlacement,
-    toggleHostedPin,
-    toggleLocalPin,
     selectedHostedSlug,
     selectedWorkflowId,
     t,
+    toggleHostedPin,
+    toggleLocalPin,
+    isAdmin,
     user,
     workflows,
+    workflowMenuPlacement,
   ]);
 
   const collapsedSidebarContent = useMemo(() => {
@@ -1124,10 +683,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           </div>
         ) : null}
         {regularCompactEntries.length > 0 ? (
-          <div
-            className="chatkit-sidebar__workflow-compact-group"
-            data-workflow-group="default"
-          >
+          <div className="chatkit-sidebar__workflow-compact-group" data-workflow-group="default">
             <h3 className="chatkit-sidebar__workflow-compact-group-title">
               {t("workflows.defaultSectionTitle")}
             </h3>
@@ -1150,16 +706,21 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   ]);
 
   useEffect(() => {
-    setSidebarContent(sidebarContent);
-    setCollapsedSidebarContent(collapsedSidebarContent);
-    return () => clearSidebarContent();
+    const cleanupMain = registerSidebarContent(sidebarContent);
+    const cleanupCollapsed = registerCollapsedContent(collapsedSidebarContent);
+    return () => {
+      cleanupMain();
+      cleanupCollapsed();
+      clearRegisteredSidebarContent();
+    };
   }, [
-    clearSidebarContent,
+    clearRegisteredSidebarContent,
     collapsedSidebarContent,
-    setCollapsedSidebarContent,
-    setSidebarContent,
+    registerCollapsedContent,
+    registerSidebarContent,
     sidebarContent,
   ]);
 
   return null;
 };
+
