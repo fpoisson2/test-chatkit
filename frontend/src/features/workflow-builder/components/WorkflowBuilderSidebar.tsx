@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useEffect, useMemo, type MutableRefObject } from "react";
 
 import { useSidebarPortal } from "../../../components/AppLayout";
 import { useI18n } from "../../../i18n";
@@ -30,6 +30,10 @@ export type WorkflowBuilderSidebarProps = {
   pinnedLookup: StoredWorkflowPinnedLookup;
   isSidebarCollapsed: boolean;
   workflowSortCollator: Intl.Collator | null;
+  workflowMenuTriggerRef: MutableRefObject<HTMLButtonElement | null>;
+  workflowMenuRef: MutableRefObject<HTMLDivElement | null>;
+  workflowMenuPlacement: import("../../workflows/WorkflowActionMenu").ActionMenuPlacement;
+  setWorkflowMenuPlacement: (placement: import("../../workflows/WorkflowActionMenu").ActionMenuPlacement) => void;
   onSelectWorkflow: (workflowId: number) => void;
   onRenameWorkflow: (workflowId: number) => void;
   onDeleteWorkflow: (workflowId: number) => void | Promise<void>;
@@ -50,6 +54,10 @@ const WorkflowBuilderSidebar = ({
   pinnedLookup,
   isSidebarCollapsed,
   workflowSortCollator,
+  workflowMenuTriggerRef,
+  workflowMenuRef,
+  workflowMenuPlacement,
+  setWorkflowMenuPlacement,
   onSelectWorkflow,
   onRenameWorkflow,
   onDeleteWorkflow,
@@ -84,14 +92,8 @@ const WorkflowBuilderSidebar = ({
   const {
     openWorkflowMenuId,
     setOpenWorkflowMenuId,
-    workflowMenuPlacement,
-    setWorkflowMenuPlacement,
     closeWorkflowMenu,
   } = useWorkflowMenuContext();
-
-  // Local refs for this sidebar's menu positioning
-  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Memoize ordering collator for consistent sorting across full and compact lists
   const orderingCollator = useMemo(() => {
