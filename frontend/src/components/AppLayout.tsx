@@ -373,17 +373,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     handleSidebarLogout();
   }, [handleSidebarLogout]);
 
-  const handleScrimPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (isDesktopLayout) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [isDesktopLayout],
-  );
 
   const layoutClassName = useMemo(
     () =>
@@ -670,16 +659,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               </footer>
             )}
           </aside>
-          <button
-            type="button"
+          <div
             className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
             aria-hidden={!isSidebarOpen || isDesktopLayout}
-            aria-label={t("app.sidebar.close")}
-            onPointerDown={handleScrimPointerDown}
-            onClick={() => {
-              // Menu closing logic removed
-            }}
-            tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
           />
           <div className="chatkit-layout__main">
             {children ?? <Outlet />}
