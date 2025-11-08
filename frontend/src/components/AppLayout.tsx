@@ -215,7 +215,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     // Removed automatic closing on mobile layout
 
     previousIsDesktopRef.current = isDesktopLayout;
-  }, [isDesktopLayout, isSidebarOpen]);
+  }, [isDesktopLayout]); // Fixed: removed isSidebarOpen from dependencies
 
   useEffect(() => {
     if (!isDesktopLayout) {
