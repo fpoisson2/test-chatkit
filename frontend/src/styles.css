@@ -285,8 +285,6 @@ button {
   overflow-x: hidden;
   overflow-y: auto;
   transform: translate3d(0, 0, 0);
-  transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform;
   z-index: 0;
   backface-visibility: hidden;
   -webkit-tap-highlight-color: transparent;
@@ -308,7 +306,6 @@ button {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.4s ease;
   z-index: 1;
   appearance: none;
   -webkit-tap-highlight-color: transparent;
@@ -363,7 +360,6 @@ button {
   --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   overflow: hidden;
   transform: translateX(calc(-1 * var(--chatkit-sidebar-width)));
-  transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 }
 
@@ -448,7 +444,6 @@ button {
   display: grid;
   grid-template-columns: minmax(0, var(--chatkit-sidebar-collapsed-width)) 1fr;
   align-items: stretch;
-  transition: grid-template-columns 0.95s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open {
