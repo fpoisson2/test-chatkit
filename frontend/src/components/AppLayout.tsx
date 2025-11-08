@@ -10,6 +10,7 @@ import {
   type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -460,6 +461,24 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       event.stopPropagation();
 
       if (ignoreNextMainInteractionRef.current) {
+        return;
+      }
+
+      closeSidebar();
+    },
+    [closeSidebar, isDesktopLayout],
+  );
+
+  const handleScrimClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (isDesktopLayout) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (ignoreNextMainInteractionRef.current) {
         ignoreNextMainInteractionRef.current = false;
         return;
       }
@@ -771,11 +790,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             aria-hidden={!isSidebarOpen || isDesktopLayout}
             aria-label={t("app.sidebar.close")}
             onPointerDown={handleScrimPointerDown}
-            onClick={() => {
-              if (!isDesktopLayout) {
-                closeSidebar();
-              }
-            }}
+            onClick={handleScrimClick}
             tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
           />
           <div className="chatkit-layout__main" {...mainInteractionHandlers}>
