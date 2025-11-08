@@ -633,6 +633,7 @@ const WorkflowBuilderPage = () => {
 
   // ONE-TIME initialization from provider, then ONLY sync back when WorkflowBuilder loads
   const initializedFromProviderRef = useRef(false);
+  const needsVersionLoadRef = useRef(false);
 
   // Initialize WorkflowContext from provider ONCE
   useEffect(() => {
@@ -643,11 +644,19 @@ const WorkflowBuilderPage = () => {
       // Initialize selectedWorkflowId from provider if present
       if (sidebarSelectedWorkflowId !== null) {
         setSelectedWorkflowId(sidebarSelectedWorkflowId);
-        // Load versions for the selected workflow
-        void loadVersions(sidebarSelectedWorkflowId, null);
+        needsVersionLoadRef.current = true;
       }
     }
-  }, [sidebarWorkflows, sidebarHostedWorkflows, sidebarSelectedWorkflowId, setWorkflows, setHostedWorkflows, setSelectedWorkflowId, loadVersions]);
+  }, [sidebarWorkflows, sidebarHostedWorkflows, sidebarSelectedWorkflowId, setWorkflows, setHostedWorkflows, setSelectedWorkflowId]);
+
+  // Load versions after initialization from provider
+  useEffect(() => {
+    if (needsVersionLoadRef.current && selectedWorkflowId !== null) {
+      needsVersionLoadRef.current = false;
+      void loadVersions(selectedWorkflowId, null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWorkflowId]);
 
   // Sync TO provider when WorkflowContext loads (not from provider)
   const workflowsStringified = JSON.stringify(workflows.map((w) => w.id));
