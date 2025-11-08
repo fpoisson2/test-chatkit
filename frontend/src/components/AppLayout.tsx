@@ -223,14 +223,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     setIsSidebarOpen(false);
   }, []);
 
-  const handleMainInteraction = useCallback(() => {
-    // Menu closing logic removed
-  }, [isDesktopLayout, isSidebarOpen]);
-
-  const mainInteractionHandlers = useSidebarInteractions({
-    isDesktopLayout,
-    onInteract: handleMainInteraction,
-  });
 
   const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
   const isSidebarCollapsed = isDesktopLayout && !isSidebarOpen;
@@ -689,7 +681,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             }}
             tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
           />
-          <div className="chatkit-layout__main" {...mainInteractionHandlers}>
+          <div className="chatkit-layout__main">
             {children ?? <Outlet />}
           </div>
         </div>
