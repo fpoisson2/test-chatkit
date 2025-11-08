@@ -201,9 +201,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         const storedPreference = readStoredSidebarOpen();
         setIsSidebarOpen(storedPreference ?? true);
       }
-    } else {
-      setIsSidebarOpen(false);
     }
+    // Removed automatic closing on mobile layout
 
     previousIsDesktopRef.current = isDesktopLayout;
   }, [isDesktopLayout]);

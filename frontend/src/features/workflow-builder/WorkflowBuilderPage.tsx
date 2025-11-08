@@ -1281,20 +1281,15 @@ const WorkflowBuilderPage = () => {
       if (workflowId === selectedWorkflowId) {
         if (isMobileLayout) {
           closeWorkflowMenu();
-          closeSidebar();
         }
         return;
       }
       setSelectedWorkflowId(workflowId);
       setSelectedVersionId(null);
       closeWorkflowMenu();
-      if (isMobileLayout) {
-        closeSidebar();
-      }
       void loadVersions(workflowId, null);
     },
     [
-      closeSidebar,
       closeWorkflowMenu,
       isMobileLayout,
       loadVersions,
