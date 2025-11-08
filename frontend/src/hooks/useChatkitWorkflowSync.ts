@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { WorkflowSummary } from "../types/workflows";
-import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"Api, type ChatKitWorkflowInfo } from "../utils/backend";
+import { chatkitApi, type ChatKitWorkflowInfo } from "../utils/backend";
 
 type UseChatkitWorkflowSyncParams = {
   token: string | null;

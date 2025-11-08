@@ -15,7 +15,7 @@ import "reactflow/dist/style.css";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout } from "../../components/AppLayout";
-import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"Api, makeApiEndpointCandidates, type HostedWorkflowMetadata } from "../../utils/backend";
+import { chatkitApi, makeApiEndpointCandidates, type HostedWorkflowMetadata } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "./hooks/useOutsidePointerDown";

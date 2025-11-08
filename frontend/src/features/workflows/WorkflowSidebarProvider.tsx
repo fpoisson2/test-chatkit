@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { useAuth } from "../../auth";
-import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"Api, workflowsApi, type HostedWorkflowMetadata } from "../../utils/backend";
+import { chatkitApi, hostedWorkflowsApi, workflowsApi, type HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
 import {
