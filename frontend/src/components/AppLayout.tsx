@@ -225,10 +225,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   }, []);
 
   const handleMainInteraction = useCallback(() => {
-    if (!isDesktopLayout && isSidebarOpen) {
-      closeSidebar();
-    }
-  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
+    // Menu closing logic removed
+  }, [isDesktopLayout, isSidebarOpen]);
 
   const mainInteractionHandlers = useSidebarInteractions({
     isDesktopLayout,
@@ -270,13 +268,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const handleApplicationNavigate = useCallback(
     (application: ApplicationDescriptor) => {
-      if (!isDesktopLayout) {
-        closeSidebar();
-      }
-
       navigate(application.path);
     },
-    [closeSidebar, isDesktopLayout, navigate],
+    [navigate],
   );
 
   const handleOpenSettings = useCallback(
@@ -293,28 +287,16 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   );
 
   const handleSidebarLogin = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-
     navigate("/login");
-  }, [closeSidebar, isDesktopLayout, navigate]);
+  }, [navigate]);
 
   const handleSidebarLogout = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-
     logout();
-  }, [closeSidebar, isDesktopLayout, logout]);
+  }, [logout]);
 
   const handleGoToAdmin = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-
     navigate("/admin");
-  }, [closeSidebar, isDesktopLayout, navigate]);
+  }, [navigate]);
 
   const handleProfileOpenSettings = useCallback(() => {
     setIsProfileMenuOpen(false);
@@ -322,12 +304,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   }, [handleOpenSettings]);
 
   const handleGoToDocs = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-
     navigate("/docs");
-  }, [closeSidebar, isDesktopLayout, navigate]);
+  }, [navigate]);
 
   const isDocsActive = useMemo(
     () => location.pathname === "/docs" || location.pathname.startsWith("/docs/"),
@@ -412,9 +390,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
       event.preventDefault();
       event.stopPropagation();
-      closeSidebar();
     },
-    [closeSidebar, isDesktopLayout],
+    [isDesktopLayout],
   );
 
   const layoutClassName = useMemo(
@@ -709,9 +686,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             aria-label={t("app.sidebar.close")}
             onPointerDown={handleScrimPointerDown}
             onClick={() => {
-              if (!isDesktopLayout) {
-                closeSidebar();
-              }
+              // Menu closing logic removed
             }}
             tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
           />

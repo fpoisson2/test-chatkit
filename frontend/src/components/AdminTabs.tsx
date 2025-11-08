@@ -54,12 +54,8 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
       ) {
         return;
       }
-
-      if (!isDesktopLayout) {
-        closeSidebar();
-      }
     },
-    [closeSidebar, isDesktopLayout],
+    [],
   );
 
   const tabs = useMemo(
@@ -77,12 +73,8 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
   const handleCollapsedTabClick = useCallback(
     (to: string) => {
       navigate(to);
-
-      if (!isDesktopLayout) {
-        closeSidebar();
-      }
     },
-    [closeSidebar, isDesktopLayout, navigate],
+    [navigate],
   );
 
   const sidebarContent = useMemo(

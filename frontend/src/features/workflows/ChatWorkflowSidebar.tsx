@@ -232,9 +232,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           { kind: "local", workflow: updated.active_version_id ? updated : null },
           { reason: "user" },
         );
-        if (!isDesktopLayout) {
-          closeSidebar();
-        }
         recordWorkflowLastUsedAt({
           kind: "local",
           workflow: updated,
@@ -249,9 +246,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       }
     },
     [
-      closeSidebar,
       isAdmin,
-      isDesktopLayout,
       isUpdating,
       selectedWorkflowId,
       setSelectedWorkflowId,
@@ -285,11 +280,8 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         kind: "hosted",
         workflow: option,
       });
-      if (!isDesktopLayout) {
-        closeSidebar();
-      }
     },
-    [closeSidebar, hostedWorkflows, isDesktopLayout, selectedWorkflowId, setSelectedHostedSlug],
+    [hostedWorkflows, selectedWorkflowId, setSelectedHostedSlug],
   );
 
   const sortedWorkflowEntries = useMemo(() => {
@@ -405,10 +397,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   const handleOpenBuilder = useCallback(() => {
     navigate("/workflows");
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-  }, [closeSidebar, isDesktopLayout, navigate]);
+  }, [navigate]);
 
   const sidebarContent = useMemo(() => {
     const sectionId = "chat-sidebar-workflow";
