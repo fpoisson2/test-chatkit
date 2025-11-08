@@ -53,7 +53,13 @@ type ChatWorkflowSidebarProps = {
 export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
+  const {
+    closeSidebar,
+    isDesktopLayout,
+    isSidebarCollapsed,
+    isSidebarAutoCloseLocked,
+    releaseSidebarAutoCloseLock,
+  } = useAppLayout();
   const isMobileLayout = !isDesktopLayout;
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
@@ -233,7 +239,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           { reason: "user" },
         );
         if (!isDesktopLayout) {
-          closeSidebar();
+          if (isSidebarAutoCloseLocked) {
+            releaseSidebarAutoCloseLock();
+          } else {
+            closeSidebar();
+          }
         }
         recordWorkflowLastUsedAt({
           kind: "local",
@@ -252,7 +262,9 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       closeSidebar,
       isAdmin,
       isDesktopLayout,
+      isSidebarAutoCloseLocked,
       isUpdating,
+      releaseSidebarAutoCloseLock,
       selectedWorkflowId,
       setSelectedWorkflowId,
       setWorkflows,
@@ -286,10 +298,22 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         workflow: option,
       });
       if (!isDesktopLayout) {
-        closeSidebar();
+        if (isSidebarAutoCloseLocked) {
+          releaseSidebarAutoCloseLock();
+        } else {
+          closeSidebar();
+        }
       }
     },
-    [closeSidebar, hostedWorkflows, isDesktopLayout, selectedWorkflowId, setSelectedHostedSlug],
+    [
+      closeSidebar,
+      hostedWorkflows,
+      isDesktopLayout,
+      isSidebarAutoCloseLocked,
+      releaseSidebarAutoCloseLock,
+      selectedWorkflowId,
+      setSelectedHostedSlug,
+    ],
   );
 
   const sortedWorkflowEntries = useMemo(() => {

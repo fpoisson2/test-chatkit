@@ -10,6 +10,7 @@ import {
   type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type SyntheticEvent,
 } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -118,7 +119,7 @@ const useSidebarInteractions = ({
   onInteract,
 }: {
   isDesktopLayout: boolean;
-  onInteract: () => void;
+  onInteract: (event: SyntheticEvent<HTMLDivElement>) => void;
 }) =>
   useMemo<Partial<HTMLAttributes<HTMLDivElement>>>(() => {
     if (isDesktopLayout) {
@@ -133,10 +134,13 @@ const useSidebarInteractions = ({
 
 type AppLayoutContextValue = {
   openSidebar: () => void;
-  closeSidebar: () => void;
+  closeSidebar: (options?: { force?: boolean }) => void;
   isDesktopLayout: boolean;
   isSidebarOpen: boolean;
   isSidebarCollapsed: boolean;
+  lockSidebarAutoClose: () => void;
+  releaseSidebarAutoCloseLock: () => void;
+  isSidebarAutoCloseLocked: boolean;
 };
 
 const AppLayoutContext = createContext<AppLayoutContextValue | undefined>(undefined);
@@ -179,6 +183,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const location = useLocation();
   const isDesktopLayout = useIsDesktopLayout();
   const previousIsDesktopRef = useRef(isDesktopLayout);
+  const previousPathnameRef = useRef(location.pathname);
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const storedPreference = readStoredSidebarOpen();
     if (storedPreference !== null) {
@@ -193,6 +198,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
   const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
   const appSwitcherLabelId = useId();
+  const sidebarAutoCloseLockRef = useRef(false);
+  const [isSidebarAutoCloseLocked, setIsSidebarAutoCloseLocked] = useState(false);
 
   useEffect(() => {
     const wasDesktop = previousIsDesktopRef.current;
@@ -221,15 +228,51 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     setIsSidebarOpen(true);
   }, []);
 
-  const closeSidebar = useCallback(() => {
-    setIsSidebarOpen(false);
+  const lockSidebarAutoClose = useCallback(() => {
+    if (sidebarAutoCloseLockRef.current) {
+      return;
+    }
+
+    sidebarAutoCloseLockRef.current = true;
+    setIsSidebarAutoCloseLocked(true);
   }, []);
 
-  const handleMainInteraction = useCallback(() => {
-    if (!isDesktopLayout && isSidebarOpen) {
-      closeSidebar();
+  const releaseSidebarAutoCloseLock = useCallback(() => {
+    if (!sidebarAutoCloseLockRef.current) {
+      return;
     }
-  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
+
+    sidebarAutoCloseLockRef.current = false;
+    setIsSidebarAutoCloseLocked(false);
+  }, []);
+
+  const closeSidebar = useCallback(
+    (options?: { force?: boolean }) => {
+      if (sidebarAutoCloseLockRef.current && !options?.force) {
+        return;
+      }
+
+      setIsSidebarOpen(false);
+    },
+    [],
+  );
+
+  const handleMainInteraction = useCallback(
+    (event: SyntheticEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      if (!isDesktopLayout && isSidebarOpen) {
+        if (sidebarAutoCloseLockRef.current) {
+          return;
+        }
+
+        closeSidebar();
+      }
+    },
+    [closeSidebar, isDesktopLayout, isSidebarOpen],
+  );
 
   const mainInteractionHandlers = useSidebarInteractions({
     isDesktopLayout,
@@ -296,6 +339,15 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     keepSidebarOpenOnNavigationRef.current = false;
     setIsSidebarOpen(true);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (previousPathnameRef.current === location.pathname) {
+      return;
+    }
+
+    previousPathnameRef.current = location.pathname;
+    releaseSidebarAutoCloseLock();
+  }, [location.pathname, releaseSidebarAutoCloseLock]);
 
   const handleOpenSettings = useCallback(
     (sectionId?: SettingsSectionId) => {
@@ -430,7 +482,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
       event.preventDefault();
       event.stopPropagation();
-      closeSidebar();
+      closeSidebar({ force: true });
     },
     [closeSidebar, isDesktopLayout],
   );
@@ -466,8 +518,20 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       isDesktopLayout,
       isSidebarOpen,
       isSidebarCollapsed,
+      lockSidebarAutoClose,
+      releaseSidebarAutoCloseLock,
+      isSidebarAutoCloseLocked,
     }),
-    [closeSidebar, isDesktopLayout, isSidebarCollapsed, isSidebarOpen, openSidebar],
+    [
+      closeSidebar,
+      isDesktopLayout,
+      isSidebarAutoCloseLocked,
+      isSidebarCollapsed,
+      isSidebarOpen,
+      lockSidebarAutoClose,
+      openSidebar,
+      releaseSidebarAutoCloseLock,
+    ],
   );
 
   const handleSetSidebarContent = useCallback((content: ReactNode | null) => {

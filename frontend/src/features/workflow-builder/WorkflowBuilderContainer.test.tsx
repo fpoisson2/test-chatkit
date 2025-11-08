@@ -37,13 +37,45 @@ vi.mock("../../components/AppLayout", () => ({
   useAppLayout: () => ({
     openSidebar: vi.fn(),
     closeSidebar: vi.fn(),
+    isDesktopLayout: true,
+    isSidebarOpen: true,
     isSidebarCollapsed: false,
+    lockSidebarAutoClose: vi.fn(),
+    releaseSidebarAutoCloseLock: vi.fn(),
+    isSidebarAutoCloseLocked: false,
   }),
   useSidebarPortal: () => ({
     setSidebarContent: vi.fn(),
     clearSidebarContent: vi.fn(),
     setCollapsedSidebarContent: vi.fn(),
     clearCollapsedSidebarContent: vi.fn(),
+  }),
+}));
+
+vi.mock("../workflows/WorkflowSidebarProvider", () => ({
+  WorkflowSidebarProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useWorkflowSidebar: () => ({
+    workflows: [],
+    hostedWorkflows: [],
+    selectedWorkflowId: null,
+    selectedHostedSlug: null,
+    mode: "local",
+    loading: false,
+    error: null,
+    lastUsedAt: { local: {}, hosted: {} },
+    pinnedLookup: { local: new Set<number>(), hosted: new Set<string>() },
+    workflowCollator: null,
+    setMode: vi.fn(),
+    setWorkflows: vi.fn(),
+    setHostedWorkflows: vi.fn(),
+    setSelectedWorkflowId: vi.fn(),
+    setSelectedHostedSlug: vi.fn(),
+    toggleLocalPin: vi.fn(),
+    toggleHostedPin: vi.fn(),
+    loadWorkflows: vi.fn(),
+    workflowsRef: { current: [] },
+    hostedWorkflowsRef: { current: [] },
+    hasLoadedWorkflowsRef: { current: false },
   }),
 }));
 

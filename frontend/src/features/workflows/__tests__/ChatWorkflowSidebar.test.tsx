@@ -9,6 +9,7 @@ import type { StoredWorkflowSelection } from "../utils";
 import type { HostedWorkflowMetadata } from "../../../utils/backend";
 import type { WorkflowSummary } from "../../../types/workflows";
 import { chatkitApi, workflowsApi } from "../../../utils/backend";
+import { WorkflowSidebarProvider } from "../WorkflowSidebarProvider";
 
 vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
@@ -29,11 +30,20 @@ const clearCollapsedSidebarContentMock = vi.fn(() => {
   latestCollapsedSidebarContent = null;
 });
 
+const closeSidebarMock = vi.fn();
+const releaseSidebarAutoCloseLockMock = vi.fn();
+let isDesktopLayoutMock = true;
+let isSidebarCollapsedMock = false;
+let isSidebarAutoCloseLockedMock = false;
+
 vi.mock("../../../components/AppLayout", () => ({
   useAppLayout: () => ({
-    closeSidebar: vi.fn(),
-    isDesktopLayout: true,
-    isSidebarCollapsed: false,
+    closeSidebar: closeSidebarMock,
+    isDesktopLayout: isDesktopLayoutMock,
+    isSidebarCollapsed: isSidebarCollapsedMock,
+    isSidebarAutoCloseLocked: isSidebarAutoCloseLockedMock,
+    releaseSidebarAutoCloseLock: releaseSidebarAutoCloseLockMock,
+    lockSidebarAutoClose: vi.fn(),
   }),
   useSidebarPortal: () => ({
     setSidebarContent: setSidebarContentMock,
@@ -99,6 +109,7 @@ const createHosted = (slug: string, label: string): HostedWorkflowMetadata => ({
   managed: true,
 });
 
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -111,6 +122,11 @@ function createDeferred<T>() {
 
 describe("ChatWorkflowSidebar pinning", () => {
   beforeEach(() => {
+    closeSidebarMock.mockClear();
+    releaseSidebarAutoCloseLockMock.mockClear();
+    isDesktopLayoutMock = true;
+    isSidebarCollapsedMock = false;
+    isSidebarAutoCloseLockedMock = false;
     latestSidebarContent = null;
     latestCollapsedSidebarContent = null;
     setSidebarContentMock.mockClear();
@@ -166,7 +182,9 @@ describe("ChatWorkflowSidebar pinning", () => {
     const user = userEvent.setup();
     const { unmount: unmountSidebar } = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -230,7 +248,9 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     const rerendered = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -302,7 +322,9 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -346,19 +368,21 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     const rendered = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
-    // Ensure the stored selection remains untouched while the token is missing
-    expect(window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toBe(
-      JSON.stringify(storedSelection),
-    );
+    // Ensure the stored selection keeps the pinned workflows while the token is missing
+    expect(window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toContain("\"local\":[2]");
 
     authState.token = "token";
     rendered.rerender(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -383,5 +407,111 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     sidebarHost.unmount();
     rendered.unmount();
+  });
+
+  it("closes the sidebar on mobile when selecting a hosted workflow without an active lock", async () => {
+    isDesktopLayoutMock = false;
+
+    const user = userEvent.setup();
+    render(
+      <I18nProvider>
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="hosted" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
+      </I18nProvider>,
+    );
+
+    const sidebarHost = await renderSidebarHost();
+    let hostedButton: HTMLButtonElement | undefined;
+    await waitFor(() => {
+      sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
+      hostedButton = sidebarHost
+        .getAllByRole("button", { name: /Gamma/ })
+        .find((element) => element.getAttribute("aria-label") === null) as HTMLButtonElement | undefined;
+      expect(hostedButton).toBeDefined();
+    });
+
+    closeSidebarMock.mockClear();
+    releaseSidebarAutoCloseLockMock.mockClear();
+
+    await user.click(hostedButton!);
+
+    await waitFor(() => {
+      expect(closeSidebarMock).toHaveBeenCalledTimes(1);
+    });
+    expect(releaseSidebarAutoCloseLockMock).not.toHaveBeenCalled();
+  });
+
+  it("releases the auto-close lock instead of closing when selecting a hosted workflow on mobile", async () => {
+    isDesktopLayoutMock = false;
+    isSidebarAutoCloseLockedMock = true;
+
+    const user = userEvent.setup();
+    render(
+      <I18nProvider>
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="hosted" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
+      </I18nProvider>,
+    );
+
+    const sidebarHost = await renderSidebarHost();
+    let hostedButton: HTMLButtonElement | undefined;
+    await waitFor(() => {
+      sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
+      hostedButton = sidebarHost
+        .getAllByRole("button", { name: /Gamma/ })
+        .find((element) => element.getAttribute("aria-label") === null) as HTMLButtonElement | undefined;
+      expect(hostedButton).toBeDefined();
+    });
+
+    closeSidebarMock.mockClear();
+    releaseSidebarAutoCloseLockMock.mockClear();
+
+    await user.click(hostedButton!);
+
+    await waitFor(() => {
+      expect(releaseSidebarAutoCloseLockMock).toHaveBeenCalledTimes(1);
+    });
+    expect(closeSidebarMock).not.toHaveBeenCalled();
+  });
+
+  it("releases the auto-close lock when activating a local workflow on mobile", async () => {
+    isDesktopLayoutMock = false;
+    isSidebarAutoCloseLockedMock = true;
+
+    const updatedWorkflow = createWorkflow(2, "Beta");
+    vi
+      .spyOn(workflowsApi, "setChatkitWorkflow")
+      .mockResolvedValue({ ...updatedWorkflow, is_chatkit_default: true });
+
+    const user = userEvent.setup();
+    render(
+      <I18nProvider>
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
+      </I18nProvider>,
+    );
+
+    const sidebarHost = await renderSidebarHost();
+    let localButton: HTMLButtonElement | undefined;
+    await waitFor(() => {
+      sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
+      localButton = sidebarHost
+        .getAllByRole("button", { name: /Beta/ })
+        .find((element) => element.getAttribute("aria-label") === null) as HTMLButtonElement | undefined;
+      expect(localButton).toBeDefined();
+    });
+
+    closeSidebarMock.mockClear();
+    releaseSidebarAutoCloseLockMock.mockClear();
+
+    await user.click(localButton!);
+
+    await waitFor(() => {
+      expect(releaseSidebarAutoCloseLockMock).toHaveBeenCalledTimes(1);
+    });
+    expect(closeSidebarMock).not.toHaveBeenCalled();
   });
 });

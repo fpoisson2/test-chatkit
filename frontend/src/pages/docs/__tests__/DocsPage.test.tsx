@@ -30,6 +30,9 @@ vi.mock("../../../components/AppLayout", () => ({
     isDesktopLayout: true,
     isSidebarOpen: true,
     isSidebarCollapsed: false,
+    lockSidebarAutoClose: vi.fn(),
+    releaseSidebarAutoCloseLock: vi.fn(),
+    isSidebarAutoCloseLocked: false,
   }),
   useSidebarPortal: () => ({
     setSidebarContent: vi.fn(),
