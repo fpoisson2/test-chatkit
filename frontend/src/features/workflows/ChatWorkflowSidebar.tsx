@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
-import { chatkitApi, workflowsApi } from "../../utils/backend";
+import { workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
@@ -16,25 +16,15 @@ import type {
 } from "./WorkflowActionMenu";
 import WorkflowSidebarListItem from "./WorkflowSidebarListItem";
 import {
-  buildWorkflowOrderingTimestamps,
-  clearWorkflowSidebarCache,
   getWorkflowInitials,
   isWorkflowPinned,
   orderWorkflowEntries,
   recordWorkflowLastUsedAt,
-  readStoredWorkflowSelection,
   readStoredWorkflowLastUsedMap,
-  readWorkflowSidebarCache,
-  readStoredWorkflowPinnedLookup,
   createEmptyStoredWorkflowPinned,
-  type StoredWorkflowPinned,
-  type StoredWorkflowPinnedLookup,
-  type StoredWorkflowLastUsedAt,
   updateStoredWorkflowSelection,
-  WORKFLOW_SELECTION_CHANGED_EVENT,
-  writeStoredWorkflowSelection,
-  writeWorkflowSidebarCache,
 } from "./utils";
+import { useWorkflowSidebar } from "./WorkflowSidebarProvider";
 
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
@@ -68,104 +58,40 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
-  const cachedState = useMemo(() => (token ? readWorkflowSidebarCache() : null), [token]);
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>(
-    () => cachedState?.workflows ?? [],
-  );
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(
-    () => cachedState?.selectedWorkflowId ?? null,
-  );
-  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>(
-    () => cachedState?.hostedWorkflows ?? [],
-  );
-  const [selectedHostedSlug, setSelectedHostedSlug] = useState<string | null>(
-    () => cachedState?.selectedHostedSlug ?? null,
-  );
-  const [loading, setLoading] = useState(() => !cachedState);
-  const [error, setError] = useState<string | null>(null);
+
+  // Use the shared workflow sidebar state
+  const {
+    workflows,
+    hostedWorkflows,
+    selectedWorkflowId,
+    selectedHostedSlug,
+    loading,
+    error,
+    lastUsedAt,
+    pinnedLookup,
+    workflowCollator,
+    toggleLocalPin,
+    toggleHostedPin,
+    loadWorkflows,
+    setWorkflows,
+    setSelectedWorkflowId,
+    setSelectedHostedSlug,
+  } = useWorkflowSidebar();
+
   const [isUpdating, setIsUpdating] = useState(false);
-  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(() =>
-    buildWorkflowOrderingTimestamps(
-      cachedState?.workflows ?? [],
-      cachedState?.hostedWorkflows ?? [],
-      readStoredWorkflowLastUsedMap(),
-    ),
-  );
-  const [pinnedLookup, setPinnedLookup] = useState<StoredWorkflowPinnedLookup>(() =>
-    readStoredWorkflowPinnedLookup(),
-  );
-  const workflowsRef = useRef(workflows);
-  const hostedWorkflowsRef = useRef(hostedWorkflows);
   const hostedInitialAnnouncedRef = useRef(false);
   const onWorkflowActivatedRef = useRef(onWorkflowActivated);
-  const workflowCollatorRef = useRef<Intl.Collator | null>(null);
-  const previousTokenRef = useRef<string | null>(token ?? null);
-  const hasLoadedWorkflowsRef = useRef(false);
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
   const [workflowMenuPlacement, setWorkflowMenuPlacement] = useState<ActionMenuPlacement>("down");
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
+
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
     setWorkflowMenuPlacement("down");
     workflowMenuTriggerRef.current = null;
     workflowMenuRef.current = null;
   }, []);
-
-  const persistPinnedLookup = useCallback(
-    (next: StoredWorkflowPinnedLookup) => {
-      const pinnedForStorage: StoredWorkflowPinned = {
-        local: Array.from(next.local),
-        hosted: Array.from(next.hosted),
-      };
-      updateStoredWorkflowSelection((previous) => ({
-        mode: previous?.mode ?? mode,
-        localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
-        hostedSlug: previous?.hostedSlug ?? selectedHostedSlug ?? null,
-        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-        pinned: pinnedForStorage,
-      }));
-    },
-    [mode, selectedHostedSlug, selectedWorkflowId],
-  );
-
-  const toggleLocalPin = useCallback(
-    (workflowId: number) => {
-      setPinnedLookup((current) => {
-        const next: StoredWorkflowPinnedLookup = {
-          local: new Set(current.local),
-          hosted: new Set(current.hosted),
-        };
-        if (next.local.has(workflowId)) {
-          next.local.delete(workflowId);
-        } else {
-          next.local.add(workflowId);
-        }
-        persistPinnedLookup(next);
-        return next;
-      });
-    },
-    [persistPinnedLookup],
-  );
-
-  const toggleHostedPin = useCallback(
-    (slug: string) => {
-      setPinnedLookup((current) => {
-        const next: StoredWorkflowPinnedLookup = {
-          local: new Set(current.local),
-          hosted: new Set(current.hosted),
-        };
-        if (next.hosted.has(slug)) {
-          next.hosted.delete(slug);
-        } else {
-          next.hosted.add(slug);
-        }
-        persistPinnedLookup(next);
-        return next;
-      });
-    },
-    [persistPinnedLookup],
-  );
 
   useEffect(() => {
     onWorkflowActivatedRef.current = onWorkflowActivated;
@@ -183,48 +109,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     },
     { enabled: openWorkflowMenuId !== null },
   );
-
-  useEffect(() => {
-    if (typeof Intl === "undefined" || typeof Intl.Collator !== "function") {
-      return;
-    }
-
-    if (!workflowCollatorRef.current) {
-      workflowCollatorRef.current = new Intl.Collator(undefined, {
-        sensitivity: "base",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handleSelectionChange = () => {
-      setLastUsedAt(
-        buildWorkflowOrderingTimestamps(
-          workflowsRef.current,
-          hostedWorkflowsRef.current,
-          readStoredWorkflowLastUsedMap(),
-        ),
-      );
-      setPinnedLookup(readStoredWorkflowPinnedLookup());
-    };
-
-    window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
-    return () => {
-      window.removeEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    workflowsRef.current = workflows;
-  }, [workflows]);
-
-  useEffect(() => {
-    hostedWorkflowsRef.current = hostedWorkflows;
-  }, [hostedWorkflows]);
 
   useEffect(() => {
     if (openWorkflowMenuId === null) {
@@ -252,230 +136,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     }
   }, [closeWorkflowMenu, isAdmin, openWorkflowMenuId]);
 
-  useEffect(() => {
-    setLastUsedAt(
-      buildWorkflowOrderingTimestamps(workflows, hostedWorkflows, readStoredWorkflowLastUsedMap()),
-    );
-  }, [hostedWorkflows, workflows]);
-
-  useEffect(() => {
-    if (!token || !hasLoadedWorkflowsRef.current) {
-      return;
-    }
-
-    setPinnedLookup((current) => {
-      const availableLocalIds = new Set(workflows.map((workflow) => workflow.id));
-      const availableHostedSlugs = new Set(hostedWorkflows.map((workflow) => workflow.slug));
-      const nextLocal = Array.from(current.local).filter((id) => availableLocalIds.has(id));
-      const nextHosted = Array.from(current.hosted).filter((slug) => availableHostedSlugs.has(slug));
-
-      if (nextLocal.length === current.local.size && nextHosted.length === current.hosted.size) {
-        return current;
-      }
-
-      const next: StoredWorkflowPinnedLookup = {
-        local: new Set(nextLocal),
-        hosted: new Set(nextHosted),
-      };
-      persistPinnedLookup(next);
-      return next;
-    });
-  }, [hostedWorkflows, persistPinnedLookup, token, workflows]);
-
-  const loadWorkflows = useCallback(async () => {
-    const previousToken = previousTokenRef.current;
-    previousTokenRef.current = token ?? null;
-
-    if (!token) {
-      clearWorkflowSidebarCache();
-      hasLoadedWorkflowsRef.current = false;
-      if (previousToken) {
-        writeStoredWorkflowSelection(null);
-      }
-      setWorkflows([]);
-      setHostedWorkflows([]);
-      setSelectedHostedSlug(null);
-      setSelectedWorkflowId(null);
-      setPinnedLookup({ local: new Set<number>(), hosted: new Set<string>() });
-      setLastUsedAt(
-        buildWorkflowOrderingTimestamps(
-          [],
-          [],
-          readStoredWorkflowLastUsedMap(),
-        ),
-      );
-      setError(null);
-      setLoading(false);
-      hostedInitialAnnouncedRef.current = false;
-      if (mode !== "local") {
-        setMode("local");
-      }
-      onWorkflowActivatedRef.current({ kind: "local", workflow: null }, { reason: "initial" });
-      return;
-    }
-
-    const hasExistingData = workflows.length > 0 || hostedWorkflows.length > 0;
-    if (!hasExistingData) {
-      setLoading(true);
-    }
-    setError(null);
-
-    try {
-      const workflowsPromise = isAdmin
-        ? workflowsApi.list(token)
-        : Promise.resolve<WorkflowSummary[]>([]);
-      const hostedPromise = chatkitApi
-        .getHostedWorkflows(token)
-        .catch((err) => {
-          if (isApiError(err) && err.status === 404) {
-            return null;
-          }
-          if (import.meta.env.DEV) {
-            console.warn("Impossible de charger le workflow hébergé.", err);
-          }
-          return null;
-        });
-
-      const [items, hosted] = await Promise.all([workflowsPromise, hostedPromise]);
-      const hostedList = Array.isArray(hosted) ? hosted : [];
-
-      hasLoadedWorkflowsRef.current = true;
-
-      const storedSelection = readStoredWorkflowSelection();
-      const defaultLocal =
-        items.find((workflow) => workflow.is_chatkit_default && workflow.active_version_id !== null) ??
-        items.find((workflow) => workflow.active_version_id !== null) ??
-        null;
-
-      let resolvedLocalWorkflow: WorkflowSummary | null = defaultLocal;
-      if (storedSelection?.localWorkflowId != null) {
-        const matchingLocal = items.find((workflow) => workflow.id === storedSelection.localWorkflowId);
-        if (matchingLocal && matchingLocal.active_version_id !== null) {
-          resolvedLocalWorkflow = matchingLocal;
-        }
-      }
-
-      let resolvedHostedSlug: string | null = null;
-      if (storedSelection?.hostedSlug) {
-        const matchingHosted = hostedList.find((entry) => entry.slug === storedSelection.hostedSlug);
-        if (matchingHosted) {
-          resolvedHostedSlug = matchingHosted.slug;
-        }
-      }
-
-      const fallbackHosted =
-        hostedList.find((entry) => entry.available) ?? hostedList[0] ?? null;
-      if (!resolvedHostedSlug && fallbackHosted) {
-        resolvedHostedSlug = fallbackHosted.slug;
-      }
-
-      let resolvedMode: HostedFlowMode = mode;
-      if (storedSelection) {
-        if (storedSelection.mode === "hosted" && resolvedHostedSlug) {
-          resolvedMode = "hosted";
-        } else if (storedSelection.mode === "local" && resolvedLocalWorkflow) {
-          resolvedMode = "local";
-        }
-      }
-
-      if (resolvedMode === "hosted" && !resolvedHostedSlug) {
-        resolvedMode = "local";
-      }
-
-      if (resolvedMode === "local" && !resolvedLocalWorkflow) {
-        resolvedLocalWorkflow = defaultLocal;
-      }
-
-      const resolvedLocalId = resolvedLocalWorkflow?.id ?? null;
-
-      setWorkflows(items);
-      setHostedWorkflows(hostedList);
-      setSelectedHostedSlug(resolvedHostedSlug ?? null);
-      setSelectedWorkflowId(resolvedLocalId);
-
-      if (resolvedMode !== mode) {
-        setMode(resolvedMode);
-      }
-
-      hostedInitialAnnouncedRef.current = false;
-
-      const availableLocalIds = new Set(items.map((workflow) => workflow.id));
-      const availableHostedSlugs = new Set(hostedList.map((entry) => entry.slug));
-      let sanitizedPinned: StoredWorkflowPinned | null = null;
-
-      updateStoredWorkflowSelection((previous) => {
-        const preservedHostedSlug =
-          resolvedHostedSlug ??
-          (previous?.hostedSlug &&
-          hostedList.some((entry) => entry.slug === previous.hostedSlug)
-            ? previous.hostedSlug
-            : null);
-
-        const basePinned = previous?.pinned ?? createEmptyStoredWorkflowPinned();
-        sanitizedPinned = {
-          local: basePinned.local.filter((id) => availableLocalIds.has(id)),
-          hosted: basePinned.hosted.filter((slug) => availableHostedSlugs.has(slug)),
-        };
-
-        return {
-          mode: resolvedMode,
-          localWorkflowId: resolvedLocalId,
-          hostedSlug: preservedHostedSlug,
-          lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
-          pinned: sanitizedPinned,
-        };
-      });
-
-      if (sanitizedPinned) {
-        setPinnedLookup({
-          local: new Set<number>(sanitizedPinned.local),
-          hosted: new Set<string>(sanitizedPinned.hosted),
-        });
-      }
-
-      setLastUsedAt(
-        buildWorkflowOrderingTimestamps(
-          items,
-          hostedList,
-          readStoredWorkflowLastUsedMap(),
-        ),
-      );
-
-      if (resolvedMode === "local") {
-        onWorkflowActivatedRef.current(
-          { kind: "local", workflow: resolvedLocalWorkflow ?? null },
-          { reason: "initial" },
-        );
-      }
-    } catch (err) {
-      let message = err instanceof Error ? err.message : "Impossible de charger les workflows.";
-      if (isApiError(err) && err.status === 403) {
-        message = "Vous n'avez pas les droits pour consulter les workflows.";
-      }
-      setError(message);
-      setWorkflows([]);
-      setHostedWorkflows([]);
-      setSelectedHostedSlug(null);
-      setSelectedWorkflowId(null);
-      hostedInitialAnnouncedRef.current = false;
-      if (mode !== "local") {
-        setMode("local");
-      }
-      onWorkflowActivatedRef.current({ kind: "local", workflow: null }, { reason: "initial" });
-      hasLoadedWorkflowsRef.current = false;
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    isAdmin,
-    setMode,
-    token,
-  ]);
-
-  useEffect(() => {
-    void loadWorkflows();
-  }, [loadWorkflows]);
-
+  // Announce initial workflow selection
   useEffect(() => {
     if (mode !== "hosted") {
       hostedInitialAnnouncedRef.current = false;
@@ -513,7 +174,22 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         );
       }
     }
-  }, [hostedWorkflows, mode, selectedHostedSlug]);
+  }, [hostedWorkflows, mode, selectedHostedSlug, setSelectedHostedSlug]);
+
+  // Announce initial local workflow selection (only on first load)
+  const hasAnnouncedInitialLocal = useRef(false);
+  useEffect(() => {
+    if (hasAnnouncedInitialLocal.current || mode !== "local" || !workflows.length) {
+      return;
+    }
+
+    const workflow = workflows.find((w) => w.id === selectedWorkflowId) ?? null;
+    hasAnnouncedInitialLocal.current = true;
+    onWorkflowActivatedRef.current(
+      { kind: "local", workflow },
+      { reason: "initial" },
+    );
+  }, [mode, selectedWorkflowId, workflows]);
 
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
@@ -527,7 +203,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       }
 
       setIsUpdating(true);
-      setError(null);
       try {
         const updated = await workflowsApi.setChatkitWorkflow(token, workflowId);
         setWorkflows((current) => {
@@ -560,17 +235,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         if (!isDesktopLayout) {
           closeSidebar();
         }
-        const updatedLastUsed = recordWorkflowLastUsedAt({
+        recordWorkflowLastUsedAt({
           kind: "local",
           workflow: updated,
         });
-        setLastUsedAt(updatedLastUsed);
       } catch (err) {
-        let message = err instanceof Error ? err.message : "Impossible de sélectionner le workflow.";
-        if (isApiError(err) && err.status === 400) {
-          message = "Publiez une version de production avant d'activer ce workflow.";
+        // Error handling will be shown by parent component if needed
+        if (import.meta.env.DEV) {
+          console.error("Failed to set workflow:", err);
         }
-        setError(message);
       } finally {
         setIsUpdating(false);
       }
@@ -581,6 +254,8 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       isDesktopLayout,
       isUpdating,
       selectedWorkflowId,
+      setSelectedWorkflowId,
+      setWorkflows,
       token,
       workflows,
     ],
@@ -606,21 +281,20 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         { kind: "hosted", slug: option.slug, option },
         { reason: "user" },
       );
-      const updatedLastUsed = recordWorkflowLastUsedAt({
+      recordWorkflowLastUsedAt({
         kind: "hosted",
         workflow: option,
       });
-      setLastUsedAt(updatedLastUsed);
       if (!isDesktopLayout) {
         closeSidebar();
       }
     },
-    [closeSidebar, hostedWorkflows, isDesktopLayout, selectedWorkflowId],
+    [closeSidebar, hostedWorkflows, isDesktopLayout, selectedWorkflowId, setSelectedHostedSlug],
   );
 
   const sortedWorkflowEntries = useMemo(() => {
     const collator =
-      workflowCollatorRef.current ?? new Intl.Collator(undefined, { sensitivity: "base" });
+      workflowCollator ?? new Intl.Collator(undefined, { sensitivity: "base" });
     return orderWorkflowEntries(
       [
         ...hostedWorkflows.map((workflow) => ({ kind: "hosted" as const, workflow })),
@@ -629,7 +303,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       lastUsedAt,
       { collator, pinnedLookup },
     );
-  }, [hostedWorkflows, lastUsedAt, pinnedLookup, workflows]);
+  }, [hostedWorkflows, lastUsedAt, pinnedLookup, workflowCollator, workflows]);
 
   type CombinedEntry =
     | { kind: "hosted"; option: HostedWorkflowMetadata; isPinned: boolean }
@@ -728,21 +402,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     }
     return { pinnedCompactEntries: pinned, regularCompactEntries: regular };
   }, [compactEntries]);
-
-  useEffect(() => {
-    if (!token) {
-      clearWorkflowSidebarCache();
-      return;
-    }
-
-    writeWorkflowSidebarCache({
-      workflows,
-      hostedWorkflows,
-      selectedWorkflowId,
-      selectedHostedSlug,
-      mode,
-    });
-  }, [hostedWorkflows, mode, selectedHostedSlug, selectedWorkflowId, token, workflows]);
 
   const handleOpenBuilder = useCallback(() => {
     navigate("/workflows");

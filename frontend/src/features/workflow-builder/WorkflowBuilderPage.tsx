@@ -15,12 +15,12 @@ import "reactflow/dist/style.css";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout } from "../../components/AppLayout";
-import { chatkitApi, makeApiEndpointCandidates } from "../../utils/backend";
+import { chatkitApi, makeApiEndpointCandidates, type HostedWorkflowMetadata } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "./hooks/useOutsidePointerDown";
 import useWorkflowResources from "./hooks/useWorkflowResources";
-import useWorkflowSidebarState from "./hooks/useWorkflowSidebarState";
+import { useWorkflowSidebar } from "../workflows/WorkflowSidebarProvider";
 import { useWorkflowKeyboardShortcuts } from "./hooks/useWorkflowKeyboardShortcuts";
 import { useRemoteVersionPolling } from "./hooks/useRemoteVersionPolling";
 import { useWorkflowHistory } from "./hooks/useWorkflowHistory";
@@ -396,11 +396,10 @@ const WorkflowBuilderPage = () => {
     [decorateNode],
   );
 
-  // useWorkflowSidebarState now only provides sidebar-specific functionality
-  // workflows, hostedWorkflows, selectedWorkflowId come from WorkflowContext above
+  // Use WorkflowSidebarProvider for sidebar-specific functionality
   const {
-    initialSidebarCache,
-    initialSidebarCacheUsedRef,
+    workflows: sidebarWorkflows,
+    hostedWorkflows: sidebarHostedWorkflows,
     setWorkflows: setSidebarWorkflows,
     setHostedWorkflows: setSidebarHostedWorkflows,
     setSelectedWorkflowId: setSidebarSelectedWorkflowId,
@@ -408,9 +407,12 @@ const WorkflowBuilderPage = () => {
     pinnedLookup,
     toggleLocalPin,
     toggleHostedPin,
-    workflowSortCollatorRef,
+    workflowCollator,
     hasLoadedWorkflowsRef,
-  } = useWorkflowSidebarState({ token });
+  } = useWorkflowSidebar();
+
+  // Create a ref for the collator for compatibility
+  const workflowSortCollatorRef = useRef(workflowCollator);
 
   const {
     vectorStores: vectorStoresState,
@@ -628,14 +630,34 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
-  // Synchronize WorkflowContext state with useWorkflowSidebarState for cache/persistence
+  // ONE-TIME initialization from provider, then ONLY sync back when WorkflowBuilder loads
+  const initializedFromProviderRef = useRef(false);
+
+  // Initialize WorkflowContext from provider ONCE
   useEffect(() => {
-    setSidebarWorkflows(workflows);
-  }, [workflows, setSidebarWorkflows]);
+    if (!initializedFromProviderRef.current && sidebarWorkflows.length > 0) {
+      initializedFromProviderRef.current = true;
+      setWorkflows(sidebarWorkflows);
+      setHostedWorkflows(sidebarHostedWorkflows);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - run only once on mount
+
+  // Sync TO provider when WorkflowContext loads (not from provider)
+  const workflowsStringified = JSON.stringify(workflows.map((w) => w.id));
+  const hostedWorkflowsStringified = JSON.stringify(hostedWorkflows.map((w) => w.slug));
 
   useEffect(() => {
-    setSidebarHostedWorkflows(hostedWorkflows);
-  }, [hostedWorkflows, setSidebarHostedWorkflows]);
+    if (workflows.length > 0 && initializedFromProviderRef.current) {
+      setSidebarWorkflows(workflows);
+    }
+  }, [workflowsStringified, setSidebarWorkflows, workflows]);
+
+  useEffect(() => {
+    if (hostedWorkflows.length > 0 && initializedFromProviderRef.current) {
+      setSidebarHostedWorkflows(hostedWorkflows);
+    }
+  }, [hostedWorkflowsStringified, setSidebarHostedWorkflows, hostedWorkflows]);
 
   useEffect(() => {
     setSidebarSelectedWorkflowId(selectedWorkflowId as number | null);
@@ -899,10 +921,13 @@ const WorkflowBuilderPage = () => {
     buildGraphPayload,
   });
 
+  // Only load workflows if they haven't been loaded by the WorkflowSidebarProvider yet
   useEffect(() => {
-    void loadWorkflows({ suppressLoadingState: initialSidebarCacheUsedRef.current });
-    initialSidebarCacheUsedRef.current = false;
-  }, [loadWorkflows]);
+    // Check if workflows are already loaded in the provider
+    if (!hasLoadedWorkflowsRef.current) {
+      void loadWorkflows({ suppressLoadingState: false });
+    }
+  }, [loadWorkflows, hasLoadedWorkflowsRef]);
 
   // Remote version polling
   useRemoteVersionPolling({
