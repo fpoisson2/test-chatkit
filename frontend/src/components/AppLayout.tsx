@@ -175,6 +175,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
   const appSwitcherLabelId = useId();
   const scrimPointerTypeRef = useRef<string | null>(null);
+  const lastNavigationKeyRef = useRef(
+    `${location.pathname}${location.search}${location.hash}`,
+  );
 
   useEffect(() => {
     const wasDesktop = previousIsDesktopRef.current;
@@ -198,6 +201,22 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     writeStoredSidebarOpen(isSidebarOpen);
   }, [isDesktopLayout, isSidebarOpen]);
 
+  useEffect(() => {
+    const navigationKey = `${location.pathname}${location.search}${location.hash}`;
+
+    if (lastNavigationKeyRef.current === navigationKey) {
+      return;
+    }
+
+    lastNavigationKeyRef.current = navigationKey;
+
+    if (isDesktopLayout) {
+      return;
+    }
+
+    closeSidebar();
+  }, [closeSidebar, isDesktopLayout, location.hash, location.pathname, location.search]);
+
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);
   }, []);
@@ -205,6 +224,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const closeSidebar = useCallback(() => {
     setIsSidebarOpen(false);
   }, []);
+
+  const closeSidebarIfMobile = useCallback(() => {
+    if (isDesktopLayout) {
+      return;
+    }
+
+    closeSidebar();
+  }, [closeSidebar, isDesktopLayout]);
 
 
   const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
@@ -243,34 +270,40 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const handleApplicationNavigate = useCallback(
     (application: ApplicationDescriptor) => {
       navigate(application.path);
+      closeSidebarIfMobile();
     },
-    [navigate],
+    [closeSidebarIfMobile, navigate],
   );
 
   const handleOpenSettings = useCallback(
     (sectionId?: SettingsSectionId) => {
       if (!user) {
         navigate("/login");
+        closeSidebarIfMobile();
         return;
       }
 
       const search = sectionId ? `?section=${encodeURIComponent(sectionId)}` : "";
       navigate(`/settings${search}`);
+      closeSidebarIfMobile();
     },
-    [navigate, user],
+    [closeSidebarIfMobile, navigate, user],
   );
 
   const handleSidebarLogin = useCallback(() => {
     navigate("/login");
-  }, [navigate]);
+    closeSidebarIfMobile();
+  }, [closeSidebarIfMobile, navigate]);
 
   const handleSidebarLogout = useCallback(() => {
     logout();
-  }, [logout]);
+    closeSidebarIfMobile();
+  }, [closeSidebarIfMobile, logout]);
 
   const handleGoToAdmin = useCallback(() => {
     navigate("/admin");
-  }, [navigate]);
+    closeSidebarIfMobile();
+  }, [closeSidebarIfMobile, navigate]);
 
   const handleProfileOpenSettings = useCallback(() => {
     setIsProfileMenuOpen(false);
@@ -279,7 +312,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const handleGoToDocs = useCallback(() => {
     navigate("/docs");
-  }, [navigate]);
+    closeSidebarIfMobile();
+  }, [closeSidebarIfMobile, navigate]);
 
   const isDocsActive = useMemo(
     () => location.pathname === "/docs" || location.pathname.startsWith("/docs/"),

@@ -301,6 +301,7 @@ button {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
+  transition: opacity 0.35s ease;
   z-index: 1;
   appearance: none;
   -webkit-tap-highlight-color: transparent;
@@ -356,6 +357,9 @@ button {
   --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   overflow: hidden;
   pointer-events: none;
+  transition: margin-left 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: margin-left;
 }
 
 .chatkit-sidebar__scroll-area {
@@ -439,6 +443,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, var(--chatkit-sidebar-collapsed-width)) 1fr;
   align-items: stretch;
+  transition: grid-template-columns 0.45s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open {
