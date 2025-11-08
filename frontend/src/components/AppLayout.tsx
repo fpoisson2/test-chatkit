@@ -179,6 +179,22 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     `${location.pathname}${location.search}${location.hash}`,
   );
 
+  const openSidebar = useCallback(() => {
+    setIsSidebarOpen(true);
+  }, []);
+
+  const closeSidebar = useCallback(() => {
+    setIsSidebarOpen(false);
+  }, []);
+
+  const closeSidebarIfMobile = useCallback(() => {
+    if (isDesktopLayout) {
+      return;
+    }
+
+    closeSidebar();
+  }, [closeSidebar, isDesktopLayout]);
+
   useEffect(() => {
     const wasDesktop = previousIsDesktopRef.current;
 
@@ -216,22 +232,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     closeSidebar();
   }, [closeSidebar, isDesktopLayout, location.hash, location.pathname, location.search]);
-
-  const openSidebar = useCallback(() => {
-    setIsSidebarOpen(true);
-  }, []);
-
-  const closeSidebar = useCallback(() => {
-    setIsSidebarOpen(false);
-  }, []);
-
-  const closeSidebarIfMobile = useCallback(() => {
-    if (isDesktopLayout) {
-      return;
-    }
-
-    closeSidebar();
-  }, [closeSidebar, isDesktopLayout]);
 
 
   const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
