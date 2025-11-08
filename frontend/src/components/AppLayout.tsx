@@ -458,6 +458,12 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
       event.preventDefault();
       event.stopPropagation();
+
+      if (ignoreNextMainInteractionRef.current) {
+        ignoreNextMainInteractionRef.current = false;
+        return;
+      }
+
       closeSidebar();
     },
     [closeSidebar, isDesktopLayout],
