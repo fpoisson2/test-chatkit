@@ -420,6 +420,19 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [isSidebarCollapsed, isSidebarOpen],
   );
 
+  const handleSidebarInteract = useCallback(() => {
+    if (!isSidebarOpen || isDesktopLayout) {
+      return;
+    }
+
+    closeSidebar();
+  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
+
+  const sidebarInteractions = useSidebarInteractions({
+    isDesktopLayout,
+    onInteract: handleSidebarInteract,
+  });
+
   const contextValue = useMemo(
     () => ({
       openSidebar,
@@ -684,6 +697,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
           <div
             className={`app-layout__scrim${isSidebarOpen ? " app-layout__scrim--active" : ""}`}
             aria-hidden={!isSidebarOpen || isDesktopLayout}
+            {...sidebarInteractions}
           />
           <div className="app-layout__main">
             {children ?? <Outlet />}
