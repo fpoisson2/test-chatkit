@@ -202,7 +202,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         const storedPreference = readStoredSidebarOpen();
         setIsSidebarOpen(storedPreference ?? true);
       }
-    } else {
+    } else if (wasDesktop && !keepSidebarOpenOnNavigationRef.current) {
       setIsSidebarOpen(false);
     }
 
@@ -293,8 +293,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       return;
     }
 
-    keepSidebarOpenOnNavigationRef.current = false;
     setIsSidebarOpen(true);
+    keepSidebarOpenOnNavigationRef.current = false;
   }, [location.pathname]);
 
   const handleOpenSettings = useCallback(
