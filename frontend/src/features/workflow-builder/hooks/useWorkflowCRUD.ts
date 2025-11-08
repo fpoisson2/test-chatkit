@@ -25,7 +25,7 @@
 
 import { useCallback } from "react";
 import { makeApiEndpointCandidates } from "../../../utils/backend";
-import { chatkitApi } from "../../../utils/backend";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"Api } from "../../../utils/backend";
 import { backendUrl } from "../WorkflowBuilderUtils";
 import { slugifyWorkflowName, buildGraphPayloadFrom } from "../utils";
 import { useSaveContext } from "../contexts/SaveContext";

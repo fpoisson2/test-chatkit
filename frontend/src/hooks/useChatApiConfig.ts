@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { MutableRefObject } from "react";
-import type { ChatKitOptions } from "@openai/chatkit";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"";
 
 import { makeApiEndpointCandidates } from "../utils/backend";
 

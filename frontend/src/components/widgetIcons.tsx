@@ -1,5 +1,5 @@
 import React from "react";
-import type { Widgets } from "@openai/chatkit";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"";
 import {
   Atom,
   BadgeCheck,

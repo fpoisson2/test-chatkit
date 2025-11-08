@@ -395,9 +395,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const layoutClassName = useMemo(
     () =>
       [
-        "chatkit-layout",
-        isSidebarOpen ? "chatkit-layout--sidebar-open" : "",
-        isDesktopLayout ? "chatkit-layout--desktop" : "",
+        "app-layout",
+        isSidebarOpen ? "app-layout--sidebar-open" : "",
+        isDesktopLayout ? "app-layout--desktop" : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -407,9 +407,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const sidebarClassName = useMemo(
     () => {
       const classes = [
-        "chatkit-sidebar",
-        isSidebarOpen ? "chatkit-sidebar--open" : "",
-        isSidebarCollapsed ? "chatkit-sidebar--collapsed" : "",
+        "app-sidebar",
+        isSidebarOpen ? "app-sidebar--open" : "",
+        isSidebarCollapsed ? "app-sidebar--collapsed" : "",
       ]
         .filter(Boolean)
         .join(" ");
@@ -469,14 +469,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     }
 
     const navClassName = [
-      "chatkit-sidebar__app-switcher",
-      isSidebarCollapsed ? "chatkit-sidebar__app-switcher--compact" : "",
+      "app-sidebar__app-switcher",
+      isSidebarCollapsed ? "app-sidebar__app-switcher--compact" : "",
     ]
       .filter(Boolean)
       .join(" ");
 
     return (
-      <div className="chatkit-sidebar__switcher">
+      <div className="app-sidebar__switcher">
         <span id={appSwitcherLabelId} className="visually-hidden">
           {t("app.sidebar.switcherLabel")}
         </span>
@@ -488,18 +488,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               <button
                 key={application.key}
                 type="button"
-                className={`chatkit-sidebar__app-switcher-button${
-                  isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
+                className={`app-sidebar__app-switcher-button${
+                  isActive ? " app-sidebar__app-switcher-button--active" : ""
                 }`}
                 onClick={() => handleApplicationNavigate(application)}
                 tabIndex={sidebarTabIndex}
                 aria-current={isActive ? "page" : undefined}
                 aria-label={application.label}
               >
-                <span className="chatkit-sidebar__app-switcher-icon" aria-hidden="true">
+                <span className="app-sidebar__app-switcher-icon" aria-hidden="true">
                   <SidebarIcon name={APPLICATION_ICONS[application.key]} />
                 </span>
-                <span className="chatkit-sidebar__app-switcher-label">
+                <span className="app-sidebar__app-switcher-label">
                   {application.label}
                 </span>
               </button>
@@ -527,27 +527,27 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             aria-label={t("app.sidebar.ariaLabel")}
             aria-hidden={!isSidebarOpen && !isDesktopLayout}
           >
-            <div className="chatkit-sidebar__scroll-area">
-              <header className="chatkit-sidebar__header">
-                <div className="chatkit-sidebar__topline">
-                  <div className="chatkit-sidebar__brand">
-                    <span className="chatkit-sidebar__brand-mark" aria-hidden="true">
-                      <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+            <div className="app-sidebar__scroll-area">
+              <header className="app-sidebar__header">
+                <div className="app-sidebar__topline">
+                  <div className="app-sidebar__brand">
+                    <span className="app-sidebar__brand-mark" aria-hidden="true">
+                      <SidebarIcon name="logo" className="app-sidebar__logo" />
                     </span>
-                    <span className="chatkit-sidebar__brand-title">
+                    <span className="app-sidebar__brand-title">
                       {t("app.sidebar.brandTitle")}
                     </span>
                   </div>
-                  <div className="chatkit-sidebar__actions">
+                  <div className="app-sidebar__actions">
                     {isSidebarOpen ? (
                       <button
                         type="button"
-                        className="chatkit-sidebar__dismiss"
+                        className="app-sidebar__dismiss"
                         onClick={closeSidebar}
                         tabIndex={sidebarTabIndex}
                         aria-label={t("app.sidebar.close")}
                       >
-                        <span aria-hidden="true" className="chatkit-sidebar__dismiss-icon">
+                        <span aria-hidden="true" className="app-sidebar__dismiss-icon">
                           <SidebarIcon name="close" />
                         </span>
                       </button>
@@ -557,14 +557,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 {renderAppSwitcher()}
               </header>
               {(sidebarContent || collapsedSidebarContent || navigationItems.length > 0) && (
-                <div className="chatkit-sidebar__main">
+                <div className="app-sidebar__main">
                   {sidebarContent ? (
-                    <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
+                    <div className="app-sidebar__dynamic">{sidebarContent}</div>
                   ) : null}
                   {collapsedSidebarContent ? (
                     <div
-                      className={`chatkit-sidebar__collapsed-preview${
-                        isSidebarCollapsed ? " chatkit-sidebar__collapsed-preview--visible" : ""
+                      className={`app-sidebar__collapsed-preview${
+                        isSidebarCollapsed ? " app-sidebar__collapsed-preview--visible" : ""
                       }`}
                       aria-hidden={!isSidebarCollapsed}
                     >
@@ -572,13 +572,13 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                     </div>
                   ) : null}
                   {navigationItems.length > 0 && (
-                    <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>
-                      <ul className="chatkit-sidebar__list">
+                    <nav className="app-sidebar__nav" aria-label={t("app.sidebar.menu")}>
+                      <ul className="app-sidebar__list">
                         {navigationItems.map((item) => (
                           <li
                             key={item.key}
-                            className={`chatkit-sidebar__item${
-                              item.isActive ? " chatkit-sidebar__item--active" : ""
+                            className={`app-sidebar__item${
+                              item.isActive ? " app-sidebar__item--active" : ""
                             }`}
                           >
                             <button
@@ -588,8 +588,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                               aria-label={item.label}
                               aria-current={item.isActive ? "page" : undefined}
                             >
-                              <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
-                              <span className="chatkit-sidebar__label">{item.label}</span>
+                              <SidebarIcon name={item.icon} className="app-sidebar__icon" />
+                              <span className="app-sidebar__label">{item.label}</span>
                             </button>
                           </li>
                         ))}
@@ -600,80 +600,80 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               )}
             </div>
             {isAuthenticated && (
-              <footer className="chatkit-sidebar__footer">
+              <footer className="app-sidebar__footer">
                 <button
                   type="button"
-                  className={`chatkit-sidebar__footer-link${
-                    isDocsActive ? " chatkit-sidebar__footer-link--active" : ""
+                  className={`app-sidebar__footer-link${
+                    isDocsActive ? " app-sidebar__footer-link--active" : ""
                   }`}
                   onClick={handleGoToDocs}
                   tabIndex={sidebarTabIndex}
                   aria-label={t("app.sidebar.docs")}
                   aria-current={isDocsActive ? "page" : undefined}
                 >
-                  <SidebarIcon name="docs" className="chatkit-sidebar__icon" />
-                  <span className="chatkit-sidebar__footer-link-label">{t("app.sidebar.docs")}</span>
+                  <SidebarIcon name="docs" className="app-sidebar__icon" />
+                  <span className="app-sidebar__footer-link-label">{t("app.sidebar.docs")}</span>
                 </button>
                 <div
-                  className={`chatkit-sidebar__profile${isProfileMenuOpen ? " chatkit-sidebar__profile--open" : ""}`}
+                  className={`app-sidebar__profile${isProfileMenuOpen ? " app-sidebar__profile--open" : ""}`}
                   ref={profileMenuRef}
                 >
                   <button
                     type="button"
-                    className="chatkit-sidebar__profile-trigger"
+                    className="app-sidebar__profile-trigger"
                     onClick={handleToggleProfileMenu}
                     aria-haspopup="menu"
                     aria-expanded={isProfileMenuOpen}
                     tabIndex={sidebarTabIndex}
                   >
-                    <span className="chatkit-sidebar__profile-avatar" aria-hidden="true">
+                    <span className="app-sidebar__profile-avatar" aria-hidden="true">
                       {profileInitial}
                     </span>
-                    <span className="chatkit-sidebar__profile-details">
-                      <span className="chatkit-sidebar__profile-name">{user.email}</span>
-                      <span className="chatkit-sidebar__profile-role">
+                    <span className="app-sidebar__profile-details">
+                      <span className="app-sidebar__profile-name">{user.email}</span>
+                      <span className="app-sidebar__profile-role">
                         {user.is_admin
                           ? t("app.sidebar.profile.role.admin")
                           : t("app.sidebar.profile.role.user")}
                       </span>
                     </span>
-                    <span className="chatkit-sidebar__profile-caret" aria-hidden="true" />
+                    <span className="app-sidebar__profile-caret" aria-hidden="true" />
                   </button>
                   <div
-                    className="chatkit-sidebar__profile-menu"
+                    className="app-sidebar__profile-menu"
                     role="menu"
                     aria-hidden={!isProfileMenuOpen}
                   >
                     <button
                       type="button"
-                      className="chatkit-sidebar__profile-action"
+                      className="app-sidebar__profile-action"
                       role="menuitem"
                       onClick={handleProfileOpenSettings}
                       tabIndex={isProfileMenuOpen ? 0 : -1}
                     >
-                      <SidebarIcon name="settings" className="chatkit-sidebar__icon" />
+                      <SidebarIcon name="settings" className="app-sidebar__icon" />
                       <span>{t("app.sidebar.profile.settings")}</span>
                     </button>
                     {user.is_admin && (
                       <button
                         type="button"
-                        className="chatkit-sidebar__profile-action"
+                        className="app-sidebar__profile-action"
                         role="menuitem"
                         onClick={handleProfileGoToAdmin}
                         tabIndex={isProfileMenuOpen ? 0 : -1}
                       >
-                        <SidebarIcon name="admin" className="chatkit-sidebar__icon" />
+                        <SidebarIcon name="admin" className="app-sidebar__icon" />
                         <span>{t("app.sidebar.profile.admin")}</span>
                       </button>
                     )}
                     <button
                       type="button"
-                      className="chatkit-sidebar__profile-action chatkit-sidebar__profile-action--logout"
+                      className="app-sidebar__profile-action app-sidebar__profile-action--logout"
                       role="menuitem"
                       onClick={handleProfileLogout}
                       tabIndex={isProfileMenuOpen ? 0 : -1}
                     >
-                      <SidebarIcon name="logout" className="chatkit-sidebar__icon" />
+                      <SidebarIcon name="logout" className="app-sidebar__icon" />
                       <span>{t("app.sidebar.profile.logout")}</span>
                     </button>
                   </div>
@@ -682,10 +682,10 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             )}
           </aside>
           <div
-            className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
+            className={`app-layout__scrim${isSidebarOpen ? " app-layout__scrim--active" : ""}`}
             aria-hidden={!isSidebarOpen || isDesktopLayout}
           />
-          <div className="chatkit-layout__main">
+          <div className="app-layout__main">
             {children ?? <Outlet />}
           </div>
         </div>

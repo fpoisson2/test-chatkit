@@ -404,9 +404,9 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (!user) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">
+        <section className="app-sidebar__section" aria-live="polite">
+          <h2 className="app-sidebar__section-title">Workflow</h2>
+          <p className="app-sidebar__section-text">
             Connectez-vous pour choisir le workflow utilisé par ChatKit.
           </p>
         </section>
@@ -415,12 +415,12 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (error) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-error">{error}</p>
+        <section className="app-sidebar__section" aria-live="polite">
+          <h2 className="app-sidebar__section-title">Workflow</h2>
+          <p className="app-sidebar__section-error">{error}</p>
           <button
             type="button"
-            className="chatkit-sidebar__section-button"
+            className="app-sidebar__section-button"
             onClick={() => void loadWorkflows()}
             disabled={loading}
           >
@@ -432,9 +432,9 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (loading) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">Chargement des workflows…</p>
+        <section className="app-sidebar__section" aria-live="polite">
+          <h2 className="app-sidebar__section-title">Workflow</h2>
+          <p className="app-sidebar__section-text">Chargement des workflows…</p>
         </section>
       );
     }
@@ -444,13 +444,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (!hasHostedWorkflow && !hasLocalWorkflows) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">
+        <section className="app-sidebar__section" aria-live="polite">
+          <h2 className="app-sidebar__section-title">Workflow</h2>
+          <p className="app-sidebar__section-text">
             Publiez un workflow pour qu'il soit disponible dans le chat.
           </p>
           {isAdmin ? (
-            <button type="button" className="chatkit-sidebar__section-button" onClick={handleOpenBuilder}>
+            <button type="button" className="app-sidebar__section-button" onClick={handleOpenBuilder}>
               Ouvrir le workflow builder
             </button>
           ) : null}
@@ -518,28 +518,28 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             trailingContent={
               <>
                 {!option.available ? (
-                  <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
+                  <p className="app-sidebar__workflow-meta" aria-live="polite">
                     {t("workflows.hostedUnavailable")}
                   </p>
                 ) : null}
                 {option.description ? (
-                  <p className="chatkit-sidebar__workflow-meta">{option.description}</p>
+                  <p className="app-sidebar__workflow-meta">{option.description}</p>
                 ) : null}
               </>
             }
           >
             <button
               type="button"
-              className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
-                isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
+              className={`app-sidebar__workflow-button app-sidebar__workflow-button--hosted${
+                isPinned ? " app-sidebar__workflow-button--pinned" : ""
               }`}
               onClick={() => void handleHostedWorkflowClick(option.slug)}
               disabled={!option.available}
               aria-current={isSelected ? "true" : undefined}
               title={option.description ?? t("workflows.hostedBadge")}
             >
-              <span className="chatkit-sidebar__workflow-label">{option.label}</span>
-              <span className="chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--hosted">
+              <span className="app-sidebar__workflow-label">{option.label}</span>
+              <span className="app-sidebar__workflow-badge app-sidebar__workflow-badge--hosted">
                 {t("workflows.hostedBadge")}
               </span>
             </button>
@@ -619,22 +619,22 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         >
           <button
             type="button"
-            className={`chatkit-sidebar__workflow-button${
-              isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
+            className={`app-sidebar__workflow-button${
+              isPinned ? " app-sidebar__workflow-button--pinned" : ""
             }`}
             onClick={() => void handleWorkflowClick(workflow.id)}
             disabled={!hasProduction}
             aria-current={isActive ? "true" : undefined}
           >
-            <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
+            <span className="app-sidebar__workflow-label">{workflow.display_name}</span>
           </button>
         </WorkflowSidebarListItem>
       );
     };
 
     const sectionClassName = isAdmin
-      ? "chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
-      : "chatkit-sidebar__section";
+      ? "app-sidebar__section app-sidebar__section--with-floating-action"
+      : "app-sidebar__section";
 
     return (
       <section className={sectionClassName} aria-labelledby={`${sectionId}-title`}>
@@ -642,10 +642,10 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           {t("workflows.defaultSectionTitle")}
         </h2>
         {isAdmin ? (
-          <div className="chatkit-sidebar__section-floating-action">
+          <div className="app-sidebar__section-floating-action">
             <button
               type="button"
-              className="chatkit-sidebar__section-icon-button"
+              className="app-sidebar__section-icon-button"
               onClick={handleOpenBuilder}
               aria-label={t("workflowBuilder.createWorkflow.openModal")}
               title={t("workflowBuilder.createWorkflow.openModal")}
@@ -656,26 +656,26 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         ) : null}
         {pinnedCombinedEntries.length > 0 ? (
           <div
-            className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
+            className="app-sidebar__workflow-group app-sidebar__workflow-group--pinned"
             data-workflow-group="pinned"
           >
-            <h3 className="chatkit-sidebar__workflow-group-title">
+            <h3 className="app-sidebar__workflow-group-title">
               {t("workflows.pinnedSectionTitle")}
             </h3>
-            <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+            <ul className="app-sidebar__workflow-list app-sidebar__workflow-list--grouped">
               {pinnedCombinedEntries.map((entry) => renderEntry(entry))}
             </ul>
           </div>
         ) : null}
         {regularCombinedEntries.length > 0 ? (
           <div
-            className="chatkit-sidebar__workflow-group"
+            className="app-sidebar__workflow-group"
             data-workflow-group="default"
           >
-            <h3 className="chatkit-sidebar__workflow-group-title">
+            <h3 className="app-sidebar__workflow-group-title">
               {t("workflows.defaultSectionTitle")}
             </h3>
-            <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+            <ul className="app-sidebar__workflow-list app-sidebar__workflow-list--grouped">
               {regularCombinedEntries.map((entry) => renderEntry(entry))}
             </ul>
           </div>
@@ -683,7 +683,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         {!hasLocalWorkflows && isAdmin ? (
           <button
             type="button"
-            className="chatkit-sidebar__section-button"
+            className="app-sidebar__section-button"
             onClick={handleOpenBuilder}
           >
             Ouvrir le workflow builder
@@ -725,15 +725,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     const renderCompactEntry = (entry: CompactEntry) => (
       <li
         key={entry.key}
-        className="chatkit-sidebar__workflow-compact-item"
+        className="app-sidebar__workflow-compact-item"
         data-pinned={entry.isPinned ? "" : undefined}
       >
         <button
           type="button"
-          className={`chatkit-sidebar__workflow-compact-button${
-            entry.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-          }${entry.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}${
-            entry.isPinned ? " chatkit-sidebar__workflow-compact-button--pinned" : ""
+          className={`app-sidebar__workflow-compact-button${
+            entry.isActive ? " app-sidebar__workflow-compact-button--active" : ""
+          }${entry.kind === "hosted" ? " app-sidebar__workflow-compact-button--hosted" : ""}${
+            entry.isPinned ? " app-sidebar__workflow-compact-button--pinned" : ""
           }`}
           onClick={entry.onClick}
           disabled={entry.disabled}
@@ -745,7 +745,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
               : entry.label
           }
         >
-          <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+          <span aria-hidden="true" className="app-sidebar__workflow-compact-initial">
             {entry.initials}
           </span>
           <span className="visually-hidden">
@@ -757,29 +757,29 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     );
 
     return (
-      <div className="chatkit-sidebar__workflow-compact-groups">
+      <div className="app-sidebar__workflow-compact-groups">
         {pinnedCompactEntries.length > 0 ? (
           <div
-            className="chatkit-sidebar__workflow-compact-group chatkit-sidebar__workflow-compact-group--pinned"
+            className="app-sidebar__workflow-compact-group app-sidebar__workflow-compact-group--pinned"
             data-workflow-group="pinned"
           >
-            <h3 className="chatkit-sidebar__workflow-compact-group-title">
+            <h3 className="app-sidebar__workflow-compact-group-title">
               {t("workflows.pinnedSectionTitle")}
             </h3>
-            <ul className="chatkit-sidebar__workflow-compact-list chatkit-sidebar__workflow-compact-list--grouped">
+            <ul className="app-sidebar__workflow-compact-list app-sidebar__workflow-compact-list--grouped">
               {pinnedCompactEntries.map((entry) => renderCompactEntry(entry))}
             </ul>
           </div>
         ) : null}
         {regularCompactEntries.length > 0 ? (
           <div
-            className="chatkit-sidebar__workflow-compact-group"
+            className="app-sidebar__workflow-compact-group"
             data-workflow-group="default"
           >
-            <h3 className="chatkit-sidebar__workflow-compact-group-title">
+            <h3 className="app-sidebar__workflow-compact-group-title">
               {t("workflows.defaultSectionTitle")}
             </h3>
-            <ul className="chatkit-sidebar__workflow-compact-list">
+            <ul className="app-sidebar__workflow-compact-list">
               {regularCompactEntries.map((entry) => renderCompactEntry(entry))}
             </ul>
           </div>

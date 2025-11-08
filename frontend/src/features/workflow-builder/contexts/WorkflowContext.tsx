@@ -5,7 +5,7 @@ import type {
   WorkflowVersionResponse,
 } from "../types";
 import type { HostedWorkflowMetadata } from "../../../utils/backend";
-import { chatkitApi, makeApiEndpointCandidates } from "../../../utils/backend";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"Api, makeApiEndpointCandidates } from "../../../utils/backend";
 import { backendUrl } from "../WorkflowBuilderUtils";
 
 // Context types

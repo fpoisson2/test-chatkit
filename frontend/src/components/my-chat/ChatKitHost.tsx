@@ -9,11 +9,11 @@ export const ChatKitHost = ({
   control,
   chatInstanceKey,
 }: ChatKitHostProps) => (
-  <div className="chatkit-layout__widget">
+  <div className="app-layout__widget">
     <ChatKit
       key={chatInstanceKey}
       control={control}
-      className="chatkit-host"
+      className="app-host"
       style={{ width: "100%", height: "100%" }}
     />
   </div>

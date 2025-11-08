@@ -162,7 +162,7 @@ const WorkflowBuilderSidebar = ({
     const renderWorkflowList = () => {
       if (loading && combinedEntries.length === 0) {
         return (
-          <p className="chatkit-sidebar__section-text" aria-live="polite">
+          <p className="app-sidebar__section-text" aria-live="polite">
             Chargement des workflows…
           </p>
         );
@@ -170,7 +170,7 @@ const WorkflowBuilderSidebar = ({
 
       if (loadError) {
         return (
-          <p className="chatkit-sidebar__section-error" aria-live="polite">
+          <p className="app-sidebar__section-error" aria-live="polite">
             {loadError}
           </p>
         );
@@ -178,7 +178,7 @@ const WorkflowBuilderSidebar = ({
 
       if (combinedEntries.length === 0) {
         return (
-          <p className="chatkit-sidebar__section-text" aria-live="polite">
+          <p className="app-sidebar__section-text" aria-live="polite">
             Aucun workflow disponible pour le moment.
           </p>
         );
@@ -246,15 +246,15 @@ const WorkflowBuilderSidebar = ({
             >
               <button
                 type="button"
-                className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
-                  isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
+                className={`app-sidebar__workflow-button app-sidebar__workflow-button--hosted${
+                  isPinned ? " app-sidebar__workflow-button--pinned" : ""
                 }`}
                 aria-disabled="true"
                 tabIndex={-1}
                 title={hosted.description ?? t("workflows.hostedBadge")}
               >
-                <span className="chatkit-sidebar__workflow-label">{hosted.label}</span>
-                <span className="chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--hosted">
+                <span className="app-sidebar__workflow-label">{hosted.label}</span>
+                <span className="app-sidebar__workflow-badge app-sidebar__workflow-badge--hosted">
                   {t("workflows.hostedBadge")}
                 </span>
               </button>
@@ -348,27 +348,27 @@ const WorkflowBuilderSidebar = ({
             trailingContent={
               <>
                 {!workflow.is_chatkit_default && !workflow.active_version_id ? (
-                  <p className="chatkit-sidebar__workflow-meta" aria-live="polite" style={warningStyle}>
+                  <p className="app-sidebar__workflow-meta" aria-live="polite" style={warningStyle}>
                     {t("workflowBuilder.localSection.missingProduction")}
                   </p>
                 ) : null}
                 {workflow.description ? (
-                  <p className="chatkit-sidebar__workflow-meta">{workflow.description}</p>
+                  <p className="app-sidebar__workflow-meta">{workflow.description}</p>
                 ) : null}
               </>
             }
           >
             <button
               type="button"
-              className={`chatkit-sidebar__workflow-button${
-                isActive ? " chatkit-sidebar__workflow-button--active" : ""
-              }${isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""}`}
+              className={`app-sidebar__workflow-button${
+                isActive ? " app-sidebar__workflow-button--active" : ""
+              }${isPinned ? " app-sidebar__workflow-button--pinned" : ""}`}
               onClick={() => onSelectWorkflow(workflow.id)}
               disabled={loading}
               aria-current={isActive ? "true" : undefined}
               title={workflow.description ?? undefined}
             >
-              <span className="chatkit-sidebar__workflow-label">
+              <span className="app-sidebar__workflow-label">
                 {workflow.display_name}
               </span>
             </button>
@@ -379,39 +379,39 @@ const WorkflowBuilderSidebar = ({
       return (
         <>
           {hostedError ? (
-            <p className="chatkit-sidebar__section-error" aria-live="polite">
+            <p className="app-sidebar__section-error" aria-live="polite">
               {hostedError}
             </p>
           ) : null}
           {hostedLoading && managedHosted.length === 0 ? (
-            <p className="chatkit-sidebar__section-text" aria-live="polite">
+            <p className="app-sidebar__section-text" aria-live="polite">
               {t("workflowBuilder.hostedSection.loading")}
             </p>
           ) : null}
           {!hostedLoading && !hostedError && managedHosted.length === 0 ? (
-            <p className="chatkit-sidebar__section-text" aria-live="polite">
+            <p className="app-sidebar__section-text" aria-live="polite">
               {t("workflowBuilder.hostedSection.empty")}
             </p>
           ) : null}
           {pinnedEntries.length > 0 ? (
             <div
-              className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
+              className="app-sidebar__workflow-group app-sidebar__workflow-group--pinned"
               data-workflow-group="pinned"
             >
-              <h3 className="chatkit-sidebar__workflow-group-title">
+              <h3 className="app-sidebar__workflow-group-title">
                 {t("workflows.pinnedSectionTitle")}
               </h3>
-              <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+              <ul className="app-sidebar__workflow-list app-sidebar__workflow-list--grouped">
                 {pinnedEntries.map((entry) => renderEntry(entry))}
               </ul>
             </div>
           ) : null}
           {regularEntries.length > 0 ? (
-            <div className="chatkit-sidebar__workflow-group" data-workflow-group="default">
-              <h3 className="chatkit-sidebar__workflow-group-title">
+            <div className="app-sidebar__workflow-group" data-workflow-group="default">
+              <h3 className="app-sidebar__workflow-group-title">
                 {t("workflows.defaultSectionTitle")}
               </h3>
-              <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+              <ul className="app-sidebar__workflow-list app-sidebar__workflow-list--grouped">
                 {regularEntries.map((entry) => renderEntry(entry))}
               </ul>
             </div>
@@ -422,16 +422,16 @@ const WorkflowBuilderSidebar = ({
 
     return (
       <section
-        className="chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
+        className="app-sidebar__section app-sidebar__section--with-floating-action"
         aria-labelledby={`${sectionId}-title`}
       >
         <h2 id={`${sectionId}-title`} className="visually-hidden">
           {t("workflows.defaultSectionTitle")}
         </h2>
-        <div className="chatkit-sidebar__section-floating-action">
+        <div className="app-sidebar__section-floating-action">
           <button
             type="button"
-            className="chatkit-sidebar__section-icon-button"
+            className="app-sidebar__section-icon-button"
             onClick={onOpenCreateModal}
             aria-label={t("workflowBuilder.createWorkflow.openModal")}
             title={t("workflowBuilder.createWorkflow.openModal")}
@@ -442,12 +442,12 @@ const WorkflowBuilderSidebar = ({
         </div>
         {renderWorkflowList()}
         {selectedWorkflow?.description ? (
-          <p className="chatkit-sidebar__section-text">
+          <p className="app-sidebar__section-text">
             {selectedWorkflow.description}
           </p>
         ) : null}
         {selectedWorkflow && !selectedWorkflow.active_version_id ? (
-          <p className="chatkit-sidebar__section-text" style={warningStyle}>
+          <p className="app-sidebar__section-text" style={warningStyle}>
             Publiez une version pour l'utiliser.
           </p>
         ) : null}
@@ -563,15 +563,15 @@ const WorkflowBuilderSidebar = ({
     const renderShortcut = (workflow: ShortcutEntry) => (
       <li
         key={workflow.key}
-        className="chatkit-sidebar__workflow-compact-item"
+        className="app-sidebar__workflow-compact-item"
         data-pinned={workflow.isPinned ? "" : undefined}
       >
         <button
           type="button"
-          className={`chatkit-sidebar__workflow-compact-button${
-            workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-          }${workflow.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}${
-            workflow.isPinned ? " chatkit-sidebar__workflow-compact-button--pinned" : ""
+          className={`app-sidebar__workflow-compact-button${
+            workflow.isActive ? " app-sidebar__workflow-compact-button--active" : ""
+          }${workflow.kind === "hosted" ? " app-sidebar__workflow-compact-button--hosted" : ""}${
+            workflow.isPinned ? " app-sidebar__workflow-compact-button--pinned" : ""
           }`}
           onClick={workflow.onClick}
           disabled={workflow.disabled}
@@ -584,7 +584,7 @@ const WorkflowBuilderSidebar = ({
               : workflow.label
           }
         >
-          <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+          <span aria-hidden="true" className="app-sidebar__workflow-compact-initial">
             {workflow.initials}
           </span>
           <span className="visually-hidden">
@@ -596,26 +596,26 @@ const WorkflowBuilderSidebar = ({
     );
 
     return (
-      <div className="chatkit-sidebar__workflow-compact-groups">
+      <div className="app-sidebar__workflow-compact-groups">
         {pinnedEntries.length > 0 ? (
           <div
-            className="chatkit-sidebar__workflow-compact-group chatkit-sidebar__workflow-compact-group--pinned"
+            className="app-sidebar__workflow-compact-group app-sidebar__workflow-compact-group--pinned"
             data-workflow-group="pinned"
           >
-            <h3 className="chatkit-sidebar__workflow-compact-group-title">
+            <h3 className="app-sidebar__workflow-compact-group-title">
               {t("workflows.pinnedSectionTitle")}
             </h3>
-            <ul className="chatkit-sidebar__workflow-compact-list chatkit-sidebar__workflow-compact-list--grouped">
+            <ul className="app-sidebar__workflow-compact-list app-sidebar__workflow-compact-list--grouped">
               {pinnedEntries.map((workflow) => renderShortcut(workflow))}
             </ul>
           </div>
         ) : null}
         {regularEntries.length > 0 ? (
-          <div className="chatkit-sidebar__workflow-compact-group" data-workflow-group="default">
-            <h3 className="chatkit-sidebar__workflow-compact-group-title">
+          <div className="app-sidebar__workflow-compact-group" data-workflow-group="default">
+            <h3 className="app-sidebar__workflow-compact-group-title">
               {t("workflows.defaultSectionTitle")}
             </h3>
-            <ul className="chatkit-sidebar__workflow-compact-list">
+            <ul className="app-sidebar__workflow-compact-list">
               {regularEntries.map((workflow) => renderShortcut(workflow))}
             </ul>
           </div>

@@ -33,7 +33,7 @@ const WorkflowSidebarListItem = ({
   trailingContent,
 }: WorkflowSidebarListItemProps) => {
   const baseClassName =
-    "chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin";
+    "app-sidebar__workflow-list-item app-sidebar__workflow-list-item--with-pin";
   const listItemClassName = className ? `${baseClassName} ${className}` : baseClassName;
   const showActions = hasActions ?? Boolean(menuProps);
   const mergedDataAttributes: Record<string, string | undefined> = {
@@ -54,7 +54,7 @@ const WorkflowSidebarListItem = ({
     <li className={listItemClassName} {...mergedDataAttributes}>
       <button
         type="button"
-        className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
+        className="app-sidebar__workflow-action-button app-sidebar__workflow-pin-button app-sidebar__workflow-pin-button--leading"
         aria-pressed={isPinned}
         aria-label={pinLabel}
         title={pinButtonTitle ?? pinLabel}
@@ -62,7 +62,7 @@ const WorkflowSidebarListItem = ({
       >
         <Star
           aria-hidden="true"
-          className="chatkit-sidebar__workflow-pin-icon"
+          className="app-sidebar__workflow-pin-icon"
           size={18}
           strokeWidth={isPinned ? 1.75 : 2}
           fill={isPinned ? "currentColor" : "none"}

@@ -1381,7 +1381,7 @@ export type VectorStoreSummary = {
   documents_count: number;
 };
 
-export const WORKFLOW_VECTOR_STORE_SLUG = "chatkit-workflows";
+export const WORKFLOW_VECTOR_STORE_SLUG = "app-workflows";
 export const PROTECTED_VECTOR_STORE_ERROR_MESSAGE =
   "Ce vector store est protégé et ne peut pas être supprimé.";
 

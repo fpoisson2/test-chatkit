@@ -1,4 +1,4 @@
-import type { Widgets } from "@openai/chatkit";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"";
 
 export type WidgetBinding = {
   path: Array<string | number>;

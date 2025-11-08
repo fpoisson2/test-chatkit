@@ -41,13 +41,13 @@ export const getActionMenuStyle = (
       ? {
           top: "auto",
           bottom: "calc(100% + 0.5rem)",
-          right: "var(--chatkit-sidebar-content-padding-x)",
+          right: "var(--app-sidebar-content-padding-x)",
           left: "auto",
         }
       : {
           top: "calc(100% + 0.5rem)",
           bottom: "auto",
-          right: "var(--chatkit-sidebar-content-padding-x)",
+          right: "var(--app-sidebar-content-padding-x)",
           left: "auto",
         }),
   background: "var(--surface-strong)",
@@ -141,7 +141,7 @@ export const WorkflowActionMenu = ({
   triggerRef,
   menuRef,
   items,
-  containerClassName = "chatkit-sidebar__workflow-actions",
+  containerClassName = "app-sidebar__workflow-actions",
 }: WorkflowActionMenuProps) => {
   const visibleItems = items.filter((item) => !item.hidden);
 
@@ -164,7 +164,7 @@ export const WorkflowActionMenu = ({
     <div className={containerClassName} data-workflow-menu-container="">
       <button
         type="button"
-        className="chatkit-sidebar__workflow-action-button"
+        className="app-sidebar__workflow-action-button"
         data-workflow-menu-trigger=""
         aria-haspopup="true"
         aria-expanded={isOpen}
@@ -180,7 +180,7 @@ export const WorkflowActionMenu = ({
           id={menuId}
           role="menu"
           data-workflow-menu=""
-          className="chatkit-sidebar__workflow-menu"
+          className="app-sidebar__workflow-menu"
           style={getActionMenuStyle(isMobileLayout, placement)}
           ref={(node) => {
             if (!menuRef) {

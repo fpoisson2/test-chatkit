@@ -80,22 +80,22 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
   const sidebarContent = useMemo(
     () => (
       <section
-        className="chatkit-sidebar__section"
+        className="app-sidebar__section"
         aria-label={navigationLabel}
       >
-        <div className="chatkit-sidebar__section-header">
-          <h2 className="chatkit-sidebar__section-title">{sectionTitle}</h2>
+        <div className="app-sidebar__section-header">
+          <h2 className="app-sidebar__section-title">{sectionTitle}</h2>
         </div>
-        <ul className="chatkit-sidebar__nav-list">
+        <ul className="app-sidebar__nav-list">
           {tabs.map((tab) => (
-            <li key={tab.key} className="chatkit-sidebar__nav-item">
+            <li key={tab.key} className="app-sidebar__nav-item">
               <NavLink
                 to={tab.to}
                 end={tab.key === "users"}
                 className={({ isActive }) =>
-                  `chatkit-sidebar__nav-link${
+                  `app-sidebar__nav-link${
                     isActive || activeTab === tab.key
-                      ? " chatkit-sidebar__nav-link--active"
+                      ? " app-sidebar__nav-link--active"
                       : ""
                   }`
                 }
@@ -117,25 +117,25 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
     }
 
     return (
-      <ul className="chatkit-sidebar__workflow-compact-list" role="list">
+      <ul className="app-sidebar__workflow-compact-list" role="list">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
           const trimmedLabel = tab.label.trim();
           const initial = trimmedLabel ? trimmedLabel.charAt(0).toUpperCase() : "?";
 
           return (
-            <li key={tab.key} className="chatkit-sidebar__workflow-compact-item">
+            <li key={tab.key} className="app-sidebar__workflow-compact-item">
               <button
                 type="button"
-                className={`chatkit-sidebar__workflow-compact-button${
-                  isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
+                className={`app-sidebar__workflow-compact-button${
+                  isActive ? " app-sidebar__workflow-compact-button--active" : ""
                 }`}
                 onClick={() => handleCollapsedTabClick(tab.to)}
                 tabIndex={isSidebarCollapsed ? 0 : -1}
                 aria-label={tab.label}
                 aria-current={isActive ? "page" : undefined}
               >
-                <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+                <span aria-hidden="true" className="app-sidebar__workflow-compact-initial">
                   {initial}
                 </span>
                 <span className="visually-hidden">{tab.label}</span>

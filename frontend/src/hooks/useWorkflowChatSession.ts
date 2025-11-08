@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
-import { useChatKit } from "@openai/chatkit-react";
-import type { ChatKitOptions } from "@openai/chatkit";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"-react";
+import { ChatKit, type ChatKitControl } from "@openai/chatkit-react"";
 
 import type { WorkflowSummary } from "../types/workflows";
 import { useChatkitWorkflowSync } from "./useChatkitWorkflowSync";
