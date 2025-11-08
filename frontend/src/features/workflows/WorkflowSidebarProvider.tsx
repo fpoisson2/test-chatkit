@@ -141,6 +141,11 @@ export const WorkflowSidebarProvider = ({ children }: { children: ReactNode }) =
   const workflowCollatorRef = useRef<Intl.Collator | null>(ensureCollator(null));
   const hasLoadedWorkflowsRef = useRef(false);
   const previousTokenRef = useRef<string | null>(token ?? null);
+  const modeRef = useRef(mode);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {
@@ -283,7 +288,7 @@ export const WorkflowSidebarProvider = ({ children }: { children: ReactNode }) =
         writeStoredWorkflowSelection(null);
       }
       resetStateForSignedOutUser();
-      if (mode !== "local") {
+      if (modeRef.current !== "local") {
         setMode("local");
       }
       return;
@@ -344,7 +349,7 @@ export const WorkflowSidebarProvider = ({ children }: { children: ReactNode }) =
         resolvedHostedSlug = fallbackHosted.slug;
       }
 
-      let resolvedMode = mode;
+      let resolvedMode = modeRef.current;
       if (storedSelection) {
         if (storedSelection.mode === "hosted" && resolvedHostedSlug) {
           resolvedMode = "hosted";
@@ -419,13 +424,13 @@ export const WorkflowSidebarProvider = ({ children }: { children: ReactNode }) =
       setSelectedHostedSlug(null);
       setSelectedWorkflowId(null);
       hasLoadedWorkflowsRef.current = false;
-      if (mode !== "local") {
+      if (modeRef.current !== "local") {
         setMode("local");
       }
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, mode, resetStateForSignedOutUser, setMode, token]);
+  }, [isAdmin, resetStateForSignedOutUser, setMode, token]);
 
   useEffect(() => {
     void loadWorkflows();
