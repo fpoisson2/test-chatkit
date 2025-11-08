@@ -196,16 +196,23 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
     const wasDesktop = previousIsDesktopRef.current;
 
+    console.log('[AppLayout] isDesktopLayout changed:', {
+      isDesktopLayout,
+      wasDesktop,
+      isSidebarOpen,
+    });
+
     if (isDesktopLayout) {
       if (!wasDesktop) {
         const storedPreference = readStoredSidebarOpen();
+        console.log('[AppLayout] Transitioning mobile→desktop, restoring preference:', storedPreference);
         setIsSidebarOpen(storedPreference ?? true);
       }
     }
     // Removed automatic closing on mobile layout
 
     previousIsDesktopRef.current = isDesktopLayout;
-  }, [isDesktopLayout]);
+  }, [isDesktopLayout, isSidebarOpen]);
 
   useEffect(() => {
     if (!isDesktopLayout) {
@@ -216,10 +223,12 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   }, [isDesktopLayout, isSidebarOpen]);
 
   const openSidebar = useCallback(() => {
+    console.log('[AppLayout] openSidebar called');
     setIsSidebarOpen(true);
   }, []);
 
   const closeSidebar = useCallback(() => {
+    console.log('[AppLayout] closeSidebar called from:', new Error().stack);
     setIsSidebarOpen(false);
   }, []);
 
