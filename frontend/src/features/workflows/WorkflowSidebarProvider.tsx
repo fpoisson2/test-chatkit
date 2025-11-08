@@ -332,7 +332,7 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
       return;
     }
 
-    const hasExistingData = workflows.length > 0 || hostedWorkflows.length > 0;
+    const hasExistingData = workflowsRef.current.length > 0 || hostedWorkflowsRef.current.length > 0;
     if (!hasExistingData) {
       setLoading(true);
     }
@@ -476,11 +476,17 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, mode, token, workflows.length, hostedWorkflows.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, token]);
+  // Note: mode is intentionally not in deps to avoid reloading on mode change
+  // We read mode from storage and update it if needed inside loadWorkflows
 
-  // Auto-load on mount
+  // Auto-load on mount (only once if we have cache)
   useEffect(() => {
-    void loadWorkflows();
+    // Only load if we haven't loaded yet, or if we don't have any data
+    if (!hasLoadedWorkflowsRef.current || (workflowsRef.current.length === 0 && hostedWorkflowsRef.current.length === 0)) {
+      void loadWorkflows();
+    }
   }, [loadWorkflows]);
 
   const contextValue = useMemo<WorkflowSidebarContextValue>(
