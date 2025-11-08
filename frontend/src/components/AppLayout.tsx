@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -112,24 +111,6 @@ const buildNavigationItems = ({
     },
   ];
 };
-
-const useSidebarInteractions = ({
-  isDesktopLayout,
-  onInteract,
-}: {
-  isDesktopLayout: boolean;
-  onInteract: () => void;
-}) =>
-  useMemo<Partial<HTMLAttributes<HTMLDivElement>>>(() => {
-    if (isDesktopLayout) {
-      return {};
-    }
-
-    return {
-      onPointerDown: onInteract,
-      onTouchStart: onInteract,
-    };
-  }, [isDesktopLayout, onInteract]);
 
 type AppLayoutContextValue = {
   openSidebar: () => void;
@@ -398,18 +379,25 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [isSidebarCollapsed, isSidebarOpen],
   );
 
-  const handleSidebarInteract = useCallback(() => {
-    if (!isSidebarOpen || isDesktopLayout) {
+  const handleScrimPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (isDesktopLayout) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [isDesktopLayout],
+  );
+
+  const handleScrimClick = useCallback(() => {
+    if (isDesktopLayout) {
       return;
     }
 
     closeSidebar();
-  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
-
-  const sidebarInteractions = useSidebarInteractions({
-    isDesktopLayout,
-    onInteract: handleSidebarInteract,
-  });
+  }, [closeSidebar, isDesktopLayout]);
 
   const contextValue = useMemo(
     () => ({
@@ -672,10 +660,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               </footer>
             )}
           </aside>
-          <div
+          <button
+            type="button"
             className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
             aria-hidden={!isSidebarOpen || isDesktopLayout}
-            {...sidebarInteractions}
+            aria-label={t("app.sidebar.close")}
+            onPointerDown={handleScrimPointerDown}
+            onClick={handleScrimClick}
+            tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
           />
           <div className="chatkit-layout__main">
             {children ?? <Outlet />}
