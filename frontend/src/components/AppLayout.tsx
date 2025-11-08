@@ -182,10 +182,13 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const storedPreference = readStoredSidebarOpen();
     if (storedPreference !== null) {
+      console.log('[AppLayout] Initial sidebar state from storage:', storedPreference);
       return storedPreference;
     }
 
-    return getDesktopLayoutPreference();
+    const defaultValue = getDesktopLayoutPreference();
+    console.log('[AppLayout] Initial sidebar state (no storage):', defaultValue);
+    return defaultValue;
   });
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -224,12 +227,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const openSidebar = useCallback(() => {
     console.log('[AppLayout] openSidebar called');
-    setIsSidebarOpen(true);
+    setIsSidebarOpen((prev) => {
+      console.log('[AppLayout] setIsSidebarOpen: false →', true, '(prev was:', prev, ')');
+      return true;
+    });
   }, []);
 
   const closeSidebar = useCallback(() => {
     console.log('[AppLayout] closeSidebar called from:', new Error().stack);
-    setIsSidebarOpen(false);
+    setIsSidebarOpen((prev) => {
+      console.log('[AppLayout] setIsSidebarOpen: true →', false, '(prev was:', prev, ')');
+      return false;
+    });
   }, []);
 
 
@@ -396,14 +405,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   );
 
   const sidebarClassName = useMemo(
-    () =>
-      [
+    () => {
+      const classes = [
         "chatkit-sidebar",
         isSidebarOpen ? "chatkit-sidebar--open" : "",
         isSidebarCollapsed ? "chatkit-sidebar--collapsed" : "",
       ]
         .filter(Boolean)
-        .join(" "),
+        .join(" ");
+
+      console.log('[AppLayout] Sidebar classes:', classes, '{ isSidebarOpen:', isSidebarOpen, 'isSidebarCollapsed:', isSidebarCollapsed, '}');
+      return classes;
+    },
     [isSidebarCollapsed, isSidebarOpen],
   );
 
