@@ -398,6 +398,8 @@ const WorkflowBuilderPage = () => {
 
   // Use WorkflowSidebarProvider for sidebar-specific functionality
   const {
+    workflows: sidebarWorkflows,
+    hostedWorkflows: sidebarHostedWorkflows,
     setWorkflows: setSidebarWorkflows,
     setHostedWorkflows: setSidebarHostedWorkflows,
     setSelectedWorkflowId: setSidebarSelectedWorkflowId,
@@ -628,13 +630,33 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
-  // Synchronize WorkflowContext state with WorkflowSidebarProvider for cache/persistence
-  // Only update if workflows were actually loaded (to avoid triggering reloads in the provider)
+  // Bidirectional synchronization between WorkflowContext and WorkflowSidebarProvider
   const previousWorkflowsRef = useRef<WorkflowSummary[]>([]);
   const previousHostedWorkflowsRef = useRef<HostedWorkflowMetadata[]>([]);
+  const initializedFromProviderRef = useRef(false);
+
+  // Initialize WorkflowContext from provider if it has data
+  useEffect(() => {
+    if (!initializedFromProviderRef.current &&
+        sidebarWorkflows.length > 0 &&
+        workflows.length === 0) {
+      initializedFromProviderRef.current = true;
+      setWorkflows(sidebarWorkflows);
+      previousWorkflowsRef.current = sidebarWorkflows;
+    }
+  }, [sidebarWorkflows, workflows.length, setWorkflows]);
 
   useEffect(() => {
-    // Only sync if workflows have actually changed
+    if (!initializedFromProviderRef.current &&
+        sidebarHostedWorkflows.length > 0 &&
+        hostedWorkflows.length === 0) {
+      setHostedWorkflows(sidebarHostedWorkflows);
+      previousHostedWorkflowsRef.current = sidebarHostedWorkflows;
+    }
+  }, [sidebarHostedWorkflows, hostedWorkflows.length, setHostedWorkflows]);
+
+  // Sync from WorkflowContext to provider (when WorkflowBuilder loads new data)
+  useEffect(() => {
     if (workflows.length > 0 && workflows !== previousWorkflowsRef.current) {
       previousWorkflowsRef.current = workflows;
       setSidebarWorkflows(workflows);
@@ -642,7 +664,6 @@ const WorkflowBuilderPage = () => {
   }, [workflows, setSidebarWorkflows]);
 
   useEffect(() => {
-    // Only sync if hosted workflows have actually changed
     if (hostedWorkflows.length > 0 && hostedWorkflows !== previousHostedWorkflowsRef.current) {
       previousHostedWorkflowsRef.current = hostedWorkflows;
       setSidebarHostedWorkflows(hostedWorkflows);
