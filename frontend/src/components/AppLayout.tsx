@@ -128,10 +128,18 @@ const useSidebarInteractions = ({
       return {};
     }
 
+    const supportsPointerEvents =
+      typeof window !== "undefined" && "PointerEvent" in window;
+
+    if (supportsPointerEvents) {
+      return {
+        onPointerDown: (event) => {
+          onInteract(event);
+        },
+      };
+    }
+
     return {
-      onPointerDown: (event) => {
-        onInteract(event);
-      },
       onTouchStart: (event) => {
         onInteract(event);
       },
@@ -309,8 +317,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   );
 
   useEffect(() => {
-    ignoreNextMainInteractionRef.current = false;
-
     if (!keepSidebarOpenOnNavigationRef.current) {
       return;
     }
