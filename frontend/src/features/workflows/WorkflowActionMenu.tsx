@@ -146,17 +146,21 @@ export const WorkflowActionMenu = ({
   const visibleItems = items.filter((item) => !item.hidden);
 
   const handleTriggerClick = (event: MouseEvent<HTMLButtonElement>) => {
+    console.log('[WorkflowActionMenu] handleTriggerClick called for menuId:', menuId, 'isOpen:', isOpen);
     event.stopPropagation();
     const trigger = event.currentTarget;
     if (triggerRef) {
       triggerRef.current = trigger;
+      console.log('[WorkflowActionMenu] triggerRef assigned:', triggerRef.current);
     }
     if (isOpen) {
+      console.log('[WorkflowActionMenu] Menu already open, calling onClose');
       onClose();
       return;
     }
 
     const nextPlacement = isMobileLayout ? computeWorkflowActionMenuPlacement(trigger) : "down";
+    console.log('[WorkflowActionMenu] Opening menu with placement:', nextPlacement);
     onOpen(nextPlacement);
   };
 
