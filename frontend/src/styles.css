@@ -284,16 +284,11 @@ button {
   width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  transform: translate3d(0, 0, 0);
   z-index: 0;
   backface-visibility: hidden;
   -webkit-tap-highlight-color: transparent;
   background: var(--main-background);
   border-left: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.chatkit-layout--sidebar-open .chatkit-layout__main {
-  transform: translate3d(var(--chatkit-sidebar-width), 0, 0);
 }
 
 .chatkit-layout__scrim {
@@ -348,6 +343,7 @@ button {
   z-index: 2;
   width: var(--chatkit-sidebar-width);
   margin: 0;
+  margin-left: calc(-1 * var(--chatkit-sidebar-width));
   max-width: 100%;
   min-height: 100%;
   background: var(--sidebar-background);
@@ -359,7 +355,6 @@ button {
   --chatkit-sidebar-padding-x: 24px;
   --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   overflow: hidden;
-  transform: translateX(calc(-1 * var(--chatkit-sidebar-width)));
   pointer-events: none;
 }
 
@@ -416,7 +411,7 @@ button {
 }
 
 .chatkit-sidebar--open {
-  transform: translateX(0);
+  margin-left: 0;
   pointer-events: auto;
 }
 
@@ -454,7 +449,7 @@ button {
   position: relative;
   inset: auto;
   height: 100%;
-  transform: none;
+  margin-left: 0;
   box-shadow: none;
   pointer-events: auto;
 }
@@ -473,13 +468,8 @@ button {
   padding-inline: 0;
 }
 
-.chatkit-layout--desktop .chatkit-sidebar--open {
-  transform: none;
-}
-
 .chatkit-layout--desktop .chatkit-layout__main {
   grid-column: 2;
-  transform: none;
   transition: none;
 }
 
