@@ -38,7 +38,7 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
     clearSidebarContent,
     clearCollapsedSidebarContent,
   } = useSidebarPortal();
-  const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
+  const { isDesktopLayout, isSidebarCollapsed } = useAppLayout();
   const { t } = useI18n();
   const navigate = useNavigate();
 

@@ -53,7 +53,7 @@ type ChatWorkflowSidebarProps = {
 export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
+  const { isDesktopLayout, isSidebarCollapsed } = useAppLayout();
   const isMobileLayout = !isDesktopLayout;
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();

@@ -226,7 +226,7 @@ const WorkflowBuilderPage = () => {
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token],
   );
-  const { openSidebar, closeSidebar, isSidebarCollapsed } = useAppLayout();
+  const { openSidebar, isSidebarCollapsed } = useAppLayout();
 
   // Phase 4: Use contexts instead of local state
   const {
