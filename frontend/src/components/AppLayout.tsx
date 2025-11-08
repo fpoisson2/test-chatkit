@@ -131,12 +131,18 @@ const useSidebarInteractions = ({
     };
   }, [isDesktopLayout, onInteract]);
 
+type CloseSidebarOptions = {
+  force?: boolean;
+};
+
 type AppLayoutContextValue = {
   openSidebar: () => void;
-  closeSidebar: () => void;
+  closeSidebar: (options?: CloseSidebarOptions) => void;
   isDesktopLayout: boolean;
   isSidebarOpen: boolean;
   isSidebarCollapsed: boolean;
+  isSidebarAutoCloseLocked: boolean;
+  releaseSidebarAutoCloseLock: () => void;
 };
 
 const AppLayoutContext = createContext<AppLayoutContextValue | undefined>(undefined);
@@ -192,6 +198,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
   const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
+  const [isSidebarAutoCloseLocked, setIsSidebarAutoCloseLocked] = useState(false);
   const appSwitcherLabelId = useId();
 
   useEffect(() => {
@@ -221,9 +228,21 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     setIsSidebarOpen(true);
   }, []);
 
-  const closeSidebar = useCallback(() => {
-    setIsSidebarOpen(false);
+  const releaseSidebarAutoCloseLock = useCallback(() => {
+    setIsSidebarAutoCloseLocked(false);
   }, []);
+
+  const closeSidebar = useCallback(
+    ({ force = false }: CloseSidebarOptions = {}) => {
+      if (isSidebarAutoCloseLocked && !force) {
+        return;
+      }
+
+      setIsSidebarOpen(false);
+      setIsSidebarAutoCloseLocked(false);
+    },
+    [isSidebarAutoCloseLocked],
+  );
 
   const handleMainInteraction = useCallback(() => {
     if (!isDesktopLayout && isSidebarOpen) {
@@ -280,6 +299,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
         if (!isAlreadyOnTarget) {
           keepSidebarOpenOnNavigationRef.current = true;
+          if (application.key === "workflows") {
+            setIsSidebarAutoCloseLocked(true);
+          }
         }
       }
 
@@ -430,7 +452,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
       event.preventDefault();
       event.stopPropagation();
-      closeSidebar();
+      closeSidebar({ force: true });
     },
     [closeSidebar, isDesktopLayout],
   );
@@ -466,8 +488,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       isDesktopLayout,
       isSidebarOpen,
       isSidebarCollapsed,
+      isSidebarAutoCloseLocked,
+      releaseSidebarAutoCloseLock,
     }),
-    [closeSidebar, isDesktopLayout, isSidebarCollapsed, isSidebarOpen, openSidebar],
+    [
+      closeSidebar,
+      isDesktopLayout,
+      isSidebarAutoCloseLocked,
+      isSidebarCollapsed,
+      isSidebarOpen,
+      openSidebar,
+      releaseSidebarAutoCloseLock,
+    ],
   );
 
   const handleSetSidebarContent = useCallback((content: ReactNode | null) => {
@@ -728,7 +760,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             onPointerDown={handleScrimPointerDown}
             onClick={() => {
               if (!isDesktopLayout) {
-                closeSidebar();
+                closeSidebar({ force: true });
               }
             }}
             tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}

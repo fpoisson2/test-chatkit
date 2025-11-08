@@ -29,11 +29,23 @@ const clearCollapsedSidebarContentMock = vi.fn(() => {
   latestCollapsedSidebarContent = null;
 });
 
+const closeSidebarMock = vi.fn();
+const releaseSidebarAutoCloseLockMock = vi.fn();
+const appLayoutMockState = {
+  isDesktopLayout: true,
+  isSidebarCollapsed: false,
+  isSidebarAutoCloseLocked: false,
+};
+
 vi.mock("../../../components/AppLayout", () => ({
   useAppLayout: () => ({
-    closeSidebar: vi.fn(),
-    isDesktopLayout: true,
-    isSidebarCollapsed: false,
+    openSidebar: vi.fn(),
+    closeSidebar: closeSidebarMock,
+    isDesktopLayout: appLayoutMockState.isDesktopLayout,
+    isSidebarOpen: true,
+    isSidebarCollapsed: appLayoutMockState.isSidebarCollapsed,
+    isSidebarAutoCloseLocked: appLayoutMockState.isSidebarAutoCloseLocked,
+    releaseSidebarAutoCloseLock: releaseSidebarAutoCloseLockMock,
   }),
   useSidebarPortal: () => ({
     setSidebarContent: setSidebarContentMock,
@@ -117,6 +129,11 @@ describe("ChatWorkflowSidebar pinning", () => {
     clearSidebarContentMock.mockClear();
     setCollapsedSidebarContentMock.mockClear();
     clearCollapsedSidebarContentMock.mockClear();
+    closeSidebarMock.mockClear();
+    releaseSidebarAutoCloseLockMock.mockClear();
+    appLayoutMockState.isDesktopLayout = true;
+    appLayoutMockState.isSidebarCollapsed = false;
+    appLayoutMockState.isSidebarAutoCloseLocked = false;
     window.sessionStorage.clear();
     const localEntries = new Map<string, string>();
     authState.token = "token";
@@ -281,6 +298,38 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     rerendered.unmount();
     rerenderedHost.unmount();
+  });
+
+  it("keeps the sidebar open on mobile when the auto-close lock is active", async () => {
+    appLayoutMockState.isDesktopLayout = false;
+    appLayoutMockState.isSidebarAutoCloseLocked = true;
+
+    const user = userEvent.setup();
+    const updatedWorkflow = { ...createWorkflow(1, "Alpha"), is_chatkit_default: true };
+    const setWorkflowSpy = vi
+      .spyOn(workflowsApi, "setChatkitWorkflow")
+      .mockResolvedValue(updatedWorkflow);
+
+    render(
+      <I18nProvider>
+        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+      </I18nProvider>,
+    );
+
+    const sidebarHost = await renderSidebarHost();
+    await waitFor(() => {
+      sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
+      expect(sidebarHost.getByRole("button", { name: "Alpha" })).toBeInTheDocument();
+    });
+
+    await user.click(sidebarHost.getByRole("button", { name: "Alpha" }));
+
+    await waitFor(() => {
+      expect(setWorkflowSpy).toHaveBeenCalled();
+    });
+
+    expect(closeSidebarMock).not.toHaveBeenCalled();
+    expect(releaseSidebarAutoCloseLockMock).toHaveBeenCalled();
   });
 
   it("preserves stored pins while workflows are still loading", async () => {
