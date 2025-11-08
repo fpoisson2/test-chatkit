@@ -1,7 +1,8 @@
 import type { ReactElement } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, Outlet } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
+import { WorkflowSidebarProvider } from "./features/workflows/WorkflowSidebarProvider";
 import { useAuth } from "./auth";
 import { MyChat } from "./MyChat";
 import { LoginPage } from "./pages/LoginPage";
@@ -55,6 +56,12 @@ const RequireUser = ({ children }: { children: ReactElement }) => {
 
 const HomePage = () => <MyChat />;
 
+const AuthenticatedAppLayout = () => (
+  <WorkflowSidebarProvider>
+    <AppLayout />
+  </WorkflowSidebarProvider>
+);
+
 export const App = () => (
   <Routes>
     <Route
@@ -69,7 +76,7 @@ export const App = () => (
       path="/"
       element={
         <RequireUser>
-          <AppLayout />
+          <AuthenticatedAppLayout />
         </RequireUser>
       }
     >
@@ -106,7 +113,7 @@ export const App = () => (
       path="/admin"
       element={
         <RequireAdmin>
-          <AppLayout />
+          <AuthenticatedAppLayout />
         </RequireAdmin>
       }
     >

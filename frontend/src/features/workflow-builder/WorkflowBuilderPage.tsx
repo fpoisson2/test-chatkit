@@ -20,7 +20,7 @@ import { resolveAgentParameters, resolveStateParameters } from "../../utils/agen
 import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "./hooks/useOutsidePointerDown";
 import useWorkflowResources from "./hooks/useWorkflowResources";
-import useWorkflowSidebarState from "./hooks/useWorkflowSidebarState";
+import { useWorkflowSidebar } from "../workflows/WorkflowSidebarProvider";
 import { useWorkflowKeyboardShortcuts } from "./hooks/useWorkflowKeyboardShortcuts";
 import { useRemoteVersionPolling } from "./hooks/useRemoteVersionPolling";
 import { useWorkflowHistory } from "./hooks/useWorkflowHistory";
@@ -396,11 +396,8 @@ const WorkflowBuilderPage = () => {
     [decorateNode],
   );
 
-  // useWorkflowSidebarState now only provides sidebar-specific functionality
-  // workflows, hostedWorkflows, selectedWorkflowId come from WorkflowContext above
+  // Use WorkflowSidebarProvider for sidebar-specific functionality
   const {
-    initialSidebarCache,
-    initialSidebarCacheUsedRef,
     setWorkflows: setSidebarWorkflows,
     setHostedWorkflows: setSidebarHostedWorkflows,
     setSelectedWorkflowId: setSidebarSelectedWorkflowId,
@@ -408,9 +405,12 @@ const WorkflowBuilderPage = () => {
     pinnedLookup,
     toggleLocalPin,
     toggleHostedPin,
-    workflowSortCollatorRef,
+    workflowCollator,
     hasLoadedWorkflowsRef,
-  } = useWorkflowSidebarState({ token });
+  } = useWorkflowSidebar();
+
+  // Create a ref for the collator for compatibility
+  const workflowSortCollatorRef = useRef(workflowCollator);
 
   const {
     vectorStores: vectorStoresState,
@@ -628,7 +628,7 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
-  // Synchronize WorkflowContext state with useWorkflowSidebarState for cache/persistence
+  // Synchronize WorkflowContext state with WorkflowSidebarProvider for cache/persistence
   useEffect(() => {
     setSidebarWorkflows(workflows);
   }, [workflows, setSidebarWorkflows]);
@@ -900,8 +900,7 @@ const WorkflowBuilderPage = () => {
   });
 
   useEffect(() => {
-    void loadWorkflows({ suppressLoadingState: initialSidebarCacheUsedRef.current });
-    initialSidebarCacheUsedRef.current = false;
+    void loadWorkflows({ suppressLoadingState: false });
   }, [loadWorkflows]);
 
   // Remote version polling
