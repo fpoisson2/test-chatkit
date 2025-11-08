@@ -299,9 +299,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
         if (!isAlreadyOnTarget) {
           keepSidebarOpenOnNavigationRef.current = true;
-          if (application.key === "workflows") {
-            setIsSidebarAutoCloseLocked(true);
-          }
+          setIsSidebarAutoCloseLocked(application.key === "workflows");
         }
       }
 
@@ -318,6 +316,12 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     keepSidebarOpenOnNavigationRef.current = false;
     setIsSidebarOpen(true);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (activeApplication !== "workflows") {
+      setIsSidebarAutoCloseLocked(false);
+    }
+  }, [activeApplication]);
 
   const handleOpenSettings = useCallback(
     (sectionId?: SettingsSectionId) => {
