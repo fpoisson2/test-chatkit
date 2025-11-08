@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import re
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
@@ -21,19 +21,20 @@ from ..admin_settings import (
     update_appearance_settings,
 )
 from ..config import get_settings
-from ..database import get_session, SessionLocal
+from ..database import SessionLocal, get_session
 from ..dependencies import require_admin
+from ..i18n_utils import resolve_frontend_i18n_path
 from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
 from ..models import Language, LanguageGenerationTask, SipAccount, TelephonyRoute, User
 from ..schemas import (
+    AppearanceSettingsResponse,
+    AppearanceSettingsUpdateRequest,
     AppSettingsResponse,
     AppSettingsUpdateRequest,
     McpServerCreateRequest,
     McpServerResponse,
     McpServerUpdateRequest,
-    AppearanceSettingsResponse,
-    AppearanceSettingsUpdateRequest,
     SipAccountCreateRequest,
     SipAccountResponse,
     SipAccountUpdateRequest,
@@ -901,16 +902,14 @@ async def list_languages(_admin: User = Depends(require_admin)):
     Liste toutes les langues disponibles dans l'interface.
     """
     import re
-    from pathlib import Path
 
     try:
         # Chemin vers le dossier des traductions
-        # Le frontend est monté en lecture seule dans /frontend via docker-compose
-        i18n_path = Path("/frontend/src/i18n")
+        i18n_path, path_exists = resolve_frontend_i18n_path()
 
         logger.info(f"Looking for translations at: {i18n_path}")
 
-        if not i18n_path.exists():
+        if not path_exists:
             logger.error(f"i18n directory does not exist at {i18n_path}")
             raise HTTPException(
                 status_code=500,
@@ -953,14 +952,21 @@ async def list_languages(_admin: User = Depends(require_admin)):
             keys_count = 0
             if file_exists:
                 file_content = file_path.read_text()
-                # Compter les lignes qui contiennent des clés de traduction (format: "key": "value")
-                keys_count = len(re.findall(r'^\s*"[^"]+"\s*:\s*', file_content, re.MULTILINE))
+                # Compter les lignes qui contiennent des clés de traduction
+                # (format: "key": "value")
+                keys_count = len(
+                    re.findall(
+                        r'^\s*"[^"]+"\s*:\s*', file_content, re.MULTILINE
+                    )
+                )
 
             # Obtenir le nom de la langue depuis le fichier de traductions
             name = code.upper()
             if file_exists:
                 file_content = file_path.read_text()
-                name_match = re.search(rf'"language\.name\.{code}"\s*:\s*"([^"]+)"', file_content)
+                name_match = re.search(
+                    rf'"language\.name\.{code}"\s*:\s*"([^"]+)"', file_content
+                )
                 if name_match:
                     name = name_match.group(1)
 
@@ -969,7 +975,9 @@ async def list_languages(_admin: User = Depends(require_admin)):
             en_file = i18n_path / "translations.en.ts"
             if en_file.exists():
                 en_content = en_file.read_text()
-                total_keys = len(re.findall(r'^\s*"[^"]+"\s*:\s*', en_content, re.MULTILINE))
+                total_keys = len(
+                    re.findall(r'^\s*"[^"]+"\s*:\s*', en_content, re.MULTILINE)
+                )
 
             languages.append(
                 LanguageResponse(
@@ -992,7 +1000,7 @@ async def list_languages(_admin: User = Depends(require_admin)):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to list languages: {str(e)}"
-        )
+        ) from e
 
 
 
@@ -1003,7 +1011,8 @@ async def generate_language_file(
     _admin: User = Depends(require_admin)
 ):
     """
-    Lance la génération de traduction en background avec Celery et retourne task_id immédiatement.
+    Lance la génération de traduction en background avec Celery et retourne
+    immédiatement un identifiant de tâche.
     """
     from ..tasks.language_generation import generate_language_task
 
@@ -1029,10 +1038,13 @@ async def generate_language_file(
         )
 
     # Vérifier que le fichier source existe
-    i18n_path = Path("/frontend/src/i18n")
+    i18n_path, path_exists = resolve_frontend_i18n_path()
     en_file = i18n_path / "translations.en.ts"
-    if not en_file.exists():
-        raise HTTPException(status_code=404, detail="Source language file (English) not found")
+    if not path_exists or not en_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Source language file (English) not found",
+        )
 
     # Créer la tâche en BD
     task_id = str(uuid.uuid4())
@@ -1180,7 +1192,10 @@ async def download_stored_language(
         )
 
     # Générer le fichier .ts depuis language.translations
-    file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {language.code}: TranslationDictionary = {{\n'
+    file_content = (
+        'import type { TranslationDictionary } from "./translations";\n\n'
+        f"export const {language.code}: TranslationDictionary = {{\n"
+    )
     for key, value in language.translations.items():
         escaped_value = str(value).replace('\\', '\\\\').replace('"', '\\"')
         file_content += f'  "{key}": "{escaped_value}",\n'
@@ -1190,12 +1205,17 @@ async def download_stored_language(
         content=file_content,
         media_type="text/plain",
         headers={
-            "Content-Disposition": f'attachment; filename="translations.{language.code}.ts"'
+            "Content-Disposition": (
+                f'attachment; filename="translations.{language.code}.ts"'
+            )
         }
     )
 
 
-@router.delete("/api/admin/languages/stored/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/api/admin/languages/stored/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def delete_stored_language(
     id: int,
     session: Session = Depends(get_session),
@@ -1239,12 +1259,21 @@ async def activate_stored_language(
             detail=f"Language with id {id} not found"
         )
 
-    i18n_path = Path("/frontend/src/i18n")
+    i18n_path, path_exists = resolve_frontend_i18n_path()
+
+    if not path_exists:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Translation directory not found at {i18n_path}",
+        )
 
     # 1. Générer et écrire le fichier de traduction
     translation_file = i18n_path / f"translations.{language.code}.ts"
 
-    file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {language.code}: TranslationDictionary = {{\n'
+    file_content = (
+        'import type { TranslationDictionary } from "./translations";\n\n'
+        f"export const {language.code}: TranslationDictionary = {{\n"
+    )
     for key, value in language.translations.items():
         escaped_value = str(value).replace('\\', '\\\\').replace('"', '\\"')
         file_content += f'  "{key}": "{escaped_value}",\n'
@@ -1258,7 +1287,7 @@ async def activate_stored_language(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to write translation file: {str(e)}"
-        )
+        ) from e
 
     # 2. Mettre à jour translations.ts
     main_file = i18n_path / "translations.ts"
@@ -1292,11 +1321,20 @@ async def activate_stored_language(
                 # Trouver l'indentation
                 indent = '  '
                 # Insérer après cette ligne
-                lines.insert(i + 1, f'{indent}{{ code: "{language.code}", label: "{language.name}" }},')
+                lines.insert(
+                    i + 1,
+                    (
+                        f'{indent}{{ code: "{language.code}", '
+                        f'label: "{language.name}" }},'
+                    ),
+                )
                 break
 
         # 3. Ajouter l'import (après les imports existants)
-        import_line = f'import {{ {language.code} }} from "./translations.{language.code}";'
+        import_line = (
+            f'import {{ {language.code} }} from '
+            f'"./translations.{language.code}";'
+        )
         for i, line in enumerate(lines):
             if line.startswith('import { en }'):
                 lines.insert(i + 1, import_line)
@@ -1334,7 +1372,7 @@ async def activate_stored_language(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to update translations.ts: {str(e)}"
-        )
+        ) from e
 
 
 class AvailableModelResponse(BaseModel):
@@ -1362,8 +1400,9 @@ async def list_available_models(
     Liste tous les modèles disponibles pour la génération de traductions.
     """
     from sqlalchemy import select
-    from ..models import AvailableModel
+
     from ..chatkit.agent_registry import get_agent_provider_binding
+    from ..models import AvailableModel
 
     try:
         with SessionLocal() as session:
@@ -1377,7 +1416,10 @@ async def list_available_models(
                 # Check if provider can be resolved
                 provider_configured = False
                 if model.provider_id or model.provider_slug:
-                    binding = get_agent_provider_binding(model.provider_id, model.provider_slug)
+                    binding = get_agent_provider_binding(
+                        model.provider_id,
+                        model.provider_slug,
+                    )
                     provider_configured = binding is not None
 
                 model_list.append(AvailableModelResponse(
@@ -1395,7 +1437,7 @@ async def list_available_models(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to list available models: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/api/admin/languages/default-prompt", response_model=DefaultPromptResponse)
@@ -1403,22 +1445,25 @@ async def get_default_translation_prompt(
     _admin: User = Depends(require_admin)
 ):
     """
-    Retourne le prompt par défaut pour la génération de traductions avec la liste des variables disponibles.
+    Retourne le prompt par défaut pour la génération de traductions avec la
+    liste des variables disponibles.
     """
-    default_prompt = """You are a professional translator. Translate the following JSON object containing interface strings from English to {{language_name}} ({{language_code}}).
-
-IMPORTANT RULES:
-1. Keep all keys exactly as they are (do not translate keys)
-2. Only translate the values
-3. Preserve any placeholders like {{variable}}, {{count}}, etc.
-4. Preserve any HTML tags or special formatting
-5. Maintain the same level of formality/informality as the source
-6. Return ONLY the translated JSON object, nothing else
-
-Source translations (English):
-{{translations_json}}
-
-Return the complete JSON object with all keys and their translated values in {{language_name}}."""
+    default_prompt = (
+        "You are a professional translator. Translate the following JSON "
+        "object containing interface strings from English to "
+        "{{language_name}} ({{language_code}}).\n\n"
+        "IMPORTANT RULES:\n"
+        "1. Keep all keys exactly as they are (do not translate keys)\n"
+        "2. Only translate the values\n"
+        "3. Preserve any placeholders like {{variable}}, {{count}}, etc.\n"
+        "4. Preserve any HTML tags or special formatting\n"
+        "5. Maintain the same level of formality/informality as the source\n"
+        "6. Return ONLY the translated JSON object, nothing else\n\n"
+        "Source translations (English):\n"
+        "{{translations_json}}\n\n"
+        "Return the complete JSON object with all keys and their translated "
+        "values in {{language_name}}."
+    )
 
     return DefaultPromptResponse(
         prompt=default_prompt,
