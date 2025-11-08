@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 from agents import TResponseInputItem
-
 from chatkit.agents import ThreadItemConverter
 from chatkit.types import UserMessageItem
 

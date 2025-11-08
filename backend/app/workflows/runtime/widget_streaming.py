@@ -5,10 +5,9 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
-from pydantic import BaseModel
-
 from chatkit.agents import AgentContext
 from chatkit.types import ThreadStreamEvent
+from pydantic import BaseModel
 
 from ...chatkit_server.actions import (
     _apply_widget_variable_values,
