@@ -398,6 +398,19 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [isSidebarCollapsed, isSidebarOpen],
   );
 
+  const handleSidebarInteract = useCallback(() => {
+    if (!isSidebarOpen || isDesktopLayout) {
+      return;
+    }
+
+    closeSidebar();
+  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
+
+  const sidebarInteractions = useSidebarInteractions({
+    isDesktopLayout,
+    onInteract: handleSidebarInteract,
+  });
+
   const contextValue = useMemo(
     () => ({
       openSidebar,
@@ -662,6 +675,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
           <div
             className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
             aria-hidden={!isSidebarOpen || isDesktopLayout}
+            {...sidebarInteractions}
           />
           <div className="chatkit-layout__main">
             {children ?? <Outlet />}
