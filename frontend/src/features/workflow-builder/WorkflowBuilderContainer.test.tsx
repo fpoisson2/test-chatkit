@@ -1,9 +1,11 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import React from "react";
 import WorkflowBuilderContainer from "./WorkflowBuilderContainer";
 import { useViewportContext, useUIContext } from "./contexts";
+import { WorkflowSidebarProvider } from "../workflows/WorkflowSidebarProvider";
+import { workflowsApi, chatkitApi } from "../../utils/backend";
 
 const capturedViewportValues: {
   persistViewportMemory?: unknown;
@@ -88,6 +90,12 @@ describe("WorkflowBuilderContainer", () => {
     capturedViewportValues.isHydratingRef = undefined;
     capturedUIValues.closeBlockLibrary = undefined;
     capturedUIValues.registerBlockLibraryToggle = undefined;
+    vi.spyOn(workflowsApi, "list").mockResolvedValue([]);
+    vi.spyOn(chatkitApi, "getHostedWorkflows").mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   test("se monte sans erreur avec tous les contextes", () => {
@@ -96,7 +104,9 @@ describe("WorkflowBuilderContainer", () => {
     expect(() => {
       render(
         <BrowserRouter>
-          <WorkflowBuilderContainer />
+          <WorkflowSidebarProvider>
+            <WorkflowBuilderContainer />
+          </WorkflowSidebarProvider>
         </BrowserRouter>
       );
     }).not.toThrow();
@@ -107,7 +117,9 @@ describe("WorkflowBuilderContainer", () => {
     // va lancer une erreur "useSaveContext must be used within SaveProvider"
     const { container } = render(
       <BrowserRouter>
-        <WorkflowBuilderContainer />
+        <WorkflowSidebarProvider>
+          <WorkflowBuilderContainer />
+        </WorkflowSidebarProvider>
       </BrowserRouter>
     );
 
@@ -123,7 +135,9 @@ describe("WorkflowBuilderContainer", () => {
 
     const { container } = render(
       <BrowserRouter>
-        <WorkflowBuilderContainer />
+        <WorkflowSidebarProvider>
+          <WorkflowBuilderContainer />
+        </WorkflowSidebarProvider>
       </BrowserRouter>
     );
 
@@ -135,7 +149,9 @@ describe("WorkflowBuilderContainer", () => {
   test("expose les refs de viewport et la persistance au canvas", () => {
     render(
       <BrowserRouter>
-        <WorkflowBuilderContainer />
+        <WorkflowSidebarProvider>
+          <WorkflowBuilderContainer />
+        </WorkflowSidebarProvider>
       </BrowserRouter>,
     );
 
@@ -149,7 +165,9 @@ describe("WorkflowBuilderContainer", () => {
   test("expose les helpers de focus de la bibliothèque de blocs", () => {
     render(
       <BrowserRouter>
-        <WorkflowBuilderContainer />
+        <WorkflowSidebarProvider>
+          <WorkflowBuilderContainer />
+        </WorkflowSidebarProvider>
       </BrowserRouter>,
     );
 

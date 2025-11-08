@@ -20,7 +20,7 @@ import { resolveAgentParameters, resolveStateParameters } from "../../utils/agen
 import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "./hooks/useOutsidePointerDown";
 import useWorkflowResources from "./hooks/useWorkflowResources";
-import useWorkflowSidebarState from "./hooks/useWorkflowSidebarState";
+import { useWorkflowSidebar } from "../workflows/WorkflowSidebarProvider";
 import { useWorkflowKeyboardShortcuts } from "./hooks/useWorkflowKeyboardShortcuts";
 import { useRemoteVersionPolling } from "./hooks/useRemoteVersionPolling";
 import { useWorkflowHistory } from "./hooks/useWorkflowHistory";
@@ -396,21 +396,15 @@ const WorkflowBuilderPage = () => {
     [decorateNode],
   );
 
-  // useWorkflowSidebarState now only provides sidebar-specific functionality
+  // WorkflowSidebarProvider exposes sidebar-specific functionality
   // workflows, hostedWorkflows, selectedWorkflowId come from WorkflowContext above
   const {
-    initialSidebarCache,
-    initialSidebarCacheUsedRef,
     setWorkflows: setSidebarWorkflows,
     setHostedWorkflows: setSidebarHostedWorkflows,
     setSelectedWorkflowId: setSidebarSelectedWorkflowId,
-    lastUsedAt,
-    pinnedLookup,
-    toggleLocalPin,
-    toggleHostedPin,
-    workflowSortCollatorRef,
     hasLoadedWorkflowsRef,
-  } = useWorkflowSidebarState({ token });
+    initialSidebarCacheUsedRef,
+  } = useWorkflowSidebar();
 
   const {
     vectorStores: vectorStoresState,
@@ -628,7 +622,7 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
-  // Synchronize WorkflowContext state with useWorkflowSidebarState for cache/persistence
+  // Synchronize WorkflowContext state with useWorkflowSidebar for cache/persistence
   useEffect(() => {
     setSidebarWorkflows(workflows);
   }, [workflows, setSidebarWorkflows]);
@@ -1877,18 +1871,13 @@ const WorkflowBuilderPage = () => {
         >
           {/* Phase 4.5: WorkflowBuilderSidebar now uses contexts (28 → 13 props, -54%) */}
           <WorkflowBuilderSidebar
-            lastUsedAt={lastUsedAt}
-            pinnedLookup={pinnedLookup}
             workflowMenuPlacement={workflowMenuPlacement}
             isSidebarCollapsed={isSidebarCollapsed}
-            workflowSortCollator={workflowSortCollatorRef.current}
             onSelectWorkflow={handleSelectWorkflow}
             onRenameWorkflow={handleRenameWorkflow}
             onDeleteWorkflow={handleDeleteWorkflow}
             onDuplicateWorkflow={handleDuplicateWorkflow}
             onDeleteHostedWorkflow={handleDeleteHostedWorkflow}
-            onToggleLocalPin={toggleLocalPin}
-            onToggleHostedPin={toggleHostedPin}
             onOpenCreateModal={handleOpenCreateModalWithReset}
             onOpenAppearanceModal={openAppearanceModal}
             onExportWorkflow={handleExportWorkflow}
