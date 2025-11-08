@@ -55,11 +55,24 @@ export const useOutsidePointerDown = (
         }
       }
 
+      // Check if click is inside any of the provided refs
+      let hasAtLeastOneValidRef = false;
       for (const ref of refsRef.current) {
         const element = ref?.current;
-        if (element && element.contains(target)) {
-          return;
+        if (element) {
+          hasAtLeastOneValidRef = true;
+          if (element.contains(target)) {
+            console.log('[useOutsidePointerDown] Click inside ref, ignoring');
+            return;
+          }
         }
+      }
+
+      // If no refs are assigned yet, don't trigger outside click
+      // This prevents false positives during component mount
+      if (!hasAtLeastOneValidRef) {
+        console.log('[useOutsidePointerDown] No valid refs assigned yet, ignoring click');
+        return;
       }
 
       console.log('[useOutsidePointerDown] Outside click detected, calling handler. Target:', target, 'excludeSelectors:', excludeSelectorsRef.current);

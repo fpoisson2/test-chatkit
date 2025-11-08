@@ -115,6 +115,22 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
 
+  // Debug: Log when component mounts and when refs change
+  useEffect(() => {
+    console.log('[ChatWorkflowSidebar] MOUNTED, openWorkflowMenuId:', openWorkflowMenuId);
+    return () => {
+      console.log('[ChatWorkflowSidebar] UNMOUNTED');
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('[ChatWorkflowSidebar] openWorkflowMenuId changed to:', openWorkflowMenuId);
+  }, [openWorkflowMenuId]);
+
+  useEffect(() => {
+    console.log('[ChatWorkflowSidebar] refs updated - trigger:', workflowMenuTriggerRef.current, 'menu:', workflowMenuRef.current);
+  }, [workflowMenuTriggerRef.current, workflowMenuRef.current]);
+
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {
       const pinnedForStorage: StoredWorkflowPinned = {
