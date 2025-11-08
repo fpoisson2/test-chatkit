@@ -284,7 +284,8 @@ button {
   width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
-  transition: none;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.05s ease;
   z-index: 0;
   -webkit-tap-highlight-color: transparent;
   background: var(--main-background);
@@ -305,7 +306,7 @@ button {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: none;
+  transition: opacity 0.05s ease;
   z-index: 1;
   appearance: none;
   -webkit-tap-highlight-color: transparent;
@@ -366,7 +367,7 @@ button {
   --app-sidebar-content-padding-x: var(--app-sidebar-padding-x);
   overflow: hidden;
   transform: translateX(calc(-1 * var(--app-sidebar-width))) !important;
-  transition: none !important;
+  transition: transform 0.05s ease !important;
   pointer-events: none !important;
   /* Prevent external CSS from affecting sidebar positioning */
 }
@@ -452,7 +453,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, var(--app-sidebar-collapsed-width)) 1fr;
   align-items: stretch;
-  transition: none;
+  transition: grid-template-columns 0.05s ease;
 }
 
 .app-layout--desktop.app-layout--sidebar-open {
