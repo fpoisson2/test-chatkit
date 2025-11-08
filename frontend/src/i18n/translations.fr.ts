@@ -570,8 +570,6 @@ export const fr: TranslationDictionary = {
     "Impossible de créer le workflow.",
   "workflowBuilder.hostedSection.title": "Workflows hébergés",
   "workflowBuilder.hostedSection.loading": "Chargement des workflows hébergés…",
-  "workflowBuilder.hostedSection.empty":
-    "Aucun workflow hébergé géré depuis l'interface n'est disponible pour le moment.",
   "workflowBuilder.hostedSection.customizeAction": "Personnaliser",
   "workflowBuilder.hostedSection.deleteAction": "Supprimer",
   "workflowBuilder.hostedSection.openActions": "Actions pour {label}",

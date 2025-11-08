@@ -388,11 +388,6 @@ const WorkflowBuilderSidebar = ({
               {t("workflowBuilder.hostedSection.loading")}
             </p>
           ) : null}
-          {!hostedLoading && !hostedError && managedHosted.length === 0 ? (
-            <p className="chatkit-sidebar__section-text" aria-live="polite">
-              {t("workflowBuilder.hostedSection.empty")}
-            </p>
-          ) : null}
           {pinnedEntries.length > 0 ? (
             <div
               className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
