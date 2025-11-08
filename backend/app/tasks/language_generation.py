@@ -7,12 +7,12 @@ import datetime
 import json
 import logging
 import re
-from pathlib import Path
 
 from sqlalchemy import select
 
 from ..celery_app import celery_app
 from ..database import SessionLocal
+from ..i18n_utils import resolve_frontend_i18n_path
 from ..models import AvailableModel, Language, LanguageGenerationTask
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ def generate_language_task(
     """
     # Imports locaux pour éviter les problèmes de sérialisation Celery
     import asyncio
+
     from agents import Agent, RunConfig, Runner
 
     from ..chatkit.agent_registry import get_agent_provider_binding
@@ -75,10 +76,10 @@ def generate_language_task(
 
             try:
                 # Étape 1: Charger les traductions anglaises
-                i18n_path = Path("/frontend/src/i18n")
+                i18n_path, path_exists = resolve_frontend_i18n_path()
                 en_file = i18n_path / "translations.en.ts"
 
-                if not en_file.exists():
+                if not path_exists or not en_file.exists():
                     raise ValueError("Source language file (English) not found")
 
                 en_content = en_file.read_text()
@@ -149,20 +150,25 @@ def generate_language_task(
                     prompt = prompt.replace("{{language_code}}", code)
                     prompt = prompt.replace("{{translations_json}}", translations_json)
                 else:
-                    prompt = f"""You are a professional translator. Translate the following JSON object containing interface strings from English to {name} ({code}).
-
-IMPORTANT RULES:
-1. Keep all keys exactly as they are (do not translate keys)
-2. Only translate the values
-3. Preserve any placeholders like {{{{variable}}}}, {{{{count}}}}, etc.
-4. Preserve any HTML tags or special formatting
-5. Maintain the same level of formality/informality as the source
-6. Return ONLY the translated JSON object, nothing else
-
-Source translations (English):
-{translations_json}
-
-Return the complete JSON object with all keys and their translated values in {name}."""
+                    prompt = (
+                        "You are a professional translator. Translate the "
+                        "following JSON object containing interface strings "
+                        f"from English to {name} ({code}).\n\n"
+                        "IMPORTANT RULES:\n"
+                        "1. Keep all keys exactly as they are (do not translate "
+                        "keys)\n"
+                        "2. Only translate the values\n"
+                        "3. Preserve any placeholders like {{variable}}, "
+                        "{{count}}, etc.\n"
+                        "4. Preserve any HTML tags or special formatting\n"
+                        "5. Maintain the same level of formality/informality as "
+                        "the source\n"
+                        "6. Return ONLY the translated JSON object, nothing else\n\n"
+                        "Source translations (English):\n"
+                        f"{translations_json}\n\n"
+                        "Return the complete JSON object with all keys and their "
+                        f"translated values in {name}."
+                    )
 
                 # Mettre à jour progress = 20
                 task.progress = 20
@@ -238,11 +244,15 @@ Return the complete JSON object with all keys and their translated values in {na
 
                 translated_dict = json.loads(json_match.group(0))
                 logger.info(
-                    f"Task {task_id}: Successfully translated {len(translated_dict)} keys"
+                    f"Task {task_id}: Successfully translated "
+                    f"{len(translated_dict)} keys"
                 )
 
                 # Étape 6: Générer le fichier .ts
-                file_content = f'import type {{ TranslationDictionary }} from "./translations";\n\nexport const {code}: TranslationDictionary = {{\n'
+                file_content = (
+                    'import type { TranslationDictionary } from "./translations";\n\n'
+                    f"export const {code}: TranslationDictionary = {{\n"
+                )
                 for key, value in translated_dict.items():
                     escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
                     file_content += f'  "{key}": "{escaped_value}",\n'
@@ -274,7 +284,8 @@ Return the complete JSON object with all keys and their translated values in {na
                     language_id = language.id
                     task.language_id = language_id
                     logger.info(
-                        f"Task {task_id}: Saved to database with language_id={language_id}"
+                        f"Task {task_id}: Saved to database with "
+                        f"language_id={language_id}"
                     )
 
                 # Étape 8: Marquer comme terminé
