@@ -114,6 +114,33 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
   // Refs
   const workflowsRef = useRef(workflows);
   const hostedWorkflowsRef = useRef(hostedWorkflows);
+
+  // Wrap setters to avoid unnecessary updates
+  const setWorkflowsStable = useCallback<React.Dispatch<React.SetStateAction<WorkflowSummary[]>>>((value) => {
+    setWorkflows((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      // Only update if the array reference actually changed
+      if (next === prev) return prev;
+      // Deep check if arrays have same content
+      if (next.length === prev.length && next.every((w, i) => w.id === prev[i]?.id)) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
+  const setHostedWorkflowsStable = useCallback<React.Dispatch<React.SetStateAction<HostedWorkflowMetadata[]>>>((value) => {
+    setHostedWorkflows((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      // Only update if the array reference actually changed
+      if (next === prev) return prev;
+      // Deep check if arrays have same content
+      if (next.length === prev.length && next.every((w, i) => w.slug === prev[i]?.slug)) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
   const workflowCollatorRef = useRef<Intl.Collator | null>(null);
   const previousTokenRef = useRef<string | null>(token ?? null);
   const hasLoadedWorkflowsRef = useRef(false);
@@ -502,8 +529,8 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
       pinnedLookup,
       workflowCollator: workflowCollatorRef.current,
       setMode,
-      setWorkflows,
-      setHostedWorkflows,
+      setWorkflows: setWorkflowsStable,
+      setHostedWorkflows: setHostedWorkflowsStable,
       setSelectedWorkflowId,
       setSelectedHostedSlug,
       toggleLocalPin,
@@ -523,6 +550,8 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
       error,
       lastUsedAt,
       pinnedLookup,
+      setWorkflowsStable,
+      setHostedWorkflowsStable,
       toggleLocalPin,
       toggleHostedPin,
       loadWorkflows,

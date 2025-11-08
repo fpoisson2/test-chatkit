@@ -15,7 +15,7 @@ import "reactflow/dist/style.css";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout } from "../../components/AppLayout";
-import { chatkitApi, makeApiEndpointCandidates } from "../../utils/backend";
+import { chatkitApi, makeApiEndpointCandidates, type HostedWorkflowMetadata } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import { useEscapeKeyHandler } from "./hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "./hooks/useOutsidePointerDown";
@@ -629,12 +629,24 @@ const WorkflowBuilderPage = () => {
   }, [saveState]);
 
   // Synchronize WorkflowContext state with WorkflowSidebarProvider for cache/persistence
+  // Only update if workflows were actually loaded (to avoid triggering reloads in the provider)
+  const previousWorkflowsRef = useRef<WorkflowSummary[]>([]);
+  const previousHostedWorkflowsRef = useRef<HostedWorkflowMetadata[]>([]);
+
   useEffect(() => {
-    setSidebarWorkflows(workflows);
+    // Only sync if workflows have actually changed
+    if (workflows.length > 0 && workflows !== previousWorkflowsRef.current) {
+      previousWorkflowsRef.current = workflows;
+      setSidebarWorkflows(workflows);
+    }
   }, [workflows, setSidebarWorkflows]);
 
   useEffect(() => {
-    setSidebarHostedWorkflows(hostedWorkflows);
+    // Only sync if hosted workflows have actually changed
+    if (hostedWorkflows.length > 0 && hostedWorkflows !== previousHostedWorkflowsRef.current) {
+      previousHostedWorkflowsRef.current = hostedWorkflows;
+      setSidebarHostedWorkflows(hostedWorkflows);
+    }
   }, [hostedWorkflows, setSidebarHostedWorkflows]);
 
   useEffect(() => {
@@ -899,9 +911,13 @@ const WorkflowBuilderPage = () => {
     buildGraphPayload,
   });
 
+  // Only load workflows if they haven't been loaded by the WorkflowSidebarProvider yet
   useEffect(() => {
-    void loadWorkflows({ suppressLoadingState: false });
-  }, [loadWorkflows]);
+    // Check if workflows are already loaded in the provider
+    if (!hasLoadedWorkflowsRef.current) {
+      void loadWorkflows({ suppressLoadingState: false });
+    }
+  }, [loadWorkflows, hasLoadedWorkflowsRef]);
 
   // Remote version polling
   useRemoteVersionPolling({
