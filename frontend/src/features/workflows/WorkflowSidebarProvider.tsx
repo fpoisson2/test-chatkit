@@ -289,7 +289,8 @@ export const WorkflowSidebarProvider = ({ children }: { children: ReactNode }) =
       return;
     }
 
-    const hasExistingData = workflows.length > 0 || hostedWorkflows.length > 0;
+    const hasExistingData =
+      workflowsRef.current.length > 0 || hostedWorkflowsRef.current.length > 0;
     if (!hasExistingData) {
       setLoading(true);
     }
@@ -424,15 +425,7 @@ export const WorkflowSidebarProvider = ({ children }: { children: ReactNode }) =
     } finally {
       setLoading(false);
     }
-  }, [
-    isAdmin,
-    mode,
-    resetStateForSignedOutUser,
-    setMode,
-    token,
-    workflows.length,
-    hostedWorkflows.length,
-  ]);
+  }, [isAdmin, mode, resetStateForSignedOutUser, setMode, token]);
 
   useEffect(() => {
     void loadWorkflows();
