@@ -88,8 +88,9 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key-changeme}
       # Clé de chiffrement pour les credentials en DB (NE CHANGEZ JAMAIS UNE FOIS DÉFINIE)
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-litellm-salt-default-change-in-production}
-      # Base de données partagée avec ChatKit
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+      # Base de données partagée avec ChatKit (format Prisma)
+      # LiteLLM utilise Prisma qui nécessite postgresql:// (pas postgresql+psycopg://)
+      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://chatkit:chatkit@localhost:5432/chatkit}
       # Clés API des différents providers
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

@@ -218,9 +218,12 @@ La configuration est déjà active dans :
 **`docker-compose.yml`** :
 ```yaml
 environment:
-  DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+  # Format Prisma (postgresql://) - différent du format SQLAlchemy de ChatKit
+  DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://chatkit:chatkit@localhost:5432/chatkit}
   LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
 ```
+
+**Note importante** : LiteLLM utilise Prisma comme ORM, qui nécessite le format `postgresql://`. C'est différent du format SQLAlchemy utilisé par ChatKit (`postgresql+psycopg://`). Le docker-compose gère automatiquement cette différence via la variable `LITELLM_DATABASE_URL`.
 
 **`litellm_config.yaml`** :
 ```yaml
