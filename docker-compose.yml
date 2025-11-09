@@ -12,8 +12,8 @@ services:
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-}
       LITELLM_PORT: ${LITELLM_PORT:-4000}
       PORT: ${PORT:-4000}
-      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://litellm:litellm@127.0.0.1:5433/litellm}
-      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://litellm:litellm@127.0.0.1:5433/litellm}
+      LITELLM_DATABASE_URL: "${LITELLM_DATABASE_URL:-postgresql://litellm:litellm@${LITELLM_DB_HOST:-127.0.0.1}:${LITELLM_DB_PORT:-5433}/${LITELLM_POSTGRES_DB:-litellm}}"
+      DATABASE_URL: "${LITELLM_PRISMA_DATABASE_URL:-postgresql://litellm:litellm@${LITELLM_DB_HOST:-127.0.0.1}:${LITELLM_DB_PORT:-5433}/${LITELLM_POSTGRES_DB:-litellm}}"
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

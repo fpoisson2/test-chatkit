@@ -256,18 +256,19 @@ function main() {
       logStatus(true, "STORE_MODEL_IN_DB non défini (le proxy ne stockera pas les modèles en base).");
     }
 
+    const fallbackLiteLLMDsn = "postgresql://litellm:litellm@127.0.0.1:5433/litellm";
     const litellmDbUrl = sanitizeEnvName(env.LITELLM_DATABASE_URL);
     if (wantsDbStorage) {
       if (!litellmDbUrl) {
         logStatus(
           true,
-          "LITELLM_DATABASE_URL non défini : le docker-compose utilisera postgresql://litellm:litellm@127.0.0.1:5433/litellm.",
+          `LITELLM_DATABASE_URL non défini : docker-compose utilisera ${fallbackLiteLLMDsn}.`,
         );
         console.log(
-          "   → Définissez LITELLM_DATABASE_URL si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellm-db.",
+          "   → Définissez LITELLM_DATABASE_URL si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellm-db (LITELLM_DB_HOST, LITELLM_DB_PORT, etc.).",
         );
         console.log(
-          "   → Le conteneur litellm force également DATABASE_URL vers ce DSN pour satisfaire Prisma, même si votre .env déclare un autre DATABASE_URL pour le backend.",
+          "   → Le conteneur litellm force également DATABASE_URL vers un DSN compatible Prisma pour ignorer le DSN SQLAlchemy du backend.",
         );
       } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
         logStatus(
@@ -280,6 +281,21 @@ function main() {
       }
     } else if (litellmDbUrl) {
       logStatus(true, "LITELLM_DATABASE_URL détectée (persistance optionnelle prête).");
+    }
+
+    const litellmPrismaUrl = sanitizeEnvName(env.LITELLM_PRISMA_DATABASE_URL);
+    if (litellmPrismaUrl) {
+      if (!/^postgres(?:ql)?:\/\//i.test(litellmPrismaUrl)) {
+        logStatus(
+          false,
+          `LITELLM_PRISMA_DATABASE_URL → format inattendu (${litellmPrismaUrl}).`,
+          "Prisma attend un DSN PostgreSQL commençant par postgresql:// ou postgres://.",
+        );
+      } else {
+        logStatus(true, "LITELLM_PRISMA_DATABASE_URL détectée.");
+      }
+    } else {
+      logStatus(true, `LITELLM_PRISMA_DATABASE_URL non défini (le conteneur utilisera ${fallbackLiteLLMDsn}).`);
     }
 
     const saltKey = sanitizeEnvName(env.LITELLM_SALT_KEY);
