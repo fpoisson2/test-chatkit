@@ -260,12 +260,9 @@ function main() {
     const litellmDbUrl = sanitizeEnvName(env.LITELLM_DATABASE_URL);
     if (wantsDbStorage) {
       if (!litellmDbUrl) {
-        logStatus(true, `LITELLM_DATABASE_URL non défini : l'entrypoint LiteLLM utilisera ${fallbackLiteLLMDsn}.`);
+        logStatus(true, `LITELLM_DATABASE_URL non défini : docker/litellm/docker-compose.yml expose ${fallbackLiteLLMDsn}.`);
         console.log(
-          "   → Définissez LITELLM_DATABASE_URL si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellm-db (LITELLM_DB_HOST, LITELLM_DB_PORT, etc.).",
-        );
-        console.log(
-          "   → Le script docker/litellm/entrypoint.sh alimente aussi la variable DATABASE_URL attendue par Prisma avec ce DSN pour ignorer le DSN SQLAlchemy du backend.",
+          "   → Définissez LITELLM_DATABASE_URL si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellm-db fourni par la composition dédiée.",
         );
       } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
         logStatus(

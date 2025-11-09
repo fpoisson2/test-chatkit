@@ -1,0 +1,41 @@
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    network_mode: host
+    command: --config /app/config.yaml --port ${LITELLM_PORT:-4000}
+    environment:
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-}
+      LITELLM_PORT: ${LITELLM_PORT:-4000}
+      PORT: ${PORT:-4000}
+      STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-false}
+      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://litellm:litellm@127.0.0.1:5433/litellm}
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://litellm:litellm@127.0.0.1:5433/litellm}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_VERSION: ${ANTHROPIC_VERSION:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_API_BASE: ${AZURE_OPENAI_API_BASE:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    depends_on:
+      - litellm-db
+
+  litellm-db:
+    image: postgres:16-alpine
+    network_mode: host
+    command: -p ${LITELLM_DB_PORT:-5433}
+    environment:
+      POSTGRES_DB: ${LITELLM_POSTGRES_DB:-litellm}
+      POSTGRES_USER: ${LITELLM_POSTGRES_USER:-litellm}
+      POSTGRES_PASSWORD: ${LITELLM_POSTGRES_PASSWORD:-litellm}
+    volumes:
+      - litellm-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  litellm-postgres-data:
