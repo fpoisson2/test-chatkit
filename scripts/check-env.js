@@ -261,7 +261,7 @@ function main() {
       if (!litellmDbUrl) {
         logStatus(
           true,
-          "LITELLM_DATABASE_URL non défini : le docker-compose utilisera postgresql://litellm:litellm@localhost:5433/litellm.",
+          "LITELLM_DATABASE_URL non défini : le docker-compose utilisera postgresql://litellm:litellm@127.0.0.1:5433/litellm.",
         );
         console.log(
           "   → Définissez LITELLM_DATABASE_URL si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellm-db.",

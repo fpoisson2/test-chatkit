@@ -8,7 +8,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    fournisseurs qui nécessitent une URL spécifique, vous pouvez également exposer des surcharges comme `MISTRAL_API_BASE=https://api.mistral.ai/v1`.
    Profitez-en pour définir `DATABASE_URL` si ce n'est pas déjà fait (PostgreSQL via Docker ou un DSN SQLite local) car le backend refusera de démarrer sans cette variable.
    Si vous prévoyez d'activer la persistance LiteLLM, ajoutez également un DSN séparé `LITELLM_DATABASE_URL`. Par défaut le stack
-   `docker-compose` fournit déjà `postgresql://litellm:litellm@localhost:5433/litellm` via le service `litellm-db`, ce qui évite
+   `docker-compose` fournit déjà `postgresql://litellm:litellm@127.0.0.1:5433/litellm` via le service `litellm-db`, ce qui évite
    de partager un DSN SQLAlchemy (`postgresql+psycopg://…`) que LiteLLM/Prisma ne sait pas interpréter. La recette force aussi la
    variable `DATABASE_URL` du conteneur LiteLLM vers ce DSN afin d'ignorer la valeur utilisée par le backend. Ajustez cette valeur
    si vous déployez LiteLLM sur une autre base.
@@ -24,6 +24,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    STORE_MODEL_IN_DB=True              # optionnel : persiste les modèles LiteLLM (nécessite LITELLM_DATABASE_URL + LITELLM_SALT_KEY)
    PORT=4000                          # utile sur Render/Railway qui imposent la variable PORT
    # Variables optionnelles si vous utilisez la base fournie par docker-compose
+   # (valeurs par défaut : postgresql://litellm:litellm@127.0.0.1:5433/litellm)
    # LITELLM_DB_PORT=5433
    # LITELLM_POSTGRES_DB=litellm
    # LITELLM_POSTGRES_USER=litellm
