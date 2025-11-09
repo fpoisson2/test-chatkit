@@ -18,6 +18,8 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    STORE_MODEL_IN_DB=True              # optionnel : persiste les modèles LiteLLM (nécessite DATABASE_URL + LITELLM_SALT_KEY)
    PORT=4000                          # utile sur Render/Railway qui imposent la variable PORT
    ```
+   Laissez `STORE_MODEL_IN_DB` **non défini** (ou supprimez-le complètement) si vous ne souhaitez pas stocker de modèles dans la
+   base : LiteLLM considère toute valeur présente — même "false" — comme une activation explicite.
 3. Lancez uniquement le proxy pour vérifier qu'il démarre correctement (l'image container utilisée dans `docker-compose.yml` est [`ghcr.io/berriai/litellm:main-latest`](https://ghcr.io/berriai/litellm/litellm) ; assurez-vous d'être authentifié sur le registre GitHub Container Registry si votre environnement l'exige) :
    ```bash
    docker compose up litellm

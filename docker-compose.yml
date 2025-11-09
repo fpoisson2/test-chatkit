@@ -22,7 +22,7 @@ services:
       AZURE_OPENAI_API_BASE: ${AZURE_OPENAI_API_BASE:-}
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-}
       DATABASE_URL: ${DATABASE_URL:-}
-      STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-false}
+      STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-}
   backend:
     build:
       context: .
