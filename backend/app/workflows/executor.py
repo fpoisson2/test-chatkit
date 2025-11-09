@@ -1135,9 +1135,17 @@ async def run_workflow(
 
         should_strip_reasoning_summary = False
         provider_slug: str | None = None
+        is_groq = False  # Track if this is a Groq provider
+
         if provider_binding is not None:
             provider_slug = (provider_binding.provider_slug or "").lower()
             if provider_slug == "groq":
+                should_strip_reasoning_summary = True
+                is_groq = True
+            # Also check API base URL as a fallback
+            api_base = getattr(provider_binding, "api_base", "") or ""
+            if "groq.com" in api_base.lower():
+                is_groq = True
                 should_strip_reasoning_summary = True
 
         if (
@@ -1219,12 +1227,35 @@ async def run_workflow(
             # Déterminer si on doit passer previous_response_id
             should_pass_previous_response_id = True
 
+            # DEBUG: Log provider information
+            logger.info(
+                "Agent step %s: provider_slug=%r, is_groq=%r, model_capabilities=%r",
+                current_slug,
+                provider_slug,
+                is_groq,
+                model_capabilities,
+            )
+
             # Groq ne supporte pas previous_response_id, peu importe les capabilities
-            if provider_slug == "groq":
+            if is_groq:
                 should_pass_previous_response_id = False
+                logger.info("Groq detected, disabling previous_response_id")
             # Sinon, vérifier les capabilities du modèle
             elif model_capabilities is not None and not model_capabilities.supports_previous_response_id:
                 should_pass_previous_response_id = False
+                logger.info("Model capabilities indicate no previous_response_id support")
+
+            previous_response_id_value = (
+                None
+                if not should_pass_previous_response_id
+                else getattr(agent_context, "previous_response_id", None)
+            )
+
+            logger.info(
+                "Agent step %s: passing previous_response_id=%r to Runner.run_streamed",
+                current_slug,
+                previous_response_id_value,
+            )
 
             result = Runner.run_streamed(
                 agent,
@@ -1233,11 +1264,7 @@ async def run_workflow(
                     response_format_override, provider_binding=provider_binding
                 ),
                 context=runner_context,
-                previous_response_id=(
-                    None
-                    if not should_pass_previous_response_id
-                    else getattr(agent_context, "previous_response_id", None)
-                ),
+                previous_response_id=previous_response_id_value,
             )
             try:
                 async for event in stream_agent_response(agent_context, result):
@@ -1270,7 +1297,7 @@ async def run_workflow(
             # Ne stocker previous_response_id que si le provider le supporte
             should_store_response_id = (
                 last_response_id is not None
-                and provider_slug != "groq"  # Groq ne supporte pas les conversations stateful
+                and not is_groq  # Groq ne supporte pas les conversations stateful
                 and (
                     model_capabilities is None
                     or model_capabilities.supports_previous_response_id
