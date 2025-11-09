@@ -1261,6 +1261,29 @@ def _run_ad_hoc_migrations() -> None:
                     "ON DELETE SET NULL appliqué"
                 )
 
+    # Fix Groq models: disable supports_previous_response_id
+    # Groq doesn't support stateful conversations yet
+    with engine.begin() as connection:
+        if "available_models" in table_names:
+            logger.info(
+                "Migration des modèles Groq : désactivation de "
+                "supports_previous_response_id"
+            )
+            result = connection.execute(
+                text(
+                    "UPDATE available_models "
+                    "SET supports_previous_response_id = FALSE "
+                    "WHERE LOWER(provider_slug) = 'groq' "
+                    "AND supports_previous_response_id = TRUE"
+                )
+            )
+            if result.rowcount > 0:
+                logger.info(
+                    "%d modèle(s) Groq mis à jour pour désactiver "
+                    "supports_previous_response_id",
+                    result.rowcount,
+                )
+
     # Nettoyer les serveurs MCP en doublon dans les workflows
     _cleanup_duplicate_mcp_servers()
 

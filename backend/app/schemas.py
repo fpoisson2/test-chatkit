@@ -746,6 +746,19 @@ class AvailableModelBase(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _adjust_groq_capabilities(self) -> AvailableModelBase:
+        """Ajuste automatiquement les capacités pour les modèles Groq.
+
+        Groq ne supporte pas encore les conversations stateful via previous_response_id,
+        donc on force cette capacité à False pour éviter les erreurs "invalid JSON body".
+        """
+        if self.provider_slug and self.provider_slug.lower() == "groq":
+            if self.supports_previous_response_id:
+                # Force to False for Groq since it doesn't support stateful conversations
+                object.__setattr__(self, "supports_previous_response_id", False)
+        return self
+
     @field_validator("store")
     @classmethod
     def _validate_store(cls, value: bool | None) -> bool | None:
@@ -798,6 +811,19 @@ class AvailableModelUpdateRequest(BaseModel):
         if not candidate:
             raise ValueError("provider_slug ne peut pas être vide")
         return candidate.lower()
+
+    @model_validator(mode="after")
+    def _adjust_groq_capabilities(self) -> AvailableModelUpdateRequest:
+        """Ajuste automatiquement les capacités pour les modèles Groq.
+
+        Groq ne supporte pas encore les conversations stateful via previous_response_id,
+        donc on force cette capacité à False pour éviter les erreurs "invalid JSON body".
+        """
+        if self.provider_slug and self.provider_slug.lower() == "groq":
+            if self.supports_previous_response_id is None or self.supports_previous_response_id:
+                # Force to False for Groq since it doesn't support stateful conversations
+                object.__setattr__(self, "supports_previous_response_id", False)
+        return self
 
     @field_validator("store")
     @classmethod

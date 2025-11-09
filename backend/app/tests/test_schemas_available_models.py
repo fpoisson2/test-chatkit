@@ -66,3 +66,41 @@ def test_available_model_update_normalizes_optional_fields() -> None:
     assert request.display_name == "GPT-4o Mini"
     assert request.provider_slug == "openai"
     assert request.store is None
+
+
+def test_groq_model_disables_previous_response_id_on_create() -> None:
+    """Groq models should have supports_previous_response_id=False automatically."""
+    request = AvailableModelCreateRequest(
+        **_base_payload(
+            name="llama-3.3-70b-versatile",
+            provider_slug="groq",
+            supports_previous_response_id=True,  # Should be overridden
+        )
+    )
+
+    assert request.provider_slug == "groq"
+    assert request.supports_previous_response_id is False
+
+
+def test_groq_model_disables_previous_response_id_on_update() -> None:
+    """Groq models should have supports_previous_response_id=False on update."""
+    request = AvailableModelUpdateRequest(
+        provider_slug="groq",
+        supports_previous_response_id=True,  # Should be overridden
+    )
+
+    assert request.provider_slug == "groq"
+    assert request.supports_previous_response_id is False
+
+
+def test_non_groq_model_allows_previous_response_id() -> None:
+    """Non-Groq models should be able to have supports_previous_response_id=True."""
+    request = AvailableModelCreateRequest(
+        **_base_payload(
+            provider_slug="openai",
+            supports_previous_response_id=True,
+        )
+    )
+
+    assert request.provider_slug == "openai"
+    assert request.supports_previous_response_id is True

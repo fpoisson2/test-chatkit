@@ -136,13 +136,22 @@ async def update_model(
     model.provider_id = provider_id
     model.provider_slug = provider_slug
 
+    # Ajuster les capacités pour Groq automatiquement
+    if provider_slug and provider_slug.lower() == "groq":
+        # Groq ne supporte pas les conversations stateful
+        model.supports_previous_response_id = False
+
     if "supports_reasoning" in update_data:
         model.supports_reasoning = update_data["supports_reasoning"]
 
     if "supports_previous_response_id" in update_data:
-        model.supports_previous_response_id = update_data[
-            "supports_previous_response_id"
-        ]
+        # Ne pas permettre de forcer à True pour Groq
+        if provider_slug and provider_slug.lower() == "groq":
+            model.supports_previous_response_id = False
+        else:
+            model.supports_previous_response_id = update_data[
+                "supports_previous_response_id"
+            ]
 
     if "supports_reasoning_summary" in update_data:
         model.supports_reasoning_summary = update_data["supports_reasoning_summary"]
