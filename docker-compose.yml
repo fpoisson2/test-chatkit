@@ -1,6 +1,6 @@
 services:
   litellm:
-    image: litellm/litellm:main-latest
+    image: berriai/litellm:main-stable
     network_mode: host
     command: >-
       litellm --config /app/config.yaml --port ${LITELLM_PORT:-4000}
