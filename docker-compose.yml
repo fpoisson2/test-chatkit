@@ -1,4 +1,23 @@
 services:
+  litellm:
+    image: ghcr.io/litellm/litellm:main-latest
+    network_mode: host
+    command: >-
+      litellm --config /app/config.yaml --port ${LITELLM_PORT:-4000}
+    volumes:
+      - ./docker/litellm/config.yaml:/app/config.yaml:ro
+    environment:
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      LITELLM_PORT: ${LITELLM_PORT:-4000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_VERSION: ${ANTHROPIC_VERSION:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_API_BASE: ${AZURE_OPENAI_API_BASE:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-}
   backend:
     build:
       context: .
@@ -13,7 +32,8 @@ services:
       MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
       MODEL_API_BASE: ${MODEL_API_BASE:-}
       MODEL_API_KEY_ENV: ${MODEL_API_KEY_ENV:-}
-      LITELLM_API_BASE: ${LITELLM_API_BASE:-}
+      LITELLM_PORT: ${LITELLM_PORT:-4000}
+      LITELLM_API_BASE: ${LITELLM_API_BASE:-http://127.0.0.1:${LITELLM_PORT:-4000}}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       CHATKIT_API_BASE: ${CHATKIT_API_BASE:-https://api.openai.com}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -35,6 +55,7 @@ services:
       SIP_CONTACT_HOST: ${SIP_CONTACT_HOST:-192.168.1.116}
       SIP_TRANSPORT: ${SIP_TRANSPORT:-udp}
     depends_on:
+      - litellm
       - db
       - redis
   frontend:
@@ -92,7 +113,8 @@ services:
       MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
       MODEL_API_BASE: ${MODEL_API_BASE:-}
       MODEL_API_KEY_ENV: ${MODEL_API_KEY_ENV:-}
-      LITELLM_API_BASE: ${LITELLM_API_BASE:-}
+      LITELLM_PORT: ${LITELLM_PORT:-4000}
+      LITELLM_API_BASE: ${LITELLM_API_BASE:-http://127.0.0.1:${LITELLM_PORT:-4000}}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       CHATKIT_API_BASE: ${CHATKIT_API_BASE:-https://api.openai.com}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -120,6 +142,7 @@ services:
       SIP_CONTACT_HOST: ${SIP_CONTACT_HOST:-192.168.1.116}
       SIP_TRANSPORT: ${SIP_TRANSPORT:-udp}
     depends_on:
+      - litellm
       - db
       - redis
 volumes:
