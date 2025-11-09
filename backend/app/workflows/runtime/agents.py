@@ -15,6 +15,7 @@ from ...chatkit.agent_registry import (
     AgentProviderBinding,
     _build_custom_agent,
     _create_response_format_from_pydantic,
+    build_litellm_model_from_db,
     get_agent_provider_binding,
 )
 from ...chatkit_server.actions import (
@@ -193,6 +194,26 @@ def prepare_agents(
         overrides.pop("model_provider_slug", None)
         overrides.pop("model_provider", None)
 
+        # Utiliser LitellmModel si le provider est "litellm"
+        use_litellm_model = False
+        if provider_slug == "litellm" and isinstance(model_name, str):
+            litellm_instance = build_litellm_model_from_db(model_name)
+            if litellm_instance is not None:
+                overrides["model"] = litellm_instance
+                use_litellm_model = True
+                logger.info(
+                    "Utilisation de LitellmModel pour l'étape %s (modèle: %s)",
+                    step.slug,
+                    model_name,
+                )
+            else:
+                logger.warning(
+                    "Impossible de créer LitellmModel pour le modèle '%s' "
+                    "à l'étape %s, fallback sur OpenAIProvider",
+                    model_name,
+                    step.slug,
+                )
+
         logger.info(
             (
                 "Construction de l'agent pour l'étape %s. widget_config: %s, "
@@ -238,8 +259,10 @@ def prepare_agents(
         else:
             agent_instances[step.slug] = builder(overrides)
 
+        # Ne pas créer de provider_binding si on utilise LitellmModel
+        # car le provider est déjà intégré dans l'instance
         provider_binding = None
-        if provider_id or provider_slug:
+        if not use_litellm_model and (provider_id or provider_slug):
             provider_binding = get_agent_provider_binding(provider_id, provider_slug)
             if provider_binding is None:
                 logger.warning(

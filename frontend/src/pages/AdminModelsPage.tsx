@@ -81,6 +81,15 @@ const buildProviderOptions = (settings: AppSettings): ProviderOption[] => {
     });
   }
 
+  if (!options.has("litellm")) {
+    pushOption({
+      id: null,
+      slug: "litellm",
+      name: "litellm",
+      isDefault: runtimeProvider?.toLowerCase() === "litellm",
+    });
+  }
+
   return Array.from(options.values()).sort((a, b) =>
     (a.name || a.slug).localeCompare(b.name || b.slug, "fr"),
   );

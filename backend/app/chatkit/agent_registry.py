@@ -148,6 +148,58 @@ def _build_openai_provider(
     return OpenAIProvider(openai_client=client)
 
 
+def _build_litellm_model_instance(
+    credentials: ResolvedModelProviderCredentials,
+    model_name: str,
+) -> Any:
+    """
+    Crée une instance de LitellmModel avec les credentials du provider.
+
+    Args:
+        credentials: Credentials du provider (api_key, api_base, etc.)
+        model_name: Nom du modèle à utiliser
+
+    Returns:
+        Instance de LitellmModel ou None si l'import échoue
+    """
+    try:
+        from agents.extensions.models.litellm_model import LitellmModel
+    except ImportError:
+        logger.warning(
+            "LitellmModel non disponible. Installez avec: pip install 'openai-agents[litellm]'"
+        )
+        return None
+
+    api_key = credentials.api_key.strip() if credentials.api_key else ""
+    if not api_key:
+        logger.warning(
+            "Configuration fournisseur %s (%s) incomplète : clé API manquante",
+            credentials.provider,
+            credentials.id,
+        )
+        return None
+
+    # Paramètres pour LitellmModel
+    kwargs: dict[str, Any] = {
+        "model": model_name,
+        "api_key": api_key,
+    }
+
+    # Ajouter l'API base si fournie
+    if credentials.api_base:
+        api_base = normalize_api_base(credentials.api_base)
+        kwargs["api_base"] = api_base
+        logger.debug(
+            "LitellmModel configuré : model=%s, api_base=%s",
+            model_name,
+            api_base,
+        )
+    else:
+        logger.debug("LitellmModel configuré : model=%s", model_name)
+
+    return LitellmModel(**kwargs)
+
+
 _PROVIDER_BUILDERS: dict[
     str, Callable[[ResolvedModelProviderCredentials], ModelProvider | None]
 ] = {
@@ -1061,6 +1113,61 @@ def _load_available_model(model_name: str | None) -> AvailableModel | None:
         return None
 
 
+def build_litellm_model_from_db(model_name: str | None) -> Any | None:
+    """
+    Charge un modèle depuis la base de données et crée une instance de LitellmModel.
+
+    Cette fonction :
+    1. Charge le modèle depuis la table AvailableModel
+    2. Récupère les credentials du provider associé
+    3. Crée une instance de LitellmModel configurée
+
+    Args:
+        model_name: Nom du modèle à charger (ex: "gpt-4", "claude-3-5-sonnet")
+
+    Returns:
+        Instance de LitellmModel configurée, ou None en cas d'erreur
+
+    Example:
+        >>> model = build_litellm_model_from_db("gpt-4")
+        >>> agent = Agent(
+        ...     name="Assistant",
+        ...     model=model,
+        ...     instructions="You are a helpful assistant.",
+        ... )
+    """
+    available_model = _load_available_model(model_name)
+    if available_model is None:
+        logger.warning("Modèle '%s' introuvable en base de données", model_name)
+        return None
+
+    # Récupérer les credentials du provider
+    credentials: ResolvedModelProviderCredentials | None = None
+    if available_model.provider_id:
+        credentials = resolve_model_provider_credentials(available_model.provider_id)
+
+    if credentials is None and available_model.provider_slug:
+        # Fallback sur la config depuis settings
+        settings = get_settings()
+        for config in settings.model_providers:
+            if config.provider == available_model.provider_slug:
+                credentials = _credentials_from_config(config)
+                break
+
+    if credentials is None:
+        logger.warning(
+            "Impossible de récupérer les credentials pour le modèle '%s' "
+            "(provider_id=%s, provider_slug=%s)",
+            model_name,
+            available_model.provider_id,
+            available_model.provider_slug,
+        )
+        return None
+
+    # Créer l'instance de LitellmModel
+    return _build_litellm_model_instance(credentials, available_model.name)
+
+
 def _resolve_agent_provider_binding_for_model(
     model_name: str | None,
 ) -> AgentProviderBinding | None:
@@ -1127,6 +1234,7 @@ STEP_TITLES: dict[str, str] = {}
 __all__ = [
     "AgentProviderBinding",
     "get_agent_provider_binding",
+    "build_litellm_model_from_db",
     "AGENT_BUILDERS",
     "AGENT_RESPONSE_FORMATS",
     "AGENT_MCP_METADATA",
