@@ -5,7 +5,8 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
 ## 1. Démarrer le service LiteLLM
 
 1. Ajoutez vos clés d'API fournisseurs dans votre `.env` (ex. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`). Pour les
-   fournisseurs qui nécessitent une URL spécifique, vous pouvez également exposer des surcharges comme `MISTRAL_API_BASE=https://api.mistral.ai/v1`.
+    fournisseurs qui nécessitent une URL spécifique, vous pouvez également exposer des surcharges comme `MISTRAL_API_BASE=https://api.mistral.ai/v1`.
+    Profitez-en pour définir `DATABASE_URL` si ce n'est pas déjà fait (PostgreSQL via Docker ou un DSN SQLite local) car le backend refusera de démarrer sans cette variable.
 2. Définissez les variables spécifiques au proxy :
    ```bash
    MODEL_PROVIDER=litellm
@@ -35,6 +36,6 @@ Le script d'audit d'environnement remontera les éventuelles variables manquante
 node scripts/check-env.js
 ```
 
-Assurez-vous qu'il détecte bien vos clés fournisseur (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) ainsi que la clé partagée du proxy (`LITELLM_API_KEY`).
+Assurez-vous qu'il détecte bien vos clés fournisseur (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.), la clé partagée du proxy (`LITELLM_API_KEY`) ainsi que la connexion base de données (`DATABASE_URL`).
 
 Une fois ces vérifications effectuées, ChatKit peut router ses requêtes via LiteLLM pour sélectionner dynamiquement le modèle le plus adapté parmi les fournisseurs configurés.

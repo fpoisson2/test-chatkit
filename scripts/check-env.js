@@ -124,6 +124,30 @@ function validateOpenAIKey(variable, value) {
   logStatus(true, `${variable} semble correctement renseignée.`);
 }
 
+function validateDatabaseUrl(value) {
+  if (!value) {
+    logStatus(
+      false,
+      "DATABASE_URL non défini.",
+      "Ajoutez un DSN de base de données (ex. postgresql+psycopg://user:pass@host:5432/db ou sqlite:///./chatkit.db).",
+    );
+    return;
+  }
+
+  const protocolMatch = value.match(/^([a-z][a-z0-9+.-]*)/i);
+  if (!protocolMatch) {
+    logStatus(
+      false,
+      `DATABASE_URL → format inattendu (${value}).`,
+      "Utilisez un DSN SQLAlchemy valide, par exemple postgresql+psycopg://user:pass@host:5432/db.",
+    );
+    return;
+  }
+
+  const driver = protocolMatch[1];
+  logStatus(true, `DATABASE_URL défini (driver ${driver}).`);
+}
+
 function main() {
   console.log("🔍 Diagnostic du fichier .env\n");
 
@@ -242,6 +266,8 @@ function main() {
       }
     }
   }
+
+  validateDatabaseUrl(sanitizeEnvName(env.DATABASE_URL));
 
   const origins = env.ALLOWED_ORIGINS;
   if (origins) {
