@@ -22,7 +22,7 @@ from ...chatkit_server.actions import (
     _parse_response_widget_config,
     _ResponseWidgetConfig,
 )
-from ..model_capabilities import ModelCapabilities, lookup_model_capabilities
+from ...model_capabilities import ModelCapabilities, lookup_model_capabilities
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
 from ..service import (
     WorkflowNotFoundError,
