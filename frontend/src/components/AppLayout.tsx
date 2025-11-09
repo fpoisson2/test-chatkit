@@ -218,12 +218,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   }, [isDesktopLayout]); // Fixed: removed isSidebarOpen from dependencies
 
   useEffect(() => {
-    if (!isDesktopLayout) {
-      return;
-    }
-
     writeStoredSidebarOpen(isSidebarOpen);
-  }, [isDesktopLayout, isSidebarOpen]);
+  }, [isSidebarOpen]);
 
   const openSidebar = useCallback(() => {
     console.log('[AppLayout] openSidebar called');
