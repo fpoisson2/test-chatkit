@@ -130,6 +130,47 @@ def _get_cached_openai_client(
     return AsyncOpenAI(api_key=api_key, base_url=api_base)
 
 
+class GroqAsyncOpenAI(AsyncOpenAI):
+    """Client OpenAI personnalisé pour Groq qui désactive le streaming.
+
+    Groq ne supporte pas stream=True dans l'API Responses, donc on intercepte
+    les appels et on force stream=False.
+    """
+
+    @property
+    def responses(self):
+        """Override responses pour intercepter les appels."""
+        original_responses = super().responses
+
+        # Wrapper pour intercepter create()
+        class ResponsesWrapper:
+            def __init__(self, original):
+                self._original = original
+
+            async def create(self, **kwargs):
+                # Groq ne supporte pas stream=True dans Responses API
+                if "stream" in kwargs:
+                    logger.info(
+                        "Groq: Forcing stream=False in Responses API "
+                        "(streaming not supported by Groq)"
+                    )
+                    kwargs["stream"] = False
+                return await self._original.create(**kwargs)
+
+            def __getattr__(self, name):
+                return getattr(self._original, name)
+
+        return ResponsesWrapper(original_responses)
+
+
+@lru_cache(maxsize=16)
+def _get_cached_groq_client(
+    provider_id: str, api_base: str, api_key: str
+) -> GroqAsyncOpenAI:
+    """Crée un client spécifique pour Groq qui désactive le streaming."""
+    return GroqAsyncOpenAI(api_key=api_key, base_url=api_base)
+
+
 def _build_openai_provider(
     credentials: ResolvedModelProviderCredentials,
 ) -> ModelProvider | None:
@@ -148,11 +189,30 @@ def _build_openai_provider(
     return OpenAIProvider(openai_client=client)
 
 
+def _build_groq_provider(
+    credentials: ResolvedModelProviderCredentials,
+) -> ModelProvider | None:
+    """Builder spécifique pour Groq qui utilise un client custom."""
+    api_base = credentials.api_base.strip() if credentials.api_base else ""
+    api_key = credentials.api_key.strip() if credentials.api_key else ""
+    if not api_base or not api_key:
+        logger.warning(
+            "Configuration fournisseur Groq (%s) incomplète : base ou clé manquante",
+            credentials.id,
+        )
+        return None
+
+    normalized_base = normalize_api_base(api_base)
+    client = _get_cached_groq_client(credentials.id, normalized_base, api_key)
+    return OpenAIProvider(openai_client=client)
+
+
 _PROVIDER_BUILDERS: dict[
     str, Callable[[ResolvedModelProviderCredentials], ModelProvider | None]
 ] = {
     "openai": _build_openai_provider,
     "litellm": _build_openai_provider,
+    "groq": _build_groq_provider,
 }
 
 
