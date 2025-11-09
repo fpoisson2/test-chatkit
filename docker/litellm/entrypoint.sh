@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+DEFAULT_DSN="postgresql://litellm:litellm@${LITELLM_DB_HOST:-127.0.0.1}:${LITELLM_DB_PORT:-5433}/${LITELLM_POSTGRES_DB:-litellm}"
+
+LITELLM_DATABASE_URL="${LITELLM_DATABASE_URL:-}" 
+if [ -z "$LITELLM_DATABASE_URL" ]; then
+  LITELLM_DATABASE_URL="$DEFAULT_DSN"
+fi
+export LITELLM_DATABASE_URL
+
+PRISMA_URL="${LITELLM_PRISMA_DATABASE_URL:-}"
+if [ -z "$PRISMA_URL" ]; then
+  PRISMA_URL="$LITELLM_DATABASE_URL"
+fi
+if [ -z "$PRISMA_URL" ]; then
+  PRISMA_URL="$DEFAULT_DSN"
+fi
+export DATABASE_URL="$PRISMA_URL"
+export PRISMA_DATABASE_URL="$PRISMA_URL"
+export LITELLM_PRISMA_DATABASE_URL="$PRISMA_URL"
+
+exec litellm --config /app/config.yaml --port "${LITELLM_PORT:-4000}"

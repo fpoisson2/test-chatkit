@@ -2,18 +2,23 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     network_mode: host
-    command: >-
-      --config /app/config.yaml --port ${LITELLM_PORT:-4000}
+    entrypoint: /entrypoint.sh
     volumes:
       - ./docker/litellm/config.yaml:/app/config.yaml:ro
+      - ./docker/litellm/entrypoint.sh:/entrypoint.sh:ro
     environment:
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-}
       LITELLM_PORT: ${LITELLM_PORT:-4000}
       PORT: ${PORT:-4000}
-      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://litellm:litellm@127.0.0.1:5433/litellm}
-      DATABASE_URL: ${LITELLM_PRISMA_DATABASE_URL:-postgresql://litellm:litellm@127.0.0.1:5433/litellm}
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-}
+      LITELLM_PRISMA_DATABASE_URL: ${LITELLM_PRISMA_DATABASE_URL:-}
+      LITELLM_DB_HOST: ${LITELLM_DB_HOST:-127.0.0.1}
+      LITELLM_DB_PORT: ${LITELLM_DB_PORT:-5433}
+      LITELLM_POSTGRES_DB: ${LITELLM_POSTGRES_DB:-litellm}
+      LITELLM_POSTGRES_USER: ${LITELLM_POSTGRES_USER:-litellm}
+      LITELLM_POSTGRES_PASSWORD: ${LITELLM_POSTGRES_PASSWORD:-litellm}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
