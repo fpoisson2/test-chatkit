@@ -20,7 +20,7 @@ from chatkit.types import (
 )
 
 from ...chatkit_server.actions import _ResponseWidgetConfig
-from ..models import WorkflowStep, WorkflowTransition
+from ...models import WorkflowStep, WorkflowTransition
 
 logger = logging.getLogger("chatkit.server")
 
