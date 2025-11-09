@@ -260,9 +260,12 @@ function main() {
     const litellmDbUrl = sanitizeEnvName(env.LITELLM_DATABASE_URL);
     if (wantsDbStorage) {
       if (!litellmDbUrl) {
-        logStatus(true, `LITELLM_DATABASE_URL non défini : docker/litellm/.env fournit ${fallbackLiteLLMDsn}.`);
+        logStatus(
+          true,
+          `LITELLM_DATABASE_URL non défini dans cet environnement : docker/litellm/.env fournit DATABASE_URL=${fallbackLiteLLMDsn}.`,
+        );
         console.log(
-          "   → Personnalisez docker/litellm/.env si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellmdb.",
+          "   → Ajustez docker/litellm/.env (variable DATABASE_URL) si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellmdb.",
         );
       } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
         logStatus(
@@ -275,6 +278,11 @@ function main() {
       }
     } else if (litellmDbUrl) {
       logStatus(true, "LITELLM_DATABASE_URL détectée (persistance optionnelle prête).");
+    } else {
+      logStatus(
+        true,
+        `Aucun DSN LiteLLM dans ce fichier : la pile docker/litellm utilise DATABASE_URL=${fallbackLiteLLMDsn} par défaut dans son propre .env.`,
+      );
     }
 
     const saltKey = sanitizeEnvName(env.LITELLM_SALT_KEY);

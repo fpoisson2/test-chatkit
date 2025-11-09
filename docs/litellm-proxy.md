@@ -10,7 +10,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    ```
    Ce `.env` **ne remplace pas** celui de la racine : il ne sert qu'au proxy LiteLLM afin d'éviter que la stack n'interprète les variables de votre application principale.
    Ajoutez-y vos clés d'API fournisseurs (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`, etc.) et, si nécessaire, les URL spécifiques (`MISTRAL_API_BASE=https://api.mistral.ai/v1`).
-   Si vous prévoyez d'activer la persistance LiteLLM, conservez ou ajustez le DSN Postgres fourni (`LITELLM_DATABASE_URL=postgresql://postgres:postgres@litellmdb:5432/litellm`) afin qu'il reste au format PostgreSQL natif (`postgresql://` ou `postgres://`).
+   Si vous prévoyez d'activer la persistance LiteLLM, conservez ou ajustez le DSN Postgres fourni (`DATABASE_URL=postgresql://postgres:postgres@litellmdb:5432/litellm`) afin qu'il reste au format PostgreSQL natif (`postgresql://` ou `postgres://`).
 2. Définissez les variables spécifiques au proxy :
    ```bash
    MODEL_PROVIDER=litellm
@@ -19,8 +19,8 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    LITELLM_API_KEY=sk-litellm-proxy   # utilisée par le backend/celery pour appeler le proxy
    LITELLM_MASTER_KEY=sk-litellm-proxy # master key LiteLLM (identique à LITELLM_API_KEY par simplicité)
    LITELLM_SALT_KEY=sk-xxxxxxxx        # clé de chiffrement LiteLLM — ne plus la modifier ensuite
-   LITELLM_DATABASE_URL=postgresql://user:pass@host:5432/db # requis si STORE_MODEL_IN_DB=True (Prisma attend postgresql:// ou postgres://)
-   STORE_MODEL_IN_DB=True              # optionnel : persiste les modèles LiteLLM (nécessite LITELLM_DATABASE_URL + LITELLM_SALT_KEY)
+   DATABASE_URL=postgresql://user:pass@host:5432/db # requis si STORE_MODEL_IN_DB=True (Prisma attend postgresql:// ou postgres://)
+   STORE_MODEL_IN_DB=True              # optionnel : persiste les modèles LiteLLM (nécessite DATABASE_URL + LITELLM_SALT_KEY)
    PORT=4000                          # utile sur Render/Railway qui imposent la variable PORT
     # Variables optionnelles si vous utilisez la base fournie par docker-compose
     # (valeurs par défaut : postgresql://postgres:postgres@litellmdb:5432/litellm)

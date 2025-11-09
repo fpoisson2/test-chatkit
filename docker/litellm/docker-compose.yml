@@ -13,8 +13,7 @@ services:
       LITELLM_PORT: ${LITELLM_PORT:-4000}
       PORT: ${PORT:-4000}
       STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-false}
-      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://postgres:postgres@litellmdb:5432/litellm}
-      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://postgres:postgres@litellmdb:5432/litellm}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@litellmdb:5432/litellm}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
