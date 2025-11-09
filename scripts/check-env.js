@@ -257,31 +257,48 @@ function main() {
     }
 
     const fallbackLiteLLMDsn = "postgresql://postgres:postgres@litellmdb:5432/litellm";
-    const litellmDbUrl = sanitizeEnvName(env.LITELLM_DATABASE_URL);
+    const litellmRaw = sanitizeEnvName(env.LITELLM_DATABASE_URL);
+    const databaseUrlRaw = sanitizeEnvName(env.DATABASE_URL);
+    const litellmDbUrl = litellmRaw
+      || (/^postgres(?:ql)?:\/\//i.test(databaseUrlRaw) ? databaseUrlRaw : "");
     if (wantsDbStorage) {
       if (!litellmDbUrl) {
         logStatus(
           true,
-          `LITELLM_DATABASE_URL non défini dans cet environnement : docker/litellm/.env fournit DATABASE_URL=${fallbackLiteLLMDsn}.`,
+          `Aucun DSN LiteLLM explicite dans ce fichier : docker/litellm/.env fournit DATABASE_URL=${fallbackLiteLLMDsn} et l'entrypoint applique cette valeur pour Prisma.`,
         );
         console.log(
-          "   → Ajustez docker/litellm/.env (variable DATABASE_URL) si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellmdb.",
+          "   → Ajustez docker/litellm/.env (variables DATABASE_URL et éventuellement LITELLM_DATABASE_URL) si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellmdb.",
         );
       } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
         logStatus(
           false,
-          `LITELLM_DATABASE_URL → format inattendu (${litellmDbUrl}).`,
-          "LiteLLM (Prisma) attend un DSN commençant par postgresql:// ou postgres://.",
+          `DSN LiteLLM → format inattendu (${litellmDbUrl}).`,
+          "LiteLLM (Prisma) attend un DSN commençant par postgresql:// ou postgres://. Mettez à jour docker/litellm/.env ou laissez l'entrypoint utiliser sa valeur par défaut.",
         );
       } else {
-        logStatus(true, "LITELLM_DATABASE_URL détectée pour LiteLLM.");
+        if (litellmDbUrl === fallbackLiteLLMDsn) {
+          logStatus(true, "DATABASE_URL/LITELLM_DATABASE_URL → utilisation du DSN LiteLLM fourni par docker-compose.");
+        } else {
+          logStatus(true, "DATABASE_URL/LITELLM_DATABASE_URL personnalisé détecté pour LiteLLM.");
+        }
       }
     } else if (litellmDbUrl) {
-      logStatus(true, "LITELLM_DATABASE_URL détectée (persistance optionnelle prête).");
+      if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
+        logStatus(
+          false,
+          `DSN LiteLLM → format inattendu (${litellmDbUrl}).`,
+          "LiteLLM (Prisma) attend un DSN commençant par postgresql:// ou postgres://. Supprimez la valeur ou remplacez-la.",
+        );
+      } else if (litellmDbUrl === fallbackLiteLLMDsn) {
+        logStatus(true, "DATABASE_URL/LITELLM_DATABASE_URL → utilisation du DSN LiteLLM fourni par docker-compose.");
+      } else {
+        logStatus(true, "DATABASE_URL/LITELLM_DATABASE_URL personnalisé détecté (persistance optionnelle prête).");
+      }
     } else {
       logStatus(
         true,
-        `Aucun DSN LiteLLM dans ce fichier : la pile docker/litellm utilise DATABASE_URL=${fallbackLiteLLMDsn} par défaut dans son propre .env.`,
+        `Aucun DSN LiteLLM dans ce fichier : la pile docker/litellm utilise DATABASE_URL=${fallbackLiteLLMDsn} par défaut via son entrypoint.`,
       );
     }
 

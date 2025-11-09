@@ -1,7 +1,12 @@
 services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
-    command: --config /app/config.yaml --port ${LITELLM_PORT:-4000}
+    entrypoint: ["/app/entrypoint.sh"]
+    command:
+      - "--config"
+      - "/app/config.yaml"
+      - "--port"
+      - "${LITELLM_PORT:-4000}"
     ports:
       - "${LITELLM_PORT:-4000}:4000"
     env_file:
@@ -13,7 +18,7 @@ services:
       LITELLM_PORT: ${LITELLM_PORT:-4000}
       PORT: ${PORT:-4000}
       STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-false}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@litellmdb:5432/litellm}
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -25,6 +30,7 @@ services:
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-}
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+      - ./entrypoint.sh:/app/entrypoint.sh:ro
     depends_on:
       - litellmdb
 

@@ -11,6 +11,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    Ce `.env` **ne remplace pas** celui de la racine : il ne sert qu'au proxy LiteLLM afin d'éviter que la stack n'interprète les variables de votre application principale.
    Ajoutez-y vos clés d'API fournisseurs (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`, etc.) et, si nécessaire, les URL spécifiques (`MISTRAL_API_BASE=https://api.mistral.ai/v1`).
    Si vous prévoyez d'activer la persistance LiteLLM, conservez ou ajustez le DSN Postgres fourni (`DATABASE_URL=postgresql://postgres:postgres@litellmdb:5432/litellm`) afin qu'il reste au format PostgreSQL natif (`postgresql://` ou `postgres://`).
+   Vous pouvez également définir `LITELLM_DATABASE_URL` pour différencier la valeur injectée dans le conteneur (l'entrypoint du service forcera toujours une URL `postgresql://` en dernier recours afin d'éviter les erreurs Prisma lorsque le `.env` racine contient un DSN SQLAlchemy tel que `postgresql+psycopg://`).
 2. Définissez les variables spécifiques au proxy :
    ```bash
    MODEL_PROVIDER=litellm
@@ -20,6 +21,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    LITELLM_MASTER_KEY=sk-litellm-proxy # master key LiteLLM (identique à LITELLM_API_KEY par simplicité)
    LITELLM_SALT_KEY=sk-xxxxxxxx        # clé de chiffrement LiteLLM — ne plus la modifier ensuite
    DATABASE_URL=postgresql://user:pass@host:5432/db # requis si STORE_MODEL_IN_DB=True (Prisma attend postgresql:// ou postgres://)
+   # LITELLM_DATABASE_URL=postgresql://user:pass@host:5432/autre_db # optionnel : surchargera la valeur passée à Prisma
    STORE_MODEL_IN_DB=True              # optionnel : persiste les modèles LiteLLM (nécessite DATABASE_URL + LITELLM_SALT_KEY)
    PORT=4000                          # utile sur Render/Railway qui imposent la variable PORT
     # Variables optionnelles si vous utilisez la base fournie par docker-compose
@@ -37,6 +39,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    ```
    Le service `litellmdb` expose Postgres sur `localhost:5433` avec l'utilisateur/mot de passe `postgres/postgres` et la base `litellm`.
    Vous pouvez également exécuter la commande depuis `docker/litellm/` (le fichier `.env` sera automatiquement chargé tant qu'il existe).
+   L'entrypoint personnalisé (`docker/litellm/entrypoint.sh`) veille à ce que Prisma voie toujours un `DATABASE_URL` au format PostgreSQL : il privilégie `LITELLM_DATABASE_URL`, sinon applique `DATABASE_URL` ou le DSN par défaut `postgresql://postgres:postgres@litellmdb:5432/litellm`.
    Le service `litellm` lit ensuite `docker/litellm/config.yaml` (chaque modèle y mentionne explicitement son fournisseur, par exemple `mistral/mistral-large-latest` pour aider LiteLLM à router correctement), applique la configuration générale (`general_settings.master_key`, `salt_key`, `database_url`, etc.) et expose une API OpenAI-compatible à l'adresse `http://127.0.0.1:4000`.
    Vous pouvez aussi déployer LiteLLM autrement (Docker standalone, VM, Kubernetes) tant que `LITELLM_API_BASE` et `LITELLM_API_KEY` correspondent à votre instance.
 
