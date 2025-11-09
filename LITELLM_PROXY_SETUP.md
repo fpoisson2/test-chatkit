@@ -213,7 +213,7 @@ LiteLLM est configuré pour utiliser la **même base de données PostgreSQL que 
 ✅ **Stockage des configurations** : Les modèles peuvent être configurés en BD
 ✅ **Historique** : Conservez l'historique des appels API
 
-La configuration est déjà active dans :
+La configuration est active et fonctionne correctement :
 
 **`docker-compose.yml`** :
 ```yaml
@@ -223,8 +223,6 @@ environment:
   LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
 ```
 
-**Note importante** : LiteLLM utilise Prisma comme ORM, qui nécessite le format `postgresql://`. C'est différent du format SQLAlchemy utilisé par ChatKit (`postgresql+psycopg://`). Le docker-compose gère automatiquement cette différence via la variable `LITELLM_DATABASE_URL`.
-
 **`litellm_config.yaml`** :
 ```yaml
 general_settings:
@@ -232,7 +230,16 @@ general_settings:
   store_model_in_db: true
 ```
 
-**⚠️ Important** : La clé `LITELLM_SALT_KEY` chiffre les credentials en base de données. **Ne la changez jamais** une fois définie, sinon vous perdrez l'accès aux données chiffrées.
+**🔑 Points importants** :
+
+1. **Format d'URL différent** : LiteLLM utilise Prisma ORM qui nécessite le format `postgresql://`, tandis que ChatKit utilise SQLAlchemy avec le format `postgresql+psycopg://`
+
+2. **Variables séparées** :
+   - ChatKit utilise `DATABASE_URL` (format SQLAlchemy)
+   - LiteLLM dans docker-compose utilise `LITELLM_DATABASE_URL` (format Prisma)
+   - À l'intérieur du conteneur LiteLLM, c'est mappé sur `DATABASE_URL`
+
+3. **Clé de chiffrement** : La clé `LITELLM_SALT_KEY` chiffre les credentials en base de données. **Ne la changez jamais** une fois définie, sinon vous perdrez l'accès aux données chiffrées.
 
 #### Accéder aux analytics
 

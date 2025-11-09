@@ -86,6 +86,7 @@ general_settings:
   allowed_origins: ["*"]
 
   # Database partagée avec ChatKit pour les logs et analytics
+  # La variable DATABASE_URL est fournie par docker-compose avec le bon format Prisma
   database_url: ${DATABASE_URL}
 
   # Stocker les modèles en base de données
