@@ -1,3 +1,5 @@
+x-litellm-db-url: &litellm_db_url "${LITELLM_DATABASE_URL:-postgresql://${LITELLM_POSTGRES_USER:-litellm}:${LITELLM_POSTGRES_PASSWORD:-litellm}@localhost:${LITELLM_DB_PORT:-5433}/${LITELLM_POSTGRES_DB:-litellm}}"
+
 services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
@@ -12,7 +14,8 @@ services:
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-}
       LITELLM_PORT: ${LITELLM_PORT:-4000}
       PORT: ${PORT:-4000}
-      LITELLM_DATABASE_URL: "${LITELLM_DATABASE_URL:-postgresql://${LITELLM_POSTGRES_USER:-litellm}:${LITELLM_POSTGRES_PASSWORD:-litellm}@localhost:${LITELLM_DB_PORT:-5433}/${LITELLM_POSTGRES_DB:-litellm}}"
+      LITELLM_DATABASE_URL: *litellm_db_url
+      DATABASE_URL: *litellm_db_url
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

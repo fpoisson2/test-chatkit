@@ -266,6 +266,9 @@ function main() {
         console.log(
           "   → Définissez LITELLM_DATABASE_URL si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellm-db.",
         );
+        console.log(
+          "   → Le conteneur litellm force également DATABASE_URL vers ce DSN pour satisfaire Prisma, même si votre .env déclare un autre DATABASE_URL pour le backend.",
+        );
       } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
         logStatus(
           false,

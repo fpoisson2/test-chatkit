@@ -9,8 +9,9 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    Profitez-en pour définir `DATABASE_URL` si ce n'est pas déjà fait (PostgreSQL via Docker ou un DSN SQLite local) car le backend refusera de démarrer sans cette variable.
    Si vous prévoyez d'activer la persistance LiteLLM, ajoutez également un DSN séparé `LITELLM_DATABASE_URL`. Par défaut le stack
    `docker-compose` fournit déjà `postgresql://litellm:litellm@localhost:5433/litellm` via le service `litellm-db`, ce qui évite
-   de partager un DSN SQLAlchemy (`postgresql+psycopg://…`) que LiteLLM/Prisma ne sait pas interpréter. Ajustez cette valeur si
-   vous déployez LiteLLM sur une autre base.
+   de partager un DSN SQLAlchemy (`postgresql+psycopg://…`) que LiteLLM/Prisma ne sait pas interpréter. La recette force aussi la
+   variable `DATABASE_URL` du conteneur LiteLLM vers ce DSN afin d'ignorer la valeur utilisée par le backend. Ajustez cette valeur
+   si vous déployez LiteLLM sur une autre base.
 2. Définissez les variables spécifiques au proxy :
    ```bash
    MODEL_PROVIDER=litellm
