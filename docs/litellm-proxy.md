@@ -12,7 +12,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    LITELLM_API_BASE=http://127.0.0.1:4000
    LITELLM_API_KEY=sk-litellm-proxy
    ```
-3. Lancez uniquement le proxy pour vérifier qu'il démarre correctement :
+3. Lancez uniquement le proxy pour vérifier qu'il démarre correctement (l'image publique [Docker Hub `berriai/litellm:main-latest`](https://hub.docker.com/r/berriai/litellm) est utilisée dans `docker-compose.yml`) :
    ```bash
    docker compose up litellm
    ```
