@@ -14,5 +14,6 @@ model_list:
       anthropic_version: ${ANTHROPIC_VERSION:-2023-06-01}
   - model_name: mistral-large
     litellm_params:
-      model: mistral-large-latest
+      model: mistral/mistral-large-latest
       api_key: ${MISTRAL_API_KEY}
+      api_base: ${MISTRAL_API_BASE:-https://api.mistral.ai/v1}

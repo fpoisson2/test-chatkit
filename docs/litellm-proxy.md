@@ -4,7 +4,8 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
 
 ## 1. Démarrer le service LiteLLM
 
-1. Ajoutez vos clés d'API fournisseurs dans votre `.env` (ex. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`).
+1. Ajoutez vos clés d'API fournisseurs dans votre `.env` (ex. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`). Pour les
+   fournisseurs qui nécessitent une URL spécifique, vous pouvez également exposer des surcharges comme `MISTRAL_API_BASE=https://api.mistral.ai/v1`.
 2. Définissez les variables spécifiques au proxy :
    ```bash
    MODEL_PROVIDER=litellm
@@ -16,7 +17,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    ```bash
    docker compose up litellm
    ```
-   Le service charge `docker/litellm/config.yaml` et expose une API OpenAI-compatible à l'adresse `http://127.0.0.1:4000`.
+   Le service charge `docker/litellm/config.yaml` (chaque modèle y mentionne explicitement son fournisseur, par exemple `mistral/mistral-large-latest` pour aider LiteLLM à router correctement) et expose une API OpenAI-compatible à l'adresse `http://127.0.0.1:4000`.
 
 ## 2. Connecter le backend et les workers
 
