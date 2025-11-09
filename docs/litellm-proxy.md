@@ -10,7 +10,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    Si vous prévoyez d'activer la persistance LiteLLM, exposez un DSN séparé `LITELLM_DATABASE_URL` **au format PostgreSQL natif** (`postgresql://` ou `postgres://`). Par défaut le stack
    `docker-compose` fournit déjà `postgresql://litellm:litellm@127.0.0.1:5433/litellm` via le service `litellm-db`, ce qui évite
    de partager un DSN SQLAlchemy (`postgresql+psycopg://…`) que LiteLLM/Prisma ne sait pas interpréter. La recette force aussi la
-   variable `DATABASE_URL` du conteneur LiteLLM vers un DSN Prisma-compatible (configurable via `LITELLM_PRISMA_DATABASE_URL`) afin d'ignorer la valeur utilisée par le backend. Ajustez ces valeurs
+   variable `DATABASE_URL` du conteneur LiteLLM vers ce même DSN Prisma-compatible (surchargeable via `LITELLM_PRISMA_DATABASE_URL`) afin d'ignorer la valeur utilisée par le backend. Ajustez ces valeurs
    si vous déployez LiteLLM sur une autre base.
 2. Définissez les variables spécifiques au proxy :
    ```bash
@@ -21,7 +21,7 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    LITELLM_MASTER_KEY=sk-litellm-proxy # master key LiteLLM (identique à LITELLM_API_KEY par simplicité)
    LITELLM_SALT_KEY=sk-xxxxxxxx        # clé de chiffrement LiteLLM — ne plus la modifier ensuite
    LITELLM_DATABASE_URL=postgresql://user:pass@host:5432/db # requis si STORE_MODEL_IN_DB=True (Prisma attend postgresql:// ou postgres://)
-   LITELLM_PRISMA_DATABASE_URL=postgresql://user:pass@host:5432/db # optionnel : utilisez-le si le DSN ci-dessus ne peut pas suivre ce format strict
+   LITELLM_PRISMA_DATABASE_URL=postgresql://user:pass@host:5432/db # recopiez la même valeur pour alimenter Prisma/DATABASE_URL
    STORE_MODEL_IN_DB=True              # optionnel : persiste les modèles LiteLLM (nécessite LITELLM_DATABASE_URL + LITELLM_SALT_KEY)
    PORT=4000                          # utile sur Render/Railway qui imposent la variable PORT
    # Variables optionnelles si vous utilisez la base fournie par docker-compose

@@ -294,6 +294,12 @@ function main() {
       } else {
         logStatus(true, "LITELLM_PRISMA_DATABASE_URL détectée.");
       }
+    } else if (litellmDbUrl && litellmDbUrl !== fallbackLiteLLMDsn) {
+      logStatus(
+        false,
+        "LITELLM_PRISMA_DATABASE_URL non défini alors que LITELLM_DATABASE_URL est personnalisé.",
+        "Copiez votre DSN LiteLLM dans LITELLM_PRISMA_DATABASE_URL pour que docker-compose exporte la bonne valeur vers Prisma.",
+      );
     } else {
       logStatus(true, `LITELLM_PRISMA_DATABASE_URL non défini (le conteneur utilisera ${fallbackLiteLLMDsn}).`);
     }
