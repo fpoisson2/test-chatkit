@@ -28,13 +28,12 @@ from agents import (
     TResponseInputItem,
 )
 from agents.mcp import MCPServer
-from pydantic import BaseModel
-
 from chatkit.agents import (
     AgentContext,
     ThreadItemConverter,
     stream_agent_response,
 )
+from pydantic import BaseModel
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
@@ -63,18 +62,12 @@ from chatkit.types import (
 )
 
 from ..chatkit.agent_registry import (
-    AGENT_BUILDERS,
     AGENT_RESPONSE_FORMATS,
     STEP_TITLES,
     AgentProviderBinding,
-    _build_custom_agent,
-    _create_response_format_from_pydantic,
-    get_agent_provider_binding,
 )
 from ..chatkit_server.actions import (
-    _ensure_widget_output_model,
     _json_safe_copy,
-    _parse_response_widget_config,
     _ResponseWidgetConfig,
     _should_wait_for_widget_action,
 )
@@ -96,7 +89,6 @@ from ..image_utils import (
     merge_generated_image_urls_into_payload,
     save_agent_image_file,
 )
-from ..model_capabilities import ModelCapabilities, lookup_model_capabilities
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
 from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
@@ -106,22 +98,17 @@ from ..vector_store.ingestion import (
     resolve_transform_value,
 )
 from .runtime import (
-    VoiceSessionManager,
     _coerce_bool,
-    _extract_voice_overrides,
     _resolve_voice_agent_configuration,
     _stream_response_widget,
+    build_edges_by_source,
     ingest_vector_store_step,
+    initialize_runtime_context,
+    prepare_agents,
+    process_agent_step,
 )
-from .runtime.state_manager import StateInitializer
 from .service import (
-    WorkflowNotFoundError,
     WorkflowService,
-    WorkflowValidationError,
-    WorkflowVersionNotFoundError,
-    resolve_start_auto_start,
-    resolve_start_auto_start_assistant_message,
-    resolve_start_auto_start_message,
 )
 
 logger = logging.getLogger("chatkit.server")
@@ -358,91 +345,36 @@ async def run_workflow(
     thread = getattr(agent_context, "thread", None)
     resume_from_wait_slug: str | None = None
 
-    service = workflow_service or WorkflowService()
-    state_initializer = StateInitializer(service)
-    runtime_context = await state_initializer.initialize(
-        workflow_input=workflow_input,
+    initialization = await initialize_runtime_context(
+        workflow_input,
         agent_context=agent_context,
+        workflow_service=workflow_service,
+        workflow_definition=workflow_definition,
+        workflow_slug=workflow_slug,
         thread_item_converter=thread_item_converter,
         thread_items_history=thread_items_history,
         current_user_message=current_user_message,
-        runtime_snapshot=runtime_snapshot,
-        workflow_definition=workflow_definition,
-        workflow_slug=workflow_slug,
         workflow_call_stack=workflow_call_stack,
+        runtime_snapshot=runtime_snapshot,
     )
 
-    workflow_payload = runtime_context.workflow_payload
-    steps = runtime_context.steps
-    auto_started = runtime_context.auto_started
-    conversation_history = runtime_context.conversation_history
-    state = runtime_context.state
-    last_step_context = runtime_context.last_step_context
-    pending_wait_state = runtime_context.pending_wait_state
-    workflow_call_stack = runtime_context.workflow_call_stack
-    current_input_item_id = runtime_context.current_input_item_id
-    definition = runtime_context.definition
-    runtime_snapshot = runtime_context.runtime_snapshot
-    initial_user_text = runtime_context.initial_user_text
+    service = initialization.service
+    workflow_payload = initialization.workflow_payload
+    steps = initialization.steps
+    conversation_history = initialization.conversation_history
+    state = initialization.state
+    last_step_context = initialization.last_step_context
+    pending_wait_state = initialization.pending_wait_state
+    workflow_call_stack = initialization.workflow_call_stack
+    current_input_item_id = initialization.current_input_item_id
+    definition = initialization.definition
+    runtime_snapshot = initialization.runtime_snapshot
+    initial_user_text = initialization.initial_user_text
+    voice_overrides = initialization.voice_overrides
+    voice_session_manager = initialization.voice_session_manager
+    model_capability_index = initialization.model_capability_index
 
     final_output: dict[str, Any] | None = None
-
-    voice_overrides = _extract_voice_overrides(agent_context)
-    voice_session_manager = VoiceSessionManager()
-
-    model_capability_index: dict[tuple[str, str, str], ModelCapabilities] = {}
-    get_capabilities = getattr(service, "get_available_model_capabilities", None)
-    if callable(get_capabilities):
-        try:
-            model_capability_index = get_capabilities()
-        except Exception:  # pragma: no cover - dépend de la persistance
-            logger.warning(
-                "Impossible de récupérer les capacités des modèles disponibles",
-                exc_info=True,
-            )
-            model_capability_index = {}
-
-    should_auto_start = resolve_start_auto_start(definition)
-    if not auto_started and not initial_user_text.strip() and should_auto_start:
-        configured_message = _normalize_user_text(
-            resolve_start_auto_start_message(definition)
-        )
-        if configured_message:
-            auto_started = True
-            initial_user_text = configured_message
-            workflow_payload["input_as_text"] = initial_user_text
-            conversation_history.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": configured_message,
-                        }
-                    ],
-                }
-            )
-            state["infos_manquantes"] = configured_message
-
-    assistant_message_payload = workflow_payload.get("auto_start_assistant_message")
-    if not isinstance(assistant_message_payload, str):
-        assistant_message_payload = resolve_start_auto_start_assistant_message(
-            definition
-        )
-
-    assistant_message = _normalize_user_text(assistant_message_payload)
-    if auto_started and assistant_message and not initial_user_text.strip():
-        conversation_history.append(
-            {
-                "role": "assistant",
-                "content": [
-                    {
-                        "type": "output_text",
-                        "text": assistant_message,
-                    }
-                ],
-            }
-        )
 
     nodes_by_slug: dict[str, WorkflowStep] = {
         step.slug: step for step in definition.steps if step.is_enabled
@@ -514,204 +446,22 @@ async def run_workflow(
     }
     total_runtime_steps = len(agent_steps_ordered)
 
-    widget_configs_by_step: dict[str, _ResponseWidgetConfig] = {}
+    agent_setup = prepare_agents(
+        definition=definition,
+        service=service,
+        agent_steps_ordered=agent_steps_ordered,
+        nodes_by_slug=nodes_by_slug,
+        model_capability_index=model_capability_index,
+    )
 
-    def _register_widget_config(step: WorkflowStep) -> _ResponseWidgetConfig | None:
-        widget_config = _parse_response_widget_config(step.parameters)
-        if widget_config is None:
-            return None
-        widget_config = _ensure_widget_output_model(widget_config)
-        widget_configs_by_step[step.slug] = widget_config
-        return widget_config
+    agent_instances = agent_setup.agent_instances
+    agent_provider_bindings = agent_setup.agent_provider_bindings
+    agent_model_capabilities = agent_setup.agent_model_capabilities
+    nested_workflow_configs = agent_setup.nested_workflow_configs
+    widget_configs_by_step = agent_setup.widget_configs_by_step
+    _load_nested_workflow_definition = agent_setup.load_nested_definition
 
-    for step in nodes_by_slug.values():
-        if step.kind == "widget":
-            _register_widget_config(step)
-
-    agent_instances: dict[str, Agent] = {}
-    agent_provider_bindings: dict[str, AgentProviderBinding | None] = {}
-    agent_model_capabilities: dict[str, ModelCapabilities | None] = {}
-    nested_workflow_configs: dict[str, dict[str, Any]] = {}
-    nested_workflow_definition_cache: dict[
-        tuple[str, str | int], WorkflowDefinition
-    ] = {}
-    for step in agent_steps_ordered:
-        logger.debug(
-            "Paramètres bruts du step %s: %s",
-            step.slug,
-            (
-                json.dumps(step.parameters, ensure_ascii=False)
-                if step.parameters
-                else "{}"
-            ),
-        )
-
-        if step.kind == "voice_agent":
-            _register_widget_config(step)
-            continue
-
-        widget_config = _register_widget_config(step)
-
-        workflow_reference = (step.parameters or {}).get("workflow")
-        if step.kind == "agent" and isinstance(workflow_reference, Mapping):
-            nested_workflow_configs[step.slug] = dict(workflow_reference)
-            logger.info(
-                "Étape %s configurée pour un workflow imbriqué : %s",
-                step.slug,
-                workflow_reference,
-            )
-            continue
-
-        agent_key = (step.agent_key or "").strip()
-        builder = AGENT_BUILDERS.get(agent_key)
-        overrides_raw = step.parameters or {}
-        overrides = dict(overrides_raw)
-
-        raw_provider_id = overrides_raw.get("model_provider_id")
-        provider_id = (
-            raw_provider_id.strip() if isinstance(raw_provider_id, str) else None
-        )
-        raw_provider_slug = overrides_raw.get("model_provider_slug")
-        if not isinstance(raw_provider_slug, str) or not raw_provider_slug.strip():
-            fallback_slug = overrides_raw.get("model_provider")
-            raw_provider_slug = (
-                fallback_slug if isinstance(fallback_slug, str) else None
-            )
-        provider_slug = (
-            raw_provider_slug.strip().lower()
-            if isinstance(raw_provider_slug, str)
-            else None
-        )
-
-        model_name = overrides_raw.get("model")
-        capability: ModelCapabilities | None = None
-        if isinstance(model_name, str):
-            capability = lookup_model_capabilities(
-                model_capability_index,
-                name=model_name,
-                provider_id=provider_id,
-                provider_slug=provider_slug,
-            )
-        agent_model_capabilities[step.slug] = capability
-
-        overrides.pop("model_provider_id", None)
-        overrides.pop("model_provider_slug", None)
-        overrides.pop("model_provider", None)
-
-        logger.info(
-            "Construction de l'agent pour l'étape %s. widget_config: %s, "
-            "output_model: %s",
-            step.slug,
-            widget_config is not None,
-            widget_config.output_model if widget_config else None,
-        )
-
-        if widget_config is not None and widget_config.output_model is not None:
-            # Retirer les anciens paramètres de widget pour éviter les conflits
-            overrides.pop("response_format", None)
-            overrides.pop("response_widget", None)
-            overrides.pop("widget", None)
-
-            # NE PAS définir output_type car cela cause des problèmes de
-            # double-wrapping avec AgentOutputSchema dans le SDK. À la place,
-            # utiliser seulement response_format.
-
-            # Créer le response_format pour que l'API OpenAI utilise json_schema
-            try:
-                overrides["response_format"] = _create_response_format_from_pydantic(
-                    widget_config.output_model
-                )
-                logger.info(
-                    "response_format généré depuis le modèle widget pour l'étape %s",
-                    step.slug,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Impossible de générer response_format depuis le modèle "
-                    "widget : %s",
-                    exc,
-                )
-
-        if builder is None:
-            if agent_key:
-                logger.warning(
-                    "Aucun builder enregistré pour l'agent '%s', utilisation de la "
-                    "configuration personnalisée.",
-                    agent_key,
-                )
-            agent_instances[step.slug] = _build_custom_agent(overrides)
-        else:
-            agent_instances[step.slug] = builder(overrides)
-
-        provider_binding = None
-        if provider_id or provider_slug:
-            provider_binding = get_agent_provider_binding(provider_id, provider_slug)
-            if provider_binding is None:
-                logger.warning(
-                    "Impossible de résoudre le fournisseur %s (id=%s) pour l'étape %s",
-                    provider_slug or "<inconnu>",
-                    provider_id or "<aucun>",
-                    step.slug,
-                )
-        agent_provider_bindings[step.slug] = provider_binding
-
-    def _load_nested_workflow_definition(
-        reference: Mapping[str, Any]
-    ) -> WorkflowDefinition:
-        workflow_id_candidate = reference.get("id")
-        slug_candidate = reference.get("slug")
-        errors: list[str] = []
-
-        if isinstance(workflow_id_candidate, int) and workflow_id_candidate > 0:
-            cache_key = ("id", workflow_id_candidate)
-            cached_definition = nested_workflow_definition_cache.get(cache_key)
-            if cached_definition is not None:
-                return cached_definition
-
-            try:
-                workflow = service.get_workflow(workflow_id_candidate)
-            except WorkflowNotFoundError:
-                errors.append(f"id={workflow_id_candidate}")
-            else:
-                version_id = getattr(workflow, "active_version_id", None)
-                if version_id is None:
-                    raise RuntimeError(
-                        f"Le workflow imbriqué {workflow_id_candidate} "
-                        "n'a pas de version active."
-                    )
-                try:
-                    definition = service.get_version(workflow_id_candidate, version_id)
-                except WorkflowVersionNotFoundError as exc:
-                    raise RuntimeError(
-                        "Version active introuvable pour le workflow "
-                        f"{workflow_id_candidate}."
-                    ) from exc
-                nested_workflow_definition_cache[cache_key] = definition
-                return definition
-
-        if isinstance(slug_candidate, str):
-            normalized_slug = slug_candidate.strip()
-            if normalized_slug:
-                cache_key = ("slug", normalized_slug)
-                cached_definition = nested_workflow_definition_cache.get(cache_key)
-                if cached_definition is not None:
-                    return cached_definition
-                try:
-                    definition = service.get_definition_by_slug(normalized_slug)
-                except WorkflowValidationError:
-                    errors.append(f"slug={normalized_slug}")
-                else:
-                    nested_workflow_definition_cache[cache_key] = definition
-                    return definition
-
-        details = ", ".join(errors) if errors else "configuration inconnue"
-        raise RuntimeError(f"Workflow imbriqué introuvable ({details}).")
-
-    edges_by_source: dict[str, list[WorkflowTransition]] = {}
-    for transition in transitions:
-        edges_by_source.setdefault(transition.source_step.slug, []).append(transition)
-    for edge_list in edges_by_source.values():
-        edge_list.sort(key=lambda tr: tr.id or 0)
+    edges_by_source = build_edges_by_source(transitions)
 
     def _sanitize_end_value(value: Any) -> str | None:
         if isinstance(value, str):
@@ -1269,6 +1019,11 @@ async def run_workflow(
             metadata_for_images["agent_label"] = getattr(
                 agent, "name", None
             ) or getattr(agent, "model", None)
+        log_agent_key = (
+            metadata_for_images.get("agent_key")
+            or metadata_for_images.get("agent_label")
+            or step_key
+        )
         thread_meta = getattr(agent_context, "thread", None)
         if not metadata_for_images.get("thread_id") and thread_meta is not None:
             metadata_for_images["thread_id"] = getattr(thread_meta, "id", None)
@@ -1560,7 +1315,7 @@ async def run_workflow(
                 try:
                     logger.debug(
                         "Éléments ajoutés par l'agent %s : %s",
-                        agent_key,
+                        log_agent_key,
                         json.dumps(
                             [item.to_input_item() for item in result.new_items],
                             ensure_ascii=False,
@@ -1570,7 +1325,7 @@ async def run_workflow(
                 except TypeError:
                     logger.debug(
                         "Éléments ajoutés par l'agent %s non sérialisables en JSON",
-                        agent_key,
+                        log_agent_key,
                     )
             logger.info(
                 "Fin de l'exécution de l'agent %s (étape=%s)",
@@ -3028,236 +2783,38 @@ async def run_workflow(
                 list(steps),
             )
 
-        agent_key = current_node.agent_key or current_node.slug
-        position = agent_positions.get(current_slug, total_runtime_steps)
-        base_step_identifier = f"{agent_key}_{position}"
-        step_identifier = _branch_prefixed_slug(base_step_identifier)
-        agent = agent_instances[current_slug]
-        title = _node_title(current_node)
-        widget_config = widget_configs_by_step.get(current_node.slug)
-
-        run_context: Any | None = None
-        if last_step_context is not None:
-            run_context = dict(last_step_context)
-
-        # Injecter le contexte du bloc précédent dans l'historique de conversation
-        if last_step_context is not None:
-            context_text_parts: list[str] = []
-
-            # Ajouter le texte de sortie si disponible
-            output_text_value = last_step_context.get("output_text")
-            if isinstance(output_text_value, str) and output_text_value.strip():
-                context_text_parts.append(output_text_value.strip())
-
-            # Ajouter une représentation structurée si disponible
-            structured_payload = last_step_context.get("output_structured")
-            if structured_payload is None:
-                structured_payload = last_step_context.get("output_parsed")
-            if structured_payload is None:
-                structured_payload = last_step_context.get("output")
-            if structured_payload is not None:
-                if isinstance(structured_payload, dict | list):
-                    try:
-                        serialized_structured = json.dumps(
-                            structured_payload,
-                            ensure_ascii=False,
-                            indent=2,
-                        )
-                    except TypeError:
-                        serialized_structured = str(structured_payload)
-                else:
-                    serialized_structured = str(structured_payload)
-                if serialized_structured.strip():
-                    should_append = True
-                    if context_text_parts:
-                        normalized_structured = serialized_structured.strip()
-                        if any(
-                            normalized_structured == part.strip()
-                            for part in context_text_parts
-                        ):
-                            should_append = False
-                    if should_append:
-                        context_text_parts.append(serialized_structured.strip())
-
-            # Ajouter les URLs d'images générées si disponibles
-            if "generated_image_urls" in last_step_context:
-                image_urls_list = last_step_context["generated_image_urls"]
-                if isinstance(image_urls_list, list) and image_urls_list:
-                    for url in image_urls_list:
-                        context_text_parts.append(f"Image générée : {url}")
-
-            # Ajouter un message assistant avec le contexte si on a du contenu
-            if context_text_parts:
-                context_message = "\n\n".join(context_text_parts)
-                conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "output_text",
-                                "text": context_message,
-                            }
-                        ],
-                    }
-                )
-
-        if last_step_context is not None:
-            logger.debug(
-                "Contexte transmis à l'agent %s (étape=%s) : %s",
-                agent_key,
-                current_node.slug,
-                json.dumps(last_step_context, ensure_ascii=False, default=str),
-            )
-
-        if conversation_history:
-            try:
-                logger.debug(
-                    "Historique envoyé à l'agent %s : %s",
-                    agent_key,
-                    json.dumps(
-                        conversation_history[-1], ensure_ascii=False, default=str
-                    ),
-                )
-            except TypeError:
-                logger.debug(
-                    "Historique envoyé à l'agent %s (non sérialisable JSON)",
-                    agent_key,
-                )
-        logger.debug(
-            "État courant avant l'agent %s : %s",
-            agent_key,
-            json.dumps(state, ensure_ascii=False, default=str),
-        )
-
-        result_stream = await run_agent_step(
-            step_identifier,
-            title,
-            agent,
-            agent_context=agent_context,
-            run_context=run_context,
-            suppress_stream_events=widget_config is not None,
-            step_metadata={
-                "agent_key": agent_key,
-                "step_slug": _branch_prefixed_slug(current_node.slug),
-                "step_title": title,
-            },
-        )
-        image_urls = _consume_generated_image_urls(step_identifier)
-        links_text = format_generated_image_links(image_urls)
-
-        parsed, text = _structured_output_as_json(result_stream.final_output)
-        await record_step(
-            step_identifier,
-            title,
-            merge_generated_image_urls_into_payload(
-                result_stream.final_output, image_urls
-            ),
-        )
-        last_step_context = {
-            "agent_key": agent_key,
-            "output": result_stream.final_output,
-            "output_parsed": parsed,
-            "output_structured": parsed,
-            "output_text": append_generated_image_links(text, image_urls),
-        }
-
-        # Mémoriser la dernière sortie d'agent dans l'état global pour les
-        # transitions suivantes.
-        state["last_agent_key"] = agent_key
-        state["last_agent_output"] = last_step_context.get("output")
-        state["last_agent_output_text"] = last_step_context.get("output_text")
-        structured_candidate = last_step_context.get("output_structured")
-        if hasattr(structured_candidate, "model_dump"):
-            try:
-                structured_candidate = structured_candidate.model_dump(by_alias=True)
-            except TypeError:
-                structured_candidate = structured_candidate.model_dump()
-        elif hasattr(structured_candidate, "dict"):
-            try:
-                structured_candidate = structured_candidate.dict(by_alias=True)
-            except TypeError:
-                structured_candidate = structured_candidate.dict()
-        elif structured_candidate is not None and not isinstance(
-            structured_candidate, dict | list | str
-        ):
-            structured_candidate = str(structured_candidate)
-        state["last_agent_output_structured"] = structured_candidate
-        generated_urls = last_step_context.get("generated_image_urls")
-        if isinstance(generated_urls, list):
-            state["last_generated_image_urls"] = [
-                url for url in generated_urls if isinstance(url, str)
-            ]
-        else:
-            state.pop("last_generated_image_urls", None)
-
-        logger.debug(
-            "État mis à jour après l'agent %s : %s",
-            agent_key,
-            json.dumps(state, ensure_ascii=False, default=str),
-        )
-
-        if image_urls:
-            last_step_context["generated_image_urls"] = image_urls
-        if links_text and on_stream_event is not None:
-            links_message = AssistantMessageItem(
-                id=agent_context.generate_id("message"),
-                thread_id=agent_context.thread.id,
-                created_at=datetime.now(),
-                content=[AssistantMessageContent(text=links_text)],
-            )
-            await _emit_stream_event(ThreadItemAddedEvent(item=links_message))
-            await _emit_stream_event(ThreadItemDoneEvent(item=links_message))
-
-        await ingest_vector_store_step(
-            (current_node.parameters or {}).get("vector_store_ingestion"),
-            step_slug=_branch_prefixed_slug(current_node.slug),
-            step_title=title,
-            step_context=last_step_context,
+        agent_step_execution = await process_agent_step(
+            current_node=current_node,
+            current_slug=current_slug,
+            agent_instances=agent_instances,
+            agent_positions=agent_positions,
+            total_runtime_steps=total_runtime_steps,
+            widget_configs_by_step=widget_configs_by_step,
+            conversation_history=conversation_history,
+            last_step_context=last_step_context,
             state=state,
-            default_input_context=last_step_context,
+            agent_context=agent_context,
+            run_agent_step=run_agent_step,
+            consume_generated_image_urls=_consume_generated_image_urls,
+            structured_output_as_json=_structured_output_as_json,
+            record_step=record_step,
+            merge_generated_image_urls_into_payload=merge_generated_image_urls_into_payload,
+            append_generated_image_links=append_generated_image_links,
+            format_generated_image_links=format_generated_image_links,
+            ingest_vector_store_step=ingest_vector_store_step,
+            stream_widget=_stream_response_widget,
+            should_wait_for_widget_action=_should_wait_for_widget_action,
+            on_widget_step=on_widget_step,
+            emit_stream_event=_emit_stream_event,
+            on_stream_event=on_stream_event,
+            branch_prefixed_slug=_branch_prefixed_slug,
+            node_title=_node_title,
+            next_edge=_next_edge,
             session_factory=SessionLocal,
         )
 
-        if widget_config is not None:
-            rendered_widget = await _stream_response_widget(
-                widget_config,
-                step_slug=_branch_prefixed_slug(current_node.slug),
-                step_title=title,
-                step_context=last_step_context,
-                state=state,
-                last_step_context=last_step_context,
-                agent_context=agent_context,
-                emit_stream_event=_emit_stream_event,
-            )
-            widget_identifier = (
-                widget_config.slug
-                if widget_config.source == "library"
-                else widget_config.definition_expression
-            ) or current_node.slug
-            augmented_context = dict(last_step_context or {})
-            augmented_context.setdefault("widget", widget_identifier)
-            if widget_config.source == "library" and widget_config.slug:
-                augmented_context.setdefault("widget_slug", widget_config.slug)
-            elif (
-                widget_config.source == "variable"
-                and widget_config.definition_expression
-            ):
-                augmented_context.setdefault(
-                    "widget_expression", widget_config.definition_expression
-                )
-            if rendered_widget is not None:
-                augmented_context["widget_definition"] = rendered_widget
-
-            if on_widget_step is not None and _should_wait_for_widget_action(
-                current_node.kind, widget_config
-            ):
-                result = await on_widget_step(current_node, widget_config)
-                if result is not None:
-                    augmented_context["action"] = dict(result)
-
-            last_step_context = augmented_context
-
-        transition = _next_edge(current_slug)
+        last_step_context = agent_step_execution.last_step_context
+        transition = agent_step_execution.transition
         if transition is None:
             break
         current_slug = transition.target_step.slug

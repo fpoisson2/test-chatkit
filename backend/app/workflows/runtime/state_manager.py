@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from agents import TResponseInputItem
-
 from chatkit.agents import AgentContext, ThreadItemConverter
 from chatkit.types import ThreadItem, UserMessageItem
 
