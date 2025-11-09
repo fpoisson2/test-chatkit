@@ -9,6 +9,8 @@ import {
   useState,
   type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -118,16 +120,30 @@ const useSidebarInteractions = ({
   onInteract,
 }: {
   isDesktopLayout: boolean;
-  onInteract: () => void;
+  onInteract: (
+    event: ReactPointerEvent<HTMLDivElement> | ReactTouchEvent<HTMLDivElement>,
+  ) => void;
 }) =>
   useMemo<Partial<HTMLAttributes<HTMLDivElement>>>(() => {
     if (isDesktopLayout) {
       return {};
     }
 
+    const supportsPointerEvents =
+      typeof window !== "undefined" && "PointerEvent" in window;
+
+    if (supportsPointerEvents) {
+      return {
+        onPointerDown: (event) => {
+          onInteract(event);
+        },
+      };
+    }
+
     return {
-      onPointerDown: onInteract,
-      onTouchStart: onInteract,
+      onTouchStart: (event) => {
+        onInteract(event);
+      },
     };
   }, [isDesktopLayout, onInteract]);
 
@@ -188,6 +204,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     return getDesktopLayoutPreference();
   });
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const ignoreNextMainInteractionRef = useRef(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
   const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
@@ -224,11 +241,23 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     setIsSidebarOpen(false);
   }, []);
 
-  const handleMainInteraction = useCallback(() => {
-    if (!isDesktopLayout && isSidebarOpen) {
-      closeSidebar();
-    }
-  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
+  const handleMainInteraction = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement> | ReactTouchEvent<HTMLDivElement>) => {
+      if (!isDesktopLayout && isSidebarOpen) {
+        if (ignoreNextMainInteractionRef.current) {
+          ignoreNextMainInteractionRef.current = false;
+          return;
+        }
+
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        closeSidebar();
+      }
+    },
+    [closeSidebar, isDesktopLayout, isSidebarOpen],
+  );
 
   const mainInteractionHandlers = useSidebarInteractions({
     isDesktopLayout,
@@ -412,6 +441,31 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
       event.preventDefault();
       event.stopPropagation();
+
+      if (ignoreNextMainInteractionRef.current) {
+        ignoreNextMainInteractionRef.current = false;
+        return;
+      }
+
+      closeSidebar();
+    },
+    [closeSidebar, isDesktopLayout],
+  );
+
+  const handleScrimClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (isDesktopLayout) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (ignoreNextMainInteractionRef.current) {
+        ignoreNextMainInteractionRef.current = false;
+        return;
+      }
+
       closeSidebar();
     },
     [closeSidebar, isDesktopLayout],
@@ -512,7 +566,23 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 className={`chatkit-sidebar__app-switcher-button${
                   isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
                 }`}
-                onClick={() => handleApplicationNavigate(application)}
+                onPointerDown={() => {
+                  if (!isDesktopLayout && !isActive) {
+                    ignoreNextMainInteractionRef.current = true;
+                  }
+                }}
+                onTouchStart={() => {
+                  if (!isDesktopLayout && !isActive) {
+                    ignoreNextMainInteractionRef.current = true;
+                  }
+                }}
+                onClick={() => {
+                  if (!isDesktopLayout && !isActive) {
+                    ignoreNextMainInteractionRef.current = true;
+                  }
+
+                  handleApplicationNavigate(application);
+                }}
                 tabIndex={sidebarTabIndex}
                 aria-current={isActive ? "page" : undefined}
                 aria-label={application.label}
@@ -534,6 +604,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     appSwitcherLabelId,
     availableApplications,
     handleApplicationNavigate,
+    isDesktopLayout,
     isSidebarCollapsed,
     sidebarTabIndex,
     t,
@@ -708,11 +779,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             aria-hidden={!isSidebarOpen || isDesktopLayout}
             aria-label={t("app.sidebar.close")}
             onPointerDown={handleScrimPointerDown}
-            onClick={() => {
-              if (!isDesktopLayout) {
-                closeSidebar();
-              }
-            }}
+            onClick={handleScrimClick}
             tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
           />
           <div className="chatkit-layout__main" {...mainInteractionHandlers}>
