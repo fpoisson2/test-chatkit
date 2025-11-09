@@ -1,4 +1,3 @@
-import type { ReactElement } from "react";
 import { Navigate, Route, Routes, Outlet } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
@@ -20,7 +19,7 @@ import { AdminLanguagesPage } from "./pages/AdminLanguagesPage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
 
-const RequireAdmin = ({ children }: { children: ReactElement }) => {
+const RequireAdmin = () => {
   const { user } = useAuth();
 
   if (!user) {
@@ -31,27 +30,27 @@ const RequireAdmin = ({ children }: { children: ReactElement }) => {
     return <Navigate to="/" replace />;
   }
 
-  return children;
+  return <Outlet />;
 };
 
-const RequireGuest = ({ children }: { children: ReactElement }) => {
+const RequireGuest = () => {
   const { user } = useAuth();
 
   if (user) {
     return <Navigate to="/" replace />;
   }
 
-  return children;
+  return <Outlet />;
 };
 
-const RequireUser = ({ children }: { children: ReactElement }) => {
+const RequireUser = () => {
   const { user } = useAuth();
 
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
+  return <Outlet />;
 };
 
 const HomePage = () => <MyChat />;
@@ -64,77 +63,34 @@ const AuthenticatedAppLayout = () => (
 
 export const App = () => (
   <Routes>
-    <Route
-      path="/login"
-      element={
-        <RequireGuest>
-          <LoginPage />
-        </RequireGuest>
-      }
-    />
-    <Route
-      path="/"
-      element={
-        <RequireUser>
-          <AuthenticatedAppLayout />
-        </RequireUser>
-      }
-    >
-      <Route index element={<HomePage />} />
-      <Route path="settings" element={<SettingsPage />} />
-      <Route path="docs" element={<DocsPage />} />
-      <Route path="docs/:slug" element={<DocDetail />} />
-      <Route
-        path="workflows"
-        element={
-          <RequireAdmin>
-            <WorkflowBuilderPage />
-          </RequireAdmin>
-        }
-      />
-      <Route
-        path="vector-stores"
-        element={
-          <RequireAdmin>
-            <VectorStoresPage />
-          </RequireAdmin>
-        }
-      />
-      <Route
-        path="widgets"
-        element={
-          <RequireAdmin>
-            <WidgetLibraryPage />
-          </RequireAdmin>
-        }
-      />
+    <Route element={<RequireGuest />}>
+      <Route path="/login" element={<LoginPage />} />
     </Route>
-    <Route
-      path="/admin"
-      element={
-        <RequireAdmin>
-          <AuthenticatedAppLayout />
-        </RequireAdmin>
-      }
-    >
-      <Route index element={<AdminPage />} />
-      <Route path="settings" element={<AdminAppSettingsPage />} />
-      <Route path="appearance" element={<AdminAppearancePage />} />
-      <Route path="models" element={<AdminModelsPage />} />
-      <Route path="sip-accounts" element={<AdminTelephonyPage />} />
-      <Route path="mcp-servers" element={<AdminMcpServersPage />} />
-      <Route path="languages" element={<AdminLanguagesPage />} />
+    <Route element={<RequireUser />}>
+      <Route path="/" element={<AuthenticatedAppLayout />}>
+        <Route index element={<HomePage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="docs" element={<DocsPage />} />
+        <Route path="docs/:slug" element={<DocDetail />} />
+        <Route element={<RequireAdmin />}>
+          <Route path="workflows" element={<WorkflowBuilderPage />} />
+          <Route path="vector-stores" element={<VectorStoresPage />} />
+          <Route path="widgets" element={<WidgetLibraryPage />} />
+          <Route path="admin" element={<Outlet />}>
+            <Route index element={<AdminPage />} />
+            <Route path="settings" element={<AdminAppSettingsPage />} />
+            <Route path="appearance" element={<AdminAppearancePage />} />
+            <Route path="models" element={<AdminModelsPage />} />
+            <Route path="sip-accounts" element={<AdminTelephonyPage />} />
+            <Route path="mcp-servers" element={<AdminMcpServersPage />} />
+            <Route path="languages" element={<AdminLanguagesPage />} />
+          </Route>
+          <Route path="admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
+          <Route path="admin/widgets" element={<Navigate to="/widgets" replace />} />
+          <Route path="admin/workflows" element={<Navigate to="/workflows" replace />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
     </Route>
-    <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
-    <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
-    <Route path="/admin/workflows" element={<Navigate to="/workflows" replace />} />
-    <Route
-      path="*"
-      element={
-        <RequireUser>
-          <Navigate to="/" replace />
-        </RequireUser>
-      }
-    />
   </Routes>
 );
