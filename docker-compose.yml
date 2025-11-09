@@ -12,7 +12,7 @@ services:
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-}
       LITELLM_PORT: ${LITELLM_PORT:-4000}
       PORT: ${PORT:-4000}
-      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-}
+      LITELLM_DATABASE_URL: "${LITELLM_DATABASE_URL:-postgresql://${LITELLM_POSTGRES_USER:-litellm}:${LITELLM_POSTGRES_PASSWORD:-litellm}@localhost:${LITELLM_DB_PORT:-5433}/${LITELLM_POSTGRES_DB:-litellm}}"
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -23,6 +23,8 @@ services:
       AZURE_OPENAI_API_BASE: ${AZURE_OPENAI_API_BASE:-}
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-}
       STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-}
+    depends_on:
+      - litellm-db
   backend:
     build:
       context: .
@@ -97,6 +99,16 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatkit}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+  litellm-db:
+    image: postgres:16-alpine
+    network_mode: host
+    command: -p ${LITELLM_DB_PORT:-5433}
+    environment:
+      POSTGRES_DB: ${LITELLM_POSTGRES_DB:-litellm}
+      POSTGRES_USER: ${LITELLM_POSTGRES_USER:-litellm}
+      POSTGRES_PASSWORD: ${LITELLM_POSTGRES_PASSWORD:-litellm}
+    volumes:
+      - litellm-postgres-data:/var/lib/postgresql/data
   redis:
     image: redis:7-alpine
     network_mode: host
@@ -154,3 +166,4 @@ volumes:
   frontend-node_modules:
   postgres-data:
   redis-data:
+  litellm-postgres-data:

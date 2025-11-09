@@ -260,9 +260,11 @@ function main() {
     if (wantsDbStorage) {
       if (!litellmDbUrl) {
         logStatus(
-          false,
-          "LITELLM_DATABASE_URL manquante alors que STORE_MODEL_IN_DB=True.",
-          "Définissez un DSN PostgreSQL au format postgresql://user:pass@host:port/db distinct de DATABASE_URL si nécessaire.",
+          true,
+          "LITELLM_DATABASE_URL non défini : le docker-compose utilisera postgresql://litellm:litellm@localhost:5433/litellm.",
+        );
+        console.log(
+          "   → Définissez LITELLM_DATABASE_URL si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellm-db.",
         );
       } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
         logStatus(
