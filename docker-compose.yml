@@ -3,7 +3,7 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     network_mode: host
     command: >-
-      litellm --config /app/config.yaml --port ${LITELLM_PORT:-4000}
+      --config /app/config.yaml --port ${LITELLM_PORT:-4000}
     volumes:
       - ./docker/litellm/config.yaml:/app/config.yaml:ro
     environment:
