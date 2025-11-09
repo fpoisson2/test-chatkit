@@ -67,7 +67,7 @@ export const App = () => (
       <Route path="/login" element={<LoginPage />} />
     </Route>
     <Route element={<RequireUser />}>
-      <Route path="/" element={<AuthenticatedAppLayout />}>
+      <Route element={<AuthenticatedAppLayout />}>
         <Route index element={<HomePage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="docs" element={<DocsPage />} />
