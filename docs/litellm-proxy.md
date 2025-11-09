@@ -5,8 +5,9 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
 ## 1. Démarrer le service LiteLLM
 
 1. Ajoutez vos clés d'API fournisseurs dans votre `.env` (ex. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`). Pour les
-    fournisseurs qui nécessitent une URL spécifique, vous pouvez également exposer des surcharges comme `MISTRAL_API_BASE=https://api.mistral.ai/v1`.
-    Profitez-en pour définir `DATABASE_URL` si ce n'est pas déjà fait (PostgreSQL via Docker ou un DSN SQLite local) car le backend refusera de démarrer sans cette variable.
+   fournisseurs qui nécessitent une URL spécifique, vous pouvez également exposer des surcharges comme `MISTRAL_API_BASE=https://api.mistral.ai/v1`.
+   Profitez-en pour définir `DATABASE_URL` si ce n'est pas déjà fait (PostgreSQL via Docker ou un DSN SQLite local) car le backend refusera de démarrer sans cette variable.
+   Si vous prévoyez d'activer la persistance LiteLLM, ajoutez également un DSN séparé `LITELLM_DATABASE_URL` (par exemple `postgresql://user:pass@host:5432/db`). Cela évite de partager un DSN SQLAlchemy (`postgresql+psycopg://…`) que LiteLLM/Prisma ne sait pas interpréter.
 2. Définissez les variables spécifiques au proxy :
    ```bash
    MODEL_PROVIDER=litellm
@@ -15,7 +16,8 @@ Cette configuration permet d'agréger plusieurs fournisseurs (OpenAI, Anthropic,
    LITELLM_API_KEY=sk-litellm-proxy   # utilisée par le backend/celery pour appeler le proxy
    LITELLM_MASTER_KEY=sk-litellm-proxy # master key LiteLLM (identique à LITELLM_API_KEY par simplicité)
    LITELLM_SALT_KEY=sk-xxxxxxxx        # clé de chiffrement LiteLLM — ne plus la modifier ensuite
-   STORE_MODEL_IN_DB=True              # optionnel : persiste les modèles LiteLLM (nécessite DATABASE_URL + LITELLM_SALT_KEY)
+   LITELLM_DATABASE_URL=postgresql://user:pass@host:5432/db # requis si STORE_MODEL_IN_DB=True (Prisma attend postgresql:// ou postgres://)
+   STORE_MODEL_IN_DB=True              # optionnel : persiste les modèles LiteLLM (nécessite LITELLM_DATABASE_URL + LITELLM_SALT_KEY)
    PORT=4000                          # utile sur Render/Railway qui imposent la variable PORT
    ```
    Laissez `STORE_MODEL_IN_DB` **non défini** (ou supprimez-le complètement) si vous ne souhaitez pas stocker de modèles dans la

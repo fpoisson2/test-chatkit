@@ -256,6 +256,27 @@ function main() {
       logStatus(true, "STORE_MODEL_IN_DB non défini (le proxy ne stockera pas les modèles en base).");
     }
 
+    const litellmDbUrl = sanitizeEnvName(env.LITELLM_DATABASE_URL);
+    if (wantsDbStorage) {
+      if (!litellmDbUrl) {
+        logStatus(
+          false,
+          "LITELLM_DATABASE_URL manquante alors que STORE_MODEL_IN_DB=True.",
+          "Définissez un DSN PostgreSQL au format postgresql://user:pass@host:port/db distinct de DATABASE_URL si nécessaire.",
+        );
+      } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
+        logStatus(
+          false,
+          `LITELLM_DATABASE_URL → format inattendu (${litellmDbUrl}).`,
+          "LiteLLM (Prisma) attend un DSN commençant par postgresql:// ou postgres://.",
+        );
+      } else {
+        logStatus(true, "LITELLM_DATABASE_URL détectée pour LiteLLM.");
+      }
+    } else if (litellmDbUrl) {
+      logStatus(true, "LITELLM_DATABASE_URL détectée (persistance optionnelle prête).");
+    }
+
     const saltKey = sanitizeEnvName(env.LITELLM_SALT_KEY);
     if (wantsDbStorage) {
       if (!saltKey) {

@@ -1,7 +1,7 @@
 general_settings:
   master_key: ${LITELLM_MASTER_KEY}
   salt_key: ${LITELLM_SALT_KEY:-}
-  database_url: ${DATABASE_URL:-}
+  database_url: ${LITELLM_DATABASE_URL:-}
   store_model_in_db: ${STORE_MODEL_IN_DB:-false}
 
 model_list:
