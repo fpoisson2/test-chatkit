@@ -117,6 +117,67 @@ AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 
+_GROQ_TEXT_CONTENT_TYPES = frozenset({"input_text", "output_text"})
+
+
+def _sequence_like(value: Any) -> bool:
+    return isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    )
+
+
+def _coerce_mapping(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, Mapping):
+        return copy.deepcopy(dict(value))
+
+    for attr in ("model_dump", "dict"):
+        method = getattr(value, attr, None)
+        if not callable(method):
+            continue
+        try:
+            data = method()
+        except TypeError:
+            try:
+                data = method(mode="python")  # type: ignore[misc]
+            except TypeError:
+                continue
+        if isinstance(data, Mapping):
+            return copy.deepcopy(dict(data))
+    return None
+
+
+def _extract_content_sequence(item: Any) -> Sequence[Any] | None:
+    if isinstance(item, Mapping):
+        content = item.get("content")
+    else:
+        content = getattr(item, "content", None)
+    if _sequence_like(content):
+        return content  # type: ignore[return-value]
+    return None
+
+
+def _extract_part_type(part: Any) -> str | None:
+    if isinstance(part, Mapping):
+        candidate = part.get("type")
+    else:
+        candidate = getattr(part, "type", None)
+    if isinstance(candidate, str):
+        return candidate
+    return None
+
+
+def _extract_text_value(part: Any) -> str | None:
+    if isinstance(part, Mapping):
+        candidate = part.get("text")
+    else:
+        candidate = getattr(part, "text", None)
+    if candidate is None:
+        return None
+    if isinstance(candidate, str):
+        return candidate
+    return str(candidate)
+
+
 def _normalize_conversation_history_for_provider(
     items: Sequence[TResponseInputItem],
     provider_slug: str | None,
@@ -132,31 +193,54 @@ def _normalize_conversation_history_for_provider(
     if not provider_slug or provider_slug.lower() != "groq":
         return items
 
-    changed = False
+    needs_normalization = False
+    for item in items:
+        content_sequence = _extract_content_sequence(item)
+        if not content_sequence:
+            continue
+        for part in content_sequence:
+            part_type = _extract_part_type(part)
+            if part_type in _GROQ_TEXT_CONTENT_TYPES:
+                needs_normalization = True
+                break
+        if needs_normalization:
+            break
+
+    if not needs_normalization:
+        return items
+
     normalized: list[TResponseInputItem] = []
     for item in items:
-        if isinstance(item, Mapping):
-            copied_item = copy.deepcopy(item)
-            content = copied_item.get("content")
-            if isinstance(content, list):
-                for index, part in enumerate(content):
-                    if not isinstance(part, Mapping):
-                        continue
-                    part_type = part.get("type")
-                    if (
-                        isinstance(part_type, str)
-                        and part_type in {"input_text", "output_text"}
-                    ):
-                        coerced_part = dict(part)
-                        coerced_part["type"] = "text"
-                        content[index] = coerced_part
-                        changed = True
-            normalized.append(copied_item)
-        else:
-            normalized.append(item)
+        content_sequence = _extract_content_sequence(item)
+        if not content_sequence:
+            normalized.append(_coerce_mapping(item) or item)
+            continue
 
-    if not changed:
-        return items
+        normalized_content: list[Any] = []
+        item_changed = False
+        for part in content_sequence:
+            part_type = _extract_part_type(part)
+            if part_type in _GROQ_TEXT_CONTENT_TYPES:
+                part_mapping = _coerce_mapping(part) or {}
+                updated_part = dict(part_mapping)
+                updated_part["type"] = "text"
+                if "text" not in updated_part:
+                    text_value = _extract_text_value(part)
+                    if text_value is not None:
+                        updated_part["text"] = text_value
+                normalized_content.append(updated_part)
+                item_changed = True
+            else:
+                part_mapping = _coerce_mapping(part)
+                normalized_content.append(part_mapping or part)
+
+        if item_changed:
+            item_mapping = _coerce_mapping(item) or {}
+            item_mapping["content"] = normalized_content
+            normalized.append(item_mapping)  # type: ignore[list-item]
+        else:
+            normalized.append(_coerce_mapping(item) or item)
+
     return normalized
 
 # ---------------------------------------------------------------------------
