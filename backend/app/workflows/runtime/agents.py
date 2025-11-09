@@ -10,17 +10,17 @@ from typing import Any
 
 from agents import Agent
 
-from ...chatkit_server.actions import (
-    _ensure_widget_output_model,
-    _parse_response_widget_config,
-    _ResponseWidgetConfig,
-)
-from ..chatkit.agent_registry import (
+from ...chatkit.agent_registry import (
     AGENT_BUILDERS,
     AgentProviderBinding,
     _build_custom_agent,
     _create_response_format_from_pydantic,
     get_agent_provider_binding,
+)
+from ...chatkit_server.actions import (
+    _ensure_widget_output_model,
+    _parse_response_widget_config,
+    _ResponseWidgetConfig,
 )
 from ..model_capabilities import ModelCapabilities, lookup_model_capabilities
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
