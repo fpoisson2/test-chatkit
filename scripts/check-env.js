@@ -256,13 +256,13 @@ function main() {
       logStatus(true, "STORE_MODEL_IN_DB non défini (le proxy ne stockera pas les modèles en base).");
     }
 
-    const fallbackLiteLLMDsn = "postgresql://litellm:litellm@127.0.0.1:5433/litellm";
+    const fallbackLiteLLMDsn = "postgresql://postgres:postgres@litellmdb:5432/litellm";
     const litellmDbUrl = sanitizeEnvName(env.LITELLM_DATABASE_URL);
     if (wantsDbStorage) {
       if (!litellmDbUrl) {
-        logStatus(true, `LITELLM_DATABASE_URL non défini : docker/litellm/docker-compose.yml expose ${fallbackLiteLLMDsn}.`);
+        logStatus(true, `LITELLM_DATABASE_URL non défini : docker/litellm/.env fournit ${fallbackLiteLLMDsn}.`);
         console.log(
-          "   → Définissez LITELLM_DATABASE_URL si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellm-db fourni par la composition dédiée.",
+          "   → Personnalisez docker/litellm/.env si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellmdb.",
         );
       } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
         logStatus(

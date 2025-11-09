@@ -1,7 +1,7 @@
 general_settings:
   master_key: ${LITELLM_MASTER_KEY}
   salt_key: ${LITELLM_SALT_KEY:-}
-  database_url: ${LITELLM_DATABASE_URL:-postgresql://litellm:litellm@127.0.0.1:5433/litellm}
+  database_url: ${LITELLM_DATABASE_URL:-postgresql://postgres:postgres@litellmdb:5432/litellm}
   store_model_in_db: ${STORE_MODEL_IN_DB:-false}
 
 model_list:
