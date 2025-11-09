@@ -8,7 +8,10 @@ services:
       - ./docker/litellm/config.yaml:/app/config.yaml:ro
     environment:
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-}
       LITELLM_PORT: ${LITELLM_PORT:-4000}
+      PORT: ${PORT:-4000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_API_BASE: ${OPENAI_API_BASE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -18,6 +21,8 @@ services:
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
       AZURE_OPENAI_API_BASE: ${AZURE_OPENAI_API_BASE:-}
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-}
+      DATABASE_URL: ${DATABASE_URL:-}
+      STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-false}
   backend:
     build:
       context: .
