@@ -90,7 +90,8 @@ services:
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-litellm-salt-default-change-in-production}
       # Base de données partagée avec ChatKit (format Prisma)
       # LiteLLM utilise Prisma qui nécessite postgresql:// (pas postgresql+psycopg://)
-      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgresql://chatkit:chatkit@localhost:5432/chatkit}
+      # HARDCODÉ pour éviter les conflits avec DATABASE_URL du shell
+      DATABASE_URL: "postgresql://chatkit:chatkit@localhost:5432/chatkit"
       # Clés API des différents providers
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
