@@ -1134,18 +1134,22 @@ async def run_workflow(
         model_capabilities = agent_model_capabilities.get(current_slug)
 
         should_strip_reasoning_summary = False
+        should_strip_reasoning = False  # Pour supprimer complètement le champ reasoning
         provider_slug: str | None = None
         is_groq = False  # Track if this is a Groq provider
 
         if provider_binding is not None:
             provider_slug = (provider_binding.provider_slug or "").lower()
             if provider_slug == "groq":
+                # Groq ne supporte pas du tout le champ reasoning
+                should_strip_reasoning = True
                 should_strip_reasoning_summary = True
                 is_groq = True
             # Also check API base URL as a fallback
             api_base = getattr(provider_binding, "api_base", "") or ""
             if "groq.com" in api_base.lower():
                 is_groq = True
+                should_strip_reasoning = True
                 should_strip_reasoning_summary = True
 
         if (
@@ -1154,7 +1158,25 @@ async def run_workflow(
         ):
             should_strip_reasoning_summary = True
 
-        if should_strip_reasoning_summary:
+        # Appliquer les nettoyages nécessaires
+        if should_strip_reasoning:
+            # Groq: supprimer complètement le champ reasoning
+            try:
+                agent.model_settings = sanitize_model_like(
+                    agent.model_settings, allow_reasoning=False
+                )
+                logger.debug(
+                    "Champ reasoning supprimé pour le modèle %s (Groq ne le supporte pas)",
+                    getattr(agent, "name", "<inconnu>"),
+                )
+            except Exception:
+                logger.debug(
+                    "Impossible de nettoyer le champ reasoning pour le modèle %s",
+                    getattr(agent, "name", "<inconnu>"),
+                    exc_info=True,
+                )
+        elif should_strip_reasoning_summary:
+            # Autres providers: supprimer seulement reasoning.summary
             try:
                 agent.model_settings = sanitize_model_like(
                     agent.model_settings, allow_reasoning_summary=False
