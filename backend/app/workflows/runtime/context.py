@@ -11,8 +11,8 @@ from agents import TResponseInputItem
 from chatkit.agents import AgentContext, ThreadItemConverter
 
 from ...chatkit_server.context import _normalize_user_text
+from ...model_capabilities import ModelCapabilities
 from ...models import WorkflowDefinition
-from ..model_capabilities import ModelCapabilities
 from ..service import (
     WorkflowService,
     resolve_start_auto_start,
