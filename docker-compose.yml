@@ -77,6 +77,24 @@ services:
     command: redis-server --port 6379
     volumes:
       - redis-data:/data
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    network_mode: host
+    command: --config /app/config.yaml --port 4000
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+    environment:
+      # Clé master pour le proxy LiteLLM
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key-changeme}
+      # Clés API des différents providers
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      # Database (optionnel, pour les logs et analytics)
+      # DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+    restart: unless-stopped
   celery-worker:
     build:
       context: .
