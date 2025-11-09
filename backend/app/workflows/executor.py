@@ -1216,6 +1216,16 @@ async def run_workflow(
         )
 
         try:
+            # Déterminer si on doit passer previous_response_id
+            should_pass_previous_response_id = True
+
+            # Groq ne supporte pas previous_response_id, peu importe les capabilities
+            if provider_slug == "groq":
+                should_pass_previous_response_id = False
+            # Sinon, vérifier les capabilities du modèle
+            elif model_capabilities is not None and not model_capabilities.supports_previous_response_id:
+                should_pass_previous_response_id = False
+
             result = Runner.run_streamed(
                 agent,
                 input=[*conversation_history_input],
@@ -1225,8 +1235,7 @@ async def run_workflow(
                 context=runner_context,
                 previous_response_id=(
                     None
-                    if model_capabilities is not None
-                    and not model_capabilities.supports_previous_response_id
+                    if not should_pass_previous_response_id
                     else getattr(agent_context, "previous_response_id", None)
                 ),
             )
@@ -1258,10 +1267,16 @@ async def run_workflow(
                 raise_step_error(step_key, title, exc)
 
             last_response_id = getattr(result, "last_response_id", None)
-            if last_response_id is not None and (
-                model_capabilities is None
-                or model_capabilities.supports_previous_response_id
-            ):
+            # Ne stocker previous_response_id que si le provider le supporte
+            should_store_response_id = (
+                last_response_id is not None
+                and provider_slug != "groq"  # Groq ne supporte pas les conversations stateful
+                and (
+                    model_capabilities is None
+                    or model_capabilities.supports_previous_response_id
+                )
+            )
+            if should_store_response_id:
                 agent_context.previous_response_id = last_response_id
                 thread_metadata = getattr(agent_context, "thread", None)
                 should_persist_thread = False
