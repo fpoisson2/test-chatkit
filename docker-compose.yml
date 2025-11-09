@@ -86,15 +86,19 @@ services:
     environment:
       # Clé master pour le proxy LiteLLM
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-master-key-changeme}
+      # Clé de chiffrement pour les credentials en DB (NE CHANGEZ JAMAIS UNE FOIS DÉFINIE)
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-sk-litellm-salt-default-change-in-production}
+      # Base de données partagée avec ChatKit
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
       # Clés API des différents providers
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       COHERE_API_KEY: ${COHERE_API_KEY:-}
       TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
-      # Database (optionnel, pour les logs et analytics)
-      # DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
     restart: unless-stopped
+    depends_on:
+      - db
   celery-worker:
     build:
       context: .

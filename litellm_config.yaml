@@ -85,8 +85,11 @@ general_settings:
   # En production, restreignez aux domaines autorisés
   allowed_origins: ["*"]
 
-  # Database pour les logs (optionnel)
-  # database_url: ${DATABASE_URL}
+  # Database partagée avec ChatKit pour les logs et analytics
+  database_url: ${DATABASE_URL}
+
+  # Stocker les modèles en base de données
+  store_model_in_db: true
 
   # Activer les métriques Prometheus (optionnel)
   # enable_prometheus: true

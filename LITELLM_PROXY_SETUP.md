@@ -24,6 +24,10 @@ cp .env.example .env
 # Clé master du proxy LiteLLM
 LITELLM_MASTER_KEY="sk-litellm-master-key-changeme"
 
+# Clé de chiffrement pour la base de données (générez-la une seule fois !)
+# IMPORTANT: NE CHANGEZ JAMAIS cette clé une fois définie
+LITELLM_SALT_KEY="sk-votre-cle-de-chiffrement-generee"
+
 # Clé OpenAI (obligatoire pour les modèles GPT)
 OPENAI_API_KEY="sk-your-openai-key-here"
 
@@ -32,6 +36,14 @@ OPENAI_API_KEY="sk-your-openai-key-here"
 # GROQ_API_KEY="gsk_..."
 # COHERE_API_KEY="..."
 ```
+
+**Pour générer une clé de chiffrement sécurisée** :
+
+```bash
+python3 -c "import secrets; print(f'sk-{secrets.token_urlsafe(32)}')"
+```
+
+Copiez le résultat dans `LITELLM_SALT_KEY`.
 
 ### 2. Personnaliser la configuration LiteLLM (optionnel)
 
@@ -190,28 +202,48 @@ general_settings:
   allowed_origins: ["https://chatkit.votredomaine.com"]
 ```
 
-### Analytics et métriques (optionnel)
+### Analytics et métriques
 
-#### Activer les logs en base de données
+#### Base de données (activée par défaut)
 
-Dans `litellm_config.yaml` :
+LiteLLM est configuré pour utiliser la **même base de données PostgreSQL que ChatKit**. Cela permet :
 
-```yaml
-general_settings:
-  master_key: ${LITELLM_MASTER_KEY}
-  database_url: ${DATABASE_URL}
-```
+✅ **Logs des requêtes** : Toutes les requêtes vers les modèles sont loguées
+✅ **Analytics** : Suivez l'utilisation, les coûts, les performances
+✅ **Stockage des configurations** : Les modèles peuvent être configurés en BD
+✅ **Historique** : Conservez l'historique des appels API
 
-Dans `docker-compose.yml`, décommentez :
+La configuration est déjà active dans :
 
+**`docker-compose.yml`** :
 ```yaml
 environment:
   DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+  LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
 ```
 
-Redémarrez :
+**`litellm_config.yaml`** :
+```yaml
+general_settings:
+  database_url: ${DATABASE_URL}
+  store_model_in_db: true
+```
+
+**⚠️ Important** : La clé `LITELLM_SALT_KEY` chiffre les credentials en base de données. **Ne la changez jamais** une fois définie, sinon vous perdrez l'accès aux données chiffrées.
+
+#### Accéder aux analytics
+
+Les données sont stockées dans la base PostgreSQL. Pour y accéder :
+
 ```bash
-docker-compose restart litellm
+# Se connecter à la base de données
+docker-compose exec db psql -U chatkit -d chatkit
+
+# Lister les tables LiteLLM
+\dt litellm*
+
+# Voir les requêtes récentes
+SELECT * FROM litellm_spendlogs ORDER BY startTime DESC LIMIT 10;
 ```
 
 #### Activer Prometheus
