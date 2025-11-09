@@ -92,7 +92,7 @@ export function useWorkflowDeployment(
 
   // Access contexts
   const { setSaveState, setSaveMessage, lastSavedSnapshotRef } = useSaveContext();
-  const { deployToProduction, setIsDeploying, setDeployModalOpen } = useModalContext();
+  const { deployToProduction, setIsDeploying, closeDeployModal } = useModalContext();
   const { hasPendingChanges, updateHasPendingChanges } = useGraphContext();
   const {
     selectedWorkflowId,
@@ -195,7 +195,7 @@ export function useWorkflowDeployment(
         );
 
         setTimeout(() => setSaveState("idle"), 1500);
-        setDeployModalOpen(false);
+        closeDeployModal();
         setIsDeploying(false);
         return;
       } catch (error) {
@@ -232,7 +232,7 @@ export function useWorkflowDeployment(
     lastSavedSnapshotRef,
     updateHasPendingChanges,
     deployToProduction,
-    setDeployModalOpen,
+    closeDeployModal,
   ]);
 
   return {
