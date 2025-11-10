@@ -135,9 +135,11 @@ export const fr: TranslationDictionary = {
     "Définir comme fournisseur par défaut",
   "admin.appSettings.model.removeProvider": "Supprimer ce fournisseur",
   "admin.appSettings.model.addProvider": "Ajouter un fournisseur",
-  "admin.appSettings.model.apiBaseLabel": "URL de base de l'API",
+  "admin.appSettings.model.apiBaseLabel": "URL de base de l'API (optionnel)",
+  "admin.appSettings.model.apiBasePlaceholder":
+    "Vide pour auto-routing, ou https://api.openai.com/v1",
   "admin.appSettings.model.apiBaseHint":
-    "L'URL doit commencer par http:// ou https:// et pointer vers le proxy à utiliser.",
+    "Pour LiteLLM avec auto-routing, laissez ce champ vide. Pour un serveur personnalisé ou OpenAI direct, entrez l'URL (ex: https://api.openai.com/v1).",
   "admin.appSettings.model.apiKeyLabel": "Clé API",
   "admin.appSettings.model.apiKeyPlaceholder":
     "Saisissez une nouvelle clé pour la stocker côté serveur",

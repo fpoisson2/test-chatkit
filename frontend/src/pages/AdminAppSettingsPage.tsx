@@ -541,7 +541,9 @@ export const AdminAppSettingsPage = () => {
                               apiBase: event.target.value,
                             }))
                           }
-                          placeholder="https://api.example.com"
+                          placeholder={t(
+                            "admin.appSettings.model.apiBasePlaceholder",
+                          )}
                           disabled={isBusy}
                         />
                       </label>
