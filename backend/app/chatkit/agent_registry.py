@@ -185,6 +185,15 @@ _PROVIDER_BUILDERS: dict[
 ] = {
     "openai": _build_openai_provider,
     "litellm": _build_litellm_provider,
+    # Common LiteLLM providers (use LiteLLM auto-routing)
+    "anthropic": _build_litellm_provider,
+    "groq": _build_litellm_provider,
+    "together": _build_litellm_provider,
+    "cohere": _build_litellm_provider,
+    "mistral": _build_litellm_provider,
+    "gemini": _build_litellm_provider,
+    "bedrock": _build_litellm_provider,
+    "azure": _build_litellm_provider,
 }
 
 
