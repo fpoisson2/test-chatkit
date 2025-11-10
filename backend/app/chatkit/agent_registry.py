@@ -188,9 +188,22 @@ def create_litellm_model(
     Returns:
         LitellmModel instance if credentials available, else model_name string
     """
+    logger.debug(
+        "create_litellm_model appelée: model_name=%s, provider_binding=%s",
+        model_name,
+        provider_binding is not None,
+    )
+
     if provider_binding and provider_binding.credentials:
         api_key = provider_binding.credentials.api_key
         api_base = provider_binding.credentials.api_base
+
+        logger.debug(
+            "Credentials trouvées: provider_id=%s, api_key=%s, api_base=%s",
+            provider_binding.credentials.id,
+            "***" if api_key else None,
+            api_base,
+        )
 
         if api_key:
             # Build kwargs for LitellmModel
@@ -204,7 +217,25 @@ def create_litellm_model(
             if api_base and api_base.strip():
                 model_kwargs["base_url"] = normalize_api_base(api_base)
 
+            logger.debug(
+                "Création de LitellmModel avec: model=%s, api_key=%s, base_url=%s",
+                model_name,
+                "***",
+                model_kwargs.get("base_url"),
+            )
             return LitellmModel(**model_kwargs)
+        else:
+            logger.warning(
+                "api_key vide ou None pour provider_id=%s - retour du nom de modèle",
+                provider_binding.credentials.id,
+            )
+    else:
+        logger.warning(
+            "provider_binding ou credentials manquant - retour du nom de modèle: "
+            "provider_binding=%s, credentials=%s",
+            provider_binding is not None,
+            provider_binding.credentials if provider_binding else None,
+        )
 
     # Fallback to string model name if no credentials
     return model_name
@@ -218,9 +249,19 @@ def get_agent_provider_binding(
         provider_slug.strip().lower() if isinstance(provider_slug, str) else ""
     )
 
+    logger.debug(
+        "get_agent_provider_binding appelée: provider_id=%s, provider_slug=%s",
+        normalized_id,
+        normalized_slug,
+    )
+
     credentials: ResolvedModelProviderCredentials | None = None
     if normalized_id:
         credentials = resolve_model_provider_credentials(normalized_id)
+        logger.debug(
+            "Après resolve_model_provider_credentials: credentials=%s",
+            credentials is not None,
+        )
 
     if credentials is None:
         settings = get_settings()
@@ -228,15 +269,36 @@ def get_agent_provider_binding(
             for config in settings.model_providers:
                 if config.id == normalized_id:
                     credentials = _credentials_from_config(config)
+                    logger.debug(
+                        "Credentials depuis config par ID: provider=%s",
+                        config.provider,
+                    )
                     break
         if credentials is None and normalized_slug:
             for config in settings.model_providers:
                 if config.provider == normalized_slug:
                     credentials = _credentials_from_config(config)
+                    logger.debug(
+                        "Credentials depuis config par slug: provider=%s",
+                        config.provider,
+                    )
                     break
 
     if credentials is None:
+        logger.warning(
+            "Aucune credentials trouvée pour provider_id=%s, provider_slug=%s",
+            normalized_id,
+            normalized_slug,
+        )
         return None
+
+    logger.debug(
+        "Credentials finales: id=%s, provider=%s, api_key=%s, api_base=%s",
+        credentials.id,
+        credentials.provider,
+        "***" if credentials.api_key else None,
+        credentials.api_base,
+    )
 
     slug = normalized_slug or credentials.provider
     # All providers now use LiteLLM with auto-routing
