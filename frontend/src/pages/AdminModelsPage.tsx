@@ -92,6 +92,7 @@ type ModelFormState = {
   description: string;
   provider_id: string;
   provider_slug: string;
+  supports_reasoning: boolean;
 };
 
 const buildDefaultFormState = (
@@ -102,6 +103,7 @@ const buildDefaultFormState = (
   description: "",
   provider_id: "",
   provider_slug: "",
+  supports_reasoning: false,
   ...overrides,
 });
 
@@ -112,6 +114,7 @@ const buildFormFromModel = (model: AvailableModel): ModelFormState =>
     description: model.description ?? "",
     provider_id: model.provider_id ?? "",
     provider_slug: model.provider_slug ?? "",
+    supports_reasoning: model.supports_reasoning,
   });
 
 export const AdminModelsPage = () => {
@@ -294,6 +297,7 @@ export const AdminModelsPage = () => {
         description: trimmedDescription ? trimmedDescription : null,
         provider_id: providerId,
         provider_slug: normalizedProviderSlug,
+        supports_reasoning: form.supports_reasoning,
       };
 
       try {
@@ -334,6 +338,7 @@ export const AdminModelsPage = () => {
       description: trimmedDescription ? trimmedDescription : null,
       provider_id: providerId,
       provider_slug: normalizedProviderSlug,
+      supports_reasoning: form.supports_reasoning,
     };
 
     try {
@@ -499,6 +504,19 @@ export const AdminModelsPage = () => {
                   placeholder="Ajoutez des notes pour aider les administrateurs."
                 />
               </label>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={form.supports_reasoning}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      supports_reasoning: event.target.checked,
+                    }))
+                  }
+                />
+                Modèle de raisonnement (affiche les options avancées dans le workflow builder)
+              </label>
               <div className="admin-form__actions">
                 {isEditing && (
                   <button
@@ -545,6 +563,7 @@ export const AdminModelsPage = () => {
                       <th>Modèle</th>
                       <th>Affichage</th>
                       <th>Fournisseur</th>
+                      <th>Raisonnement</th>
                       <th>Description</th>
                       <th>Actions</th>
                     </tr>
@@ -558,6 +577,9 @@ export const AdminModelsPage = () => {
                           {model.provider_slug
                             ? `${model.provider_slug}${model.provider_id ? ` (${model.provider_id})` : ""}`
                             : "—"}
+                        </td>
+                        <td data-label="Raisonnement">
+                          {model.supports_reasoning ? "Oui" : "Non"}
                         </td>
                         <td data-label="Description">{model.description ?? "—"}</td>
                         <td data-label="Actions">

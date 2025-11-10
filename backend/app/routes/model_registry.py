@@ -68,6 +68,7 @@ async def create_model(
         description=payload.description,
         provider_id=payload.provider_id,
         provider_slug=payload.provider_slug,
+        supports_reasoning=payload.supports_reasoning,
         created_at=now,
         updated_at=now,
     )
@@ -131,6 +132,9 @@ async def update_model(
 
     model.provider_id = provider_id
     model.provider_slug = provider_slug
+
+    if "supports_reasoning" in update_data:
+        model.supports_reasoning = update_data["supports_reasoning"]
 
     session.commit()
     session.refresh(model)

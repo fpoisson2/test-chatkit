@@ -1181,10 +1181,8 @@ async def run_workflow(
                         exc,
                     )
 
-        conversation_history_input = _normalize_conversation_history_for_provider(
-            conversation_history,
-            provider_binding.provider_slug if provider_binding else None,
-        )
+        # No normalization needed - LiteLLM handles all conversions
+        conversation_history_input = conversation_history
 
         try:
             result = Runner.run_streamed(

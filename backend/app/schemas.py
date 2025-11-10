@@ -729,6 +729,7 @@ class AvailableModelBase(BaseModel):
     provider_slug: constr(strip_whitespace=True, min_length=1, max_length=64) | None = (
         None
     )
+    supports_reasoning: bool = False
 
     @field_validator("provider_id")
     @classmethod
@@ -779,6 +780,7 @@ class AvailableModelUpdateRequest(BaseModel):
     provider_slug: (
         constr(strip_whitespace=True, min_length=1, max_length=64) | None
     ) = None
+    supports_reasoning: bool | None = None
 
     model_config = ConfigDict(extra="forbid")
 

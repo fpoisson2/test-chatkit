@@ -116,6 +116,9 @@ class AvailableModel(Base):
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     provider_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     provider_slug: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    supports_reasoning: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
