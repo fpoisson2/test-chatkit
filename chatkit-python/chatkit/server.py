@@ -25,7 +25,7 @@ from typing_extensions import TypeVar
 from chatkit.errors import CustomStreamError, StreamError
 
 from .logger import logger
-from .store import AttachmentStore, Store, StoreItemType, default_generate_id
+from .store import AttachmentStore, NotFoundError, Store, StoreItemType, default_generate_id
 from .types import (
     Action,
     AttachmentsCreateReq,
@@ -632,9 +632,39 @@ class ChatKitServer(ABC, Generic[TContext]):
                 async for event in stream():
                     match event:
                         case ThreadItemDoneEvent():
-                            await self.store.add_thread_item(
-                                thread.id, event.item, context=context
-                            )
+                            # Replace temporary IDs (e.g., __fake_id__) with real unique IDs
+                            # The agents SDK sometimes uses placeholder IDs that conflict across threads
+                            item = event.item
+                            if item.id.startswith("__"):
+                                # Determine the store item type based on the item's type field
+                                item_type: StoreItemType
+                                if item.type in ("user_message", "assistant_message"):
+                                    item_type = "message"
+                                elif item.type == "client_tool_call":
+                                    item_type = "tool_call"
+                                elif item.type == "workflow":
+                                    item_type = "workflow"
+                                elif item.type == "task":
+                                    item_type = "task"
+                                else:
+                                    # Default to message for unknown types
+                                    item_type = "message"
+
+                                # Generate a real unique ID to avoid conflicts
+                                new_id = default_generate_id(item_type)
+                                item = item.model_copy(update={"id": new_id})
+                                logger.debug(
+                                    f"Replaced temporary ID {event.item.id} with {item.id} (type={item_type})"
+                                )
+
+                            try:
+                                await self.store.add_thread_item(
+                                    thread.id, item, context=context
+                                )
+                            except NotFoundError as e:
+                                # Log but don't fail if item storage fails
+                                # This can happen with concurrent updates
+                                logger.error(f"Failed to store thread item: {e}")
                         case ThreadItemRemovedEvent():
                             await self.store.delete_thread_item(
                                 thread.id, event.item_id, context=context

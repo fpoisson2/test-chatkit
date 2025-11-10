@@ -195,7 +195,7 @@ class VoiceSettingsUpdateRequest(BaseModel):
 class ModelProviderSettings(BaseModel):
     id: str
     provider: str
-    api_base: str
+    api_base: str | None
     api_key_hint: str | None = None
     has_api_key: bool = False
     is_default: bool = False
@@ -211,7 +211,14 @@ class ModelProviderSettingsUpdate(BaseModel):
         max_length=128,
     )
     provider: constr(strip_whitespace=True, min_length=1, max_length=64)
-    api_base: constr(strip_whitespace=True, min_length=1, max_length=512)
+    api_base: str | None = Field(
+        default=None,
+        description=(
+            "URL de base de l'API (optionnel). Pour LiteLLM avec auto-routing, "
+            "laissez vide. Pour un serveur personnalisé, entrez l'URL complète."
+        ),
+        max_length=512,
+    )
     api_key: str | None = Field(
         default=None,
         description=(
@@ -228,6 +235,17 @@ class ModelProviderSettingsUpdate(BaseModel):
         default=False,
         description="Marque cette configuration comme fournisseur par défaut.",
     )
+
+    @field_validator("api_base", mode="before")
+    @classmethod
+    def normalize_api_base(cls, v: Any) -> str | None:
+        """Convert empty strings to None for optional api_base."""
+        if isinstance(v, str):
+            stripped = v.strip()
+            if not stripped:
+                return None
+            return stripped
+        return v
 
 
 class AppearanceSettingsResponse(BaseModel):
@@ -348,7 +366,7 @@ class AppSettingsResponse(BaseModel):
     default_thread_title_model: str
     is_custom_thread_title_model: bool
     model_provider: str
-    model_api_base: str
+    model_api_base: str | None
     is_model_provider_overridden: bool
     is_model_api_base_overridden: bool
     is_model_api_key_managed: bool
@@ -712,9 +730,6 @@ class AvailableModelBase(BaseModel):
         None
     )
     supports_reasoning: bool = False
-    supports_previous_response_id: bool = True
-    supports_reasoning_summary: bool = True
-    store: bool | None = None
 
     @field_validator("provider_id")
     @classmethod
@@ -746,13 +761,6 @@ class AvailableModelBase(BaseModel):
             )
         return self
 
-    @field_validator("store")
-    @classmethod
-    def _validate_store(cls, value: bool | None) -> bool | None:
-        if value is True:
-            raise ValueError("store ne peut prendre que false ou null")
-        return value
-
 
 class AvailableModelCreateRequest(AvailableModelBase):
     pass
@@ -773,9 +781,6 @@ class AvailableModelUpdateRequest(BaseModel):
         constr(strip_whitespace=True, min_length=1, max_length=64) | None
     ) = None
     supports_reasoning: bool | None = None
-    supports_previous_response_id: bool | None = None
-    supports_reasoning_summary: bool | None = None
-    store: bool | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -798,13 +803,6 @@ class AvailableModelUpdateRequest(BaseModel):
         if not candidate:
             raise ValueError("provider_slug ne peut pas être vide")
         return candidate.lower()
-
-    @field_validator("store")
-    @classmethod
-    def _validate_store(cls, value: bool | None) -> bool | None:
-        if value is True:
-            raise ValueError("store ne peut prendre que false ou null")
-        return value
 
 
 class AvailableModelResponse(AvailableModelBase):

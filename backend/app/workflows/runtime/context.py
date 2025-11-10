@@ -11,7 +11,7 @@ from agents import TResponseInputItem
 from chatkit.agents import AgentContext, ThreadItemConverter
 
 from ...chatkit_server.context import _normalize_user_text
-from ...model_capabilities import ModelCapabilities
+# Model capabilities removed
 from ...models import WorkflowDefinition
 from ..service import (
     WorkflowService,
@@ -52,7 +52,6 @@ class RuntimeInitializationResult:
     initial_user_text: str
     voice_overrides: Any
     voice_session_manager: VoiceSessionManager
-    model_capability_index: dict[tuple[str, str, str], ModelCapabilities]
 
 
 async def initialize_runtime_context(
@@ -99,18 +98,6 @@ async def initialize_runtime_context(
 
     voice_overrides = _extract_voice_overrides(agent_context)
     voice_session_manager = VoiceSessionManager()
-
-    model_capability_index: dict[tuple[str, str, str], ModelCapabilities] = {}
-    get_capabilities = getattr(service, "get_available_model_capabilities", None)
-    if callable(get_capabilities):
-        try:
-            model_capability_index = get_capabilities()
-        except Exception:  # pragma: no cover - dépend de la persistance
-            logger.warning(
-                "Impossible de récupérer les capacités des modèles disponibles",
-                exc_info=True,
-            )
-            model_capability_index = {}
 
     should_auto_start = resolve_start_auto_start(definition)
     if not auto_started and not initial_user_text.strip() and should_auto_start:
@@ -170,6 +157,5 @@ async def initialize_runtime_context(
         initial_user_text=initial_user_text,
         voice_overrides=voice_overrides,
         voice_session_manager=voice_session_manager,
-        model_capability_index=model_capability_index,
     )
 

@@ -258,7 +258,7 @@ export type VoiceSettingsUpdatePayload = {
 export type ModelProviderProfile = {
   id: string;
   provider: string;
-  api_base: string;
+  api_base: string | null;
   api_key_hint: string | null;
   has_api_key: boolean;
   is_default: boolean;
@@ -267,7 +267,7 @@ export type ModelProviderProfile = {
 export type ModelProviderUpdatePayload = {
   id?: string | null;
   provider: string;
-  api_base: string;
+  api_base: string | null;
   api_key?: string | null;
   delete_api_key?: boolean;
   is_default: boolean;
@@ -1195,9 +1195,6 @@ export type AvailableModel = {
   provider_id: string | null;
   provider_slug: string | null;
   supports_reasoning: boolean;
-  supports_previous_response_id: boolean;
-  supports_reasoning_summary: boolean;
-  store: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -1220,24 +1217,18 @@ export type AvailableModelPayload = {
   name: string;
   display_name?: string | null;
   description?: string | null;
-  supports_reasoning: boolean;
-  supports_previous_response_id: boolean;
-  supports_reasoning_summary: boolean;
   provider_id?: string | null;
   provider_slug?: string | null;
-  store?: boolean | null;
+  supports_reasoning: boolean;
 };
 
 export type AvailableModelUpdatePayload = {
   name?: string;
   display_name?: string | null;
   description?: string | null;
-  supports_reasoning?: boolean;
-  supports_previous_response_id?: boolean;
-  supports_reasoning_summary?: boolean;
   provider_id?: string | null;
   provider_slug?: string | null;
-  store?: boolean | null;
+  supports_reasoning?: boolean;
 };
 
 export const modelRegistryApi = {

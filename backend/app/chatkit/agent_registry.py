@@ -11,6 +11,7 @@ from functools import lru_cache
 from typing import Any
 
 from agents import Agent, ModelSettings, WebSearchTool
+from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServer
 from agents.models.interface import ModelProvider
 from agents.models.openai_provider import OpenAIProvider
@@ -107,9 +108,10 @@ _JSON_TYPE_MAPPING: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class AgentProviderBinding:
-    provider: ModelProvider
+    provider: ModelProvider | None  # None when using LiteLLM auto-routing
     provider_id: str
     provider_slug: str
+    credentials: ResolvedModelProviderCredentials | None = None
 
 
 def _credentials_from_config(
@@ -124,36 +126,105 @@ def _credentials_from_config(
 
 
 @lru_cache(maxsize=16)
-def _get_cached_openai_client(
+def _get_cached_client(
     provider_id: str, api_base: str, api_key: str
 ) -> AsyncOpenAI:
     return AsyncOpenAI(api_key=api_key, base_url=api_base)
 
 
-def _build_openai_provider(
+def _build_provider(
     credentials: ResolvedModelProviderCredentials,
 ) -> ModelProvider | None:
+    """
+    Build native OpenAI provider if api_base is provided.
+
+    Strategy:
+    - If api_base is provided → Create OpenAIProvider for custom endpoint
+    - If api_base is not provided → Return None, LiteLLM will auto-route
+
+    This allows using custom/local endpoints with api_base while
+    using LiteLLM's auto-routing for standard providers (Groq, Anthropic, etc.)
+    """
     api_base = credentials.api_base.strip() if credentials.api_base else ""
     api_key = credentials.api_key.strip() if credentials.api_key else ""
-    if not api_base or not api_key:
+
+    if not api_key:
         logger.warning(
-            "Configuration fournisseur %s (%s) incomplète : base ou clé manquante",
+            "Configuration fournisseur %s (%s) incomplète : clé API manquante",
             credentials.provider,
             credentials.id,
         )
         return None
 
-    normalized_base = normalize_api_base(api_base)
-    client = _get_cached_openai_client(credentials.id, normalized_base, api_key)
-    return OpenAIProvider(openai_client=client)
+    # Create native provider if custom api_base is provided
+    if api_base:
+        normalized_base = normalize_api_base(api_base)
+        client = _get_cached_client(credentials.id, normalized_base, api_key)
+        return OpenAIProvider(openai_client=client)
+
+    # No api_base - LitellmModel will auto-route based on model name
+    return None
 
 
-_PROVIDER_BUILDERS: dict[
-    str, Callable[[ResolvedModelProviderCredentials], ModelProvider | None]
-] = {
-    "openai": _build_openai_provider,
-    "litellm": _build_openai_provider,
-}
+# All providers now use the unified _build_provider function with LiteLLM auto-routing
+
+
+def create_litellm_model(
+    model_name: str,
+    provider_binding: AgentProviderBinding | None,
+) -> LitellmModel | str:
+    """
+    Create a LitellmModel for auto-routing when no custom api_base is provided.
+
+    This function is only called when provider_binding.provider is None,
+    meaning no custom api_base was configured. LiteLLM will auto-route to
+    the correct provider (OpenAI, Anthropic, Groq, etc.) based on the model name.
+
+    Args:
+        model_name: Model name with provider prefix (e.g., "litellm/groq/llama-3.1-8b")
+        provider_binding: Provider binding with credentials (no api_base)
+
+    Returns:
+        LitellmModel instance with API key for auto-routing, or model_name string as fallback
+    """
+    logger.debug(
+        "create_litellm_model appelée: model_name=%s, provider_binding=%s",
+        model_name,
+        provider_binding is not None,
+    )
+
+    if provider_binding and provider_binding.credentials:
+        api_key = provider_binding.credentials.api_key
+
+        logger.debug(
+            "Credentials trouvées: provider_id=%s, api_key=%s",
+            provider_binding.credentials.id,
+            "***" if api_key else None,
+        )
+
+        if api_key:
+            # Create LitellmModel with API key only - auto-routing based on model name
+            logger.debug(
+                "Création de LitellmModel pour auto-routing: model=%s, api_key=%s",
+                model_name,
+                "***",
+            )
+            return LitellmModel(model=model_name, api_key=api_key)
+        else:
+            logger.warning(
+                "api_key vide ou None pour provider_id=%s - retour du nom de modèle",
+                provider_binding.credentials.id,
+            )
+    else:
+        logger.warning(
+            "provider_binding ou credentials manquant - retour du nom de modèle: "
+            "provider_binding=%s, credentials=%s",
+            provider_binding is not None,
+            provider_binding.credentials if provider_binding else None,
+        )
+
+    # Fallback to string model name if no credentials
+    return model_name
 
 
 def get_agent_provider_binding(
@@ -164,9 +235,19 @@ def get_agent_provider_binding(
         provider_slug.strip().lower() if isinstance(provider_slug, str) else ""
     )
 
+    logger.debug(
+        "get_agent_provider_binding appelée: provider_id=%s, provider_slug=%s",
+        normalized_id,
+        normalized_slug,
+    )
+
     credentials: ResolvedModelProviderCredentials | None = None
     if normalized_id:
         credentials = resolve_model_provider_credentials(normalized_id)
+        logger.debug(
+            "Après resolve_model_provider_credentials: credentials=%s",
+            credentials is not None,
+        )
 
     if credentials is None:
         settings = get_settings()
@@ -174,36 +255,48 @@ def get_agent_provider_binding(
             for config in settings.model_providers:
                 if config.id == normalized_id:
                     credentials = _credentials_from_config(config)
+                    logger.debug(
+                        "Credentials depuis config par ID: provider=%s",
+                        config.provider,
+                    )
                     break
         if credentials is None and normalized_slug:
             for config in settings.model_providers:
                 if config.provider == normalized_slug:
                     credentials = _credentials_from_config(config)
+                    logger.debug(
+                        "Credentials depuis config par slug: provider=%s",
+                        config.provider,
+                    )
                     break
 
     if credentials is None:
+        logger.warning(
+            "Aucune credentials trouvée pour provider_id=%s, provider_slug=%s",
+            normalized_id,
+            normalized_slug,
+        )
         return None
 
-    slug = normalized_slug or credentials.provider
-    builder = _PROVIDER_BUILDERS.get(slug) or _PROVIDER_BUILDERS.get(
-        credentials.provider
+    logger.debug(
+        "Credentials finales: id=%s, provider=%s, api_key=%s, api_base=%s",
+        credentials.id,
+        credentials.provider,
+        "***" if credentials.api_key else None,
+        credentials.api_base,
     )
 
-    if builder is None:
-        logger.info(
-            "Fournisseur %s non reconnu, usage du client OpenAI compatible",
-            slug,
-        )
-        builder = _build_openai_provider
+    slug = normalized_slug or credentials.provider
+    # All providers now use LiteLLM with auto-routing
+    provider = _build_provider(credentials)
 
-    provider = builder(credentials)
-    if provider is None:
-        return None
-
+    # Return AgentProviderBinding even if provider is None
+    # The credentials are needed for LitellmModel auto-routing
     return AgentProviderBinding(
-        provider=provider,
+        provider=provider,  # May be None - LiteLLM handles routing in model
         provider_id=credentials.id,
         provider_slug=slug,
+        credentials=credentials,
     )
 
 
@@ -979,6 +1072,26 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     mcp_server_contexts = kwargs.pop("mcp_server_contexts", None)
     mcp_server_records = kwargs.pop("mcp_server_records", None)
     mcp_server_allowlists = kwargs.pop("mcp_server_allowlists", None)
+
+    # Model and provider logic:
+    # - If provider_binding.provider exists (api_base was provided) → use native OpenAI provider
+    # - If provider_binding.provider is None (no api_base) → use LiteLLM with auto-routing
+    if "model" in kwargs and provider_binding is not None:
+        model_name = kwargs["model"]
+        if isinstance(model_name, str):
+            if provider_binding.provider is not None:
+                # Use native OpenAI provider (api_base was provided)
+                logger.debug(
+                    "Using native OpenAI provider for model %s with custom base_url",
+                    model_name,
+                )
+                # Provider will be passed via RunConfig in executor
+                kwargs.pop("model_provider", None)
+            else:
+                # Use LiteLLM auto-routing (no api_base provided)
+                kwargs["model"] = create_litellm_model(model_name, provider_binding)
+                kwargs.pop("model_provider", None)
+
     agent = Agent(**kwargs)
     if response_format is not None:
         try:
@@ -1084,22 +1197,16 @@ def _build_thread_title_agent() -> Agent:
         model = DEFAULT_THREAD_TITLE_MODEL
     available_model = _load_available_model(model)
     provider_binding = None
-    store_value: bool | None = False
     if available_model is not None:
         provider_binding = get_agent_provider_binding(
             available_model.provider_id, available_model.provider_slug
         )
-        if available_model.store is not None:
-            store_value = available_model.store
-
-    if store_value is None:
-        store_value = False
 
     base_kwargs: dict[str, Any] = {
         "name": "TitreFil",
         "model": model or DEFAULT_THREAD_TITLE_MODEL,
         "instructions": instructions,
-        "model_settings": _model_settings(store=store_value),
+        "model_settings": _model_settings(store=False),
     }
     if provider_binding is not None:
         base_kwargs["_provider_binding"] = provider_binding
@@ -1127,6 +1234,7 @@ STEP_TITLES: dict[str, str] = {}
 __all__ = [
     "AgentProviderBinding",
     "get_agent_provider_binding",
+    "create_litellm_model",
     "AGENT_BUILDERS",
     "AGENT_RESPONSE_FORMATS",
     "AGENT_MCP_METADATA",

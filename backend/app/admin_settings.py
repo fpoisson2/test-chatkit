@@ -44,7 +44,7 @@ class AdminSettingsUpdateResult:
 class StoredModelProvider:
     id: str
     provider: str
-    api_base: str
+    api_base: str | None
     api_key_encrypted: str | None
     api_key_hint: str | None
     is_default: bool
@@ -64,7 +64,7 @@ class StoredModelProvider:
 class ResolvedModelProviderCredentials:
     id: str
     provider: str
-    api_base: str
+    api_base: str | None
     api_key: str | None
 
 _UNSET = object()
@@ -351,7 +351,8 @@ def _load_stored_model_providers(
             continue
         provider = _normalize_model_provider(entry.get("provider"))
         base = _sanitize_model_api_base(entry.get("api_base"), strict=False)
-        if not provider or not base:
+        # Provider is required, but base_url is optional for LiteLLM with auto-routing
+        if not provider:
             continue
         record = StoredModelProvider(
             id=_normalize_provider_id(entry.get("id")),

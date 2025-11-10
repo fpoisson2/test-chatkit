@@ -86,18 +86,13 @@ const buildProviderOptions = (settings: AppSettings): ProviderOption[] => {
   );
 };
 
-type StoreOption = "disabled" | "default";
-
 type ModelFormState = {
   name: string;
   display_name: string;
   description: string;
-  supports_reasoning: boolean;
-  supports_previous_response_id: boolean;
-  supports_reasoning_summary: boolean;
   provider_id: string;
   provider_slug: string;
-  store_option: StoreOption;
+  supports_reasoning: boolean;
 };
 
 const buildDefaultFormState = (
@@ -106,12 +101,9 @@ const buildDefaultFormState = (
   name: "",
   display_name: "",
   description: "",
-  supports_reasoning: false,
-  supports_previous_response_id: true,
-  supports_reasoning_summary: true,
   provider_id: "",
   provider_slug: "",
-  store_option: "disabled",
+  supports_reasoning: false,
   ...overrides,
 });
 
@@ -120,12 +112,9 @@ const buildFormFromModel = (model: AvailableModel): ModelFormState =>
     name: model.name,
     display_name: model.display_name ?? "",
     description: model.description ?? "",
-    supports_reasoning: model.supports_reasoning,
-    supports_previous_response_id: model.supports_previous_response_id,
-    supports_reasoning_summary: model.supports_reasoning_summary,
     provider_id: model.provider_id ?? "",
     provider_slug: model.provider_slug ?? "",
-    store_option: model.store === false ? "disabled" : "default",
+    supports_reasoning: model.supports_reasoning,
   });
 
 export const AdminModelsPage = () => {
@@ -300,19 +289,15 @@ export const AdminModelsPage = () => {
 
     const trimmedDisplayName = form.display_name.trim();
     const trimmedDescription = form.description.trim();
-    const storeValue = form.store_option === "disabled" ? false : null;
 
     if (editingModelId !== null) {
       const payload: AvailableModelUpdatePayload = {
         name: trimmedName,
         display_name: trimmedDisplayName ? trimmedDisplayName : null,
         description: trimmedDescription ? trimmedDescription : null,
-        supports_reasoning: form.supports_reasoning,
-        supports_previous_response_id: form.supports_previous_response_id,
-        supports_reasoning_summary: form.supports_reasoning_summary,
         provider_id: providerId,
         provider_slug: normalizedProviderSlug,
-        store: storeValue,
+        supports_reasoning: form.supports_reasoning,
       };
 
       try {
@@ -351,12 +336,9 @@ export const AdminModelsPage = () => {
       name: trimmedName,
       display_name: trimmedDisplayName ? trimmedDisplayName : null,
       description: trimmedDescription ? trimmedDescription : null,
-      supports_reasoning: form.supports_reasoning,
-      supports_previous_response_id: form.supports_previous_response_id,
-      supports_reasoning_summary: form.supports_reasoning_summary,
       provider_id: providerId,
       provider_slug: normalizedProviderSlug,
-      store: storeValue,
+      supports_reasoning: form.supports_reasoning,
     };
 
     try {
@@ -393,7 +375,6 @@ export const AdminModelsPage = () => {
     resetForm({
       provider_id: form.provider_id,
       provider_slug: form.provider_slug,
-      store_option: form.store_option,
     });
     setError(null);
     setSuccess(null);
@@ -508,31 +489,6 @@ export const AdminModelsPage = () => {
               <p className="admin-form__hint">
                 {t("admin.models.form.providerSelectHint")}
               </p>
-              <label className="label" htmlFor="model-store-option">
-                {t("admin.models.form.storeLabel")}
-                <select
-                  id="model-store-option"
-                  className="input"
-                  value={form.store_option}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      store_option: event.target.value as StoreOption,
-                    }))
-                  }
-                  disabled={isLoading || isLoadingProviders}
-                >
-                  <option value="disabled">
-                    {t("admin.models.form.storeOptionDisabled")}
-                  </option>
-                  <option value="default">
-                    {t("admin.models.form.storeOptionDefault")}
-                  </option>
-                </select>
-              </label>
-              <p className="admin-form__hint">
-                {t("admin.models.form.storeHint")}
-              </p>
               <label className="label">
                 Description (optionnel)
                 <textarea
@@ -559,34 +515,7 @@ export const AdminModelsPage = () => {
                     }))
                   }
                 />
-                Modèle de raisonnement (affiche les options avancées dans le
-                workflow builder)
-              </label>
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={form.supports_previous_response_id}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      supports_previous_response_id: event.target.checked,
-                    }))
-                  }
-                />
-                {t("admin.models.form.supportsPreviousResponseId")}
-              </label>
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={form.supports_reasoning_summary}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      supports_reasoning_summary: event.target.checked,
-                    }))
-                  }
-                />
-                {t("admin.models.form.supportsReasoningSummary")}
+                Modèle de raisonnement (affiche les options avancées dans le workflow builder)
               </label>
               <div className="admin-form__actions">
                 {isEditing && (
@@ -635,8 +564,6 @@ export const AdminModelsPage = () => {
                       <th>Affichage</th>
                       <th>Fournisseur</th>
                       <th>Raisonnement</th>
-                      <th>{t("admin.models.table.previousResponseId")}</th>
-                      <th>{t("admin.models.table.reasoningSummary")}</th>
                       <th>Description</th>
                       <th>Actions</th>
                     </tr>
@@ -653,12 +580,6 @@ export const AdminModelsPage = () => {
                         </td>
                         <td data-label="Raisonnement">
                           {model.supports_reasoning ? "Oui" : "Non"}
-                        </td>
-                        <td data-label={t("admin.models.table.previousResponseId")}>
-                          {model.supports_previous_response_id ? "Oui" : "Non"}
-                        </td>
-                        <td data-label={t("admin.models.table.reasoningSummary")}>
-                          {model.supports_reasoning_summary ? "Oui" : "Non"}
                         </td>
                         <td data-label="Description">{model.description ?? "—"}</td>
                         <td data-label="Actions">

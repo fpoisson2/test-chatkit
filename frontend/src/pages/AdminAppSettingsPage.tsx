@@ -131,7 +131,7 @@ export const AdminAppSettingsPage = () => {
       localId: entry.id,
       id: entry.id,
       provider: entry.provider,
-      apiBase: entry.api_base,
+      apiBase: entry.api_base || "",
       apiKeyInput: "",
       hasStoredKey: entry.has_api_key,
       apiKeyHint: entry.api_key_hint,
@@ -306,28 +306,27 @@ export const AdminAppSettingsPage = () => {
             setSaving(false);
             return;
           }
-          const baseValue = row.apiBase.trim();
-          if (!baseValue) {
-            setError(t("admin.appSettings.errors.modelApiBaseRequired"));
-            setSaving(false);
-            return;
-          }
-          try {
-            const parsed = new URL(baseValue);
-            if (!/^https?:$/i.test(parsed.protocol)) {
-              throw new Error("invalid protocol");
+          const baseValue = (row.apiBase || "").trim();
+          // Validate URL only if provided (optional for LiteLLM auto-routing)
+          if (baseValue) {
+            try {
+              const parsed = new URL(baseValue);
+              if (!/^https?:$/i.test(parsed.protocol)) {
+                throw new Error("invalid protocol");
+              }
+            } catch (error) {
+              setError(t("admin.appSettings.errors.invalidModelApiBase"));
+              setSaving(false);
+              return;
             }
-          } catch (error) {
-            setError(t("admin.appSettings.errors.invalidModelApiBase"));
-            setSaving(false);
-            return;
           }
           if (row.isDefault) {
             defaultCount += 1;
           }
           const trimmedKey = row.apiKeyInput.trim();
           const hasNewKey = trimmedKey.length > 0;
-          const normalizedBase = baseValue.replace(/\/+$/, "");
+          // Normalize base URL only if provided (strip trailing slashes)
+          const normalizedBase = baseValue ? baseValue.replace(/\/+$/, "") : "";
           const entry: ModelProviderUpdatePayload = {
             provider: providerValue,
             api_base: normalizedBase,
@@ -541,7 +540,9 @@ export const AdminAppSettingsPage = () => {
                               apiBase: event.target.value,
                             }))
                           }
-                          placeholder="https://api.example.com"
+                          placeholder={t(
+                            "admin.appSettings.model.apiBasePlaceholder",
+                          )}
                           disabled={isBusy}
                         />
                       </label>

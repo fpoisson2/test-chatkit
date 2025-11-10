@@ -38,7 +38,7 @@ class ModelProviderConfig:
     """Profil de connexion pour un fournisseur de modèles."""
 
     provider: str
-    api_base: str
+    api_base: str | None
     api_key: str | None
     is_default: bool = False
     id: str | None = None

@@ -69,9 +69,6 @@ async def create_model(
         provider_id=payload.provider_id,
         provider_slug=payload.provider_slug,
         supports_reasoning=payload.supports_reasoning,
-        supports_previous_response_id=payload.supports_previous_response_id,
-        supports_reasoning_summary=payload.supports_reasoning_summary,
-        store=payload.store,
         created_at=now,
         updated_at=now,
     )
@@ -138,17 +135,6 @@ async def update_model(
 
     if "supports_reasoning" in update_data:
         model.supports_reasoning = update_data["supports_reasoning"]
-
-    if "supports_previous_response_id" in update_data:
-        model.supports_previous_response_id = update_data[
-            "supports_previous_response_id"
-        ]
-
-    if "supports_reasoning_summary" in update_data:
-        model.supports_reasoning_summary = update_data["supports_reasoning_summary"]
-
-    if "store" in update_data:
-        model.store = update_data["store"]
 
     session.commit()
     session.refresh(model)

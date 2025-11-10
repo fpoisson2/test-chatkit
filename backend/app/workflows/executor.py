@@ -372,7 +372,6 @@ async def run_workflow(
     initial_user_text = initialization.initial_user_text
     voice_overrides = initialization.voice_overrides
     voice_session_manager = initialization.voice_session_manager
-    model_capability_index = initialization.model_capability_index
 
     final_output: dict[str, Any] | None = None
 
@@ -451,12 +450,10 @@ async def run_workflow(
         service=service,
         agent_steps_ordered=agent_steps_ordered,
         nodes_by_slug=nodes_by_slug,
-        model_capability_index=model_capability_index,
     )
 
     agent_instances = agent_setup.agent_instances
     agent_provider_bindings = agent_setup.agent_provider_bindings
-    agent_model_capabilities = agent_setup.agent_model_capabilities
     nested_workflow_configs = agent_setup.nested_workflow_configs
     widget_configs_by_step = agent_setup.widget_configs_by_step
     _load_nested_workflow_definition = agent_setup.load_nested_definition
@@ -669,7 +666,7 @@ async def run_workflow(
         if definition.workflow and definition.workflow.display_name:
             metadata["workflow_name"] = definition.workflow.display_name
         kwargs: dict[str, Any] = {"trace_metadata": metadata}
-        if provider_binding is not None:
+        if provider_binding is not None and provider_binding.provider is not None:
             kwargs["model_provider"] = provider_binding.provider
         try:
             if response_format is not None:
@@ -1131,32 +1128,6 @@ async def run_workflow(
             )
 
         provider_binding = agent_provider_bindings.get(current_slug)
-        model_capabilities = agent_model_capabilities.get(current_slug)
-
-        should_strip_reasoning_summary = False
-        provider_slug: str | None = None
-        if provider_binding is not None:
-            provider_slug = (provider_binding.provider_slug or "").lower()
-            if provider_slug == "groq":
-                should_strip_reasoning_summary = True
-
-        if (
-            model_capabilities is not None
-            and not model_capabilities.supports_reasoning_summary
-        ):
-            should_strip_reasoning_summary = True
-
-        if should_strip_reasoning_summary:
-            try:
-                agent.model_settings = sanitize_model_like(
-                    agent.model_settings, allow_reasoning_summary=False
-                )
-            except Exception:
-                logger.debug(
-                    "Impossible de nettoyer reasoning.summary pour le modèle %s",
-                    getattr(agent, "name", "<inconnu>"),
-                    exc_info=True,
-                )
 
         # Connecter les serveurs MCP si présents AVANT de démarrer l'agent
         mcp_servers = getattr(agent, "mcp_servers", None)
@@ -1210,10 +1181,8 @@ async def run_workflow(
                         exc,
                     )
 
-        conversation_history_input = _normalize_conversation_history_for_provider(
-            conversation_history,
-            provider_slug,
-        )
+        # No normalization needed - LiteLLM handles all conversions
+        conversation_history_input = conversation_history
 
         try:
             result = Runner.run_streamed(
@@ -1223,12 +1192,7 @@ async def run_workflow(
                     response_format_override, provider_binding=provider_binding
                 ),
                 context=runner_context,
-                previous_response_id=(
-                    None
-                    if model_capabilities is not None
-                    and not model_capabilities.supports_previous_response_id
-                    else getattr(agent_context, "previous_response_id", None)
-                ),
+                previous_response_id=getattr(agent_context, "previous_response_id", None),
             )
             try:
                 async for event in stream_agent_response(agent_context, result):
@@ -1258,10 +1222,7 @@ async def run_workflow(
                 raise_step_error(step_key, title, exc)
 
             last_response_id = getattr(result, "last_response_id", None)
-            if last_response_id is not None and (
-                model_capabilities is None
-                or model_capabilities.supports_previous_response_id
-            ):
+            if last_response_id is not None:
                 agent_context.previous_response_id = last_response_id
                 thread_metadata = getattr(agent_context, "thread", None)
                 should_persist_thread = False
