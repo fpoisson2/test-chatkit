@@ -195,7 +195,7 @@ class VoiceSettingsUpdateRequest(BaseModel):
 class ModelProviderSettings(BaseModel):
     id: str
     provider: str
-    api_base: str
+    api_base: str | None
     api_key_hint: str | None = None
     has_api_key: bool = False
     is_default: bool = False
@@ -211,7 +211,14 @@ class ModelProviderSettingsUpdate(BaseModel):
         max_length=128,
     )
     provider: constr(strip_whitespace=True, min_length=1, max_length=64)
-    api_base: constr(strip_whitespace=True, min_length=1, max_length=512)
+    api_base: str | None = Field(
+        default=None,
+        description=(
+            "URL de base de l'API (optionnel). Pour LiteLLM avec auto-routing, "
+            "laissez vide. Pour un serveur personnalisé, entrez l'URL complète."
+        ),
+        max_length=512,
+    )
     api_key: str | None = Field(
         default=None,
         description=(
@@ -228,6 +235,17 @@ class ModelProviderSettingsUpdate(BaseModel):
         default=False,
         description="Marque cette configuration comme fournisseur par défaut.",
     )
+
+    @field_validator("api_base", mode="before")
+    @classmethod
+    def normalize_api_base(cls, v: Any) -> str | None:
+        """Convert empty strings to None for optional api_base."""
+        if isinstance(v, str):
+            stripped = v.strip()
+            if not stripped:
+                return None
+            return stripped
+        return v
 
 
 class AppearanceSettingsResponse(BaseModel):
