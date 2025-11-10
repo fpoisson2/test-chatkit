@@ -25,7 +25,7 @@ from typing_extensions import TypeVar
 from chatkit.errors import CustomStreamError, StreamError
 
 from .logger import logger
-from .store import AttachmentStore, Store, StoreItemType, default_generate_id
+from .store import AttachmentStore, NotFoundError, Store, StoreItemType, default_generate_id
 from .types import (
     Action,
     AttachmentsCreateReq,
@@ -632,9 +632,17 @@ class ChatKitServer(ABC, Generic[TContext]):
                 async for event in stream():
                     match event:
                         case ThreadItemDoneEvent():
-                            await self.store.add_thread_item(
-                                thread.id, event.item, context=context
-                            )
+                            # Skip items with temporary IDs (e.g., __fake_id__)
+                            # These are internal placeholders from the agents SDK
+                            if not event.item.id.startswith("__"):
+                                try:
+                                    await self.store.add_thread_item(
+                                        thread.id, event.item, context=context
+                                    )
+                                except NotFoundError as e:
+                                    # Log but don't fail if item storage fails
+                                    # This can happen with concurrent updates or temporary IDs
+                                    logger.error(f"Failed to store thread item: {e}")
                         case ThreadItemRemovedEvent():
                             await self.store.delete_thread_item(
                                 thread.id, event.item_id, context=context
