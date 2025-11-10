@@ -90,7 +90,6 @@ from ..image_utils import (
     save_agent_image_file,
 )
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
-from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
     evaluate_state_expression,
     ingest_document,
@@ -123,13 +122,21 @@ def _normalize_conversation_history_for_provider(
 ) -> Sequence[TResponseInputItem]:
     """Adapt conversation history to the provider capabilities when needed.
 
-    Groq's compatibility layer for the OpenAI Responses API currently rejects
-    `input_text` and `output_text` content blocks. When we know that the
-    provider is Groq we therefore coerce these types to the more widely
+    Some providers still rely on the legacy Chat Completions format and reject
+    Responses-specific content blocks such as `input_text` and `output_text`.
+    When we detect such providers we coerce these types to the more widely
     supported `text` variant.
     """
 
-    if not provider_slug or provider_slug.lower() != "groq":
+    if not provider_slug or not isinstance(provider_slug, str):
+        return items
+
+    normalized_slug = provider_slug.strip().lower()
+    requires_normalization = normalized_slug in {"groq"} or normalized_slug.startswith(
+        "litellm"
+    )
+
+    if not requires_normalization:
         return items
 
     changed = False
@@ -1181,8 +1188,12 @@ async def run_workflow(
                         exc,
                     )
 
-        # No normalization needed - LiteLLM handles all conversions
-        conversation_history_input = conversation_history
+        conversation_history_input = _normalize_conversation_history_for_provider(
+            conversation_history,
+            getattr(provider_binding, "provider_slug", None)
+            if provider_binding
+            else None,
+        )
 
         try:
             result = Runner.run_streamed(
@@ -1192,7 +1203,9 @@ async def run_workflow(
                     response_format_override, provider_binding=provider_binding
                 ),
                 context=runner_context,
-                previous_response_id=getattr(agent_context, "previous_response_id", None),
+                previous_response_id=getattr(
+                    agent_context, "previous_response_id", None
+                ),
             )
             try:
                 async for event in stream_agent_response(agent_context, result):

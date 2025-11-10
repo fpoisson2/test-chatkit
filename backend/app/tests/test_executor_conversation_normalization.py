@@ -3,7 +3,6 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
-
 ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
@@ -41,7 +40,24 @@ def test_normalize_conversation_history_for_groq_converts_text_blocks() -> None:
     assert normalized[1]["content"][0]["type"] == "text"
 
 
-def test_normalize_conversation_history_returns_same_sequence_for_other_providers() -> None:
+def test_normalize_conversation_history_for_litellm_converts_text_blocks() -> None:
+    items = [
+        {
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Salut"}],
+        }
+    ]
+
+    normalized = executor_module._normalize_conversation_history_for_provider(
+        items,
+        "litellm",
+    )
+
+    assert normalized is not items
+    assert normalized[0]["content"][0]["type"] == "text"
+
+
+def test_normalize_conversation_history_unchanged_for_other_providers() -> None:
     items = [
         {
             "role": "user",
