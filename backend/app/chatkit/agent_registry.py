@@ -136,13 +136,14 @@ def _build_provider(
     credentials: ResolvedModelProviderCredentials,
 ) -> ModelProvider | None:
     """
-    Build provider - NOT USED when using LiteLLM auto-routing.
+    Build native OpenAI provider if api_base is provided.
 
-    When using LiteLLM with auto-routing (via LitellmModel), we don't need
-    a provider at all - LiteLLM handles everything in the model itself.
+    Strategy:
+    - If api_base is provided → Create OpenAIProvider for custom endpoint
+    - If api_base is not provided → Return None, LiteLLM will auto-route
 
-    This function only creates a provider if an explicit api_base is provided,
-    which indicates the user wants to use a custom endpoint.
+    This allows using custom/local endpoints with api_base while
+    using LiteLLM's auto-routing for standard providers (Groq, Anthropic, etc.)
     """
     api_base = credentials.api_base.strip() if credentials.api_base else ""
     api_key = credentials.api_key.strip() if credentials.api_key else ""
@@ -155,14 +156,13 @@ def _build_provider(
         )
         return None
 
-    # Only create a provider if a custom api_base is explicitly provided
-    # Otherwise, return None and let LitellmModel handle auto-routing
+    # Create native provider if custom api_base is provided
     if api_base:
         normalized_base = normalize_api_base(api_base)
         client = _get_cached_client(credentials.id, normalized_base, api_key)
         return OpenAIProvider(openai_client=client)
 
-    # No provider needed - LitellmModel will auto-route
+    # No api_base - LitellmModel will auto-route based on model name
     return None
 
 
@@ -174,19 +174,18 @@ def create_litellm_model(
     provider_binding: AgentProviderBinding | None,
 ) -> LitellmModel | str:
     """
-    Create a LitellmModel instance if provider binding is available,
-    otherwise return the model name string.
+    Create a LitellmModel for auto-routing when no custom api_base is provided.
 
-    LiteLLM auto-routes to the correct provider API (OpenAI, Anthropic, etc.)
-    based on the model name. Only api_key is required. The base_url is optional
-    and only needed for custom endpoints.
+    This function is only called when provider_binding.provider is None,
+    meaning no custom api_base was configured. LiteLLM will auto-route to
+    the correct provider (OpenAI, Anthropic, Groq, etc.) based on the model name.
 
     Args:
-        model_name: Name of the model (e.g., "gpt-4o", "claude-3-5-sonnet-20241022")
-        provider_binding: Provider binding with credentials
+        model_name: Model name with provider prefix (e.g., "litellm/groq/llama-3.1-8b")
+        provider_binding: Provider binding with credentials (no api_base)
 
     Returns:
-        LitellmModel instance if credentials available, else model_name string
+        LitellmModel instance with API key for auto-routing, or model_name string as fallback
     """
     logger.debug(
         "create_litellm_model appelée: model_name=%s, provider_binding=%s",
@@ -196,34 +195,21 @@ def create_litellm_model(
 
     if provider_binding and provider_binding.credentials:
         api_key = provider_binding.credentials.api_key
-        api_base = provider_binding.credentials.api_base
 
         logger.debug(
-            "Credentials trouvées: provider_id=%s, api_key=%s, api_base=%s",
+            "Credentials trouvées: provider_id=%s, api_key=%s",
             provider_binding.credentials.id,
             "***" if api_key else None,
-            api_base,
         )
 
         if api_key:
-            # Build kwargs for LitellmModel
-            model_kwargs = {
-                "model": model_name,
-                "api_key": api_key,
-            }
-
-            # Only include base_url if api_base is provided
-            # Otherwise, LiteLLM will auto-route based on model name
-            if api_base and api_base.strip():
-                model_kwargs["base_url"] = normalize_api_base(api_base)
-
+            # Create LitellmModel with API key only - auto-routing based on model name
             logger.debug(
-                "Création de LitellmModel avec: model=%s, api_key=%s, base_url=%s",
+                "Création de LitellmModel pour auto-routing: model=%s, api_key=%s",
                 model_name,
                 "***",
-                model_kwargs.get("base_url"),
             )
-            return LitellmModel(**model_kwargs)
+            return LitellmModel(model=model_name, api_key=api_key)
         else:
             logger.warning(
                 "api_key vide ou None pour provider_id=%s - retour du nom de modèle",
@@ -1087,13 +1073,24 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     mcp_server_records = kwargs.pop("mcp_server_records", None)
     mcp_server_allowlists = kwargs.pop("mcp_server_allowlists", None)
 
-    # Convert model name to LitellmModel if provider_binding is available
+    # Model and provider logic:
+    # - If provider_binding.provider exists (api_base was provided) → use native OpenAI provider
+    # - If provider_binding.provider is None (no api_base) → use LiteLLM with auto-routing
     if "model" in kwargs and provider_binding is not None:
         model_name = kwargs["model"]
         if isinstance(model_name, str):
-            kwargs["model"] = create_litellm_model(model_name, provider_binding)
-            # Remove model_provider when using LitellmModel - it handles routing itself
-            kwargs.pop("model_provider", None)
+            if provider_binding.provider is not None:
+                # Use native OpenAI provider (api_base was provided)
+                logger.debug(
+                    "Using native OpenAI provider for model %s with custom base_url",
+                    model_name,
+                )
+                # Provider will be passed via RunConfig in executor
+                kwargs.pop("model_provider", None)
+            else:
+                # Use LiteLLM auto-routing (no api_base provided)
+                kwargs["model"] = create_litellm_model(model_name, provider_binding)
+                kwargs.pop("model_provider", None)
 
     agent = Agent(**kwargs)
     if response_format is not None:
