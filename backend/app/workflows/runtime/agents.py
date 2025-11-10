@@ -211,6 +211,21 @@ def prepare_agents(
                     exc,
                 )
 
+        # Create provider_binding BEFORE agent instantiation so it can be passed to the agent
+        provider_binding = None
+        if provider_id or provider_slug:
+            provider_binding = get_agent_provider_binding(provider_id, provider_slug)
+            if provider_binding is None:
+                logger.warning(
+                    "Impossible de résoudre le fournisseur %s (id=%s) pour l'étape %s",
+                    provider_slug or "<inconnu>",
+                    provider_id or "<aucun>",
+                    step.slug,
+                )
+            else:
+                # Add provider_binding to overrides so it's passed to the agent
+                overrides["_provider_binding"] = provider_binding
+
         if builder is None:
             if agent_key:
                 logger.warning(
@@ -224,16 +239,6 @@ def prepare_agents(
         else:
             agent_instances[step.slug] = builder(overrides)
 
-        provider_binding = None
-        if provider_id or provider_slug:
-            provider_binding = get_agent_provider_binding(provider_id, provider_slug)
-            if provider_binding is None:
-                logger.warning(
-                    "Impossible de résoudre le fournisseur %s (id=%s) pour l'étape %s",
-                    provider_slug or "<inconnu>",
-                    provider_id or "<aucun>",
-                    step.slug,
-                )
         agent_provider_bindings[step.slug] = provider_binding
 
     return AgentSetupResult(
