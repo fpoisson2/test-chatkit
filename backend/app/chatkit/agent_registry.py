@@ -196,8 +196,12 @@ def create_litellm_model(
     Create a LitellmModel instance if provider binding is available,
     otherwise return the model name string.
 
+    LiteLLM auto-routes to the correct provider API (OpenAI, Anthropic, etc.)
+    based on the model name. Only api_key is required. The base_url is optional
+    and only needed for custom endpoints.
+
     Args:
-        model_name: Name of the model (e.g., "gpt-4o")
+        model_name: Name of the model (e.g., "gpt-4o", "claude-3-5-sonnet-20241022")
         provider_binding: Provider binding with credentials
 
     Returns:
@@ -208,13 +212,18 @@ def create_litellm_model(
         api_base = provider_binding.credentials.api_base
 
         if api_key:
-            # Normalize the API base URL
-            normalized_base = normalize_api_base(api_base) if api_base else None
-            return LitellmModel(
-                model=model_name,
-                api_key=api_key,
-                base_url=normalized_base,
-            )
+            # Build kwargs for LitellmModel
+            model_kwargs = {
+                "model": model_name,
+                "api_key": api_key,
+            }
+
+            # Only include base_url if api_base is provided
+            # Otherwise, LiteLLM will auto-route based on model name
+            if api_base and api_base.strip():
+                model_kwargs["base_url"] = normalize_api_base(api_base)
+
+            return LitellmModel(**model_kwargs)
 
     # Fallback to string model name if no credentials
     return model_name
