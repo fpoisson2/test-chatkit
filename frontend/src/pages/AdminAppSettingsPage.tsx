@@ -131,7 +131,7 @@ export const AdminAppSettingsPage = () => {
       localId: entry.id,
       id: entry.id,
       provider: entry.provider,
-      apiBase: entry.api_base,
+      apiBase: entry.api_base || "",
       apiKeyInput: "",
       hasStoredKey: entry.has_api_key,
       apiKeyHint: entry.api_key_hint,
@@ -306,7 +306,7 @@ export const AdminAppSettingsPage = () => {
             setSaving(false);
             return;
           }
-          const baseValue = row.apiBase.trim();
+          const baseValue = (row.apiBase || "").trim();
           // Validate URL only if provided (optional for LiteLLM auto-routing)
           if (baseValue) {
             try {

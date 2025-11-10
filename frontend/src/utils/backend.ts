@@ -258,7 +258,7 @@ export type VoiceSettingsUpdatePayload = {
 export type ModelProviderProfile = {
   id: string;
   provider: string;
-  api_base: string;
+  api_base: string | null;
   api_key_hint: string | null;
   has_api_key: boolean;
   is_default: boolean;
@@ -267,7 +267,7 @@ export type ModelProviderProfile = {
 export type ModelProviderUpdatePayload = {
   id?: string | null;
   provider: string;
-  api_base: string;
+  api_base: string | null;
   api_key?: string | null;
   delete_api_key?: boolean;
   is_default: boolean;
