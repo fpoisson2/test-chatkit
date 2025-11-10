@@ -188,17 +188,9 @@ def create_litellm_model(
     Returns:
         LitellmModel instance if credentials available, else model_name string
     """
-    # Remove "litellm/" prefix if present (e.g., "litellm/groq/gpt-oss-20b" -> "groq/gpt-oss-20b")
-    normalized_model_name = model_name
-    if model_name.startswith("litellm/"):
-        normalized_model_name = model_name[len("litellm/") :]
-        logger.debug(
-            "Removed 'litellm/' prefix: %s -> %s", model_name, normalized_model_name
-        )
-
     logger.debug(
         "create_litellm_model appelée: model_name=%s, provider_binding=%s",
-        normalized_model_name,
+        model_name,
         provider_binding is not None,
     )
 
@@ -216,7 +208,7 @@ def create_litellm_model(
         if api_key:
             # Build kwargs for LitellmModel
             model_kwargs = {
-                "model": normalized_model_name,
+                "model": model_name,
                 "api_key": api_key,
             }
 
@@ -227,7 +219,7 @@ def create_litellm_model(
 
             logger.debug(
                 "Création de LitellmModel avec: model=%s, api_key=%s, base_url=%s",
-                normalized_model_name,
+                model_name,
                 "***",
                 model_kwargs.get("base_url"),
             )
@@ -246,7 +238,7 @@ def create_litellm_model(
         )
 
     # Fallback to string model name if no credentials
-    return normalized_model_name
+    return model_name
 
 
 def get_agent_provider_binding(
