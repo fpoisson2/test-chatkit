@@ -307,27 +307,26 @@ export const AdminAppSettingsPage = () => {
             return;
           }
           const baseValue = row.apiBase.trim();
-          if (!baseValue) {
-            setError(t("admin.appSettings.errors.modelApiBaseRequired"));
-            setSaving(false);
-            return;
-          }
-          try {
-            const parsed = new URL(baseValue);
-            if (!/^https?:$/i.test(parsed.protocol)) {
-              throw new Error("invalid protocol");
+          // Validate URL only if provided (optional for LiteLLM auto-routing)
+          if (baseValue) {
+            try {
+              const parsed = new URL(baseValue);
+              if (!/^https?:$/i.test(parsed.protocol)) {
+                throw new Error("invalid protocol");
+              }
+            } catch (error) {
+              setError(t("admin.appSettings.errors.invalidModelApiBase"));
+              setSaving(false);
+              return;
             }
-          } catch (error) {
-            setError(t("admin.appSettings.errors.invalidModelApiBase"));
-            setSaving(false);
-            return;
           }
           if (row.isDefault) {
             defaultCount += 1;
           }
           const trimmedKey = row.apiKeyInput.trim();
           const hasNewKey = trimmedKey.length > 0;
-          const normalizedBase = baseValue.replace(/\/+$/, "");
+          // Normalize base URL only if provided (strip trailing slashes)
+          const normalizedBase = baseValue ? baseValue.replace(/\/+$/, "") : "";
           const entry: ModelProviderUpdatePayload = {
             provider: providerValue,
             api_base: normalizedBase,
