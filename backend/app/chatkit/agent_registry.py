@@ -108,7 +108,7 @@ _JSON_TYPE_MAPPING: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class AgentProviderBinding:
-    provider: ModelProvider
+    provider: ModelProvider | None  # None when using LiteLLM auto-routing
     provider_id: str
     provider_slug: str
     credentials: ResolvedModelProviderCredentials | None = None
@@ -241,11 +241,11 @@ def get_agent_provider_binding(
     slug = normalized_slug or credentials.provider
     # All providers now use LiteLLM with auto-routing
     provider = _build_provider(credentials)
-    if provider is None:
-        return None
 
+    # Return AgentProviderBinding even if provider is None
+    # The credentials are needed for LitellmModel auto-routing
     return AgentProviderBinding(
-        provider=provider,
+        provider=provider,  # May be None - LiteLLM handles routing in model
         provider_id=credentials.id,
         provider_slug=slug,
         credentials=credentials,

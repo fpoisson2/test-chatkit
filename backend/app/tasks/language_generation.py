@@ -202,7 +202,7 @@ def generate_language_task(
                 logger.info(f"Task {task_id}: Executing translation agent")
 
                 run_config_kwargs = {}
-                if provider_binding is not None:
+                if provider_binding is not None and provider_binding.provider is not None:
                     run_config_kwargs["model_provider"] = provider_binding.provider
 
                 try:
