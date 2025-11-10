@@ -666,8 +666,7 @@ async def run_workflow(
         if definition.workflow and definition.workflow.display_name:
             metadata["workflow_name"] = definition.workflow.display_name
         kwargs: dict[str, Any] = {"trace_metadata": metadata}
-        if provider_binding is not None and provider_binding.provider is not None:
-            kwargs["model_provider"] = provider_binding.provider
+        # Provider is no longer passed - LiteLLM handles all providers
         try:
             if response_format is not None:
                 return RunConfig(response_format=response_format, **kwargs)
