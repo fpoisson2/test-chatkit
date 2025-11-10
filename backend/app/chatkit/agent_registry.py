@@ -11,6 +11,7 @@ from functools import lru_cache
 from typing import Any
 
 from agents import Agent, ModelSettings, WebSearchTool
+from agents.extensions.models.litellm_model import LitellmModel
 from agents.mcp import MCPServer
 from agents.models.interface import ModelProvider
 from agents.models.openai_provider import OpenAIProvider
@@ -110,6 +111,7 @@ class AgentProviderBinding:
     provider: ModelProvider
     provider_id: str
     provider_slug: str
+    credentials: ResolvedModelProviderCredentials | None = None
 
 
 def _credentials_from_config(
@@ -154,6 +156,38 @@ _PROVIDER_BUILDERS: dict[
     "openai": _build_openai_provider,
     "litellm": _build_openai_provider,
 }
+
+
+def create_litellm_model(
+    model_name: str,
+    provider_binding: AgentProviderBinding | None,
+) -> LitellmModel | str:
+    """
+    Create a LitellmModel instance if provider binding is available,
+    otherwise return the model name string.
+
+    Args:
+        model_name: Name of the model (e.g., "gpt-4o")
+        provider_binding: Provider binding with credentials
+
+    Returns:
+        LitellmModel instance if credentials available, else model_name string
+    """
+    if provider_binding and provider_binding.credentials:
+        api_key = provider_binding.credentials.api_key
+        api_base = provider_binding.credentials.api_base
+
+        if api_key:
+            # Normalize the API base URL
+            normalized_base = normalize_api_base(api_base) if api_base else None
+            return LitellmModel(
+                model=model_name,
+                api_key=api_key,
+                base_url=normalized_base,
+            )
+
+    # Fallback to string model name if no credentials
+    return model_name
 
 
 def get_agent_provider_binding(
@@ -204,6 +238,7 @@ def get_agent_provider_binding(
         provider=provider,
         provider_id=credentials.id,
         provider_slug=slug,
+        credentials=credentials,
     )
 
 
@@ -979,6 +1014,13 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     mcp_server_contexts = kwargs.pop("mcp_server_contexts", None)
     mcp_server_records = kwargs.pop("mcp_server_records", None)
     mcp_server_allowlists = kwargs.pop("mcp_server_allowlists", None)
+
+    # Convert model name to LitellmModel if provider_binding is available
+    if "model" in kwargs and provider_binding is not None:
+        model_name = kwargs["model"]
+        if isinstance(model_name, str):
+            kwargs["model"] = create_litellm_model(model_name, provider_binding)
+
     agent = Agent(**kwargs)
     if response_format is not None:
         try:
@@ -1127,6 +1169,7 @@ STEP_TITLES: dict[str, str] = {}
 __all__ = [
     "AgentProviderBinding",
     "get_agent_provider_binding",
+    "create_litellm_model",
     "AGENT_BUILDERS",
     "AGENT_RESPONSE_FORMATS",
     "AGENT_MCP_METADATA",

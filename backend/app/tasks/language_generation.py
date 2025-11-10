@@ -59,7 +59,7 @@ def generate_language_task(
 
     from agents import Agent, RunConfig, Runner
 
-    from ..chatkit.agent_registry import get_agent_provider_binding
+    from ..chatkit.agent_registry import create_litellm_model, get_agent_provider_binding
 
     try:
         # Utiliser SessionLocal pour créer une session dans la tâche Celery
@@ -179,9 +179,10 @@ def generate_language_task(
                 )
 
                 # Étape 4: Créer l'agent et exécuter
+                model_instance = create_litellm_model(model_name, provider_binding)
                 agent = Agent(
                     name="Language Translator",
-                    model=model_name,
+                    model=model_instance,
                     instructions=prompt,
                 )
                 agent._chatkit_provider_binding = provider_binding
