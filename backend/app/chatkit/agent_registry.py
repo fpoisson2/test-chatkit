@@ -1030,6 +1030,8 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
         model_name = kwargs["model"]
         if isinstance(model_name, str):
             kwargs["model"] = create_litellm_model(model_name, provider_binding)
+            # Remove model_provider when using LitellmModel - it handles routing itself
+            kwargs.pop("model_provider", None)
 
     agent = Agent(**kwargs)
     if response_format is not None:
