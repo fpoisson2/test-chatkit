@@ -1183,7 +1183,7 @@ async def run_workflow(
 
         conversation_history_input = _normalize_conversation_history_for_provider(
             conversation_history,
-            provider_slug,
+            provider_binding.provider_slug if provider_binding else None,
         )
 
         try:

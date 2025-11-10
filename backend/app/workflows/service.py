@@ -19,11 +19,6 @@ from ..admin_settings import (
 )
 from ..config import Settings, WorkflowDefaults, get_settings
 from ..database import SessionLocal
-from ..model_capabilities import (
-    ModelCapabilities,
-    iter_model_capability_keys,
-    normalize_model_identifier,
-)
 from ..models import (
     AvailableModel,
     HostedWorkflow,
@@ -1661,41 +1656,6 @@ class WorkflowService:
             "created_at": override.created_at,
             "updated_at": override.updated_at,
         }
-
-    def get_available_model_capabilities(
-        self, session: Session | None = None
-    ) -> dict[tuple[str, str, str], ModelCapabilities]:
-        """Index des capacités connues pour les modèles déclarés."""
-
-        db, should_close = self._get_session(session)
-        try:
-            models = db.scalars(select(AvailableModel)).all()
-        finally:
-            if should_close:
-                db.close()
-
-        index: dict[tuple[str, str, str], ModelCapabilities] = {}
-        for model in models:
-            normalized_name, normalized_provider_id, normalized_provider_slug = (
-                normalize_model_identifier(
-                    model.name, model.provider_id, model.provider_slug
-                )
-            )
-            if not normalized_name:
-                continue
-
-            capabilities = ModelCapabilities(
-                supports_previous_response_id=
-                    bool(model.supports_previous_response_id),
-                supports_reasoning_summary=
-                    bool(model.supports_reasoning_summary),
-            )
-            for key in iter_model_capability_keys(
-                normalized_name, normalized_provider_id, normalized_provider_slug
-            ):
-                index.setdefault(key, capabilities)
-
-        return index
 
     def _get_or_create_default_workflow(self, session: Session) -> Workflow:
         defaults = self._workflow_defaults
