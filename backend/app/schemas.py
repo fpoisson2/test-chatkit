@@ -802,13 +802,6 @@ class AvailableModelUpdateRequest(BaseModel):
             raise ValueError("provider_slug ne peut pas être vide")
         return candidate.lower()
 
-    @field_validator("store")
-    @classmethod
-    def _validate_store(cls, value: bool | None) -> bool | None:
-        if value is True:
-            raise ValueError("store ne peut prendre que false ou null")
-        return value
-
 
 class AvailableModelResponse(AvailableModelBase):
     id: int

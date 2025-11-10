@@ -136,10 +136,13 @@ def _build_provider(
     credentials: ResolvedModelProviderCredentials,
 ) -> ModelProvider | None:
     """
-    Build provider using LiteLLM.
+    Build provider - NOT USED when using LiteLLM auto-routing.
 
-    LiteLLM can work without api_base as it automatically routes to the correct
-    endpoint based on the model name. Only api_key is required.
+    When using LiteLLM with auto-routing (via LitellmModel), we don't need
+    a provider at all - LiteLLM handles everything in the model itself.
+
+    This function only creates a provider if an explicit api_base is provided,
+    which indicates the user wants to use a custom endpoint.
     """
     api_base = credentials.api_base.strip() if credentials.api_base else ""
     api_key = credentials.api_key.strip() if credentials.api_key else ""
@@ -152,15 +155,15 @@ def _build_provider(
         )
         return None
 
-    # If api_base is provided, use it. Otherwise, LiteLLM will auto-route.
+    # Only create a provider if a custom api_base is explicitly provided
+    # Otherwise, return None and let LitellmModel handle auto-routing
     if api_base:
         normalized_base = normalize_api_base(api_base)
-    else:
-        # Default placeholder - LiteLLM will override based on model
-        normalized_base = "https://api.litellm.ai/v1"
+        client = _get_cached_client(credentials.id, normalized_base, api_key)
+        return OpenAIProvider(openai_client=client)
 
-    client = _get_cached_client(credentials.id, normalized_base, api_key)
-    return OpenAIProvider(openai_client=client)
+    # No provider needed - LitellmModel will auto-route
+    return None
 
 
 # All providers now use the unified _build_provider function with LiteLLM auto-routing
