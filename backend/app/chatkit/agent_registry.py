@@ -150,11 +150,41 @@ def _build_openai_provider(
     return OpenAIProvider(openai_client=client)
 
 
+def _build_litellm_provider(
+    credentials: ResolvedModelProviderCredentials,
+) -> ModelProvider | None:
+    """
+    Build provider for LiteLLM.
+
+    LiteLLM can work without api_base as it automatically routes to the correct
+    endpoint based on the model name. Only api_key is required.
+    """
+    api_base = credentials.api_base.strip() if credentials.api_base else ""
+    api_key = credentials.api_key.strip() if credentials.api_key else ""
+
+    if not api_key:
+        logger.warning(
+            "Configuration fournisseur LiteLLM %s incomplète : clé API manquante",
+            credentials.id,
+        )
+        return None
+
+    # If api_base is provided, use it. Otherwise, LiteLLM will auto-route.
+    if api_base:
+        normalized_base = normalize_api_base(api_base)
+    else:
+        # Use a placeholder URL - LiteLLM will override based on model
+        normalized_base = "https://api.openai.com/v1"
+
+    client = _get_cached_openai_client(credentials.id, normalized_base, api_key)
+    return OpenAIProvider(openai_client=client)
+
+
 _PROVIDER_BUILDERS: dict[
     str, Callable[[ResolvedModelProviderCredentials], ModelProvider | None]
 ] = {
     "openai": _build_openai_provider,
-    "litellm": _build_openai_provider,
+    "litellm": _build_litellm_provider,
 }
 
 
