@@ -366,7 +366,7 @@ class AppSettingsResponse(BaseModel):
     default_thread_title_model: str
     is_custom_thread_title_model: bool
     model_provider: str
-    model_api_base: str
+    model_api_base: str | None
     is_model_provider_overridden: bool
     is_model_api_base_overridden: bool
     is_model_api_key_managed: bool
