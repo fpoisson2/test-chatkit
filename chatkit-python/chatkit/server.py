@@ -632,17 +632,24 @@ class ChatKitServer(ABC, Generic[TContext]):
                 async for event in stream():
                     match event:
                         case ThreadItemDoneEvent():
-                            # Skip items with temporary IDs (e.g., __fake_id__)
-                            # These are internal placeholders from the agents SDK
-                            if not event.item.id.startswith("__"):
-                                try:
-                                    await self.store.add_thread_item(
-                                        thread.id, event.item, context=context
-                                    )
-                                except NotFoundError as e:
-                                    # Log but don't fail if item storage fails
-                                    # This can happen with concurrent updates or temporary IDs
-                                    logger.error(f"Failed to store thread item: {e}")
+                            # Replace temporary IDs (e.g., __fake_id__) with real unique IDs
+                            # The agents SDK sometimes uses placeholder IDs that conflict across threads
+                            item = event.item
+                            if item.id.startswith("__"):
+                                # Generate a real unique ID to avoid conflicts
+                                item = item.model_copy(update={"id": default_generate_id()})
+                                logger.debug(
+                                    f"Replaced temporary ID {event.item.id} with {item.id}"
+                                )
+
+                            try:
+                                await self.store.add_thread_item(
+                                    thread.id, item, context=context
+                                )
+                            except NotFoundError as e:
+                                # Log but don't fail if item storage fails
+                                # This can happen with concurrent updates
+                                logger.error(f"Failed to store thread item: {e}")
                         case ThreadItemRemovedEvent():
                             await self.store.delete_thread_item(
                                 thread.id, event.item_id, context=context
