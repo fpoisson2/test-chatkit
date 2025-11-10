@@ -56,16 +56,6 @@ export const en: TranslationDictionary = {
   "admin.models.form.submitCreate": "Add model",
   "admin.models.form.submitUpdate": "Save changes",
   "admin.models.form.cancelEdit": "Cancel edit",
-  "admin.models.form.supportsPreviousResponseId":
-    "Supports incremental responses (previous_response_id)",
-  "admin.models.form.supportsReasoningSummary":
-    "Supports reasoning summary (reasoning_summary)",
-  "admin.models.form.storeLabel": "Response storage",
-  "admin.models.form.storeHint":
-    "Some proxies require disabling automatic response storage (store=false).",
-  "admin.models.form.storeOptionDisabled": "Disable storage (false)",
-  "admin.models.form.storeOptionDefault":
-    "Use the provider default behaviour (null)",
   "admin.models.errors.missingModelId": "Enter the model identifier.",
   "admin.models.errors.missingProvider": "Select a provider for this model.",
   "admin.models.errors.providersLoadFailed":
@@ -77,8 +67,6 @@ export const en: TranslationDictionary = {
   "admin.models.feedback.updated":
     "Model \"{{model}}\" updated successfully.",
   "admin.models.feedback.deleted": "Model \"{{model}}\" deleted.",
-  "admin.models.table.previousResponseId": "Incremental responses",
-  "admin.models.table.reasoningSummary": "Reasoning summary",
   "admin.models.table.editAction": "Edit",
   "admin.models.table.deleteAction": "Delete",
   "admin.appSettings.page.title": "General settings",

@@ -22,7 +22,7 @@ from ...chatkit_server.actions import (
     _parse_response_widget_config,
     _ResponseWidgetConfig,
 )
-from ...model_capabilities import ModelCapabilities, lookup_model_capabilities
+# Model capabilities removed
 from ...models import WorkflowDefinition, WorkflowStep, WorkflowTransition
 from ..service import (
     WorkflowNotFoundError,
@@ -38,7 +38,6 @@ logger = logging.getLogger("chatkit.server")
 class AgentSetupResult:
     agent_instances: dict[str, Agent]
     agent_provider_bindings: dict[str, AgentProviderBinding | None]
-    agent_model_capabilities: dict[str, ModelCapabilities | None]
     nested_workflow_configs: dict[str, dict[str, Any]]
     widget_configs_by_step: dict[str, _ResponseWidgetConfig]
     load_nested_definition: Callable[[Mapping[str, Any]], WorkflowDefinition]
@@ -50,7 +49,6 @@ def prepare_agents(
     service: WorkflowService,
     agent_steps_ordered: Sequence[WorkflowStep],
     nodes_by_slug: Mapping[str, WorkflowStep],
-    model_capability_index: Mapping[tuple[str, str, str], ModelCapabilities],
 ) -> AgentSetupResult:
     """Build agent instances and helper caches for workflow execution."""
 
@@ -70,7 +68,6 @@ def prepare_agents(
 
     agent_instances: dict[str, Agent] = {}
     agent_provider_bindings: dict[str, AgentProviderBinding | None] = {}
-    agent_model_capabilities: dict[str, ModelCapabilities | None] = {}
     nested_workflow_configs: dict[str, dict[str, Any]] = {}
     nested_workflow_definition_cache: dict[
         tuple[str, str | int], WorkflowDefinition
@@ -178,17 +175,6 @@ def prepare_agents(
             else None
         )
 
-        model_name = overrides_raw.get("model")
-        capability: ModelCapabilities | None = None
-        if isinstance(model_name, str):
-            capability = lookup_model_capabilities(
-                model_capability_index,
-                name=model_name,
-                provider_id=provider_id,
-                provider_slug=provider_slug,
-            )
-        agent_model_capabilities[step.slug] = capability
-
         overrides.pop("model_provider_id", None)
         overrides.pop("model_provider_slug", None)
         overrides.pop("model_provider", None)
@@ -253,7 +239,6 @@ def prepare_agents(
     return AgentSetupResult(
         agent_instances=agent_instances,
         agent_provider_bindings=agent_provider_bindings,
-        agent_model_capabilities=agent_model_capabilities,
         nested_workflow_configs=nested_workflow_configs,
         widget_configs_by_step=widget_configs_by_step,
         load_nested_definition=_load_nested_workflow_definition,

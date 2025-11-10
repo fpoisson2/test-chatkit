@@ -1194,10 +1194,6 @@ export type AvailableModel = {
   description: string | null;
   provider_id: string | null;
   provider_slug: string | null;
-  supports_reasoning: boolean;
-  supports_previous_response_id: boolean;
-  supports_reasoning_summary: boolean;
-  store: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -1220,24 +1216,16 @@ export type AvailableModelPayload = {
   name: string;
   display_name?: string | null;
   description?: string | null;
-  supports_reasoning: boolean;
-  supports_previous_response_id: boolean;
-  supports_reasoning_summary: boolean;
   provider_id?: string | null;
   provider_slug?: string | null;
-  store?: boolean | null;
 };
 
 export type AvailableModelUpdatePayload = {
   name?: string;
   display_name?: string | null;
   description?: string | null;
-  supports_reasoning?: boolean;
-  supports_previous_response_id?: boolean;
-  supports_reasoning_summary?: boolean;
   provider_id?: string | null;
   provider_slug?: string | null;
-  store?: boolean | null;
 };
 
 export const modelRegistryApi = {

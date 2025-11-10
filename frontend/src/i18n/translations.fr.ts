@@ -56,16 +56,6 @@ export const fr: TranslationDictionary = {
   "admin.models.form.submitCreate": "Ajouter le modèle",
   "admin.models.form.submitUpdate": "Enregistrer les modifications",
   "admin.models.form.cancelEdit": "Annuler la modification",
-  "admin.models.form.supportsPreviousResponseId":
-    "Réponses incrémentales (previous_response_id) prises en charge",
-  "admin.models.form.supportsReasoningSummary":
-    "Résumé de raisonnement (reasoning_summary) pris en charge",
-  "admin.models.form.storeLabel": "Stockage des réponses",
-  "admin.models.form.storeHint":
-    "Certains proxys exigent de désactiver le stockage automatique des réponses (store=false).",
-  "admin.models.form.storeOptionDisabled": "Désactiver le stockage (false)",
-  "admin.models.form.storeOptionDefault":
-    "Suivre le comportement par défaut du fournisseur (null)",
   "admin.models.errors.missingModelId": "Indiquez l'identifiant du modèle.",
   "admin.models.errors.missingProvider": "Sélectionnez un fournisseur pour ce modèle.",
   "admin.models.errors.providersLoadFailed":
@@ -77,8 +67,6 @@ export const fr: TranslationDictionary = {
   "admin.models.feedback.updated":
     "Modèle « {{model}} » mis à jour avec succès.",
   "admin.models.feedback.deleted": "Modèle « {{model}} » supprimé.",
-  "admin.models.table.previousResponseId": "Réponses incrémentales",
-  "admin.models.table.reasoningSummary": "Résumé de raisonnement",
   "admin.models.table.editAction": "Modifier",
   "admin.models.table.deleteAction": "Supprimer",
   "admin.appSettings.page.title": "Paramètres généraux",
