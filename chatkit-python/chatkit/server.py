@@ -636,10 +636,25 @@ class ChatKitServer(ABC, Generic[TContext]):
                             # The agents SDK sometimes uses placeholder IDs that conflict across threads
                             item = event.item
                             if item.id.startswith("__"):
+                                # Determine the store item type based on the item's type field
+                                item_type: StoreItemType
+                                if item.type in ("user_message", "assistant_message"):
+                                    item_type = "message"
+                                elif item.type == "client_tool_call":
+                                    item_type = "tool_call"
+                                elif item.type == "workflow":
+                                    item_type = "workflow"
+                                elif item.type == "task":
+                                    item_type = "task"
+                                else:
+                                    # Default to message for unknown types
+                                    item_type = "message"
+
                                 # Generate a real unique ID to avoid conflicts
-                                item = item.model_copy(update={"id": default_generate_id()})
+                                new_id = default_generate_id(item_type)
+                                item = item.model_copy(update={"id": new_id})
                                 logger.debug(
-                                    f"Replaced temporary ID {event.item.id} with {item.id}"
+                                    f"Replaced temporary ID {event.item.id} with {item.id} (type={item_type})"
                                 )
 
                             try:
