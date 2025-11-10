@@ -1200,22 +1200,16 @@ def _build_thread_title_agent() -> Agent:
         model = DEFAULT_THREAD_TITLE_MODEL
     available_model = _load_available_model(model)
     provider_binding = None
-    store_value: bool | None = False
     if available_model is not None:
         provider_binding = get_agent_provider_binding(
             available_model.provider_id, available_model.provider_slug
         )
-        if available_model.store is not None:
-            store_value = available_model.store
-
-    if store_value is None:
-        store_value = False
 
     base_kwargs: dict[str, Any] = {
         "name": "TitreFil",
         "model": model or DEFAULT_THREAD_TITLE_MODEL,
         "instructions": instructions,
-        "model_settings": _model_settings(store=store_value),
+        "model_settings": _model_settings(store=False),
     }
     if provider_binding is not None:
         base_kwargs["_provider_binding"] = provider_binding
