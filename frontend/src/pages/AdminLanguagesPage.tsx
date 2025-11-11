@@ -11,25 +11,19 @@ import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { ResponsiveTable, type Column } from "../components";
+import { isUnauthorizedError } from "../utils/backend";
 import {
-  isUnauthorizedError,
-} from "../utils/backend";
-
-type Language = {
-  code: string;
-  name: string;
-  translationFile: string;
-  keysCount: number;
-  totalKeys: number;
-  fileExists: boolean;
-};
-
-type AvailableModel = {
-  id: number;
-  name: string;
-  provider_id: string | null;
-  provider_slug: string | null;
-};
+  useLanguages,
+  useAvailableModels,
+  useDefaultPrompt,
+  useStoredLanguages,
+  useTaskStatus,
+  useGenerateLanguage,
+  useDeleteStoredLanguage,
+  useActivateStoredLanguage,
+  downloadTaskResult,
+  downloadStoredLanguage,
+} from "../hooks";
 
 type Provider = {
   value: string; // Combined key "id|slug"
@@ -56,53 +50,33 @@ const initialFormState: LanguageFormState = {
   save_to_db: false,
 };
 
-type TaskStatus = {
-  task_id: string;
-  status: "pending" | "running" | "completed" | "failed";
-  progress: number;
-  error_message: string | null;
-  created_at: string;
-  completed_at: string | null;
-  language_id: number | null;
-  can_download: boolean;
-};
-
-type StoredLanguage = {
-  id: number;
-  code: string;
-  name: string;
-  created_at: string;
-  updated_at: string;
-};
-
 export const AdminLanguagesPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
 
-  const [languages, setLanguages] = useState<Language[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  // React Query hooks
+  const { data: languages = [], isLoading: loading } = useLanguages(token);
+  const { data: availableModels = [] } = useAvailableModels(token);
+  const { data: defaultPrompt = "" } = useDefaultPrompt(token);
+  const { data: storedLanguages = [], isLoading: loadingStored } = useStoredLanguages(token);
 
-  const [formState, setFormState] = useState<LanguageFormState>(initialFormState);
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [instructions, setInstructions] = useState<string | null>(null);
-
-  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
-  const [defaultPrompt, setDefaultPrompt] = useState<string>("");
-  const [showPromptEditor, setShowPromptEditor] = useState(false);
+  const generateLanguage = useGenerateLanguage();
+  const deleteStoredLanguageMutation = useDeleteStoredLanguage();
+  const activateStoredLanguageMutation = useActivateStoredLanguage();
 
   // Task tracking
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(() => {
-    // Restore task ID from localStorage on page load
     return localStorage.getItem('languageGenerationTaskId');
   });
-  const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
+  const { data: taskStatus = null } = useTaskStatus(token, currentTaskId);
 
-  // Stored languages
-  const [storedLanguages, setStoredLanguages] = useState<StoredLanguage[]>([]);
-  const [loadingStored, setLoadingStored] = useState(false);
+  // Local state
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [formState, setFormState] = useState<LanguageFormState>(initialFormState);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [instructions, setInstructions] = useState<string | null>(null);
+  const [showPromptEditor, setShowPromptEditor] = useState(false);
 
   // Persist currentTaskId to localStorage
   useEffect(() => {
@@ -113,287 +87,63 @@ export const AdminLanguagesPage = () => {
     }
   }, [currentTaskId]);
 
-  const loadLanguages = useCallback(async () => {
-    if (!token) {
-      return;
+  // Clear task ID when task completes or fails
+  useEffect(() => {
+    if (taskStatus?.status === "completed" || taskStatus?.status === "failed") {
+      if (taskStatus.status === "completed") {
+        setSuccess(t("admin.languages.feedback.created", { name: formState.name }));
+      } else if (taskStatus.error_message) {
+        setFormError(taskStatus.error_message);
+      }
+      setCurrentTaskId(null);
     }
+  }, [taskStatus, formState.name, t]);
 
-    setLoading(true);
-    setError(null);
-
+  const handleDownloadTaskResult = useCallback(async (taskId: string) => {
     try {
-      const response = await fetch("/api/admin/languages", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      setLanguages(data.languages || []);
-    } catch (err) {
-      console.error("Failed to load languages:", err);
-      setError(t("admin.languages.errors.loadFailed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [token, logout, t]);
-
-  const loadAvailableModels = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/admin/languages/models", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      setAvailableModels(data.models || []);
-    } catch (err) {
-      console.error("Failed to load available models:", err);
-    }
-  }, [token, logout]);
-
-  const loadDefaultPrompt = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/admin/languages/default-prompt", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      setDefaultPrompt(data.prompt || "");
-    } catch (err) {
-      console.error("Failed to load default prompt:", err);
-    }
-  }, [token, logout]);
-
-  const loadStoredLanguages = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    setLoadingStored(true);
-
-    try {
-      const response = await fetch("/api/admin/languages/stored", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      setStoredLanguages(data.languages || []);
-    } catch (err) {
-      console.error("Failed to load stored languages:", err);
-    } finally {
-      setLoadingStored(false);
-    }
-  }, [token, logout]);
-
-  const pollTaskStatus = useCallback(async (taskId: string) => {
-    if (!token) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/admin/languages/tasks/${taskId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data: TaskStatus = await response.json();
-      setTaskStatus(data);
-
-      // Si la tâche est terminée, recharger les langues stockées
-      if (data.status === "completed" || data.status === "failed") {
-        setCurrentTaskId(null);
-        if (data.status === "completed") {
-          setSuccess(t("admin.languages.feedback.created", { name: formState.name }));
-          await loadStoredLanguages();
-        } else if (data.error_message) {
-          setFormError(data.error_message);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to poll task status:", err);
-    }
-  }, [token, logout, loadStoredLanguages, formState.name, t]);
-
-  const downloadTaskResult = useCallback(async (taskId: string) => {
-    if (!token) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/admin/languages/tasks/${taskId}/download`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const contentDisposition = response.headers.get("Content-Disposition");
-      const filename = contentDisposition?.match(/filename="(.+)"/)?.[1] || "translation.ts";
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      await downloadTaskResult(token, taskId);
     } catch (err) {
       console.error("Failed to download task result:", err);
       setFormError(t("admin.languages.errors.downloadFailed"));
     }
   }, [token, t]);
 
-  const downloadStoredLanguage = useCallback(async (id: number) => {
-    if (!token) {
-      return;
-    }
-
+  const handleDownloadStoredLanguage = useCallback(async (id: number) => {
     try {
-      const response = await fetch(`/api/admin/languages/stored/${id}/download`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const contentDisposition = response.headers.get("Content-Disposition");
-      const filename = contentDisposition?.match(/filename="(.+)"/)?.[1] || "translation.ts";
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      await downloadStoredLanguage(token, id);
     } catch (err) {
       console.error("Failed to download stored language:", err);
       setError(t("admin.languages.errors.downloadFailed"));
     }
   }, [token, t]);
 
-  const deleteStoredLanguage = useCallback(async (id: number) => {
-    if (!token) {
-      return;
-    }
-
+  const handleDeleteStoredLanguage = useCallback(async (id: number) => {
     if (!confirm(t("admin.languages.confirm.delete"))) {
       return;
     }
 
     try {
-      const response = await fetch(`/api/admin/languages/stored/${id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
+      await deleteStoredLanguageMutation.mutateAsync({ token, id });
       setSuccess(t("admin.languages.feedback.deleted"));
-      await loadStoredLanguages();
     } catch (err) {
       console.error("Failed to delete stored language:", err);
       setError(t("admin.languages.errors.deleteFailed"));
     }
-  }, [token, loadStoredLanguages, t]);
+  }, [token, deleteStoredLanguageMutation, t]);
 
-  const activateStoredLanguage = useCallback(async (id: number, code: string, name: string) => {
-    if (!token) {
-      return;
-    }
-
+  const handleActivateStoredLanguage = useCallback(async (id: number, code: string, name: string) => {
     if (!confirm(`Activate language ${name} (${code})? This will add it to the application and restart may be required.`)) {
       return;
     }
 
     try {
-      const response = await fetch(`/api/admin/languages/stored/${id}/activate`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await activateStoredLanguageMutation.mutateAsync({ token, id });
       setSuccess(data.message || `Language ${name} activated successfully. Refresh the page to see it in the language selector.`);
-      await loadLanguages();
     } catch (err) {
       console.error("Failed to activate stored language:", err);
       setError(err instanceof Error ? err.message : "Failed to activate language");
     }
-  }, [token, loadLanguages]);
+  }, [token, activateStoredLanguageMutation]);
 
   // Extract unique providers from available models
   const availableProviders = useMemo(() => {
@@ -428,40 +178,6 @@ export const AdminLanguagesPage = () => {
     return providers.sort((a, b) => a.label.localeCompare(b.label));
   }, [availableModels]);
 
-  useEffect(() => {
-    void loadLanguages();
-    void loadAvailableModels();
-    void loadDefaultPrompt();
-    void loadStoredLanguages();
-  }, [loadLanguages, loadAvailableModels, loadDefaultPrompt, loadStoredLanguages]);
-
-  // Load task status on mount if a task ID exists
-  useEffect(() => {
-    if (currentTaskId && !taskStatus) {
-      void pollTaskStatus(currentTaskId);
-    }
-  }, [currentTaskId, taskStatus, pollTaskStatus]);
-
-  // Polling pour le statut de la tâche
-  useEffect(() => {
-    if (!currentTaskId) {
-      return;
-    }
-
-    // Don't poll if task is already completed or failed
-    if (taskStatus && (taskStatus.status === 'completed' || taskStatus.status === 'failed')) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      void pollTaskStatus(currentTaskId);
-    }, 2000); // Poll toutes les 2 secondes
-
-    // Premier poll immédiat
-    void pollTaskStatus(currentTaskId);
-
-    return () => clearInterval(interval);
-  }, [currentTaskId, taskStatus, pollTaskStatus]);
 
   const handleFormChange = (field: keyof LanguageFormState, value: string | boolean) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -473,7 +189,6 @@ export const AdminLanguagesPage = () => {
     setFormError(null);
     setSuccess(null);
     setInstructions(null);
-    setTaskStatus(null);
 
     if (!formState.code.trim()) {
       setFormError(t("admin.languages.errors.codeRequired"));
@@ -490,10 +205,8 @@ export const AdminLanguagesPage = () => {
       return;
     }
 
-    setSubmitting(true);
-
     try {
-      const requestBody: {
+      const payload: {
         code: string;
         name: string;
         model?: string;
@@ -507,9 +220,9 @@ export const AdminLanguagesPage = () => {
         save_to_db: formState.save_to_db,
       };
 
-      // Ajouter les paramètres optionnels s'ils sont fournis
+      // Add optional parameters if provided
       if (formState.model.trim()) {
-        requestBody.model = formState.model.trim();
+        payload.model = formState.model.trim();
       }
 
       // Parse provider_value to extract provider_id and provider_slug
@@ -517,53 +230,39 @@ export const AdminLanguagesPage = () => {
         const selectedProvider = availableProviders.find(p => p.value === formState.provider_value);
         if (selectedProvider) {
           if (selectedProvider.id) {
-            requestBody.provider_id = selectedProvider.id;
+            payload.provider_id = selectedProvider.id;
           }
           if (selectedProvider.slug) {
-            requestBody.provider_slug = selectedProvider.slug;
+            payload.provider_slug = selectedProvider.slug;
           }
         }
       }
 
       if (formState.custom_prompt.trim()) {
-        requestBody.custom_prompt = formState.custom_prompt.trim();
+        payload.custom_prompt = formState.custom_prompt.trim();
       }
 
-      const response = await fetch("/api/admin/languages/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(requestBody),
-      });
+      const data = await generateLanguage.mutateAsync({ token, payload });
 
-      if (!response.ok) {
-        if (isUnauthorizedError(response.status)) {
-          logout();
-          return;
-        }
-
-        const errorData = await response.json().catch(() => ({}));
-        if (errorData.detail?.includes("already exist")) {
-          setFormError(t("admin.languages.errors.codeExists"));
-        } else {
-          setFormError(t("admin.languages.errors.createFailed"));
-        }
-        return;
-      }
-
-      const data = await response.json();
-
-      // L'API retourne maintenant un task_id
+      // Set the task ID to start polling
       setCurrentTaskId(data.task_id);
       setSuccess(t("admin.languages.feedback.taskStarted"));
       setFormState(initialFormState);
     } catch (err) {
-      console.error("Failed to generate language:", err);
-      setFormError(t("admin.languages.errors.createFailed"));
-    } finally {
-      setSubmitting(false);
+      if (isUnauthorizedError(err)) {
+        logout();
+        return;
+      }
+
+      if (err instanceof Error) {
+        if (err.message.includes("already exist")) {
+          setFormError(t("admin.languages.errors.codeExists"));
+        } else {
+          setFormError(err.message);
+        }
+      } else {
+        setFormError(t("admin.languages.errors.createFailed"));
+      }
     }
   };
 
@@ -654,21 +353,21 @@ export const AdminLanguagesPage = () => {
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={() => activateStoredLanguage(lang.id, lang.code, lang.name)}
+              onClick={() => handleActivateStoredLanguage(lang.id, lang.code, lang.name)}
               className="button button--sm button--primary"
             >
               Activate
             </button>
             <button
               type="button"
-              onClick={() => downloadStoredLanguage(lang.id)}
+              onClick={() => handleDownloadStoredLanguage(lang.id)}
               className="button button--sm button--ghost"
             >
               Download
             </button>
             <button
               type="button"
-              onClick={() => deleteStoredLanguage(lang.id)}
+              onClick={() => handleDeleteStoredLanguage(lang.id)}
               className="button button--sm button--danger"
             >
               Delete
@@ -736,7 +435,7 @@ export const AdminLanguagesPage = () => {
                     value={formState.code}
                     onChange={(e) => handleFormChange("code", e.target.value)}
                     placeholder={t("admin.languages.form.codePlaceholder")}
-                    disabled={submitting}
+                    disabled={generateLanguage.isPending}
                     maxLength={2}
                     className="form-input"
                     style={{ textTransform: "lowercase" }}
@@ -756,7 +455,7 @@ export const AdminLanguagesPage = () => {
                     value={formState.name}
                     onChange={(e) => handleFormChange("name", e.target.value)}
                     placeholder={t("admin.languages.form.namePlaceholder")}
-                    disabled={submitting}
+                    disabled={generateLanguage.isPending}
                     className="form-input"
                   />
                   <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
@@ -774,7 +473,7 @@ export const AdminLanguagesPage = () => {
                     onChange={(e) => {
                       handleFormChange("model", e.target.value);
                     }}
-                    disabled={submitting}
+                    disabled={generateLanguage.isPending}
                     className="form-input"
                   >
                     <option value="">{t("admin.languages.form.modelPlaceholder")}</option>
@@ -797,7 +496,7 @@ export const AdminLanguagesPage = () => {
                     id="provider-select"
                     value={formState.provider_value}
                     onChange={(e) => handleFormChange("provider_value", e.target.value)}
-                    disabled={submitting}
+                    disabled={generateLanguage.isPending}
                     className="form-input"
                   >
                     <option value="">{t("admin.languages.form.providerPlaceholder")}</option>
@@ -826,7 +525,7 @@ export const AdminLanguagesPage = () => {
                         }
                       }}
                       className="button button--sm button--secondary"
-                      disabled={submitting}
+                      disabled={generateLanguage.isPending}
                     >
                       {showPromptEditor ? t("admin.languages.form.hidePrompt") : t("admin.languages.form.showPrompt")}
                     </button>
@@ -838,7 +537,7 @@ export const AdminLanguagesPage = () => {
                         value={formState.custom_prompt}
                         onChange={(e) => handleFormChange("custom_prompt", e.target.value)}
                         placeholder={defaultPrompt || t("admin.languages.form.promptPlaceholder")}
-                        disabled={submitting}
+                        disabled={generateLanguage.isPending}
                         className="form-input"
                         rows={12}
                         style={{ fontFamily: "monospace", fontSize: "0.875rem" }}
@@ -856,7 +555,7 @@ export const AdminLanguagesPage = () => {
                       type="checkbox"
                       checked={formState.save_to_db}
                       onChange={(e) => handleFormChange("save_to_db", e.target.checked)}
-                      disabled={submitting}
+                      disabled={generateLanguage.isPending}
                     />
                     <span>Save to database</span>
                   </label>
@@ -889,7 +588,7 @@ export const AdminLanguagesPage = () => {
                     {taskStatus.can_download && (
                       <button
                         type="button"
-                        onClick={() => downloadTaskResult(taskStatus.task_id)}
+                        onClick={() => handleDownloadTaskResult(taskStatus.task_id)}
                         className="button button--sm button--secondary"
                         style={{ marginTop: "0.5rem" }}
                       >
@@ -902,14 +601,14 @@ export const AdminLanguagesPage = () => {
                 <div style={{ display: "flex", gap: "0.75rem" }}>
                   <button
                     type="submit"
-                    disabled={submitting || !!currentTaskId}
+                    disabled={generateLanguage.isPending || !!currentTaskId}
                     className="button button--primary"
                   >
-                    {submitting
+                    {generateLanguage.isPending
                       ? t("admin.languages.form.creating")
                       : t("admin.languages.form.submitAdd")}
                   </button>
-                  {(formState.code || formState.name) && !submitting && (
+                  {(formState.code || formState.name) && !generateLanguage.isPending && (
                     <button
                       type="button"
                       onClick={() => {

@@ -7,3 +7,4 @@ export * from "./useAppearanceSettings";
 export * from "./useVectorStores";
 export * from "./useWidgets";
 export * from "./useWorkflows";
+export * from "./useLanguages";
