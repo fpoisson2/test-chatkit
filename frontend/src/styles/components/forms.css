@@ -94,3 +94,10 @@
   height: 16px;
   accent-color: var(--primary-color);
 }
+
+.form-error-message {
+  color: #dc2626;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  display: block;
+}

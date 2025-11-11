@@ -1860,3 +1860,72 @@ export const vectorStoreApi = {
     return response.json();
   },
 };
+
+// ========== SIP Accounts ==========
+
+export interface SipAccount {
+  id: number;
+  label: string;
+  trunk_uri: string;
+  username: string | null;
+  password: string | null;
+  contact_host: string | null;
+  contact_port: number | null;
+  contact_transport: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SipAccountPayload {
+  label: string;
+  trunk_uri: string;
+  username?: string | null;
+  password?: string | null;
+  contact_host?: string | null;
+  contact_port?: number | null;
+  contact_transport?: string | null;
+  is_default: boolean;
+  is_active: boolean;
+}
+
+export type SipAccountUpdatePayload = Partial<SipAccountPayload>;
+
+export const sipAccountsApi = {
+  async list(token: string | null): Promise<SipAccount[]> {
+    const response = await requestWithFallback("/api/admin/sip-accounts", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async create(token: string | null, payload: SipAccountPayload): Promise<SipAccount> {
+    const response = await requestWithFallback("/api/admin/sip-accounts", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    id: number,
+    payload: SipAccountUpdatePayload,
+  ): Promise<SipAccount> {
+    const response = await requestWithFallback(`/api/admin/sip-accounts/${id}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, id: number): Promise<void> {
+    await requestWithFallback(`/api/admin/sip-accounts/${id}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+};
