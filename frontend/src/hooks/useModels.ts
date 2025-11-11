@@ -45,8 +45,45 @@ export const useCreateModel = () => {
   return useMutation({
     mutationFn: ({ token, payload }: { token: string | null; payload: AvailableModelPayload }) =>
       modelRegistryApi.create(token, payload),
-    onSuccess: (newModel, variables) => {
-      // Invalidate both lists to refetch
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: modelsKeys.lists() });
+
+      // Snapshot previous values
+      const previousModels = queryClient.getQueryData<AvailableModel[]>(modelsKeys.list(variables.token));
+      const previousAdminModels = queryClient.getQueryData<AvailableModel[]>(modelsKeys.adminList(variables.token));
+
+      // Optimistically update cache with temporary model
+      const tempModel: AvailableModel = {
+        ...variables.payload,
+        id: -1, // Temporary ID
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      queryClient.setQueryData<AvailableModel[]>(
+        modelsKeys.list(variables.token),
+        (old = []) => [...old, tempModel]
+      );
+
+      queryClient.setQueryData<AvailableModel[]>(
+        modelsKeys.adminList(variables.token),
+        (old = []) => [...old, tempModel]
+      );
+
+      return { previousModels, previousAdminModels };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousModels) {
+        queryClient.setQueryData(modelsKeys.list(variables.token), context.previousModels);
+      }
+      if (context?.previousAdminModels) {
+        queryClient.setQueryData(modelsKeys.adminList(variables.token), context.previousAdminModels);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure cache is in sync with server
       queryClient.invalidateQueries({ queryKey: modelsKeys.lists() });
     },
   });
@@ -68,8 +105,38 @@ export const useUpdateModel = () => {
       id: number;
       payload: AvailableModelUpdatePayload
     }) => modelRegistryApi.update(token, id, payload),
-    onSuccess: () => {
-      // Invalidate both lists to refetch
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: modelsKeys.lists() });
+
+      // Snapshot previous values
+      const previousModels = queryClient.getQueryData<AvailableModel[]>(modelsKeys.list(variables.token));
+      const previousAdminModels = queryClient.getQueryData<AvailableModel[]>(modelsKeys.adminList(variables.token));
+
+      // Optimistically update cache
+      const updateFn = (old: AvailableModel[] = []) =>
+        old.map((model) =>
+          model.id === variables.id
+            ? { ...model, ...variables.payload, updated_at: new Date().toISOString() }
+            : model
+        );
+
+      queryClient.setQueryData<AvailableModel[]>(modelsKeys.list(variables.token), updateFn);
+      queryClient.setQueryData<AvailableModel[]>(modelsKeys.adminList(variables.token), updateFn);
+
+      return { previousModels, previousAdminModels };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousModels) {
+        queryClient.setQueryData(modelsKeys.list(variables.token), context.previousModels);
+      }
+      if (context?.previousAdminModels) {
+        queryClient.setQueryData(modelsKeys.adminList(variables.token), context.previousAdminModels);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure cache is in sync with server
       queryClient.invalidateQueries({ queryKey: modelsKeys.lists() });
     },
   });
@@ -84,8 +151,34 @@ export const useDeleteModel = () => {
   return useMutation({
     mutationFn: ({ token, id }: { token: string | null; id: number }) =>
       modelRegistryApi.delete(token, id),
-    onSuccess: () => {
-      // Invalidate both lists to refetch
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: modelsKeys.lists() });
+
+      // Snapshot previous values
+      const previousModels = queryClient.getQueryData<AvailableModel[]>(modelsKeys.list(variables.token));
+      const previousAdminModels = queryClient.getQueryData<AvailableModel[]>(modelsKeys.adminList(variables.token));
+
+      // Optimistically remove from cache
+      const deleteFn = (old: AvailableModel[] = []) =>
+        old.filter((model) => model.id !== variables.id);
+
+      queryClient.setQueryData<AvailableModel[]>(modelsKeys.list(variables.token), deleteFn);
+      queryClient.setQueryData<AvailableModel[]>(modelsKeys.adminList(variables.token), deleteFn);
+
+      return { previousModels, previousAdminModels };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousModels) {
+        queryClient.setQueryData(modelsKeys.list(variables.token), context.previousModels);
+      }
+      if (context?.previousAdminModels) {
+        queryClient.setQueryData(modelsKeys.adminList(variables.token), context.previousAdminModels);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure cache is in sync with server
       queryClient.invalidateQueries({ queryKey: modelsKeys.lists() });
     },
   });

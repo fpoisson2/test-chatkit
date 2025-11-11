@@ -1636,6 +1636,7 @@ const WorkflowBuilderPage = () => {
   // Phase 6: Extract deployment logic into useWorkflowDeployment hook
   const { handleConfirmDeploy } = useWorkflowDeployment({
     authHeader,
+    token,
     t,
     handleSave,
     buildGraphPayload,

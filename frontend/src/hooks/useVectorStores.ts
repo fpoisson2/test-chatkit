@@ -37,12 +37,36 @@ export const useCreateVectorStore = () => {
   return useMutation({
     mutationFn: ({ token, payload }: { token: string | null; payload: VectorStoreCreatePayload }) =>
       vectorStoreApi.createStore(token, payload),
-    onSuccess: (newStore, variables) => {
-      // Add the new store to the cache
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: vectorStoresKeys.lists() });
+
+      // Snapshot previous value
+      const previousStores = queryClient.getQueryData<VectorStoreSummary[]>(vectorStoresKeys.list(variables.token));
+
+      // Optimistically update cache with temporary store
+      const tempStore: VectorStoreSummary = {
+        ...variables.payload,
+        created_at: new Date().toISOString(),
+        num_documents: 0,
+      };
+
       queryClient.setQueryData<VectorStoreSummary[]>(
         vectorStoresKeys.list(variables.token),
-        (oldStores) => [...(oldStores || []), newStore]
+        (old = []) => [...old, tempStore]
       );
+
+      return { previousStores };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousStores) {
+        queryClient.setQueryData(vectorStoresKeys.list(variables.token), context.previousStores);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: vectorStoresKeys.lists() });
     },
   });
 };
@@ -56,12 +80,31 @@ export const useDeleteVectorStore = () => {
   return useMutation({
     mutationFn: ({ token, slug }: { token: string | null; slug: string }) =>
       vectorStoreApi.deleteStore(token, slug),
-    onSuccess: (_, variables) => {
-      // Remove the store from the cache
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: vectorStoresKeys.lists() });
+      await queryClient.cancelQueries({ queryKey: vectorStoresKeys.documents(variables.slug) });
+
+      // Snapshot previous values
+      const previousStores = queryClient.getQueryData<VectorStoreSummary[]>(vectorStoresKeys.list(variables.token));
+
+      // Optimistically remove from cache
       queryClient.setQueryData<VectorStoreSummary[]>(
         vectorStoresKeys.list(variables.token),
-        (oldStores) => oldStores?.filter((store) => store.slug !== variables.slug) || []
+        (old = []) => old.filter((store) => store.slug !== variables.slug)
       );
+
+      return { previousStores };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousStores) {
+        queryClient.setQueryData(vectorStoresKeys.list(variables.token), context.previousStores);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: vectorStoresKeys.lists() });
     },
   });
 };
@@ -116,8 +159,31 @@ export const useDeleteDocument = () => {
       slug: string;
       docId: string
     }) => vectorStoreApi.deleteDocument(token, slug, docId),
-    onSuccess: (_, variables) => {
-      // Invalidate documents list to refetch
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: vectorStoresKeys.documents(variables.slug) });
+
+      // Snapshot previous value
+      const previousDocuments = queryClient.getQueryData<VectorStoreDocument[]>(
+        vectorStoresKeys.documents(variables.slug)
+      );
+
+      // Optimistically remove from cache
+      queryClient.setQueryData<VectorStoreDocument[]>(
+        vectorStoresKeys.documents(variables.slug),
+        (old = []) => old.filter((doc) => doc.id !== variables.docId)
+      );
+
+      return { previousDocuments };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousDocuments) {
+        queryClient.setQueryData(vectorStoresKeys.documents(variables.slug), context.previousDocuments);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
       queryClient.invalidateQueries({ queryKey: vectorStoresKeys.documents(variables.slug) });
     },
   });

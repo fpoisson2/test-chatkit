@@ -261,7 +261,29 @@ export const useDeleteStoredLanguage = () => {
         throw new Error(`HTTP ${response.status}`);
       }
     },
-    onSuccess: () => {
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: languagesKeys.stored() });
+
+      // Snapshot previous value
+      const previousLanguages = queryClient.getQueryData<StoredLanguage[]>(languagesKeys.stored());
+
+      // Optimistically remove from cache
+      queryClient.setQueryData<StoredLanguage[]>(
+        languagesKeys.stored(),
+        (old = []) => old.filter((lang) => lang.id !== variables.id)
+      );
+
+      return { previousLanguages };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousLanguages) {
+        queryClient.setQueryData(languagesKeys.stored(), context.previousLanguages);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure cache is in sync with server
       queryClient.invalidateQueries({ queryKey: languagesKeys.stored() });
     },
   });

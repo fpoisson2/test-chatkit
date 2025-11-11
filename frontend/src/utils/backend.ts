@@ -1564,9 +1564,104 @@ export const widgetLibraryApi = {
   },
 };
 
+export type WorkflowVersionSummary = {
+  id: number;
+  workflow_id: number;
+  name: string | null;
+  version: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowVersionResponse = {
+  id: number;
+  workflow_id: number;
+  name: string | null;
+  version: number;
+  is_active: boolean;
+  definition: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateWorkflowPayload = {
+  display_name: string;
+  description?: string | null;
+};
+
+export type CreateWorkflowWithGraphPayload = {
+  slug: string;
+  display_name: string;
+  description?: string | null;
+  graph: Record<string, unknown> | null;
+};
+
+export type UpdateWorkflowPayload = {
+  display_name?: string;
+  description?: string | null;
+};
+
 export const workflowsApi = {
   async list(token: string | null): Promise<WorkflowSummary[]> {
     const response = await requestWithFallback("/api/workflows", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async create(token: string | null, payload: CreateWorkflowPayload): Promise<WorkflowSummary> {
+    const response = await requestWithFallback("/api/workflows", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async createWithGraph(token: string | null, payload: CreateWorkflowWithGraphPayload): Promise<WorkflowVersionResponse> {
+    const response = await requestWithFallback("/api/workflows", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async update(token: string | null, id: number, payload: UpdateWorkflowPayload): Promise<WorkflowSummary> {
+    const response = await requestWithFallback(`/api/workflows/${id}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, id: number): Promise<void> {
+    await requestWithFallback(`/api/workflows/${id}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+
+  async duplicate(token: string | null, id: number, newName: string): Promise<WorkflowSummary> {
+    const response = await requestWithFallback(`/api/workflows/${id}/duplicate`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ display_name: newName }),
+    });
+    return response.json();
+  },
+
+  async getVersions(token: string | null, workflowId: number): Promise<WorkflowVersionSummary[]> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/versions`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async getVersion(token: string | null, versionId: number): Promise<WorkflowVersionResponse> {
+    const response = await requestWithFallback(`/api/workflow_versions/${versionId}`, {
       headers: withAuthHeaders(token),
     });
     return response.json();
@@ -1577,6 +1672,32 @@ export const workflowsApi = {
       method: "POST",
       headers: withAuthHeaders(token),
       body: JSON.stringify({ workflow_id: workflowId }),
+    });
+    return response.json();
+  },
+
+  async promoteVersion(
+    token: string | null,
+    versionId: number,
+    isActive: boolean,
+  ): Promise<WorkflowVersionResponse> {
+    const response = await requestWithFallback(`/workflow_versions/${versionId}/promote`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ is_active: isActive }),
+    });
+    return response.json();
+  },
+
+  async deployToProduction(
+    token: string | null,
+    workflowId: number,
+    versionId: number,
+  ): Promise<WorkflowVersionResponse> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/production`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ version_id: versionId }),
     });
     return response.json();
   },

@@ -22,3 +22,121 @@ Avant de soumettre une modification Python, exécute `ruff check` (dans les doss
 ## Localisation frontend
 
 Chaque fois que tu ajoutes ou modifies un texte côté UI, pense à l'exposer via le système i18n du dossier `frontend/src/i18n` et à fournir les traductions en anglais **et** en français.
+
+## Gestion des données avec React Query
+
+**TOUJOURS** utiliser React Query (@tanstack/react-query) pour toutes les opérations de gestion de données dans le frontend :
+
+### Principes de base
+
+1. **Pas de useState pour les données serveur** : Ne jamais utiliser `useState` pour stocker des données provenant du backend. Utiliser uniquement `useQuery` et `useMutation`.
+
+2. **Créer des hooks personnalisés** : Toutes les interactions avec le backend doivent être encapsulées dans des hooks personnalisés dans `frontend/src/hooks/`.
+
+3. **Structure des hooks** :
+   ```typescript
+   // 1. Définir les query keys avec une factory
+   export const entityKeys = {
+     all: ["entity"] as const,
+     lists: () => [...entityKeys.all, "list"] as const,
+     list: (token: string | null) => [...entityKeys.lists(), token] as const,
+     detail: (id: string) => [...entityKeys.all, "detail", id] as const,
+   };
+
+   // 2. Créer les hooks de query
+   export function useEntities(token: string | null) {
+     return useQuery({
+       queryKey: entityKeys.list(token),
+       queryFn: () => fetchEntities(token),
+       enabled: !!token,
+     });
+   }
+
+   // 3. Créer les hooks de mutation avec optimistic updates
+   export function useCreateEntity() {
+     const queryClient = useQueryClient();
+     return useMutation({
+       mutationFn: (vars: { token: string; payload: EntityPayload }) =>
+         createEntity(vars.token, vars.payload),
+       onMutate: async (variables) => {
+         await queryClient.cancelQueries({ queryKey: entityKeys.list(variables.token) });
+         const previous = queryClient.getQueryData(entityKeys.list(variables.token));
+         queryClient.setQueryData(
+           entityKeys.list(variables.token),
+           (old: Entity[] = []) => [...old, { ...variables.payload, id: "temp-id" }]
+         );
+         return { previous };
+       },
+       onError: (err, variables, context) => {
+         if (context?.previous) {
+           queryClient.setQueryData(entityKeys.list(variables.token), context.previous);
+         }
+       },
+       onSettled: (data, error, variables) => {
+         queryClient.invalidateQueries({ queryKey: entityKeys.lists() });
+       },
+     });
+   }
+   ```
+
+### Optimistic Updates
+
+Toutes les mutations DOIVENT implémenter les optimistic updates pour une meilleure UX :
+
+- **onCreate** : Ajouter l'élément temporairement à la liste
+- **onUpdate** : Modifier l'élément temporairement dans la liste
+- **onDelete** : Retirer l'élément temporairement de la liste
+
+En cas d'erreur, restaurer l'état précédent via `onError`.
+
+### Invalidation du cache
+
+Utiliser l'invalidation appropriée :
+- `invalidateQueries` après succès d'une mutation pour rafraîchir les données
+- Utiliser les query keys hiérarchiques pour invalider plusieurs queries liées
+
+### Gestion des erreurs
+
+- Gérer les erreurs 401 (Unauthorized) en déconnectant l'utilisateur
+- Utiliser `isUnauthorizedError()` depuis `frontend/src/api/backend.ts`
+- Afficher des messages d'erreur appropriés à l'utilisateur
+
+### Exemple d'utilisation dans un composant
+
+```typescript
+function MyComponent() {
+  const { token } = useAuth();
+  const { data = [], isLoading, error } = useEntities(token);
+  const createEntity = useCreateEntity();
+
+  const handleCreate = async (payload: EntityPayload) => {
+    try {
+      await createEntity.mutateAsync({ token, payload });
+      // L'UI est déjà mise à jour optimistiquement
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+      }
+      // Afficher l'erreur à l'utilisateur
+    }
+  };
+
+  if (isLoading) return <div>Chargement...</div>;
+  if (error) return <div>Erreur: {error.message}</div>;
+
+  return <div>{/* Utiliser data */}</div>;
+}
+```
+
+### DevTools
+
+En développement, utiliser React Query DevTools pour déboguer :
+```typescript
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+
+// Dans App.tsx
+<QueryClientProvider client={queryClient}>
+  <App />
+  <ReactQueryDevtools initialIsOpen={false} />
+</QueryClientProvider>
+```
