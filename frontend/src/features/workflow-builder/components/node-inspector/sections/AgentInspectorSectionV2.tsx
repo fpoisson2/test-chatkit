@@ -468,6 +468,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             trimmedWidgetSlug={trimmedWidgetSlug}
             responseWidgetDefinitionExpression={responseWidgetDefinitionExpression}
             widgetSelectValue={widgetSelectValue}
+            widgetValidationMessageFromHook={widgetValidationMessageFromHook}
             widgetValidationReason={widgetValidationReason}
             widgets={widgets}
             widgetsLoading={widgetsLoading}
@@ -586,6 +587,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
       webSearchEnabled,
       weatherFunctionEnabled,
       widgetSelectValue,
+      widgetValidationMessageFromHook,
       widgetValidationReason,
       widgetValidationFunctionEnabled,
       widgets,
@@ -690,6 +692,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
       webSearchEnabled,
       weatherFunctionEnabled,
       widgetSelectValue,
+      widgetValidationMessageFromHook,
       widgetValidationReason,
       widgetValidationFunctionEnabled,
       widgets,
@@ -2202,6 +2205,7 @@ interface AdvancedSettingsTabProps {
   trimmedWidgetSlug: string;
   responseWidgetDefinitionExpression: string;
   widgetSelectValue: string;
+  widgetValidationMessageFromHook: string | null;
   widgetValidationReason:
     | 'library_empty'
     | 'library_missing_selection'
@@ -2251,6 +2255,7 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
   trimmedWidgetSlug,
   responseWidgetDefinitionExpression,
   widgetSelectValue,
+  widgetValidationMessageFromHook,
   widgetValidationReason,
   widgets,
   widgetsLoading,
