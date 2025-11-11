@@ -602,16 +602,33 @@ export const Modal = ({ children, onClose }) => {
 4. ✅ Créer composants ResponsiveCard et ResponsiveTable
 
 ### Phase 2 (Semaine 3-4) - Optimisations
-5. ✅ Intégrer React Query
-6. ✅ Mettre en place code splitting
-7. ✅ Migrer 3-5 formulaires vers React Hook Form
-8. ✅ Améliorer loading/error states
+5. ✅ Intégrer React Query (COMPLET - 9/9 pages + WorkflowBuilder ✅, 9/9 hooks ✅)
+   - ✅ @tanstack/react-query installé (v5.90.7)
+   - ✅ QueryClient configuré dans App.tsx (staleTime: 5min, retry: 1)
+   - ✅ **Hooks complets créés (9 fichiers, ~1100 lignes) :**
+     * useAppSettings, useUsers, useModels, useMcpServers
+     * useAppearanceSettings, useVectorStores, useWidgets, useWorkflows
+     * **🆕 useLanguages (350 lignes, polling automatique des tâches)**
+   - ✅ **Pages & composants migrés (9 pages complètes) :**
+     * AdminAppSettingsPage (~60 lignes supprimées)
+     * AdminModelsPage (629 lignes, ~90 lignes boilerplate supprimées)
+     * AdminMcpServersPage (1478 lignes, OAuth préservé)
+     * WorkflowBuilder useWorkflowResources (193→93 lignes, -52%)
+     * VectorStoresPage (déjà utilisait React Query)
+     * WidgetLibraryPage (déjà utilisait React Query)
+     * AdminAppearancePage (déjà utilisait React Query)
+     * **🎯 AdminModelProvidersPage (~80 lignes supprimées, logique simplifiée)**
+     * **🎯 AdminLanguagesPage (~200 lignes supprimées, polling auto des tâches)**
+   - 📊 **Impact : ~45% réduction code, cache partagé, optimistic updates, polling automatique**
+6. ❌ Mettre en place code splitting (TODO)
+7. ⏳ Migrer 3-5 formulaires vers React Hook Form (react-hook-form installé mais pas encore utilisé)
+8. ❌ Améliorer loading/error states (TODO - créer composants réutilisables)
 
 ### Phase 3 (Semaine 5-6) - Polish
-9. ✅ Intégrer Radix UI (progressif)
-10. ✅ Audit accessibilité complet
-11. ✅ Ajout animations et micro-interactions
-12. ✅ Tests de performance et optimisations
+9. ❌ Intégrer Radix UI (progressif) - TODO
+10. ❌ Audit accessibilité complet - TODO
+11. ❌ Ajout animations et micro-interactions - TODO
+12. ❌ Tests de performance et optimisations - TODO
 
 ---
 

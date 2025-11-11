@@ -7,128 +7,54 @@ import { useI18n } from "../i18n";
 import {
   type AppSettings,
   type AppSettingsUpdatePayload,
-  type AvailableModel,
-  appSettingsApi,
   isUnauthorizedError,
-  modelRegistryApi,
 } from "../utils/backend";
+import { useAppSettings, useUpdateAppSettings, useModelsAdmin } from "../hooks";
 
 export const AdminAppSettingsPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  // React Query hooks
+  const { data: settings, isLoading, error: settingsError } = useAppSettings(token);
+  const { data: availableModels = [], isLoading: isLoadingModels, error: modelsError } = useModelsAdmin(token);
+  const updateSettings = useUpdateAppSettings();
+
+  // Local UI state
   const [prompt, setPrompt] = useState("");
   const [threadTitleModel, setThreadTitleModel] = useState("");
-  const [isLoading, setLoading] = useState(true);
-  const [isSaving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
-  const [isLoadingModels, setLoadingModels] = useState(false);
-  const [modelOptionsError, setModelOptionsError] = useState<string | null>(null);
   const promptRef = useRef("");
   const threadTitleModelRef = useRef("");
-  const tRef = useRef(t);
-  const logoutRef = useRef(logout);
 
+  // Apply settings to local state when data changes
   useEffect(() => {
-    tRef.current = t;
-  }, [t]);
-
-  useEffect(() => {
-    logoutRef.current = logout;
-  }, [logout]);
-
-  const applySettings = useCallback((data: AppSettings) => {
-    setSettings(data);
-    const promptValue = data.thread_title_prompt ?? "";
-    setPrompt(promptValue);
-    promptRef.current = promptValue;
-    const modelValue = data.thread_title_model ?? "";
-    setThreadTitleModel(modelValue);
-    threadTitleModelRef.current = modelValue;
-  }, []);
-
-  const fetchSettings = useCallback(async () => {
-    if (!token) {
-      setSettings(null);
-      setPrompt("");
-      promptRef.current = "";
-      setAvailableModels([]);
-      setModelOptionsError(null);
-      setLoading(false);
-      return;
+    if (settings) {
+      const promptValue = settings.thread_title_prompt ?? "";
+      setPrompt(promptValue);
+      promptRef.current = promptValue;
+      const modelValue = settings.thread_title_model ?? "";
+      setThreadTitleModel(modelValue);
+      threadTitleModelRef.current = modelValue;
     }
+  }, [settings]);
 
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const data = await appSettingsApi.get(token);
-      applySettings(data);
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logoutRef.current();
-        setError(tRef.current("admin.appSettings.errors.sessionExpired"));
-        return;
-      }
-      setError(
-        err instanceof Error
-          ? err.message
-          : tRef.current("admin.appSettings.errors.loadFailed"),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [applySettings, token]);
-
+  // Handle errors from React Query
   useEffect(() => {
-    void fetchSettings();
-  }, [fetchSettings]);
-
-  useEffect(() => {
-    if (!token) {
-      setAvailableModels([]);
-      setModelOptionsError(null);
-      return;
-    }
-
-    let isActive = true;
-    setLoadingModels(true);
-    setModelOptionsError(null);
-
-    void modelRegistryApi
-      .listAdmin(token)
-      .then((models) => {
-        if (!isActive) {
-          return;
-        }
-        setAvailableModels(models);
-      })
-      .catch((err) => {
-        if (!isActive) {
-          return;
-        }
-        if (isUnauthorizedError(err)) {
-          logoutRef.current();
-          setError(tRef.current("admin.appSettings.errors.sessionExpired"));
-          return;
-        }
-        setAvailableModels([]);
-        setModelOptionsError(
-          tRef.current("admin.appSettings.errors.threadTitleModelsLoadFailed"),
+    if (settingsError) {
+      if (isUnauthorizedError(settingsError)) {
+        logout();
+        setError(t("admin.appSettings.errors.sessionExpired"));
+      } else {
+        setError(
+          settingsError instanceof Error
+            ? settingsError.message
+            : t("admin.appSettings.errors.loadFailed")
         );
-      })
-      .finally(() => {
-        if (isActive) {
-          setLoadingModels(false);
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [token]);
+      }
+    }
+  }, [settingsError, logout, t]);
 
   const CUSTOM_MODEL_OPTION = "__custom__";
   const [selectedModelOption, setSelectedModelOption] = useState("");
@@ -173,30 +99,31 @@ export const AdminAppSettingsPage = () => {
       return;
     }
 
-    setSaving(true);
-    try {
-      const payload: AppSettingsUpdatePayload = {
-        thread_title_prompt: trimmed,
-        thread_title_model: normalizedModel,
-      };
+    const payload: AppSettingsUpdatePayload = {
+      thread_title_prompt: trimmed,
+      thread_title_model: normalizedModel,
+    };
 
-      const updated = await appSettingsApi.update(token, payload);
-      applySettings(updated);
-      setSuccess(t("admin.appSettings.success.saved"));
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError(t("admin.appSettings.errors.sessionExpired"));
-        return;
+    updateSettings.mutate(
+      { token, payload },
+      {
+        onSuccess: () => {
+          setSuccess(t("admin.appSettings.success.saved"));
+        },
+        onError: (err) => {
+          if (isUnauthorizedError(err)) {
+            logout();
+            setError(t("admin.appSettings.errors.sessionExpired"));
+          } else {
+            setError(
+              err instanceof Error
+                ? err.message
+                : t("admin.appSettings.errors.saveFailed")
+            );
+          }
+        },
       }
-      setError(
-        err instanceof Error
-          ? err.message
-          : t("admin.appSettings.errors.saveFailed"),
-      );
-    } finally {
-      setSaving(false);
-    }
+    );
   };
 
   const handleReset = async () => {
@@ -208,37 +135,44 @@ export const AdminAppSettingsPage = () => {
       return;
     }
 
-    setSaving(true);
-    try {
-      const updated = await appSettingsApi.update(token, {
-        thread_title_prompt: null,
-        thread_title_model: null,
-      });
-      applySettings(updated);
-      setSuccess(t("admin.appSettings.success.reset"));
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError(t("admin.appSettings.errors.sessionExpired"));
-        return;
+    updateSettings.mutate(
+      {
+        token,
+        payload: {
+          thread_title_prompt: null,
+          thread_title_model: null,
+        },
+      },
+      {
+        onSuccess: () => {
+          setSuccess(t("admin.appSettings.success.reset"));
+        },
+        onError: (err) => {
+          if (isUnauthorizedError(err)) {
+            logout();
+            setError(t("admin.appSettings.errors.sessionExpired"));
+          } else {
+            setError(
+              err instanceof Error
+                ? err.message
+                : t("admin.appSettings.errors.resetFailed")
+            );
+          }
+        },
       }
-      setError(
-        err instanceof Error
-          ? err.message
-          : t("admin.appSettings.errors.resetFailed"),
-      );
-    } finally {
-      setSaving(false);
-    }
+    );
   };
 
-  const isBusy = isLoading || isSaving;
+  const isBusy = isLoading || updateSettings.isPending;
   const isCustomPrompt = settings?.is_custom_thread_title_prompt ?? false;
   const defaultPrompt = settings?.default_thread_title_prompt ?? "";
   const isCustomModel = settings?.is_custom_thread_title_model ?? false;
   const defaultModel = settings?.default_thread_title_model ?? "";
   const shouldShowCustomModelInput =
     selectedModelOption === CUSTOM_MODEL_OPTION || availableModels.length === 0;
+  const modelOptionsError = modelsError
+    ? t("admin.appSettings.errors.threadTitleModelsLoadFailed")
+    : null;
 
   return (
     <>

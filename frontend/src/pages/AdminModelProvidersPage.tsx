@@ -9,9 +9,9 @@ import {
   type AppSettings,
   type AppSettingsUpdatePayload,
   type ModelProviderUpdatePayload,
-  appSettingsApi,
   isUnauthorizedError,
 } from "../utils/backend";
+import { useAppSettings, useUpdateAppSettings } from "../hooks";
 
 type ProviderRowState = {
   localId: string;
@@ -28,9 +28,11 @@ type ProviderRowState = {
 export const AdminModelProvidersPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [isLoading, setLoading] = useState(true);
-  const [isSaving, setSaving] = useState(false);
+
+  // Fetch app settings using React Query
+  const { data: settings = null, isLoading, error: queryError } = useAppSettings(token);
+  const updateSettings = useUpdateAppSettings();
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [useCustomModelConfig, setUseCustomModelConfig] = useState(false);
@@ -46,6 +48,22 @@ export const AdminModelProvidersPage = () => {
   useEffect(() => {
     logoutRef.current = logout;
   }, [logout]);
+
+  // Handle query error
+  useEffect(() => {
+    if (queryError) {
+      if (isUnauthorizedError(queryError)) {
+        logoutRef.current();
+        setError(tRef.current("admin.appSettings.errors.sessionExpired"));
+      } else {
+        setError(
+          queryError instanceof Error
+            ? queryError.message
+            : tRef.current("admin.appSettings.errors.loadFailed")
+        );
+      }
+    }
+  }, [queryError]);
 
   const createEmptyProviderRow = (isDefault: boolean): ProviderRowState => {
     providerIdRef.current += 1;
@@ -103,15 +121,22 @@ export const AdminModelProvidersPage = () => {
     );
   };
 
-  const applySettings = useCallback((data: AppSettings) => {
-    setSettings(data);
-    const storedProviders = data.model_providers ?? [];
+  // Apply settings when they are loaded
+  useEffect(() => {
+    if (!settings) {
+      setProviderRows([]);
+      providerIdRef.current = 0;
+      setUseCustomModelConfig(false);
+      return;
+    }
+
+    const storedProviders = settings.model_providers ?? [];
     const hasLegacyProvider =
       storedProviders.length === 0 &&
       Boolean(
-        data.is_model_provider_overridden ||
-          data.is_model_api_base_overridden ||
-          data.is_model_api_key_managed,
+        settings.is_model_provider_overridden ||
+          settings.is_model_api_base_overridden ||
+          settings.is_model_api_key_managed,
       );
     const rows: ProviderRowState[] = storedProviders.map((entry) => ({
       localId: entry.id,
@@ -128,11 +153,11 @@ export const AdminModelProvidersPage = () => {
       rows.push({
         localId: "__legacy__",
         id: "__legacy__",
-        provider: (data.model_provider ?? "").trim(),
-        apiBase: data.model_api_base ?? "",
+        provider: (settings.model_provider ?? "").trim(),
+        apiBase: settings.model_api_base ?? "",
         apiKeyInput: "",
-        hasStoredKey: Boolean(data.is_model_api_key_managed),
-        apiKeyHint: data.model_api_key_hint,
+        hasStoredKey: Boolean(settings.is_model_api_key_managed),
+        apiKeyHint: settings.model_api_key_hint,
         isDefault: true,
         deleteStoredKey: false,
       });
@@ -140,43 +165,7 @@ export const AdminModelProvidersPage = () => {
     providerIdRef.current = storedProviders.length;
     setProviderRows(rows);
     setUseCustomModelConfig(rows.length > 0);
-  }, []);
-
-  const fetchSettings = useCallback(async () => {
-    if (!token) {
-      setSettings(null);
-      setProviderRows([]);
-      providerIdRef.current = 0;
-      setUseCustomModelConfig(false);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const data = await appSettingsApi.get(token);
-      applySettings(data);
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logoutRef.current();
-        setError(tRef.current("admin.appSettings.errors.sessionExpired"));
-        return;
-      }
-      setError(
-        err instanceof Error
-          ? err.message
-          : tRef.current("admin.appSettings.errors.loadFailed"),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [applySettings, token]);
-
-  useEffect(() => {
-    void fetchSettings();
-  }, [fetchSettings]);
+  }, [settings]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -188,14 +177,12 @@ export const AdminModelProvidersPage = () => {
       return;
     }
 
-    setSaving(true);
     try {
       const payload: AppSettingsUpdatePayload = {};
 
       if (useCustomModelConfig) {
         if (providerRows.length === 0) {
           setError(t("admin.appSettings.errors.modelProvidersRequired"));
-          setSaving(false);
           return;
         }
         const providersPayload: ModelProviderUpdatePayload[] = [];
@@ -205,7 +192,6 @@ export const AdminModelProvidersPage = () => {
           const providerValue = row.provider.trim().toLowerCase();
           if (!providerValue) {
             setError(t("admin.appSettings.errors.modelProviderRequired"));
-            setSaving(false);
             return;
           }
           const baseValue = (row.apiBase || "").trim();
@@ -218,7 +204,6 @@ export const AdminModelProvidersPage = () => {
               }
             } catch (error) {
               setError(t("admin.appSettings.errors.invalidModelApiBase"));
-              setSaving(false);
               return;
             }
           }
@@ -247,7 +232,6 @@ export const AdminModelProvidersPage = () => {
 
         if (defaultCount === 0) {
           setError(t("admin.appSettings.errors.modelDefaultRequired"));
-          setSaving(false);
           return;
         }
 
@@ -259,8 +243,7 @@ export const AdminModelProvidersPage = () => {
         payload.model_providers = [];
       }
 
-      const updated = await appSettingsApi.update(token, payload);
-      applySettings(updated);
+      await updateSettings.mutateAsync({ token, payload });
       setSuccess(t("admin.modelProviders.success.saved"));
     } catch (err) {
       if (isUnauthorizedError(err)) {
@@ -273,12 +256,10 @@ export const AdminModelProvidersPage = () => {
           ? err.message
           : t("admin.appSettings.errors.saveFailed"),
       );
-    } finally {
-      setSaving(false);
     }
   };
 
-  const isBusy = isLoading || isSaving;
+  const isBusy = isLoading || updateSettings.isPending;
   const effectiveProvider = settings?.model_provider ?? "";
   const effectiveBase = settings?.model_api_base ?? "";
 

@@ -17,10 +17,15 @@ import {
   AvailableModel,
   AvailableModelPayload,
   AvailableModelUpdatePayload,
-  appSettingsApi,
   isUnauthorizedError,
-  modelRegistryApi,
 } from "../utils/backend";
+import {
+  useAppSettings,
+  useModelsAdmin,
+  useCreateModel,
+  useUpdateModel,
+  useDeleteModel,
+} from "../hooks";
 
 const sortModels = (models: AvailableModel[]): AvailableModel[] =>
   [...models].sort((a, b) => a.name.localeCompare(b.name, "fr"));
@@ -121,14 +126,27 @@ const buildFormFromModel = (model: AvailableModel): ModelFormState =>
 export const AdminModelsPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const [models, setModels] = useState<AvailableModel[]>([]);
-  const [isLoading, setLoading] = useState(true);
+
+  // React Query hooks
+  const { data: modelsData = [], isLoading: isLoadingModels, error: modelsError } = useModelsAdmin(token);
+  const { data: settings, isLoading: isLoadingProviders } = useAppSettings(token);
+  const createModel = useCreateModel();
+  const updateModel = useUpdateModel();
+  const deleteModel = useDeleteModel();
+
+  // Local UI state
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState<ModelFormState>(() => buildDefaultFormState());
   const [editingModelId, setEditingModelId] = useState<number | null>(null);
-  const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
-  const [isLoadingProviders, setLoadingProviders] = useState(false);
+
+  // Derived state
+  const models = useMemo(() => sortModels(modelsData), [modelsData]);
+  const isLoading = isLoadingModels || isLoadingProviders;
+  const providerOptions = useMemo(
+    () => (settings ? buildProviderOptions(settings) : []),
+    [settings]
+  );
 
   const mergedProviderOptions = useMemo(() => {
     const options = new Map<string, ProviderOption>();
@@ -154,6 +172,22 @@ export const AdminModelsPage = () => {
     );
   }, [models, providerOptions]);
 
+  // Handle React Query errors
+  useEffect(() => {
+    if (modelsError) {
+      if (isUnauthorizedError(modelsError)) {
+        logout();
+        setError("Session expirée, veuillez vous reconnecter.");
+      } else {
+        setError(
+          modelsError instanceof Error
+            ? modelsError.message
+            : "Impossible de charger les modèles disponibles."
+        );
+      }
+    }
+  }, [modelsError, logout]);
+
   const resetForm = useCallback((overrides: Partial<ModelFormState> = {}) => {
     setForm(buildDefaultFormState(overrides));
     setEditingModelId(null);
@@ -167,62 +201,11 @@ export const AdminModelsPage = () => {
       form.name
     : "";
 
-  const refreshModels = useCallback(async () => {
-    if (!token) {
-      setModels([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const data = await modelRegistryApi.listAdmin(token);
-      setModels(sortModels(data));
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError("Session expirée, veuillez vous reconnecter.");
-        return;
-      }
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Impossible de charger les modèles disponibles.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [logout, token]);
-
-  const refreshProviders = useCallback(async () => {
-    if (!token) {
-      setProviderOptions([]);
-      return;
-    }
-    setLoadingProviders(true);
-    try {
-      const settings = await appSettingsApi.get(token);
-      setProviderOptions(buildProviderOptions(settings));
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError("Session expirée, veuillez vous reconnecter.");
-        return;
-      }
-      setError(t("admin.models.errors.providersLoadFailed"));
-    } finally {
-      setLoadingProviders(false);
-    }
-  }, [logout, t, token]);
-
-  useEffect(() => {
-    void refreshModels();
-  }, [refreshModels]);
-
-  useEffect(() => {
-    void refreshProviders();
-  }, [refreshProviders]);
+  const isBusy =
+    isLoading ||
+    createModel.isPending ||
+    updateModel.isPending ||
+    deleteModel.isPending;
 
   const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const slug = event.target.value;
@@ -301,35 +284,30 @@ export const AdminModelsPage = () => {
         supports_reasoning: form.supports_reasoning,
       };
 
-      try {
-        const updated = await modelRegistryApi.update(
-          token,
-          editingModelId,
-          payload,
-        );
-        setModels((prev) =>
-          sortModels(
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-          ),
-        );
-        resetForm({
-          provider_id: updated.provider_id ?? "",
-          provider_slug: updated.provider_slug ?? "",
-        });
-        setSuccess(t("admin.models.feedback.updated", { model: updated.name }));
-      } catch (err) {
-        if (isUnauthorizedError(err)) {
-          logout();
-          setError("Session expirée, veuillez vous reconnecter.");
-          return;
+      updateModel.mutate(
+        { token, id: editingModelId, payload },
+        {
+          onSuccess: (updated) => {
+            resetForm({
+              provider_id: updated.provider_id ?? "",
+              provider_slug: updated.provider_slug ?? "",
+            });
+            setSuccess(t("admin.models.feedback.updated", { model: updated.name }));
+          },
+          onError: (err) => {
+            if (isUnauthorizedError(err)) {
+              logout();
+              setError("Session expirée, veuillez vous reconnecter.");
+            } else {
+              setError(
+                err instanceof Error
+                  ? err.message
+                  : t("admin.models.errors.updateFailed")
+              );
+            }
+          },
         }
-        setSuccess(null);
-        setError(
-          err instanceof Error
-            ? err.message
-            : t("admin.models.errors.updateFailed"),
-        );
-      }
+      );
       return;
     }
 
@@ -342,27 +320,30 @@ export const AdminModelsPage = () => {
       supports_reasoning: form.supports_reasoning,
     };
 
-    try {
-      const created = await modelRegistryApi.create(token, payload);
-      setModels((prev) => sortModels([...prev, created]));
-      resetForm({
-        provider_id: created.provider_id ?? "",
-        provider_slug: created.provider_slug ?? "",
-      });
-      setSuccess(t("admin.models.feedback.created", { model: created.name }));
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError("Session expirée, veuillez vous reconnecter.");
-        return;
+    createModel.mutate(
+      { token, payload },
+      {
+        onSuccess: (created) => {
+          resetForm({
+            provider_id: created.provider_id ?? "",
+            provider_slug: created.provider_slug ?? "",
+          });
+          setSuccess(t("admin.models.feedback.created", { model: created.name }));
+        },
+        onError: (err) => {
+          if (isUnauthorizedError(err)) {
+            logout();
+            setError("Session expirée, veuillez vous reconnecter.");
+          } else {
+            setError(
+              err instanceof Error
+                ? err.message
+                : t("admin.models.errors.createFailed")
+            );
+          }
+        },
       }
-      setSuccess(null);
-      setError(
-        err instanceof Error
-          ? err.message
-          : t("admin.models.errors.createFailed"),
-      );
-    }
+    );
   };
 
   const handleEdit = (model: AvailableModel) => {
@@ -389,23 +370,27 @@ export const AdminModelsPage = () => {
     if (!window.confirm(`Supprimer le modèle « ${model.name} » ?`)) {
       return;
     }
-    try {
-      await modelRegistryApi.delete(token, model.id);
-      setModels((prev) => prev.filter((item) => item.id !== model.id));
-      if (editingModelId === model.id) {
-        resetForm();
+    deleteModel.mutate(
+      { token, id: model.id },
+      {
+        onSuccess: () => {
+          if (editingModelId === model.id) {
+            resetForm();
+          }
+          setSuccess(t("admin.models.feedback.deleted", { model: model.name }));
+          setError(null);
+        },
+        onError: (err) => {
+          if (isUnauthorizedError(err)) {
+            logout();
+            setError("Session expirée, veuillez vous reconnecter.");
+          } else {
+            setSuccess(null);
+            setError(err instanceof Error ? err.message : "Suppression impossible.");
+          }
+        },
       }
-      setSuccess(t("admin.models.feedback.deleted", { model: model.name }));
-      setError(null);
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError("Session expirée, veuillez vous reconnecter.");
-        return;
-      }
-      setSuccess(null);
-      setError(err instanceof Error ? err.message : "Suppression impossible.");
-    }
+    );
   };
 
   const modelColumns = useMemo<Column<AvailableModel>[]>(
@@ -530,7 +515,7 @@ export const AdminModelsPage = () => {
                   className="input"
                   value={form.provider_slug}
                   onChange={handleProviderChange}
-                  disabled={isLoading || isLoadingProviders}
+                  disabled={isBusy}
                 >
                   <option value="" disabled={isLoadingProviders}>
                     {isLoadingProviders
@@ -588,7 +573,7 @@ export const AdminModelsPage = () => {
                 <button
                   className="button"
                   type="submit"
-                  disabled={isLoading || isLoadingProviders}
+                  disabled={isBusy}
                 >
                   {isEditing
                     ? t("admin.models.form.submitUpdate")
