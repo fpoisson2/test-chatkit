@@ -138,6 +138,10 @@ import { usePropertiesPanel } from "./hooks/usePropertiesPanel";
 import { useNodeInteractions } from "./hooks/useNodeInteractions";
 import { useWorkflowSync } from "./hooks/useWorkflowSync";
 import { useDeploymentModal } from "./hooks/useDeploymentModal";
+import { useViewportManagement } from "./hooks/useViewportManagement";
+import { useBlockLibraryItems } from "./hooks/useBlockLibraryItems";
+import { useWorkflowMenu } from "./hooks/useWorkflowMenu";
+import { useWorkflowStyles } from "./hooks/useWorkflowStyles";
 import { parseWorkflowImport } from "./importWorkflow";
 import WorkflowAppearanceModal, {
   type WorkflowAppearanceTarget,
@@ -448,17 +452,14 @@ const WorkflowBuilderPage = () => {
   // - ViewportContext: viewport, minViewportZoom, initialViewport, hasUserViewportChange, pendingViewportRestore, refs
   // - WorkflowContext: versions, selectedVersionId, selectedVersionDetail, loading, loadError, hostedLoading, hostedError, refs
 
-  // Remaining local state (UI-specific):
-  const [workflowMenuPlacement, setWorkflowMenuPlacement] =
-    useState<ActionMenuPlacement>("up");
-  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
-  const closeWorkflowMenu = useCallback(() => {
-    setOpenWorkflowMenuId(null);
-    setWorkflowMenuPlacement("up");
-    workflowMenuTriggerRef.current = null;
-    workflowMenuRef.current = null;
-  }, [workflowMenuRef, workflowMenuTriggerRef]);
+  // Phase 9: Extract workflow menu logic into custom hook
+  const {
+    workflowMenuPlacement,
+    setWorkflowMenuPlacement,
+    workflowMenuTriggerRef,
+    workflowMenuRef,
+    closeWorkflowMenu,
+  } = useWorkflowMenu(setOpenWorkflowMenuId);
 
   // Use modal management hook for mobile actions only
   // Note: Modal states (Appearance, Create, Deploy) come from ModalContext above
@@ -1025,36 +1026,16 @@ const WorkflowBuilderPage = () => {
     },
   );
 
-  // Phase 7: updateViewportState for managing viewport state
-  const updateViewportState = useCallback(
-    (nextViewport: Viewport | null | undefined, options?: { persist?: boolean }) => {
-      if (!nextViewport) {
-        return;
-      }
-
-      const { persist = true } = options ?? {};
-
-      viewportRef.current = nextViewport;
-      setViewport(nextViewport);
-      hasUserViewportChangeRef.current = true;
-      setHasUserViewportChange(true);
-
-      const key = viewportKeyRef.current;
-      if (persist && key) {
-        viewportMemoryRef.current.set(key, { ...nextViewport });
-        persistViewportMemory();
-      }
-    },
-    [
-      hasUserViewportChangeRef,
-      persistViewportMemory,
-      setHasUserViewportChange,
-      setViewport,
-      viewportKeyRef,
-      viewportMemoryRef,
-      viewportRef,
-    ],
-  );
+  // Phase 9: Extract viewport management into custom hook
+  const { updateViewportState } = useViewportManagement({
+    viewportRef,
+    viewportKeyRef,
+    viewportMemoryRef,
+    hasUserViewportChangeRef,
+    setViewport,
+    setHasUserViewportChange,
+    persistViewportMemory,
+  });
 
   // Phase 7: Extract node operations into custom hook
   const { updateNodeData, addNodeToGraph, centerViewportOnNode } = useNodeOperations({
@@ -1345,92 +1326,11 @@ const WorkflowBuilderPage = () => {
     resolveVersionIdToPromote,
   });
 
-  const blockLibraryItems = useMemo<BlockLibraryItem[]>(() => {
-    const definitions: Array<{
-      key: string;
-      kind: NodeKind;
-      shortLabel: string;
-      onClick: () => void;
-    }> = [
-      { key: "agent", kind: "agent", shortLabel: "A", onClick: nodeHandlers.handleAddAgentNode },
-      {
-        key: "voice-agent",
-        kind: "voice_agent",
-        shortLabel: "AV",
-        onClick: nodeHandlers.handleAddVoiceAgentNode,
-      },
-      {
-        key: "outbound-call",
-        kind: "outbound_call",
-        shortLabel: "AS",
-        onClick: nodeHandlers.handleAddOutboundCallNode,
-      },
-      { key: "condition", kind: "condition", shortLabel: "C", onClick: nodeHandlers.handleAddConditionNode },
-      {
-        key: "parallel-split",
-        kind: "parallel_split",
-        shortLabel: "SP",
-        onClick: nodeHandlers.handleAddParallelSplitNode,
-      },
-      {
-        key: "parallel-join",
-        kind: "parallel_join",
-        shortLabel: "JP",
-        onClick: nodeHandlers.handleAddParallelJoinNode,
-      },
-      { key: "state", kind: "state", shortLabel: "É", onClick: nodeHandlers.handleAddStateNode },
-      { key: "watch", kind: "watch", shortLabel: "W", onClick: nodeHandlers.handleAddWatchNode },
-      { key: "transform", kind: "transform", shortLabel: "T", onClick: nodeHandlers.handleAddTransformNode },
-      {
-        key: "wait-for-user-input",
-        kind: "wait_for_user_input",
-        shortLabel: "AU",
-        onClick: nodeHandlers.handleAddWaitForUserInputNode,
-      },
-      {
-        key: "assistant-message",
-        kind: "assistant_message",
-        shortLabel: "MA",
-        onClick: nodeHandlers.handleAddAssistantMessageNode,
-      },
-      {
-        key: "user-message",
-        kind: "user_message",
-        shortLabel: "MU",
-        onClick: nodeHandlers.handleAddUserMessageNode,
-      },
-      {
-        key: "json-vector-store",
-        kind: "json_vector_store",
-        shortLabel: "VS",
-        onClick: nodeHandlers.handleAddVectorStoreNode,
-      },
-      { key: "widget", kind: "widget", shortLabel: "W", onClick: nodeHandlers.handleAddWidgetNode },
-      { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
-    ];
-
-    return definitions.map((definition) => ({
-      ...definition,
-      label: labelForKind(definition.kind, t),
-      color: NODE_COLORS[definition.kind],
-    }));
-  }, [
+  // Phase 9: Extract block library items generation into custom hook
+  const blockLibraryItems = useBlockLibraryItems({
+    nodeHandlers,
     t,
-    nodeHandlers.handleAddAgentNode,
-    nodeHandlers.handleAddVoiceAgentNode,
-    nodeHandlers.handleAddConditionNode,
-    nodeHandlers.handleAddParallelSplitNode,
-    nodeHandlers.handleAddParallelJoinNode,
-    nodeHandlers.handleAddStateNode,
-    nodeHandlers.handleAddWatchNode,
-    nodeHandlers.handleAddTransformNode,
-    nodeHandlers.handleAddWaitForUserInputNode,
-    nodeHandlers.handleAddAssistantMessageNode,
-    nodeHandlers.handleAddUserMessageNode,
-    nodeHandlers.handleAddVectorStoreNode,
-    nodeHandlers.handleAddWidgetNode,
-    nodeHandlers.handleAddEndNode,
-  ]);
+  });
 
   // Phase 4.5: BlockLibrary now uses contexts (8 → 3 props, -62.5%)
   const blockLibraryContent = useMemo(
@@ -1460,21 +1360,21 @@ const WorkflowBuilderPage = () => {
       ? `${selectedEdge.source} → ${selectedEdge.target}`
       : "";
 
-  const headerOverlayOffset = useMemo(
-    () => (isMobileLayout ? "4rem" : "4.25rem"),
-    [isMobileLayout],
-  );
-
-  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
-    if (isMobileLayout) {
-      return undefined;
-    }
-
-    return {
-      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
-      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
-    };
-  }, [headerOverlayOffset, isMobileLayout]);
+  // Phase 9: Extract all layout styles into custom hook
+  const {
+    headerOverlayOffset,
+    floatingPanelStyle,
+    shouldShowWorkflowDescription,
+    shouldShowPublicationReminder,
+    headerStyle,
+    headerNavigationButtonStyle,
+    workspaceWrapperStyle,
+    workspaceContentStyle,
+    editorContainerStyle,
+  } = useWorkflowStyles({
+    isMobileLayout,
+    selectedWorkflow,
+  });
 
   const propertiesPanelElement = (
     <aside
@@ -1538,89 +1438,7 @@ const WorkflowBuilderPage = () => {
     </aside>
   );
 
-  const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
-  const shouldShowPublicationReminder =
-    !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
-
-  const headerStyle = useMemo(() => {
-    const baseStyle = getHeaderContainerStyle(isMobileLayout);
-    return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
-  }, [isMobileLayout]);
-
-  const headerNavigationButtonStyle = useMemo(
-    () => getHeaderNavigationButtonStyle(isMobileLayout),
-    [isMobileLayout],
-  );
-
-  const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
-    if (isMobileLayout) {
-      return { position: "absolute", inset: 0, overflow: "hidden" };
-    }
-    return { position: "relative", flex: 1, overflow: "hidden", minHeight: 0 };
-  }, [isMobileLayout]);
-
-  const workspaceContentStyle = useMemo<CSSProperties>(() => {
-    if (isMobileLayout) {
-      return {
-        position: "absolute",
-        inset: 0,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0",
-      };
-    }
-
-    const hasWorkflowMeta = shouldShowWorkflowDescription || shouldShowPublicationReminder;
-
-    return {
-      position: "absolute",
-      inset: 0,
-      overflow: "hidden",
-      display: "flex",
-      flexDirection: "column",
-      gap: hasWorkflowMeta ? "1rem" : "0",
-      paddingTop: `calc(${headerOverlayOffset}${
-        hasWorkflowMeta ? ` + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}` : ""
-      })`,
-      paddingBottom: 0,
-      paddingLeft: DESKTOP_WORKSPACE_HORIZONTAL_PADDING,
-      paddingRight: DESKTOP_WORKSPACE_HORIZONTAL_PADDING,
-    };
-  }, [
-    headerOverlayOffset,
-    isMobileLayout,
-    shouldShowPublicationReminder,
-    shouldShowWorkflowDescription,
-  ]);
-
-  const editorContainerStyle = useMemo<CSSProperties>(() => {
-    const baseStyle: CSSProperties = {
-      flex: 1,
-      minHeight: 0,
-      borderRadius: isMobileLayout ? 0 : "1.25rem",
-      border: isMobileLayout ? "none" : "1px solid var(--surface-border)",
-      background: "var(--surface-strong)",
-      overflow: "hidden",
-      boxShadow: isMobileLayout ? "none" : "var(--shadow-card)",
-    };
-
-    if (!isMobileLayout) {
-      baseStyle.marginLeft = `calc(-1 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`;
-      baseStyle.marginRight = `calc(-1 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`;
-    }
-
-    if (!isMobileLayout && !(shouldShowWorkflowDescription || shouldShowPublicationReminder)) {
-      baseStyle.marginTop = `calc(-1 * ${headerOverlayOffset})`;
-    }
-
-    return baseStyle;
-  }, [
-    headerOverlayOffset,
-    isMobileLayout,
-    shouldShowPublicationReminder,
-    shouldShowWorkflowDescription,
-  ]);
+  // Phase 9: shouldShowWorkflowDescription, shouldShowPublicationReminder, headerStyle, etc. now provided by useWorkflowStyles hook
 
   const mobileActionLabels = useMemo<MobileActionLabels>(
     () => ({
