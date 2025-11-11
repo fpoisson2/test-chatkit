@@ -404,6 +404,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             webSearchConfig={webSearchConfig}
             fileSearchEnabled={fileSearchEnabled}
             fileSearchConfig={fileSearchConfig}
+            fileSearchValidationMessageFromHook={fileSearchValidationMessageFromHook}
             fileSearchValidationReason={fileSearchValidationReason}
             vectorStores={vectorStores}
             vectorStoresLoading={vectorStoresLoading}
@@ -1568,6 +1569,7 @@ interface ToolsTabProps {
   webSearchConfig: WebSearchConfig | null;
   fileSearchEnabled: boolean;
   fileSearchConfig: FileSearchConfig | null;
+  fileSearchValidationMessageFromHook: string | null;
   fileSearchValidationReason:
     | 'no_vector_stores'
     | 'missing_selection'
@@ -1635,6 +1637,7 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
   webSearchConfig,
   fileSearchEnabled,
   fileSearchConfig,
+  fileSearchValidationMessageFromHook,
   fileSearchValidationReason,
   vectorStores,
   vectorStoresLoading,
