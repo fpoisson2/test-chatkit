@@ -602,16 +602,21 @@ export const Modal = ({ children, onClose }) => {
 4. ✅ Créer composants ResponsiveCard et ResponsiveTable
 
 ### Phase 2 (Semaine 3-4) - Optimisations
-5. ✅ Intégrer React Query
-6. ✅ Mettre en place code splitting
-7. ✅ Migrer 3-5 formulaires vers React Hook Form
-8. ✅ Améliorer loading/error states
+5. ✅ Intégrer React Query (COMPLETED)
+   - ✅ @tanstack/react-query installé (v5.90.7)
+   - ✅ QueryClient configuré dans App.tsx
+   - ✅ Hooks créés: useAppSettings, useUsers, useModels, useMcpServers, useAppearanceSettings
+   - ✅ AdminAppSettingsPage migré vers React Query
+   - ⏳ TODO: Migrer les autres pages admin
+6. ❌ Mettre en place code splitting (TODO)
+7. ⏳ Migrer 3-5 formulaires vers React Hook Form (react-hook-form installé mais pas encore utilisé)
+8. ❌ Améliorer loading/error states (TODO - créer composants réutilisables)
 
 ### Phase 3 (Semaine 5-6) - Polish
-9. ✅ Intégrer Radix UI (progressif)
-10. ✅ Audit accessibilité complet
-11. ✅ Ajout animations et micro-interactions
-12. ✅ Tests de performance et optimisations
+9. ❌ Intégrer Radix UI (progressif) - TODO
+10. ❌ Audit accessibilité complet - TODO
+11. ❌ Ajout animations et micro-interactions - TODO
+12. ❌ Tests de performance et optimisations - TODO
 
 ---
 
