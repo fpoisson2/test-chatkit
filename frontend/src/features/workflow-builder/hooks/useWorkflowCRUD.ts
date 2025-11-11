@@ -24,9 +24,6 @@
  */
 
 import { useCallback } from "react";
-import { makeApiEndpointCandidates } from "../../../utils/backend";
-import { chatkitApi } from "../../../utils/backend";
-import { backendUrl } from "../WorkflowBuilderUtils";
 import { slugifyWorkflowName, buildGraphPayloadFrom } from "../utils";
 import { useSaveContext } from "../contexts/SaveContext";
 import { useModalContext } from "../contexts/ModalContext";
@@ -40,6 +37,7 @@ import type {
 import {
   useCreateWorkflow,
   useCreateHostedWorkflow,
+  useCreateWorkflowWithGraph,
   useDeleteWorkflow,
   useDeleteHostedWorkflow,
   useDuplicateWorkflow,
@@ -140,6 +138,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
   // React Query mutations
   const createWorkflowMutation = useCreateWorkflow();
   const createHostedWorkflowMutation = useCreateHostedWorkflow();
+  const createWorkflowWithGraphMutation = useCreateWorkflowWithGraph();
   const deleteWorkflowMutation = useDeleteWorkflow();
   const deleteHostedWorkflowMutation = useDeleteHostedWorkflow();
   const duplicateWorkflowMutation = useDuplicateWorkflow();
@@ -395,7 +394,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
 
   /**
    * Duplicate a workflow
-   * Extracted from WorkflowBuilderPage.tsx lines 1751-1824 (74 lines)
+   * Migrated to use React Query mutation with optimistic updates
    */
   const handleDuplicateWorkflow = useCallback(
     async (workflowId?: number) => {
@@ -422,51 +421,39 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
         return;
       }
 
-      const payload = {
-        slug: slugifyWorkflowName(displayName),
-        display_name: displayName,
-        description: selectedWorkflow.description,
-        graph: buildGraphPayload(),
-      };
-
-      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
-      let lastError: Error | null = null;
       setSaveState("saving");
       setSaveMessage("Duplication en cours…");
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-            body: JSON.stringify(payload),
-          });
 
-          if (!response.ok) {
-            throw new Error(`Échec de la duplication (${response.status})`);
-          }
+      try {
+        const data = await createWorkflowWithGraphMutation.mutateAsync({
+          token,
+          payload: {
+            slug: slugifyWorkflowName(displayName),
+            display_name: displayName,
+            description: selectedWorkflow.description,
+            graph: buildGraphPayload(),
+          },
+        });
 
-          const data: WorkflowVersionResponse = await response.json();
-          closeWorkflowMenu();
-          await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
-          setSaveState("saved");
-          setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
-          setTimeout(() => setSaveState("idle"), 1500);
-          return;
-        } catch (error) {
-          lastError = error instanceof Error ? error : new Error("Impossible de dupliquer le workflow.");
-        }
+        closeWorkflowMenu();
+
+        // React Query handles cache invalidation, load the duplicated workflow
+        await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
+
+        setSaveState("saved");
+        setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
+        setTimeout(() => setSaveState("idle"), 1500);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Impossible de dupliquer le workflow.";
+        setSaveState("error");
+        setSaveMessage(message);
       }
-
-      setSaveState("error");
-      setSaveMessage(lastError?.message ?? "Impossible de dupliquer le workflow.");
     },
     [
-      authHeader,
+      token,
       buildGraphPayload,
       closeWorkflowMenu,
+      createWorkflowWithGraphMutation,
       loadWorkflows,
       selectedWorkflowId,
       setSaveMessage,

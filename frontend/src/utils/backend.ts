@@ -1590,6 +1590,13 @@ export type CreateWorkflowPayload = {
   description?: string | null;
 };
 
+export type CreateWorkflowWithGraphPayload = {
+  slug: string;
+  display_name: string;
+  description?: string | null;
+  graph: Record<string, unknown> | null;
+};
+
 export type UpdateWorkflowPayload = {
   display_name?: string;
   description?: string | null;
@@ -1604,6 +1611,15 @@ export const workflowsApi = {
   },
 
   async create(token: string | null, payload: CreateWorkflowPayload): Promise<WorkflowSummary> {
+    const response = await requestWithFallback("/api/workflows", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async createWithGraph(token: string | null, payload: CreateWorkflowWithGraphPayload): Promise<WorkflowVersionResponse> {
     const response = await requestWithFallback("/api/workflows", {
       method: "POST",
       headers: withAuthHeaders(token),

@@ -6,6 +6,7 @@ import {
   type WorkflowVersionSummary,
   type WorkflowVersionResponse,
   type CreateWorkflowPayload,
+  type CreateWorkflowWithGraphPayload,
   type UpdateWorkflowPayload,
   type HostedWorkflowMetadata,
 } from "../utils/backend";
@@ -87,6 +88,56 @@ export const useCreateWorkflow = () => {
         active_version_number: null,
         is_chatkit_default: false,
         versions_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      queryClient.setQueryData<WorkflowSummary[]>(
+        workflowsKeys.list(variables.token),
+        (old = []) => [...old, tempWorkflow]
+      );
+
+      return { previousWorkflows };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousWorkflows) {
+        queryClient.setQueryData(workflowsKeys.list(variables.token), context.previousWorkflows);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: workflowsKeys.lists() });
+    },
+  });
+};
+
+/**
+ * Hook to create a workflow with graph (used for duplication)
+ */
+export const useCreateWorkflowWithGraph = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ token, payload }: { token: string | null; payload: CreateWorkflowWithGraphPayload }) =>
+      workflowsApi.createWithGraph(token, payload),
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: workflowsKeys.lists() });
+
+      // Snapshot previous value
+      const previousWorkflows = queryClient.getQueryData<WorkflowSummary[]>(workflowsKeys.list(variables.token));
+
+      // Optimistically update cache with temporary workflow
+      const tempWorkflow: WorkflowSummary = {
+        id: -Date.now(), // Temporary negative ID
+        slug: variables.payload.slug,
+        display_name: variables.payload.display_name,
+        description: variables.payload.description ?? null,
+        active_version_id: null,
+        active_version_number: null,
+        is_chatkit_default: false,
+        versions_count: 1, // New workflow with graph has 1 version
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
