@@ -56,15 +56,34 @@ def _app_settings_has_lti_columns(connection) -> bool:
 
 
 def _add_app_settings_lti_columns(connection) -> None:
-    statements = (
-        "ALTER TABLE app_settings ADD COLUMN lti_tool_client_id VARCHAR(255)",
-        "ALTER TABLE app_settings ADD COLUMN lti_tool_key_set_url TEXT",
-        "ALTER TABLE app_settings ADD COLUMN lti_tool_audience VARCHAR(512)",
-        "ALTER TABLE app_settings ADD COLUMN lti_tool_private_key_encrypted TEXT",
-        "ALTER TABLE app_settings ADD COLUMN lti_tool_key_id VARCHAR(255)",
+    inspector = inspect(connection)
+
+    if not inspector.has_table("app_settings"):
+        logger.warning(
+            "Cannot add LTI columns to app_settings because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("app_settings")
+    }
+
+    statements: tuple[tuple[str, str], ...] = (
+        ("lti_tool_client_id", "VARCHAR(255)"),
+        ("lti_tool_key_set_url", "TEXT"),
+        ("lti_tool_audience", "VARCHAR(512)"),
+        ("lti_tool_private_key_encrypted", "TEXT"),
+        ("lti_tool_key_id", "VARCHAR(255)"),
     )
-    for statement in statements:
-        connection.execute(text(statement))
+
+    for column_name, column_type in statements:
+        if column_name in existing_columns:
+            continue
+        connection.execute(
+            text(
+                f"ALTER TABLE app_settings ADD COLUMN {column_name} {column_type}"
+            )
+        )
 
 
 def check_and_apply_migrations():
@@ -75,7 +94,7 @@ def check_and_apply_migrations():
     migrations = [
         {
             "id": "001_fix_language_fk",
-            "description": "Fix language_generation_tasks foreign key to allow language deletion",
+            "description": "Fix language_generation_tasks FK for deletions",
             "check": """
                 SELECT confdeltype
                 FROM pg_constraint
