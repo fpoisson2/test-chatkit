@@ -140,6 +140,7 @@ export const App = () => (
         <Route path="sip-accounts" element={<AdminTelephonyPage />} />
         <Route path="mcp-servers" element={<AdminMcpServersPage />} />
         <Route path="languages" element={<AdminLanguagesPage />} />
+        <Route path="lti" element={<AdminLtiPage />} />
       </Route>
       <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
       <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
