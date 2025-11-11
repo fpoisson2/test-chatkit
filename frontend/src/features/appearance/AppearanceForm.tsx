@@ -1,17 +1,18 @@
 import {
-  FormEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
-  useState,
 } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useI18n } from "../../i18n";
 import type {
   AppearanceSettings,
   AppearanceSettingsUpdatePayload,
 } from "../../utils/backend";
+import { appearanceFormSchema, type AppearanceFormData } from "../../schemas/appearance";
 
 const DEFAULT_COLOR = "#2563eb";
 
@@ -124,14 +125,23 @@ export const AppearanceForm = ({
   footer,
 }: AppearanceFormProps) => {
   const { t } = useI18n();
-  const [formState, setFormState] = useState<AppearanceFormState>(
-    DEFAULT_FORM_STATE,
-  );
   const formRef = useRef<HTMLFormElement | null>(null);
 
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors: formErrors },
+    watch,
+    reset,
+    setValue,
+  } = useForm<AppearanceFormData>({
+    resolver: zodResolver(appearanceFormSchema),
+    defaultValues: buildFormStateFromSettings(initialSettings),
+  });
+
   useEffect(() => {
-    setFormState(buildFormStateFromSettings(initialSettings));
-  }, [initialSettings]);
+    reset(buildFormStateFromSettings(initialSettings));
+  }, [initialSettings, reset]);
 
   useEffect(() => {
     if (!autoFocus || isLoading) {
@@ -145,35 +155,23 @@ export const AppearanceForm = ({
       "input, textarea, select, button",
     );
     firstField?.focus();
-  }, [autoFocus, isLoading, formState]);
+  }, [autoFocus, isLoading]);
 
   const handleSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      onSubmit(buildAppearanceUpdatePayload(formState));
+    (data: AppearanceFormData) => {
+      onSubmit(buildAppearanceUpdatePayload(data));
     },
-    [formState, onSubmit],
+    [onSubmit],
   );
 
-  const handleSurfaceToggle = useCallback((checked: boolean) => {
-    setFormState((current) => ({
-      ...current,
-      useCustomSurfaceColors: checked,
-    }));
-  }, []);
-
-  const handleRangeChange = useCallback(
-    (key: "surfaceHue" | "surfaceTint" | "surfaceShade", value: number) => {
-      setFormState((current) => ({ ...current, [key]: value }));
-    },
-    [],
-  );
+  const accentColor = watch("accentColor");
+  const useCustomSurfaceColors = watch("useCustomSurfaceColors");
 
   const accentPreviewStyle = useMemo(
     () => ({
-      backgroundColor: formState.accentColor,
+      backgroundColor: accentColor,
     }),
-    [formState.accentColor],
+    [accentColor],
   );
 
   const actions = footer?.({ isBusy }) ?? null;
@@ -185,7 +183,7 @@ export const AppearanceForm = ({
   }
 
   return (
-    <form id={id} ref={formRef} className="admin-form" onSubmit={handleSubmit}>
+    <form id={id} ref={formRef} className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
       <section className="admin-card" aria-labelledby="appearance-color-scheme">
         <div>
           <h2 id="appearance-color-scheme" className="admin-card__title">
@@ -202,15 +200,8 @@ export const AppearanceForm = ({
               <label key={option} className="radio-field">
                 <input
                   type="radio"
-                  name="appearance-color-scheme"
                   value={option}
-                  checked={formState.colorScheme === typedOption}
-                  onChange={() =>
-                    setFormState((current) => ({
-                      ...current,
-                      colorScheme: typedOption,
-                    }))
-                  }
+                  {...register("colorScheme")}
                   disabled={isBusy}
                 />
                 <span>
@@ -239,13 +230,11 @@ export const AppearanceForm = ({
             <div className="admin-form__color-picker">
               <input
                 type="color"
-                value={formState.accentColor}
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    accentColor: ensureColorValue(event.target.value),
-                  }))
-                }
+                {...register("accentColor", {
+                  onChange: (event) => {
+                    setValue("accentColor", ensureColorValue(event.target.value));
+                  },
+                })}
                 disabled={isBusy}
                 aria-label={t("admin.appearance.colors.accentAria")}
               />
@@ -263,8 +252,7 @@ export const AppearanceForm = ({
         <label className="checkbox-field">
           <input
             type="checkbox"
-            checked={formState.useCustomSurfaceColors}
-            onChange={(event) => handleSurfaceToggle(event.target.checked)}
+            {...register("useCustomSurfaceColors")}
             disabled={isBusy}
           />
           {t("admin.appearance.colors.enableCustomSurfaces")}
@@ -279,14 +267,13 @@ export const AppearanceForm = ({
               min={0}
               max={360}
               step={1}
-              value={formState.surfaceHue}
-              onChange={(event) =>
-                handleRangeChange("surfaceHue", Number(event.target.value))
-              }
-              disabled={isBusy || !formState.useCustomSurfaceColors}
+              {...register("surfaceHue", {
+                valueAsNumber: true,
+              })}
+              disabled={isBusy || !useCustomSurfaceColors}
             />
             <span className="admin-form__slider-value">
-              {formState.surfaceHue}°
+              {watch("surfaceHue")}°
             </span>
           </label>
           <label className="input-field">
@@ -298,14 +285,13 @@ export const AppearanceForm = ({
               min={0}
               max={100}
               step={1}
-              value={formState.surfaceTint}
-              onChange={(event) =>
-                handleRangeChange("surfaceTint", Number(event.target.value))
-              }
-              disabled={isBusy || !formState.useCustomSurfaceColors}
+              {...register("surfaceTint", {
+                valueAsNumber: true,
+              })}
+              disabled={isBusy || !useCustomSurfaceColors}
             />
             <span className="admin-form__slider-value">
-              {formState.surfaceTint}%
+              {watch("surfaceTint")}%
             </span>
           </label>
           <label className="input-field">
@@ -317,14 +303,13 @@ export const AppearanceForm = ({
               min={0}
               max={100}
               step={1}
-              value={formState.surfaceShade}
-              onChange={(event) =>
-                handleRangeChange("surfaceShade", Number(event.target.value))
-              }
-              disabled={isBusy || !formState.useCustomSurfaceColors}
+              {...register("surfaceShade", {
+                valueAsNumber: true,
+              })}
+              disabled={isBusy || !useCustomSurfaceColors}
             />
             <span className="admin-form__slider-value">
-              {formState.surfaceShade}%
+              {watch("surfaceShade")}%
             </span>
           </label>
         </div>
@@ -347,13 +332,7 @@ export const AppearanceForm = ({
             <input
               className="input"
               type="text"
-              value={formState.bodyFont}
-              onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  bodyFont: event.target.value,
-                }))
-              }
+              {...register("bodyFont")}
               disabled={isBusy}
             />
           </label>
@@ -364,13 +343,7 @@ export const AppearanceForm = ({
             <input
               className="input"
               type="text"
-              value={formState.headingFont}
-              onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  headingFont: event.target.value,
-                }))
-              }
+              {...register("headingFont")}
               disabled={isBusy}
             />
           </label>
@@ -397,13 +370,7 @@ export const AppearanceForm = ({
             <textarea
               className="textarea"
               rows={2}
-              value={formState.startGreeting}
-              onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  startGreeting: event.target.value,
-                }))
-              }
+              {...register("startGreeting")}
               disabled={isBusy}
             />
           </label>
@@ -414,13 +381,7 @@ export const AppearanceForm = ({
             <textarea
               className="textarea"
               rows={4}
-              value={formState.startPrompt}
-              onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  startPrompt: event.target.value,
-                }))
-              }
+              {...register("startPrompt")}
               disabled={isBusy}
             />
           </label>
@@ -436,13 +397,7 @@ export const AppearanceForm = ({
             <input
               className="input"
               type="text"
-              value={formState.inputPlaceholder}
-              onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  inputPlaceholder: event.target.value,
-                }))
-              }
+              {...register("inputPlaceholder")}
               disabled={isBusy}
             />
           </label>
@@ -453,13 +408,7 @@ export const AppearanceForm = ({
             <input
               className="input"
               type="text"
-              value={formState.disclaimer}
-              onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  disclaimer: event.target.value,
-                }))
-              }
+              {...register("disclaimer")}
               disabled={isBusy}
             />
           </label>
