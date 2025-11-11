@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
@@ -10,6 +10,7 @@ import {
 } from "../utils/backend";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { Modal } from "../components/Modal";
 import {
   ResponsiveTable,
   type Column,
@@ -25,7 +26,7 @@ export const AdminPage = () => {
   const [users, setUsers] = useState<EditableUser[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const createFormRef = useRef<HTMLElement>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const {
     register,
@@ -75,6 +76,7 @@ export const AdminPage = () => {
       const created = await adminApi.createUser(token, data);
       setUsers((prev) => [...prev, created]);
       reset();
+      setShowCreateModal(false);
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -217,10 +219,6 @@ export const AdminPage = () => {
     [handleToggleAdmin, handleResetPassword, handleDelete],
   );
 
-  const scrollToCreateForm = () => {
-    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="users" />}
@@ -230,7 +228,7 @@ export const AdminPage = () => {
           className="management-header__icon-button"
           aria-label="Créer un utilisateur"
           title="Créer un utilisateur"
-          onClick={scrollToCreateForm}
+          onClick={() => setShowCreateModal(true)}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path
@@ -250,12 +248,51 @@ export const AdminPage = () => {
       />
 
       <div className="admin-grid">
-        <div ref={createFormRef}>
-          <FormSection
-            title="Créer un utilisateur"
-            subtitle="Invitez un collaborateur et attribuez-lui un rôle adapté à son usage de ChatKit."
-          >
-          <form className="admin-form" onSubmit={handleSubmit(handleCreate)}>
+        <FormSection
+          title="Utilisateurs"
+          subtitle="Consultez les accès existants et appliquez des actions rapides pour chaque compte."
+        >
+          {isLoading ? (
+            <LoadingSpinner text="Chargement des utilisateurs…" />
+          ) : users.length === 0 ? (
+            <p className="admin-card__subtitle">
+              Aucun utilisateur pour le moment.
+            </p>
+          ) : (
+            <ResponsiveTable
+              columns={userColumns}
+              data={users}
+              keyExtractor={(user) => user.id}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+      </div>
+
+      {showCreateModal && (
+        <Modal
+          title="Créer un utilisateur"
+          onClose={() => setShowCreateModal(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => setShowCreateModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="button"
+                type="submit"
+                form="create-user-form"
+              >
+                Ajouter
+              </button>
+            </>
+          }
+        >
+          <form id="create-user-form" className="admin-form" onSubmit={handleSubmit(handleCreate)}>
             <div className="admin-form__row">
               <FormField
                 label="E-mail"
@@ -286,36 +323,9 @@ export const AdminPage = () => {
               <input type="checkbox" {...register("is_admin")} />
               Administrateur
             </label>
-
-            <div className="admin-form__actions">
-              <button className="button" type="submit">
-                Ajouter
-              </button>
-            </div>
           </form>
-          </FormSection>
-        </div>
-
-        <FormSection
-          title="Utilisateurs"
-          subtitle="Consultez les accès existants et appliquez des actions rapides pour chaque compte."
-        >
-          {isLoading ? (
-            <LoadingSpinner text="Chargement des utilisateurs…" />
-          ) : users.length === 0 ? (
-            <p className="admin-card__subtitle">
-              Aucun utilisateur pour le moment.
-            </p>
-          ) : (
-            <ResponsiveTable
-              columns={userColumns}
-              data={users}
-              keyExtractor={(user) => user.id}
-              mobileCardView={true}
-            />
-          )}
-        </FormSection>
-      </div>
+        </Modal>
+      )}
     </ManagementPageLayout>
   );
 };

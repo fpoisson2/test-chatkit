@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { Modal } from "../components/Modal";
 import { ResponsiveCard, FeedbackMessages, FormField, FormSection } from "../components";
 import { useI18n } from "../i18n";
 import {
@@ -23,7 +24,7 @@ import {
 export const AdminModelProvidersPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const createFormRef = useRef<HTMLDivElement>(null);
+  const [showConfigModal, setShowConfigModal] = useState(false);
 
   // Fetch app settings using React Query
   const { data: settings = null, isLoading, error: queryError } = useAppSettings(token);
@@ -231,6 +232,7 @@ export const AdminModelProvidersPage = () => {
 
       await updateSettings.mutateAsync({ token, payload });
       setSuccess(t("admin.modelProviders.success.saved"));
+      setShowConfigModal(false);
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -249,10 +251,6 @@ export const AdminModelProvidersPage = () => {
   const effectiveProvider = settings?.model_provider ?? "";
   const effectiveBase = settings?.model_api_base ?? "";
 
-  const scrollToCreateForm = () => {
-    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="providers" />}
@@ -262,7 +260,7 @@ export const AdminModelProvidersPage = () => {
           className="management-header__icon-button"
           aria-label="Configurer un fournisseur"
           title="Configurer un fournisseur"
-          onClick={scrollToCreateForm}
+          onClick={() => setShowConfigModal(true)}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path
@@ -283,13 +281,32 @@ export const AdminModelProvidersPage = () => {
         onDismissSuccess={() => setSuccess(null)}
       />
 
-      <div className="admin-grid">
-        <div ref={createFormRef}>
-          <FormSection
+      {showConfigModal && (
+        <Modal
           title={t("admin.appSettings.model.cardTitle")}
-          subtitle={t("admin.appSettings.model.cardDescription")}
+          onClose={() => setShowConfigModal(false)}
+          size="lg"
+          footer={
+            <>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => setShowConfigModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                className="button"
+                form="model-providers-form"
+                disabled={isBusy}
+              >
+                {t("admin.appSettings.actions.save")}
+              </button>
+            </>
+          }
         >
-          <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+          <form id="model-providers-form" className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
               <label className="label" htmlFor="model-config-toggle">
                 <input
                   id="model-config-toggle"
@@ -456,19 +473,9 @@ export const AdminModelProvidersPage = () => {
                   })}
                 </p>
               )}
-            <div className="admin-form__actions" style={{ gap: "12px" }}>
-              <button
-                type="submit"
-                className="button"
-                disabled={isBusy}
-              >
-                {t("admin.appSettings.actions.save")}
-              </button>
-            </div>
           </form>
-          </FormSection>
-        </div>
-      </div>
+        </Modal>
+      )}
     </ManagementPageLayout>
   );
 };

@@ -3,7 +3,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  useRef,
 } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { Modal } from "../components/Modal";
 import { useI18n } from "../i18n";
 import {
   type LtiRegistration,
@@ -62,7 +62,7 @@ const normalizeOptionalField = (value: string | undefined) => {
 export const AdminLtiPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const createFormRef = useRef<HTMLDivElement>(null);
+  const [showCreateRegistrationModal, setShowCreateRegistrationModal] = useState(false);
 
   // Registration Form - React Hook Form
   const {
@@ -190,6 +190,7 @@ export const AdminLtiPage = () => {
 
   const resetRegistrationForm = useCallback(() => {
     setEditingRegistrationId(null);
+    setShowCreateRegistrationModal(false);
     resetRegForm(emptyRegistrationForm);
   }, [resetRegForm]);
 
@@ -281,9 +282,12 @@ export const AdminLtiPage = () => {
         setRegistrationsSuccess(
           t("admin.lti.registrations.feedback.created", { issuer: created.issuer }),
         );
+        setShowCreateRegistrationModal(false);
       }
       await fetchRegistrations();
-      resetRegistrationForm();
+      if (editingRegistrationId) {
+        resetRegistrationForm();
+      }
     } catch (error) {
       if (isUnauthorizedError(error)) {
         logout();
@@ -341,9 +345,6 @@ export const AdminLtiPage = () => {
     }
   }, [token, t, logout, setToolValue]);
 
-  const scrollToCreateForm = () => {
-    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   const registrationColumns: Column<LtiRegistration>[] = useMemo(() => [
     {
@@ -421,7 +422,7 @@ export const AdminLtiPage = () => {
           className="management-header__icon-button"
           aria-label="Ajouter une registration LTI"
           title="Ajouter une registration LTI"
-          onClick={scrollToCreateForm}
+          onClick={() => setShowCreateRegistrationModal(true)}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path
@@ -449,11 +450,10 @@ export const AdminLtiPage = () => {
       />
 
       <div className="admin-grid">
-        <div ref={createFormRef}>
-          <FormSection
-            title={t("admin.lti.toolSettings.keys.title")}
-            subtitle={t("admin.lti.toolSettings.keys.subtitle")}
-          >
+        <FormSection
+          title={t("admin.lti.toolSettings.keys.title")}
+          subtitle={t("admin.lti.toolSettings.keys.subtitle")}
+        >
           {toolLoading ? (
             <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
           ) : (
@@ -504,8 +504,7 @@ export const AdminLtiPage = () => {
               </p>
             </>
           )}
-          </FormSection>
-        </div>
+        </FormSection>
 
         <FormSection
           title={t("admin.lti.toolSettings.title")}
@@ -604,13 +603,10 @@ export const AdminLtiPage = () => {
           )}
         </FormSection>
 
-        <FormSection
-          title={
-            editingRegistrationId
-              ? t("admin.lti.registrations.form.editTitle")
-              : t("admin.lti.registrations.form.createTitle")
-          }
-        >
+        {editingRegistrationId && (
+          <FormSection
+            title={t("admin.lti.registrations.form.editTitle")}
+          >
           <form className="admin-form" onSubmit={handleRegSubmit(handleRegistrationSubmit)}>
             <FormField
               label={t("admin.lti.registrations.form.issuerLabel")}
@@ -712,7 +708,114 @@ export const AdminLtiPage = () => {
             </div>
           </form>
         </FormSection>
+        )}
       </div>
+
+      {showCreateRegistrationModal && (
+        <Modal
+          title={t("admin.lti.registrations.form.createTitle")}
+          onClose={() => setShowCreateRegistrationModal(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => setShowCreateRegistrationModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="button"
+                type="submit"
+                form="create-lti-registration-form"
+                disabled={isSavingRegistration}
+              >
+                {t("admin.lti.registrations.form.save")}
+              </button>
+            </>
+          }
+        >
+          <form id="create-lti-registration-form" className="admin-form" onSubmit={handleRegSubmit(handleRegistrationSubmit)}>
+            <FormField
+              label={t("admin.lti.registrations.form.issuerLabel")}
+              error={regErrors.issuer?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("issuer")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.clientIdLabel")}
+              error={regErrors.clientId?.message}
+            >
+              <input
+                className="input"
+                type="text"
+                {...registerReg("clientId")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.keySetUrlLabel")}
+              error={regErrors.keySetUrl?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("keySetUrl")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.authorizationEndpointLabel")}
+              error={regErrors.authorizationEndpoint?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("authorizationEndpoint")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.tokenEndpointLabel")}
+              error={regErrors.tokenEndpoint?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("tokenEndpoint")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField label={t("admin.lti.registrations.form.deepLinkReturnUrlLabel")}>
+              <input
+                className="input"
+                type="url"
+                {...registerReg("deepLinkReturnUrl")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField label={t("admin.lti.registrations.form.audienceLabel")}>
+              <input
+                className="input"
+                type="text"
+                {...registerReg("audience")}
+                autoComplete="off"
+              />
+            </FormField>
+          </form>
+        </Modal>
+      )}
     </ManagementPageLayout>
   );
 };

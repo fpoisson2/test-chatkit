@@ -4,7 +4,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  useRef,
 } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,6 +12,7 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { Modal } from "../components/Modal";
 import {
   ResponsiveTable,
   type Column,
@@ -127,7 +127,7 @@ const buildFormFromModel = (model: AvailableModel): AdminModelFormData =>
 export const AdminModelsPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const createFormRef = useRef<HTMLDivElement>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // React Query hooks
   const { data: modelsData = [], isLoading: isLoadingModels, error: modelsError } = useModelsAdmin(token);
@@ -330,6 +330,7 @@ export const AdminModelsPage = () => {
             provider_slug: created.provider_slug ?? "",
           });
           setSuccess(t("admin.models.feedback.created", { model: created.name }));
+          setShowCreateModal(false);
         },
         onError: (err) => {
           if (isUnauthorizedError(err)) {
@@ -451,10 +452,6 @@ export const AdminModelsPage = () => {
     [editingModelId, handleDelete, handleEdit, isEditing, t],
   );
 
-  const scrollToCreateForm = () => {
-    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="models" />}
@@ -464,7 +461,7 @@ export const AdminModelsPage = () => {
           className="management-header__icon-button"
           aria-label="Ajouter un modèle"
           title="Ajouter un modèle"
-          onClick={scrollToCreateForm}
+          onClick={() => setShowCreateModal(true)}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path
@@ -486,18 +483,10 @@ export const AdminModelsPage = () => {
       />
 
       <div className="admin-grid">
-        <div ref={createFormRef}>
+        {isEditing && (
           <FormSection
-          title={
-            isEditing
-              ? t("admin.models.form.editTitle")
-              : t("admin.models.form.createTitle")
-          }
-          subtitle={
-            isEditing
-              ? t("admin.models.form.editSubtitle")
-              : t("admin.models.form.createSubtitle")
-          }
+          title={t("admin.models.form.editTitle")}
+          subtitle={t("admin.models.form.editSubtitle")}
         >
           <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
             {isEditing && (
@@ -593,7 +582,7 @@ export const AdminModelsPage = () => {
             </div>
           </form>
           </FormSection>
-        </div>
+        )}
 
         <FormSection
           title="Modèles autorisés"
@@ -616,6 +605,98 @@ export const AdminModelsPage = () => {
           )}
         </FormSection>
       </div>
+
+      {showCreateModal && (
+        <Modal
+          title={t("admin.models.form.createTitle")}
+          onClose={() => setShowCreateModal(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => setShowCreateModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="button"
+                type="submit"
+                form="create-model-form"
+                disabled={isBusy}
+              >
+                {t("admin.models.form.submitCreate")}
+              </button>
+            </>
+          }
+        >
+          <form id="create-model-form" className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+            <div className="admin-form__row">
+              <FormField
+                label={t("admin.models.form.modelIdLabel")}
+                error={formErrors.name?.message}
+              >
+                <input
+                  className="input"
+                  type="text"
+                  {...register("name")}
+                  placeholder={t("admin.models.form.modelIdPlaceholder")}
+                />
+              </FormField>
+
+              <FormField label="Nom affiché (optionnel)">
+                <input
+                  className="input"
+                  type="text"
+                  {...register("display_name")}
+                  placeholder="Nom convivial"
+                />
+              </FormField>
+            </div>
+
+            <FormField
+              label={t("admin.models.form.providerSelectLabel")}
+              error={formErrors.provider_slug?.message}
+              hint={t("admin.models.form.providerSelectHint")}
+            >
+              <select
+                className="input"
+                {...register("provider_slug")}
+                onChange={handleProviderChange}
+                disabled={isBusy}
+              >
+                <option value="">
+                  {isLoadingProviders
+                    ? t("admin.models.form.providerSelectLoading")
+                    : t("admin.models.form.providerSelectPlaceholder")}
+                </option>
+                {mergedProviderOptions.map((option) => (
+                  <option key={option.slug} value={option.slug}>
+                    {renderProviderOptionLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField label="Description (optionnel)">
+              <textarea
+                className="input"
+                rows={3}
+                {...register("description")}
+                placeholder="Ajoutez des notes pour aider les administrateurs."
+              />
+            </FormField>
+
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                {...register("supports_reasoning")}
+              />
+              Modèle de raisonnement (affiche les options avancées dans le workflow builder)
+            </label>
+          </form>
+        </Modal>
+      )}
     </ManagementPageLayout>
   );
 };
