@@ -90,7 +90,6 @@ from ..image_utils import (
     save_agent_image_file,
 )
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
-from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
     evaluate_state_expression,
     ingest_document,
@@ -117,47 +116,86 @@ AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 
+def _sanitize_previous_response_id(value: Any) -> str | None:
+    """Return a valid previous_response_id or ``None`` when invalid."""
+
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate.startswith("resp"):
+            return candidate
+    return None
+
+
 def _normalize_conversation_history_for_provider(
     items: Sequence[TResponseInputItem],
     provider_slug: str | None,
 ) -> Sequence[TResponseInputItem]:
     """Adapt conversation history to the provider capabilities when needed.
 
-    Groq's compatibility layer for the OpenAI Responses API currently rejects
-    `input_text` and `output_text` content blocks. When we know that the
-    provider is Groq we therefore coerce these types to the more widely
-    supported `text` variant.
+    Some providers still rely on the legacy Chat Completions format and reject
+    Responses-specific content blocks such as `input_text` and `output_text`.
+    When we detect such providers we collapse textual content blocks into the
+    plain-string representation accepted by the Chat Completions API.
     """
 
-    if not provider_slug or provider_slug.lower() != "groq":
+    if not provider_slug or not isinstance(provider_slug, str):
         return items
+
+    normalized_slug = provider_slug.strip().lower()
+    requires_normalization = normalized_slug in {"groq"} or normalized_slug.startswith(
+        "litellm"
+    )
 
     changed = False
     normalized: list[TResponseInputItem] = []
+    text_content_types = {"input_text", "output_text", "text"}
+
     for item in items:
-        if isinstance(item, Mapping):
-            copied_item = copy.deepcopy(item)
-            content = copied_item.get("content")
-            if isinstance(content, list):
-                for index, part in enumerate(content):
-                    if not isinstance(part, Mapping):
-                        continue
-                    part_type = part.get("type")
-                    if (
-                        isinstance(part_type, str)
-                        and part_type in {"input_text", "output_text"}
-                    ):
-                        coerced_part = dict(part)
-                        coerced_part["type"] = "text"
-                        content[index] = coerced_part
-                        changed = True
+        if not isinstance(item, Mapping):
+            normalized.append(item)
+            continue
+
+        copied_item = copy.deepcopy(item)
+        item_changed = False
+
+        response_id = copied_item.get("id")
+        if response_id is not None and (
+            not isinstance(response_id, str) or not response_id.startswith("msg")
+        ):
+            copied_item.pop("id", None)
+            item_changed = True
+
+        if requires_normalization:
+            item_type = copied_item.get("type")
+
+            # Items already using the full Responses schema (with a string type)
+            # are assumed to be compatible with the Chat Completions converter.
+            if not isinstance(item_type, str):
+                content = copied_item.get("content")
+
+                if isinstance(content, list):
+                    text_parts: list[str] = []
+
+                    for part in content:
+                        if (
+                            isinstance(part, Mapping)
+                            and isinstance(part.get("type"), str)
+                            and part["type"] in text_content_types
+                            and isinstance(part.get("text"), str)
+                        ):
+                            text_parts.append(part["text"])
+
+                    if text_parts:
+                        copied_item["content"] = "\n\n".join(text_parts)
+                        item_changed = True
+
+        if item_changed:
             normalized.append(copied_item)
+            changed = True
         else:
             normalized.append(item)
 
-    if not changed:
-        return items
-    return normalized
+    return items if not changed else normalized
 
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer
@@ -1181,8 +1219,27 @@ async def run_workflow(
                         exc,
                     )
 
-        # No normalization needed - LiteLLM handles all conversions
-        conversation_history_input = conversation_history
+        conversation_history_input = _normalize_conversation_history_for_provider(
+            conversation_history,
+            getattr(provider_binding, "provider_slug", None)
+            if provider_binding
+            else None,
+        )
+
+        sanitized_previous_response_id = _sanitize_previous_response_id(
+            getattr(agent_context, "previous_response_id", None)
+        )
+        if sanitized_previous_response_id != getattr(
+            agent_context, "previous_response_id", None
+        ):
+            try:
+                agent_context.previous_response_id = sanitized_previous_response_id
+            except Exception:  # pragma: no cover - attribute assignment best effort
+                logger.debug(
+                    "Impossible de normaliser previous_response_id pour l'agent %s",
+                    getattr(agent, "name", "<inconnu>"),
+                    exc_info=True,
+                )
 
         try:
             result = Runner.run_streamed(
@@ -1192,7 +1249,7 @@ async def run_workflow(
                     response_format_override, provider_binding=provider_binding
                 ),
                 context=runner_context,
-                previous_response_id=getattr(agent_context, "previous_response_id", None),
+                previous_response_id=sanitized_previous_response_id,
             )
             try:
                 async for event in stream_agent_response(agent_context, result):
