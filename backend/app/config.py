@@ -27,6 +27,9 @@ DEFAULT_SIP_BIND_HOST = "0.0.0.0"
 DEFAULT_SIP_BIND_PORT = 0
 DEFAULT_SIP_MEDIA_PORT = 40000
 
+DEFAULT_LTI_PRIVATE_KEY_FILENAME = "tool-private-key.pem"
+DEFAULT_LTI_PUBLIC_KEY_FILENAME = "tool-public-key.pem"
+
 ADMIN_MODEL_API_KEY_ENV = "APP_SETTINGS_MODEL_API_KEY"
 
 _RUNTIME_SETTINGS_OVERRIDES: dict[str, Any] | None = None
@@ -84,6 +87,28 @@ class WorkflowDefaults:
             if isinstance(values, list | tuple | set | frozenset):
                 return frozenset(str(item) for item in values)
             raise RuntimeError(f"{label} doit être une liste de chaînes")
+
+        lti_keys_dir_override = get_stripped("CHATKIT_LTI_KEYS_DIR")
+        if lti_keys_dir_override:
+            default_lti_keys_dir = Path(lti_keys_dir_override).expanduser()
+        else:
+            default_lti_keys_dir = Path.home() / ".chatkit" / "lti"
+
+        private_key_path_value = get_stripped("LTI_TOOL_PRIVATE_KEY_PATH")
+        if private_key_path_value:
+            resolved_private_key_path = Path(private_key_path_value).expanduser()
+        else:
+            resolved_private_key_path = (
+                default_lti_keys_dir / DEFAULT_LTI_PRIVATE_KEY_FILENAME
+            )
+
+        public_key_path_value = get_stripped("LTI_TOOL_PUBLIC_KEY_PATH")
+        if public_key_path_value:
+            resolved_public_key_path = Path(public_key_path_value).expanduser()
+        else:
+            resolved_public_key_path = (
+                default_lti_keys_dir / DEFAULT_LTI_PUBLIC_KEY_FILENAME
+            )
 
         return cls(
             default_end_message=default_end_message,
@@ -539,8 +564,8 @@ class Settings:
             lti_tool_audience=get_stripped("LTI_TOOL_AUDIENCE"),
             lti_tool_private_key=get_stripped("LTI_TOOL_PRIVATE_KEY"),
             lti_tool_key_id=get_stripped("LTI_TOOL_KEY_ID"),
-            lti_tool_private_key_path=get_stripped("LTI_TOOL_PRIVATE_KEY_PATH"),
-            lti_tool_public_key_path=get_stripped("LTI_TOOL_PUBLIC_KEY_PATH"),
+            lti_tool_private_key_path=str(resolved_private_key_path),
+            lti_tool_public_key_path=str(resolved_public_key_path),
         )
 
 

@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cryptography.hazmat.primitives import serialization
+
 from .config import (
     ADMIN_MODEL_API_KEY_ENV,
     DEFAULT_THREAD_TITLE_MODEL,
@@ -1404,15 +1406,20 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
     if resolved_private_key:
         private_key_hint = _mask_secret(resolved_private_key)
 
-    private_key_path = runtime_settings.lti_tool_private_key_path
-    public_key_path = runtime_settings.lti_tool_public_key_path
-    public_key_pem = None
+    (
+        private_key_path,
+        public_key_path,
+        generated_public_key,
+    ) = _ensure_managed_lti_key_files(runtime_settings)
+
+    public_key_pem = generated_public_key
     public_key_last_updated_at: datetime.datetime | None = None
 
     if public_key_path:
         key_path = Path(public_key_path).expanduser()
         try:
-            public_key_pem = key_path.read_text(encoding="utf-8")
+            if public_key_pem is None:
+                public_key_pem = key_path.read_text(encoding="utf-8")
         except FileNotFoundError:
             logger.warning("Clé publique LTI introuvable : %s", key_path)
         except OSError as exc:  # pragma: no cover - accès fichier improbable
@@ -1455,6 +1462,89 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
         "public_key_pem": public_key_pem,
         "public_key_last_updated_at": public_key_last_updated_at,
     }
+
+
+def _ensure_managed_lti_key_files(
+    settings: Any,
+) -> tuple[str | None, str | None, str | None]:
+    private_path_str = getattr(settings, "lti_tool_private_key_path", None)
+    public_path_str = getattr(settings, "lti_tool_public_key_path", None)
+
+    if not private_path_str or not public_path_str:
+        return private_path_str, public_path_str, None
+
+    private_path = Path(private_path_str).expanduser()
+    public_path = Path(public_path_str).expanduser()
+
+    try:
+        private_path.parent.mkdir(parents=True, exist_ok=True)
+        public_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:  # pragma: no cover - accès disque improbable
+        logger.warning(
+            "Impossible de préparer le dossier des clés LTI (%s, %s) : %s",
+            private_path,
+            public_path,
+            exc,
+        )
+        return str(private_path), str(public_path), None
+
+    private_key = getattr(settings, "lti_tool_private_key", None)
+    if not private_key:
+        return str(private_path), str(public_path), None
+
+    normalized_key = private_key.replace("\r\n", "\n").strip()
+    if not normalized_key:
+        return str(private_path), str(public_path), None
+
+    private_pem = normalized_key
+    if not private_pem.endswith("\n"):
+        private_pem += "\n"
+
+    try:
+        existing_private = (
+            private_path.read_text(encoding="utf-8") if private_path.exists() else None
+        )
+        if existing_private != private_pem:
+            private_path.write_text(private_pem, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - accès disque improbable
+        logger.warning(
+            "Impossible d'écrire la clé privée LTI gérée (%s) : %s",
+            private_path,
+            exc,
+        )
+        return str(private_path), str(public_path), None
+
+    try:
+        private_obj = serialization.load_pem_private_key(
+            private_pem.encode("utf-8"),
+            password=None,
+        )
+    except (TypeError, ValueError):
+        logger.warning(
+            "Clé privée LTI invalide, génération de la clé publique impossible"
+        )
+        return str(private_path), str(public_path), None
+
+    public_pem = private_obj.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
+
+    try:
+        existing_public = (
+            public_path.read_text(encoding="utf-8") if public_path.exists() else None
+        )
+        if existing_public != public_pem:
+            public_path.write_text(public_pem, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - accès disque improbable
+        logger.warning(
+            "Impossible d'écrire la clé publique LTI gérée (%s) : %s",
+            public_path,
+            exc,
+        )
+        return str(private_path), str(public_path), None
+
+    return str(private_path), str(public_path), public_pem
 
 
 def update_lti_tool_settings(
