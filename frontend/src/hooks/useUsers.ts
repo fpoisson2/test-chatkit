@@ -30,12 +30,35 @@ export const useCreateUser = () => {
   return useMutation({
     mutationFn: ({ token, payload }: { token: string | null; payload: CreateUserPayload }) =>
       adminApi.createUser(token, payload),
-    onSuccess: (newUser, variables) => {
-      // Add the new user to the cache
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
+
+      // Snapshot previous value
+      const previousUsers = queryClient.getQueryData<EditableUser[]>(usersKeys.list(variables.token));
+
+      // Optimistically update cache with temporary user
+      const tempUser: EditableUser = {
+        ...variables.payload,
+        id: -1, // Temporary ID
+      };
+
       queryClient.setQueryData<EditableUser[]>(
         usersKeys.list(variables.token),
-        (oldUsers) => [...(oldUsers || []), newUser]
+        (old = []) => [...old, tempUser]
       );
+
+      return { previousUsers };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousUsers) {
+        queryClient.setQueryData(usersKeys.list(variables.token), context.previousUsers);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: usersKeys.lists() });
     },
   });
 };
@@ -56,13 +79,31 @@ export const useUpdateUser = () => {
       id: number;
       payload: Partial<CreateUserPayload>
     }) => adminApi.updateUser(token, id, payload),
-    onSuccess: (updatedUser, variables) => {
-      // Update the user in the cache
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
+
+      // Snapshot previous value
+      const previousUsers = queryClient.getQueryData<EditableUser[]>(usersKeys.list(variables.token));
+
+      // Optimistically update cache
       queryClient.setQueryData<EditableUser[]>(
         usersKeys.list(variables.token),
-        (oldUsers) =>
-          oldUsers?.map((user) => (user.id === variables.id ? updatedUser : user)) || []
+        (old = []) =>
+          old.map((user) => (user.id === variables.id ? { ...user, ...variables.payload } : user))
       );
+
+      return { previousUsers };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousUsers) {
+        queryClient.setQueryData(usersKeys.list(variables.token), context.previousUsers);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: usersKeys.lists() });
     },
   });
 };
@@ -76,12 +117,30 @@ export const useDeleteUser = () => {
   return useMutation({
     mutationFn: ({ token, id }: { token: string | null; id: number }) =>
       adminApi.deleteUser(token, id),
-    onSuccess: (_, variables) => {
-      // Remove the user from the cache
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: usersKeys.lists() });
+
+      // Snapshot previous value
+      const previousUsers = queryClient.getQueryData<EditableUser[]>(usersKeys.list(variables.token));
+
+      // Optimistically remove from cache
       queryClient.setQueryData<EditableUser[]>(
         usersKeys.list(variables.token),
-        (oldUsers) => oldUsers?.filter((user) => user.id !== variables.id) || []
+        (old = []) => old.filter((user) => user.id !== variables.id)
       );
+
+      return { previousUsers };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousUsers) {
+        queryClient.setQueryData(usersKeys.list(variables.token), context.previousUsers);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: usersKeys.lists() });
     },
   });
 };

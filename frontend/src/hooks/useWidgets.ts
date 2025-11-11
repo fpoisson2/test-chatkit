@@ -59,12 +59,36 @@ export const useCreateWidget = () => {
   return useMutation({
     mutationFn: ({ token, payload }: { token: string | null; payload: WidgetTemplateCreatePayload }) =>
       widgetLibraryApi.createWidget(token, payload),
-    onSuccess: (newWidget, variables) => {
-      // Add the new widget to the cache
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: widgetsKeys.lists() });
+
+      // Snapshot previous value
+      const previousWidgets = queryClient.getQueryData<WidgetTemplate[]>(widgetsKeys.list(variables.token));
+
+      // Optimistically update cache with temporary widget
+      const tempWidget: WidgetTemplate = {
+        ...variables.payload,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as WidgetTemplate;
+
       queryClient.setQueryData<WidgetTemplate[]>(
         widgetsKeys.list(variables.token),
-        (oldWidgets) => [...(oldWidgets || []), newWidget]
+        (old = []) => [...old, tempWidget]
       );
+
+      return { previousWidgets };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousWidgets) {
+        queryClient.setQueryData(widgetsKeys.list(variables.token), context.previousWidgets);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: widgetsKeys.lists() });
     },
   });
 };
@@ -85,20 +109,48 @@ export const useUpdateWidget = () => {
       slug: string;
       payload: WidgetTemplateUpdatePayload
     }) => widgetLibraryApi.updateWidget(token, slug, payload),
-    onSuccess: (updatedWidget, variables) => {
-      // Update the widget in the cache
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: widgetsKeys.lists() });
+      await queryClient.cancelQueries({ queryKey: widgetsKeys.detail(variables.slug) });
+
+      // Snapshot previous values
+      const previousWidgets = queryClient.getQueryData<WidgetTemplate[]>(widgetsKeys.list(variables.token));
+      const previousDetail = queryClient.getQueryData<WidgetTemplate>(widgetsKeys.detail(variables.slug));
+
+      // Optimistically update cache
       queryClient.setQueryData<WidgetTemplate[]>(
         widgetsKeys.list(variables.token),
-        (oldWidgets) =>
-          oldWidgets?.map((widget) =>
-            widget.slug === variables.slug ? updatedWidget : widget
-          ) || []
+        (old = []) =>
+          old.map((widget) =>
+            widget.slug === variables.slug
+              ? { ...widget, ...variables.payload, updated_at: new Date().toISOString() }
+              : widget
+          )
       );
-      // Update the detail cache
-      queryClient.setQueryData<WidgetTemplate>(
-        widgetsKeys.detail(variables.slug),
-        updatedWidget
-      );
+
+      if (previousDetail) {
+        queryClient.setQueryData<WidgetTemplate>(
+          widgetsKeys.detail(variables.slug),
+          { ...previousDetail, ...variables.payload, updated_at: new Date().toISOString() }
+        );
+      }
+
+      return { previousWidgets, previousDetail };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousWidgets) {
+        queryClient.setQueryData(widgetsKeys.list(variables.token), context.previousWidgets);
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(widgetsKeys.detail(variables.slug), context.previousDetail);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: widgetsKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: widgetsKeys.detail(variables.slug) });
     },
   });
 };
@@ -112,14 +164,37 @@ export const useDeleteWidget = () => {
   return useMutation({
     mutationFn: ({ token, slug }: { token: string | null; slug: string }) =>
       widgetLibraryApi.deleteWidget(token, slug),
-    onSuccess: (_, variables) => {
-      // Remove the widget from the cache
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: widgetsKeys.lists() });
+      await queryClient.cancelQueries({ queryKey: widgetsKeys.detail(variables.slug) });
+
+      // Snapshot previous values
+      const previousWidgets = queryClient.getQueryData<WidgetTemplate[]>(widgetsKeys.list(variables.token));
+      const previousDetail = queryClient.getQueryData<WidgetTemplate>(widgetsKeys.detail(variables.slug));
+
+      // Optimistically remove from cache
       queryClient.setQueryData<WidgetTemplate[]>(
         widgetsKeys.list(variables.token),
-        (oldWidgets) => oldWidgets?.filter((widget) => widget.slug !== variables.slug) || []
+        (old = []) => old.filter((widget) => widget.slug !== variables.slug)
       );
-      // Remove from detail cache
+
       queryClient.removeQueries({ queryKey: widgetsKeys.detail(variables.slug) });
+
+      return { previousWidgets, previousDetail };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousWidgets) {
+        queryClient.setQueryData(widgetsKeys.list(variables.token), context.previousWidgets);
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(widgetsKeys.detail(variables.slug), context.previousDetail);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: widgetsKeys.lists() });
     },
   });
 };
