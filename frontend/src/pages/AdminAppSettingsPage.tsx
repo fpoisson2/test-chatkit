@@ -13,6 +13,7 @@ import {
 } from "../utils/backend";
 import { useAppSettings, useUpdateAppSettings, useModelsAdmin } from "../hooks";
 import { adminAppSettingsSchema, type AdminAppSettingsFormData } from "../schemas/admin";
+import { FeedbackMessages, FormField, FormSection } from "../components";
 
 export const AdminAppSettingsPage = () => {
   const { token, logout } = useAuth();
@@ -178,32 +179,25 @@ export const AdminAppSettingsPage = () => {
     : null;
 
   return (
-    <>
-      <AdminTabs activeTab="settings" />
-      <ManagementPageLayout
-        title={t("admin.appSettings.page.title")}
-        subtitle={t("admin.appSettings.page.subtitle")}
-      >
-        {error ? <div className="alert alert--danger">{error}</div> : null}
-        {success ? <div className="alert alert--success">{success}</div> : null}
+    <ManagementPageLayout
+      title={t("admin.appSettings.page.title")}
+      subtitle={t("admin.appSettings.page.subtitle")}
+      tabs={<AdminTabs activeTab="settings" />}
+    >
+      <FeedbackMessages
+        error={error}
+        success={success}
+        onDismissError={() => setError(null)}
+        onDismissSuccess={() => setSuccess(null)}
+      />
 
-        <div className="admin-grid">
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">
-                {t("admin.appSettings.threadTitle.cardTitle")}
-              </h2>
-              <p className="admin-card__subtitle">
-                {t("admin.appSettings.threadTitle.cardDescription")}
-              </p>
-            </div>
-            <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
-              <label
-                className="label"
-                htmlFor="thread-title-model-select"
-              >
-                {t("admin.appSettings.threadTitle.modelLabel")}
-              </label>
+      <div className="admin-grid">
+        <FormSection
+          title={t("admin.appSettings.threadTitle.cardTitle")}
+          subtitle={t("admin.appSettings.threadTitle.cardDescription")}
+        >
+          <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+            <FormField label={t("admin.appSettings.threadTitle.modelLabel")}>
               <select
                 id="thread-title-model-select"
                 name="thread-title-model-select"
@@ -238,98 +232,99 @@ export const AdminAppSettingsPage = () => {
                   {t("admin.appSettings.threadTitle.modelCustomOption")}
                 </option>
               </select>
-              {shouldShowCustomModelInput ? (
-                <label className="label" htmlFor="thread-title-model">
-                  {t("admin.appSettings.threadTitle.modelCustomLabel")}
-                  <input
-                    id="thread-title-model"
-                    name="thread-title-model"
-                    className="input"
-                    type="text"
-                    {...register("threadTitleModel")}
-                    placeholder={t(
-                      "admin.appSettings.threadTitle.modelPlaceholder",
-                    )}
-                    disabled={isBusy}
-                  />
-                  {formErrors.threadTitleModel && (
-                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-                      {formErrors.threadTitleModel.message}
-                    </span>
-                  )}
-                </label>
-              ) : null}
-              {modelOptionsError ? (
-                <p className="admin-form__hint">{modelOptionsError}</p>
-              ) : null}
-              <p className="admin-form__hint">
-                {t("admin.appSettings.threadTitle.modelHint")}
-              </p>
-              <p className="admin-form__hint">
-                {isCustomModel
-                  ? t("admin.appSettings.threadTitle.modelStatus.custom")
-                  : t("admin.appSettings.threadTitle.modelStatus.default")}
-              </p>
-              <div className="admin-form__default-block" aria-live="polite">
-                <strong>
-                  {t("admin.appSettings.threadTitle.modelDefaultLabel")}
-                </strong>
-                <pre>{defaultModel}</pre>
-              </div>
-              <div className="admin-form__divider" aria-hidden="true" />
-              <label className="label" htmlFor="thread-title-prompt">
-                {t("admin.appSettings.threadTitle.fieldLabel")}
-                <textarea
-                  id="thread-title-prompt"
-                  name="thread-title-prompt"
-                  className="textarea"
-                  rows={5}
-                  {...register("prompt")}
-                  placeholder={t(
-                    "admin.appSettings.threadTitle.placeholder",
-                  )}
+            </FormField>
+
+            {shouldShowCustomModelInput && (
+              <FormField
+                label={t("admin.appSettings.threadTitle.modelCustomLabel")}
+                error={formErrors.threadTitleModel?.message}
+              >
+                <input
+                  id="thread-title-model"
+                  name="thread-title-model"
+                  className="input"
+                  type="text"
+                  {...register("threadTitleModel")}
+                  placeholder={t("admin.appSettings.threadTitle.modelPlaceholder")}
                   disabled={isBusy}
                 />
-                {formErrors.prompt && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-                    {formErrors.prompt.message}
-                  </span>
-                )}
-              </label>
-              <p className="admin-form__hint">
-                {t("admin.appSettings.threadTitle.hint")}
-              </p>
-              <p className="admin-form__hint">
-                {isCustomPrompt
-                  ? t("admin.appSettings.threadTitle.status.custom")
-                  : t("admin.appSettings.threadTitle.status.default")}
-              </p>
-              <div className="admin-form__default-block" aria-live="polite">
-                <strong>{t("admin.appSettings.threadTitle.defaultLabel")}</strong>
-                <pre>{defaultPrompt}</pre>
-              </div>
-              <div className="admin-form__actions" style={{ gap: "12px" }}>
-                <button
-                  type="button"
-                  className="button button--ghost"
-                  onClick={handleReset}
-                  disabled={isBusy || (!isCustomPrompt && !isCustomModel)}
-                >
-                  {t("admin.appSettings.actions.reset")}
-                </button>
-                <button
-                  type="submit"
-                  className="button"
-                  disabled={isBusy}
-                >
-                  {t("admin.appSettings.actions.save")}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      </ManagementPageLayout>
-    </>
+              </FormField>
+            )}
+
+            {modelOptionsError && (
+              <p className="admin-form__hint">{modelOptionsError}</p>
+            )}
+
+            <p className="admin-form__hint">
+              {t("admin.appSettings.threadTitle.modelHint")}
+            </p>
+
+            <p className="admin-form__hint">
+              {isCustomModel
+                ? t("admin.appSettings.threadTitle.modelStatus.custom")
+                : t("admin.appSettings.threadTitle.modelStatus.default")}
+            </p>
+
+            <div className="admin-form__default-block" aria-live="polite">
+              <strong>
+                {t("admin.appSettings.threadTitle.modelDefaultLabel")}
+              </strong>
+              <pre>{defaultModel}</pre>
+            </div>
+
+            <div className="admin-form__divider" aria-hidden="true" />
+
+            <FormField
+              label={t("admin.appSettings.threadTitle.fieldLabel")}
+              error={formErrors.prompt?.message}
+            >
+              <textarea
+                id="thread-title-prompt"
+                name="thread-title-prompt"
+                className="textarea"
+                rows={5}
+                {...register("prompt")}
+                placeholder={t("admin.appSettings.threadTitle.placeholder")}
+                disabled={isBusy}
+              />
+            </FormField>
+
+            <p className="admin-form__hint">
+              {t("admin.appSettings.threadTitle.hint")}
+            </p>
+
+            <p className="admin-form__hint">
+              {isCustomPrompt
+                ? t("admin.appSettings.threadTitle.status.custom")
+                : t("admin.appSettings.threadTitle.status.default")}
+            </p>
+
+            <div className="admin-form__default-block" aria-live="polite">
+              <strong>{t("admin.appSettings.threadTitle.defaultLabel")}</strong>
+              <pre>{defaultPrompt}</pre>
+            </div>
+
+            <div className="admin-form__actions" style={{ gap: "12px" }}>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={handleReset}
+                disabled={isBusy || (!isCustomPrompt && !isCustomModel)}
+              >
+                {t("admin.appSettings.actions.reset")}
+              </button>
+              <button
+                type="submit"
+                className="button"
+                disabled={isBusy}
+              >
+                {t("admin.appSettings.actions.save")}
+              </button>
+            </div>
+          </form>
+        </FormSection>
+      </div>
+    </ManagementPageLayout>
   );
 };
 
