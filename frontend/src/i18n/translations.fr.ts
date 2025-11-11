@@ -554,6 +554,196 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.mcpServersModalError":
     "Impossible d'enregistrer le serveur MCP.",
   "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
+  "workflowBuilder.agentInspector.tabsLabel": "Sections de configuration de l'agent",
+  "workflowBuilder.agentInspector.messagePlaceholder": "Vous êtes un assistant serviable…",
+  "workflowBuilder.agentInspector.systemPrompt.helpTitle": "Rédiger un prompt système efficace",
+  "workflowBuilder.agentInspector.systemPrompt.helpDescription":
+    "Décrivez le rôle, le ton et les attentes de cet agent. Mentionnez la conduite à adopter lorsqu'il manque d'informations.",
+  "workflowBuilder.agentInspector.systemPrompt.helpHintSpecific":
+    "✅ Fournissez des consignes concrètes (ton, public, règles d'escalade).",
+  "workflowBuilder.agentInspector.systemPrompt.helpHintTone":
+    "✅ Indiquez comment l'agent doit répondre lorsqu'il manque d'informations.",
+  "workflowBuilder.agentInspector.systemPrompt.examples.support.label": "Support client",
+  "workflowBuilder.agentInspector.systemPrompt.examples.support.value":
+    "Tu es un agent de support client professionnel et empathique. Réponds de manière claire et concise. Si tu ne connais pas la réponse, transmets la demande à un agent humain.",
+  "workflowBuilder.agentInspector.systemPrompt.examples.analytics.label": "Analyste de données",
+  "workflowBuilder.agentInspector.systemPrompt.examples.analytics.value":
+    "Tu es un·e analyste de données senior. Examine les données fournies, souligne les tendances marquantes et propose des recommandations actionnables.",
+  "workflowBuilder.agentInspector.nestedWorkflowSectionTitle": "Déléguer à un autre workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowMode.custom": "Configurer localement",
+  "workflowBuilder.agentInspector.nestedWorkflowMode.local": "Utiliser un workflow de cet espace",
+  "workflowBuilder.agentInspector.nestedWorkflowMode.hosted": "Utiliser un workflow hébergé",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedHint":
+    "Choisissez un workflow hébergé ou collez son identifiant/slug pour déléguer tout le bloc agent.",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Slug hébergé",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugHint":
+    "Collez le slug fourni par le fournisseur du workflow hébergé.",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder": "ex. acme-catalog-search",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedManualInfo":
+    "Le workflow hébergé sera exécuté même s'il n'apparaît pas encore dans la liste.",
+  "workflowBuilder.agentInspector.providerHint":
+    "Filtrez la liste des modèles par fournisseur. Laissez vide pour afficher tous les modèles configurés.",
+  "workflowBuilder.agentInspector.modelParametersTitle": "Paramètres du modèle",
+  "workflowBuilder.agentInspector.modelParametersDescription":
+    "Ajustez la profondeur de raisonnement et les paramètres d'échantillonnage du modèle sélectionné.",
+  "workflowBuilder.agentInspector.reasoningEffortLabel": "Effort de raisonnement",
+  "workflowBuilder.agentInspector.reasoningEffort.default": "Utiliser la valeur par défaut du modèle",
+  "workflowBuilder.agentInspector.reasoningEffort.low": "Superficiel",
+  "workflowBuilder.agentInspector.reasoningEffort.medium": "Équilibré",
+  "workflowBuilder.agentInspector.reasoningEffort.high": "Maximal",
+  "workflowBuilder.agentInspector.textVerbosityLabel": "Niveau de détail de la réponse",
+  "workflowBuilder.agentInspector.textVerbosity.default": "Utiliser la valeur par défaut du modèle",
+  "workflowBuilder.agentInspector.textVerbosity.low": "Concise",
+  "workflowBuilder.agentInspector.textVerbosity.medium": "Équilibrée",
+  "workflowBuilder.agentInspector.textVerbosity.high": "Détaillée",
+  "workflowBuilder.agentInspector.reasoningSummaryLabel": "Résumé de raisonnement",
+  "workflowBuilder.agentInspector.reasoningSummary.none": "Ne pas générer de résumé",
+  "workflowBuilder.agentInspector.reasoningSummary.auto": "Résumé automatique",
+  "workflowBuilder.agentInspector.reasoningSummary.detailed": "Résumé détaillé",
+  "workflowBuilder.agentInspector.temperatureHelp":
+    "Les valeurs basses rendent les réponses plus déterministes, les valeurs élevées augmentent la créativité.",
+  "workflowBuilder.agentInspector.temperaturePlaceholder": "ex. 0.7",
+  "workflowBuilder.agentInspector.topPLabel": "Top-p",
+  "workflowBuilder.agentInspector.topPHint":
+    "Limiter la masse de probabilité cumulée prise en compte lors de l'échantillonnage.",
+  "workflowBuilder.agentInspector.topPPlaceholder": "ex. 0.9",
+  "workflowBuilder.agentInspector.maxTokensHint":
+    "Laissez vide pour utiliser la valeur par défaut du modèle.",
+  "workflowBuilder.agentInspector.maxTokensPlaceholder": "Saisissez le nombre maximal de tokens",
+  "workflowBuilder.agentInspector.webSearch.title": "Recherche web",
+  "workflowBuilder.agentInspector.webSearch.contextLabel": "Taille du contexte",
+  "workflowBuilder.agentInspector.webSearch.contextHint":
+    "Choisissez la quantité de documents récupérés à envoyer à l'agent.",
+  "workflowBuilder.agentInspector.webSearch.context.default": "Valeur par défaut du modèle",
+  "workflowBuilder.agentInspector.webSearch.context.low": "Petit contexte",
+  "workflowBuilder.agentInspector.webSearch.context.medium": "Contexte moyen",
+  "workflowBuilder.agentInspector.webSearch.context.high": "Grand contexte",
+  "workflowBuilder.agentInspector.webSearch.maxResultsLabel": "Nombre maximal de résultats",
+  "workflowBuilder.agentInspector.webSearch.maxResultsHint":
+    "L'API de recherche renvoie jusqu'à ce nombre de documents.",
+  "workflowBuilder.agentInspector.webSearch.helpTitle": "Quand activer la recherche web",
+  "workflowBuilder.agentInspector.webSearch.helpDescription":
+    "Utilisez cet outil lorsque l'agent doit consulter des informations publiques à jour. Les résultats sont ajoutés au contexte.",
+  "workflowBuilder.agentInspector.webSearch.location.city": "Ville",
+  "workflowBuilder.agentInspector.webSearch.location.region": "Région",
+  "workflowBuilder.agentInspector.webSearch.location.country": "Pays",
+  "workflowBuilder.agentInspector.webSearch.location.type": "Précision",
+  "workflowBuilder.agentInspector.fileSearch.title": "Recherche dans la base de connaissances",
+  "workflowBuilder.agentInspector.fileSearch.vectorStoreLabel": "Vector store",
+  "workflowBuilder.agentInspector.fileSearch.validation.noStores":
+    "Créez un vector store dans la section dédiée avant d'activer la recherche documentaire.",
+  "workflowBuilder.agentInspector.fileSearch.validation.missing":
+    "Sélectionnez un vector store pour activer la recherche documentaire.",
+  "workflowBuilder.agentInspector.fileSearch.validation.unavailable":
+    "Le vector store sélectionné n'est plus disponible. Choisissez-en un autre.",
+  "workflowBuilder.agentInspector.fileSearch.loading": "Chargement des vector stores…",
+  "workflowBuilder.agentInspector.fileSearch.placeholder": "Sélectionnez un vector store",
+  "workflowBuilder.agentInspector.fileSearch.helpTitle":
+    "À propos de la recherche dans la base de connaissances",
+  "workflowBuilder.agentInspector.fileSearch.helpDescription":
+    "Permet à l'agent de rechercher dans votre base de connaissances privée avant de répondre. Les passages récupérés sont ajoutés au contexte.",
+  "workflowBuilder.agentInspector.computerUse.title": "Outil d'utilisation de l'ordinateur",
+  "workflowBuilder.agentInspector.image.title": "Génération d'images",
+  "workflowBuilder.agentInspector.image.modelLabel": "Modèle",
+  "workflowBuilder.agentInspector.image.sizeLabel": "Taille de sortie",
+  "workflowBuilder.agentInspector.image.qualityLabel": "Qualité",
+  "workflowBuilder.agentInspector.image.backgroundLabel": "Arrière-plan",
+  "workflowBuilder.agentInspector.image.outputLabel": "Format de sortie",
+  "workflowBuilder.agentInspector.image.helpTitle": "À propos de la génération d'images",
+  "workflowBuilder.agentInspector.image.helpDescription":
+    "Permet à l'agent de générer ou d'éditer des images à partir de descriptions textuelles.",
+  "workflowBuilder.agentInspector.image.model.gpt-image-1-mini": "gpt-image-1-mini",
+  "workflowBuilder.agentInspector.image.model.gpt-image-1": "gpt-image-1",
+  "workflowBuilder.agentInspector.image.size.1024x1024": "1024 × 1024",
+  "workflowBuilder.agentInspector.image.size.1024x1536": "1024 × 1536",
+  "workflowBuilder.agentInspector.image.size.1536x1024": "1536 × 1024",
+  "workflowBuilder.agentInspector.image.size.auto": "Automatique",
+  "workflowBuilder.agentInspector.image.quality.high": "Haute",
+  "workflowBuilder.agentInspector.image.quality.medium": "Moyenne",
+  "workflowBuilder.agentInspector.image.quality.low": "Faible",
+  "workflowBuilder.agentInspector.image.quality.auto": "Automatique",
+  "workflowBuilder.agentInspector.image.background.auto": "Automatique",
+  "workflowBuilder.agentInspector.image.background.transparent": "Transparent",
+  "workflowBuilder.agentInspector.image.background.opaque": "Opaque",
+  "workflowBuilder.agentInspector.image.output.auto": "Automatique",
+  "workflowBuilder.agentInspector.image.output.png": "PNG",
+  "workflowBuilder.agentInspector.image.output.webp": "WebP",
+  "workflowBuilder.agentInspector.image.output.jpeg": "JPEG",
+  "workflowBuilder.agentInspector.functionToolsTitle": "Fonctions intégrées",
+  "workflowBuilder.agentInspector.functionToolsDescription":
+    "Active les fonctions internes, les serveurs MCP et les workflows disponibles comme outils pour cet agent.",
+  "workflowBuilder.agentInspector.toolsAutomationTitle": "Outils supplémentaires",
+  "workflowBuilder.agentInspector.toolsAutomationDescription":
+    "Activez les outils optionnels que l'agent peut appeler en cas de besoin.",
+  "workflowBuilder.agentInspector.weatherToolLabel": "Outil météo",
+  "workflowBuilder.agentInspector.weatherToolHelp":
+    "Permet à l'agent de récupérer des informations météo en temps réel.",
+  "workflowBuilder.agentInspector.widgetValidationLabel": "Outil de validation de widget",
+  "workflowBuilder.agentInspector.widgetValidationHelp":
+    "Valide le JSON du widget par rapport au schéma avant de l'envoyer à l'interface.",
+  "workflowBuilder.agentInspector.workflowValidationLabel": "Outil de validation de workflow",
+  "workflowBuilder.agentInspector.workflowValidationHelp":
+    "Vérifie les sorties du workflow avant qu'elles ne soient renvoyées à l'utilisateur.",
+  "workflowBuilder.agentInspector.widgetDefinitionLoading": "Chargement de la définition du widget…",
+  "workflowBuilder.agentInspector.widgetDefinitionNoBindings":
+    "Ce widget n'expose aucun binding dynamique.",
+  "workflowBuilder.agentInspector.widgetDefinitionPlaceholder": "Valeur pour {{field}}",
+  "workflowBuilder.agentInspector.widgetDefinitionTitle": "Structure JSON attendue",
+  "workflowBuilder.agentInspector.widgetDefinitionHide": "Masquer l'exemple JSON",
+  "workflowBuilder.agentInspector.widgetDefinitionShow": "Afficher l'exemple JSON",
+  "workflowBuilder.agentInspector.widgetDefinitionDescription":
+    "Renseignez les clés suivantes lorsque le widget est renvoyé par l'agent.",
+  "workflowBuilder.agentInspector.widgetDefinitionBindingsLabel": "Bindings dynamiques",
+  "workflowBuilder.agentInspector.widgetLibraryLabel": "Widget",
+  "workflowBuilder.agentInspector.widgetLibraryLoading": "Chargement de la bibliothèque de widgets…",
+  "workflowBuilder.agentInspector.widgetLibraryPlaceholder": "Sélectionnez un widget",
+  "workflowBuilder.agentInspector.widgetLibraryEmpty":
+    "Aucun widget n'est encore disponible dans la bibliothèque.",
+  "workflowBuilder.agentInspector.widgetExpressionLabel": "Expression JSON du widget",
+  "workflowBuilder.agentInspector.widgetExpressionHint":
+    "Fournissez une expression qui retourne le JSON du widget (par exemple state.widget_json).",
+  "workflowBuilder.agentInspector.widgetExpressionPlaceholder": "ex. state.widget_json",
+  "workflowBuilder.agentInspector.widgetValidation.libraryEmpty":
+    "Aucun widget n'est disponible dans la bibliothèque.",
+  "workflowBuilder.agentInspector.widgetValidation.libraryMissing":
+    "Sélectionnez un widget pour activer la sortie.",
+  "workflowBuilder.agentInspector.widgetValidation.libraryUnavailable":
+    "Le widget sélectionné n'est plus disponible.",
+  "workflowBuilder.agentInspector.widgetValidation.variableMissing":
+    "Saisissez une expression qui retourne le JSON du widget.",
+  "workflowBuilder.agentInspector.widgetSourceLabel": "Source du widget",
+  "workflowBuilder.agentInspector.widgetSourceHint":
+    "Choisissez entre un widget de la bibliothèque ou une expression JSON fournie par le workflow.",
+  "workflowBuilder.agentInspector.widgetSource.library": "Widget de la bibliothèque",
+  "workflowBuilder.agentInspector.widgetSource.variable": "Expression du workflow",
+  "workflowBuilder.agentInspector.responseFormatLabel": "Format de réponse",
+  "workflowBuilder.agentInspector.responseFormat.text": "Texte libre",
+  "workflowBuilder.agentInspector.responseFormat.jsonSchema": "Schéma JSON",
+  "workflowBuilder.agentInspector.responseFormat.widget": "Widget en sortie",
+  "workflowBuilder.agentInspector.jsonSchemaNameLabel": "Nom du schéma",
+  "workflowBuilder.agentInspector.jsonSchemaNameHint": "Nom optionnel utilisé pour la documentation.",
+  "workflowBuilder.agentInspector.jsonSchemaDefinitionLabel": "Définition du schéma JSON",
+  "workflowBuilder.agentInspector.jsonSchemaDefinitionHint":
+    "Fournissez un schéma JSON valide (Draft 2020-12).",
+  "workflowBuilder.agentInspector.jsonSchemaInvalid": "Schéma JSON invalide",
+  "workflowBuilder.agentInspector.behaviorTitle": "Comportement de l'agent",
+  "workflowBuilder.agentInspector.behaviorDescription":
+    "Contrôlez la manière dont l'agent interagit avec les utilisateurs et gère les erreurs.",
+  "workflowBuilder.agentInspector.includeChatHistoryLabel": "Inclure l'historique de conversation",
+  "workflowBuilder.agentInspector.includeChatHistoryHelp":
+    "Envoie les messages précédents à l'agent comme contexte.",
+  "workflowBuilder.agentInspector.displayResponseInChatLabel": "Afficher la réponse dans le chat",
+  "workflowBuilder.agentInspector.displayResponseInChatHelp":
+    "Affiche la sortie de l'agent dans la conversation.",
+  "workflowBuilder.agentInspector.showSearchSourcesLabel": "Afficher les sources de recherche",
+  "workflowBuilder.agentInspector.showSearchSourcesHelp":
+    "Ajoute la liste des sources de recherche à la réponse finale.",
+  "workflowBuilder.agentInspector.continueOnErrorLabel": "Continuer en cas d'erreur",
+  "workflowBuilder.agentInspector.continueOnErrorHelp":
+    "Continue l'exécution du workflow même si cet agent échoue.",
+  "workflowBuilder.agentInspector.storeResponsesLabel": "Enregistrer les réponses",
+  "workflowBuilder.agentInspector.storeResponsesHelp":
+    "Conserve les réponses de l'agent pour référence ultérieure.",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
   "workflowBuilder.agentInspector.imageModelHelp":

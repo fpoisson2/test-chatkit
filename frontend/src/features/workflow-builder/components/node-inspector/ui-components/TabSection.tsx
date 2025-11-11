@@ -17,6 +17,7 @@ interface TabSectionProps {
   onTabChange?: (tabId: string) => void;
   title?: string;
   description?: string;
+  tabsLabel?: string;
 }
 
 export const TabSection: React.FC<TabSectionProps> = ({
@@ -25,6 +26,7 @@ export const TabSection: React.FC<TabSectionProps> = ({
   onTabChange,
   title,
   description,
+  tabsLabel = 'Configuration sections',
 }) => {
   return (
     <div className={styles.tabsContainer}>
@@ -40,33 +42,33 @@ export const TabSection: React.FC<TabSectionProps> = ({
         defaultValue={defaultTab || tabs[0]?.id}
         onValueChange={onTabChange}
       >
-        <Tabs.List className={styles.tabsList} aria-label="Configuration sections">
+        <Tabs.List className={styles.tabsList} aria-label={tabsLabel}>
+          {tabs.map((tab) => (
+            <Tabs.Trigger
+              key={tab.id}
+              className={styles.tabsTrigger}
+              value={tab.id}
+            >
+              {tab.icon && <tab.icon size={16} className={styles.tabIcon} />}
+              <span>{tab.label}</span>
+              {tab.badge !== undefined && tab.badge > 0 && (
+                <span className={styles.tabBadge} aria-label={`${tab.badge} errors`}>
+                  {tab.badge}
+                </span>
+              )}
+            </Tabs.Trigger>
+          ))}
+        </Tabs.List>
+
         {tabs.map((tab) => (
-          <Tabs.Trigger
+          <Tabs.Content
             key={tab.id}
-            className={styles.tabsTrigger}
+            className={styles.tabsContent}
             value={tab.id}
           >
-            {tab.icon && <tab.icon size={16} className={styles.tabIcon} />}
-            <span>{tab.label}</span>
-            {tab.badge !== undefined && tab.badge > 0 && (
-              <span className={styles.tabBadge} aria-label={`${tab.badge} errors`}>
-                {tab.badge}
-              </span>
-            )}
-          </Tabs.Trigger>
+            {tab.content}
+          </Tabs.Content>
         ))}
-      </Tabs.List>
-
-      {tabs.map((tab) => (
-        <Tabs.Content
-          key={tab.id}
-          className={styles.tabsContent}
-          value={tab.id}
-        >
-          {tab.content}
-        </Tabs.Content>
-      ))}
       </Tabs.Root>
     </div>
   );
