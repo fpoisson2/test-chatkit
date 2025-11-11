@@ -37,6 +37,14 @@ import type {
   FlowNode,
   FlowEdge,
 } from "../types";
+import {
+  useCreateWorkflow,
+  useCreateHostedWorkflow,
+  useDeleteWorkflow,
+  useDeleteHostedWorkflow,
+  useDuplicateWorkflow,
+  useUpdateWorkflow,
+} from "../../../hooks/useWorkflows";
 
 type TranslationFunction = (key: string, params?: Record<string, unknown>) => string;
 
@@ -129,9 +137,17 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
     selectedVersionId,
   } = useWorkflowContext();
 
+  // React Query mutations
+  const createWorkflowMutation = useCreateWorkflow();
+  const createHostedWorkflowMutation = useCreateHostedWorkflow();
+  const deleteWorkflowMutation = useDeleteWorkflow();
+  const deleteHostedWorkflowMutation = useDeleteHostedWorkflow();
+  const duplicateWorkflowMutation = useDuplicateWorkflow();
+  const updateWorkflowMutation = useUpdateWorkflow();
+
   /**
    * Create a new workflow (local or hosted)
-   * Extracted from WorkflowBuilderPage.tsx lines 1442-1561 (120 lines)
+   * Migrated to use React Query mutations with optimistic updates
    */
   const handleSubmitCreateWorkflow = useCallback(async () => {
     setCreateWorkflowError(null);
@@ -159,15 +175,21 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       const slug = slugifyWorkflowName(trimmedName);
       setSaveState("saving");
       setSaveMessage(t("workflowBuilder.createWorkflow.creatingHosted"));
+
       try {
-        const created = await chatkitApi.createHostedWorkflow(token, {
-          slug,
-          workflow_id: remoteId,
-          label: trimmedName,
-          description: undefined,
+        const created = await createHostedWorkflowMutation.mutateAsync({
+          token,
+          payload: {
+            slug,
+            workflow_id: remoteId,
+            label: trimmedName,
+            description: undefined,
+          },
         });
-        chatkitApi.invalidateHostedWorkflowCache();
+
+        // React Query handles cache invalidation automatically
         await loadHostedWorkflows();
+
         setSaveState("saved");
         setSaveMessage(
           t("workflowBuilder.createWorkflow.successHosted", { label: created.label }),
@@ -190,52 +212,39 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       return;
     }
 
+    // Local workflow creation
     setIsCreatingWorkflow(true);
+    setSaveState("saving");
+    setSaveMessage(t("workflowBuilder.createWorkflow.creatingLocal"));
+
     try {
-      const slug = slugifyWorkflowName(trimmedName);
-      const payload = {
-        slug,
-        display_name: trimmedName,
-        description: null,
-        graph: null,
-      };
-      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
-      let lastError: Error | null = null;
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-            body: JSON.stringify(payload),
-          });
-          if (!response.ok) {
-            throw new Error(`Échec de la création (${response.status})`);
-          }
-          const data: WorkflowVersionResponse = await response.json();
-          await loadWorkflows({
-            selectWorkflowId: data.workflow_id,
-            selectVersionId: data.id,
-          });
-          setSaveState("saved");
-          setSaveMessage(
-            t("workflowBuilder.createWorkflow.successLocal", { name: trimmedName }),
-          );
-          setTimeout(() => setSaveState("idle"), 1500);
-          closeCreateModal();
-          setCreateWorkflowName("");
-          setCreateWorkflowRemoteId("");
-          return;
-        } catch (error) {
-          lastError =
-            error instanceof Error
-              ? error
-              : new Error(t("workflowBuilder.createWorkflow.errorCreateLocal"));
-        }
-      }
-      const message = lastError?.message ?? t("workflowBuilder.createWorkflow.errorCreateLocal");
+      const workflow = await createWorkflowMutation.mutateAsync({
+        token,
+        payload: {
+          display_name: trimmedName,
+          description: null,
+        },
+      });
+
+      // React Query handles cache invalidation, but we need to load the created workflow
+      await loadWorkflows({
+        selectWorkflowId: workflow.id,
+        selectVersionId: workflow.active_version_id,
+      });
+
+      setSaveState("saved");
+      setSaveMessage(
+        t("workflowBuilder.createWorkflow.successLocal", { name: trimmedName }),
+      );
+      setTimeout(() => setSaveState("idle"), 1500);
+      closeCreateModal();
+      setCreateWorkflowName("");
+      setCreateWorkflowRemoteId("");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("workflowBuilder.createWorkflow.errorCreateLocal");
       setSaveState("error");
       setSaveMessage(message);
       setCreateWorkflowError(message);
@@ -243,11 +252,13 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       setIsCreatingWorkflow(false);
     }
   }, [
-    authHeader,
+    token,
     closeCreateModal,
     createWorkflowKind,
     createWorkflowName,
     createWorkflowRemoteId,
+    createWorkflowMutation,
+    createHostedWorkflowMutation,
     loadHostedWorkflows,
     loadWorkflows,
     setCreateWorkflowError,
@@ -257,12 +268,11 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
     setSaveMessage,
     setSaveState,
     t,
-    token,
   ]);
 
   /**
    * Delete a workflow
-   * Extracted from WorkflowBuilderPage.tsx lines 1563-1648 (86 lines)
+   * Migrated to use React Query mutation with optimistic updates
    */
   const handleDeleteWorkflow = useCallback(
     async (workflowId?: number) => {
@@ -288,62 +298,35 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
         return;
       }
       closeWorkflowMenu();
-      const endpoint = `/api/workflows/${targetId}`;
-      const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-      let lastError: Error | null = null;
+
       setSaveState("saving");
       setSaveMessage("Suppression en cours…");
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            method: "DELETE",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-          });
-          if (response.status === 204) {
-            applySelection({ nodeIds: [], edgeIds: [] });
-            const nextSelection = targetId === selectedWorkflowId ? null : selectedWorkflowId;
-            await loadWorkflows({
-              excludeWorkflowId: current.id,
-              selectWorkflowId: nextSelection ?? undefined,
-            });
-            setSaveState("saved");
-            setSaveMessage(`Workflow "${current.display_name}" supprimé.`);
-            setTimeout(() => setSaveState("idle"), 1500);
-            return;
-          }
-          if (response.status === 400) {
-            let message = "Impossible de supprimer le workflow.";
-            try {
-              const detail = (await response.json()) as { detail?: unknown };
-              if (detail && typeof detail.detail === "string") {
-                message = detail.detail;
-              }
-            } catch (parseError) {
-              console.error(parseError);
-            }
-            throw new Error(message);
-          }
-          if (response.status === 404) {
-            throw new Error("Le workflow n'existe plus.");
-          }
-          throw new Error(`Impossible de supprimer le workflow (${response.status}).`);
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
-            continue;
-          }
-          lastError = error instanceof Error ? error : new Error("Impossible de supprimer le workflow.");
-        }
+
+      try {
+        await deleteWorkflowMutation.mutateAsync({ token, id: targetId });
+
+        // Clear selection and reload workflows
+        applySelection({ nodeIds: [], edgeIds: [] });
+        const nextSelection = targetId === selectedWorkflowId ? null : selectedWorkflowId;
+        await loadWorkflows({
+          excludeWorkflowId: current.id,
+          selectWorkflowId: nextSelection ?? undefined,
+        });
+
+        setSaveState("saved");
+        setSaveMessage(`Workflow "${current.display_name}" supprimé.`);
+        setTimeout(() => setSaveState("idle"), 1500);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Impossible de supprimer le workflow.";
+        setSaveState("error");
+        setSaveMessage(message);
       }
-      setSaveState("error");
-      setSaveMessage(lastError?.message ?? "Impossible de supprimer le workflow.");
     },
     [
-      authHeader,
+      token,
       applySelection,
       closeWorkflowMenu,
+      deleteWorkflowMutation,
       loadWorkflows,
       selectedWorkflowId,
       setSaveMessage,
@@ -354,7 +337,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
 
   /**
    * Delete a hosted workflow
-   * Extracted from WorkflowBuilderPage.tsx lines 1650-1689 (40 lines)
+   * Migrated to use React Query mutation with optimistic updates
    */
   const handleDeleteHostedWorkflow = useCallback(
     async (slug: string) => {
@@ -374,12 +357,16 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       if (!confirmed) {
         return;
       }
+
       setSaveState("saving");
       setSaveMessage(t("workflowBuilder.hostedSection.deleting"));
+
       try {
-        await chatkitApi.deleteHostedWorkflow(token, slug);
-        chatkitApi.invalidateHostedWorkflowCache();
+        await deleteHostedWorkflowMutation.mutateAsync({ token, slug });
+
+        // React Query handles cache invalidation automatically
         await loadHostedWorkflows();
+
         setSaveState("saved");
         setSaveMessage(
           t("workflowBuilder.hostedSection.deleteSuccess", { label: entry.label }),
@@ -394,7 +381,16 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
         setSaveMessage(message);
       }
     },
-    [closeWorkflowMenu, hostedWorkflows, loadHostedWorkflows, setSaveMessage, setSaveState, t, token],
+    [
+      token,
+      closeWorkflowMenu,
+      deleteHostedWorkflowMutation,
+      hostedWorkflows,
+      loadHostedWorkflows,
+      setSaveMessage,
+      setSaveState,
+      t,
+    ],
   );
 
   /**
@@ -481,7 +477,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
 
   /**
    * Rename a workflow
-   * Extracted from WorkflowBuilderPage.tsx lines 1826-1917 (92 lines)
+   * Migrated to use React Query mutation with optimistic updates
    */
   const handleRenameWorkflow = useCallback(
     async (workflowId?: number) => {
@@ -519,60 +515,39 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
         return;
       }
 
-      const payload = {
-        display_name: displayName,
-        slug,
-      };
-
-      const candidates = makeApiEndpointCandidates(backendUrl, `/api/workflows/${targetId}`);
-      let lastError: Error | null = null;
-
       setSaveState("saving");
       setSaveMessage("Renommage en cours…");
 
-      for (const url of candidates) {
-        try {
-          const response = await fetch(url, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-            body: JSON.stringify(payload),
-          });
+      try {
+        const summary = await updateWorkflowMutation.mutateAsync({
+          token,
+          id: targetId,
+          payload: { display_name: displayName },
+        });
 
-          if (!response.ok) {
-            throw new Error(`Échec du renommage (${response.status})`);
-          }
+        await loadWorkflows({
+          selectWorkflowId: summary.id,
+          selectVersionId: selectedVersionId ?? null,
+        });
 
-          const summary: WorkflowSummary = await response.json();
-          await loadWorkflows({
-            selectWorkflowId: summary.id,
-            selectVersionId: selectedVersionId ?? null,
-          });
-          setSaveState("saved");
-          setSaveMessage(`Workflow renommé en "${summary.display_name}".`);
-          setTimeout(() => setSaveState("idle"), 1500);
-          return;
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
-            continue;
-          }
-          lastError = error instanceof Error ? error : new Error("Impossible de renommer le workflow.");
-        }
+        setSaveState("saved");
+        setSaveMessage(`Workflow renommé en "${summary.display_name}".`);
+        setTimeout(() => setSaveState("idle"), 1500);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Impossible de renommer le workflow.";
+        setSaveState("error");
+        setSaveMessage(message);
       }
-
-      setSaveState("error");
-      setSaveMessage(lastError?.message ?? "Impossible de renommer le workflow.");
     },
     [
-      authHeader,
+      token,
       closeWorkflowMenu,
       loadWorkflows,
       selectedVersionId,
       selectedWorkflowId,
       setSaveMessage,
       setSaveState,
+      updateWorkflowMutation,
       workflows,
     ],
   );
