@@ -1,0 +1,96 @@
+/**
+ * Form Component Styles
+ * Form inputs, labels, and validation states
+ */
+
+.form-grid {
+  display: grid;
+  gap: clamp(14px, 3vh, 20px);
+}
+
+.label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-color);
+  min-width: 0;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  font-size: 1rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background-color: var(--form-field-background);
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+
+.textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  font-size: 0.95rem;
+  font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", ui-monospace, monospace;
+  resize: vertical;
+  min-height: 120px;
+  background-color: var(--form-field-background);
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+
+.alert {
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+}
+
+.alert--danger {
+  background: rgba(254, 226, 226, 0.9);
+  color: var(--danger-hover);
+}
+
+.alert--success {
+  background: rgba(187, 247, 208, 0.85);
+  color: #15803d;
+}
+
+.checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  padding-top: 8px;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary-color);
+}
+
+.radio-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.radio-field input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color);
+}

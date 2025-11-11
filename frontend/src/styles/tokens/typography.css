@@ -1,0 +1,32 @@
+/**
+ * Typography Tokens
+ * Font families, sizes, and text-related properties
+ */
+
+:root {
+  /* Font Families */
+  --appearance-body-font: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --appearance-heading-font: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+
+  /* Apply body font globally */
+  font-family: var(
+    --appearance-body-font,
+    "Inter",
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Helvetica Neue",
+    sans-serif
+  );
+}
+
+/* Headings use custom font family */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--appearance-heading-font, inherit);
+}

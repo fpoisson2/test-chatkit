@@ -1,0 +1,259 @@
+/**
+ * ResponsiveTable Styles
+ * Adaptive table layout for desktop and mobile
+ */
+
+/* Table wrapper with horizontal scroll fallback */
+.responsive-table-wrapper {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--color-border-subtle);
+  max-width: 100%;
+}
+
+.responsive-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  min-width: 600px; /* Minimum width before horizontal scroll */
+}
+
+.responsive-table thead {
+  background: color-mix(in srgb, var(--primary-color) 6%, var(--color-surface-subtle));
+  color: var(--text-muted);
+}
+
+.responsive-table th,
+.responsive-table td {
+  padding: clamp(12px, 2vw, 18px);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: 0.95rem;
+}
+
+.responsive-table th {
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.responsive-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.responsive-table tbody tr:hover {
+  background: color-mix(in srgb, var(--primary-color) 4%, var(--color-surface-subtle));
+}
+
+.responsive-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Mobile Card View */
+.responsive-table-cards {
+  display: grid;
+  gap: clamp(14px, 3vw, 20px);
+  width: 100%;
+  min-width: 0; /* Allow cards to shrink */
+}
+
+.responsive-table-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 16px;
+  padding: clamp(14px, 4vw, 18px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  min-width: 0; /* Allow card to shrink */
+  overflow: hidden; /* Prevent overflow */
+}
+
+.responsive-table-card:hover {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  transform: translateY(-2px);
+}
+
+.responsive-table-card__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; /* Allow row to shrink */
+}
+
+.responsive-table-card__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.responsive-table-card__value {
+  font-size: 0.95rem;
+  color: var(--text-color);
+  margin: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0; /* Allow value to shrink */
+  max-width: 100%; /* Respect parent width */
+}
+
+/* Handle long text in code elements within cards */
+.responsive-table-card__value code,
+.responsive-table-card__value pre {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  white-space: pre-wrap;
+  max-width: 100%;
+  display: inline-block;
+}
+
+/* Handle buttons and action groups in cards */
+.responsive-table-card__value .admin-table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+/* Handle nested divs and elements */
+.responsive-table-card__value > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Mobile-specific table adjustments */
+@media (max-width: 768px) {
+  .responsive-table-wrapper {
+    border-radius: 12px;
+  }
+
+  .responsive-table th,
+  .responsive-table td {
+    padding: clamp(10px, 2.5vw, 14px);
+    font-size: 0.9rem;
+  }
+
+  .responsive-table th {
+    font-size: 0.85rem;
+  }
+}
+
+/* Global overflow prevention for admin cards and forms */
+.admin-card,
+.admin-form,
+.admin-grid,
+.form-group {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Form elements styling and overflow prevention */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-input,
+.form-label {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.form-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  font-size: 1rem;
+  color: var(--text-color);
+  background-color: var(--form-field-background, var(--color-surface));
+  min-width: 0;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+
+.form-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-color);
+  min-width: 0;
+}
+
+/* Mobile-specific overflow prevention */
+@media (max-width: 768px) {
+  .admin-card,
+  .admin-form,
+  .admin-grid,
+  .form-group {
+    max-width: 100%;
+  }
+
+  /* Ensure form inputs don't overflow */
+  .admin-card .input,
+  .admin-card .textarea,
+  .admin-card .form-input,
+  .admin-form .input,
+  .admin-form .textarea,
+  .admin-form .form-input,
+  .form-group .form-input {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Code blocks need aggressive word breaking */
+  .admin-card code,
+  .admin-form code,
+  .responsive-table code {
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-all;
+    white-space: pre-wrap;
+    box-sizing: border-box;
+  }
+
+  /* Specific handling for form labels to prevent overflow */
+  .admin-form .label,
+  .admin-card .label,
+  .form-group .form-label {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Ensure select and textarea elements respect container width */
+  select.form-input,
+  textarea.form-input {
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+/* Very small screens */
+@media (max-width: 480px) {
+  .responsive-table-card {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .responsive-table-card__label {
+    font-size: 0.7rem;
+  }
+
+  .responsive-table-card__value {
+    font-size: 0.9rem;
+  }
+}

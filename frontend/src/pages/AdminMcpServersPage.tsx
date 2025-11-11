@@ -15,6 +15,7 @@ import {
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { ResponsiveTable, type Column } from "../components";
 import { useI18n } from "../i18n";
 
 const emptyFormState = () => ({
@@ -1001,6 +1002,108 @@ export const AdminMcpServersPage = () => {
   const currentRefreshTokenHint = currentServer?.refresh_token_hint;
   const currentClientSecretHint = currentServer?.oauth_client_secret_hint;
 
+  const mcpServerColumns = useMemo<Column<McpServerSummary>[]>(
+    () => [
+      {
+        key: "label",
+        label: t("admin.mcpServers.list.columns.label"),
+        render: (server) => (
+          <div>
+            <strong>{server.label}</strong>
+            {server.authorization_hint && (
+              <div className="admin-table__hint">
+                {t("admin.mcpServers.list.authorizationHint", {
+                  hint: server.authorization_hint,
+                })}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: "url",
+        label: t("admin.mcpServers.list.columns.url"),
+        render: (server) => <code>{server.server_url}</code>,
+      },
+      {
+        key: "tools",
+        label: t("admin.mcpServers.list.columns.tools"),
+        render: (server) => {
+          const toolNames = extractToolNames(server);
+          return toolNames.length
+            ? t("admin.mcpServers.list.toolsWithNames", {
+                count: toolNames.length,
+                tools: toolNames.join(", "),
+              })
+            : t("admin.mcpServers.list.toolsEmpty");
+        },
+      },
+      {
+        key: "updated",
+        label: t("admin.mcpServers.list.columns.updated"),
+        render: (server) =>
+          server.tools_cache_updated_at
+            ? formatDateTime(server.tools_cache_updated_at)
+            : t("admin.mcpServers.list.neverRefreshed"),
+      },
+      {
+        key: "status",
+        label: t("admin.mcpServers.list.columns.status"),
+        render: (server) =>
+          server.is_active
+            ? t("admin.mcpServers.list.status.active")
+            : t("admin.mcpServers.list.status.inactive"),
+      },
+      {
+        key: "actions",
+        label: t("admin.mcpServers.list.columns.actions"),
+        render: (server) => {
+          const isRefreshing = refreshingId === server.id;
+          const isDeleting = deletingId === server.id;
+          return (
+            <div className="admin-table__actions">
+              <button
+                type="button"
+                className="button button--small"
+                onClick={() => handleEdit(server)}
+              >
+                {t("admin.mcpServers.actions.edit")}
+              </button>
+              <button
+                type="button"
+                className="button button--secondary button--small"
+                disabled={isRefreshing}
+                onClick={() => handleRefreshTools(server)}
+              >
+                {isRefreshing
+                  ? t("admin.mcpServers.actions.refreshing")
+                  : t("admin.mcpServers.actions.refreshTools")}
+              </button>
+              <button
+                type="button"
+                className="button button--danger button--small"
+                disabled={isDeleting}
+                onClick={() => handleDelete(server)}
+              >
+                {isDeleting
+                  ? t("admin.mcpServers.actions.deleting")
+                  : t("admin.mcpServers.actions.delete")}
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    [
+      deletingId,
+      handleDelete,
+      handleEdit,
+      handleRefreshTools,
+      refreshingId,
+      t,
+    ],
+  );
+
   return (
     <>
       <AdminTabs activeTab="mcp-servers" />
@@ -1031,95 +1134,12 @@ export const AdminMcpServersPage = () => {
             ) : servers.length === 0 ? (
               <p>{t("admin.mcpServers.list.empty")}</p>
             ) : (
-              <div className="admin-table-wrapper">
-                <table className="admin-table admin-table--stack">
-                  <thead>
-                    <tr>
-                      <th>{t("admin.mcpServers.list.columns.label")}</th>
-                      <th>{t("admin.mcpServers.list.columns.url")}</th>
-                      <th>{t("admin.mcpServers.list.columns.tools")}</th>
-                      <th>{t("admin.mcpServers.list.columns.updated")}</th>
-                      <th>{t("admin.mcpServers.list.columns.status")}</th>
-                      <th>{t("admin.mcpServers.list.columns.actions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {servers.map((server) => {
-                      const toolNames = extractToolNames(server);
-                      const isRefreshing = refreshingId === server.id;
-                      const isDeleting = deletingId === server.id;
-                      return (
-                        <tr key={server.id}>
-                          <td data-label={t("admin.mcpServers.list.columns.label")}>
-                            <div>
-                              <strong>{server.label}</strong>
-                              {server.authorization_hint && (
-                                <div className="admin-table__hint">
-                                  {t("admin.mcpServers.list.authorizationHint", {
-                                    hint: server.authorization_hint,
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td data-label={t("admin.mcpServers.list.columns.url")}>
-                            <code>{server.server_url}</code>
-                          </td>
-                          <td data-label={t("admin.mcpServers.list.columns.tools")}>
-                            {toolNames.length
-                              ? t("admin.mcpServers.list.toolsWithNames", {
-                                  count: toolNames.length,
-                                  tools: toolNames.join(", "),
-                                })
-                              : t("admin.mcpServers.list.toolsEmpty")}
-                          </td>
-                          <td data-label={t("admin.mcpServers.list.columns.updated")}>
-                            {server.tools_cache_updated_at
-                              ? formatDateTime(server.tools_cache_updated_at)
-                              : t("admin.mcpServers.list.neverRefreshed")}
-                          </td>
-                          <td data-label={t("admin.mcpServers.list.columns.status")}>
-                            {server.is_active
-                              ? t("admin.mcpServers.list.status.active")
-                              : t("admin.mcpServers.list.status.inactive")}
-                          </td>
-                          <td data-label={t("admin.mcpServers.list.columns.actions")}>
-                            <div className="admin-table__actions">
-                              <button
-                                type="button"
-                                className="button button--small"
-                                onClick={() => handleEdit(server)}
-                              >
-                                {t("admin.mcpServers.actions.edit")}
-                              </button>
-                              <button
-                                type="button"
-                                className="button button--secondary button--small"
-                                disabled={isRefreshing}
-                                onClick={() => handleRefreshTools(server)}
-                              >
-                                {isRefreshing
-                                  ? t("admin.mcpServers.actions.refreshing")
-                                  : t("admin.mcpServers.actions.refreshTools")}
-                              </button>
-                              <button
-                                type="button"
-                                className="button button--danger button--small"
-                                disabled={isDeleting}
-                                onClick={() => handleDelete(server)}
-                              >
-                                {isDeleting
-                                  ? t("admin.mcpServers.actions.deleting")
-                                  : t("admin.mcpServers.actions.delete")}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <ResponsiveTable
+                columns={mcpServerColumns}
+                data={servers}
+                keyExtractor={(server) => server.id.toString()}
+                mobileCardView={true}
+              />
             )}
           </section>
 

@@ -1,0 +1,81 @@
+/**
+ * Button Component Styles
+ * All button variants and states
+ */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  border: none;
+  padding: 10px 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  box-shadow: 0 12px 25px rgba(37, 99, 235, 0.35);
+  background: var(--primary-color);
+}
+
+.button--icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 0.9rem;
+}
+
+.button--icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.button:hover,
+.button:focus-visible {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 15px 32px rgba(37, 99, 235, 0.35);
+}
+
+.button--sm {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25);
+}
+
+.button--danger {
+  background: var(--danger-color);
+  box-shadow: 0 12px 25px rgba(220, 38, 38, 0.25);
+}
+
+.button--danger:hover,
+.button--danger:focus-visible {
+  background: var(--danger-hover);
+}
+
+.button--ghost {
+  background: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.28);
+}
+
+.button--subtle {
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--text-color);
+  box-shadow: none;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.button--subtle:hover,
+.button--subtle:focus-visible {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--primary-hover);
+}
+
+.button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: none;
+}

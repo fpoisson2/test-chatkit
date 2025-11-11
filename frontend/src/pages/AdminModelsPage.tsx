@@ -11,6 +11,7 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { ResponsiveTable, type Column } from "../components";
 import {
   AppSettings,
   AvailableModel,
@@ -407,6 +408,63 @@ export const AdminModelsPage = () => {
     }
   };
 
+  const modelColumns = useMemo<Column<AvailableModel>[]>(
+    () => [
+      {
+        key: "name",
+        label: "Modèle",
+        render: (model) => model.name,
+      },
+      {
+        key: "display",
+        label: "Affichage",
+        render: (model) => model.display_name ?? "—",
+      },
+      {
+        key: "provider",
+        label: "Fournisseur",
+        render: (model) =>
+          model.provider_slug
+            ? `${model.provider_slug}${model.provider_id ? ` (${model.provider_id})` : ""}`
+            : "—",
+      },
+      {
+        key: "reasoning",
+        label: "Raisonnement",
+        render: (model) => (model.supports_reasoning ? "Oui" : "Non"),
+      },
+      {
+        key: "description",
+        label: "Description",
+        render: (model) => model.description ?? "—",
+      },
+      {
+        key: "actions",
+        label: "Actions",
+        render: (model) => (
+          <div className="admin-table__actions">
+            <button
+              type="button"
+              className="button button--ghost button--sm"
+              onClick={() => handleEdit(model)}
+              disabled={isEditing && editingModelId === model.id}
+            >
+              {t("admin.models.table.editAction")}
+            </button>
+            <button
+              type="button"
+              className="button button--ghost button--sm"
+              onClick={() => handleDelete(model)}
+            >
+              {t("admin.models.table.deleteAction")}
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [editingModelId, handleDelete, handleEdit, isEditing, t],
+  );
+
   return (
     <>
       <AdminTabs activeTab="models" />
@@ -556,56 +614,12 @@ export const AdminModelsPage = () => {
                 alimenter le menu déroulant du workflow builder.
               </p>
             ) : (
-              <div className="admin-table-wrapper">
-                <table className="admin-table admin-table--stack">
-                  <thead>
-                    <tr>
-                      <th>Modèle</th>
-                      <th>Affichage</th>
-                      <th>Fournisseur</th>
-                      <th>Raisonnement</th>
-                      <th>Description</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {models.map((model) => (
-                      <tr key={model.id}>
-                        <td data-label="Modèle">{model.name}</td>
-                        <td data-label="Affichage">{model.display_name ?? "—"}</td>
-                        <td data-label="Fournisseur">
-                          {model.provider_slug
-                            ? `${model.provider_slug}${model.provider_id ? ` (${model.provider_id})` : ""}`
-                            : "—"}
-                        </td>
-                        <td data-label="Raisonnement">
-                          {model.supports_reasoning ? "Oui" : "Non"}
-                        </td>
-                        <td data-label="Description">{model.description ?? "—"}</td>
-                        <td data-label="Actions">
-                          <div className="admin-table__actions">
-                            <button
-                              type="button"
-                              className="button button--ghost button--sm"
-                              onClick={() => handleEdit(model)}
-                              disabled={isEditing && editingModelId === model.id}
-                            >
-                              {t("admin.models.table.editAction")}
-                            </button>
-                            <button
-                              type="button"
-                              className="button button--ghost button--sm"
-                              onClick={() => handleDelete(model)}
-                            >
-                              {t("admin.models.table.deleteAction")}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ResponsiveTable
+                columns={modelColumns}
+                data={models}
+                keyExtractor={(model) => model.id.toString()}
+                mobileCardView={true}
+              />
             )}
           </section>
         </div>

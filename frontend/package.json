@@ -11,14 +11,17 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
     "@openai/chatkit-react": "*",
     "@reactflow/core": "*",
     "lucide-react": "^0.546.0",
     "react": "*",
     "react-dom": "*",
+    "react-hook-form": "^7.66.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "*",
-    "reactflow": "*"
+    "reactflow": "*",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "*",

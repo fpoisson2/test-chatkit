@@ -10,6 +10,7 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { ResponsiveTable, type Column } from "../components";
 import {
   isUnauthorizedError,
 } from "../utils/backend";
@@ -577,6 +578,108 @@ export const AdminLanguagesPage = () => {
     return t("admin.languages.list.status.partial", { percent });
   };
 
+  const languageColumns = useMemo<Column<Language>[]>(
+    () => [
+      {
+        key: "code",
+        label: t("admin.languages.list.columns.code"),
+        render: (lang) => <code>{lang.code}</code>,
+      },
+      {
+        key: "name",
+        label: t("admin.languages.list.columns.name"),
+        render: (lang) => lang.name,
+      },
+      {
+        key: "file",
+        label: t("admin.languages.list.columns.translationFile"),
+        render: (lang) => (
+          <>
+            <code style={{ fontSize: "0.875rem" }}>{lang.translationFile}</code>
+            <br />
+            <small
+              style={{
+                color: lang.fileExists
+                  ? "var(--color-success)"
+                  : "var(--color-danger)",
+              }}
+            >
+              {lang.fileExists
+                ? t("admin.languages.list.fileExists")
+                : t("admin.languages.list.fileMissing")}
+            </small>
+          </>
+        ),
+      },
+      {
+        key: "keys",
+        label: t("admin.languages.list.columns.keysCount"),
+        render: (lang) => `${lang.keysCount} / ${lang.totalKeys}`,
+      },
+      {
+        key: "status",
+        label: t("admin.languages.list.columns.status"),
+        render: (lang) => getStatusLabel(lang),
+      },
+    ],
+    [getStatusLabel, t],
+  );
+
+  const storedLanguageColumns = useMemo<Column<StoredLanguage>[]>(
+    () => [
+      {
+        key: "code",
+        label: "Code",
+        render: (lang) => <code>{lang.code}</code>,
+      },
+      {
+        key: "name",
+        label: "Name",
+        render: (lang) => lang.name,
+      },
+      {
+        key: "created",
+        label: "Created At",
+        render: (lang) => new Date(lang.created_at).toLocaleDateString(),
+      },
+      {
+        key: "updated",
+        label: "Updated At",
+        render: (lang) => new Date(lang.updated_at).toLocaleDateString(),
+      },
+      {
+        key: "actions",
+        label: "Actions",
+        render: (lang) => (
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => activateStoredLanguage(lang.id, lang.code, lang.name)}
+              className="button button--sm button--primary"
+            >
+              Activate
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadStoredLanguage(lang.id)}
+              className="button button--sm button--ghost"
+            >
+              Download
+            </button>
+            <button
+              type="button"
+              onClick={() => deleteStoredLanguage(lang.id)}
+              className="button button--sm button--danger"
+            >
+              Delete
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [activateStoredLanguage, deleteStoredLanguage, downloadStoredLanguage],
+  );
+
   return (
     <>
       <AdminTabs activeTab="languages" />
@@ -837,48 +940,12 @@ export const AdminLanguagesPage = () => {
                   {t("admin.languages.list.loading")}
                 </p>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>{t("admin.languages.list.columns.code")}</th>
-                        <th>{t("admin.languages.list.columns.name")}</th>
-                        <th>{t("admin.languages.list.columns.translationFile")}</th>
-                        <th>{t("admin.languages.list.columns.keysCount")}</th>
-                        <th>{t("admin.languages.list.columns.status")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {languages.map((lang) => (
-                        <tr key={lang.code}>
-                          <td>
-                            <code>{lang.code}</code>
-                          </td>
-                          <td>{lang.name}</td>
-                          <td>
-                            <code style={{ fontSize: "0.875rem" }}>{lang.translationFile}</code>
-                            <br />
-                            <small
-                              style={{
-                                color: lang.fileExists
-                                  ? "var(--color-success)"
-                                  : "var(--color-danger)",
-                              }}
-                            >
-                              {lang.fileExists
-                                ? t("admin.languages.list.fileExists")
-                                : t("admin.languages.list.fileMissing")}
-                            </small>
-                          </td>
-                          <td>
-                            {lang.keysCount} / {lang.totalKeys}
-                          </td>
-                          <td>{getStatusLabel(lang)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ResponsiveTable
+                  columns={languageColumns}
+                  data={languages}
+                  keyExtractor={(lang) => lang.code}
+                  mobileCardView={true}
+                />
               )}
             </section>
 
@@ -900,56 +967,12 @@ export const AdminLanguagesPage = () => {
                   No stored languages yet. Enable "Save to database" when generating a language.
                 </p>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Code</th>
-                        <th>Name</th>
-                        <th>Created At</th>
-                        <th>Updated At</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {storedLanguages.map((lang) => (
-                        <tr key={lang.id}>
-                          <td>
-                            <code>{lang.code}</code>
-                          </td>
-                          <td>{lang.name}</td>
-                          <td>{new Date(lang.created_at).toLocaleDateString()}</td>
-                          <td>{new Date(lang.updated_at).toLocaleDateString()}</td>
-                          <td>
-                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                              <button
-                                type="button"
-                                onClick={() => activateStoredLanguage(lang.id, lang.code, lang.name)}
-                                className="button button--sm button--primary"
-                              >
-                                Activate
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadStoredLanguage(lang.id)}
-                                className="button button--sm button--secondary"
-                              >
-                                Download
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => deleteStoredLanguage(lang.id)}
-                                className="button button--sm button--danger"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ResponsiveTable
+                  columns={storedLanguageColumns}
+                  data={storedLanguages}
+                  keyExtractor={(lang) => lang.id.toString()}
+                  mobileCardView={true}
+                />
               )}
             </section>
           </div>

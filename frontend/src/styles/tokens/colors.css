@@ -1,0 +1,161 @@
+/**
+ * Color Tokens
+ * All color-related CSS custom properties
+ */
+
+:root {
+  /* Appearance Colors - Base Palette */
+  --appearance-accent: #2563eb;
+  --appearance-accent-hover: #1d4ed8;
+  --appearance-light-surface: #ffffff;
+  --appearance-light-surface-subtle: #f4f4f5;
+  --appearance-light-border: rgba(24, 24, 27, 0.12);
+  --appearance-dark-surface: #18181b;
+  --appearance-dark-surface-subtle: #111114;
+  --appearance-dark-border: rgba(228, 228, 231, 0.16);
+
+  /* Gradients */
+  --app-gradient: linear-gradient(160deg, #111827 0%, #1f2937 45%, #334155 100%);
+
+  /* Text Colors - Light Theme */
+  --color-text: #18181b;
+  --color-text-strong: #09090b;
+  --color-text-muted: #52525b;
+
+  /* Surface Colors - Light Theme */
+  --color-surface: var(--appearance-light-surface);
+  --color-surface-subtle: var(--appearance-light-surface-subtle);
+  --color-border-subtle: var(--appearance-light-border);
+  --surface-color: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  --surface-strong: var(--color-surface);
+  --surface-border: var(--color-border-subtle);
+
+  /* Semantic Color Aliases */
+  --text-color: var(--color-text);
+  --text-muted: var(--color-text-muted);
+  --main-background: var(--color-surface-subtle);
+  --primary-color: var(--appearance-accent);
+  --primary-hover: var(--appearance-accent-hover);
+
+  /* Sidebar Colors */
+  --sidebar-background: var(--color-surface);
+  --sidebar-border: var(--color-border-subtle);
+  --sidebar-scrollbar-thumb: rgba(24, 24, 27, 0.24);
+  --sidebar-scrollbar-thumb-hover: rgba(24, 24, 27, 0.32);
+  --sidebar-scrollbar-track: rgba(24, 24, 27, 0.08);
+
+  /* Hosted/Brand Colors */
+  --hosted-accent: #7c3aed;
+  --hosted-accent-strong: #5b21b6;
+  --hosted-accent-border: rgba(124, 58, 237, 0.35);
+  --hosted-accent-soft: rgba(124, 58, 237, 0.12);
+
+  /* Form Field Colors */
+  --form-field-background: var(--color-surface-subtle);
+
+  /* Status Colors */
+  --danger-color: #dc2626;
+  --danger-hover: #b91c1c;
+}
+
+:root[data-theme="light" i] {
+  color-scheme: light;
+}
+
+/* Dark Theme */
+:root[data-theme="dark" i] {
+  color-scheme: dark;
+
+  /* Gradients */
+  --app-gradient: linear-gradient(160deg, #030712 0%, #111827 45%, #1f2937 100%);
+
+  /* Text Colors - Dark Theme */
+  --color-text: #e4e4e7;
+  --color-text-strong: #fafafa;
+  --color-text-muted: #a1a1aa;
+
+  /* Surface Colors - Dark Theme */
+  --color-surface: var(--appearance-dark-surface);
+  --color-surface-subtle: var(--appearance-dark-surface-subtle);
+  --color-border-subtle: var(--appearance-dark-border);
+  --surface-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
+  --surface-strong: var(--color-surface);
+  --surface-border: var(--color-border-subtle);
+
+  /* Semantic Color Aliases */
+  --text-color: var(--color-text);
+  --text-muted: var(--color-text-muted);
+  --main-background: var(--appearance-dark-surface-subtle);
+  --primary-color: var(--appearance-accent);
+  --primary-hover: var(--appearance-accent-hover);
+
+  /* Sidebar Colors - Dark Theme */
+  --sidebar-background: var(--appearance-dark-surface-subtle);
+  --sidebar-border: rgba(228, 228, 231, 0.08);
+  --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
+  --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
+  --sidebar-scrollbar-track: rgba(228, 228, 231, 0.12);
+
+  /* Hosted Colors - Dark Theme */
+  --hosted-accent: #c4b5fd;
+  --hosted-accent-strong: #a78bfa;
+  --hosted-accent-border: rgba(196, 181, 253, 0.65);
+  --hosted-accent-soft: rgba(167, 139, 250, 0.2);
+
+  /* Form Field Colors - Dark Theme */
+  --form-field-background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+
+  /* Status Colors - Dark Theme */
+  --danger-color: #ef4444;
+  --danger-hover: #dc2626;
+}
+
+/* System Dark Mode Preference */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    /* Gradients */
+    --app-gradient: linear-gradient(160deg, #030712 0%, #111827 45%, #1f2937 100%);
+
+    /* Text Colors */
+    --color-text: #e4e4e7;
+    --color-text-strong: #fafafa;
+    --color-text-muted: #a1a1aa;
+
+    /* Surface Colors */
+    --color-surface: #18181b;
+    --color-surface-subtle: #111114;
+    --color-border-subtle: rgba(228, 228, 231, 0.16);
+    --surface-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
+    --surface-strong: var(--color-surface);
+    --surface-border: var(--color-border-subtle);
+
+    /* Semantic Aliases */
+    --text-color: var(--color-text);
+    --text-muted: var(--color-text-muted);
+    --main-background: #09090b;
+    --primary-color: #38bdf8;
+    --primary-hover: #0ea5e9;
+
+    /* Sidebar Colors */
+    --sidebar-background: #09090b;
+    --sidebar-border: rgba(228, 228, 231, 0.08);
+    --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
+    --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
+    --sidebar-scrollbar-track: rgba(228, 228, 231, 0.12);
+
+    /* Hosted Colors */
+    --hosted-accent: #c4b5fd;
+    --hosted-accent-strong: #a78bfa;
+    --hosted-accent-border: rgba(196, 181, 253, 0.65);
+    --hosted-accent-soft: rgba(167, 139, 250, 0.2);
+
+    /* Form Field Colors */
+    --form-field-background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+
+    /* Status Colors */
+    --danger-color: #ef4444;
+    --danger-hover: #dc2626;
+  }
+}
