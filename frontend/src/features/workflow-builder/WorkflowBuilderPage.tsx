@@ -134,6 +134,10 @@ import { useElementDeletion } from "./hooks/useElementDeletion";
 import { useNodeOperations } from "./hooks/useNodeOperations";
 import { useWorkflowSelection } from "./hooks/useWorkflowSelection";
 import { useWorkflowValidation } from "./hooks/useWorkflowValidation";
+import { usePropertiesPanel } from "./hooks/usePropertiesPanel";
+import { useNodeInteractions } from "./hooks/useNodeInteractions";
+import { useWorkflowSync } from "./hooks/useWorkflowSync";
+import { useDeploymentModal } from "./hooks/useDeploymentModal";
 import { parseWorkflowImport } from "./importWorkflow";
 import WorkflowAppearanceModal, {
   type WorkflowAppearanceTarget,
@@ -545,13 +549,6 @@ const WorkflowBuilderPage = () => {
   // Note: isBlockLibraryOpen and isPropertiesPanelOpen come from UIContext (imported above)
   // Note: selectedNodeId, selectedEdgeId and their refs come from SelectionContext (imported above)
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
-  const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
-  const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const lastTappedElementRef = useRef<{
-    kind: "node" | "edge";
-    id: string;
-    tapCount: number;
-  } | null>(null);
   // Note: isNodeDragInProgressRef comes from GraphContext (above)
   const copySequenceRef = useRef<{ count: number; lastTimestamp: number }>({
     count: 0,
@@ -636,52 +633,22 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
-  // ONE-TIME initialization from provider, then ONLY sync back when WorkflowBuilder loads
-  const initializedFromProviderRef = useRef(false);
-  const needsVersionLoadRef = useRef(false);
-
-  // Initialize WorkflowContext from provider ONCE
-  useEffect(() => {
-    if (!initializedFromProviderRef.current && sidebarWorkflows.length > 0) {
-      initializedFromProviderRef.current = true;
-      setWorkflows(sidebarWorkflows);
-      setHostedWorkflows(sidebarHostedWorkflows);
-      // Initialize selectedWorkflowId from provider if present
-      if (sidebarSelectedWorkflowId !== null) {
-        setSelectedWorkflowId(sidebarSelectedWorkflowId);
-        needsVersionLoadRef.current = true;
-      }
-    }
-  }, [sidebarWorkflows, sidebarHostedWorkflows, sidebarSelectedWorkflowId, setWorkflows, setHostedWorkflows, setSelectedWorkflowId]);
-
-  // Load versions after initialization from provider
-  useEffect(() => {
-    if (needsVersionLoadRef.current && selectedWorkflowId !== null) {
-      needsVersionLoadRef.current = false;
-      void loadVersions(selectedWorkflowId, null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWorkflowId]);
-
-  // Sync TO provider when WorkflowContext loads (not from provider)
-  const workflowsStringified = JSON.stringify(workflows.map((w) => w.id));
-  const hostedWorkflowsStringified = JSON.stringify(hostedWorkflows.map((w) => w.slug));
-
-  useEffect(() => {
-    if (workflows.length > 0 && initializedFromProviderRef.current) {
-      setSidebarWorkflows(workflows);
-    }
-  }, [workflowsStringified, setSidebarWorkflows, workflows]);
-
-  useEffect(() => {
-    if (hostedWorkflows.length > 0 && initializedFromProviderRef.current) {
-      setSidebarHostedWorkflows(hostedWorkflows);
-    }
-  }, [hostedWorkflowsStringified, setSidebarHostedWorkflows, hostedWorkflows]);
-
-  useEffect(() => {
-    setSidebarSelectedWorkflowId(selectedWorkflowId as number | null);
-  }, [selectedWorkflowId, setSidebarSelectedWorkflowId]);
+  // Phase 8: Extract workflow synchronization into custom hook
+  useWorkflowSync({
+    sidebarWorkflows,
+    sidebarHostedWorkflows,
+    sidebarSelectedWorkflowId,
+    setSidebarWorkflows,
+    setSidebarHostedWorkflows,
+    setSidebarSelectedWorkflowId,
+    workflows,
+    hostedWorkflows,
+    selectedWorkflowId,
+    setWorkflows,
+    setHostedWorkflows,
+    setSelectedWorkflowId,
+    loadVersions,
+  });
 
   useEscapeKeyHandler(
     () => {
@@ -997,90 +964,44 @@ const WorkflowBuilderPage = () => {
     [edges, selectedEdgeId]
   );
 
-  const handleNodeClick = useCallback(
-    (_: unknown, node: FlowNode) => {
-      const lastTapped = lastTappedElementRef.current;
-      const isSameElement = lastTapped?.kind === "node" && lastTapped.id === node.id;
-      const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
-      lastTappedElementRef.current = { kind: "node", id: node.id, tapCount: nextTapCount };
-      selectNode(node.id);  // Update selection state
-      // On mobile, applySelection is not called by ReactFlow, so we call it manually to apply visual styling
-      if (isMobileLayout) {
-        applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
-      }
-      if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setIsPropertiesPanelOpen(true);
-      }
-    },
-    [isMobileLayout, selectNode, applySelection, setIsPropertiesPanelOpen],
-  );
+  // Phase 8: Extract properties panel logic into custom hook
+  const {
+    handleClosePropertiesPanel,
+    handleOpenPropertiesPanel,
+    propertiesPanelToggleRef,
+    propertiesPanelCloseButtonRef,
+    lastTappedElementRef,
+    previousSelectedElementRef,
+  } = usePropertiesPanel({
+    isMobileLayout,
+    selectedNodeId,
+    selectedEdgeId,
+    selectedNode,
+    selectedEdge,
+    isPropertiesPanelOpen,
+    setIsPropertiesPanelOpen,
+    isNodeDragInProgressRef,
+    handleClearSelection: clearSelection,
+  });
 
-  const handleEdgeClick = useCallback(
-    (_: unknown, edge: FlowEdge) => {
-      const lastTapped = lastTappedElementRef.current;
-      const isSameElement = lastTapped?.kind === "edge" && lastTapped.id === edge.id;
-      const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
-      lastTappedElementRef.current = { kind: "edge", id: edge.id, tapCount: nextTapCount };
-      selectEdge(edge.id);  // Update selection state
-      // On mobile, applySelection is not called by ReactFlow, so we call it manually to apply visual styling
-      if (isMobileLayout) {
-        applySelection({ edgeIds: [edge.id], primaryEdgeId: edge.id });
-      }
-      if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setIsPropertiesPanelOpen(true);
-      }
-    },
-    [isMobileLayout, selectEdge, applySelection, setIsPropertiesPanelOpen],
-  );
+  // Phase 8: Extract node interactions into custom hook
+  const { handleNodeClick, handleEdgeClick, handleNodeDragStart, handleNodeDragStop } = useNodeInteractions({
+    isMobileLayout,
+    selectNode,
+    selectEdge,
+    applySelection,
+    setIsPropertiesPanelOpen,
+    isNodeDragInProgressRef,
+    historyRef,
+    lastTappedElementRef,
+  });
+
+  // Phase 8: handleNodeClick, handleEdgeClick, handleNodeDragStart, handleNodeDragStop now provided by useNodeInteractions hook
+  // Phase 8: handleClosePropertiesPanel, handleOpenPropertiesPanel now provided by usePropertiesPanel hook
+  // Phase 8: Properties panel effects now handled by usePropertiesPanel hook
 
   const handleClearSelection = clearSelection;
-
   const handleSelectionChange = onSelectionChange;
-
-  const handleNodeDragStart = useCallback(() => {
-    isNodeDragInProgressRef.current = true;
-  }, []);
-
-  const handleNodeDragStop = useCallback(() => {
-    isNodeDragInProgressRef.current = false;
-    const history = historyRef.current;
-    const pending = history.pendingSnapshot;
-    if (!pending) {
-      return;
-    }
-    if (history.last == null) {
-      history.last = pending;
-    } else if (history.last !== pending) {
-      history.past = [...history.past, history.last].slice(-HISTORY_LIMIT);
-      history.future = [];
-      history.last = pending;
-    }
-    history.pendingSnapshot = null;
-  }, []);
-
-  const handleClosePropertiesPanel = useCallback(() => {
-    if (isMobileLayout) {
-      setIsPropertiesPanelOpen(false);
-      if (typeof window !== "undefined") {
-        window.setTimeout(() => {
-          propertiesPanelToggleRef.current?.focus();
-        }, 0);
-      } else {
-        propertiesPanelToggleRef.current?.focus();
-      }
-      return;
-    }
-    handleClearSelection();
-  }, [handleClearSelection, isMobileLayout]);
-
-  const handleOpenPropertiesPanel = useCallback(() => {
-    if (!selectedNode && !selectedEdge) {
-      return;
-    }
-    setIsPropertiesPanelOpen(true);
-  }, [selectedEdge, selectedNode]);
-
-  const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
 
   useEffect(() => {
     selectedVersionIdRef.current = selectedVersionId;
@@ -1093,60 +1014,6 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     selectedEdgeIdRef.current = selectedEdgeId;
   }, [selectedEdgeId]);
-
-  useEffect(() => {
-    if (!selectedElementKey) {
-      setIsPropertiesPanelOpen(false);
-      lastTappedElementRef.current = null;
-      previousSelectedElementRef.current = selectedElementKey;
-      return;
-    }
-
-    const isNewSelection = previousSelectedElementRef.current !== selectedElementKey;
-    if (isNewSelection) {
-      const matchesLastTap =
-        (selectedNodeId &&
-          lastTappedElementRef.current?.kind === "node" &&
-          lastTappedElementRef.current.id === selectedNodeId) ||
-        (selectedEdgeId &&
-          lastTappedElementRef.current?.kind === "edge" &&
-          lastTappedElementRef.current.id === selectedEdgeId);
-
-      if (!matchesLastTap) {
-        lastTappedElementRef.current = null;
-      } else if (lastTappedElementRef.current) {
-        lastTappedElementRef.current = {
-          ...lastTappedElementRef.current,
-          tapCount: 1,
-        };
-      }
-    }
-
-    if (isMobileLayout) {
-      if (isNewSelection) {
-        setIsPropertiesPanelOpen(false);
-      }
-    } else if (isNewSelection && !isNodeDragInProgressRef.current) {
-      setIsPropertiesPanelOpen(true);
-    }
-
-    previousSelectedElementRef.current = selectedElementKey;
-  }, [isMobileLayout, selectedEdgeId, selectedElementKey, selectedNodeId]);
-
-  useEffect(() => {
-    if (!isMobileLayout) {
-      if (selectedElementKey) {
-        setIsPropertiesPanelOpen(true);
-      }
-    }
-  }, [isMobileLayout, selectedElementKey]);
-
-  useEffect(() => {
-    if (!isMobileLayout || !isPropertiesPanelOpen) {
-      return;
-    }
-    propertiesPanelCloseButtonRef.current?.focus();
-  }, [isMobileLayout, isPropertiesPanelOpen]);
 
   useEscapeKeyHandler(
     () => {
@@ -1445,28 +1312,26 @@ const WorkflowBuilderPage = () => {
     viewportRef,
   });
 
-  const resolveVersionIdToPromote = useCallback(
-    (
-      preferDraft = false,
-      options: { selectedId?: number | null } = {},
-    ): number | null => {
-      const draftId = draftVersionIdRef.current;
-      const selectedId = Object.prototype.hasOwnProperty.call(options, "selectedId")
-        ? options.selectedId ?? null
-        : selectedVersionIdRef.current;
-
-      if (preferDraft) {
-        return draftId ?? selectedId ?? null;
-      }
-
-      if (selectedId != null) {
-        return selectedId;
-      }
-
-      return draftId ?? null;
-    },
-    [],
-  );
+  // Phase 8: Extract deployment modal logic into custom hook
+  const {
+    resolveVersionIdToPromote,
+    versionIdToPromote,
+    versionSummaryForPromotion,
+    isPromotingDraft,
+    deployModalTitle,
+    deployModalDescription,
+    deployModalSourceLabel,
+    deployModalTargetLabel,
+    deployModalPrimaryLabel,
+    isPrimaryActionDisabled,
+  } = useDeploymentModal({
+    selectedVersionId,
+    selectedVersionIdRef,
+    draftVersionIdRef,
+    versions,
+    isDeploying,
+    t,
+  });
 
   // Phase 6: Extract deployment logic into useWorkflowDeployment hook
   const { handleConfirmDeploy } = useWorkflowDeployment({
@@ -1588,57 +1453,7 @@ const WorkflowBuilderPage = () => {
   const canRedoHistory = !workflowBusy && !editingLocked && historyRef.current.future.length > 0;
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
 
-  const versionIdToPromote = useMemo(
-    () => resolveVersionIdToPromote(false, { selectedId: selectedVersionId }),
-    [resolveVersionIdToPromote, selectedVersionId],
-  );
-
-  const versionSummaryForPromotion = useMemo(() => {
-    if (versionIdToPromote == null) {
-      return null;
-    }
-    return versions.find((version) => version.id === versionIdToPromote) ?? null;
-  }, [versionIdToPromote, versions]);
-
-  const isPromotingDraft = Boolean(
-    versionSummaryForPromotion && draftVersionIdRef.current === versionSummaryForPromotion.id,
-  );
-
-  const deployModalTitle = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.titlePublishDraft")
-      : t("workflowBuilder.deploy.modal.titlePromoteSelected")
-    : t("workflowBuilder.deploy.modal.titleMissing");
-
-  const deployModalDescription = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.descriptionPublishDraft")
-      : t("workflowBuilder.deploy.modal.descriptionPromoteSelected", {
-          version: versionSummaryForPromotion.version,
-        })
-    : t("workflowBuilder.deploy.modal.descriptionMissing");
-
-  const deployModalSourceLabel = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.path.draft")
-      : t("workflowBuilder.deploy.modal.path.selectedWithVersion", {
-          version: versionSummaryForPromotion.version,
-        })
-    : t("workflowBuilder.deploy.modal.path.draft");
-
-  const deployModalTargetLabel = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.path.newVersion")
-      : t("workflowBuilder.deploy.modal.path.production")
-    : t("workflowBuilder.deploy.modal.path.production");
-
-  const deployModalPrimaryLabel = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.action.publish")
-      : t("workflowBuilder.deploy.modal.action.deploy")
-    : t("workflowBuilder.deploy.modal.action.publish");
-
-  const isPrimaryActionDisabled = !versionSummaryForPromotion || isDeploying;
+  // Phase 8: versionIdToPromote, versionSummaryForPromotion, isPromotingDraft, and all deployModal variables now provided by useDeploymentModal hook
   const selectedElementLabel = selectedNode
     ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind, t)
     : selectedEdge
