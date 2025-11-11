@@ -1,0 +1,187 @@
+"""Tests de régression pour la reprise après un bloc d'attente."""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime
+from types import SimpleNamespace
+
+try:  # pragma: no cover - compatibilité d'import selon l'exécution
+    from .test_workflow_executor import (
+        _DummyAgent,
+        _FakeStreamResult,
+        _load_workflow_modules,
+    )
+except ImportError:  # pragma: no cover - fallback lorsque pytest ajuste PYTHONPATH
+    from test_workflow_executor import (  # type: ignore[no-redef]
+        _DummyAgent,
+        _FakeStreamResult,
+        _load_workflow_modules,
+    )
+
+executor, runtime_agents = _load_workflow_modules()
+
+
+async def _noop_async_generator(*args, **kwargs):  # pragma: no cover - helper
+    if False:
+        yield None
+
+
+class _FakeStore:
+    async def save_thread(self, thread, context):  # pragma: no cover - helper
+        return None
+
+
+class _FakeAgentContext:
+    def __init__(self) -> None:
+        self.thread = SimpleNamespace(id="thread-1", metadata={})
+        self.request_context = SimpleNamespace(
+            user_id="user-1", public_base_url="https://example.test"
+        )
+        self.previous_response_id = None
+        self.store = _FakeStore()
+        self._counter = 0
+
+    def generate_id(self, prefix: str) -> str:
+        self._counter += 1
+        return f"{prefix}-{self._counter}"
+
+
+def _build_step(slug: str, kind: str, position: int, **kwargs):
+    defaults = {
+        "slug": slug,
+        "kind": kind,
+        "position": position,
+        "is_enabled": True,
+        "parameters": kwargs.get("parameters", {}),
+        "agent_key": kwargs.get("agent_key"),
+        "display_name": kwargs.get("display_name"),
+    }
+    return SimpleNamespace(**defaults)
+
+
+def _build_transition(source, target, identifier: int):
+    return SimpleNamespace(
+        source_step=source,
+        target_step=target,
+        id=identifier,
+        condition=None,
+    )
+
+
+def test_resume_wait_state_without_source_item_id(monkeypatch):
+    async def _run() -> None:
+        WorkflowInput = executor.WorkflowInput
+        run_workflow = executor.run_workflow
+
+        if not hasattr(WorkflowInput, "model_dump"):
+            WorkflowInput.model_dump = WorkflowInput.dict  # type: ignore[assignment]
+
+        agent_calls: list[str] = []
+
+        def _fake_run_streamed(
+            agent, *, input, run_config, context, previous_response_id
+        ):
+            agent_name = getattr(agent, "name", "unknown")
+            agent_calls.append(agent_name)
+            return _FakeStreamResult({"agent": agent_name})
+
+        async def _fake_ingest_vector_store_step(*args, **kwargs):
+            return None
+
+        monkeypatch.setitem(
+            runtime_agents.AGENT_BUILDERS,
+            "first_agent",
+            lambda overrides: _DummyAgent("first-agent"),
+        )
+        monkeypatch.setitem(
+            runtime_agents.AGENT_BUILDERS,
+            "second_agent",
+            lambda overrides: _DummyAgent("second-agent"),
+        )
+
+        monkeypatch.setattr(executor.Runner, "run_streamed", _fake_run_streamed)
+        monkeypatch.setattr(executor, "stream_agent_response", _noop_async_generator)
+        monkeypatch.setattr(
+            executor,
+            "ingest_vector_store_step",
+            _fake_ingest_vector_store_step,
+        )
+
+        start_step = _build_step("start", "start", 0)
+        first_agent = _build_step(
+            "agent-one",
+            "agent",
+            1,
+            agent_key="first_agent",
+        )
+        wait_step = _build_step("wait", "wait_for_user_input", 2)
+        second_agent = _build_step(
+            "agent-two",
+            "agent",
+            3,
+            agent_key="second_agent",
+        )
+        end_step = _build_step("end", "end", 4)
+
+        transitions = [
+            _build_transition(start_step, first_agent, 1),
+            _build_transition(first_agent, wait_step, 2),
+            _build_transition(wait_step, second_agent, 3),
+            _build_transition(second_agent, end_step, 4),
+        ]
+
+        definition = SimpleNamespace(
+            workflow_id=1,
+            workflow=SimpleNamespace(slug="demo-workflow", display_name="Demo"),
+            steps=[start_step, first_agent, wait_step, second_agent, end_step],
+            transitions=transitions,
+        )
+
+        class _FakeWorkflowService:
+            def get_available_model_capabilities(self):  # pragma: no cover - helper
+                return {}
+
+        agent_context = _FakeAgentContext()
+
+        user_message_one = SimpleNamespace(
+            id="msg-1",
+            thread_id=agent_context.thread.id,
+            created_at=datetime.now(),
+            content=[SimpleNamespace(type="input_text", text="Bonjour")],
+            inference_options=SimpleNamespace(),
+        )
+
+        summary_one = await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+            current_user_message=user_message_one,
+        )
+
+        assert summary_one.end_state is not None
+        assert summary_one.end_state.status_type == "waiting"
+        assert agent_calls == ["first-agent"]
+
+        user_message_two = SimpleNamespace(
+            id="msg-2",
+            thread_id=agent_context.thread.id,
+            created_at=datetime.now(),
+            content=[SimpleNamespace(type="input_text", text="Réponse")],
+            inference_options=SimpleNamespace(),
+        )
+
+        summary_two = await run_workflow(
+            WorkflowInput(input_as_text="Réponse"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+            current_user_message=user_message_two,
+        )
+
+        assert summary_two.final_output == {"agent": "second-agent"}
+        assert agent_calls == ["first-agent", "second-agent"]
+
+    asyncio.run(_run())
+
