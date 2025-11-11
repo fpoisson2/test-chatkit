@@ -10,6 +10,7 @@ import { VectorStoreSearchResults } from "../components/VectorStoreSearchResults
 import { VectorStoreTable } from "../components/VectorStoreTable";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { AdminTabs } from "../components/AdminTabs";
+import { LoadingSpinner, ErrorAlert } from "../components";
 import { useI18n } from "../i18n";
 import {
   type VectorStoreDocument,
@@ -333,8 +334,8 @@ export const VectorStoresPage = () => {
           </button>
         }
       >
-      {success ? <div className="alert alert--success">{success}</div> : null}
-      {error ? <div className="alert alert--danger">{error}</div> : null}
+      {success && <ErrorAlert message={String(success)} type="info" dismissible onDismiss={() => setSuccess(null)} />}
+      {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
 
       <VectorStoreTable
         stores={stores}
@@ -368,7 +369,7 @@ export const VectorStoresPage = () => {
         <Modal title={`Tester une requête — ${selectedStore.slug}`} onClose={() => setShowSearchModal(false)} size="lg">
           <VectorStoreSearchForm onSubmit={handleSearch} />
           {isSearching ? (
-            <p className="admin-card__subtitle">Recherche en cours…</p>
+            <LoadingSpinner text="Recherche en cours…" />
           ) : hasSearched ? (
             <VectorStoreSearchResults results={searchResults} onInspect={handleInspectResult} />
           ) : (
@@ -376,7 +377,7 @@ export const VectorStoresPage = () => {
               Soumettez une requête pour afficher les résultats issus du vector store.
             </p>
           )}
-          {documentError ? <div className="alert alert--danger">{documentError}</div> : null}
+          {documentError && <ErrorAlert message={documentError} dismissible onDismiss={() => setDocumentError(null)} />}
           {documentPreview ? (
             <div className="vector-store__preview">
               <h3>Document « {documentPreview.doc_id} »</h3>
@@ -396,14 +397,14 @@ export const VectorStoresPage = () => {
               Actualiser
             </button>
           </div>
-          {documentsError ? <div className="alert alert--danger">{documentsError}</div> : null}
+          {documentsError && <ErrorAlert message={documentsError} type="error" />}
           <VectorStoreDocumentsTable
             documents={documents}
             isLoading={documentsLoading}
             onInspect={handleInspectDocument}
             onDelete={handleDeleteDocument}
           />
-          {documentError ? <div className="alert alert--danger">{documentError}</div> : null}
+          {documentError && <ErrorAlert message={documentError} dismissible onDismiss={() => setDocumentError(null)} />}
           {documentPreview ? (
             <div className="vector-store__preview">
               <h3>Document « {documentPreview.doc_id} »</h3>

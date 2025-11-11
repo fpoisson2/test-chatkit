@@ -12,6 +12,7 @@ import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { ResponsiveTable, type Column } from "../components";
 import { adminCreateUserSchema, type AdminCreateUserFormData } from "../schemas/admin";
+import { ResponsiveTable, type Column, LoadingSpinner, ErrorAlert } from "../components";
 
 export const AdminPage = () => {
   const { token, logout } = useAuth();
@@ -212,7 +213,7 @@ export const AdminPage = () => {
     <>
       <AdminTabs activeTab="users" />
       <ManagementPageLayout>
-        {error && <div className="alert alert--danger">{error}</div>}
+        {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
 
         <div className="admin-grid">
           <section className="admin-card">
@@ -267,9 +268,7 @@ export const AdminPage = () => {
               </p>
             </div>
             {isLoading ? (
-              <p className="admin-card__subtitle">
-                Chargement des utilisateurs…
-              </p>
+              <LoadingSpinner text="Chargement des utilisateurs…" />
             ) : users.length === 0 ? (
               <p className="admin-card__subtitle">
                 Aucun utilisateur pour le moment.
