@@ -213,6 +213,8 @@ class Settings:
     lti_tool_audience: str | None
     lti_tool_private_key: str | None
     lti_tool_key_id: str | None
+    lti_tool_private_key_path: str | None
+    lti_tool_public_key_path: str | None
 
     @property
     def chatkit_api_base(self) -> str:
@@ -537,6 +539,8 @@ class Settings:
             lti_tool_audience=get_stripped("LTI_TOOL_AUDIENCE"),
             lti_tool_private_key=get_stripped("LTI_TOOL_PRIVATE_KEY"),
             lti_tool_key_id=get_stripped("LTI_TOOL_KEY_ID"),
+            lti_tool_private_key_path=get_stripped("LTI_TOOL_PRIVATE_KEY_PATH"),
+            lti_tool_public_key_path=get_stripped("LTI_TOOL_PUBLIC_KEY_PATH"),
         )
 
 

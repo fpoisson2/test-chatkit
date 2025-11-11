@@ -2331,6 +2331,50 @@ button {
   white-space: pre-wrap;
 }
 
+.admin-key-details {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-key-details__row {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-key-details__label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.admin-key-details__label--block {
+  display: block;
+}
+
+.admin-key-details__value {
+  font-family: var(
+    --font-family-mono,
+    "SFMono-Regular",
+    "Menlo",
+    "Monaco",
+    monospace
+  );
+  font-size: 0.9rem;
+  background: var(--color-surface-subtle);
+  border-radius: 12px;
+  padding: 10px 12px;
+  word-break: break-word;
+}
+
+.admin-key-details__public-key {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-key-details__code {
+  margin: 0;
+}
+
 .admin-form__default-block pre {
   margin: 8px 0 0;
   font-family: inherit;

@@ -1,3 +1,4 @@
+import datetime
 import os
 import sys
 from collections.abc import Iterator
@@ -63,7 +64,37 @@ def session_factory() -> Iterator[sessionmaker[Session]]:
 
 
 @pytest.fixture()
-def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
+def lti_keys(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory):
+    base_dir = tmp_path_factory.mktemp("lti-keys")
+    private_key_path = base_dir / "lti-private.pem"
+    private_key_path.write_text(
+        "-----BEGIN PRIVATE KEY-----\nexample-private\n-----END PRIVATE KEY-----\n",
+        encoding="utf-8",
+    )
+    public_key_path = base_dir / "lti-public.pem"
+    public_key_content = (
+        "-----BEGIN PUBLIC KEY-----\n"
+        "example-public\n"
+        "-----END PUBLIC KEY-----\n"
+    )
+    public_key_path.write_text(public_key_content, encoding="utf-8")
+    timestamp = datetime.datetime(2025, 9, 19, 9, 44, 9, tzinfo=datetime.timezone.utc)
+    epoch_time = timestamp.timestamp()
+    os.utime(public_key_path, (epoch_time, epoch_time))
+    monkeypatch.setenv("LTI_TOOL_PRIVATE_KEY_PATH", str(private_key_path))
+    monkeypatch.setenv("LTI_TOOL_PUBLIC_KEY_PATH", str(public_key_path))
+    return {
+        "private_key_path": str(private_key_path),
+        "public_key_path": str(public_key_path),
+        "public_key_content": public_key_content,
+        "public_key_timestamp": timestamp,
+    }
+
+
+@pytest.fixture()
+def client(
+    session_factory: sessionmaker[Session], lti_keys: dict[str, object]
+) -> Iterator[TestClient]:
     app = FastAPI()
     app.include_router(admin_routes.router)
 
@@ -85,7 +116,9 @@ def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
 
 
 def test_lti_tool_settings_get_and_update(
-    client: TestClient, session_factory: sessionmaker[Session]
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    lti_keys: dict[str, object],
 ) -> None:
     response = client.get("/api/admin/lti/tool-settings")
     assert response.status_code == status.HTTP_200_OK
@@ -93,6 +126,13 @@ def test_lti_tool_settings_get_and_update(
     assert payload["client_id"] == "env-client"
     assert payload["key_set_url"] == "https://env.example/jwks"
     assert payload["has_private_key"] is False
+    assert payload["private_key_path"] == lti_keys["private_key_path"]
+    assert payload["public_key_path"] == lti_keys["public_key_path"]
+    assert payload["public_key_pem"] == lti_keys["public_key_content"]
+    fetched_timestamp = datetime.datetime.fromisoformat(
+        payload["public_key_last_updated_at"]
+    )
+    assert fetched_timestamp == lti_keys["public_key_timestamp"]
 
     update_response = client.patch(
         "/api/admin/lti/tool-settings",
@@ -113,6 +153,9 @@ def test_lti_tool_settings_get_and_update(
     assert updated["has_private_key"] is True
     assert updated["is_private_key_overridden"] is True
     assert updated["private_key_hint"]
+    assert updated["private_key_path"] == lti_keys["private_key_path"]
+    assert updated["public_key_path"] == lti_keys["public_key_path"]
+    assert updated["public_key_pem"] == lti_keys["public_key_content"]
 
     SessionFactory = session_factory
     with SessionFactory() as session:
