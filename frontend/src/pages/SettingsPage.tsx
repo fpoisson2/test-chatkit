@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { AdminTabs } from "../components/AdminTabs";
 import { Modal } from "../components/Modal";
 import { useI18n } from "../i18n";
 import {
@@ -74,22 +75,20 @@ export function SettingsPage() {
     sections.find((section) => section.id === activeSectionId) ?? sections[0] ?? null;
 
   return (
-    <>
-      <ManagementPageLayout
-        title={t("settings.page.title")}
-        subtitle={t("settings.page.subtitle")}
-        actions={
-          sections.length > 0 ? (
-            <button
-              type="button"
-              className="button button--ghost"
-              onClick={handleOpenModal}
-            >
-              {t("settings.modal.title")}
-            </button>
-          ) : null
-        }
-      >
+    <ManagementPageLayout
+      tabs={<AdminTabs activeTab="preferences" />}
+      actions={
+        sections.length > 0 ? (
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={handleOpenModal}
+          >
+            {t("settings.modal.title")}
+          </button>
+        ) : null
+      }
+    >
         <div className="admin-grid">
           {activeSection?.id === "preferences" ? (
             <SettingsPreferencesSection
@@ -98,7 +97,7 @@ export function SettingsPage() {
             />
           ) : null}
         </div>
-      </ManagementPageLayout>
+
       {isModalOpen ? (
         <Modal
           title={t("settings.modal.title")}
@@ -137,7 +136,7 @@ export function SettingsPage() {
           </nav>
         </Modal>
       ) : null}
-    </>
+    </ManagementPageLayout>
   );
 }
 

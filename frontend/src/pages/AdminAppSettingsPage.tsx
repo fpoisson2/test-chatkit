@@ -179,11 +179,7 @@ export const AdminAppSettingsPage = () => {
     : null;
 
   return (
-    <ManagementPageLayout
-      title={t("admin.appSettings.page.title")}
-      subtitle={t("admin.appSettings.page.subtitle")}
-      tabs={<AdminTabs activeTab="settings" />}
-    >
+    <ManagementPageLayout tabs={<AdminTabs activeTab="settings" />}>
       <FeedbackMessages
         error={error}
         success={success}

@@ -249,11 +249,7 @@ export const AdminModelProvidersPage = () => {
   const effectiveBase = settings?.model_api_base ?? "";
 
   return (
-    <ManagementPageLayout
-      title={t("admin.modelProviders.page.title")}
-      subtitle={t("admin.modelProviders.page.subtitle")}
-      tabs={<AdminTabs activeTab="providers" />}
-    >
+    <ManagementPageLayout tabs={<AdminTabs activeTab="providers" />}>
       <FeedbackMessages
         error={error}
         success={success}

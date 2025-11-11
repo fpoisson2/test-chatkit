@@ -86,11 +86,7 @@ export const AdminAppearancePage = () => {
   );
 
   return (
-    <ManagementPageLayout
-      title={t("admin.appearance.page.title")}
-      subtitle={t("admin.appearance.page.subtitle")}
-      tabs={<AdminTabs activeTab="appearance" />}
-    >
+    <ManagementPageLayout tabs={<AdminTabs activeTab="appearance" />}>
       <FeedbackMessages
         error={error}
         success={success}
