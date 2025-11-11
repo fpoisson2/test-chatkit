@@ -49,7 +49,7 @@ import type { WorkflowNodeHandlers } from "../../hooks/useWorkflowNodeHandlers";
 import { TrashIcon } from "./components/TrashIcon";
 import styles from "./NodeInspector.module.css";
 import { useTransformInspectorState } from "./hooks/useTransformInspectorState";
-import { AgentInspectorSection } from "./sections/AgentInspectorSection";
+import { AgentInspectorSectionV2 as AgentInspectorSection } from "./sections/AgentInspectorSectionV2";
 import { AssistantMessageInspectorSection } from "./sections/AssistantMessageInspectorSection";
 import { ConditionInspectorSection } from "./sections/ConditionInspectorSection";
 import { EndInspectorSection } from "./sections/EndInspectorSection";
