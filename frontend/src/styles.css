@@ -2334,11 +2334,15 @@ button {
 .admin-key-details {
   display: grid;
   gap: 14px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-key-details__row {
   display: grid;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-key-details__label {
@@ -2364,15 +2368,22 @@ button {
   border-radius: 12px;
   padding: 10px 12px;
   word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-key-details__public-key {
   display: grid;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-key-details__code {
   margin: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-form__default-block pre {
@@ -3096,6 +3107,9 @@ button {
   line-height: 1.45;
   overflow-x: auto;
   word-break: break-all;
+  white-space: pre-wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .accordion {
