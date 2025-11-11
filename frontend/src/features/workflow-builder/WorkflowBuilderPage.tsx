@@ -129,6 +129,19 @@ import useWorkflowPersistence from "./hooks/useWorkflowPersistence";
 import { useWorkflowLoader } from "./hooks/useWorkflowLoader";
 import { useWorkflowCRUD } from "./hooks/useWorkflowCRUD";
 import { useWorkflowDeployment } from "./hooks/useWorkflowDeployment";
+import { useEdgeHandlers } from "./hooks/useEdgeHandlers";
+import { useElementDeletion } from "./hooks/useElementDeletion";
+import { useNodeOperations } from "./hooks/useNodeOperations";
+import { useWorkflowSelection } from "./hooks/useWorkflowSelection";
+import { useWorkflowValidation } from "./hooks/useWorkflowValidation";
+import { usePropertiesPanel } from "./hooks/usePropertiesPanel";
+import { useNodeInteractions } from "./hooks/useNodeInteractions";
+import { useWorkflowSync } from "./hooks/useWorkflowSync";
+import { useDeploymentModal } from "./hooks/useDeploymentModal";
+import { useViewportManagement } from "./hooks/useViewportManagement";
+import { useBlockLibraryItems } from "./hooks/useBlockLibraryItems";
+import { useWorkflowMenu } from "./hooks/useWorkflowMenu";
+import { useWorkflowStyles } from "./hooks/useWorkflowStyles";
 import { parseWorkflowImport } from "./importWorkflow";
 import WorkflowAppearanceModal, {
   type WorkflowAppearanceTarget,
@@ -388,7 +401,7 @@ const WorkflowBuilderPage = () => {
         }),
       } satisfies FlowNode;
     },
-    [buildNodeStyle],
+    [],
   );
 
   const decorateNodes = useCallback(
@@ -439,17 +452,14 @@ const WorkflowBuilderPage = () => {
   // - ViewportContext: viewport, minViewportZoom, initialViewport, hasUserViewportChange, pendingViewportRestore, refs
   // - WorkflowContext: versions, selectedVersionId, selectedVersionDetail, loading, loadError, hostedLoading, hostedError, refs
 
-  // Remaining local state (UI-specific):
-  const [workflowMenuPlacement, setWorkflowMenuPlacement] =
-    useState<ActionMenuPlacement>("up");
-  const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
-  const closeWorkflowMenu = useCallback(() => {
-    setOpenWorkflowMenuId(null);
-    setWorkflowMenuPlacement("up");
-    workflowMenuTriggerRef.current = null;
-    workflowMenuRef.current = null;
-  }, [workflowMenuRef, workflowMenuTriggerRef]);
+  // Phase 9: Extract workflow menu logic into custom hook
+  const {
+    workflowMenuPlacement,
+    setWorkflowMenuPlacement,
+    workflowMenuTriggerRef,
+    workflowMenuRef,
+    closeWorkflowMenu,
+  } = useWorkflowMenu(setOpenWorkflowMenuId);
 
   // Use modal management hook for mobile actions only
   // Note: Modal states (Appearance, Create, Deploy) come from ModalContext above
@@ -540,13 +550,6 @@ const WorkflowBuilderPage = () => {
   // Note: isBlockLibraryOpen and isPropertiesPanelOpen come from UIContext (imported above)
   // Note: selectedNodeId, selectedEdgeId and their refs come from SelectionContext (imported above)
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
-  const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
-  const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const lastTappedElementRef = useRef<{
-    kind: "node" | "edge";
-    id: string;
-    tapCount: number;
-  } | null>(null);
   // Note: isNodeDragInProgressRef comes from GraphContext (above)
   const copySequenceRef = useRef<{ count: number; lastTimestamp: number }>({
     count: 0,
@@ -631,52 +634,22 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
-  // ONE-TIME initialization from provider, then ONLY sync back when WorkflowBuilder loads
-  const initializedFromProviderRef = useRef(false);
-  const needsVersionLoadRef = useRef(false);
-
-  // Initialize WorkflowContext from provider ONCE
-  useEffect(() => {
-    if (!initializedFromProviderRef.current && sidebarWorkflows.length > 0) {
-      initializedFromProviderRef.current = true;
-      setWorkflows(sidebarWorkflows);
-      setHostedWorkflows(sidebarHostedWorkflows);
-      // Initialize selectedWorkflowId from provider if present
-      if (sidebarSelectedWorkflowId !== null) {
-        setSelectedWorkflowId(sidebarSelectedWorkflowId);
-        needsVersionLoadRef.current = true;
-      }
-    }
-  }, [sidebarWorkflows, sidebarHostedWorkflows, sidebarSelectedWorkflowId, setWorkflows, setHostedWorkflows, setSelectedWorkflowId]);
-
-  // Load versions after initialization from provider
-  useEffect(() => {
-    if (needsVersionLoadRef.current && selectedWorkflowId !== null) {
-      needsVersionLoadRef.current = false;
-      void loadVersions(selectedWorkflowId, null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWorkflowId]);
-
-  // Sync TO provider when WorkflowContext loads (not from provider)
-  const workflowsStringified = JSON.stringify(workflows.map((w) => w.id));
-  const hostedWorkflowsStringified = JSON.stringify(hostedWorkflows.map((w) => w.slug));
-
-  useEffect(() => {
-    if (workflows.length > 0 && initializedFromProviderRef.current) {
-      setSidebarWorkflows(workflows);
-    }
-  }, [workflowsStringified, setSidebarWorkflows, workflows]);
-
-  useEffect(() => {
-    if (hostedWorkflows.length > 0 && initializedFromProviderRef.current) {
-      setSidebarHostedWorkflows(hostedWorkflows);
-    }
-  }, [hostedWorkflowsStringified, setSidebarHostedWorkflows, hostedWorkflows]);
-
-  useEffect(() => {
-    setSidebarSelectedWorkflowId(selectedWorkflowId as number | null);
-  }, [selectedWorkflowId, setSidebarSelectedWorkflowId]);
+  // Phase 8: Extract workflow synchronization into custom hook
+  useWorkflowSync({
+    sidebarWorkflows,
+    sidebarHostedWorkflows,
+    sidebarSelectedWorkflowId,
+    setSidebarWorkflows,
+    setSidebarHostedWorkflows,
+    setSidebarSelectedWorkflowId,
+    workflows,
+    hostedWorkflows,
+    selectedWorkflowId,
+    setWorkflows,
+    setHostedWorkflows,
+    setSelectedWorkflowId,
+    loadVersions,
+  });
 
   useEscapeKeyHandler(
     () => {
@@ -765,6 +738,25 @@ const WorkflowBuilderPage = () => {
     updateHasPendingChanges,
     t,
     copySequenceRef,
+  });
+
+  // Phase 7: Extract edge handlers into custom hook
+  const { handleConditionChange, handleEdgeLabelChange } = useEdgeHandlers({
+    setEdges,
+    updateHasPendingChanges,
+  });
+
+  // Phase 7: Extract element deletion into custom hook
+  const { handleRemoveNode, handleRemoveEdge } = useElementDeletion({
+    nodesRef,
+    selectedNodeId,
+    selectedEdgeId,
+    setSelectedNodeId,
+    setSelectedEdgeId,
+    setEdges,
+    removeElements,
+    updateHasPendingChanges,
+    t,
   });
 
   const renderWorkflowDescription = (className?: string) =>
@@ -973,90 +965,44 @@ const WorkflowBuilderPage = () => {
     [edges, selectedEdgeId]
   );
 
-  const handleNodeClick = useCallback(
-    (_: unknown, node: FlowNode) => {
-      const lastTapped = lastTappedElementRef.current;
-      const isSameElement = lastTapped?.kind === "node" && lastTapped.id === node.id;
-      const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
-      lastTappedElementRef.current = { kind: "node", id: node.id, tapCount: nextTapCount };
-      selectNode(node.id);  // Update selection state
-      // On mobile, applySelection is not called by ReactFlow, so we call it manually to apply visual styling
-      if (isMobileLayout) {
-        applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
-      }
-      if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setIsPropertiesPanelOpen(true);
-      }
-    },
-    [isMobileLayout, selectNode, applySelection, setIsPropertiesPanelOpen],
-  );
+  // Phase 8: Extract properties panel logic into custom hook
+  const {
+    handleClosePropertiesPanel,
+    handleOpenPropertiesPanel,
+    propertiesPanelToggleRef,
+    propertiesPanelCloseButtonRef,
+    lastTappedElementRef,
+    previousSelectedElementRef,
+  } = usePropertiesPanel({
+    isMobileLayout,
+    selectedNodeId,
+    selectedEdgeId,
+    selectedNode,
+    selectedEdge,
+    isPropertiesPanelOpen,
+    setIsPropertiesPanelOpen,
+    isNodeDragInProgressRef,
+    handleClearSelection: clearSelection,
+  });
 
-  const handleEdgeClick = useCallback(
-    (_: unknown, edge: FlowEdge) => {
-      const lastTapped = lastTappedElementRef.current;
-      const isSameElement = lastTapped?.kind === "edge" && lastTapped.id === edge.id;
-      const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
-      lastTappedElementRef.current = { kind: "edge", id: edge.id, tapCount: nextTapCount };
-      selectEdge(edge.id);  // Update selection state
-      // On mobile, applySelection is not called by ReactFlow, so we call it manually to apply visual styling
-      if (isMobileLayout) {
-        applySelection({ edgeIds: [edge.id], primaryEdgeId: edge.id });
-      }
-      if (isMobileLayout && isSameElement && nextTapCount >= 2) {
-        setIsPropertiesPanelOpen(true);
-      }
-    },
-    [isMobileLayout, selectEdge, applySelection, setIsPropertiesPanelOpen],
-  );
+  // Phase 8: Extract node interactions into custom hook
+  const { handleNodeClick, handleEdgeClick, handleNodeDragStart, handleNodeDragStop } = useNodeInteractions({
+    isMobileLayout,
+    selectNode,
+    selectEdge,
+    applySelection,
+    setIsPropertiesPanelOpen,
+    isNodeDragInProgressRef,
+    historyRef,
+    lastTappedElementRef,
+  });
+
+  // Phase 8: handleNodeClick, handleEdgeClick, handleNodeDragStart, handleNodeDragStop now provided by useNodeInteractions hook
+  // Phase 8: handleClosePropertiesPanel, handleOpenPropertiesPanel now provided by usePropertiesPanel hook
+  // Phase 8: Properties panel effects now handled by usePropertiesPanel hook
 
   const handleClearSelection = clearSelection;
-
   const handleSelectionChange = onSelectionChange;
-
-  const handleNodeDragStart = useCallback(() => {
-    isNodeDragInProgressRef.current = true;
-  }, []);
-
-  const handleNodeDragStop = useCallback(() => {
-    isNodeDragInProgressRef.current = false;
-    const history = historyRef.current;
-    const pending = history.pendingSnapshot;
-    if (!pending) {
-      return;
-    }
-    if (history.last == null) {
-      history.last = pending;
-    } else if (history.last !== pending) {
-      history.past = [...history.past, history.last].slice(-HISTORY_LIMIT);
-      history.future = [];
-      history.last = pending;
-    }
-    history.pendingSnapshot = null;
-  }, []);
-
-  const handleClosePropertiesPanel = useCallback(() => {
-    if (isMobileLayout) {
-      setIsPropertiesPanelOpen(false);
-      if (typeof window !== "undefined") {
-        window.setTimeout(() => {
-          propertiesPanelToggleRef.current?.focus();
-        }, 0);
-      } else {
-        propertiesPanelToggleRef.current?.focus();
-      }
-      return;
-    }
-    handleClearSelection();
-  }, [handleClearSelection, isMobileLayout]);
-
-  const handleOpenPropertiesPanel = useCallback(() => {
-    if (!selectedNode && !selectedEdge) {
-      return;
-    }
-    setIsPropertiesPanelOpen(true);
-  }, [selectedEdge, selectedNode]);
-
-  const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
 
   useEffect(() => {
     selectedVersionIdRef.current = selectedVersionId;
@@ -1070,60 +1016,6 @@ const WorkflowBuilderPage = () => {
     selectedEdgeIdRef.current = selectedEdgeId;
   }, [selectedEdgeId]);
 
-  useEffect(() => {
-    if (!selectedElementKey) {
-      setIsPropertiesPanelOpen(false);
-      lastTappedElementRef.current = null;
-      previousSelectedElementRef.current = selectedElementKey;
-      return;
-    }
-
-    const isNewSelection = previousSelectedElementRef.current !== selectedElementKey;
-    if (isNewSelection) {
-      const matchesLastTap =
-        (selectedNodeId &&
-          lastTappedElementRef.current?.kind === "node" &&
-          lastTappedElementRef.current.id === selectedNodeId) ||
-        (selectedEdgeId &&
-          lastTappedElementRef.current?.kind === "edge" &&
-          lastTappedElementRef.current.id === selectedEdgeId);
-
-      if (!matchesLastTap) {
-        lastTappedElementRef.current = null;
-      } else if (lastTappedElementRef.current) {
-        lastTappedElementRef.current = {
-          ...lastTappedElementRef.current,
-          tapCount: 1,
-        };
-      }
-    }
-
-    if (isMobileLayout) {
-      if (isNewSelection) {
-        setIsPropertiesPanelOpen(false);
-      }
-    } else if (isNewSelection && !isNodeDragInProgressRef.current) {
-      setIsPropertiesPanelOpen(true);
-    }
-
-    previousSelectedElementRef.current = selectedElementKey;
-  }, [isMobileLayout, selectedEdgeId, selectedElementKey, selectedNodeId]);
-
-  useEffect(() => {
-    if (!isMobileLayout) {
-      if (selectedElementKey) {
-        setIsPropertiesPanelOpen(true);
-      }
-    }
-  }, [isMobileLayout, selectedElementKey]);
-
-  useEffect(() => {
-    if (!isMobileLayout || !isPropertiesPanelOpen) {
-      return;
-    }
-    propertiesPanelCloseButtonRef.current?.focus();
-  }, [isMobileLayout, isPropertiesPanelOpen]);
-
   useEscapeKeyHandler(
     () => {
       handleClosePropertiesPanel();
@@ -1134,135 +1026,28 @@ const WorkflowBuilderPage = () => {
     },
   );
 
-  const updateNodeData = useCallback(
-    (nodeId: string, updater: (data: FlowNodeData) => FlowNodeData) => {
-      setNodes((current) =>
-        current.map((node) => {
-          if (node.id !== nodeId) {
-            return node;
-          }
-          const nextData = updater(node.data);
-          return decorateNode({
-            ...node,
-            data: nextData,
-          });
-        })
-      );
-    },
-    [decorateNode, setNodes]
-  );
+  // Phase 9: Extract viewport management into custom hook
+  const { updateViewportState } = useViewportManagement({
+    viewportRef,
+    viewportKeyRef,
+    viewportMemoryRef,
+    hasUserViewportChangeRef,
+    setViewport,
+    setHasUserViewportChange,
+    persistViewportMemory,
+  });
 
-  const updateViewportState = useCallback(
-    (nextViewport: Viewport | null | undefined, options?: { persist?: boolean }) => {
-      if (!nextViewport) {
-        return;
-      }
-
-      const { persist = true } = options ?? {};
-
-      viewportRef.current = nextViewport;
-      setViewport(nextViewport);
-      hasUserViewportChangeRef.current = true;
-      setHasUserViewportChange(true);
-
-      const key = viewportKeyRef.current;
-      if (persist && key) {
-        viewportMemoryRef.current.set(key, { ...nextViewport });
-        persistViewportMemory();
-      }
-    },
-    [
-      hasUserViewportChangeRef,
-      persistViewportMemory,
-      setHasUserViewportChange,
-      setViewport,
-      viewportKeyRef,
-      viewportMemoryRef,
-      viewportRef,
-    ],
-  );
-
-  const centerViewportOnNode = useCallback(
-    (node: FlowNode) => {
-      const instance = reactFlowInstanceRef.current;
-      if (!instance) {
-        return;
-      }
-
-      const position = node.position ?? { x: 0, y: 0 };
-      const currentViewport = instance.getViewport?.() ?? viewportRef.current;
-      const currentZoom = currentViewport?.zoom ?? 1;
-      const targetZoom = Math.max(currentZoom, minViewportZoom);
-
-      try {
-        instance.setCenter(position.x, position.y, {
-          zoom: targetZoom,
-          duration: 200,
-        });
-      } catch (error) {
-        console.error(error);
-      }
-
-      const scheduleUpdate = (shouldPersist: boolean) => {
-        const latestViewport = instance.getViewport?.();
-        if (latestViewport) {
-          updateViewportState(latestViewport, { persist: shouldPersist });
-          return;
-        }
-
-        const wrapper = reactFlowWrapperRef.current;
-        if (!wrapper) {
-          return;
-        }
-
-        const { clientWidth, clientHeight } = wrapper;
-        if (!clientWidth || !clientHeight) {
-          return;
-        }
-
-        updateViewportState(
-          {
-            x: clientWidth / 2 - position.x * targetZoom,
-            y: clientHeight / 2 - position.y * targetZoom,
-            zoom: targetZoom,
-          },
-          { persist: shouldPersist },
-        );
-      };
-
-      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(() => scheduleUpdate(false));
-        window.setTimeout(() => scheduleUpdate(true), 220);
-      } else {
-        scheduleUpdate(false);
-        setTimeout(() => scheduleUpdate(true), 220);
-      }
-    },
-    [minViewportZoom, reactFlowInstanceRef, reactFlowWrapperRef, updateViewportState, viewportRef],
-  );
-
-  const addNodeToGraph = useCallback(
-    (node: FlowNode) => {
-      const prepared = decorateNode({
-        ...node,
-        selected: true,
-      });
-
-      setNodes((current) => {
-        const cleared = current.map((existing) =>
-          decorateNode({
-            ...existing,
-            selected: false,
-          }),
-        );
-        return [...cleared, prepared];
-      });
-
-      applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
-      centerViewportOnNode(prepared);
-    },
-    [applySelection, centerViewportOnNode, decorateNode, setNodes]
-  );
+  // Phase 7: Extract node operations into custom hook
+  const { updateNodeData, addNodeToGraph, centerViewportOnNode } = useNodeOperations({
+    setNodes,
+    decorateNode,
+    applySelection,
+    minViewportZoom,
+    reactFlowInstanceRef,
+    reactFlowWrapperRef,
+    viewportRef,
+    updateViewportState,
+  });
 
   const nodeHandlers = useWorkflowNodeHandlers({
     updateNodeData,
@@ -1273,81 +1058,8 @@ const WorkflowBuilderPage = () => {
     vectorStores,
   });
 
-  const handleConditionChange = useCallback(
-    (edgeId: string, value: string) => {
-      setEdges((current) =>
-        current.map((edge) =>
-          edge.id === edgeId
-            ? {
-                ...edge,
-                label: value,
-                data: { ...edge.data, condition: value || null },
-              }
-            : edge,
-        ),
-      );
-      updateHasPendingChanges(true);
-    },
-    [setEdges, updateHasPendingChanges],
-  );
-
-  const handleEdgeLabelChange = useCallback(
-    (edgeId: string, value: string) => {
-      setEdges((current) =>
-        current.map((edge) =>
-          edge.id === edgeId
-            ? {
-                ...edge,
-                label: value,
-                data: {
-                  ...edge.data,
-                  metadata: { ...edge.data?.metadata, label: value },
-                },
-              }
-            : edge,
-        ),
-      );
-      updateHasPendingChanges(true);
-    },
-    [setEdges, updateHasPendingChanges],
-  );
-
-
-  const handleRemoveNode = useCallback(
-    (nodeId: string) => {
-      const node = nodesRef.current.find((currentNode) => currentNode.id === nodeId);
-      let confirmed = true;
-      if (node) {
-        const trimmedDisplayName =
-          typeof node.data.displayName === "string" ? node.data.displayName.trim() : "";
-        const displayName = trimmedDisplayName || node.data.slug || nodeId;
-        confirmed = window.confirm(t("workflowBuilder.deleteBlock.confirm", { name: displayName }));
-      } else {
-        confirmed = window.confirm(t("workflowBuilder.deleteSelection.confirmSingle"));
-      }
-      if (!confirmed) {
-        return;
-      }
-      removeElements({ nodeIds: [nodeId] });
-      updateHasPendingChanges(true);
-      if (selectedNodeId === nodeId) {
-        setSelectedNodeId(null);
-      }
-    },
-    [removeElements, selectedNodeId, t, updateHasPendingChanges],
-  );
-
-  const handleRemoveEdge = useCallback(
-    (edgeId: string) => {
-      removeElements({ edgeIds: [edgeId] });
-      setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
-      updateHasPendingChanges(true);
-      if (selectedEdgeId === edgeId) {
-        setSelectedEdgeId(null);
-      }
-    },
-    [removeElements, selectedEdgeId, setEdges, updateHasPendingChanges],
-  );
+  // Phase 7: handleConditionChange, handleEdgeLabelChange now provided by useEdgeHandlers hook
+  // Phase 7: handleRemoveNode, handleRemoveEdge now provided by useElementDeletion hook
   // History management functions now provided by useWorkflowHistory hook
 
   workflowBusyRef.current = loading || isImporting || isExporting;
@@ -1368,49 +1080,20 @@ const WorkflowBuilderPage = () => {
     workflowBusyRef,
   });
 
-  const handleSelectWorkflow = useCallback(
-    (workflowId: number) => {
-      if (workflowId === selectedWorkflowId) {
-        if (isMobileLayout) {
-          closeWorkflowMenu();
-          closeSidebar();
-        }
-        return;
-      }
-      setSelectedWorkflowId(workflowId);
-      setSelectedVersionId(null);
-      closeWorkflowMenu();
-      if (isMobileLayout) {
-        closeSidebar();
-      }
-      void loadVersions(workflowId, null);
-    },
-    [
-      closeSidebar,
-      closeWorkflowMenu,
-      isMobileLayout,
-      loadVersions,
-      selectedWorkflowId,
-    ],
-  );
-
-  const handleVersionChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const value = Number(event.target.value);
-      const versionId = Number.isFinite(value) ? value : null;
-      setSelectedVersionId(versionId);
-      if (selectedWorkflowId && versionId) {
-        const key = viewportKeyFor(selectedWorkflowId, versionId, deviceType);
-        const hasSavedViewport = key ? viewportMemoryRef.current.has(key) : false;
-        if (hasSavedViewport) {
-          void loadVersionDetail(selectedWorkflowId, versionId);
-        } else {
-          void loadVersionDetail(selectedWorkflowId, versionId, { preserveViewport: true });
-        }
-      }
-    },
-    [deviceType, loadVersionDetail, selectedWorkflowId],
-  );
+  // Phase 7: Extract workflow selection into custom hook
+  const { handleSelectWorkflow, handleVersionChange } = useWorkflowSelection({
+    selectedWorkflowId,
+    isMobileLayout,
+    setSelectedWorkflowId,
+    setSelectedVersionId,
+    closeWorkflowMenu,
+    closeSidebar,
+    loadVersions,
+    loadVersionDetail,
+    deviceType,
+    viewportMemoryRef,
+    viewportKeyFor,
+  });
 
   // Override handleOpenCreateModal to include form reset logic
   const handleOpenCreateModalWithReset = useCallback(() => {
@@ -1610,28 +1293,26 @@ const WorkflowBuilderPage = () => {
     viewportRef,
   });
 
-  const resolveVersionIdToPromote = useCallback(
-    (
-      preferDraft = false,
-      options: { selectedId?: number | null } = {},
-    ): number | null => {
-      const draftId = draftVersionIdRef.current;
-      const selectedId = Object.prototype.hasOwnProperty.call(options, "selectedId")
-        ? options.selectedId ?? null
-        : selectedVersionIdRef.current;
-
-      if (preferDraft) {
-        return draftId ?? selectedId ?? null;
-      }
-
-      if (selectedId != null) {
-        return selectedId;
-      }
-
-      return draftId ?? null;
-    },
-    [],
-  );
+  // Phase 8: Extract deployment modal logic into custom hook
+  const {
+    resolveVersionIdToPromote,
+    versionIdToPromote,
+    versionSummaryForPromotion,
+    isPromotingDraft,
+    deployModalTitle,
+    deployModalDescription,
+    deployModalSourceLabel,
+    deployModalTargetLabel,
+    deployModalPrimaryLabel,
+    isPrimaryActionDisabled,
+  } = useDeploymentModal({
+    selectedVersionId,
+    selectedVersionIdRef,
+    draftVersionIdRef,
+    versions,
+    isDeploying,
+    t,
+  });
 
   // Phase 6: Extract deployment logic into useWorkflowDeployment hook
   const { handleConfirmDeploy } = useWorkflowDeployment({
@@ -1645,92 +1326,11 @@ const WorkflowBuilderPage = () => {
     resolveVersionIdToPromote,
   });
 
-  const blockLibraryItems = useMemo<BlockLibraryItem[]>(() => {
-    const definitions: Array<{
-      key: string;
-      kind: NodeKind;
-      shortLabel: string;
-      onClick: () => void;
-    }> = [
-      { key: "agent", kind: "agent", shortLabel: "A", onClick: nodeHandlers.handleAddAgentNode },
-      {
-        key: "voice-agent",
-        kind: "voice_agent",
-        shortLabel: "AV",
-        onClick: nodeHandlers.handleAddVoiceAgentNode,
-      },
-      {
-        key: "outbound-call",
-        kind: "outbound_call",
-        shortLabel: "AS",
-        onClick: nodeHandlers.handleAddOutboundCallNode,
-      },
-      { key: "condition", kind: "condition", shortLabel: "C", onClick: nodeHandlers.handleAddConditionNode },
-      {
-        key: "parallel-split",
-        kind: "parallel_split",
-        shortLabel: "SP",
-        onClick: nodeHandlers.handleAddParallelSplitNode,
-      },
-      {
-        key: "parallel-join",
-        kind: "parallel_join",
-        shortLabel: "JP",
-        onClick: nodeHandlers.handleAddParallelJoinNode,
-      },
-      { key: "state", kind: "state", shortLabel: "É", onClick: nodeHandlers.handleAddStateNode },
-      { key: "watch", kind: "watch", shortLabel: "W", onClick: nodeHandlers.handleAddWatchNode },
-      { key: "transform", kind: "transform", shortLabel: "T", onClick: nodeHandlers.handleAddTransformNode },
-      {
-        key: "wait-for-user-input",
-        kind: "wait_for_user_input",
-        shortLabel: "AU",
-        onClick: nodeHandlers.handleAddWaitForUserInputNode,
-      },
-      {
-        key: "assistant-message",
-        kind: "assistant_message",
-        shortLabel: "MA",
-        onClick: nodeHandlers.handleAddAssistantMessageNode,
-      },
-      {
-        key: "user-message",
-        kind: "user_message",
-        shortLabel: "MU",
-        onClick: nodeHandlers.handleAddUserMessageNode,
-      },
-      {
-        key: "json-vector-store",
-        kind: "json_vector_store",
-        shortLabel: "VS",
-        onClick: nodeHandlers.handleAddVectorStoreNode,
-      },
-      { key: "widget", kind: "widget", shortLabel: "W", onClick: nodeHandlers.handleAddWidgetNode },
-      { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
-    ];
-
-    return definitions.map((definition) => ({
-      ...definition,
-      label: labelForKind(definition.kind, t),
-      color: NODE_COLORS[definition.kind],
-    }));
-  }, [
+  // Phase 9: Extract block library items generation into custom hook
+  const blockLibraryItems = useBlockLibraryItems({
+    nodeHandlers,
     t,
-    nodeHandlers.handleAddAgentNode,
-    nodeHandlers.handleAddVoiceAgentNode,
-    nodeHandlers.handleAddConditionNode,
-    nodeHandlers.handleAddParallelSplitNode,
-    nodeHandlers.handleAddParallelJoinNode,
-    nodeHandlers.handleAddStateNode,
-    nodeHandlers.handleAddWatchNode,
-    nodeHandlers.handleAddTransformNode,
-    nodeHandlers.handleAddWaitForUserInputNode,
-    nodeHandlers.handleAddAssistantMessageNode,
-    nodeHandlers.handleAddUserMessageNode,
-    nodeHandlers.handleAddVectorStoreNode,
-    nodeHandlers.handleAddWidgetNode,
-    nodeHandlers.handleAddEndNode,
-  ]);
+  });
 
   // Phase 4.5: BlockLibrary now uses contexts (8 → 3 props, -62.5%)
   const blockLibraryContent = useMemo(
@@ -1753,78 +1353,28 @@ const WorkflowBuilderPage = () => {
   const canRedoHistory = !workflowBusy && !editingLocked && historyRef.current.future.length > 0;
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
 
-  const versionIdToPromote = useMemo(
-    () => resolveVersionIdToPromote(false, { selectedId: selectedVersionId }),
-    [resolveVersionIdToPromote, selectedVersionId],
-  );
-
-  const versionSummaryForPromotion = useMemo(() => {
-    if (versionIdToPromote == null) {
-      return null;
-    }
-    return versions.find((version) => version.id === versionIdToPromote) ?? null;
-  }, [versionIdToPromote, versions]);
-
-  const isPromotingDraft = Boolean(
-    versionSummaryForPromotion && draftVersionIdRef.current === versionSummaryForPromotion.id,
-  );
-
-  const deployModalTitle = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.titlePublishDraft")
-      : t("workflowBuilder.deploy.modal.titlePromoteSelected")
-    : t("workflowBuilder.deploy.modal.titleMissing");
-
-  const deployModalDescription = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.descriptionPublishDraft")
-      : t("workflowBuilder.deploy.modal.descriptionPromoteSelected", {
-          version: versionSummaryForPromotion.version,
-        })
-    : t("workflowBuilder.deploy.modal.descriptionMissing");
-
-  const deployModalSourceLabel = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.path.draft")
-      : t("workflowBuilder.deploy.modal.path.selectedWithVersion", {
-          version: versionSummaryForPromotion.version,
-        })
-    : t("workflowBuilder.deploy.modal.path.draft");
-
-  const deployModalTargetLabel = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.path.newVersion")
-      : t("workflowBuilder.deploy.modal.path.production")
-    : t("workflowBuilder.deploy.modal.path.production");
-
-  const deployModalPrimaryLabel = versionSummaryForPromotion
-    ? isPromotingDraft
-      ? t("workflowBuilder.deploy.modal.action.publish")
-      : t("workflowBuilder.deploy.modal.action.deploy")
-    : t("workflowBuilder.deploy.modal.action.publish");
-
-  const isPrimaryActionDisabled = !versionSummaryForPromotion || isDeploying;
+  // Phase 8: versionIdToPromote, versionSummaryForPromotion, isPromotingDraft, and all deployModal variables now provided by useDeploymentModal hook
   const selectedElementLabel = selectedNode
     ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind, t)
     : selectedEdge
       ? `${selectedEdge.source} → ${selectedEdge.target}`
       : "";
 
-  const headerOverlayOffset = useMemo(
-    () => (isMobileLayout ? "4rem" : "4.25rem"),
-    [isMobileLayout],
-  );
-
-  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
-    if (isMobileLayout) {
-      return undefined;
-    }
-
-    return {
-      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
-      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
-    };
-  }, [headerOverlayOffset, isMobileLayout]);
+  // Phase 9: Extract all layout styles into custom hook
+  const {
+    headerOverlayOffset,
+    floatingPanelStyle,
+    shouldShowWorkflowDescription,
+    shouldShowPublicationReminder,
+    headerStyle,
+    headerNavigationButtonStyle,
+    workspaceWrapperStyle,
+    workspaceContentStyle,
+    editorContainerStyle,
+  } = useWorkflowStyles({
+    isMobileLayout,
+    selectedWorkflow,
+  });
 
   const propertiesPanelElement = (
     <aside
@@ -1888,89 +1438,7 @@ const WorkflowBuilderPage = () => {
     </aside>
   );
 
-  const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
-  const shouldShowPublicationReminder =
-    !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
-
-  const headerStyle = useMemo(() => {
-    const baseStyle = getHeaderContainerStyle(isMobileLayout);
-    return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
-  }, [isMobileLayout]);
-
-  const headerNavigationButtonStyle = useMemo(
-    () => getHeaderNavigationButtonStyle(isMobileLayout),
-    [isMobileLayout],
-  );
-
-  const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
-    if (isMobileLayout) {
-      return { position: "absolute", inset: 0, overflow: "hidden" };
-    }
-    return { position: "relative", flex: 1, overflow: "hidden", minHeight: 0 };
-  }, [isMobileLayout]);
-
-  const workspaceContentStyle = useMemo<CSSProperties>(() => {
-    if (isMobileLayout) {
-      return {
-        position: "absolute",
-        inset: 0,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0",
-      };
-    }
-
-    const hasWorkflowMeta = shouldShowWorkflowDescription || shouldShowPublicationReminder;
-
-    return {
-      position: "absolute",
-      inset: 0,
-      overflow: "hidden",
-      display: "flex",
-      flexDirection: "column",
-      gap: hasWorkflowMeta ? "1rem" : "0",
-      paddingTop: `calc(${headerOverlayOffset}${
-        hasWorkflowMeta ? ` + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}` : ""
-      })`,
-      paddingBottom: 0,
-      paddingLeft: DESKTOP_WORKSPACE_HORIZONTAL_PADDING,
-      paddingRight: DESKTOP_WORKSPACE_HORIZONTAL_PADDING,
-    };
-  }, [
-    headerOverlayOffset,
-    isMobileLayout,
-    shouldShowPublicationReminder,
-    shouldShowWorkflowDescription,
-  ]);
-
-  const editorContainerStyle = useMemo<CSSProperties>(() => {
-    const baseStyle: CSSProperties = {
-      flex: 1,
-      minHeight: 0,
-      borderRadius: isMobileLayout ? 0 : "1.25rem",
-      border: isMobileLayout ? "none" : "1px solid var(--surface-border)",
-      background: "var(--surface-strong)",
-      overflow: "hidden",
-      boxShadow: isMobileLayout ? "none" : "var(--shadow-card)",
-    };
-
-    if (!isMobileLayout) {
-      baseStyle.marginLeft = `calc(-1 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`;
-      baseStyle.marginRight = `calc(-1 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`;
-    }
-
-    if (!isMobileLayout && !(shouldShowWorkflowDescription || shouldShowPublicationReminder)) {
-      baseStyle.marginTop = `calc(-1 * ${headerOverlayOffset})`;
-    }
-
-    return baseStyle;
-  }, [
-    headerOverlayOffset,
-    isMobileLayout,
-    shouldShowPublicationReminder,
-    shouldShowWorkflowDescription,
-  ]);
+  // Phase 9: shouldShowWorkflowDescription, shouldShowPublicationReminder, headerStyle, etc. now provided by useWorkflowStyles hook
 
   const mobileActionLabels = useMemo<MobileActionLabels>(
     () => ({
