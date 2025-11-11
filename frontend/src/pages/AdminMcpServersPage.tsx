@@ -2,7 +2,6 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import {
   cancelMcpOAuthSession,
   isUnauthorizedError,
-  mcpServersApi,
   pollMcpOAuthSession,
   probeMcpServer,
   startMcpOAuthNegotiation,
@@ -12,6 +11,12 @@ import {
   type McpServerSummary,
   type McpTestConnectionResponse,
 } from "../utils/backend";
+import {
+  useMcpServers,
+  useCreateMcpServer,
+  useUpdateMcpServer,
+  useDeleteMcpServer,
+} from "../hooks";
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
@@ -252,15 +257,19 @@ const buildPayloadFromForm = (
 export const AdminMcpServersPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const [servers, setServers] = useState<McpServerSummary[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+
+  // React Query hooks
+  const { data: servers = [], isLoading: loading, error: serversError } = useMcpServers(token);
+  const createServer = useCreateMcpServer();
+  const updateServer = useUpdateMcpServer();
+  const deleteServer = useDeleteMcpServer();
+
+  // Local UI state
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [formState, setFormState] = useState<McpServerFormState>(emptyFormState);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [isTesting, setIsTesting] = useState<boolean>(false);
   const [probeFeedback, setProbeFeedback] = useState<string | null>(null);
   const [probeError, setProbeError] = useState<string | null>(null);
@@ -269,6 +278,9 @@ export const AdminMcpServersPage = () => {
   );
   const oauthPlanRef = useRef<McpOAuthPersistencePlan | null>(null);
   const pendingStateRef = useRef<string | null>(null);
+
+  const isSaving = createServer.isPending || updateServer.isPending;
+  const deletingId = deleteServer.variables?.serverId ?? null;
 
   const currentServer = useMemo(
     () => servers.find((server) => server.id === editingId) ?? null,
@@ -308,34 +320,21 @@ export const AdminMcpServersPage = () => {
     oauthPlanRef.current = null;
   }, []);
 
-  const loadServers = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await mcpServersApi.list(token);
-      setServers(result);
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
+  // Handle React Query errors
+  useEffect(() => {
+    if (serversError) {
+      if (isUnauthorizedError(serversError)) {
         logout();
         setError(t("admin.mcpServers.errors.sessionExpired"));
       } else {
         setError(
-          err instanceof Error
-            ? err.message
-            : t("admin.mcpServers.errors.loadFailed"),
+          serversError instanceof Error
+            ? serversError.message
+            : t("admin.mcpServers.errors.loadFailed")
         );
       }
-    } finally {
-      setLoading(false);
     }
-  }, [logout, t, token]);
-
-  useEffect(() => {
-    void loadServers();
-  }, [loadServers]);
+  }, [serversError, logout, t]);
 
   useEffect(() => {
     pendingStateRef.current = oauthFeedback.stateId;
@@ -694,32 +693,33 @@ export const AdminMcpServersPage = () => {
         return;
       }
 
-      setDeletingId(server.id);
       setError(null);
       setSuccess(null);
-      try {
-        await mcpServersApi.delete(token, server.id);
-        setServers((prev) => prev.filter((item) => item.id !== server.id));
-        if (editingId === server.id) {
-          resetForm();
+      deleteServer.mutate(
+        { token, serverId: server.id },
+        {
+          onSuccess: () => {
+            if (editingId === server.id) {
+              resetForm();
+            }
+            setSuccess(t("admin.mcpServers.feedback.deleted", { label: server.label }));
+          },
+          onError: (err) => {
+            if (isUnauthorizedError(err)) {
+              logout();
+              setError(t("admin.mcpServers.errors.sessionExpired"));
+            } else {
+              setError(
+                err instanceof Error
+                  ? err.message
+                  : t("admin.mcpServers.errors.deleteFailed")
+              );
+            }
+          },
         }
-        setSuccess(t("admin.mcpServers.feedback.deleted", { label: server.label }));
-      } catch (err) {
-        if (isUnauthorizedError(err)) {
-          logout();
-          setError(t("admin.mcpServers.errors.sessionExpired"));
-        } else {
-          setError(
-            err instanceof Error
-              ? err.message
-              : t("admin.mcpServers.errors.deleteFailed"),
-          );
-        }
-      } finally {
-        setDeletingId(null);
-      }
+      );
     },
-    [editingId, logout, resetForm, t, token],
+    [deleteServer, editingId, logout, resetForm, t, token],
   );
 
   const handleRefreshTools = useCallback(
@@ -730,33 +730,38 @@ export const AdminMcpServersPage = () => {
       setRefreshingId(server.id);
       setError(null);
       setSuccess(null);
-      try {
-        const updated = await mcpServersApi.update(token, server.id, {
-          refresh_tools: true,
-        });
-        setServers((prev) =>
-          prev.map((item) => (item.id === updated.id ? updated : item)),
-        );
-        setSuccess(t("admin.mcpServers.feedback.toolsRefreshed", { label: server.label }));
-        if (editingId === server.id) {
-          applyServerToForm(updated);
+
+      updateServer.mutate(
+        {
+          token,
+          serverId: server.id,
+          payload: { refresh_tools: true },
+        },
+        {
+          onSuccess: (updated) => {
+            setSuccess(t("admin.mcpServers.feedback.toolsRefreshed", { label: server.label }));
+            if (editingId === server.id) {
+              applyServerToForm(updated);
+            }
+            setRefreshingId(null);
+          },
+          onError: (err) => {
+            if (isUnauthorizedError(err)) {
+              logout();
+              setError(t("admin.mcpServers.errors.sessionExpired"));
+            } else {
+              setError(
+                err instanceof Error
+                  ? err.message
+                  : t("admin.mcpServers.errors.refreshFailed")
+              );
+            }
+            setRefreshingId(null);
+          },
         }
-      } catch (err) {
-        if (isUnauthorizedError(err)) {
-          logout();
-          setError(t("admin.mcpServers.errors.sessionExpired"));
-        } else {
-          setError(
-            err instanceof Error
-              ? err.message
-              : t("admin.mcpServers.errors.refreshFailed"),
-          );
-        }
-      } finally {
-        setRefreshingId(null);
-      }
+      );
     },
-    [applyServerToForm, editingId, logout, t, token],
+    [applyServerToForm, editingId, logout, t, token, updateServer],
   );
 
   const handleSubmit = useCallback(
@@ -765,7 +770,6 @@ export const AdminMcpServersPage = () => {
       if (!token) {
         return;
       }
-      setIsSaving(true);
       setError(null);
       setSuccess(null);
       setProbeFeedback(null);
@@ -781,48 +785,66 @@ export const AdminMcpServersPage = () => {
         } else if (errorKey === "metadata") {
           setError(t("admin.mcpServers.errors.invalidMetadata"));
         }
-        setIsSaving(false);
         return;
       }
 
-      try {
-        if (editingId == null) {
-          const created = await mcpServersApi.create(token, basePayload);
-          setServers((prev) => [...prev, created]);
-          setEditingId(created.id);
-          applyServerToForm(created);
-          setSuccess(t("admin.mcpServers.feedback.created", { label: created.label }));
-        } else {
-          const updated = await mcpServersApi.update(token, editingId, basePayload);
-          setServers((prev) =>
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-          );
-          applyServerToForm(updated);
-          setSuccess(t("admin.mcpServers.feedback.updated", { label: updated.label }));
-        }
-      } catch (err) {
-        if (isUnauthorizedError(err)) {
-          logout();
-          setError(t("admin.mcpServers.errors.sessionExpired"));
-        } else {
-          setError(
-            err instanceof Error
-              ? err.message
-              : t("admin.mcpServers.errors.saveFailed"),
-          );
-        }
-      } finally {
-        setIsSaving(false);
+      if (editingId == null) {
+        createServer.mutate(
+          { token, payload: basePayload },
+          {
+            onSuccess: (created) => {
+              setEditingId(created.id);
+              applyServerToForm(created);
+              setSuccess(t("admin.mcpServers.feedback.created", { label: created.label }));
+            },
+            onError: (err) => {
+              if (isUnauthorizedError(err)) {
+                logout();
+                setError(t("admin.mcpServers.errors.sessionExpired"));
+              } else {
+                setError(
+                  err instanceof Error
+                    ? err.message
+                    : t("admin.mcpServers.errors.saveFailed")
+                );
+              }
+            },
+          }
+        );
+      } else {
+        updateServer.mutate(
+          { token, serverId: editingId, payload: basePayload },
+          {
+            onSuccess: (updated) => {
+              applyServerToForm(updated);
+              setSuccess(t("admin.mcpServers.feedback.updated", { label: updated.label }));
+            },
+            onError: (err) => {
+              if (isUnauthorizedError(err)) {
+                logout();
+                setError(t("admin.mcpServers.errors.sessionExpired"));
+              } else {
+                setError(
+                  err instanceof Error
+                    ? err.message
+                    : t("admin.mcpServers.errors.saveFailed")
+                );
+              }
+            },
+          }
+        );
       }
     },
     [
       applyServerToForm,
+      createServer,
       currentServer,
       editingId,
       formState,
       logout,
       t,
       token,
+      updateServer,
     ],
   );
 
