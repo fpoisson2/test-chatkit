@@ -12,7 +12,14 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { ResponsiveTable, type Column, LoadingSpinner, ErrorAlert } from "../components";
+import {
+  ResponsiveTable,
+  type Column,
+  LoadingSpinner,
+  FeedbackMessages,
+  FormField,
+  FormSection,
+} from "../components";
 import {
   AppSettings,
   AvailableModel,
@@ -443,152 +450,143 @@ export const AdminModelsPage = () => {
   );
 
   return (
-    <>
-      <AdminTabs activeTab="models" />
-      <ManagementPageLayout>
-        {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
-        {success && <ErrorAlert message={success} type="info" dismissible onDismiss={() => setSuccess(null)} />}
+    <ManagementPageLayout tabs={<AdminTabs activeTab="models" />}>
+      <FeedbackMessages
+        error={error}
+        success={success}
+        onDismissError={() => setError(null)}
+        onDismissSuccess={() => setSuccess(null)}
+      />
 
-        <div className="admin-grid">
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">
-                {isEditing
-                  ? t("admin.models.form.editTitle")
-                  : t("admin.models.form.createTitle")}
-              </h2>
-              <p className="admin-card__subtitle">
-                {isEditing
-                  ? t("admin.models.form.editSubtitle")
-                  : t("admin.models.form.createSubtitle")}
-              </p>
-            </div>
-            <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
-              {isEditing && (
-                <div className="alert alert--info" role="status">
-                  {t("admin.models.form.editingNotice", {
-                    model: editingModelName,
-                  })}
-                </div>
-              )}
-              <div className="admin-form__row">
-                <label className="label">
-                  {t("admin.models.form.modelIdLabel")}
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("name")}
-                    placeholder={t("admin.models.form.modelIdPlaceholder")}
-                  />
-                  {formErrors.name && (
-                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-                      {formErrors.name.message}
-                    </span>
-                  )}
-                </label>
-                <label className="label">
-                  Nom affiché (optionnel)
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("display_name")}
-                    placeholder="Nom convivial"
-                  />
-                </label>
+      <div className="admin-grid">
+        <FormSection
+          title={
+            isEditing
+              ? t("admin.models.form.editTitle")
+              : t("admin.models.form.createTitle")
+          }
+          subtitle={
+            isEditing
+              ? t("admin.models.form.editSubtitle")
+              : t("admin.models.form.createSubtitle")
+          }
+        >
+          <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+            {isEditing && (
+              <div className="alert alert--info" role="status">
+                {t("admin.models.form.editingNotice", {
+                  model: editingModelName,
+                })}
               </div>
-              <label className="label">
-                {t("admin.models.form.providerSelectLabel")}
-                <select
-                  className="input"
-                  {...register("provider_slug")}
-                  onChange={handleProviderChange}
-                  disabled={isBusy}
-                >
-                  <option value="">
-                    {isLoadingProviders
-                      ? t("admin.models.form.providerSelectLoading")
-                      : t("admin.models.form.providerSelectPlaceholder")}
-                  </option>
-                  {mergedProviderOptions.map((option) => (
-                    <option key={option.slug} value={option.slug}>
-                      {renderProviderOptionLabel(option)}
-                    </option>
-                  ))}
-                </select>
-                {formErrors.provider_slug && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-                    {formErrors.provider_slug.message}
-                  </span>
-                )}
-              </label>
-              <p className="admin-form__hint">
-                {t("admin.models.form.providerSelectHint")}
-              </p>
-              <label className="label">
-                Description (optionnel)
-                <textarea
-                  className="input"
-                  rows={3}
-                  {...register("description")}
-                  placeholder="Ajoutez des notes pour aider les administrateurs."
-                />
-              </label>
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  {...register("supports_reasoning")}
-                />
-                Modèle de raisonnement (affiche les options avancées dans le workflow builder)
-              </label>
-              <div className="admin-form__actions">
-                {isEditing && (
-                  <button
-                    type="button"
-                    className="button button--ghost"
-                    onClick={handleCancelEdit}
-                  >
-                    {t("admin.models.form.cancelEdit")}
-                  </button>
-                )}
-                <button
-                  className="button"
-                  type="submit"
-                  disabled={isBusy}
-                >
-                  {isEditing
-                    ? t("admin.models.form.submitUpdate")
-                    : t("admin.models.form.submitCreate")}
-                </button>
-              </div>
-            </form>
-          </section>
-
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">Modèles autorisés</h2>
-              <p className="admin-card__subtitle">
-                Consultez la liste des modèles disponibles et supprimez ceux qui
-                ne doivent plus apparaître dans le workflow builder.
-              </p>
-            </div>
-            {isLoading ? (
-              <LoadingSpinner text="Chargement des modèles…" />
-            ) : models.length === 0 ? (
-              <p style={{ color: "#475569" }}>
-                Aucun modèle n'est encore enregistré. Ajoutez-en un pour
-                alimenter le menu déroulant du workflow builder.
-              </p>
-            ) : (
-              <ResponsiveTable
-                columns={modelColumns}
-                data={models}
-                keyExtractor={(model) => model.id.toString()}
-                mobileCardView={true}
-              />
             )}
-          </section>
-        </div>
-      </ManagementPageLayout>
-    </>
+            <div className="admin-form__row">
+              <FormField
+                label={t("admin.models.form.modelIdLabel")}
+                error={formErrors.name?.message}
+              >
+                <input
+                  className="input"
+                  type="text"
+                  {...register("name")}
+                  placeholder={t("admin.models.form.modelIdPlaceholder")}
+                />
+              </FormField>
+
+              <FormField label="Nom affiché (optionnel)">
+                <input
+                  className="input"
+                  type="text"
+                  {...register("display_name")}
+                  placeholder="Nom convivial"
+                />
+              </FormField>
+            </div>
+
+            <FormField
+              label={t("admin.models.form.providerSelectLabel")}
+              error={formErrors.provider_slug?.message}
+              hint={t("admin.models.form.providerSelectHint")}
+            >
+              <select
+                className="input"
+                {...register("provider_slug")}
+                onChange={handleProviderChange}
+                disabled={isBusy}
+              >
+                <option value="">
+                  {isLoadingProviders
+                    ? t("admin.models.form.providerSelectLoading")
+                    : t("admin.models.form.providerSelectPlaceholder")}
+                </option>
+                {mergedProviderOptions.map((option) => (
+                  <option key={option.slug} value={option.slug}>
+                    {renderProviderOptionLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField label="Description (optionnel)">
+              <textarea
+                className="input"
+                rows={3}
+                {...register("description")}
+                placeholder="Ajoutez des notes pour aider les administrateurs."
+              />
+            </FormField>
+
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                {...register("supports_reasoning")}
+              />
+              Modèle de raisonnement (affiche les options avancées dans le workflow builder)
+            </label>
+
+            <div className="admin-form__actions">
+              {isEditing && (
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={handleCancelEdit}
+                >
+                  {t("admin.models.form.cancelEdit")}
+                </button>
+              )}
+              <button
+                className="button"
+                type="submit"
+                disabled={isBusy}
+              >
+                {isEditing
+                  ? t("admin.models.form.submitUpdate")
+                  : t("admin.models.form.submitCreate")}
+              </button>
+            </div>
+          </form>
+        </FormSection>
+
+        <FormSection
+          title="Modèles autorisés"
+          subtitle="Consultez la liste des modèles disponibles et supprimez ceux qui ne doivent plus apparaître dans le workflow builder."
+        >
+          {isLoading ? (
+            <LoadingSpinner text="Chargement des modèles…" />
+          ) : models.length === 0 ? (
+            <p className="admin-card__subtitle">
+              Aucun modèle n'est encore enregistré. Ajoutez-en un pour
+              alimenter le menu déroulant du workflow builder.
+            </p>
+          ) : (
+            <ResponsiveTable
+              columns={modelColumns}
+              data={models}
+              keyExtractor={(model) => model.id.toString()}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+      </div>
+    </ManagementPageLayout>
   );
 };
