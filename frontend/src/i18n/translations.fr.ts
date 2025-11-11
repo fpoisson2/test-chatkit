@@ -669,6 +669,9 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.image.output.png": "PNG",
   "workflowBuilder.agentInspector.image.output.webp": "WebP",
   "workflowBuilder.agentInspector.image.output.jpeg": "JPEG",
+  "workflowBuilder.agentInspector.functionToolsTitle": "Fonctions intégrées",
+  "workflowBuilder.agentInspector.functionToolsDescription":
+    "Active les fonctions internes, les serveurs MCP et les workflows disponibles comme outils pour cet agent.",
   "workflowBuilder.agentInspector.toolsAutomationTitle": "Outils supplémentaires",
   "workflowBuilder.agentInspector.toolsAutomationDescription":
     "Activez les outils optionnels que l'agent peut appeler en cas de besoin.",

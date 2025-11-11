@@ -22,8 +22,6 @@ import {
   FileSearch,
   Monitor,
   Image as ImageIcon,
-  Cloud,
-  Sparkles,
 } from 'lucide-react';
 
 import {
@@ -271,9 +269,6 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     imageBackgroundValue,
     imageOutputFormatValue,
     updateImageTool,
-    weatherFunctionEnabled,
-    widgetValidationFunctionEnabled,
-    workflowValidationFunctionEnabled,
     workflowToolSlugs,
     selectedVectorStoreSlug,
     matchedModel,
@@ -424,9 +419,6 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             imageBackgroundValue={imageBackgroundValue}
             imageOutputFormatValue={imageOutputFormatValue}
             updateImageTool={updateImageTool}
-            weatherFunctionEnabled={weatherFunctionEnabled}
-            widgetValidationFunctionEnabled={widgetValidationFunctionEnabled}
-            workflowValidationFunctionEnabled={workflowValidationFunctionEnabled}
             onAgentWebSearchChange={onAgentWebSearchChange}
             onAgentFileSearchChange={onAgentFileSearchChange}
             onAgentComputerUseChange={onAgentComputerUseChange}
@@ -585,17 +577,14 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
       vectorStoresLoading,
       webSearchConfig,
       webSearchEnabled,
-      weatherFunctionEnabled,
       widgetSelectValue,
       widgetValidationMessageFromHook,
       widgetValidationReason,
-      widgetValidationFunctionEnabled,
       widgets,
       widgetsError,
       widgetsLoading,
       workflowToolSlugs,
       workflows,
-      workflowValidationFunctionEnabled,
     ],
     [
       agentMessage,
@@ -690,16 +679,13 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
       vectorStoresLoading,
       webSearchConfig,
       webSearchEnabled,
-      weatherFunctionEnabled,
       widgetSelectValue,
       widgetValidationMessageFromHook,
       widgetValidationReason,
-      widgetValidationFunctionEnabled,
       widgets,
       widgetsError,
       widgetsLoading,
       workflows,
-      workflowValidationFunctionEnabled,
       handleStartMcpOAuth,
       handlePollMcpOAuth,
       handleCancelMcpOAuth,
@@ -1596,9 +1582,6 @@ interface ToolsTabProps {
   imageBackgroundValue: string;
   imageOutputFormatValue: string;
   updateImageTool: (updates: Partial<ImageGenerationToolConfig>) => void;
-  weatherFunctionEnabled: boolean;
-  widgetValidationFunctionEnabled: boolean;
-  workflowValidationFunctionEnabled: boolean;
   onAgentWebSearchChange: (
     nodeId: string,
     config: WebSearchConfig | null,
@@ -1660,9 +1643,6 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
   imageBackgroundValue,
   imageOutputFormatValue,
   updateImageTool,
-  weatherFunctionEnabled,
-  widgetValidationFunctionEnabled,
-  workflowValidationFunctionEnabled,
   onAgentWebSearchChange,
   onAgentFileSearchChange,
   onAgentComputerUseChange,
@@ -2129,62 +2109,21 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
         </AccordionSection>
       </div>
 
-      <div className={styles.sectionCard}>
-        <div className={styles.sectionHeader}>
-          <h4 className={styles.sectionTitle}>
-            {t('workflowBuilder.agentInspector.toolsAutomationTitle')}
-          </h4>
-          <p className={styles.sectionDescription}>
-            {t('workflowBuilder.agentInspector.toolsAutomationDescription')}
-          </p>
-        </div>
-
-        <div className={styles.toggleGroup}>
-          <ToggleRow
-            label={t('workflowBuilder.agentInspector.weatherToolLabel')}
-            checked={weatherFunctionEnabled}
-            onChange={(enabled) => onAgentWeatherToolChange(nodeId, enabled)}
-            helpText={t('workflowBuilder.agentInspector.weatherToolHelp')}
-            icon={Cloud}
-          />
-
-          <ToggleRow
-            label={t('workflowBuilder.agentInspector.widgetValidationLabel')}
-            checked={widgetValidationFunctionEnabled}
-            onChange={(enabled) =>
-              onAgentWidgetValidationToolChange(nodeId, enabled)
-            }
-            helpText={t('workflowBuilder.agentInspector.widgetValidationHelp')}
-            icon={Sparkles}
-          />
-
-          <ToggleRow
-            label={t('workflowBuilder.agentInspector.workflowValidationLabel')}
-            checked={workflowValidationFunctionEnabled}
-            onChange={(enabled) =>
-              onAgentWorkflowValidationToolChange(nodeId, enabled)
-            }
-            helpText={t('workflowBuilder.agentInspector.workflowValidationHelp')}
-          />
-        </div>
-
-        <div className={styles.divider} />
-
-        <ToolSettingsPanel
-          nodeId={nodeId}
-          parameters={parameters}
-          workflows={workflows}
-          currentWorkflowId={currentWorkflowId}
-          onAgentWeatherToolChange={onAgentWeatherToolChange}
-          onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
-          onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
-          onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
-          onAgentMcpServersChange={onAgentMcpServersChange}
-          onStartMcpOAuth={onStartMcpOAuth}
-          onPollMcpOAuth={onPollMcpOAuth}
-          onCancelMcpOAuth={onCancelMcpOAuth}
-        />
-      </div>
+      <ToolSettingsPanel
+        variant="v2"
+        nodeId={nodeId}
+        parameters={parameters}
+        workflows={workflows}
+        currentWorkflowId={currentWorkflowId}
+        onAgentWeatherToolChange={onAgentWeatherToolChange}
+        onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
+        onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
+        onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+        onAgentMcpServersChange={onAgentMcpServersChange}
+        onStartMcpOAuth={onStartMcpOAuth}
+        onPollMcpOAuth={onPollMcpOAuth}
+        onCancelMcpOAuth={onCancelMcpOAuth}
+      />
     </div>
   );
 };

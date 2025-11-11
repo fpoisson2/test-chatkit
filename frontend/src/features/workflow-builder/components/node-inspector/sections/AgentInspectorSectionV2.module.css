@@ -341,3 +341,161 @@ textarea[data-schema-editor="true"] {
     flex-direction: column;
   }
 }
+.toggleRow {
+  width: 100%;
+  padding: 0.5rem 0;
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.mcpServerList {
+  display: grid;
+  gap: 1rem;
+}
+
+.mcpServerCard {
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.4));
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  background-color: var(--panel-muted, #f9fafb);
+  display: grid;
+  gap: 1rem;
+}
+
+.mcpServerHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.mcpServerHeader input {
+  margin-top: 0.25rem;
+}
+
+.mcpServerHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mcpServerLabel {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+}
+
+.mutedText {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.mutedTextSmall {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #9ca3af);
+}
+
+.mcpServerDetails {
+  display: grid;
+  gap: 1rem;
+}
+
+.field {
+  margin-bottom: 0;
+}
+
+.inlineField {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.inlineField input {
+  flex: 1 1 220px;
+  min-width: 200px;
+}
+
+.chipGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.6));
+  background-color: var(--panel-background, #ffffff);
+  font-size: 0.8rem;
+  color: var(--text-primary, #1f2937);
+}
+
+.chip input {
+  margin: 0;
+}
+
+.chipSelected {
+  border-color: var(--accent-color, rgba(37, 99, 235, 0.5));
+  background-color: rgba(37, 99, 235, 0.12);
+}
+
+.customChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.5));
+  background-color: rgba(15, 23, 42, 0.04);
+  font-size: 0.75rem;
+  color: var(--text-primary, #1f2937);
+  cursor: pointer;
+}
+
+.customChipRemove {
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mcpServerCard {
+    border-color: var(--border-color, #374151);
+    background-color: var(--panel-muted, #1f2937);
+  }
+
+  .mcpServerLabel {
+    color: var(--text-primary, #f9fafb);
+  }
+
+  .mutedText {
+    color: var(--text-secondary, #9ca3af);
+  }
+
+  .mutedTextSmall {
+    color: var(--text-tertiary, #6b7280);
+  }
+
+  .chip {
+    border-color: var(--border-color, #4b5563);
+    background-color: var(--panel-background, #111827);
+    color: var(--text-primary, #f9fafb);
+  }
+
+  .chipSelected {
+    border-color: var(--accent-color, #60a5fa);
+    background-color: rgba(96, 165, 250, 0.16);
+  }
+
+  .customChip {
+    border-color: var(--border-color, #4b5563);
+    background-color: rgba(96, 165, 250, 0.12);
+    color: var(--text-primary, #f9fafb);
+  }
+}
