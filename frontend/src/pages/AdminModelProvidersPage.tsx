@@ -281,61 +281,57 @@ export const AdminModelProvidersPage = () => {
                     backgroundColor: provider.is_default ? "#f0fdf4" : "transparent"
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-                        <strong>{provider.provider}</strong>
-                        {provider.is_default && (
-                          <span style={{
-                            fontSize: "0.75rem",
-                            padding: "0.125rem 0.5rem",
-                            backgroundColor: "#22c55e",
-                            color: "white",
-                            borderRadius: "9999px"
-                          }}>
-                            Par défaut
-                          </span>
-                        )}
-                      </div>
-                      {provider.api_base && (
-                        <div style={{
-                          fontSize: "0.875rem",
-                          color: "#6b7280",
-                          marginTop: "0.25rem",
-                          wordBreak: "break-all"
-                        }}>
-                          Base URL: {provider.api_base}
-                        </div>
-                      )}
-                      {provider.has_api_key && (
-                        <div style={{
-                          fontSize: "0.875rem",
-                          color: "#6b7280",
-                          marginTop: "0.25rem",
-                          wordBreak: "break-all"
-                        }}>
-                          ✓ Clé API configurée {provider.api_key_hint && `(${provider.api_key_hint})`}
-                        </div>
-                      )}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+                    <strong>{provider.provider}</strong>
+                    {provider.is_default && (
+                      <span style={{
+                        fontSize: "0.75rem",
+                        padding: "0.125rem 0.5rem",
+                        backgroundColor: "#22c55e",
+                        color: "white",
+                        borderRadius: "9999px"
+                      }}>
+                        Par défaut
+                      </span>
+                    )}
+                  </div>
+                  {provider.api_base && (
+                    <div style={{
+                      fontSize: "0.875rem",
+                      color: "#6b7280",
+                      marginBottom: "0.25rem",
+                      wordBreak: "break-all"
+                    }}>
+                      Base URL: {provider.api_base}
                     </div>
-                    <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
-                      <button
-                        type="button"
-                        className="button button--sm button--ghost"
-                        onClick={() => handleOpenEdit(provider)}
-                      >
-                        Modifier
-                      </button>
-                      <button
-                        type="button"
-                        className="button button--sm button--danger"
-                        onClick={() => handleDelete(provider.id)}
-                        disabled={providers.length === 1}
-                        title={providers.length === 1 ? "Impossible de supprimer le dernier fournisseur" : "Supprimer ce fournisseur"}
-                      >
-                        Supprimer
-                      </button>
+                  )}
+                  {provider.has_api_key && (
+                    <div style={{
+                      fontSize: "0.875rem",
+                      color: "#6b7280",
+                      marginBottom: "0.75rem",
+                      wordBreak: "break-all"
+                    }}>
+                      ✓ Clé API configurée {provider.api_key_hint && `(${provider.api_key_hint})`}
                     </div>
+                  )}
+                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+                    <button
+                      type="button"
+                      className="button button--sm button--ghost"
+                      onClick={() => handleOpenEdit(provider)}
+                    >
+                      Modifier
+                    </button>
+                    <button
+                      type="button"
+                      className="button button--sm button--danger"
+                      onClick={() => handleDelete(provider.id)}
+                      disabled={providers.length === 1}
+                      title={providers.length === 1 ? "Impossible de supprimer le dernier fournisseur" : "Supprimer ce fournisseur"}
+                    >
+                      Supprimer
+                    </button>
                   </div>
                 </li>
               ))}
