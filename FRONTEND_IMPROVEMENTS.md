@@ -602,20 +602,21 @@ export const Modal = ({ children, onClose }) => {
 4. ✅ Créer composants ResponsiveCard et ResponsiveTable
 
 ### Phase 2 (Semaine 3-4) - Optimisations
-5. ⏳ Intégrer React Query (EN COURS - 3/9 pages, 8/8 hooks ✅)
+5. ⏳ Intégrer React Query (EN COURS - 3/9 pages + WorkflowBuilder ✅, 8/8 hooks ✅)
    - ✅ @tanstack/react-query installé (v5.90.7)
    - ✅ QueryClient configuré dans App.tsx (staleTime: 5min, retry: 1)
    - ✅ **Hooks complets créés (8 fichiers, ~750 lignes) :**
      * useAppSettings, useUsers, useModels, useMcpServers
      * useAppearanceSettings, useVectorStores, useWidgets, useWorkflows
-   - ✅ **Pages migrées (3/9) :**
+   - ✅ **Pages & composants migrés (4 majeurs) :**
      * AdminAppSettingsPage (~60 lignes supprimées)
      * AdminModelsPage (629 lignes, ~90 lignes boilerplate supprimées)
      * AdminMcpServersPage (1478 lignes, OAuth préservé)
-   - ⏳ **TODO pages restantes (6) :**
-     * VectorStoresPage (440L), WidgetLibraryPage, WorkflowBuilderPage
+     * **🎯 WorkflowBuilder useWorkflowResources (193→93 lignes, -52%)**
+   - ⏳ **TODO pages restantes (5) :**
+     * VectorStoresPage (440L), WidgetLibraryPage
      * AdminModelProvidersPage, AdminAppearancePage, AdminLanguagesPage
-   - 📊 **Impact : ~35% réduction code, cache auto, optimistic updates**
+   - 📊 **Impact : ~40% réduction code, cache partagé, optimistic updates**
 6. ❌ Mettre en place code splitting (TODO)
 7. ⏳ Migrer 3-5 formulaires vers React Hook Form (react-hook-form installé mais pas encore utilisé)
 8. ❌ Améliorer loading/error states (TODO - créer composants réutilisables)
