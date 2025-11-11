@@ -274,6 +274,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     weatherFunctionEnabled,
     widgetValidationFunctionEnabled,
     workflowValidationFunctionEnabled,
+    workflowToolSlugs,
     selectedVectorStoreSlug,
     matchedModel,
     selectedModelOption,
