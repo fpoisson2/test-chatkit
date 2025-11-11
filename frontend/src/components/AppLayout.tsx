@@ -18,7 +18,6 @@ import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { ProfileMenu } from "./ProfileMenu";
 import { Tooltip } from "./Tooltip";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
-import type { SettingsSectionId } from "../features/settings/sections";
 import { useI18n } from "../i18n";
 import { preloadRoute } from "../utils/routePreloaders";
 
@@ -280,19 +279,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [closeSidebar, isDesktopLayout, navigate],
   );
 
-  const handleOpenSettings = useCallback(
-    (sectionId?: SettingsSectionId) => {
-      if (!user) {
-        navigate("/login");
-        return;
-      }
-
-      const search = sectionId ? `?section=${encodeURIComponent(sectionId)}` : "";
-      navigate(`/settings${search}`);
-    },
-    [navigate, user],
-  );
-
   const handleSidebarLogin = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
@@ -317,18 +303,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     navigate("/admin");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
-  const handleGoToDocs = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-
-    navigate("/docs");
-  }, [closeSidebar, isDesktopLayout, navigate]);
-
-  const isDocsActive = useMemo(
-    () => location.pathname === "/docs" || location.pathname.startsWith("/docs/"),
-    [location.pathname],
-  );
 
   const navigationItems = useMemo(
     () =>
@@ -566,21 +540,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             </div>
             {isAuthenticated && (
               <footer className="chatkit-sidebar__footer">
-                <button
-                  type="button"
-                  className={`chatkit-sidebar__footer-link${
-                    isDocsActive ? " chatkit-sidebar__footer-link--active" : ""
-                  }`}
-                  onClick={handleGoToDocs}
-                  onMouseEnter={() => preloadRoute("docs")}
-                  onFocus={() => preloadRoute("docs")}
-                  tabIndex={sidebarTabIndex}
-                  aria-label={t("app.sidebar.docs")}
-                  aria-current={isDocsActive ? "page" : undefined}
-                >
-                  <SidebarIcon name="docs" className="chatkit-sidebar__icon" />
-                  <span className="chatkit-sidebar__footer-link-label">{t("app.sidebar.docs")}</span>
-                </button>
                 <div className="chatkit-sidebar__profile">
                   <ProfileMenu tabIndex={sidebarTabIndex} onNavigate={handleProfileNavigate} />
                 </div>

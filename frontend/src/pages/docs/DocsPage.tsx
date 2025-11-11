@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth";
+import { AdminTabs } from "../../components/AdminTabs";
 import { ManagementPageLayout } from "../../components/ManagementPageLayout";
+import { FormSection } from "../../components";
 import { useI18n } from "../../i18n";
 import {
   docsApi,
@@ -196,19 +198,36 @@ export const DocsPage = () => {
 
   return (
     <>
-      <ManagementPageLayout
-        title={t("docs.title")}
-        subtitle={t("docs.subtitle")}
-        maxWidth="lg"
-        actions={
-          isAdmin ? (
-            <button type="button" className="button" onClick={handleOpenEditor}>
-              {t("docs.list.create")}
-            </button>
-          ) : null
-        }
-      >
-        <div className={styles.pageContent}>{renderContent}</div>
+      <ManagementPageLayout tabs={<AdminTabs activeTab="docs" />}>
+        <div className="admin-grid">
+          <FormSection
+            title={t("docs.title")}
+            subtitle={t("docs.subtitle")}
+            headerAction={
+              isAdmin ? (
+                <button
+                  type="button"
+                  className="management-header__icon-button"
+                  aria-label={t("docs.list.create")}
+                  title={t("docs.list.create")}
+                  onClick={handleOpenEditor}
+                >
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path
+                      d="M10 4v12M4 10h12"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              ) : null
+            }
+          >
+            <div className={styles.pageContent}>{renderContent}</div>
+          </FormSection>
+        </div>
       </ManagementPageLayout>
       <DocEditor
         mode="create"
