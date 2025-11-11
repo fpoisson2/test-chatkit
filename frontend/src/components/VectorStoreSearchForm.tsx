@@ -1,68 +1,63 @@
-import { FormEvent, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import type { VectorStoreSearchPayload } from "../utils/backend";
+import { vectorStoreSearchFormSchema, type VectorStoreSearchFormData } from "../schemas/vectorStore";
 
 type VectorStoreSearchFormProps = {
   onSubmit: (payload: VectorStoreSearchPayload) => Promise<void>;
 };
 
 export const VectorStoreSearchForm = ({ onSubmit }: VectorStoreSearchFormProps) => {
-  const [query, setQuery] = useState("");
-  const [topK, setTopK] = useState(5);
-  const [metadataFiltersInput, setMetadataFiltersInput] = useState("");
-  const [denseWeight, setDenseWeight] = useState(0.5);
-  const [sparseWeight, setSparseWeight] = useState(0.5);
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setSubmitting] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    setError,
+  } = useForm<VectorStoreSearchFormData>({
+    resolver: zodResolver(vectorStoreSearchFormSchema),
+    defaultValues: {
+      query: "",
+      topK: 5,
+      metadataFiltersInput: "",
+      denseWeight: 0.5,
+      sparseWeight: 0.5,
+    },
+  });
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-
-    if (!query.trim()) {
-      setError("Saisissez une requête.");
-      return;
-    }
-
+  const onSubmitHandler = async (data: VectorStoreSearchFormData) => {
     let metadataFilters: Record<string, unknown> | undefined;
-    if (metadataFiltersInput.trim()) {
-      try {
-        metadataFilters = JSON.parse(metadataFiltersInput) as Record<string, unknown>;
-      } catch {
-        setError("Les filtres doivent être un JSON valide.");
-        return;
-      }
+    if (data.metadataFiltersInput.trim()) {
+      metadataFilters = JSON.parse(data.metadataFiltersInput) as Record<string, unknown>;
     }
 
-    setSubmitting(true);
     try {
       await onSubmit({
-        query: query.trim(),
-        top_k: topK,
+        query: data.query,
+        top_k: data.topK,
         metadata_filters: metadataFilters,
-        dense_weight: denseWeight,
-        sparse_weight: sparseWeight,
+        dense_weight: data.denseWeight,
+        sparse_weight: data.sparseWeight,
       });
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Recherche impossible");
-    } finally {
-      setSubmitting(false);
+      setError("root", {
+        message: submitError instanceof Error ? submitError.message : "Recherche impossible",
+      });
     }
   };
 
   return (
-    <form className="admin-form" onSubmit={handleSubmit}>
-      {error ? <div className="alert alert--danger">{error}</div> : null}
+    <form className="admin-form" onSubmit={handleSubmit(onSubmitHandler)}>
+      {errors.root && <div className="alert alert--danger">{errors.root.message}</div>}
       <label className="label">
         Requête
         <input
           className="input"
           type="text"
-          required
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          {...register("query")}
           placeholder="ex: monuments à visiter à Paris"
         />
+        {errors.query && <span className="error">{errors.query.message}</span>}
       </label>
       <div className="admin-form__row">
         <label className="label">
@@ -70,18 +65,9 @@ export const VectorStoreSearchForm = ({ onSubmit }: VectorStoreSearchFormProps) 
           <input
             className="input"
             type="number"
-            min={1}
-            max={50}
-            value={topK}
-            onChange={(event) => {
-              const parsed = Number.parseInt(event.target.value, 10);
-              if (Number.isNaN(parsed)) {
-                setTopK(5);
-                return;
-              }
-              setTopK(Math.min(50, Math.max(1, parsed)));
-            }}
+            {...register("topK", { valueAsNumber: true })}
           />
+          {errors.topK && <span className="error">{errors.topK.message}</span>}
         </label>
         <label className="label">
           Poids dense
@@ -89,13 +75,9 @@ export const VectorStoreSearchForm = ({ onSubmit }: VectorStoreSearchFormProps) 
             className="input"
             type="number"
             step="0.1"
-            min={0}
-            value={denseWeight}
-            onChange={(event) => {
-              const parsed = Number.parseFloat(event.target.value);
-              setDenseWeight(Number.isNaN(parsed) ? 0 : Math.max(0, parsed));
-            }}
+            {...register("denseWeight", { valueAsNumber: true })}
           />
+          {errors.denseWeight && <span className="error">{errors.denseWeight.message}</span>}
         </label>
         <label className="label">
           Poids BM25
@@ -103,13 +85,9 @@ export const VectorStoreSearchForm = ({ onSubmit }: VectorStoreSearchFormProps) 
             className="input"
             type="number"
             step="0.1"
-            min={0}
-            value={sparseWeight}
-            onChange={(event) => {
-              const parsed = Number.parseFloat(event.target.value);
-              setSparseWeight(Number.isNaN(parsed) ? 0 : Math.max(0, parsed));
-            }}
+            {...register("sparseWeight", { valueAsNumber: true })}
           />
+          {errors.sparseWeight && <span className="error">{errors.sparseWeight.message}</span>}
         </label>
       </div>
       <label className="label">
@@ -117,11 +95,11 @@ export const VectorStoreSearchForm = ({ onSubmit }: VectorStoreSearchFormProps) 
         <textarea
           className="textarea"
           rows={3}
-          value={metadataFiltersInput}
-          onChange={(event) => setMetadataFiltersInput(event.target.value)}
+          {...register("metadataFiltersInput")}
           spellCheck={false}
           placeholder='{"category": "guide"}'
         />
+        {errors.metadataFiltersInput && <span className="error">{errors.metadataFiltersInput.message}</span>}
       </label>
       <div className="admin-form__actions">
         <button className="button" type="submit" disabled={isSubmitting}>

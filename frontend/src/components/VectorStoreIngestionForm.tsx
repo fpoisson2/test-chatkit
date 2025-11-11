@@ -1,6 +1,9 @@
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import type { VectorStoreIngestionPayload } from "../utils/backend";
+import { vectorStoreIngestionFormSchema, type VectorStoreIngestionFormData } from "../schemas/vectorStore";
 
 type VectorStoreIngestionFormProps = {
   onSubmit: (payload: VectorStoreIngestionPayload) => Promise<void>;
@@ -19,17 +22,26 @@ export const VectorStoreIngestionForm = ({
   defaultDocument = null,
   defaultMetadata = null,
 }: VectorStoreIngestionFormProps) => {
-  const [docId, setDocId] = useState(defaultDocId);
-  const [documentInput, setDocumentInput] = useState(() =>
-    defaultDocument ? JSON.stringify(defaultDocument, null, 2) : "{}",
-  );
-  const [metadataInput, setMetadataInput] = useState(() =>
-    defaultMetadata ? JSON.stringify(defaultMetadata, null, 2) : "{}",
-  );
-  const [storeTitle, setStoreTitle] = useState("");
-  const [storeMetadataInput, setStoreMetadataInput] = useState("");
+  const {
+    register,
+    handleSubmit: rhfHandleSubmit,
+    formState: { errors: formErrors, isSubmitting },
+    setValue,
+    watch,
+    setError: setFormError,
+  } = useForm<VectorStoreIngestionFormData>({
+    resolver: zodResolver(vectorStoreIngestionFormSchema),
+    defaultValues: {
+      docId: defaultDocId,
+      documentInput: defaultDocument ? JSON.stringify(defaultDocument, null, 2) : "{}",
+      metadataInput: defaultMetadata ? JSON.stringify(defaultMetadata, null, 2) : "{}",
+      storeTitle: "",
+      storeMetadataInput: "",
+    },
+  });
+
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setSubmitting] = useState(false);
+  const docId = watch("docId");
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -39,9 +51,9 @@ export const VectorStoreIngestionForm = ({
 
     try {
       const content = await file.text();
-      setDocumentInput(content);
+      setValue("documentInput", content);
       if (!docId) {
-        setDocId(stripJsonExtension(file.name));
+        setValue("docId", stripJsonExtension(file.name));
       }
     } catch (fileError) {
       setError(
@@ -50,27 +62,21 @@ export const VectorStoreIngestionForm = ({
     }
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async (data: VectorStoreIngestionFormData) => {
     setError(null);
-
-    if (!docId.trim()) {
-      setError("Un identifiant de document est requis.");
-      return;
-    }
 
     let documentPayload: Record<string, unknown>;
     try {
-      documentPayload = JSON.parse(documentInput) as Record<string, unknown>;
+      documentPayload = JSON.parse(data.documentInput) as Record<string, unknown>;
     } catch (parseError) {
       setError("Le document JSON est invalide.");
       return;
     }
 
     let metadata: Record<string, unknown> = {};
-    if (metadataInput.trim()) {
+    if (data.metadataInput.trim()) {
       try {
-        metadata = JSON.parse(metadataInput) as Record<string, unknown>;
+        metadata = JSON.parse(data.metadataInput) as Record<string, unknown>;
       } catch {
         setError("Les métadonnées du document doivent être un JSON valide.");
         return;
@@ -78,22 +84,21 @@ export const VectorStoreIngestionForm = ({
     }
 
     let storeMetadata: Record<string, unknown> | undefined;
-    if (storeMetadataInput.trim()) {
+    if (data.storeMetadataInput && data.storeMetadataInput.trim()) {
       try {
-        storeMetadata = JSON.parse(storeMetadataInput) as Record<string, unknown>;
+        storeMetadata = JSON.parse(data.storeMetadataInput) as Record<string, unknown>;
       } catch {
         setError("Les métadonnées du store doivent être un JSON valide.");
         return;
       }
     }
 
-    setSubmitting(true);
     try {
       const ingestionPayload: VectorStoreIngestionPayload = {
-        doc_id: docId.trim(),
+        doc_id: data.docId,
         document: documentPayload,
         metadata,
-        store_title: storeTitle.trim() || undefined,
+        store_title: data.storeTitle?.trim() || undefined,
         store_metadata: storeMetadata ?? undefined,
       };
       await onSubmit(ingestionPayload);
@@ -103,14 +108,12 @@ export const VectorStoreIngestionForm = ({
           ? submitError.message
           : "Échec de l'ingestion du document",
       );
-    } finally {
-      setSubmitting(false);
     }
   };
 
   return (
-    <form className="admin-form" onSubmit={handleSubmit}>
-      {error ? <div className="alert alert--danger">{error}</div> : null}
+    <form className="admin-form" onSubmit={rhfHandleSubmit(handleSubmit)}>
+      {error && <div className="alert alert--danger">{error}</div>}
       <label className="label">
         Fichier JSON
         <input className="input" type="file" accept="application/json,.json" onChange={handleFileChange} />
@@ -120,31 +123,30 @@ export const VectorStoreIngestionForm = ({
         <input
           className="input"
           type="text"
-          required
-          value={docId}
-          onChange={(event) => setDocId(event.target.value)}
+          {...register("docId")}
           placeholder="paris-guide"
         />
+        {formErrors.docId && <span className="error">{formErrors.docId.message}</span>}
       </label>
       <label className="label">
         Document JSON
         <textarea
           className="textarea"
           rows={8}
-          value={documentInput}
-          onChange={(event) => setDocumentInput(event.target.value)}
+          {...register("documentInput")}
           spellCheck={false}
         />
+        {formErrors.documentInput && <span className="error">{formErrors.documentInput.message}</span>}
       </label>
       <label className="label">
         Métadonnées du document (JSON)
         <textarea
           className="textarea"
           rows={4}
-          value={metadataInput}
-          onChange={(event) => setMetadataInput(event.target.value)}
+          {...register("metadataInput")}
           spellCheck={false}
         />
+        {formErrors.metadataInput && <span className="error">{formErrors.metadataInput.message}</span>}
       </label>
       <details className="accordion">
         <summary>Mettre à jour les métadonnées du store (optionnel)</summary>
@@ -153,20 +155,20 @@ export const VectorStoreIngestionForm = ({
           <input
             className="input"
             type="text"
-            value={storeTitle}
-            onChange={(event) => setStoreTitle(event.target.value)}
+            {...register("storeTitle")}
             placeholder="Titre affiché côté ChatKit"
           />
+          {formErrors.storeTitle && <span className="error">{formErrors.storeTitle.message}</span>}
         </label>
         <label className="label">
           Métadonnées du store (JSON)
           <textarea
             className="textarea"
             rows={3}
-            value={storeMetadataInput}
-            onChange={(event) => setStoreMetadataInput(event.target.value)}
+            {...register("storeMetadataInput")}
             spellCheck={false}
           />
+          {formErrors.storeMetadataInput && <span className="error">{formErrors.storeMetadataInput.message}</span>}
         </label>
       </details>
       <div className="admin-form__actions">

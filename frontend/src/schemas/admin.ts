@@ -7,8 +7,20 @@ import {
   portSchema,
   jsonSchema,
   requiredJsonSchema,
-  urlSchema
+  urlSchema,
+  emailSchema
 } from './common';
+
+/**
+ * Admin User Creation Form Schema
+ */
+export const adminCreateUserSchema = z.object({
+  email: emailSchema,
+  password: trimmedNonEmptyString,
+  is_admin: z.boolean().default(false)
+});
+
+export type AdminCreateUserFormData = z.infer<typeof adminCreateUserSchema>;
 
 /**
  * Admin Models Page Schema

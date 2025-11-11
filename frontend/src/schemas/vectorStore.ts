@@ -18,10 +18,10 @@ export type VectorStoreFormData = z.infer<typeof vectorStoreFormSchema>;
  */
 export const vectorStoreSearchFormSchema = z.object({
   query: trimmedNonEmptyString,
-  topK: z.number().int().min(1).max(50).default(10),
+  topK: z.number().int().min(1).max(50).default(5),
   metadataFiltersInput: jsonSchema,
-  denseWeight: positiveNumberSchema.default(1.0),
-  sparseWeight: positiveNumberSchema.default(1.0)
+  denseWeight: z.number().min(0).default(0.5),
+  sparseWeight: z.number().min(0).default(0.5)
 });
 
 export type VectorStoreSearchFormData = z.infer<typeof vectorStoreSearchFormSchema>;

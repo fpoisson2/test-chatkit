@@ -1,7 +1,10 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import { ApiError, type WidgetTemplate } from "../utils/backend";
 import { WidgetPreviewPlayground } from "./WidgetPreviewPlayground";
+import { widgetTemplateFormSchema, type WidgetTemplateFormData } from "../schemas/widget";
 
 type WidgetTemplateFormProps = {
   mode: "create" | "edit";
@@ -58,16 +61,26 @@ export const WidgetTemplateForm = ({
   onCancel,
   onPreview,
 }: WidgetTemplateFormProps) => {
-  const [slug, setSlug] = useState(initialValue?.slug ?? "");
-  const [title, setTitle] = useState(initialValue?.title ?? "");
-  const [description, setDescription] = useState(initialValue?.description ?? "");
-  const [definitionInput, setDefinitionInput] = useState(() =>
-    toJson((initialValue?.definition as Record<string, unknown>) ?? DEFAULT_DEFINITION),
-  );
+  const {
+    register,
+    handleSubmit: rhfHandleSubmit,
+    formState: { errors: formErrors, isSubmitting },
+    reset,
+    getValues,
+    setError: setFormError,
+  } = useForm<WidgetTemplateFormData>({
+    resolver: zodResolver(widgetTemplateFormSchema),
+    defaultValues: {
+      slug: initialValue?.slug ?? "",
+      title: initialValue?.title ?? "",
+      description: initialValue?.description ?? "",
+      definitionInput: toJson((initialValue?.definition as Record<string, unknown>) ?? DEFAULT_DEFINITION),
+    },
+  });
+
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [previewDefinition, setPreviewDefinition] = useState<Record<string, unknown> | null>(null);
-  const [isSubmitting, setSubmitting] = useState(false);
   const [isPreviewing, setPreviewing] = useState(false);
 
   const header = useMemo(
@@ -77,26 +90,26 @@ export const WidgetTemplateForm = ({
 
   useEffect(() => {
     if (initialValue) {
-      setSlug(initialValue.slug);
-      setTitle(initialValue.title ?? "");
-      setDescription(initialValue.description ?? "");
-      setDefinitionInput(toJson(initialValue.definition as Record<string, unknown>));
+      reset({
+        slug: initialValue.slug,
+        title: initialValue.title ?? "",
+        description: initialValue.description ?? "",
+        definitionInput: toJson(initialValue.definition as Record<string, unknown>),
+      });
     } else if (mode === "create") {
-      setSlug("");
-      setTitle("");
-      setDescription("");
-      setDefinitionInput(toJson(DEFAULT_DEFINITION));
+      reset({
+        slug: "",
+        title: "",
+        description: "",
+        definitionInput: toJson(DEFAULT_DEFINITION),
+      });
     }
     setError(null);
     setValidationErrors([]);
     setPreviewDefinition(null);
-  }, [initialValue, mode]);
+  }, [initialValue, mode, reset]);
 
-  const parseDefinition = (): Record<string, unknown> | null => {
-    if (!definitionInput.trim()) {
-      setError("La définition JSON est obligatoire.");
-      return null;
-    }
+  const parseDefinition = (definitionInput: string): Record<string, unknown> | null => {
     try {
       return JSON.parse(definitionInput) as Record<string, unknown>;
     } catch (parseError) {
@@ -105,27 +118,20 @@ export const WidgetTemplateForm = ({
     }
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async (data: WidgetTemplateFormData) => {
     setError(null);
     setValidationErrors([]);
 
-    if (!slug.trim()) {
-      setError("Le slug est obligatoire.");
-      return;
-    }
-
-    const definition = parseDefinition();
+    const definition = parseDefinition(data.definitionInput);
     if (!definition) {
       return;
     }
 
-    setSubmitting(true);
     try {
       await onSubmit({
-        slug: slug.trim(),
-        title: title.trim() ? title.trim() : null,
-        description: description.trim() ? description.trim() : null,
+        slug: data.slug,
+        title: data.title?.trim() ? data.title.trim() : null,
+        description: data.description?.trim() ? data.description.trim() : null,
         definition,
       });
     } catch (submitError) {
@@ -144,8 +150,6 @@ export const WidgetTemplateForm = ({
             : "Impossible d'enregistrer le widget.",
         );
       }
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -156,7 +160,8 @@ export const WidgetTemplateForm = ({
     setError(null);
     setValidationErrors([]);
 
-    const definition = parseDefinition();
+    const definitionInput = getValues("definitionInput");
+    const definition = parseDefinition(definitionInput);
     if (!definition) {
       return;
     }
@@ -188,14 +193,14 @@ export const WidgetTemplateForm = ({
   };
 
   return (
-    <form className="admin-form" onSubmit={handleSubmit} aria-label={header}>
+    <form className="admin-form" onSubmit={rhfHandleSubmit(handleSubmit)} aria-label={header}>
       <h3 className="admin-card__title">{header}</h3>
       <p className="admin-card__subtitle">
         Décrivez votre widget ChatKit en JSON. Chaque définition est validée via <code>chatkit.widgets.WidgetRoot</code> avant
         d'être sauvegardée.
       </p>
-      {error ? <div className="alert alert--danger">{error}</div> : null}
-      {validationErrors.length > 0 ? (
+      {error && <div className="alert alert--danger">{error}</div>}
+      {validationErrors.length > 0 && (
         <div className="alert alert--danger">
           <p>Erreurs de validation :</p>
           <ul>
@@ -204,48 +209,47 @@ export const WidgetTemplateForm = ({
             ))}
           </ul>
         </div>
-      ) : null}
+      )}
       <label className="label">
         Slug (identifiant unique)
         <input
           className="input"
           type="text"
-          required
-          value={slug}
-          onChange={(event) => setSlug(event.target.value)}
+          {...register("slug")}
           placeholder="ex: tableau-de-bord"
           disabled={mode === "edit"}
         />
+        {formErrors.slug && <span className="error">{formErrors.slug.message}</span>}
       </label>
       <label className="label">
         Titre (optionnel)
         <input
           className="input"
           type="text"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
+          {...register("title")}
           placeholder="Résumé commercial"
         />
+        {formErrors.title && <span className="error">{formErrors.title.message}</span>}
       </label>
       <label className="label">
         Description (optionnelle)
         <textarea
           className="textarea"
           rows={3}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
+          {...register("description")}
           placeholder="Informations supplémentaires pour l'équipe Ops"
         />
+        {formErrors.description && <span className="error">{formErrors.description.message}</span>}
       </label>
       <label className="label">
         Définition JSON du widget
         <textarea
           className="textarea"
           rows={14}
-          value={definitionInput}
-          onChange={(event) => setDefinitionInput(event.target.value)}
+          {...register("definitionInput")}
           spellCheck={false}
         />
+        {formErrors.definitionInput && <span className="error">{formErrors.definitionInput.message}</span>}
       </label>
       <div className="admin-form__actions">
         <button className="button button--subtle" type="button" onClick={onCancel} disabled={isSubmitting || isPreviewing}>
