@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GitBranch, Server, Wrench } from "lucide-react";
 
 import { useAuth } from "../../../../../auth";
 import { Modal } from "../../../../../components/Modal";
@@ -25,7 +26,7 @@ import type {
   McpSseToolConfig,
 } from "../../../types";
 import { ToggleRow } from "../components/ToggleRow";
-import { Field } from "../ui-components";
+import { AccordionSection, Field } from "../ui-components";
 import legacyStyles from "../NodeInspector.module.css";
 import v2Styles from "./AgentInspectorSectionV2.module.css";
 
@@ -1446,11 +1447,14 @@ export const ToolSettingsPanel = ({
 
   return (
     <>
-      <div className={v2Styles.sectionCard}>
+      <AccordionSection
+        id="function-tools"
+        title={t("workflowBuilder.agentInspector.functionToolsTitle")}
+        icon={Wrench}
+        expandedByDefault
+        showToggle={false}
+      >
         <div className={v2Styles.sectionHeader}>
-          <h4 className={v2Styles.sectionTitle}>
-            {t("workflowBuilder.agentInspector.functionToolsTitle")}
-          </h4>
           <p className={v2Styles.sectionDescription}>
             {t("workflowBuilder.agentInspector.functionToolsDescription")}
           </p>
@@ -1479,13 +1483,16 @@ export const ToolSettingsPanel = ({
             className={v2Styles.toggleRow}
           />
         </div>
-      </div>
+      </AccordionSection>
 
-      <div className={v2Styles.sectionCard}>
+      <AccordionSection
+        id="mcp-servers"
+        title={t("workflowBuilder.agentInspector.mcpServersTitle")}
+        icon={Server}
+        expandedByDefault
+        showToggle={false}
+      >
         <div className={v2Styles.sectionHeader}>
-          <h4 className={v2Styles.sectionTitle}>
-            {t("workflowBuilder.agentInspector.mcpServersTitle")}
-          </h4>
           <p className={v2Styles.sectionDescription}>
             {t("workflowBuilder.agentInspector.mcpServersDescription")}
           </p>
@@ -1721,13 +1728,16 @@ export const ToolSettingsPanel = ({
             );
           })}
         </div>
-      </div>
+      </AccordionSection>
 
-      <div className={v2Styles.sectionCard}>
+      <AccordionSection
+        id="workflow-tools"
+        title={t("workflowBuilder.agentInspector.workflowToolsTitle")}
+        icon={GitBranch}
+        expandedByDefault
+        showToggle={false}
+      >
         <div className={v2Styles.sectionHeader}>
-          <h4 className={v2Styles.sectionTitle}>
-            {t("workflowBuilder.agentInspector.workflowToolsTitle")}
-          </h4>
           <p className={v2Styles.sectionDescription}>
             {t("workflowBuilder.agentInspector.workflowToolsDescription")}
           </p>
@@ -1765,7 +1775,7 @@ export const ToolSettingsPanel = ({
             ))}
           </div>
         ) : null}
-      </div>
+      </AccordionSection>
       {modal}
     </>
   );
