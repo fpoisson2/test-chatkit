@@ -10,7 +10,7 @@ import { VectorStoreSearchResults } from "../components/VectorStoreSearchResults
 import { VectorStoreTable } from "../components/VectorStoreTable";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { AdminTabs } from "../components/AdminTabs";
-import { LoadingSpinner, ErrorAlert } from "../components";
+import { LoadingSpinner, ErrorAlert, FeedbackMessages } from "../components";
 import { useI18n } from "../i18n";
 import {
   type VectorStoreDocument,
@@ -312,30 +312,33 @@ export const VectorStoresPage = () => {
   };
 
   return (
-    <>
-      <AdminTabs activeTab="vector-stores" />
-      <ManagementPageLayout
-        actions={
-          <button
-            className="management-header__icon-button"
-            type="button"
-            aria-label="Créer un vector store"
-            onClick={() => setShowCreateModal(true)}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="M10 4v12M4 10h12"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        }
-      >
-      {success && <ErrorAlert message={String(success)} type="info" dismissible onDismiss={() => setSuccess(null)} />}
-      {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
+    <ManagementPageLayout
+      tabs={<AdminTabs activeTab="vector-stores" />}
+      actions={
+        <button
+          className="management-header__icon-button"
+          type="button"
+          aria-label="Créer un vector store"
+          onClick={() => setShowCreateModal(true)}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      }
+    >
+      <FeedbackMessages
+        error={error}
+        success={success ? String(success) : null}
+        onDismissError={() => setError(null)}
+        onDismissSuccess={() => setSuccess(null)}
+      />
 
       <VectorStoreTable
         stores={stores}
@@ -416,8 +419,7 @@ export const VectorStoresPage = () => {
           ) : null}
         </Modal>
       ) : null}
-      </ManagementPageLayout>
-    </>
+    </ManagementPageLayout>
   );
 };
 
