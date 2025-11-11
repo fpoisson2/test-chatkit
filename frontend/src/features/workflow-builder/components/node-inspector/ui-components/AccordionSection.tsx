@@ -80,7 +80,9 @@ export const AccordionSection: React.FC<AccordionSectionProps> = ({
               className={`${styles.accordionToggle} ${enabled ? styles.accordionToggleOn : ''}`}
               onClick={(e) => {
                 e.stopPropagation();
-                onToggle(!enabled);
+                const next = !enabled;
+                onToggle(next);
+                setValue(next ? id : undefined);
               }}
             >
               <span className={styles.accordionToggleThumb} />
