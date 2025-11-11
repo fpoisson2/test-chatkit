@@ -3095,6 +3095,7 @@ button {
   font-size: 0.9rem;
   line-height: 1.45;
   overflow-x: auto;
+  word-break: break-all;
 }
 
 .accordion {
