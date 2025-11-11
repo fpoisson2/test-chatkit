@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
 import { ChevronRight, LucideIcon } from 'lucide-react';
 import styles from './AccordionSection.module.css';
@@ -24,12 +24,39 @@ export const AccordionSection: React.FC<AccordionSectionProps> = ({
   children,
   showToggle = true,
 }) => {
+  const [value, setValue] = useState<string | undefined>(() =>
+    expandedByDefault && enabled ? id : undefined,
+  );
+  const prevEnabledRef = useRef(enabled);
+  const prevExpandedRef = useRef(expandedByDefault);
+
+  useEffect(() => {
+    if (!enabled) {
+      setValue(undefined);
+    } else if (!prevEnabledRef.current && enabled) {
+      setValue(id);
+    } else if (!prevExpandedRef.current && expandedByDefault) {
+      setValue(id);
+    }
+
+    prevEnabledRef.current = enabled;
+    prevExpandedRef.current = expandedByDefault;
+  }, [enabled, expandedByDefault, id]);
+
   return (
     <Accordion.Root
       className={styles.accordionRoot}
       type="single"
       collapsible
-      defaultValue={expandedByDefault ? id : undefined}
+      value={value}
+      onValueChange={(nextValue) => {
+        if (nextValue === id) {
+          setValue(id);
+          return;
+        }
+
+        setValue(undefined);
+      }}
     >
       <Accordion.Item className={styles.accordionItem} value={id}>
         <div className={styles.accordionHeaderWrapper}>
