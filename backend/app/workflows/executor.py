@@ -433,21 +433,22 @@ async def run_workflow(
         current_input_id = (
             current_input_item_id if isinstance(current_input_item_id, str) else None
         )
-        if (
-            isinstance(waiting_slug, str)
-            and waiting_slug in nodes_by_slug
-            and stored_input_id
-            and current_input_id
-            and stored_input_id != current_input_id
-        ):
-            resume_from_wait_slug = waiting_slug
-        elif (
-            isinstance(waiting_slug, str)
-            and waiting_slug in nodes_by_slug
-            and isinstance(pending_wait_state.get("voice_transcripts"), list)
-            and pending_wait_state.get("voice_transcripts")
-        ):
-            resume_from_wait_slug = waiting_slug
+        if isinstance(waiting_slug, str) and waiting_slug in nodes_by_slug:
+            resume_candidate: str | None = waiting_slug
+            if (
+                stored_input_id
+                and current_input_id
+                and stored_input_id == current_input_id
+            ):
+                resume_candidate = None
+
+            if resume_candidate is not None:
+                resume_from_wait_slug = resume_candidate
+            elif (
+                isinstance(pending_wait_state.get("voice_transcripts"), list)
+                and pending_wait_state.get("voice_transcripts")
+            ):
+                resume_from_wait_slug = waiting_slug
 
     transitions = [
         transition
