@@ -12,6 +12,7 @@ import type {
   VectorStore,
   Widget,
 } from "../WorkflowBuilderUtils";
+import type { WorkflowNodeHandlers } from "../hooks/useWorkflowNodeHandlers";
 
 /**
  * Props for WorkflowBuilderPropertiesPanel
@@ -31,7 +32,7 @@ interface WorkflowBuilderPropertiesPanelProps {
   hasSelectedElement: boolean;
 
   // NodeInspector props
-  nodeHandlers: any; // TODO: type this properly
+  nodeHandlers: WorkflowNodeHandlers;
   workflows: Workflow[];
   currentWorkflowId: string | number | null;
   hostedWorkflows: HostedWorkflow[];
