@@ -2107,23 +2107,23 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
             {t('workflowBuilder.agentInspector.image.helpDescription')}
           </InlineHelp>
         </AccordionSection>
-      </div>
 
-      <ToolSettingsPanel
-        variant="v2"
-        nodeId={nodeId}
-        parameters={parameters}
-        workflows={workflows}
-        currentWorkflowId={currentWorkflowId}
-        onAgentWeatherToolChange={onAgentWeatherToolChange}
-        onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
-        onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
-        onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
-        onAgentMcpServersChange={onAgentMcpServersChange}
-        onStartMcpOAuth={onStartMcpOAuth}
-        onPollMcpOAuth={onPollMcpOAuth}
-        onCancelMcpOAuth={onCancelMcpOAuth}
-      />
+        <ToolSettingsPanel
+          variant="v2"
+          nodeId={nodeId}
+          parameters={parameters}
+          workflows={workflows}
+          currentWorkflowId={currentWorkflowId}
+          onAgentWeatherToolChange={onAgentWeatherToolChange}
+          onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
+          onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
+          onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+          onAgentMcpServersChange={onAgentMcpServersChange}
+          onStartMcpOAuth={onStartMcpOAuth}
+          onPollMcpOAuth={onPollMcpOAuth}
+          onCancelMcpOAuth={onCancelMcpOAuth}
+        />
+      </div>
     </div>
   );
 };
