@@ -1,0 +1,101 @@
+.tabsRoot {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.tabsList {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabsTrigger {
+  all: unset;
+  font-family: inherit;
+  background-color: transparent;
+  padding: 0.625rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  position: relative;
+}
+
+.tabsTrigger:hover {
+  color: #374151;
+  background-color: #f9fafb;
+}
+
+.tabsTrigger[data-state='active'] {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  font-weight: 500;
+}
+
+.tabsTrigger:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+.tabIcon {
+  flex-shrink: 0;
+}
+
+.tabBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  color: white;
+  background-color: #dc2626;
+  border-radius: 9999px;
+}
+
+.tabsContent {
+  flex: 1;
+  outline: none;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile optimization */
+@media (max-width: 768px) {
+  .tabsList {
+    gap: 0;
+  }
+
+  .tabsTrigger {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.813rem;
+  }
+
+  .tabIcon {
+    display: none;
+  }
+}
