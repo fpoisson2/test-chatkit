@@ -1,11 +1,11 @@
 import {
-  ChangeEvent,
-  FormEvent,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
@@ -20,8 +20,14 @@ import {
   isUnauthorizedError,
   ltiAdminApi,
 } from "../utils/backend";
+import {
+  adminLtiToolSettingsSchema,
+  adminLtiRegistrationSchema,
+  type AdminLtiToolSettingsFormData,
+  type AdminLtiRegistrationFormData,
+} from "../schemas/admin";
 
-const emptyRegistrationForm = () => ({
+const emptyRegistrationForm: AdminLtiRegistrationFormData = {
   issuer: "",
   clientId: "",
   keySetUrl: "",
@@ -29,10 +35,18 @@ const emptyRegistrationForm = () => ({
   tokenEndpoint: "",
   deepLinkReturnUrl: "",
   audience: "",
-});
+};
 
-const normalizeOptionalField = (value: string) => {
-  const trimmed = value.trim();
+const emptyToolSettingsForm: AdminLtiToolSettingsFormData = {
+  clientId: "",
+  keySetUrl: "",
+  audience: "",
+  keyId: "",
+  privateKey: "",
+};
+
+const normalizeOptionalField = (value: string | undefined) => {
+  const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 };
 
@@ -40,22 +54,37 @@ export const AdminLtiPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
 
+  // Registration Form - React Hook Form
+  const {
+    register: registerReg,
+    handleSubmit: handleRegSubmit,
+    formState: { errors: regErrors },
+    reset: resetRegForm,
+  } = useForm<AdminLtiRegistrationFormData>({
+    resolver: zodResolver(adminLtiRegistrationSchema),
+    defaultValues: emptyRegistrationForm,
+  });
+
+  // Tool Settings Form - React Hook Form
+  const {
+    register: registerTool,
+    handleSubmit: handleToolSubmit,
+    formState: { errors: toolErrors },
+    reset: resetToolForm,
+    setValue: setToolValue,
+  } = useForm<AdminLtiToolSettingsFormData>({
+    resolver: zodResolver(adminLtiToolSettingsSchema),
+    defaultValues: emptyToolSettingsForm,
+  });
+
   const [registrations, setRegistrations] = useState<LtiRegistration[]>([]);
   const [registrationsLoading, setRegistrationsLoading] = useState(true);
   const [registrationsError, setRegistrationsError] = useState<string | null>(null);
   const [registrationsSuccess, setRegistrationsSuccess] = useState<string | null>(null);
   const [editingRegistrationId, setEditingRegistrationId] = useState<number | null>(null);
-  const [registrationForm, setRegistrationForm] = useState(() => emptyRegistrationForm());
   const [isSavingRegistration, setSavingRegistration] = useState(false);
 
   const [toolSettings, setToolSettings] = useState<LtiToolSettings | null>(null);
-  const [toolForm, setToolForm] = useState({
-    clientId: "",
-    keySetUrl: "",
-    audience: "",
-    keyId: "",
-    privateKey: "",
-  });
   const [toolLoading, setToolLoading] = useState(true);
   const [toolError, setToolError] = useState<string | null>(null);
   const [toolSuccess, setToolSuccess] = useState<string | null>(null);
@@ -137,32 +166,27 @@ export const AdminLtiPage = () => {
 
   useEffect(() => {
     if (!toolSettings) {
-      setToolForm({ clientId: "", keySetUrl: "", audience: "", keyId: "", privateKey: "" });
+      resetToolForm(emptyToolSettingsForm);
       return;
     }
-    setToolForm((current) => ({
+    resetToolForm({
       clientId: toolSettings.client_id ?? "",
       keySetUrl: toolSettings.key_set_url ?? "",
       audience: toolSettings.audience ?? "",
       keyId: toolSettings.key_id ?? "",
-      privateKey: current.privateKey,
-    }));
-  }, [toolSettings]);
-
-  const handleRegistrationInputChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = event.target;
-    setRegistrationForm((prev) => ({ ...prev, [name]: value }));
-  };
+      privateKey: "", // Don't populate private key for security
+    });
+  }, [toolSettings, resetToolForm]);
 
   const resetRegistrationForm = useCallback(() => {
     setEditingRegistrationId(null);
-    setRegistrationForm(emptyRegistrationForm());
-  }, []);
+    resetRegForm(emptyRegistrationForm);
+  }, [resetRegForm]);
 
-  const handleEditRegistration = (entry: LtiRegistration) => {
+  const handleEditRegistration = useCallback((entry: LtiRegistration) => {
     setEditingRegistrationId(entry.id);
     setRegistrationsSuccess(null);
-    setRegistrationForm({
+    resetRegForm({
       issuer: entry.issuer,
       clientId: entry.client_id,
       keySetUrl: entry.key_set_url,
@@ -171,7 +195,7 @@ export const AdminLtiPage = () => {
       deepLinkReturnUrl: entry.deep_link_return_url ?? "",
       audience: entry.audience ?? "",
     });
-  };
+  }, [resetRegForm]);
 
   const handleDeleteRegistration = async (entry: LtiRegistration) => {
     if (!token) {
@@ -203,22 +227,9 @@ export const AdminLtiPage = () => {
     }
   };
 
-  const handleRegistrationSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleRegistrationSubmit = useCallback(async (data: AdminLtiRegistrationFormData) => {
     if (!token) {
       setRegistrationsError(t("admin.lti.registrations.errors.sessionExpired"));
-      return;
-    }
-
-    const requiredFields = [
-      registrationForm.issuer,
-      registrationForm.clientId,
-      registrationForm.keySetUrl,
-      registrationForm.authorizationEndpoint,
-      registrationForm.tokenEndpoint,
-    ];
-    if (requiredFields.some((value) => !value.trim())) {
-      setRegistrationsError(t("admin.lti.registrations.errors.missingFields"));
       return;
     }
 
@@ -227,13 +238,13 @@ export const AdminLtiPage = () => {
     setRegistrationsSuccess(null);
 
     const basePayload: LtiRegistrationCreatePayload = {
-      issuer: registrationForm.issuer.trim(),
-      client_id: registrationForm.clientId.trim(),
-      key_set_url: registrationForm.keySetUrl.trim(),
-      authorization_endpoint: registrationForm.authorizationEndpoint.trim(),
-      token_endpoint: registrationForm.tokenEndpoint.trim(),
-      deep_link_return_url: normalizeOptionalField(registrationForm.deepLinkReturnUrl),
-      audience: normalizeOptionalField(registrationForm.audience),
+      issuer: data.issuer,
+      client_id: data.clientId,
+      key_set_url: data.keySetUrl,
+      authorization_endpoint: data.authorizationEndpoint,
+      token_endpoint: data.tokenEndpoint,
+      deep_link_return_url: normalizeOptionalField(data.deepLinkReturnUrl),
+      audience: normalizeOptionalField(data.audience),
     };
 
     try {
@@ -277,37 +288,22 @@ export const AdminLtiPage = () => {
     } finally {
       setSavingRegistration(false);
     }
-  };
+  }, [token, editingRegistrationId, t, fetchRegistrations, resetRegistrationForm, logout]);
 
-  const handleToolInputChange = (
-    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => {
-    const { name, value } = event.target;
-    setToolForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleToolSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleToolFormSubmit = useCallback(async (data: AdminLtiToolSettingsFormData) => {
     if (!token) {
       setToolError(t("admin.lti.toolSettings.errors.sessionExpired"));
       return;
     }
 
-    const trimmedClientId = toolForm.clientId.trim();
-    const trimmedKeySetUrl = toolForm.keySetUrl.trim();
-    if (!trimmedClientId || !trimmedKeySetUrl) {
-      setToolError(t("admin.lti.registrations.errors.missingFields"));
-      return;
-    }
-
     const payload: LtiToolSettingsUpdatePayload = {
-      client_id: trimmedClientId,
-      key_set_url: trimmedKeySetUrl,
-      audience: normalizeOptionalField(toolForm.audience ?? ""),
-      key_id: normalizeOptionalField(toolForm.keyId ?? ""),
+      client_id: data.clientId,
+      key_set_url: data.keySetUrl,
+      audience: normalizeOptionalField(data.audience),
+      key_id: normalizeOptionalField(data.keyId),
     };
-    if (toolForm.privateKey.trim()) {
-      payload.private_key = toolForm.privateKey;
+    if (data.privateKey?.trim()) {
+      payload.private_key = data.privateKey;
     }
 
     setToolSaving(true);
@@ -317,7 +313,8 @@ export const AdminLtiPage = () => {
       const updated = await ltiAdminApi.updateToolSettings(token, payload);
       setToolSettings(updated);
       setToolSuccess(t("admin.lti.toolSettings.success"));
-      setToolForm((prev) => ({ ...prev, privateKey: "" }));
+      // Clear private key field after successful save
+      setToolValue("privateKey", "");
     } catch (error) {
       if (isUnauthorizedError(error)) {
         logout();
@@ -332,7 +329,7 @@ export const AdminLtiPage = () => {
     } finally {
       setToolSaving(false);
     }
-  };
+  }, [token, t, logout, setToolValue]);
 
   const tableRows = useMemo(() => {
     return registrations.map((entry) => (
@@ -452,18 +449,21 @@ export const AdminLtiPage = () => {
             {toolLoading ? (
               <p className="admin-form__hint">{t("admin.lti.registrations.table.loading")}</p>
             ) : (
-              <form className="admin-form" onSubmit={handleToolSubmit}>
+              <form className="admin-form" onSubmit={handleToolSubmit(handleToolFormSubmit)}>
                 <label className="admin-form__field">
                   <span className="admin-form__label">
                     {t("admin.lti.toolSettings.clientIdLabel")}
                   </span>
                   <input
                     type="text"
-                    name="clientId"
-                    value={toolForm.clientId}
-                    onChange={handleToolInputChange}
+                    {...registerTool("clientId")}
                     autoComplete="off"
                   />
+                  {toolErrors.clientId && (
+                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                      {toolErrors.clientId.message}
+                    </span>
+                  )}
                 </label>
                 <label className="admin-form__field">
                   <span className="admin-form__label">
@@ -471,11 +471,14 @@ export const AdminLtiPage = () => {
                   </span>
                   <input
                     type="url"
-                    name="keySetUrl"
-                    value={toolForm.keySetUrl}
-                    onChange={handleToolInputChange}
+                    {...registerTool("keySetUrl")}
                     autoComplete="off"
                   />
+                  {toolErrors.keySetUrl && (
+                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                      {toolErrors.keySetUrl.message}
+                    </span>
+                  )}
                 </label>
                 <label className="admin-form__field">
                   <span className="admin-form__label">
@@ -483,9 +486,7 @@ export const AdminLtiPage = () => {
                   </span>
                   <input
                     type="text"
-                    name="audience"
-                    value={toolForm.audience}
-                    onChange={handleToolInputChange}
+                    {...registerTool("audience")}
                     autoComplete="off"
                   />
                 </label>
@@ -495,9 +496,7 @@ export const AdminLtiPage = () => {
                   </span>
                   <input
                     type="text"
-                    name="keyId"
-                    value={toolForm.keyId}
-                    onChange={handleToolInputChange}
+                    {...registerTool("keyId")}
                     autoComplete="off"
                   />
                 </label>
@@ -506,9 +505,7 @@ export const AdminLtiPage = () => {
                     {t("admin.lti.toolSettings.privateKeyLabel")}
                   </span>
                   <textarea
-                    name="privateKey"
-                    value={toolForm.privateKey}
-                    onChange={handleToolInputChange}
+                    {...registerTool("privateKey")}
                     rows={5}
                   />
                   <span className="admin-form__hint">
@@ -571,18 +568,21 @@ export const AdminLtiPage = () => {
                   : t("admin.lti.registrations.form.createTitle")}
               </h2>
             </div>
-            <form className="admin-form" onSubmit={handleRegistrationSubmit}>
+            <form className="admin-form" onSubmit={handleRegSubmit(handleRegistrationSubmit)}>
               <label className="admin-form__field">
                 <span className="admin-form__label">
                   {t("admin.lti.registrations.form.issuerLabel")}
                 </span>
                 <input
                   type="url"
-                  name="issuer"
-                  value={registrationForm.issuer}
-                  onChange={handleRegistrationInputChange}
+                  {...registerReg("issuer")}
                   autoComplete="off"
                 />
+                {regErrors.issuer && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                    {regErrors.issuer.message}
+                  </span>
+                )}
               </label>
               <label className="admin-form__field">
                 <span className="admin-form__label">
@@ -590,11 +590,14 @@ export const AdminLtiPage = () => {
                 </span>
                 <input
                   type="text"
-                  name="clientId"
-                  value={registrationForm.clientId}
-                  onChange={handleRegistrationInputChange}
+                  {...registerReg("clientId")}
                   autoComplete="off"
                 />
+                {regErrors.clientId && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                    {regErrors.clientId.message}
+                  </span>
+                )}
               </label>
               <label className="admin-form__field">
                 <span className="admin-form__label">
@@ -602,11 +605,14 @@ export const AdminLtiPage = () => {
                 </span>
                 <input
                   type="url"
-                  name="keySetUrl"
-                  value={registrationForm.keySetUrl}
-                  onChange={handleRegistrationInputChange}
+                  {...registerReg("keySetUrl")}
                   autoComplete="off"
                 />
+                {regErrors.keySetUrl && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                    {regErrors.keySetUrl.message}
+                  </span>
+                )}
               </label>
               <label className="admin-form__field">
                 <span className="admin-form__label">
@@ -614,11 +620,14 @@ export const AdminLtiPage = () => {
                 </span>
                 <input
                   type="url"
-                  name="authorizationEndpoint"
-                  value={registrationForm.authorizationEndpoint}
-                  onChange={handleRegistrationInputChange}
+                  {...registerReg("authorizationEndpoint")}
                   autoComplete="off"
                 />
+                {regErrors.authorizationEndpoint && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                    {regErrors.authorizationEndpoint.message}
+                  </span>
+                )}
               </label>
               <label className="admin-form__field">
                 <span className="admin-form__label">
@@ -626,11 +635,14 @@ export const AdminLtiPage = () => {
                 </span>
                 <input
                   type="url"
-                  name="tokenEndpoint"
-                  value={registrationForm.tokenEndpoint}
-                  onChange={handleRegistrationInputChange}
+                  {...registerReg("tokenEndpoint")}
                   autoComplete="off"
                 />
+                {regErrors.tokenEndpoint && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                    {regErrors.tokenEndpoint.message}
+                  </span>
+                )}
               </label>
               <label className="admin-form__field">
                 <span className="admin-form__label">
@@ -638,9 +650,7 @@ export const AdminLtiPage = () => {
                 </span>
                 <input
                   type="url"
-                  name="deepLinkReturnUrl"
-                  value={registrationForm.deepLinkReturnUrl}
-                  onChange={handleRegistrationInputChange}
+                  {...registerReg("deepLinkReturnUrl")}
                   autoComplete="off"
                 />
               </label>
@@ -650,9 +660,7 @@ export const AdminLtiPage = () => {
                 </span>
                 <input
                   type="text"
-                  name="audience"
-                  value={registrationForm.audience}
-                  onChange={handleRegistrationInputChange}
+                  {...registerReg("audience")}
                   autoComplete="off"
                 />
               </label>

@@ -113,3 +113,28 @@ export const adminTelephonySchema = z.object({
 });
 
 export type AdminTelephonyFormData = z.infer<typeof adminTelephonySchema>;
+
+/**
+ * Admin LTI Page Schemas
+ */
+export const adminLtiToolSettingsSchema = z.object({
+  clientId: trimmedNonEmptyString,
+  keySetUrl: urlSchema,
+  audience: z.string().optional(),
+  keyId: z.string().optional(),
+  privateKey: z.string().optional()
+});
+
+export type AdminLtiToolSettingsFormData = z.infer<typeof adminLtiToolSettingsSchema>;
+
+export const adminLtiRegistrationSchema = z.object({
+  issuer: urlSchema,
+  clientId: trimmedNonEmptyString,
+  keySetUrl: urlSchema,
+  authorizationEndpoint: urlSchema,
+  tokenEndpoint: urlSchema,
+  deepLinkReturnUrl: optionalUrlSchema,
+  audience: z.string().optional()
+});
+
+export type AdminLtiRegistrationFormData = z.infer<typeof adminLtiRegistrationSchema>;
