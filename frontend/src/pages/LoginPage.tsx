@@ -7,6 +7,7 @@ import { AuthUser, useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
 import { useI18n } from "../i18n";
 import { loginFormSchema, type LoginFormData } from "../schemas/auth";
+import { ErrorAlert } from "../components";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
@@ -138,7 +139,7 @@ export const LoginPage = () => {
           </label>
         </div>
 
-        {error && <div className="alert alert--danger">{error}</div>}
+        {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
 
         <button className="button" type="submit" disabled={isSubmitting}>
           {isSubmitting ? t("auth.login.submit.loading") : t("auth.login.submit.label")}
