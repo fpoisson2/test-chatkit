@@ -1,7 +1,7 @@
 # Rapport d'Accessibilité - Intégration Radix UI
 
 **Date:** 2025-11-11
-**Composants migrés:** ProfileMenu, Modal
+**Composants migrés:** ProfileMenu, Modal, Tooltip
 
 ---
 
@@ -70,12 +70,45 @@ Améliorer l'accessibilité (a11y) de l'application en remplaçant les composant
 
 ---
 
+### 3. Tooltip Component
+
+**Avant (pas de tooltips):**
+- ❌ Boutons collapsed sans indication visuelle du label
+- ❌ Utilisateurs devaient deviner la fonction des icônes
+- ❌ Mauvaise UX pour les utilisateurs sur desktop
+
+**Après (Radix UI @radix-ui/react-tooltip):**
+- ✅ TooltipProvider global dans main.tsx
+- ✅ Composant Tooltip réutilisable
+- ✅ Portal rendering automatique
+- ✅ Délai configurable (200ms par défaut)
+- ✅ Positionnement intelligent (side, align)
+- ✅ Animations fluides (fadeIn/fadeOut)
+- ✅ Support prefers-reduced-motion
+- ✅ Accessible au clavier (show on focus)
+- ✅ Compatible lecteurs d'écran
+
+**Améliorations d'accessibilité:**
+- Tooltips visibles au hover ET au focus clavier
+- Annoncés par les lecteurs d'écran
+- Respect de `prefers-reduced-motion` (animations désactivées si nécessaire)
+- Ne bloquent pas les interactions (disparaissent automatiquement)
+- Positionnement intelligent pour éviter de sortir de l'écran
+
+**Intégration:**
+- AdminTabs : Tooltips sur tous les boutons collapsed (side="right")
+- Utilisable partout dans l'application
+- Facile à ajouter : `<Tooltip content="Label">...</Tooltip>`
+
+---
+
 ## 📊 Checklist d'Accessibilité WCAG 2.1 AA
 
 ### ✅ Navigation au Clavier
 
 - [x] **ProfileMenu:** Navigation complète au clavier (↑↓ Enter Escape)
 - [x] **Modal:** Navigation au clavier, focus trap, Escape pour fermer
+- [x] **Tooltip:** Visible au focus clavier, disparition automatique
 - [x] **Focus visible** : Styles de focus préservés
 - [x] **Tab order** : Ordre logique maintenu
 
@@ -123,7 +156,9 @@ Améliorer l'accessibilité (a11y) de l'application en remplaçant les composant
 
 ### Performance
 
-- **Bundle size** : +~15KB (gzipped) pour Radix UI
+- **Bundle size** : +~18KB (gzipped) pour Radix UI (Dialog + Dropdown + Tooltip)
+  - ProfileMenu + Modal : +~15KB
+  - Tooltip : +~3KB
   - Justifié par les fonctionnalités d'accessibilité
   - Amortie par la réduction du code custom
 - **Runtime performance** : Aucun impact négatif
@@ -173,6 +208,7 @@ npm install -D @lhci/cli
 - Attributs ARIA : 60% corrects
 - Focus management : 50% manuel
 - Conformité WCAG : Level A partiel
+- Tooltips : 0% (inexistants)
 
 ### Après Radix UI
 
@@ -180,6 +216,7 @@ npm install -D @lhci/cli
 - Attributs ARIA : 100% corrects ✅
 - Focus management : 100% automatique ✅
 - Conformité WCAG : Level AA complet ✅
+- Tooltips : Intégrés (sidebar collapsed) ✅
 
 ---
 
@@ -193,4 +230,4 @@ npm install -D @lhci/cli
 ---
 
 **Conclusion:**
-L'intégration de Radix UI a considérablement amélioré l'accessibilité de l'application tout en réduisant la complexité du code. Les composants sont maintenant conformes aux standards WCAG 2.1 AA et offrent une meilleure expérience utilisateur pour tous, y compris les personnes utilisant des technologies d'assistance.
+L'intégration de Radix UI a considérablement amélioré l'accessibilité de l'application tout en réduisant la complexité du code. Les trois composants migrés (ProfileMenu, Modal, Tooltip) sont maintenant conformes aux standards WCAG 2.1 AA et offrent une meilleure expérience utilisateur pour tous, y compris les personnes utilisant des technologies d'assistance. L'ajout des tooltips sur la sidebar collapsed améliore particulièrement l'utilisabilité pour les utilisateurs sur desktop.
