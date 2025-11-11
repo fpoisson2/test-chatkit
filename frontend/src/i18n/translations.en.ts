@@ -125,6 +125,16 @@ export const en: TranslationDictionary = {
   "admin.lti.toolSettings.title": "Tool key configuration",
   "admin.lti.toolSettings.subtitle":
     "Set the client credentials and private key used by ChatKit as an LTI tool.",
+  "admin.lti.toolSettings.keys.title": "LTI key pair",
+  "admin.lti.toolSettings.keys.subtitle":
+    "The server exposes the tool key paths and current public key below.",
+  "admin.lti.toolSettings.keys.privateKeyPath": "Private key",
+  "admin.lti.toolSettings.keys.publicKeyPath": "Public key",
+  "admin.lti.toolSettings.keys.lastUpdated": "Last updated",
+  "admin.lti.toolSettings.keys.publicKeyHeading": "Current public key",
+  "admin.lti.toolSettings.keys.readOnlyNotice":
+    "These keys are managed in read-only mode from the server configuration.",
+  "admin.lti.toolSettings.keys.noData": "Not available",
   "admin.lti.toolSettings.clientIdLabel": "Tool client ID",
   "admin.lti.toolSettings.keySetUrlLabel": "Tool JWKS URL",
   "admin.lti.toolSettings.audienceLabel": "Tool audience",

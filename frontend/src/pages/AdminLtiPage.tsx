@@ -61,6 +61,18 @@ export const AdminLtiPage = () => {
   const [toolSuccess, setToolSuccess] = useState<string | null>(null);
   const [toolSaving, setToolSaving] = useState(false);
 
+  const formattedPublicKeyUpdatedAt = useMemo(() => {
+    const raw = toolSettings?.public_key_last_updated_at;
+    if (!raw) {
+      return null;
+    }
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      return raw;
+    }
+    return parsed.toLocaleString();
+  }, [toolSettings?.public_key_last_updated_at]);
+
   const fetchRegistrations = useCallback(async () => {
     if (!token) {
       setRegistrations([]);
@@ -371,6 +383,65 @@ export const AdminLtiPage = () => {
         )}
 
         <div className="admin-grid">
+          <section className="admin-card">
+            <div>
+              <h2 className="admin-card__title">{t("admin.lti.toolSettings.keys.title")}</h2>
+              <p className="admin-card__subtitle">
+                {t("admin.lti.toolSettings.keys.subtitle")}
+              </p>
+            </div>
+            {toolLoading ? (
+              <p className="admin-form__hint">{t("admin.lti.registrations.table.loading")}</p>
+            ) : (
+              <>
+                <div className="admin-key-details">
+                  <div className="admin-key-details__row">
+                    <span className="admin-key-details__label">
+                      {t("admin.lti.toolSettings.keys.privateKeyPath")}
+                    </span>
+                    <span className="admin-key-details__value">
+                      {toolSettings?.private_key_path ??
+                        t("admin.lti.toolSettings.keys.noData")}
+                    </span>
+                  </div>
+                  <div className="admin-key-details__row">
+                    <span className="admin-key-details__label">
+                      {t("admin.lti.toolSettings.keys.publicKeyPath")}
+                    </span>
+                    <span className="admin-key-details__value">
+                      {toolSettings?.public_key_path ??
+                        t("admin.lti.toolSettings.keys.noData")}
+                    </span>
+                  </div>
+                  <div className="admin-key-details__row">
+                    <span className="admin-key-details__label">
+                      {t("admin.lti.toolSettings.keys.lastUpdated")}
+                    </span>
+                    <span className="admin-key-details__value">
+                      {toolSettings?.public_key_last_updated_at
+                        ? formattedPublicKeyUpdatedAt ??
+                          toolSettings.public_key_last_updated_at
+                        : t("admin.lti.toolSettings.keys.noData")}
+                    </span>
+                  </div>
+                </div>
+                {toolSettings?.public_key_pem ? (
+                  <div className="admin-key-details__public-key">
+                    <span className="admin-key-details__label admin-key-details__label--block">
+                      {t("admin.lti.toolSettings.keys.publicKeyHeading")}
+                    </span>
+                    <pre className="code-block admin-key-details__code">
+                      {toolSettings.public_key_pem}
+                    </pre>
+                  </div>
+                ) : null}
+                <p className="admin-form__hint">
+                  {t("admin.lti.toolSettings.keys.readOnlyNotice")}
+                </p>
+              </>
+            )}
+          </section>
+
           <section className="admin-card">
             <div>
               <h2 className="admin-card__title">{t("admin.lti.toolSettings.title")}</h2>

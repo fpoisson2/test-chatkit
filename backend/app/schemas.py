@@ -629,6 +629,10 @@ class LtiToolSettingsResponse(BaseModel):
     key_id: str | None
     has_private_key: bool
     private_key_hint: str | None
+    private_key_path: str | None = None
+    public_key_path: str | None = None
+    public_key_pem: str | None = None
+    public_key_last_updated_at: datetime.datetime | None = None
     is_client_id_overridden: bool
     is_key_set_url_overridden: bool
     is_audience_overridden: bool

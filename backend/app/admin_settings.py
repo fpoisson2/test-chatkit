@@ -6,6 +6,7 @@ import logging
 import math
 import re
 import uuid
+from pathlib import Path
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -1403,6 +1404,38 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
     if resolved_private_key:
         private_key_hint = _mask_secret(resolved_private_key)
 
+    private_key_path = runtime_settings.lti_tool_private_key_path
+    public_key_path = runtime_settings.lti_tool_public_key_path
+    public_key_pem = None
+    public_key_last_updated_at: datetime.datetime | None = None
+
+    if public_key_path:
+        key_path = Path(public_key_path).expanduser()
+        try:
+            public_key_pem = key_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            logger.warning("Clé publique LTI introuvable : %s", key_path)
+        except OSError as exc:  # pragma: no cover - accès fichier improbable
+            logger.warning(
+                "Lecture de la clé publique LTI impossible (%s) : %s",
+                key_path,
+                exc,
+            )
+        else:
+            try:
+                stat_result = key_path.stat()
+            except OSError as exc:  # pragma: no cover - accès fichier improbable
+                logger.debug(
+                    "Impossible de récupérer la date de modification de la clé publique LTI (%s): %s",
+                    key_path,
+                    exc,
+                )
+            else:
+                public_key_last_updated_at = datetime.datetime.fromtimestamp(
+                    stat_result.st_mtime,
+                    datetime.UTC,
+                )
+
     return {
         "client_id": resolved_client_id,
         "key_set_url": resolved_key_set_url,
@@ -1417,6 +1450,10 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
         "is_private_key_overridden": bool(stored_private_key),
         "created_at": settings.created_at if settings else None,
         "updated_at": settings.updated_at if settings else None,
+        "private_key_path": private_key_path,
+        "public_key_path": public_key_path,
+        "public_key_pem": public_key_pem,
+        "public_key_last_updated_at": public_key_last_updated_at,
     }
 
 

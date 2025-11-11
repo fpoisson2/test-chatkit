@@ -265,6 +265,10 @@ export type LtiToolSettings = {
   key_id: string | null;
   has_private_key: boolean;
   private_key_hint: string | null;
+   private_key_path: string | null;
+   public_key_path: string | null;
+   public_key_pem: string | null;
+   public_key_last_updated_at: string | null;
   is_client_id_overridden: boolean;
   is_key_set_url_overridden: boolean;
   is_audience_overridden: boolean;
