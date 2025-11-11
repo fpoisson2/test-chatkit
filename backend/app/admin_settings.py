@@ -6,8 +6,8 @@ import logging
 import math
 import re
 import uuid
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlparse
@@ -20,6 +20,7 @@ from .config import (
     DEFAULT_THREAD_TITLE_MODEL,
     DEFAULT_THREAD_TITLE_PROMPT,
     ModelProviderConfig,
+    ensure_lti_key_material,
     get_settings,
     set_runtime_settings_overrides,
 )
@@ -1402,17 +1403,22 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
 
     private_key_hint = None
     if resolved_private_key:
-        private_key_hint = _mask_secret(resolved_private_key)
+        private_key_hint = _mask_secret(resolved_private_key.strip())
 
-    private_key_path = runtime_settings.lti_tool_private_key_path
-    public_key_path = runtime_settings.lti_tool_public_key_path
-    public_key_pem = None
+    (
+        private_key_path,
+        public_key_path,
+        generated_public_key,
+    ) = _ensure_managed_lti_key_files(runtime_settings)
+
+    public_key_pem = generated_public_key
     public_key_last_updated_at: datetime.datetime | None = None
 
     if public_key_path:
         key_path = Path(public_key_path).expanduser()
         try:
-            public_key_pem = key_path.read_text(encoding="utf-8")
+            if public_key_pem is None:
+                public_key_pem = key_path.read_text(encoding="utf-8")
         except FileNotFoundError:
             logger.warning("Clé publique LTI introuvable : %s", key_path)
         except OSError as exc:  # pragma: no cover - accès fichier improbable
@@ -1426,7 +1432,10 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
                 stat_result = key_path.stat()
             except OSError as exc:  # pragma: no cover - accès fichier improbable
                 logger.debug(
-                    "Impossible de récupérer la date de modification de la clé publique LTI (%s): %s",
+                    (
+                        "Impossible de récupérer la date de modification de la clé "
+                        "publique LTI (%s): %s"
+                    ),
                     key_path,
                     exc,
                 )
@@ -1455,6 +1464,44 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
         "public_key_pem": public_key_pem,
         "public_key_last_updated_at": public_key_last_updated_at,
     }
+
+
+def _ensure_managed_lti_key_files(
+    settings: Any,
+) -> tuple[str | None, str | None, str | None]:
+    private_path_str = getattr(settings, "lti_tool_private_key_path", None)
+    public_path_str = getattr(settings, "lti_tool_public_key_path", None)
+
+    if not private_path_str or not public_path_str:
+        return private_path_str, public_path_str, None
+
+    private_path = Path(private_path_str).expanduser()
+    public_path = Path(public_path_str).expanduser()
+
+    try:
+        private_path.parent.mkdir(parents=True, exist_ok=True)
+        public_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:  # pragma: no cover - accès disque improbable
+        logger.warning(
+            "Impossible de préparer le dossier des clés LTI (%s, %s) : %s",
+            private_path,
+            public_path,
+            exc,
+        )
+        return str(private_path), str(public_path), None
+
+    private_key = getattr(settings, "lti_tool_private_key", None)
+
+    private_pem, public_pem = ensure_lti_key_material(
+        private_path,
+        public_path,
+        private_key,
+    )
+
+    if private_pem is None:
+        return str(private_path), str(public_path), None
+
+    return str(private_path), str(public_path), public_pem
 
 
 def update_lti_tool_settings(

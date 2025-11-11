@@ -212,3 +212,49 @@ def test_set_runtime_settings_overrides_applies_custom_provider() -> None:
     assert overridden.model_providers[0].id == "litellm-managed"
 
     config_module.set_runtime_settings_overrides(None)
+
+
+def test_settings_default_lti_key_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env = _base_env()
+    env["OPENAI_API_KEY"] = "sk-test"
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    settings = Settings.from_env(env)
+
+    expected_dir = tmp_path / ".chatkit" / "lti"
+    assert settings.lti_tool_private_key_path == str(
+        expected_dir / config_module.DEFAULT_LTI_PRIVATE_KEY_FILENAME
+    )
+    assert settings.lti_tool_public_key_path == str(
+        expected_dir / config_module.DEFAULT_LTI_PUBLIC_KEY_FILENAME
+    )
+
+
+def test_settings_generates_lti_keys_when_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env = _base_env()
+    env["OPENAI_API_KEY"] = "sk-test"
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CHATKIT_LTI_KEYS_DIR", raising=False)
+    monkeypatch.delenv("LTI_TOOL_PRIVATE_KEY", raising=False)
+
+    settings = Settings.from_env(env)
+
+    private_path = Path(settings.lti_tool_private_key_path)
+    public_path = Path(settings.lti_tool_public_key_path)
+
+    assert private_path.exists()
+    assert public_path.exists()
+
+    private_content = private_path.read_text(encoding="utf-8").strip()
+    public_content = public_path.read_text(encoding="utf-8").strip()
+
+    assert private_content
+    assert public_content.startswith("-----BEGIN PUBLIC KEY-----")
+    assert settings.lti_tool_private_key is not None
+    assert settings.lti_tool_private_key.strip() == private_content
