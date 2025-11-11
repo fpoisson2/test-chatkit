@@ -7,7 +7,7 @@ import { WidgetTemplateForm } from "../components/WidgetTemplateForm";
 import { WidgetTemplateGallery } from "../components/WidgetTemplateGallery";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { AdminTabs } from "../components/AdminTabs";
-import { FeedbackMessages } from "../components";
+import { FeedbackMessages, FormSection } from "../components";
 import {
   ApiError,
   isUnauthorizedError,
@@ -156,19 +156,6 @@ export const WidgetLibraryPage = () => {
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="widgets" />}
-      actions={
-        <button
-          type="button"
-          className="management-header__icon-button"
-          aria-label="Créer un nouveau widget"
-          title="Nouveau widget"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <svg aria-hidden={true} width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
-      }
     >
       <FeedbackMessages
         error={error}
@@ -177,20 +164,46 @@ export const WidgetLibraryPage = () => {
         onDismissSuccess={() => setSuccess(null)}
       />
 
-      <div className="widget-library">
-        <WidgetTemplateGallery
-          widgets={widgets}
-          isLoading={isLoading}
-          onPreview={(widget) =>
-            setPreviewData({
-              title: `Widget « ${widget.title ?? widget.slug} »`,
-              subtitle: widget.slug,
-              definition: widget.definition,
-            })
+      <div className="admin-grid">
+        <FormSection
+          title="Bibliothèque de widgets"
+          subtitle="Gérez vos widgets personnalisés pour enrichir vos workflows"
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label="Créer un nouveau widget"
+              title="Nouveau widget"
+              onClick={() => setShowCreateModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
           }
-          onEdit={(widget) => setEditingWidget(widget)}
-          onDelete={handleDelete}
-        />
+        >
+          <div className="widget-library">
+            <WidgetTemplateGallery
+              widgets={widgets}
+              isLoading={isLoading}
+              onPreview={(widget) =>
+                setPreviewData({
+                  title: `Widget « ${widget.title ?? widget.slug} »`,
+                  subtitle: widget.slug,
+                  definition: widget.definition,
+                })
+              }
+              onEdit={(widget) => setEditingWidget(widget)}
+              onDelete={handleDelete}
+            />
+          </div>
+        </FormSection>
       </div>
 
       {showCreateModal ? (

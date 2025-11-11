@@ -254,25 +254,6 @@ export const AdminModelProvidersPage = () => {
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="providers" />}
-      actions={
-        <button
-          type="button"
-          className="management-header__icon-button"
-          aria-label="Configurer un fournisseur"
-          title="Configurer un fournisseur"
-          onClick={() => setShowConfigModal(true)}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 4v12M4 10h12"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      }
     >
       <FeedbackMessages
         error={error}
@@ -285,6 +266,25 @@ export const AdminModelProvidersPage = () => {
         <FormSection
           title={t("admin.appSettings.model.cardTitle")}
           subtitle={t("admin.appSettings.model.cardDescription")}
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label="Configurer un fournisseur"
+              title="Configurer un fournisseur"
+              onClick={() => setShowConfigModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
         >
           {isLoading ? (
             <p>Chargement de la configuration...</p>

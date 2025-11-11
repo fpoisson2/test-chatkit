@@ -10,7 +10,7 @@ import { VectorStoreSearchResults } from "../components/VectorStoreSearchResults
 import { VectorStoreTable } from "../components/VectorStoreTable";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { AdminTabs } from "../components/AdminTabs";
-import { LoadingSpinner, ErrorAlert, FeedbackMessages } from "../components";
+import { LoadingSpinner, ErrorAlert, FeedbackMessages, FormSection } from "../components";
 import { useI18n } from "../i18n";
 import {
   type VectorStoreDocument,
@@ -314,24 +314,6 @@ export const VectorStoresPage = () => {
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="vector-stores" />}
-      actions={
-        <button
-          className="management-header__icon-button"
-          type="button"
-          aria-label="Créer un vector store"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 4v12M4 10h12"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      }
     >
       <FeedbackMessages
         error={error}
@@ -340,14 +322,40 @@ export const VectorStoresPage = () => {
         onDismissSuccess={() => setSuccess(null)}
       />
 
-      <VectorStoreTable
-        stores={stores}
-        isLoading={isLoading}
-        onIngest={openIngestionModal}
-        onSearch={openSearchModal}
-        onDocuments={openDocumentsModal}
-        onDelete={handleDeleteStore}
-      />
+      <div className="admin-grid">
+        <FormSection
+          title="Vector Stores"
+          subtitle="Gérez vos espaces de stockage vectoriel pour l'ingestion de documents"
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label="Créer un vector store"
+              title="Créer un vector store"
+              onClick={() => setShowCreateModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
+        >
+          <VectorStoreTable
+            stores={stores}
+            isLoading={isLoading}
+            onIngest={openIngestionModal}
+            onSearch={openSearchModal}
+            onDocuments={openDocumentsModal}
+            onDelete={handleDeleteStore}
+          />
+        </FormSection>
+      </div>
 
       {showCreateModal ? (
         <Modal title="Créer un vector store" onClose={() => setShowCreateModal(false)}>

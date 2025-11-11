@@ -77,17 +77,6 @@ export function SettingsPage() {
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="preferences" />}
-      actions={
-        sections.length > 0 ? (
-          <button
-            type="button"
-            className="button button--ghost"
-            onClick={handleOpenModal}
-          >
-            {t("settings.modal.title")}
-          </button>
-        ) : null
-      }
     >
         <div className="admin-grid">
           {activeSection?.id === "preferences" ? (

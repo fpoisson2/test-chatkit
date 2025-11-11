@@ -413,28 +413,7 @@ export const AdminLtiPage = () => {
 
   return (
     <ManagementPageLayout
-      title={t("admin.lti.page.title")}
-      subtitle={t("admin.lti.page.subtitle")}
       tabs={<AdminTabs activeTab="lti" />}
-      actions={
-        <button
-          type="button"
-          className="management-header__icon-button"
-          aria-label="Ajouter une registration LTI"
-          title="Ajouter une registration LTI"
-          onClick={() => setShowCreateRegistrationModal(true)}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 4v12M4 10h12"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      }
     >
       <FeedbackMessages
         error={toolError || registrationsError}
@@ -588,6 +567,25 @@ export const AdminLtiPage = () => {
           title={t("admin.lti.registrations.title")}
           subtitle={t("admin.lti.registrations.subtitle")}
           className="admin-card--wide"
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label="Ajouter une registration LTI"
+              title="Ajouter une registration LTI"
+              onClick={() => setShowCreateRegistrationModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
         >
           {registrationsLoading ? (
             <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />

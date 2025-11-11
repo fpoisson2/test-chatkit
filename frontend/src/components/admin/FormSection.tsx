@@ -5,6 +5,7 @@ export interface FormSectionProps {
   subtitle?: string;
   children: ReactNode;
   className?: string;
+  headerAction?: ReactNode;
 }
 
 /**
@@ -18,6 +19,7 @@ export interface FormSectionProps {
  * <FormSection
  *   title="User Information"
  *   subtitle="Enter the user's basic information"
+ *   headerAction={<button>+</button>}
  * >
  *   <form className="admin-form">
  *     {/* form fields *\/}
@@ -30,13 +32,27 @@ export const FormSection = ({
   subtitle,
   children,
   className = "",
+  headerAction,
 }: FormSectionProps) => {
   return (
     <section className={`admin-card ${className}`.trim()}>
-      {(title || subtitle) && (
-        <div>
-          {title && <h2 className="admin-card__title">{title}</h2>}
-          {subtitle && <p className="admin-card__subtitle">{subtitle}</p>}
+      {(title || subtitle || headerAction) && (
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "1rem",
+          marginBottom: (title || subtitle) ? "1.5rem" : "0"
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {title && <h2 className="admin-card__title">{title}</h2>}
+            {subtitle && <p className="admin-card__subtitle">{subtitle}</p>}
+          </div>
+          {headerAction && (
+            <div style={{ flexShrink: 0 }}>
+              {headerAction}
+            </div>
+          )}
         </div>
       )}
       {children}

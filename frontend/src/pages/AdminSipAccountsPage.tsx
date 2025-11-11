@@ -219,25 +219,6 @@ export const AdminSipAccountsPage = () => {
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="sip-accounts" />}
-      actions={
-        <button
-          type="button"
-          className="management-header__icon-button"
-          aria-label="Ajouter un compte SIP"
-          title="Ajouter un compte SIP"
-          onClick={handleCreateAccount}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 4v12M4 10h12"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      }
     >
       <FeedbackMessages
         error={error}
@@ -379,6 +360,25 @@ export const AdminSipAccountsPage = () => {
         <FormSection
             title="Comptes SIP"
             subtitle="Gérez les comptes SIP pour connecter ChatKit à vos trunks téléphoniques. Chaque compte peut être associé à des workflows spécifiques."
+            headerAction={
+              <button
+                type="button"
+                className="management-header__icon-button"
+                aria-label="Ajouter un compte SIP"
+                title="Ajouter un compte SIP"
+                onClick={handleCreateAccount}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="M10 4v12M4 10h12"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            }
           >
             {isLoading ? (
               <LoadingSpinner text="Chargement des comptes SIP…" />

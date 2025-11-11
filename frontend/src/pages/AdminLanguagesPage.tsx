@@ -375,8 +375,6 @@ export const AdminLanguagesPage = () => {
 
   return (
     <ManagementPageLayout
-      title={t("admin.languages.page.title")}
-      subtitle={t("admin.languages.page.subtitle")}
       tabs={<AdminTabs activeTab="languages" />}
     >
       <FeedbackMessages

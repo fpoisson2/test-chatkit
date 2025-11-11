@@ -455,25 +455,6 @@ export const AdminModelsPage = () => {
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="models" />}
-      actions={
-        <button
-          type="button"
-          className="management-header__icon-button"
-          aria-label="Ajouter un modèle"
-          title="Ajouter un modèle"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 4v12M4 10h12"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      }
     >
       <FeedbackMessages
         error={error}
@@ -587,6 +568,25 @@ export const AdminModelsPage = () => {
         <FormSection
           title="Modèles autorisés"
           subtitle="Consultez la liste des modèles disponibles et supprimez ceux qui ne doivent plus apparaître dans le workflow builder."
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label="Ajouter un modèle"
+              title="Ajouter un modèle"
+              onClick={() => setShowCreateModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
         >
           {isLoading ? (
             <LoadingSpinner text="Chargement des modèles…" />

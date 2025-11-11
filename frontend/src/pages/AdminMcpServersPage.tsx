@@ -777,28 +777,7 @@ export const AdminMcpServersPage = () => {
 
   return (
     <ManagementPageLayout
-      title={t("admin.mcpServers.page.title")}
-      subtitle={t("admin.mcpServers.page.subtitle")}
       tabs={<AdminTabs activeTab="mcp-servers" />}
-      actions={
-        <button
-          type="button"
-          className="management-header__icon-button"
-          aria-label="Ajouter un serveur MCP"
-          title="Ajouter un serveur MCP"
-          onClick={handleCreate}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 4v12M4 10h12"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      }
     >
       <FeedbackMessages
         error={error}
@@ -812,6 +791,25 @@ export const AdminMcpServersPage = () => {
           title={t("admin.mcpServers.list.title")}
           subtitle={t("admin.mcpServers.list.subtitle")}
           className="admin-card--wide"
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label="Ajouter un serveur MCP"
+              title="Ajouter un serveur MCP"
+              onClick={handleCreate}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
         >
           {loading ? (
             <LoadingSpinner text={t("admin.mcpServers.list.loading")} />

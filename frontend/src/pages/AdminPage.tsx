@@ -222,25 +222,6 @@ export const AdminPage = () => {
   return (
     <ManagementPageLayout
       tabs={<AdminTabs activeTab="users" />}
-      actions={
-        <button
-          type="button"
-          className="management-header__icon-button"
-          aria-label="Créer un utilisateur"
-          title="Créer un utilisateur"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 4v12M4 10h12"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      }
     >
       <FeedbackMessages
         error={error}
@@ -251,6 +232,25 @@ export const AdminPage = () => {
         <FormSection
           title="Utilisateurs"
           subtitle="Consultez les accès existants et appliquez des actions rapides pour chaque compte."
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label="Créer un utilisateur"
+              title="Créer un utilisateur"
+              onClick={() => setShowCreateModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
         >
           {isLoading ? (
             <LoadingSpinner text="Chargement des utilisateurs…" />
