@@ -129,6 +129,11 @@ import useWorkflowPersistence from "./hooks/useWorkflowPersistence";
 import { useWorkflowLoader } from "./hooks/useWorkflowLoader";
 import { useWorkflowCRUD } from "./hooks/useWorkflowCRUD";
 import { useWorkflowDeployment } from "./hooks/useWorkflowDeployment";
+import { useEdgeHandlers } from "./hooks/useEdgeHandlers";
+import { useElementDeletion } from "./hooks/useElementDeletion";
+import { useNodeOperations } from "./hooks/useNodeOperations";
+import { useWorkflowSelection } from "./hooks/useWorkflowSelection";
+import { useWorkflowValidation } from "./hooks/useWorkflowValidation";
 import { parseWorkflowImport } from "./importWorkflow";
 import WorkflowAppearanceModal, {
   type WorkflowAppearanceTarget,
@@ -388,7 +393,7 @@ const WorkflowBuilderPage = () => {
         }),
       } satisfies FlowNode;
     },
-    [buildNodeStyle],
+    [],
   );
 
   const decorateNodes = useCallback(
@@ -767,6 +772,25 @@ const WorkflowBuilderPage = () => {
     copySequenceRef,
   });
 
+  // Phase 7: Extract edge handlers into custom hook
+  const { handleConditionChange, handleEdgeLabelChange } = useEdgeHandlers({
+    setEdges,
+    updateHasPendingChanges,
+  });
+
+  // Phase 7: Extract element deletion into custom hook
+  const { handleRemoveNode, handleRemoveEdge } = useElementDeletion({
+    nodesRef,
+    selectedNodeId,
+    selectedEdgeId,
+    setSelectedNodeId,
+    setSelectedEdgeId,
+    setEdges,
+    removeElements,
+    updateHasPendingChanges,
+    t,
+  });
+
   const renderWorkflowDescription = (className?: string) =>
     selectedWorkflow?.description ? (
       <div
@@ -1134,24 +1158,7 @@ const WorkflowBuilderPage = () => {
     },
   );
 
-  const updateNodeData = useCallback(
-    (nodeId: string, updater: (data: FlowNodeData) => FlowNodeData) => {
-      setNodes((current) =>
-        current.map((node) => {
-          if (node.id !== nodeId) {
-            return node;
-          }
-          const nextData = updater(node.data);
-          return decorateNode({
-            ...node,
-            data: nextData,
-          });
-        })
-      );
-    },
-    [decorateNode, setNodes]
-  );
-
+  // Phase 7: updateViewportState for managing viewport state
   const updateViewportState = useCallback(
     (nextViewport: Viewport | null | undefined, options?: { persist?: boolean }) => {
       if (!nextViewport) {
@@ -1182,87 +1189,17 @@ const WorkflowBuilderPage = () => {
     ],
   );
 
-  const centerViewportOnNode = useCallback(
-    (node: FlowNode) => {
-      const instance = reactFlowInstanceRef.current;
-      if (!instance) {
-        return;
-      }
-
-      const position = node.position ?? { x: 0, y: 0 };
-      const currentViewport = instance.getViewport?.() ?? viewportRef.current;
-      const currentZoom = currentViewport?.zoom ?? 1;
-      const targetZoom = Math.max(currentZoom, minViewportZoom);
-
-      try {
-        instance.setCenter(position.x, position.y, {
-          zoom: targetZoom,
-          duration: 200,
-        });
-      } catch (error) {
-        console.error(error);
-      }
-
-      const scheduleUpdate = (shouldPersist: boolean) => {
-        const latestViewport = instance.getViewport?.();
-        if (latestViewport) {
-          updateViewportState(latestViewport, { persist: shouldPersist });
-          return;
-        }
-
-        const wrapper = reactFlowWrapperRef.current;
-        if (!wrapper) {
-          return;
-        }
-
-        const { clientWidth, clientHeight } = wrapper;
-        if (!clientWidth || !clientHeight) {
-          return;
-        }
-
-        updateViewportState(
-          {
-            x: clientWidth / 2 - position.x * targetZoom,
-            y: clientHeight / 2 - position.y * targetZoom,
-            zoom: targetZoom,
-          },
-          { persist: shouldPersist },
-        );
-      };
-
-      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(() => scheduleUpdate(false));
-        window.setTimeout(() => scheduleUpdate(true), 220);
-      } else {
-        scheduleUpdate(false);
-        setTimeout(() => scheduleUpdate(true), 220);
-      }
-    },
-    [minViewportZoom, reactFlowInstanceRef, reactFlowWrapperRef, updateViewportState, viewportRef],
-  );
-
-  const addNodeToGraph = useCallback(
-    (node: FlowNode) => {
-      const prepared = decorateNode({
-        ...node,
-        selected: true,
-      });
-
-      setNodes((current) => {
-        const cleared = current.map((existing) =>
-          decorateNode({
-            ...existing,
-            selected: false,
-          }),
-        );
-        return [...cleared, prepared];
-      });
-
-      applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
-      centerViewportOnNode(prepared);
-    },
-    [applySelection, centerViewportOnNode, decorateNode, setNodes]
-  );
+  // Phase 7: Extract node operations into custom hook
+  const { updateNodeData, addNodeToGraph, centerViewportOnNode } = useNodeOperations({
+    setNodes,
+    decorateNode,
+    applySelection,
+    minViewportZoom,
+    reactFlowInstanceRef,
+    reactFlowWrapperRef,
+    viewportRef,
+    updateViewportState,
+  });
 
   const nodeHandlers = useWorkflowNodeHandlers({
     updateNodeData,
@@ -1273,81 +1210,8 @@ const WorkflowBuilderPage = () => {
     vectorStores,
   });
 
-  const handleConditionChange = useCallback(
-    (edgeId: string, value: string) => {
-      setEdges((current) =>
-        current.map((edge) =>
-          edge.id === edgeId
-            ? {
-                ...edge,
-                label: value,
-                data: { ...edge.data, condition: value || null },
-              }
-            : edge,
-        ),
-      );
-      updateHasPendingChanges(true);
-    },
-    [setEdges, updateHasPendingChanges],
-  );
-
-  const handleEdgeLabelChange = useCallback(
-    (edgeId: string, value: string) => {
-      setEdges((current) =>
-        current.map((edge) =>
-          edge.id === edgeId
-            ? {
-                ...edge,
-                label: value,
-                data: {
-                  ...edge.data,
-                  metadata: { ...edge.data?.metadata, label: value },
-                },
-              }
-            : edge,
-        ),
-      );
-      updateHasPendingChanges(true);
-    },
-    [setEdges, updateHasPendingChanges],
-  );
-
-
-  const handleRemoveNode = useCallback(
-    (nodeId: string) => {
-      const node = nodesRef.current.find((currentNode) => currentNode.id === nodeId);
-      let confirmed = true;
-      if (node) {
-        const trimmedDisplayName =
-          typeof node.data.displayName === "string" ? node.data.displayName.trim() : "";
-        const displayName = trimmedDisplayName || node.data.slug || nodeId;
-        confirmed = window.confirm(t("workflowBuilder.deleteBlock.confirm", { name: displayName }));
-      } else {
-        confirmed = window.confirm(t("workflowBuilder.deleteSelection.confirmSingle"));
-      }
-      if (!confirmed) {
-        return;
-      }
-      removeElements({ nodeIds: [nodeId] });
-      updateHasPendingChanges(true);
-      if (selectedNodeId === nodeId) {
-        setSelectedNodeId(null);
-      }
-    },
-    [removeElements, selectedNodeId, t, updateHasPendingChanges],
-  );
-
-  const handleRemoveEdge = useCallback(
-    (edgeId: string) => {
-      removeElements({ edgeIds: [edgeId] });
-      setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
-      updateHasPendingChanges(true);
-      if (selectedEdgeId === edgeId) {
-        setSelectedEdgeId(null);
-      }
-    },
-    [removeElements, selectedEdgeId, setEdges, updateHasPendingChanges],
-  );
+  // Phase 7: handleConditionChange, handleEdgeLabelChange now provided by useEdgeHandlers hook
+  // Phase 7: handleRemoveNode, handleRemoveEdge now provided by useElementDeletion hook
   // History management functions now provided by useWorkflowHistory hook
 
   workflowBusyRef.current = loading || isImporting || isExporting;
@@ -1368,49 +1232,20 @@ const WorkflowBuilderPage = () => {
     workflowBusyRef,
   });
 
-  const handleSelectWorkflow = useCallback(
-    (workflowId: number) => {
-      if (workflowId === selectedWorkflowId) {
-        if (isMobileLayout) {
-          closeWorkflowMenu();
-          closeSidebar();
-        }
-        return;
-      }
-      setSelectedWorkflowId(workflowId);
-      setSelectedVersionId(null);
-      closeWorkflowMenu();
-      if (isMobileLayout) {
-        closeSidebar();
-      }
-      void loadVersions(workflowId, null);
-    },
-    [
-      closeSidebar,
-      closeWorkflowMenu,
-      isMobileLayout,
-      loadVersions,
-      selectedWorkflowId,
-    ],
-  );
-
-  const handleVersionChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const value = Number(event.target.value);
-      const versionId = Number.isFinite(value) ? value : null;
-      setSelectedVersionId(versionId);
-      if (selectedWorkflowId && versionId) {
-        const key = viewportKeyFor(selectedWorkflowId, versionId, deviceType);
-        const hasSavedViewport = key ? viewportMemoryRef.current.has(key) : false;
-        if (hasSavedViewport) {
-          void loadVersionDetail(selectedWorkflowId, versionId);
-        } else {
-          void loadVersionDetail(selectedWorkflowId, versionId, { preserveViewport: true });
-        }
-      }
-    },
-    [deviceType, loadVersionDetail, selectedWorkflowId],
-  );
+  // Phase 7: Extract workflow selection into custom hook
+  const { handleSelectWorkflow, handleVersionChange } = useWorkflowSelection({
+    selectedWorkflowId,
+    isMobileLayout,
+    setSelectedWorkflowId,
+    setSelectedVersionId,
+    closeWorkflowMenu,
+    closeSidebar,
+    loadVersions,
+    loadVersionDetail,
+    deviceType,
+    viewportMemoryRef,
+    viewportKeyFor,
+  });
 
   // Override handleOpenCreateModal to include form reset logic
   const handleOpenCreateModalWithReset = useCallback(() => {
