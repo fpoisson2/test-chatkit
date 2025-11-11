@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { ResponsiveCard } from "../components";
+import { ResponsiveCard, FeedbackMessages, FormField, FormSection } from "../components";
 import { useI18n } from "../i18n";
 import {
   type AppSettings,
@@ -249,26 +249,24 @@ export const AdminModelProvidersPage = () => {
   const effectiveBase = settings?.model_api_base ?? "";
 
   return (
-    <>
-      <AdminTabs activeTab="providers" />
-      <ManagementPageLayout
-        title={t("admin.modelProviders.page.title")}
-        subtitle={t("admin.modelProviders.page.subtitle")}
-      >
-        {error ? <div className="alert alert--danger">{error}</div> : null}
-        {success ? <div className="alert alert--success">{success}</div> : null}
+    <ManagementPageLayout
+      title={t("admin.modelProviders.page.title")}
+      subtitle={t("admin.modelProviders.page.subtitle")}
+      tabs={<AdminTabs activeTab="providers" />}
+    >
+      <FeedbackMessages
+        error={error}
+        success={success}
+        onDismissError={() => setError(null)}
+        onDismissSuccess={() => setSuccess(null)}
+      />
 
-        <div className="admin-grid">
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">
-                {t("admin.appSettings.model.cardTitle")}
-              </h2>
-              <p className="admin-card__subtitle">
-                {t("admin.appSettings.model.cardDescription")}
-              </p>
-            </div>
-            <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+      <div className="admin-grid">
+        <FormSection
+          title={t("admin.appSettings.model.cardTitle")}
+          subtitle={t("admin.appSettings.model.cardDescription")}
+        >
+          <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
               <label className="label" htmlFor="model-config-toggle">
                 <input
                   id="model-config-toggle"
@@ -325,11 +323,11 @@ export const AdminModelProvidersPage = () => {
                             {t("admin.appSettings.model.removeProvider")}
                           </button>
                         </div>
-                        <label
-                          className="label"
-                          htmlFor={`provider-name-${index}`}
+
+                        <FormField
+                          label={t("admin.appSettings.model.providerNameLabel")}
+                          error={formErrors.providers?.[index]?.provider?.message}
                         >
-                          {t("admin.appSettings.model.providerNameLabel")}
                           <input
                             id={`provider-name-${index}`}
                             className="input"
@@ -340,17 +338,12 @@ export const AdminModelProvidersPage = () => {
                             )}
                             disabled={isBusy}
                           />
-                          {formErrors.providers?.[index]?.provider && (
-                            <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                              {formErrors.providers[index]?.provider?.message}
-                            </span>
-                          )}
-                        </label>
-                        <label
-                          className="label"
-                          htmlFor={`provider-base-${index}`}
+                        </FormField>
+
+                        <FormField
+                          label={t("admin.appSettings.model.apiBaseLabel")}
+                          hint={t("admin.appSettings.model.apiBaseHint")}
                         >
-                          {t("admin.appSettings.model.apiBaseLabel")}
                           <input
                             id={`provider-base-${index}`}
                             className="input"
@@ -361,15 +354,24 @@ export const AdminModelProvidersPage = () => {
                             )}
                             disabled={isBusy}
                           />
-                        </label>
-                        <p className="admin-form__hint">
-                          {t("admin.appSettings.model.apiBaseHint")}
-                        </p>
-                        <label
-                          className="label"
-                          htmlFor={`provider-key-${index}`}
+                        </FormField>
+
+                        <FormField
+                          label={t("admin.appSettings.model.apiKeyLabel")}
+                          hint={
+                            row?.hasStoredKey &&
+                            !row?.deleteStoredKey &&
+                            !row?.apiKeyInput?.trim()
+                              ? t("admin.appSettings.model.apiKeyStoredHint", {
+                                  hint:
+                                    row.apiKeyHint ??
+                                    t(
+                                      "admin.appSettings.model.apiKeyUnknownHint",
+                                    ),
+                                })
+                              : t("admin.appSettings.model.apiKeyHelp")
+                          }
                         >
-                          {t("admin.appSettings.model.apiKeyLabel")}
                           <input
                             id={`provider-key-${index}`}
                             className="input"
@@ -387,20 +389,8 @@ export const AdminModelProvidersPage = () => {
                             disabled={isBusy}
                             autoComplete="new-password"
                           />
-                        </label>
-                        <p className="admin-form__hint">
-                          {row?.hasStoredKey &&
-                          !row?.deleteStoredKey &&
-                          !row?.apiKeyInput?.trim()
-                            ? t("admin.appSettings.model.apiKeyStoredHint", {
-                                hint:
-                                  row.apiKeyHint ??
-                                  t(
-                                    "admin.appSettings.model.apiKeyUnknownHint",
-                                  ),
-                              })
-                            : t("admin.appSettings.model.apiKeyHelp")}
-                        </p>
+                        </FormField>
+
                         {row?.hasStoredKey ? (
                           <label
                             className="label"
@@ -443,20 +433,19 @@ export const AdminModelProvidersPage = () => {
                   })}
                 </p>
               )}
-              <div className="admin-form__actions" style={{ gap: "12px" }}>
-                <button
-                  type="submit"
-                  className="button"
-                  disabled={isBusy}
-                >
-                  {t("admin.appSettings.actions.save")}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      </ManagementPageLayout>
-    </>
+            <div className="admin-form__actions" style={{ gap: "12px" }}>
+              <button
+                type="submit"
+                className="button"
+                disabled={isBusy}
+              >
+                {t("admin.appSettings.actions.save")}
+              </button>
+            </div>
+          </form>
+        </FormSection>
+      </div>
+    </ManagementPageLayout>
   );
 };
 
