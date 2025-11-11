@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { isUnauthorizedError } from "../utils/backend";
 
 // Types
-type Language = {
+export type Language = {
   code: string;
   name: string;
   translationFile: string;
@@ -11,14 +11,14 @@ type Language = {
   fileExists: boolean;
 };
 
-type AvailableModel = {
+export type AvailableModel = {
   id: number;
   name: string;
   provider_id: string | null;
   provider_slug: string | null;
 };
 
-type TaskStatus = {
+export type TaskStatus = {
   task_id: string;
   status: "pending" | "running" | "completed" | "failed";
   progress: number;
@@ -29,7 +29,7 @@ type TaskStatus = {
   can_download: boolean;
 };
 
-type StoredLanguage = {
+export type StoredLanguage = {
   id: number;
   code: string;
   name: string;

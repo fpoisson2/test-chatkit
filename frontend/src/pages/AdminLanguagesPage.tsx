@@ -24,6 +24,8 @@ import {
   useActivateStoredLanguage,
   downloadTaskResult,
   downloadStoredLanguage,
+  type Language,
+  type StoredLanguage,
 } from "../hooks";
 import { adminLanguageSchema, type AdminLanguageFormData } from "../schemas/admin";
 
@@ -363,7 +365,7 @@ export const AdminLanguagesPage = () => {
         ),
       },
     ],
-    [activateStoredLanguage, deleteStoredLanguage, downloadStoredLanguage],
+    [handleActivateStoredLanguage, handleDeleteStoredLanguage, handleDownloadStoredLanguage],
   );
 
   return (
