@@ -159,6 +159,14 @@ class Settings:
             de fil.
         thread_title_model: Modèle utilisé pour générer automatiquement les titres
             de fil.
+        lti_tool_client_id: Identifiant client de l'outil enregistré auprès de la
+            plateforme LTI.
+        lti_tool_key_set_url: URL publique exposant le JWKS du tool.
+        lti_tool_audience: Audience attendue lors de l'émission des réponses
+            deep-link.
+        lti_tool_private_key: Clé privée PEM utilisée pour signer les réponses et
+            les JWKS.
+        lti_tool_key_id: Identifiant (kid) de la clé LTI, si disponible.
     """
 
     allowed_origins: list[str]
@@ -200,6 +208,13 @@ class Settings:
     docs_seed_documents: tuple[dict[str, Any], ...]
     thread_title_prompt: str
     thread_title_model: str
+    lti_tool_client_id: str | None
+    lti_tool_key_set_url: str | None
+    lti_tool_audience: str | None
+    lti_tool_private_key: str | None
+    lti_tool_key_id: str | None
+    lti_tool_private_key_path: str | None
+    lti_tool_public_key_path: str | None
 
     @property
     def chatkit_api_base(self) -> str:
@@ -519,6 +534,13 @@ class Settings:
                 get_stripped("CHATKIT_THREAD_TITLE_MODEL")
                 or DEFAULT_THREAD_TITLE_MODEL
             ),
+            lti_tool_client_id=get_stripped("LTI_TOOL_CLIENT_ID"),
+            lti_tool_key_set_url=get_stripped("LTI_TOOL_KEY_SET_URL"),
+            lti_tool_audience=get_stripped("LTI_TOOL_AUDIENCE"),
+            lti_tool_private_key=get_stripped("LTI_TOOL_PRIVATE_KEY"),
+            lti_tool_key_id=get_stripped("LTI_TOOL_KEY_ID"),
+            lti_tool_private_key_path=get_stripped("LTI_TOOL_PRIVATE_KEY_PATH"),
+            lti_tool_public_key_path=get_stripped("LTI_TOOL_PUBLIC_KEY_PATH"),
         )
 
 

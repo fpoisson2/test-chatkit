@@ -298,13 +298,15 @@ class AppearanceSettingsUpdateRequest(BaseModel):
         le=100.0,
         description="Luminosité sombre pour les surfaces personnalisées (0-100).",
     )
-    heading_font: constr(strip_whitespace=True, min_length=1, max_length=256) | None = (
-        Field(
-            default=None,
-            description="Pile de polices à utiliser pour les titres.",
-        )
+    heading_font: (
+        constr(strip_whitespace=True, min_length=1, max_length=256) | None
+    ) = Field(
+        default=None,
+        description="Pile de polices à utiliser pour les titres.",
     )
-    body_font: constr(strip_whitespace=True, min_length=1, max_length=256) | None = Field(
+    body_font: (
+        constr(strip_whitespace=True, min_length=1, max_length=256) | None
+    ) = Field(
         default=None,
         description="Pile de polices à utiliser pour le texte principal.",
     )
@@ -531,6 +533,158 @@ class TelephonyRouteResponse(TelephonyRouteBase):
     updated_at: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LTIRegistrationBase(BaseModel):
+    issuer: constr(strip_whitespace=True, min_length=1, max_length=512)
+    client_id: constr(strip_whitespace=True, min_length=1, max_length=255)
+    key_set_url: AnyHttpUrl
+    authorization_endpoint: AnyHttpUrl
+    token_endpoint: AnyHttpUrl
+    deep_link_return_url: AnyHttpUrl | None = None
+    audience: constr(strip_whitespace=True, max_length=512) | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("deep_link_return_url", mode="before")
+    @classmethod
+    def _normalize_optional_url(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        return value
+
+    @field_validator("audience", mode="before")
+    @classmethod
+    def _normalize_optional(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        return value
+
+
+class LTIRegistrationCreateRequest(LTIRegistrationBase):
+    pass
+
+
+class LTIRegistrationUpdateRequest(BaseModel):
+    issuer: constr(strip_whitespace=True, min_length=1, max_length=512) | None = None
+    client_id: constr(strip_whitespace=True, min_length=1, max_length=255) | None = None
+    key_set_url: AnyHttpUrl | None = None
+    authorization_endpoint: AnyHttpUrl | None = None
+    token_endpoint: AnyHttpUrl | None = None
+    deep_link_return_url: AnyHttpUrl | None = None
+    audience: constr(strip_whitespace=True, max_length=512) | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator(
+        "issuer",
+        "client_id",
+        "audience",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_optional(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        return value
+
+    @field_validator(
+        "key_set_url",
+        "authorization_endpoint",
+        "token_endpoint",
+        "deep_link_return_url",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_optional_url(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        return value
+
+
+class LTIRegistrationResponse(LTIRegistrationBase):
+    id: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LtiToolSettingsResponse(BaseModel):
+    client_id: str | None
+    key_set_url: str | None
+    audience: str | None
+    key_id: str | None
+    has_private_key: bool
+    private_key_hint: str | None
+    private_key_path: str | None = None
+    public_key_path: str | None = None
+    public_key_pem: str | None = None
+    public_key_last_updated_at: datetime.datetime | None = None
+    is_client_id_overridden: bool
+    is_key_set_url_overridden: bool
+    is_audience_overridden: bool
+    is_key_id_overridden: bool
+    is_private_key_overridden: bool
+    created_at: datetime.datetime | None = None
+    updated_at: datetime.datetime | None = None
+
+
+class LtiToolSettingsUpdateRequest(BaseModel):
+    client_id: constr(strip_whitespace=True, min_length=1, max_length=255) | None = None
+    key_set_url: AnyHttpUrl | None = None
+    audience: constr(strip_whitespace=True, min_length=1, max_length=512) | None = None
+    key_id: constr(strip_whitespace=True, min_length=1, max_length=255) | None = None
+    private_key: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator(
+        "client_id",
+        "audience",
+        "key_id",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_optional(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        return value
+
+    @field_validator("key_set_url", mode="before")
+    @classmethod
+    def _normalize_optional_url(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        return value
+
+    @field_validator("private_key", mode="before")
+    @classmethod
+    def _normalize_private_key(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            candidate = value.strip()
+            return candidate or None
+        return value
 
 
 class SipAccountBase(BaseModel):

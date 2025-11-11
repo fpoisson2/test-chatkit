@@ -1,11 +1,89 @@
-"""
-Auto-migration system - runs database migrations on startup.
-"""
+"""Auto-migration system - runs database migrations on startup."""
+
 import logging
-from sqlalchemy import text
+from collections.abc import Callable
+
+from sqlalchemy import inspect, text
+
 from .database import engine
+from .models import (
+    Base,
+    LTIDeployment,
+    LTIRegistration,
+    LTIResourceLink,
+    LTIUserSession,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _lti_tables_exist(connection) -> bool:
+    inspector = inspect(connection)
+    required = (
+        "lti_registrations",
+        "lti_deployments",
+        "lti_resource_links",
+        "lti_user_sessions",
+    )
+    return all(inspector.has_table(table) for table in required)
+
+
+def _create_lti_tables(connection) -> None:
+    Base.metadata.create_all(
+        bind=connection,
+        tables=[
+            LTIRegistration.__table__,
+            LTIDeployment.__table__,
+            LTIResourceLink.__table__,
+            LTIUserSession.__table__,
+        ],
+    )
+
+
+def _app_settings_has_lti_columns(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("app_settings"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("app_settings")}
+    required = {
+        "lti_tool_client_id",
+        "lti_tool_key_set_url",
+        "lti_tool_audience",
+        "lti_tool_private_key_encrypted",
+        "lti_tool_key_id",
+    }
+    return required.issubset(columns)
+
+
+def _add_app_settings_lti_columns(connection) -> None:
+    inspector = inspect(connection)
+
+    if not inspector.has_table("app_settings"):
+        logger.warning(
+            "Cannot add LTI columns to app_settings because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("app_settings")
+    }
+
+    statements: tuple[tuple[str, str], ...] = (
+        ("lti_tool_client_id", "VARCHAR(255)"),
+        ("lti_tool_key_set_url", "TEXT"),
+        ("lti_tool_audience", "VARCHAR(512)"),
+        ("lti_tool_private_key_encrypted", "TEXT"),
+        ("lti_tool_key_id", "VARCHAR(255)"),
+    )
+
+    for column_name, column_type in statements:
+        if column_name in existing_columns:
+            continue
+        connection.execute(
+            text(
+                f"ALTER TABLE app_settings ADD COLUMN {column_name} {column_type}"
+            )
+        )
 
 
 def check_and_apply_migrations():
@@ -16,7 +94,7 @@ def check_and_apply_migrations():
     migrations = [
         {
             "id": "001_fix_language_fk",
-            "description": "Fix language_generation_tasks foreign key to allow language deletion",
+            "description": "Fix language_generation_tasks FK for deletions",
             "check": """
                 SELECT confdeltype
                 FROM pg_constraint
@@ -33,7 +111,19 @@ def check_and_apply_migrations():
                 REFERENCES languages(id)
                 ON DELETE SET NULL;
             """,
-        }
+        },
+        {
+            "id": "002_create_lti_tables",
+            "description": "Create tables used for LTI integrations",
+            "check_fn": _lti_tables_exist,
+            "apply_fn": _create_lti_tables,
+        },
+        {
+            "id": "003_add_lti_tool_columns",
+            "description": "Add columns to store LTI tool configuration",
+            "check_fn": _app_settings_has_lti_columns,
+            "apply_fn": _add_app_settings_lti_columns,
+        },
     ]
 
     logger.info("Checking database migrations...")
@@ -44,16 +134,26 @@ def check_and_apply_migrations():
 
         try:
             with engine.begin() as conn:
-                # Check if migration is needed
-                result = conn.execute(text(migration["check"]))
-                row = result.fetchone()
-
-                if row and row[0] == migration["expected"]:
-                    logger.info(f"✓ Migration {migration_id} already applied")
+                applied = False
+                check_fn: Callable | None = migration.get("check_fn")
+                if check_fn is not None:
+                    applied = bool(check_fn(conn))
                 else:
-                    logger.info(f"⚡ Applying migration {migration_id}: {description}")
+                    result = conn.execute(text(migration["check"]))
+                    row = result.fetchone()
+                    applied = bool(row) and row[0] == migration.get("expected")
+
+                if applied:
+                    logger.info(f"✓ Migration {migration_id} already applied")
+                    continue
+
+                logger.info(f"⚡ Applying migration {migration_id}: {description}")
+                apply_fn: Callable | None = migration.get("apply_fn")
+                if apply_fn is not None:
+                    apply_fn(conn)
+                else:
                     conn.execute(text(migration["sql"]))
-                    logger.info(f"✓ Migration {migration_id} applied successfully")
+                logger.info(f"✓ Migration {migration_id} applied successfully")
 
         except Exception as e:
             logger.error(f"✗ Failed to apply migration {migration_id}: {e}")

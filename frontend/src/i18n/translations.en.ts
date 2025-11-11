@@ -31,6 +31,7 @@ export const en: TranslationDictionary = {
   "admin.tabs.settings": "General settings",
   "admin.tabs.appearance": "Appearance",
   "admin.tabs.languages": "Languages",
+  "admin.tabs.lti": "LTI",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Administration navigation",
   "admin.models.form.modelIdLabel": "Model identifier*",
@@ -118,6 +119,84 @@ export const en: TranslationDictionary = {
   "admin.appSettings.model.providerLiteLLM":
     "LiteLLM (OpenAI-compatible proxy)",
   "admin.appSettings.model.providerCustom": "Other provider…",
+  "admin.lti.page.title": "LTI integrations",
+  "admin.lti.page.subtitle":
+    "Manage LTI issuers that can launch ChatKit and configure the tool keys.",
+  "admin.lti.toolSettings.title": "Tool key configuration",
+  "admin.lti.toolSettings.subtitle":
+    "Set the client credentials and private key used by ChatKit as an LTI tool.",
+  "admin.lti.toolSettings.keys.title": "LTI key pair",
+  "admin.lti.toolSettings.keys.subtitle":
+    "The server exposes the tool key paths and current public key below.",
+  "admin.lti.toolSettings.keys.privateKeyPath": "Private key",
+  "admin.lti.toolSettings.keys.publicKeyPath": "Public key",
+  "admin.lti.toolSettings.keys.lastUpdated": "Last updated",
+  "admin.lti.toolSettings.keys.publicKeyHeading": "Current public key",
+  "admin.lti.toolSettings.keys.readOnlyNotice":
+    "These keys are managed in read-only mode from the server configuration.",
+  "admin.lti.toolSettings.keys.noData": "Not available",
+  "admin.lti.toolSettings.clientIdLabel": "Tool client ID",
+  "admin.lti.toolSettings.keySetUrlLabel": "Tool JWKS URL",
+  "admin.lti.toolSettings.audienceLabel": "Tool audience",
+  "admin.lti.toolSettings.keyIdLabel": "Key identifier (kid)",
+  "admin.lti.toolSettings.privateKeyLabel": "Private key (PEM)",
+  "admin.lti.toolSettings.privateKeyHint": "Current key: {{hint}}",
+  "admin.lti.toolSettings.noPrivateKey": "No private key stored.",
+  "admin.lti.toolSettings.save": "Save settings",
+  "admin.lti.toolSettings.saving": "Saving…",
+  "admin.lti.toolSettings.success": "Tool settings saved successfully.",
+  "admin.lti.toolSettings.errors.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.lti.toolSettings.errors.saveFailed":
+    "Unable to save the tool settings.",
+  "admin.lti.toolSettings.errors.loadFailed":
+    "Unable to load the tool settings.",
+  "admin.lti.registrations.title": "Platform registrations",
+  "admin.lti.registrations.subtitle":
+    "List the issuers and credentials allowed to launch ChatKit via LTI.",
+  "admin.lti.registrations.table.issuer": "Issuer",
+  "admin.lti.registrations.table.clientId": "Client ID",
+  "admin.lti.registrations.table.keySetUrl": "JWKS URL",
+  "admin.lti.registrations.table.authorizationEndpoint": "Authorization endpoint",
+  "admin.lti.registrations.table.tokenEndpoint": "Token endpoint",
+  "admin.lti.registrations.table.deepLinkReturnUrl": "Deep link return URL",
+  "admin.lti.registrations.table.audience": "Audience",
+  "admin.lti.registrations.table.updatedAt": "Updated",
+  "admin.lti.registrations.table.actions": "Actions",
+  "admin.lti.registrations.table.empty": "No LTI registrations have been configured yet.",
+  "admin.lti.registrations.table.loading": "Loading registrations…",
+  "admin.lti.registrations.form.createTitle": "Add a registration",
+  "admin.lti.registrations.form.editTitle": "Edit registration",
+  "admin.lti.registrations.form.issuerLabel": "Issuer URL",
+  "admin.lti.registrations.form.clientIdLabel": "Client ID",
+  "admin.lti.registrations.form.keySetUrlLabel": "JWKS URL",
+  "admin.lti.registrations.form.authorizationEndpointLabel":
+    "Authorization endpoint",
+  "admin.lti.registrations.form.tokenEndpointLabel": "Token endpoint",
+  "admin.lti.registrations.form.deepLinkReturnUrlLabel":
+    "Deep link return URL (optional)",
+  "admin.lti.registrations.form.audienceLabel": "Audience (optional)",
+  "admin.lti.registrations.form.save": "Save",
+  "admin.lti.registrations.form.saving": "Saving…",
+  "admin.lti.registrations.form.cancel": "Cancel",
+  "admin.lti.registrations.actions.edit": "Edit",
+  "admin.lti.registrations.actions.delete": "Delete",
+  "admin.lti.registrations.confirm.delete": "Delete registration for {{issuer}}?",
+  "admin.lti.registrations.feedback.created":
+    "Registration for {{issuer}} added successfully.",
+  "admin.lti.registrations.feedback.updated":
+    "Registration for {{issuer}} updated successfully.",
+  "admin.lti.registrations.feedback.deleted": "Registration deleted.",
+  "admin.lti.registrations.errors.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.lti.registrations.errors.loadFailed":
+    "Unable to load LTI registrations.",
+  "admin.lti.registrations.errors.saveFailed":
+    "Unable to save the registration.",
+  "admin.lti.registrations.errors.deleteFailed":
+    "Unable to delete the registration.",
+  "admin.lti.registrations.errors.missingFields":
+    "Fill in all required fields before saving.",
   "admin.appSettings.model.providerNameLabel": "Provider identifier",
   "admin.appSettings.model.providerNamePlaceholder": "e.g. gemini, claude, litellm",
   "admin.appSettings.model.defaultProviderLabel": "Set as default provider",

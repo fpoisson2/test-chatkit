@@ -14,7 +14,8 @@ type AdminTabKey =
   | "mcp-servers"
   | "settings"
   | "appearance"
-  | "languages";
+  | "languages"
+  | "lti";
 
 type AdminTabsProps = {
   activeTab: AdminTabKey;
@@ -31,6 +32,7 @@ const TAB_DEFINITIONS: { key: AdminTabKey; to: string; labelKey: string }[] = [
   { key: "settings", to: "/admin/settings", labelKey: "admin.tabs.settings" },
   { key: "appearance", to: "/admin/appearance", labelKey: "admin.tabs.appearance" },
   { key: "languages", to: "/admin/languages", labelKey: "admin.tabs.languages" },
+  { key: "lti", to: "/admin/lti", labelKey: "admin.tabs.lti" },
 ];
 
 export const AdminTabs = ({ activeTab }: AdminTabsProps) => {

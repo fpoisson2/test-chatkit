@@ -16,6 +16,7 @@ playwright
 sqlalchemy
 psycopg[binary]
 PyJWT
+pylti1p3
 email-validator
 
 # Vector store - uses OpenAI Embeddings API (no heavy ML dependencies needed)

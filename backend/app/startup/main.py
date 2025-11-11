@@ -24,6 +24,7 @@ from ..database import (
 )
 from ..database.ad_hoc_migrations import run_ad_hoc_migrations
 from ..docs import DocumentationService
+from ..migrations import check_and_apply_migrations
 from ..model_providers import configure_model_provider
 from ..models import (
     AppSettings,
@@ -424,6 +425,7 @@ def register_database_startup(app: FastAPI) -> None:
     def _on_startup() -> None:
         wait_for_database()
         ensure_database_extensions()
+        check_and_apply_migrations()
         run_ad_hoc_migrations()
         Base.metadata.create_all(bind=engine)
         ensure_vector_indexes()
