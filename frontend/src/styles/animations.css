@@ -1,0 +1,310 @@
+/**
+ * Animations and Micro-interactions
+ * Enhanced UX with smooth transitions and feedback
+ */
+
+/* ==========================================
+   Base Transitions
+   ========================================== */
+
+/* Smooth transitions for interactive elements */
+button,
+a,
+input,
+textarea,
+select {
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out,
+    opacity 150ms ease-out,
+    transform 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+
+/* ==========================================
+   Button Micro-interactions
+   ========================================== */
+
+/* Enhanced button hover states */
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+button:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Primary button glow effect */
+button.button--primary:not(:disabled):hover,
+button.create-workflow-modal__button--primary:not(:disabled):hover {
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+}
+
+/* ==========================================
+   Card Animations
+   ========================================== */
+
+.responsive-card,
+.card,
+[class*="__card"] {
+  transition:
+    transform 200ms ease-out,
+    box-shadow 200ms ease-out;
+}
+
+.responsive-card:hover,
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ==========================================
+   Page Transitions
+   ========================================== */
+
+/* Fade in animation for page content */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-content,
+.app-content,
+[class*="page__content"] {
+  animation: fadeIn 300ms ease-out;
+}
+
+/* ==========================================
+   Loading States
+   ========================================== */
+
+/* Pulse animation for loading states */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.loading-spinner,
+.loading-indicator,
+[class*="loading"] {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Skeleton loading animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton,
+[class*="skeleton"] {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ==========================================
+   Input Focus States
+   ========================================== */
+
+/* Enhanced focus ring */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--appearance-accent, #2563eb);
+  outline-offset: 2px;
+  transition: outline-offset 150ms ease-out;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: 3px;
+}
+
+/* ==========================================
+   Sidebar Animations
+   ========================================== */
+
+/* Sidebar slide transition */
+.chatkit-sidebar {
+  transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chatkit-sidebar--open {
+  transform: translateX(0);
+}
+
+/* Sidebar item hover effect */
+.chatkit-sidebar__nav-link,
+.chatkit-sidebar__profile-action,
+.chatkit-sidebar__footer-link {
+  position: relative;
+  overflow: hidden;
+}
+
+.chatkit-sidebar__nav-link::before,
+.chatkit-sidebar__profile-action::before,
+.chatkit-sidebar__footer-link::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: rgba(37, 99, 235, 0.1);
+  transition: left 250ms ease-out;
+}
+
+.chatkit-sidebar__nav-link:hover::before,
+.chatkit-sidebar__profile-action:hover::before,
+.chatkit-sidebar__footer-link:hover::before {
+  left: 0;
+}
+
+/* ==========================================
+   Notification Animations
+   ========================================== */
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutToRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.notification,
+.toast,
+[class*="notification"],
+[class*="toast"] {
+  animation: slideInFromRight 300ms ease-out;
+}
+
+.notification--closing,
+.toast--closing {
+  animation: slideOutToRight 200ms ease-in;
+}
+
+/* ==========================================
+   Smooth Scroll
+   ========================================== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ==========================================
+   Reduced Motion Support
+   ========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Keep essential transforms but remove movement */
+  button:not(:disabled):hover {
+    transform: none;
+  }
+
+  .responsive-card:hover,
+  .card:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================
+   Focus Visible Polyfill
+   ========================================== */
+
+/* Only show focus styles when using keyboard */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--appearance-accent, #2563eb);
+  outline-offset: 2px;
+}
+
+/* ==========================================
+   Utility Classes
+   ========================================== */
+
+/* Fade animations */
+.fade-in {
+  animation: fadeIn 300ms ease-out;
+}
+
+.fade-in-fast {
+  animation: fadeIn 150ms ease-out;
+}
+
+.fade-in-slow {
+  animation: fadeIn 500ms ease-out;
+}
+
+/* Transform utilities */
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.hover-scale:hover {
+  transform: scale(1.02);
+}
+
+/* Smooth transitions */
+.transition-all {
+  transition: all 200ms ease-out;
+}
+
+.transition-fast {
+  transition: all 150ms ease-out;
+}
+
+.transition-slow {
+  transition: all 300ms ease-out;
+}

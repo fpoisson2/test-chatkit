@@ -23,6 +23,9 @@
 @import './components/sidebar.css';
 @import './components/admin.css';
 
-/* 4. Legacy Styles - Remaining styles to be extracted in future phases */
+/* 4. Animations and Micro-interactions */
+@import './animations.css';
+
+/* 5. Legacy Styles - Remaining styles to be extracted in future phases */
 /* This includes sidebar, admin, and other component styles not yet modularized */
 @import './legacy.css';
