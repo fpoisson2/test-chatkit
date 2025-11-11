@@ -307,7 +307,7 @@ export const AdminModelProvidersPage = () => {
                           backgroundColor: provider.is_default ? "#f0fdf4" : "transparent"
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                           <strong>{provider.provider}</strong>
                           {provider.is_default && (
                             <span style={{
@@ -322,12 +322,22 @@ export const AdminModelProvidersPage = () => {
                           )}
                         </div>
                         {provider.api_base && (
-                          <div style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem" }}>
+                          <div style={{
+                            fontSize: "0.875rem",
+                            color: "#6b7280",
+                            marginTop: "0.25rem",
+                            wordBreak: "break-all"
+                          }}>
                             Base URL: {provider.api_base}
                           </div>
                         )}
                         {provider.has_api_key && (
-                          <div style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem" }}>
+                          <div style={{
+                            fontSize: "0.875rem",
+                            color: "#6b7280",
+                            marginTop: "0.25rem",
+                            wordBreak: "break-all"
+                          }}>
                             ✓ Clé API configurée {provider.api_key_hint && `(${provider.api_key_hint})`}
                           </div>
                         )}

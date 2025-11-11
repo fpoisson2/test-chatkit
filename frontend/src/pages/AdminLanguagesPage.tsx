@@ -11,6 +11,7 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { Modal } from "../components/Modal";
 import {
   ResponsiveTable,
   type Column,
@@ -93,6 +94,7 @@ export const AdminLanguagesPage = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Persist currentTaskId to localStorage
   useEffect(() => {
@@ -242,6 +244,8 @@ export const AdminLanguagesPage = () => {
       setCurrentTaskId(result.task_id);
       setSuccess(t("admin.languages.feedback.taskStarted"));
       reset(initialFormState);
+      setShowCreateModal(false);
+      setShowPromptEditor(false);
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -385,14 +389,104 @@ export const AdminLanguagesPage = () => {
       />
 
       <div className="admin-grid">
-        <FormSection title={t("admin.languages.form.addTitle")}>
+        <FormSection
+          title={t("admin.languages.list.title")}
+          subtitle={t("admin.languages.list.subtitle")}
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label={t("admin.languages.form.addTitle")}
+              title={t("admin.languages.form.addTitle")}
+              onClick={() => setShowCreateModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
+        >
+          {loading ? (
+            <LoadingSpinner text={t("admin.languages.list.loading")} />
+          ) : (
+            <ResponsiveTable
+              columns={languageColumns}
+              data={languages}
+              keyExtractor={(lang) => lang.code}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+
+        <FormSection
+          title="Stored Languages"
+          subtitle="Languages saved in the database"
+        >
+          {loadingStored ? (
+            <LoadingSpinner text="Loading stored languages..." />
+          ) : storedLanguages.length === 0 ? (
+            <p className="admin-card__subtitle">
+              No stored languages yet. Enable "Save to database" when generating a language.
+            </p>
+          ) : (
+            <ResponsiveTable
+              columns={storedLanguageColumns}
+              data={storedLanguages}
+              keyExtractor={(lang) => lang.id.toString()}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+      </div>
+
+      {showCreateModal && (
+        <Modal
+          title={t("admin.languages.form.addTitle")}
+          onClose={() => {
+            setShowCreateModal(false);
+            setFormError(null);
+            setShowPromptEditor(false);
+          }}
+          size="lg"
+          footer={
+            <>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setFormError(null);
+                  setShowPromptEditor(false);
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                form="create-language-form"
+                disabled={generateLanguage.isPending || !!currentTaskId}
+                className="button"
+              >
+                {generateLanguage.isPending
+                  ? t("admin.languages.form.creating")
+                  : t("admin.languages.form.submitAdd")}
+              </button>
+            </>
+          }
+        >
           {formError && (
             <div className="alert alert--danger" role="alert" style={{ marginBottom: "1rem" }}>
               {formError}
             </div>
           )}
 
-          <form onSubmit={handleFormSubmit(handleSubmit)} className="admin-form">
+          <form id="create-language-form" onSubmit={handleFormSubmit(handleSubmit)} className="admin-form">
             <FormField
               label={t("admin.languages.form.codeLabel")}
               error={formErrors.code?.message}
@@ -537,69 +631,9 @@ export const AdminLanguagesPage = () => {
                 )}
               </div>
             )}
-
-            <div className="admin-form__actions">
-              <button
-                type="submit"
-                disabled={generateLanguage.isPending || !!currentTaskId}
-                className="button"
-              >
-                {generateLanguage.isPending
-                  ? t("admin.languages.form.creating")
-                  : t("admin.languages.form.submitAdd")}
-              </button>
-              {(formValues.code || formValues.name) && !generateLanguage.isPending && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    reset(initialFormState);
-                    setFormError(null);
-                  }}
-                  className="button button--secondary"
-                >
-                  {t("admin.languages.form.cancel")}
-                </button>
-              )}
-            </div>
           </form>
-        </FormSection>
-
-        <FormSection
-          title={t("admin.languages.list.title")}
-          subtitle={t("admin.languages.list.subtitle")}
-        >
-          {loading ? (
-            <LoadingSpinner text={t("admin.languages.list.loading")} />
-          ) : (
-            <ResponsiveTable
-              columns={languageColumns}
-              data={languages}
-              keyExtractor={(lang) => lang.code}
-              mobileCardView={true}
-            />
-          )}
-        </FormSection>
-
-        <FormSection
-          title="Stored Languages"
-          subtitle="Languages saved in the database"
-        >
-          {loadingStored ? (
-            <LoadingSpinner text="Loading stored languages..." />
-          ) : storedLanguages.length === 0 ? (
-            <p className="admin-card__subtitle">
-              No stored languages yet. Enable "Save to database" when generating a language.
-            </p>
-          ) : (
-            <ResponsiveTable
-              columns={storedLanguageColumns}
-              data={storedLanguages}
-              keyExtractor={(lang) => lang.id.toString()}
-              mobileCardView={true}
-            />
-          )}
-        </FormSection>
-      </div>
+        </Modal>
+      )}
     </ManagementPageLayout>
   );
 };
