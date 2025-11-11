@@ -1750,7 +1750,8 @@ async def stream_agent_response(
                     )
             elif event.type == "response.reasoning_summary_text.delta":
                 if not ctx.workflow_item:
-                    continue
+                    for workflow_event in ensure_workflow():
+                        yield workflow_event
 
                 # stream the first thought in a new workflow so that we can show it earlier
                 if (
@@ -1787,6 +1788,9 @@ async def stream_agent_response(
                         ),
                     )
             elif event.type == "response.reasoning_summary_text.done":
+                if not ctx.workflow_item:
+                    for workflow_event in ensure_workflow():
+                        yield workflow_event
                 if ctx.workflow_item:
                     if (
                         streaming_thought
