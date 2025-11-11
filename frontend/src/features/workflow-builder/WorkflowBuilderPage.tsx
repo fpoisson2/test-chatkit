@@ -972,7 +972,6 @@ const WorkflowBuilderPage = () => {
     propertiesPanelToggleRef,
     propertiesPanelCloseButtonRef,
     lastTappedElementRef,
-    previousSelectedElementRef,
   } = usePropertiesPanel({
     isMobileLayout,
     selectedNodeId,
