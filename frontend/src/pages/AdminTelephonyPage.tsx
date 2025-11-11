@@ -1,9 +1,12 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { useI18n } from "../i18n";
 import { isUnauthorizedError } from "../utils/backend";
+import { adminTelephonySchema, type AdminTelephonyFormData } from "../schemas/admin";
 
 // ========== Types ==========
 
@@ -22,21 +25,9 @@ interface SipAccount {
   updated_at: string;
 }
 
-interface SipAccountForm {
-  label: string;
-  trunk_uri: string;
-  username: string;
-  password: string;
-  contact_host: string;
-  contact_port: string;
-  contact_transport: string;
-  is_default: boolean;
-  is_active: boolean;
-}
-
 // ========== Helper Functions ==========
 
-const emptySipAccountForm = (): SipAccountForm => ({
+const emptySipAccountForm = (): AdminTelephonyFormData => ({
   label: "",
   trunk_uri: "",
   username: "",
@@ -54,13 +45,23 @@ export const AdminTelephonyPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
 
+  // React Hook Form
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors: formErrors },
+    reset,
+  } = useForm<AdminTelephonyFormData>({
+    resolver: zodResolver(adminTelephonySchema),
+    defaultValues: emptySipAccountForm(),
+  });
+
   // SIP Accounts state
   const [accounts, setAccounts] = useState<SipAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
-  const [accountFormData, setAccountFormData] = useState<SipAccountForm>(emptySipAccountForm());
   const [isSavingAccount, setSavingAccount] = useState(false);
 
   // ========== SIP Accounts Functions ==========
@@ -96,14 +97,14 @@ export const AdminTelephonyPage = () => {
   const handleCreateAccount = () => {
     setIsCreatingAccount(true);
     setEditingAccountId(null);
-    setAccountFormData(emptySipAccountForm());
+    reset(emptySipAccountForm());
     setAccountError(null);
   };
 
   const handleEditAccount = (account: SipAccount) => {
     setIsCreatingAccount(false);
     setEditingAccountId(account.id);
-    setAccountFormData({
+    reset({
       label: account.label,
       trunk_uri: account.trunk_uri,
       username: account.username || "",
@@ -120,12 +121,11 @@ export const AdminTelephonyPage = () => {
   const handleCancelAccount = () => {
     setIsCreatingAccount(false);
     setEditingAccountId(null);
-    setAccountFormData(emptySipAccountForm());
+    reset(emptySipAccountForm());
     setAccountError(null);
   };
 
-  const handleSubmitAccount = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmitAccount = async (data: AdminTelephonyFormData) => {
     if (!token) return;
 
     setSavingAccount(true);
@@ -133,15 +133,15 @@ export const AdminTelephonyPage = () => {
 
     try {
       const payload: any = {
-        label: accountFormData.label,
-        trunk_uri: accountFormData.trunk_uri,
-        username: accountFormData.username || null,
-        password: accountFormData.password || null,
-        contact_host: accountFormData.contact_host || null,
-        contact_port: accountFormData.contact_port ? parseInt(accountFormData.contact_port) : null,
-        contact_transport: accountFormData.contact_transport,
-        is_default: accountFormData.is_default,
-        is_active: accountFormData.is_active,
+        label: data.label,
+        trunk_uri: data.trunk_uri,
+        username: data.username || null,
+        password: data.password || null,
+        contact_host: data.contact_host || null,
+        contact_port: data.contact_port ? parseInt(data.contact_port) : null,
+        contact_transport: data.contact_transport,
+        is_default: data.is_default,
+        is_active: data.is_active,
       };
 
       const url = isCreatingAccount
@@ -228,19 +228,22 @@ export const AdminTelephonyPage = () => {
                   Configurez les paramètres de connexion au trunk SIP.
                 </p>
               </div>
-              <form className="admin-form" onSubmit={handleSubmitAccount}>
+              <form className="admin-form" onSubmit={handleFormSubmit(handleSubmitAccount)}>
                 <div className="admin-form__row">
                   <label className="label">
                     Label *
                     <input
                       className="input"
                       type="text"
-                      required
-                      value={accountFormData.label}
-                      onChange={(e) => setAccountFormData({ ...accountFormData, label: e.target.value })}
+                      {...register("label")}
                       placeholder="Trunk Principal"
                       disabled={isSavingAccount}
                     />
+                    {formErrors.label && (
+                      <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                        {formErrors.label.message}
+                      </span>
+                    )}
                   </label>
 
                   <label className="label">
@@ -248,14 +251,15 @@ export const AdminTelephonyPage = () => {
                     <input
                       className="input"
                       type="text"
-                      required
-                      value={accountFormData.trunk_uri}
-                      onChange={(e) => setAccountFormData({ ...accountFormData, trunk_uri: e.target.value })}
+                      {...register("trunk_uri")}
                       placeholder="sip:username@provider.com"
-                      pattern="sips?:.+@.+"
-                      title="Format: sip:username@provider.com ou sips:username@provider.com"
                       disabled={isSavingAccount}
                     />
+                    {formErrors.trunk_uri && (
+                      <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                        {formErrors.trunk_uri.message}
+                      </span>
+                    )}
                     <p className="admin-form__hint">
                       Format requis : <code>sip:username@provider.com</code> ou <code>sips:username@provider.com</code>
                     </p>
@@ -268,8 +272,7 @@ export const AdminTelephonyPage = () => {
                     <input
                       className="input"
                       type="text"
-                      value={accountFormData.username}
-                      onChange={(e) => setAccountFormData({ ...accountFormData, username: e.target.value })}
+                      {...register("username")}
                       disabled={isSavingAccount}
                     />
                   </label>
@@ -279,8 +282,7 @@ export const AdminTelephonyPage = () => {
                     <input
                       className="input"
                       type="password"
-                      value={accountFormData.password}
-                      onChange={(e) => setAccountFormData({ ...accountFormData, password: e.target.value })}
+                      {...register("password")}
                       placeholder={editingAccountId ? "(laisser vide pour ne pas changer)" : ""}
                       disabled={isSavingAccount}
                     />
@@ -295,8 +297,7 @@ export const AdminTelephonyPage = () => {
                     <input
                       className="input"
                       type="text"
-                      value={accountFormData.contact_host}
-                      onChange={(e) => setAccountFormData({ ...accountFormData, contact_host: e.target.value })}
+                      {...register("contact_host")}
                       placeholder="votre-ip-publique.com"
                       disabled={isSavingAccount}
                     />
@@ -306,22 +307,23 @@ export const AdminTelephonyPage = () => {
                     Port de contact
                     <input
                       className="input"
-                      type="number"
-                      value={accountFormData.contact_port}
-                      onChange={(e) => setAccountFormData({ ...accountFormData, contact_port: e.target.value })}
+                      type="text"
+                      {...register("contact_port")}
                       placeholder="5060"
-                      min="1"
-                      max="65535"
                       disabled={isSavingAccount}
                     />
+                    {formErrors.contact_port && (
+                      <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                        {formErrors.contact_port.message}
+                      </span>
+                    )}
                   </label>
 
                   <label className="label">
                     Transport
                     <select
                       className="input"
-                      value={accountFormData.contact_transport}
-                      onChange={(e) => setAccountFormData({ ...accountFormData, contact_transport: e.target.value })}
+                      {...register("contact_transport")}
                       disabled={isSavingAccount}
                     >
                       <option value="udp">UDP</option>
@@ -336,8 +338,7 @@ export const AdminTelephonyPage = () => {
                 <label className="checkbox-field">
                   <input
                     type="checkbox"
-                    checked={accountFormData.is_default}
-                    onChange={(e) => setAccountFormData({ ...accountFormData, is_default: e.target.checked })}
+                    {...register("is_default")}
                     disabled={isSavingAccount}
                   />
                   Compte par défaut
@@ -346,8 +347,7 @@ export const AdminTelephonyPage = () => {
                 <label className="checkbox-field">
                   <input
                     type="checkbox"
-                    checked={accountFormData.is_active}
-                    onChange={(e) => setAccountFormData({ ...accountFormData, is_active: e.target.checked })}
+                    {...register("is_active")}
                     disabled={isSavingAccount}
                   />
                   Actif
