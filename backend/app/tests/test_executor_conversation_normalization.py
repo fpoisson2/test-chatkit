@@ -57,6 +57,25 @@ def test_normalize_conversation_history_for_litellm_converts_text_blocks() -> No
     assert normalized[0]["content"] == "Salut"
 
 
+def test_normalize_does_not_touch_responses_messages() -> None:
+    items = [
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {"type": "output_text", "text": "Bonjour"},
+            ],
+        }
+    ]
+
+    normalized = executor_module._normalize_conversation_history_for_provider(
+        items,
+        "groq",
+    )
+
+    assert normalized is items
+
+
 def test_normalize_conversation_history_for_litellm_with_multiple_text_parts() -> None:
     items = [
         {

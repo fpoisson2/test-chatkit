@@ -149,6 +149,14 @@ def _normalize_conversation_history_for_provider(
             continue
 
         copied_item = copy.deepcopy(item)
+        item_type = copied_item.get("type")
+
+        # Items already using the full Responses schema (with a string type)
+        # are assumed to be compatible with the Chat Completions converter.
+        if isinstance(item_type, str):
+            normalized.append(copied_item)
+            continue
+
         content = copied_item.get("content")
 
         if isinstance(content, list):
