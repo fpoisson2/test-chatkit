@@ -17,8 +17,10 @@ from ..admin_settings import (
     get_thread_title_prompt_override,
     serialize_admin_settings,
     serialize_appearance_settings,
+    serialize_lti_tool_settings,
     update_admin_settings,
     update_appearance_settings,
+    update_lti_tool_settings,
 )
 from ..config import get_settings
 from ..database import SessionLocal, get_session
@@ -26,12 +28,24 @@ from ..dependencies import require_admin
 from ..i18n_utils import resolve_frontend_i18n_path
 from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
-from ..models import Language, LanguageGenerationTask, SipAccount, TelephonyRoute, User
+from ..models import (
+    Language,
+    LanguageGenerationTask,
+    LTIRegistration,
+    SipAccount,
+    TelephonyRoute,
+    User,
+)
 from ..schemas import (
     AppearanceSettingsResponse,
     AppearanceSettingsUpdateRequest,
     AppSettingsResponse,
     AppSettingsUpdateRequest,
+    LTIRegistrationCreateRequest,
+    LTIRegistrationResponse,
+    LTIRegistrationUpdateRequest,
+    LtiToolSettingsResponse,
+    LtiToolSettingsUpdateRequest,
     McpServerCreateRequest,
     McpServerResponse,
     McpServerUpdateRequest,
@@ -140,6 +154,54 @@ async def patch_app_settings(
 
 
 @router.get(
+    "/api/admin/lti/tool-settings",
+    response_model=LtiToolSettingsResponse,
+)
+async def get_lti_tool_settings(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    override = get_thread_title_prompt_override(session)
+    payload = serialize_lti_tool_settings(override)
+    return LtiToolSettingsResponse.model_validate(payload)
+
+
+@router.patch(
+    "/api/admin/lti/tool-settings",
+    response_model=LtiToolSettingsResponse,
+)
+async def patch_lti_tool_settings(
+    payload: LtiToolSettingsUpdateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    kwargs: dict[str, object] = {}
+    if "client_id" in payload.model_fields_set:
+        kwargs["client_id"] = payload.client_id
+    if "key_set_url" in payload.model_fields_set:
+        kwargs["key_set_url"] = payload.key_set_url
+    if "audience" in payload.model_fields_set:
+        kwargs["audience"] = payload.audience
+    if "key_id" in payload.model_fields_set:
+        kwargs["key_id"] = payload.key_id
+    if "private_key" in payload.model_fields_set:
+        kwargs["private_key"] = payload.private_key
+
+    try:
+        settings = update_lti_tool_settings(session, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    apply_runtime_model_overrides(settings)
+    override = get_thread_title_prompt_override(session)
+    payload_dict = serialize_lti_tool_settings(override)
+    return LtiToolSettingsResponse.model_validate(payload_dict)
+
+
+@router.get(
     "/api/admin/appearance-settings",
     response_model=AppearanceSettingsResponse,
 )
@@ -203,6 +265,146 @@ async def patch_appearance_settings(
 
     serialized = serialize_appearance_settings(settings)
     return AppearanceSettingsResponse.model_validate(serialized)
+
+
+@router.get(
+    "/api/admin/lti/registrations",
+    response_model=list[LTIRegistrationResponse],
+)
+async def list_lti_registrations(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    registrations = session.scalars(
+        select(LTIRegistration).order_by(LTIRegistration.created_at.asc())
+    ).all()
+    return registrations
+
+
+@router.post(
+    "/api/admin/lti/registrations",
+    response_model=LTIRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_lti_registration(
+    payload: LTIRegistrationCreateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    issuer = payload.issuer
+    client_id = payload.client_id
+    existing = session.scalar(
+        select(LTIRegistration).where(
+            LTIRegistration.issuer == issuer,
+            LTIRegistration.client_id == client_id,
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un enregistrement existe déjà pour cet issuer et client_id",
+        )
+
+    registration = LTIRegistration(
+        issuer=issuer,
+        client_id=client_id,
+        key_set_url=payload.key_set_url,
+        authorization_endpoint=payload.authorization_endpoint,
+        token_endpoint=payload.token_endpoint,
+        deep_link_return_url=payload.deep_link_return_url,
+        audience=payload.audience,
+    )
+    session.add(registration)
+    session.commit()
+    session.refresh(registration)
+    return registration
+
+
+@router.patch(
+    "/api/admin/lti/registrations/{registration_id}",
+    response_model=LTIRegistrationResponse,
+)
+async def update_lti_registration(
+    registration_id: int,
+    payload: LTIRegistrationUpdateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    registration = session.get(LTIRegistration, registration_id)
+    if not registration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enregistrement LTI introuvable",
+        )
+
+    new_issuer = registration.issuer
+    if "issuer" in payload.model_fields_set and payload.issuer is not None:
+        new_issuer = payload.issuer
+
+    new_client_id = registration.client_id
+    if "client_id" in payload.model_fields_set and payload.client_id is not None:
+        new_client_id = payload.client_id
+
+    if (new_issuer, new_client_id) != (registration.issuer, registration.client_id):
+        conflict = session.scalar(
+            select(LTIRegistration).where(
+                LTIRegistration.issuer == new_issuer,
+                LTIRegistration.client_id == new_client_id,
+                LTIRegistration.id != registration.id,
+            )
+        )
+        if conflict:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Un enregistrement existe déjà pour cet issuer et client_id",
+            )
+        registration.issuer = new_issuer
+        registration.client_id = new_client_id
+
+    if "key_set_url" in payload.model_fields_set:
+        registration.key_set_url = payload.key_set_url or registration.key_set_url
+
+    if "authorization_endpoint" in payload.model_fields_set:
+        registration.authorization_endpoint = (
+            payload.authorization_endpoint or registration.authorization_endpoint
+        )
+
+    if "token_endpoint" in payload.model_fields_set:
+        registration.token_endpoint = (
+            payload.token_endpoint or registration.token_endpoint
+        )
+
+    if "deep_link_return_url" in payload.model_fields_set:
+        registration.deep_link_return_url = payload.deep_link_return_url
+
+    if "audience" in payload.model_fields_set:
+        registration.audience = payload.audience
+
+    session.add(registration)
+    session.commit()
+    session.refresh(registration)
+    return registration
+
+
+@router.delete(
+    "/api/admin/lti/registrations/{registration_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_lti_registration(
+    registration_id: int,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    registration = session.get(LTIRegistration, registration_id)
+    if not registration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enregistrement LTI introuvable",
+        )
+
+    session.delete(registration)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/api/admin/users", response_model=list[UserResponse])

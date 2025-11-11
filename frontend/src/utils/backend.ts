@@ -225,6 +225,63 @@ export type McpServerPayload = {
   refresh_tools?: boolean;
 };
 
+export type LtiRegistration = {
+  id: number;
+  issuer: string;
+  client_id: string;
+  key_set_url: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  deep_link_return_url: string | null;
+  audience: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LtiRegistrationCreatePayload = {
+  issuer: string;
+  client_id: string;
+  key_set_url: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  deep_link_return_url?: NullableString;
+  audience?: NullableString;
+};
+
+export type LtiRegistrationUpdatePayload = {
+  issuer?: NullableString;
+  client_id?: NullableString;
+  key_set_url?: NullableString;
+  authorization_endpoint?: NullableString;
+  token_endpoint?: NullableString;
+  deep_link_return_url?: NullableString;
+  audience?: NullableString;
+};
+
+export type LtiToolSettings = {
+  client_id: string | null;
+  key_set_url: string | null;
+  audience: string | null;
+  key_id: string | null;
+  has_private_key: boolean;
+  private_key_hint: string | null;
+  is_client_id_overridden: boolean;
+  is_key_set_url_overridden: boolean;
+  is_audience_overridden: boolean;
+  is_key_id_overridden: boolean;
+  is_private_key_overridden: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type LtiToolSettingsUpdatePayload = {
+  client_id?: NullableString;
+  key_set_url?: NullableString;
+  audience?: NullableString;
+  key_id?: NullableString;
+  private_key?: NullableString;
+};
+
 export type McpServerProbeRequest = {
   serverId?: number | null;
   url: string;
@@ -547,6 +604,91 @@ const buildMcpServerRequestBody = (
   return body;
 };
 
+const buildLtiRegistrationCreateBody = (
+  payload: LtiRegistrationCreatePayload,
+): Record<string, unknown> => ({
+  issuer: payload.issuer.trim(),
+  client_id: payload.client_id.trim(),
+  key_set_url: payload.key_set_url.trim(),
+  authorization_endpoint: payload.authorization_endpoint.trim(),
+  token_endpoint: payload.token_endpoint.trim(),
+  deep_link_return_url:
+    normalizeOptionalString(payload.deep_link_return_url) ?? undefined,
+  audience: normalizeOptionalString(payload.audience) ?? undefined,
+});
+
+const buildLtiRegistrationUpdateBody = (
+  payload: LtiRegistrationUpdatePayload,
+): Record<string, unknown> => {
+  const body: Record<string, unknown> = {};
+  if (payload.issuer !== undefined) {
+    body.issuer = payload.issuer?.trim() || null;
+  }
+  if (payload.client_id !== undefined) {
+    body.client_id = payload.client_id?.trim() || null;
+  }
+
+  const assignRequired = (
+    key: "key_set_url" | "authorization_endpoint" | "token_endpoint",
+  ) => {
+    if (!(key in payload)) {
+      return;
+    }
+    const value = payload[key];
+    if (value === undefined || value === null) {
+      return;
+    }
+    const trimmed = value.trim();
+    body[key] = trimmed;
+  };
+
+  assignRequired("key_set_url");
+  assignRequired("authorization_endpoint");
+  assignRequired("token_endpoint");
+
+  const optional = (
+    key: "deep_link_return_url" | "audience",
+  ) => {
+    if (!(key in payload)) {
+      return;
+    }
+    const normalized = normalizeOptionalString(payload[key]);
+    body[key] = normalized === undefined ? null : normalized;
+  };
+
+  optional("deep_link_return_url");
+  optional("audience");
+
+  return body;
+};
+
+const buildLtiToolSettingsBody = (
+  payload: LtiToolSettingsUpdatePayload,
+): Record<string, unknown> => {
+  const body: Record<string, unknown> = {};
+  if (payload.client_id !== undefined) {
+    const normalized = normalizeOptionalString(payload.client_id);
+    body.client_id = normalized === undefined ? null : normalized;
+  }
+  if (payload.key_set_url !== undefined) {
+    const normalized = normalizeOptionalString(payload.key_set_url);
+    body.key_set_url = normalized === undefined ? null : normalized;
+  }
+  if (payload.audience !== undefined) {
+    const normalized = normalizeOptionalString(payload.audience);
+    body.audience = normalized === undefined ? null : normalized;
+  }
+  if (payload.key_id !== undefined) {
+    const normalized = normalizeOptionalString(payload.key_id);
+    body.key_id = normalized === undefined ? null : normalized;
+  }
+  if (payload.private_key !== undefined) {
+    const normalized = normalizeOptionalString(payload.private_key);
+    body.private_key = normalized === undefined ? null : normalized;
+  }
+  return body;
+};
+
 const mergeMcpServerPayload = (
   base: McpServerPayload | undefined,
   updates: McpServerPayload,
@@ -771,6 +913,80 @@ export const adminApi = {
     if (!response.ok && response.status !== 204) {
       throw new ApiError("Échec de la suppression", { status: response.status });
     }
+  },
+};
+
+export const ltiAdminApi = {
+  async listRegistrations(token: string | null): Promise<LtiRegistration[]> {
+    const response = await requestWithFallback("/api/admin/lti/registrations", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async createRegistration(
+    token: string | null,
+    payload: LtiRegistrationCreatePayload,
+  ): Promise<LtiRegistration> {
+    const body = buildLtiRegistrationCreateBody(payload);
+    const response = await requestWithFallback("/api/admin/lti/registrations", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return response.json();
+  },
+
+  async updateRegistration(
+    token: string | null,
+    id: number,
+    payload: LtiRegistrationUpdatePayload,
+  ): Promise<LtiRegistration> {
+    const body = buildLtiRegistrationUpdateBody(payload);
+    const response = await requestWithFallback(
+      `/api/admin/lti/registrations/${id}`,
+      {
+        method: "PATCH",
+        headers: withAuthHeaders(token),
+        body: JSON.stringify(body),
+      },
+    );
+    return response.json();
+  },
+
+  async deleteRegistration(token: string | null, id: number): Promise<void> {
+    const response = await requestWithFallback(
+      `/api/admin/lti/registrations/${id}`,
+      {
+        method: "DELETE",
+        headers: withAuthHeaders(token),
+      },
+    );
+    if (!response.ok && response.status !== 204) {
+      throw new ApiError("Échec de la suppression de l'enregistrement LTI", {
+        status: response.status,
+      });
+    }
+  },
+
+  async getToolSettings(token: string | null): Promise<LtiToolSettings> {
+    const response = await requestWithFallback("/api/admin/lti/tool-settings", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async updateToolSettings(
+    token: string | null,
+    payload: LtiToolSettingsUpdatePayload,
+  ): Promise<LtiToolSettings> {
+    const body = buildLtiToolSettingsBody(payload);
+    const response = await requestWithFallback("/api/admin/lti/tool-settings", {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return response.json();
   },
 };
 

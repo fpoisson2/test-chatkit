@@ -40,6 +40,33 @@ def _create_lti_tables(connection) -> None:
     )
 
 
+def _app_settings_has_lti_columns(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("app_settings"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("app_settings")}
+    required = {
+        "lti_tool_client_id",
+        "lti_tool_key_set_url",
+        "lti_tool_audience",
+        "lti_tool_private_key_encrypted",
+        "lti_tool_key_id",
+    }
+    return required.issubset(columns)
+
+
+def _add_app_settings_lti_columns(connection) -> None:
+    statements = (
+        "ALTER TABLE app_settings ADD COLUMN lti_tool_client_id VARCHAR(255)",
+        "ALTER TABLE app_settings ADD COLUMN lti_tool_key_set_url TEXT",
+        "ALTER TABLE app_settings ADD COLUMN lti_tool_audience VARCHAR(512)",
+        "ALTER TABLE app_settings ADD COLUMN lti_tool_private_key_encrypted TEXT",
+        "ALTER TABLE app_settings ADD COLUMN lti_tool_key_id VARCHAR(255)",
+    )
+    for statement in statements:
+        connection.execute(text(statement))
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -71,6 +98,12 @@ def check_and_apply_migrations():
             "description": "Create tables used for LTI integrations",
             "check_fn": _lti_tables_exist,
             "apply_fn": _create_lti_tables,
+        },
+        {
+            "id": "003_add_lti_tool_columns",
+            "description": "Add columns to store LTI tool configuration",
+            "check_fn": _app_settings_has_lti_columns,
+            "apply_fn": _add_app_settings_lti_columns,
         },
     ]
 
