@@ -2448,6 +2448,14 @@ button {
   gap: 16px;
   min-width: 0;
   overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.admin-provider * {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .admin-provider .label {
@@ -2459,12 +2467,28 @@ button {
   max-width: 100%;
 }
 
+.admin-provider .input::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .admin-provider__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+
+.admin-provider__header .label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.admin-provider__header .button {
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
@@ -2481,9 +2505,24 @@ button {
     max-width: 100%;
   }
 
+  .admin-provider * {
+    max-width: 100%;
+  }
+
   .admin-provider__header {
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
+  }
+
+  .admin-provider__header .label {
+    width: 100%;
+  }
+
+  .admin-provider__header .label span {
+    display: block;
+    word-break: break-word;
+    hyphens: auto;
   }
 
   .admin-provider__header .button {
@@ -2492,14 +2531,18 @@ button {
 
   .admin-provider .input {
     font-size: 0.95rem;
+    width: 100%;
     max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .admin-provider .label {
+    width: 100%;
     max-width: 100%;
-    overflow: hidden;
+  }
+
+  .admin-provider .label > :first-child {
+    word-break: break-word;
+    hyphens: auto;
   }
 
   .admin-table--stack {
