@@ -147,20 +147,75 @@
   }
 }
 
-/* Global overflow prevention for admin cards and forms on mobile */
+/* Global overflow prevention for admin cards and forms */
+.admin-card,
+.admin-form,
+.admin-grid,
+.form-group {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Form elements styling and overflow prevention */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-input,
+.form-label {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.form-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
+  font-size: 1rem;
+  color: var(--text-color);
+  background-color: var(--form-field-background, var(--color-surface));
+  min-width: 0;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+
+.form-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-color);
+  min-width: 0;
+}
+
+/* Mobile-specific overflow prevention */
 @media (max-width: 768px) {
   .admin-card,
   .admin-form,
-  .admin-grid {
+  .admin-grid,
+  .form-group {
     max-width: 100%;
   }
 
-  /* Ensure inputs and code blocks don't overflow */
+  /* Ensure form inputs don't overflow */
   .admin-card .input,
   .admin-card .textarea,
-  .admin-card code,
+  .admin-card .form-input,
   .admin-form .input,
   .admin-form .textarea,
+  .admin-form .form-input,
+  .form-group .form-input {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Code blocks need aggressive word breaking */
+  .admin-card code,
   .admin-form code,
   .responsive-table code {
     max-width: 100%;
@@ -168,18 +223,22 @@
     overflow-wrap: break-word;
     word-break: break-all;
     white-space: pre-wrap;
-  }
-
-  /* Specific handling for form inputs to prevent overflow */
-  .admin-form .label,
-  .admin-card .label {
-    min-width: 0;
-  }
-
-  .admin-form .form-input,
-  .admin-card .form-input {
-    max-width: 100%;
     box-sizing: border-box;
+  }
+
+  /* Specific handling for form labels to prevent overflow */
+  .admin-form .label,
+  .admin-card .label,
+  .form-group .form-label {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Ensure select and textarea elements respect container width */
+  select.form-input,
+  textarea.form-input {
+    max-width: 100%;
+    width: 100%;
   }
 }
 
