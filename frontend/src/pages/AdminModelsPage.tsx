@@ -1,11 +1,12 @@
 import {
   ChangeEvent,
-  FormEvent,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
@@ -26,6 +27,7 @@ import {
   useUpdateModel,
   useDeleteModel,
 } from "../hooks";
+import { adminModelSchema, type AdminModelFormData } from "../schemas/admin";
 
 const sortModels = (models: AvailableModel[]): AvailableModel[] =>
   [...models].sort((a, b) => a.name.localeCompare(b.name, "fr"));
@@ -92,18 +94,9 @@ const buildProviderOptions = (settings: AppSettings): ProviderOption[] => {
   );
 };
 
-type ModelFormState = {
-  name: string;
-  display_name: string;
-  description: string;
-  provider_id: string;
-  provider_slug: string;
-  supports_reasoning: boolean;
-};
-
 const buildDefaultFormState = (
-  overrides: Partial<ModelFormState> = {},
-): ModelFormState => ({
+  overrides: Partial<AdminModelFormData> = {},
+): AdminModelFormData => ({
   name: "",
   display_name: "",
   description: "",
@@ -113,7 +106,7 @@ const buildDefaultFormState = (
   ...overrides,
 });
 
-const buildFormFromModel = (model: AvailableModel): ModelFormState =>
+const buildFormFromModel = (model: AvailableModel): AdminModelFormData =>
   buildDefaultFormState({
     name: model.name,
     display_name: model.display_name ?? "",
@@ -134,11 +127,26 @@ export const AdminModelsPage = () => {
   const updateModel = useUpdateModel();
   const deleteModel = useDeleteModel();
 
+  // React Hook Form
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors: formErrors },
+    watch,
+    setValue,
+    reset,
+  } = useForm<AdminModelFormData>({
+    resolver: zodResolver(adminModelSchema),
+    defaultValues: buildDefaultFormState(),
+  });
+
   // Local UI state
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [form, setForm] = useState<ModelFormState>(() => buildDefaultFormState());
   const [editingModelId, setEditingModelId] = useState<number | null>(null);
+
+  // Watch form values
+  const formValues = watch();
 
   // Derived state
   const models = useMemo(() => sortModels(modelsData), [modelsData]);
@@ -188,17 +196,17 @@ export const AdminModelsPage = () => {
     }
   }, [modelsError, logout]);
 
-  const resetForm = useCallback((overrides: Partial<ModelFormState> = {}) => {
-    setForm(buildDefaultFormState(overrides));
+  const resetForm = useCallback((overrides: Partial<AdminModelFormData> = {}) => {
+    reset(buildDefaultFormState(overrides));
     setEditingModelId(null);
-  }, []);
+  }, [reset]);
 
   const isEditing = editingModelId !== null;
 
   const editingModelName = isEditing
-    ? form.name.trim() ||
+    ? formValues.name.trim() ||
       models.find((candidate) => candidate.id === editingModelId)?.name ||
-      form.name
+      formValues.name
     : "";
 
   const isBusy =
@@ -210,21 +218,15 @@ export const AdminModelsPage = () => {
   const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const slug = event.target.value;
     if (!slug) {
-      setForm((prev) => ({
-        ...prev,
-        provider_id: "",
-        provider_slug: "",
-      }));
+      setValue("provider_id", "");
+      setValue("provider_slug", "");
       return;
     }
     const option = mergedProviderOptions.find(
       (candidate) => candidate.slug === slug,
     );
-    setForm((prev) => ({
-      ...prev,
-      provider_id: option?.id ?? "",
-      provider_slug: slug,
-    }));
+    setValue("provider_id", option?.id ?? "");
+    setValue("provider_slug", slug);
   };
 
   const renderProviderOptionLabel = (option: ProviderOption): string => {
@@ -240,8 +242,7 @@ export const AdminModelsPage = () => {
     return baseLabel;
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async (data: AdminModelFormData) => {
     if (!token) {
       setError("Authentification requise pour ajouter un modèle.");
       return;
@@ -249,39 +250,30 @@ export const AdminModelsPage = () => {
     setError(null);
     setSuccess(null);
 
-    const trimmedName = form.name.trim();
-    if (!trimmedName) {
-      setError(t("admin.models.errors.missingModelId"));
-      return;
-    }
-
-    const trimmedProviderSlug = form.provider_slug.trim();
-    if (!trimmedProviderSlug) {
-      setError(t("admin.models.errors.missingProvider"));
-      return;
-    }
-
+    const trimmedName = data.name.trim();
+    const trimmedProviderSlug = data.provider_slug.trim();
     const normalizedProviderSlug = trimmedProviderSlug.toLowerCase();
+
     const providerOption = mergedProviderOptions.find(
       (candidate) => candidate.slug === normalizedProviderSlug,
     );
     const providerIdFromOption = providerOption?.id?.trim() ?? null;
-    const providerIdFromForm = form.provider_id.trim()
-      ? form.provider_id.trim()
+    const providerIdFromForm = data.provider_id.trim()
+      ? data.provider_id.trim()
       : null;
     const providerId = providerIdFromOption ?? providerIdFromForm;
 
-    const trimmedDisplayName = form.display_name.trim();
-    const trimmedDescription = form.description.trim();
+    const trimmedDisplayName = data.display_name?.trim() || "";
+    const trimmedDescription = data.description?.trim() || "";
 
     if (editingModelId !== null) {
       const payload: AvailableModelUpdatePayload = {
         name: trimmedName,
-        display_name: trimmedDisplayName ? trimmedDisplayName : null,
-        description: trimmedDescription ? trimmedDescription : null,
+        display_name: trimmedDisplayName || null,
+        description: trimmedDescription || null,
         provider_id: providerId,
         provider_slug: normalizedProviderSlug,
-        supports_reasoning: form.supports_reasoning,
+        supports_reasoning: data.supports_reasoning,
       };
 
       updateModel.mutate(
@@ -313,11 +305,11 @@ export const AdminModelsPage = () => {
 
     const payload: AvailableModelPayload = {
       name: trimmedName,
-      display_name: trimmedDisplayName ? trimmedDisplayName : null,
-      description: trimmedDescription ? trimmedDescription : null,
+      display_name: trimmedDisplayName || null,
+      description: trimmedDescription || null,
       provider_id: providerId,
       provider_slug: normalizedProviderSlug,
-      supports_reasoning: form.supports_reasoning,
+      supports_reasoning: data.supports_reasoning,
     };
 
     createModel.mutate(
@@ -348,15 +340,15 @@ export const AdminModelsPage = () => {
 
   const handleEdit = (model: AvailableModel) => {
     setEditingModelId(model.id);
-    setForm(buildFormFromModel(model));
+    reset(buildFormFromModel(model));
     setError(null);
     setSuccess(null);
   };
 
   const handleCancelEdit = () => {
     resetForm({
-      provider_id: form.provider_id,
-      provider_slug: form.provider_slug,
+      provider_id: formValues.provider_id,
+      provider_slug: formValues.provider_slug,
     });
     setError(null);
     setSuccess(null);
@@ -471,7 +463,7 @@ export const AdminModelsPage = () => {
                   : t("admin.models.form.createSubtitle")}
               </p>
             </div>
-            <form className="admin-form" onSubmit={handleSubmit}>
+            <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
               {isEditing && (
                 <div className="alert alert--info" role="status">
                   {t("admin.models.form.editingNotice", {
@@ -485,26 +477,21 @@ export const AdminModelsPage = () => {
                   <input
                     className="input"
                     type="text"
-                    value={form.name}
-                    required
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, name: event.target.value }))
-                    }
+                    {...register("name")}
                     placeholder={t("admin.models.form.modelIdPlaceholder")}
                   />
+                  {formErrors.name && (
+                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                      {formErrors.name.message}
+                    </span>
+                  )}
                 </label>
                 <label className="label">
                   Nom affiché (optionnel)
                   <input
                     className="input"
                     type="text"
-                    value={form.display_name}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        display_name: event.target.value,
-                      }))
-                    }
+                    {...register("display_name")}
                     placeholder="Nom convivial"
                   />
                 </label>
@@ -513,11 +500,11 @@ export const AdminModelsPage = () => {
                 {t("admin.models.form.providerSelectLabel")}
                 <select
                   className="input"
-                  value={form.provider_slug}
+                  {...register("provider_slug")}
                   onChange={handleProviderChange}
                   disabled={isBusy}
                 >
-                  <option value="" disabled={isLoadingProviders}>
+                  <option value="">
                     {isLoadingProviders
                       ? t("admin.models.form.providerSelectLoading")
                       : t("admin.models.form.providerSelectPlaceholder")}
@@ -528,6 +515,11 @@ export const AdminModelsPage = () => {
                     </option>
                   ))}
                 </select>
+                {formErrors.provider_slug && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                    {formErrors.provider_slug.message}
+                  </span>
+                )}
               </label>
               <p className="admin-form__hint">
                 {t("admin.models.form.providerSelectHint")}
@@ -537,26 +529,14 @@ export const AdminModelsPage = () => {
                 <textarea
                   className="input"
                   rows={3}
-                  value={form.description}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      description: event.target.value,
-                    }))
-                  }
+                  {...register("description")}
                   placeholder="Ajoutez des notes pour aider les administrateurs."
                 />
               </label>
               <label className="checkbox-field">
                 <input
                   type="checkbox"
-                  checked={form.supports_reasoning}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      supports_reasoning: event.target.checked,
-                    }))
-                  }
+                  {...register("supports_reasoning")}
                 />
                 Modèle de raisonnement (affiche les options avancées dans le workflow builder)
               </label>
