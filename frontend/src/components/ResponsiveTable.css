@@ -56,6 +56,7 @@
   display: grid;
   gap: clamp(14px, 3vw, 20px);
   width: 100%;
+  min-width: 0; /* Allow cards to shrink */
 }
 
 .responsive-table-card {
@@ -68,6 +69,8 @@
   flex-direction: column;
   gap: 12px;
   transition: box-shadow 0.2s ease, transform 0.2s ease;
+  min-width: 0; /* Allow card to shrink */
+  overflow: hidden; /* Prevent overflow */
 }
 
 .responsive-table-card:hover {
@@ -79,6 +82,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0; /* Allow row to shrink */
 }
 
 .responsive-table-card__label {
@@ -96,6 +100,34 @@
   margin: 0;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0; /* Allow value to shrink */
+  max-width: 100%; /* Respect parent width */
+}
+
+/* Handle long text in code elements within cards */
+.responsive-table-card__value code,
+.responsive-table-card__value pre {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  white-space: pre-wrap;
+  max-width: 100%;
+  display: inline-block;
+}
+
+/* Handle buttons and action groups in cards */
+.responsive-table-card__value .admin-table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+/* Handle nested divs and elements */
+.responsive-table-card__value > * {
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* Mobile-specific table adjustments */
@@ -112,6 +144,42 @@
 
   .responsive-table th {
     font-size: 0.85rem;
+  }
+}
+
+/* Global overflow prevention for admin cards and forms on mobile */
+@media (max-width: 768px) {
+  .admin-card,
+  .admin-form,
+  .admin-grid {
+    max-width: 100%;
+  }
+
+  /* Ensure inputs and code blocks don't overflow */
+  .admin-card .input,
+  .admin-card .textarea,
+  .admin-card code,
+  .admin-form .input,
+  .admin-form .textarea,
+  .admin-form code,
+  .responsive-table code {
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+
+  /* Specific handling for form inputs to prevent overflow */
+  .admin-form .label,
+  .admin-card .label {
+    min-width: 0;
+  }
+
+  .admin-form .form-input,
+  .admin-card .form-input {
+    max-width: 100%;
+    box-sizing: border-box;
   }
 }
 
