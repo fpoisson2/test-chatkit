@@ -12,6 +12,7 @@ import { VectorStoresPage } from "./pages/VectorStoresPage";
 import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
+import { AdminModelProvidersPage } from "./pages/AdminModelProvidersPage";
 import { AdminAppSettingsPage } from "./pages/AdminAppSettingsPage";
 import { AdminTelephonyPage } from "./pages/AdminTelephonyPage";
 import { AdminMcpServersPage } from "./pages/AdminMcpServersPage";
@@ -121,6 +122,7 @@ export const App = () => (
       <Route path="settings" element={<AdminAppSettingsPage />} />
       <Route path="appearance" element={<AdminAppearancePage />} />
       <Route path="models" element={<AdminModelsPage />} />
+      <Route path="providers" element={<AdminModelProvidersPage />} />
       <Route path="sip-accounts" element={<AdminTelephonyPage />} />
       <Route path="mcp-servers" element={<AdminMcpServersPage />} />
       <Route path="languages" element={<AdminLanguagesPage />} />

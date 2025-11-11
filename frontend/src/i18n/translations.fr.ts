@@ -23,6 +23,7 @@ export const fr: TranslationDictionary = {
   "app.sidebar.profile.logout": "Déconnexion",
   "admin.tabs.users": "Gestion des utilisateurs",
   "admin.tabs.models": "Modèles disponibles",
+  "admin.tabs.providers": "Fournisseurs de modèles",
   "admin.tabs.vectorStores": "Vector stores",
   "admin.tabs.widgets": "Bibliothèque de widgets",
   "admin.tabs.mcpServers": "Serveurs MCP",
@@ -69,6 +70,9 @@ export const fr: TranslationDictionary = {
   "admin.models.feedback.deleted": "Modèle « {{model}} » supprimé.",
   "admin.models.table.editAction": "Modifier",
   "admin.models.table.deleteAction": "Supprimer",
+  "admin.modelProviders.page.title": "Fournisseurs de modèles",
+  "admin.modelProviders.page.subtitle": "Configurez les connexions aux fournisseurs LLM et les paramètres API.",
+  "admin.modelProviders.success.saved": "Configuration des fournisseurs enregistrée avec succès.",
   "admin.appSettings.page.title": "Paramètres généraux",
   "admin.appSettings.page.subtitle":
     "Contrôlez le comportement global de ChatKit.",
