@@ -136,9 +136,6 @@ def _normalize_conversation_history_for_provider(
         "litellm"
     )
 
-    if not requires_normalization:
-        return items
-
     changed = False
     normalized: list[TResponseInputItem] = []
     text_content_types = {"input_text", "output_text", "text"}
@@ -149,42 +146,44 @@ def _normalize_conversation_history_for_provider(
             continue
 
         copied_item = copy.deepcopy(item)
+        item_changed = False
+
         response_id = copied_item.get("id")
         if response_id is not None and (
             not isinstance(response_id, str) or not response_id.startswith("msg")
         ):
             copied_item.pop("id", None)
-            changed = True
+            item_changed = True
 
-        item_type = copied_item.get("type")
+        if requires_normalization:
+            item_type = copied_item.get("type")
 
-        # Items already using the full Responses schema (with a string type)
-        # are assumed to be compatible with the Chat Completions converter.
-        if isinstance(item_type, str):
+            # Items already using the full Responses schema (with a string type)
+            # are assumed to be compatible with the Chat Completions converter.
+            if not isinstance(item_type, str):
+                content = copied_item.get("content")
+
+                if isinstance(content, list):
+                    text_parts: list[str] = []
+
+                    for part in content:
+                        if (
+                            isinstance(part, Mapping)
+                            and isinstance(part.get("type"), str)
+                            and part["type"] in text_content_types
+                            and isinstance(part.get("text"), str)
+                        ):
+                            text_parts.append(part["text"])
+
+                    if text_parts:
+                        copied_item["content"] = "\n\n".join(text_parts)
+                        item_changed = True
+
+        if item_changed:
             normalized.append(copied_item)
-            continue
-
-        content = copied_item.get("content")
-
-        if isinstance(content, list):
-            text_parts: list[str] = []
-
-            for part in content:
-                if (
-                    isinstance(part, Mapping)
-                    and isinstance(part.get("type"), str)
-                    and part["type"] in text_content_types
-                    and isinstance(part.get("text"), str)
-                ):
-                    text_parts.append(part["text"])
-
-            if text_parts:
-                copied_item["content"] = "\n\n".join(text_parts)
-                normalized.append(copied_item)
-                changed = True
-                continue
-
-        normalized.append(copied_item)
+            changed = True
+        else:
+            normalized.append(item)
 
     return items if not changed else normalized
 

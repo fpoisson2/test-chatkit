@@ -145,6 +145,27 @@ def test_normalize_strips_invalid_ids_for_legacy_providers() -> None:
     assert normalized[2]["id"] == "msg_real_id"
 
 
+def test_normalize_strips_invalid_ids_for_other_providers() -> None:
+    items = [
+        {"role": "assistant", "content": "Bonjour", "id": "__fake_id__"},
+        {
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Salut"}],
+            "id": "msg_real_id",
+        },
+    ]
+
+    normalized = executor_module._normalize_conversation_history_for_provider(
+        items,
+        "openai",
+    )
+
+    assert normalized is not items
+    assert "id" not in normalized[0]
+    assert normalized[1]["id"] == "msg_real_id"
+    assert normalized[1]["content"] == [{"type": "output_text", "text": "Salut"}]
+
+
 def test_normalize_conversation_history_unchanged_for_other_providers() -> None:
     items = [
         {
