@@ -180,3 +180,16 @@ def test_normalize_conversation_history_unchanged_for_other_providers() -> None:
     )
 
     assert normalized is items
+
+
+def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
+    assert (
+        executor_module._sanitize_previous_response_id("  resp-123 ")
+        == "resp-123"
+    )
+
+
+def test_sanitize_previous_response_id_rejects_invalid_values() -> None:
+    assert executor_module._sanitize_previous_response_id("__fake_id__") is None
+    assert executor_module._sanitize_previous_response_id(123) is None
+    assert executor_module._sanitize_previous_response_id(None) is None

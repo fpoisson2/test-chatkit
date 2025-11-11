@@ -116,6 +116,16 @@ AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 
+def _sanitize_previous_response_id(value: Any) -> str | None:
+    """Return a valid previous_response_id or ``None`` when invalid."""
+
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate.startswith("resp"):
+            return candidate
+    return None
+
+
 def _normalize_conversation_history_for_provider(
     items: Sequence[TResponseInputItem],
     provider_slug: str | None,
@@ -1216,6 +1226,21 @@ async def run_workflow(
             else None,
         )
 
+        sanitized_previous_response_id = _sanitize_previous_response_id(
+            getattr(agent_context, "previous_response_id", None)
+        )
+        if sanitized_previous_response_id != getattr(
+            agent_context, "previous_response_id", None
+        ):
+            try:
+                agent_context.previous_response_id = sanitized_previous_response_id
+            except Exception:  # pragma: no cover - attribute assignment best effort
+                logger.debug(
+                    "Impossible de normaliser previous_response_id pour l'agent %s",
+                    getattr(agent, "name", "<inconnu>"),
+                    exc_info=True,
+                )
+
         try:
             result = Runner.run_streamed(
                 agent,
@@ -1224,9 +1249,7 @@ async def run_workflow(
                     response_format_override, provider_binding=provider_binding
                 ),
                 context=runner_context,
-                previous_response_id=getattr(
-                    agent_context, "previous_response_id", None
-                ),
+                previous_response_id=sanitized_previous_response_id,
             )
             try:
                 async for event in stream_agent_response(agent_context, result):
