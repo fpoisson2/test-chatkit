@@ -88,28 +88,6 @@ class WorkflowDefaults:
                 return frozenset(str(item) for item in values)
             raise RuntimeError(f"{label} doit être une liste de chaînes")
 
-        lti_keys_dir_override = get_stripped("CHATKIT_LTI_KEYS_DIR")
-        if lti_keys_dir_override:
-            default_lti_keys_dir = Path(lti_keys_dir_override).expanduser()
-        else:
-            default_lti_keys_dir = Path.home() / ".chatkit" / "lti"
-
-        private_key_path_value = get_stripped("LTI_TOOL_PRIVATE_KEY_PATH")
-        if private_key_path_value:
-            resolved_private_key_path = Path(private_key_path_value).expanduser()
-        else:
-            resolved_private_key_path = (
-                default_lti_keys_dir / DEFAULT_LTI_PRIVATE_KEY_FILENAME
-            )
-
-        public_key_path_value = get_stripped("LTI_TOOL_PUBLIC_KEY_PATH")
-        if public_key_path_value:
-            resolved_public_key_path = Path(public_key_path_value).expanduser()
-        else:
-            resolved_public_key_path = (
-                default_lti_keys_dir / DEFAULT_LTI_PUBLIC_KEY_FILENAME
-            )
-
         return cls(
             default_end_message=default_end_message,
             default_workflow_slug=default_workflow_slug,
@@ -166,7 +144,8 @@ class Settings:
         chatkit_realtime_instructions: Instructions transmises aux sessions Realtime.
         chatkit_realtime_voice: Voix utilisée pour la synthèse Realtime.
         chatkit_realtime_model_provider_id: ID du fournisseur de modèle pour Realtime.
-        chatkit_realtime_model_provider_slug: Slug du fournisseur de modèle pour Realtime.
+        chatkit_realtime_model_provider_slug: Slug du fournisseur de modèle pour
+            Realtime.
         database_url: Chaîne de connexion SQLAlchemy.
         auth_secret_key: Clé secrète pour signer les JWT d'authentification.
         access_token_expire_minutes: Durée de vie des tokens d'accès.
@@ -464,6 +443,28 @@ class Settings:
                 sip_trunk_uri_value = registrar_trimmed
             elif sip_username_value:
                 sip_trunk_uri_value = f"sip:{sip_username_value}@{registrar_trimmed}"
+
+        lti_keys_dir_override = get_stripped("CHATKIT_LTI_KEYS_DIR")
+        if lti_keys_dir_override:
+            default_lti_keys_dir = Path(lti_keys_dir_override).expanduser()
+        else:
+            default_lti_keys_dir = Path.home() / ".chatkit" / "lti"
+
+        private_key_path_value = get_stripped("LTI_TOOL_PRIVATE_KEY_PATH")
+        if private_key_path_value:
+            resolved_private_key_path = Path(private_key_path_value).expanduser()
+        else:
+            resolved_private_key_path = (
+                default_lti_keys_dir / DEFAULT_LTI_PRIVATE_KEY_FILENAME
+            )
+
+        public_key_path_value = get_stripped("LTI_TOOL_PUBLIC_KEY_PATH")
+        if public_key_path_value:
+            resolved_public_key_path = Path(public_key_path_value).expanduser()
+        else:
+            resolved_public_key_path = (
+                default_lti_keys_dir / DEFAULT_LTI_PUBLIC_KEY_FILENAME
+            )
 
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
