@@ -1659,6 +1659,32 @@ export const workflowsApi = {
     });
     return response.json();
   },
+
+  async promoteVersion(
+    token: string | null,
+    versionId: number,
+    isActive: boolean,
+  ): Promise<WorkflowVersionResponse> {
+    const response = await requestWithFallback(`/workflow_versions/${versionId}/promote`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ is_active: isActive }),
+    });
+    return response.json();
+  },
+
+  async deployToProduction(
+    token: string | null,
+    workflowId: number,
+    versionId: number,
+  ): Promise<WorkflowVersionResponse> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/production`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ version_id: versionId }),
+    });
+    return response.json();
+  },
 };
 
 export type VectorStoreSummary = {

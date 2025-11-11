@@ -1,11 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   workflowsApi,
+  chatkitApi,
   type WorkflowSummary,
   type WorkflowVersionSummary,
   type WorkflowVersionResponse,
   type CreateWorkflowPayload,
   type UpdateWorkflowPayload,
+  type HostedWorkflowMetadata,
 } from "../utils/backend";
 
 // Query keys for cache management
@@ -17,6 +19,13 @@ export const workflowsKeys = {
   detail: (id: number) => [...workflowsKeys.details(), id] as const,
   versions: (workflowId: number) => [...workflowsKeys.all, "versions", workflowId] as const,
   version: (versionId: number) => [...workflowsKeys.all, "version", versionId] as const,
+};
+
+// Query keys for hosted workflows
+export const hostedWorkflowsKeys = {
+  all: ["hostedWorkflows"] as const,
+  lists: () => [...hostedWorkflowsKeys.all, "list"] as const,
+  list: (token: string | null) => [...hostedWorkflowsKeys.lists(), token] as const,
 };
 
 /**
@@ -284,6 +293,262 @@ export const useSetChatkitWorkflow = () => {
     onSettled: (data, error, variables) => {
       // Refetch to ensure cache is in sync with server
       queryClient.invalidateQueries({ queryKey: workflowsKeys.lists() });
+    },
+  });
+};
+
+// ============================================================================
+// HOSTED WORKFLOWS HOOKS
+// ============================================================================
+
+/**
+ * Hook to fetch all hosted workflows
+ */
+export const useHostedWorkflows = (token: string | null) => {
+  return useQuery({
+    queryKey: hostedWorkflowsKeys.list(token),
+    queryFn: () => chatkitApi.getHostedWorkflows(token, { cache: false }),
+    enabled: !!token,
+  });
+};
+
+/**
+ * Hook to create a hosted workflow
+ */
+export const useCreateHostedWorkflow = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      token,
+      payload,
+    }: {
+      token: string | null;
+      payload: {
+        slug: string;
+        workflow_id: string;
+        label: string;
+        description?: string;
+      };
+    }) => chatkitApi.createHostedWorkflow(token, payload),
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: hostedWorkflowsKeys.lists() });
+
+      // Snapshot previous value
+      const previousHosted = queryClient.getQueryData<HostedWorkflowMetadata[] | null>(
+        hostedWorkflowsKeys.list(variables.token)
+      );
+
+      // Optimistically update cache with temporary hosted workflow
+      const tempHosted: HostedWorkflowMetadata = {
+        slug: variables.payload.slug,
+        workflowId: variables.payload.workflow_id,
+        label: variables.payload.label,
+        description: variables.payload.description || null,
+      };
+
+      queryClient.setQueryData<HostedWorkflowMetadata[] | null>(
+        hostedWorkflowsKeys.list(variables.token),
+        (old) => (old ? [...old, tempHosted] : [tempHosted])
+      );
+
+      // Invalidate cache to ensure it's refetched
+      chatkitApi.invalidateHostedWorkflowCache();
+
+      return { previousHosted };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousHosted !== undefined) {
+        queryClient.setQueryData(hostedWorkflowsKeys.list(variables.token), context.previousHosted);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: hostedWorkflowsKeys.lists() });
+    },
+  });
+};
+
+/**
+ * Hook to delete a hosted workflow
+ */
+export const useDeleteHostedWorkflow = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ token, slug }: { token: string | null; slug: string }) =>
+      chatkitApi.deleteHostedWorkflow(token, slug),
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: hostedWorkflowsKeys.lists() });
+
+      // Snapshot previous value
+      const previousHosted = queryClient.getQueryData<HostedWorkflowMetadata[] | null>(
+        hostedWorkflowsKeys.list(variables.token)
+      );
+
+      // Optimistically remove from cache
+      queryClient.setQueryData<HostedWorkflowMetadata[] | null>(
+        hostedWorkflowsKeys.list(variables.token),
+        (old) => (old ? old.filter((w) => w.slug !== variables.slug) : null)
+      );
+
+      // Invalidate cache to ensure it's refetched
+      chatkitApi.invalidateHostedWorkflowCache();
+
+      return { previousHosted };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousHosted !== undefined) {
+        queryClient.setQueryData(hostedWorkflowsKeys.list(variables.token), context.previousHosted);
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: hostedWorkflowsKeys.lists() });
+    },
+  });
+};
+
+// ============================================================================
+// VERSION OPERATIONS HOOKS
+// ============================================================================
+
+/**
+ * Hook to promote a workflow version
+ */
+export const usePromoteVersion = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      token,
+      versionId,
+      isActive,
+    }: {
+      token: string | null;
+      versionId: number;
+      isActive: boolean;
+    }) => workflowsApi.promoteVersion(token, versionId, isActive),
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: workflowsKeys.all });
+
+      // Snapshot previous values - we need to update the version in the versions list
+      const workflowId = queryClient
+        .getQueriesData<WorkflowVersionSummary[]>({ queryKey: workflowsKeys.all })
+        .find(([key]) => {
+          const versions = queryClient.getQueryData<WorkflowVersionSummary[]>(key);
+          return versions?.some((v) => v.id === variables.versionId);
+        })?.[1]
+        ?.find((v) => v.id === variables.versionId)?.workflow_id;
+
+      if (workflowId) {
+        const previousVersions = queryClient.getQueryData<WorkflowVersionSummary[]>(
+          workflowsKeys.versions(workflowId)
+        );
+
+        // Optimistically update version status
+        queryClient.setQueryData<WorkflowVersionSummary[]>(
+          workflowsKeys.versions(workflowId),
+          (old = []) =>
+            old.map((v) =>
+              v.id === variables.versionId ? { ...v, is_active: variables.isActive } : v
+            )
+        );
+
+        return { previousVersions, workflowId };
+      }
+
+      return {};
+    },
+    onError: (err, variables, context: any) => {
+      // Rollback to previous state on error
+      if (context?.previousVersions && context?.workflowId) {
+        queryClient.setQueryData(
+          workflowsKeys.versions(context.workflowId),
+          context.previousVersions
+        );
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: workflowsKeys.all });
+    },
+  });
+};
+
+/**
+ * Hook to deploy a workflow version to production
+ */
+export const useDeployToProduction = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      token,
+      workflowId,
+      versionId,
+    }: {
+      token: string | null;
+      workflowId: number;
+      versionId: number;
+    }) => workflowsApi.deployToProduction(token, workflowId, versionId),
+    onMutate: async (variables) => {
+      // Cancel outgoing queries to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: workflowsKeys.lists() });
+      await queryClient.cancelQueries({ queryKey: workflowsKeys.versions(variables.workflowId) });
+
+      // Snapshot previous values
+      const previousWorkflows = queryClient.getQueryData<WorkflowSummary[]>(
+        workflowsKeys.list(variables.token)
+      );
+      const previousVersions = queryClient.getQueryData<WorkflowVersionSummary[]>(
+        workflowsKeys.versions(variables.workflowId)
+      );
+
+      // Optimistically update workflow's active version
+      queryClient.setQueryData<WorkflowSummary[]>(
+        workflowsKeys.list(variables.token),
+        (old = []) =>
+          old.map((workflow) =>
+            workflow.id === variables.workflowId
+              ? { ...workflow, active_version_id: variables.versionId, updated_at: new Date().toISOString() }
+              : workflow
+          )
+      );
+
+      // Optimistically set all versions to inactive, then set the target to active
+      queryClient.setQueryData<WorkflowVersionSummary[]>(
+        workflowsKeys.versions(variables.workflowId),
+        (old = []) =>
+          old.map((v) => ({
+            ...v,
+            is_active: v.id === variables.versionId,
+          }))
+      );
+
+      return { previousWorkflows, previousVersions };
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous state on error
+      if (context?.previousWorkflows) {
+        queryClient.setQueryData(workflowsKeys.list(variables.token), context.previousWorkflows);
+      }
+      if (context?.previousVersions) {
+        queryClient.setQueryData(
+          workflowsKeys.versions(variables.workflowId),
+          context.previousVersions
+        );
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refetch to ensure cache is in sync with server
+      queryClient.invalidateQueries({ queryKey: workflowsKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: workflowsKeys.versions(variables.workflowId) });
     },
   });
 };
