@@ -1,0 +1,23 @@
+/**
+ * Shadow Tokens
+ * Box shadows and elevation effects
+ */
+
+:root {
+  --shadow-soft: 0 20px 45px rgba(15, 23, 42, 0.12);
+  --shadow-card: 0 30px 60px rgba(15, 23, 42, 0.1);
+}
+
+/* Dark Theme Shadows */
+:root[data-theme="dark" i] {
+  --shadow-soft: 0 20px 45px rgba(3, 7, 18, 0.6);
+  --shadow-card: 0 30px 60px rgba(3, 7, 18, 0.5);
+}
+
+/* System Dark Mode Preference */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --shadow-soft: 0 20px 45px rgba(3, 7, 18, 0.6);
+    --shadow-card: 0 30px 60px rgba(3, 7, 18, 0.5);
+  }
+}

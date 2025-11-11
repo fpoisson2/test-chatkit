@@ -1,0 +1,20 @@
+/**
+ * Spacing Tokens
+ * Layout dimensions and spacing values
+ */
+
+:root {
+  /* Header/Layout Spacing */
+  --header-height: clamp(64px, 8vh, 80px);
+
+  /* Sidebar Dimensions */
+  --chatkit-sidebar-width: min(320px, 85vw);
+  --chatkit-sidebar-collapsed-width: clamp(48px, 9vw, 64px);
+}
+
+/* Mobile sidebar adjustments */
+@media (max-width: 768px) {
+  :root {
+    --chatkit-sidebar-width: min(340px, calc(100vw - clamp(16px, 6vw, 48px)));
+  }
+}

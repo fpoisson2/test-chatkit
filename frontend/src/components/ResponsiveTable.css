@@ -1,0 +1,132 @@
+/**
+ * ResponsiveTable Styles
+ * Adaptive table layout for desktop and mobile
+ */
+
+/* Table wrapper with horizontal scroll fallback */
+.responsive-table-wrapper {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--color-border-subtle);
+  max-width: 100%;
+}
+
+.responsive-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  min-width: 600px; /* Minimum width before horizontal scroll */
+}
+
+.responsive-table thead {
+  background: color-mix(in srgb, var(--primary-color) 6%, var(--color-surface-subtle));
+  color: var(--text-muted);
+}
+
+.responsive-table th,
+.responsive-table td {
+  padding: clamp(12px, 2vw, 18px);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: 0.95rem;
+}
+
+.responsive-table th {
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.responsive-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.responsive-table tbody tr:hover {
+  background: color-mix(in srgb, var(--primary-color) 4%, var(--color-surface-subtle));
+}
+
+.responsive-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Mobile Card View */
+.responsive-table-cards {
+  display: grid;
+  gap: clamp(14px, 3vw, 20px);
+  width: 100%;
+}
+
+.responsive-table-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 16px;
+  padding: clamp(14px, 4vw, 18px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.responsive-table-card:hover {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  transform: translateY(-2px);
+}
+
+.responsive-table-card__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.responsive-table-card__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.responsive-table-card__value {
+  font-size: 0.95rem;
+  color: var(--text-color);
+  margin: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Mobile-specific table adjustments */
+@media (max-width: 768px) {
+  .responsive-table-wrapper {
+    border-radius: 12px;
+  }
+
+  .responsive-table th,
+  .responsive-table td {
+    padding: clamp(10px, 2.5vw, 14px);
+    font-size: 0.9rem;
+  }
+
+  .responsive-table th {
+    font-size: 0.85rem;
+  }
+}
+
+/* Very small screens */
+@media (max-width: 480px) {
+  .responsive-table-card {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .responsive-table-card__label {
+    font-size: 0.7rem;
+  }
+
+  .responsive-table-card__value {
+    font-size: 0.9rem;
+  }
+}

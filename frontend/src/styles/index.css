@@ -1,0 +1,28 @@
+/**
+ * Main Styles Entry Point
+ * Imports all modular CSS files in the correct order
+ */
+
+/* 1. Design Tokens - CSS Custom Properties */
+@import './tokens/colors.css';
+@import './tokens/typography.css';
+@import './tokens/spacing.css';
+@import './tokens/shadows.css';
+
+/* 2. Base Styles - Resets and global styles */
+@import './base/reset.css';
+@import './base/utilities.css';
+
+/* 3. Component Styles - Reusable UI components */
+@import './components/buttons.css';
+@import './components/forms.css';
+@import './components/cards.css';
+@import './components/layout.css';
+
+/* Note: sidebar.css and admin.css are placeholders for Phase 1 */
+/* @import './components/sidebar.css'; */
+/* @import './components/admin.css'; */
+
+/* 4. Legacy Styles - Remaining styles to be extracted in future phases */
+/* This includes sidebar, admin, and other component styles not yet modularized */
+@import './legacy.css';

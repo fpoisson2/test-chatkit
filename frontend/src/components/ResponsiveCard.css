@@ -1,0 +1,65 @@
+/**
+ * ResponsiveCard Styles
+ * Mobile-optimized card component
+ */
+
+.responsive-card {
+  /* Prevent overflow */
+  max-width: 100%;
+  overflow: hidden;
+
+  /* Handle long text */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+
+  /* Ensure child elements respect boundaries */
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 3vw, 16px);
+}
+
+/* Ensure all children respect max-width */
+.responsive-card > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Handle inputs and textareas */
+.responsive-card input,
+.responsive-card textarea,
+.responsive-card select {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Handle placeholders */
+.responsive-card input::placeholder,
+.responsive-card textarea::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Handle labels and text */
+.responsive-card label,
+.responsive-card span,
+.responsive-card p {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 640px) {
+  .responsive-card {
+    padding: clamp(12px, 3vw, 16px);
+    gap: clamp(10px, 2.5vw, 14px);
+  }
+
+  /* Allow word breaks on mobile for long labels */
+  .responsive-card label {
+    word-break: break-word;
+    hyphens: auto;
+  }
+}
