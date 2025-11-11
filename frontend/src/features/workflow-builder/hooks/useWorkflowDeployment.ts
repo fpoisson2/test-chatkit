@@ -18,13 +18,12 @@
  */
 
 import { useCallback } from "react";
-import { makeApiEndpointCandidates } from "../../../utils/backend";
-import { backendUrl } from "../WorkflowBuilderUtils";
 import type { WorkflowVersionResponse } from "../types";
 import { useSaveContext } from "../contexts/SaveContext";
 import { useModalContext } from "../contexts/ModalContext";
 import { useGraphContext } from "../contexts/GraphContext";
 import { useWorkflowContext } from "../contexts/WorkflowContext";
+import { useDeployToProduction } from "../../../hooks/useWorkflows";
 
 type TranslationFunction = (key: string, params?: Record<string, unknown>) => string;
 
@@ -43,6 +42,7 @@ type LoadWorkflowsFn = (options?: {
 
 type UseWorkflowDeploymentParams = {
   authHeader: Record<string, string>;
+  token: string | null;
   t: TranslationFunction;
   handleSave: () => Promise<void>;
   buildGraphPayload: () => WorkflowVersionResponse["graph"];
@@ -82,6 +82,7 @@ export function useWorkflowDeployment(
 ): UseWorkflowDeploymentReturn {
   const {
     authHeader,
+    token,
     t,
     handleSave,
     buildGraphPayload,
@@ -101,9 +102,12 @@ export function useWorkflowDeployment(
     draftVersionSummaryRef,
   } = useWorkflowContext();
 
+  // React Query mutation
+  const deployToProductionMutation = useDeployToProduction();
+
   /**
    * Deploy version to production or published status
-   * Extracted from WorkflowBuilderPage.tsx lines 2412-2516 (~105 lines)
+   * Migrated to use React Query mutation with optimistic updates
    */
   const handleConfirmDeploy = useCallback(async () => {
     if (!selectedWorkflowId) {
@@ -146,74 +150,52 @@ export function useWorkflowDeployment(
     setSaveState("saving");
     setSaveMessage(t("workflowBuilder.deploy.promoting"));
 
-    const promoteCandidates = makeApiEndpointCandidates(
-      backendUrl,
-      `/api/workflows/${selectedWorkflowId}/production`,
-    );
+    try {
+      // Use React Query mutation for deployment
+      const promoted = await deployToProductionMutation.mutateAsync({
+        token,
+        workflowId: selectedWorkflowId,
+        versionId: versionIdToPromote,
+      });
 
-    let lastError: Error | null = null;
-
-    for (const url of promoteCandidates) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-          body: JSON.stringify({ version_id: versionIdToPromote }),
-        });
-
-        if (!response.ok) {
-          throw new Error(
-            t("workflowBuilder.deploy.promoteFailedWithStatus", { status: response.status }),
-          );
-        }
-
-        const promoted: WorkflowVersionResponse = await response.json();
-
-        // Clear draft refs if we promoted the draft
-        if (draftVersionIdRef.current === versionIdToPromote) {
-          draftVersionIdRef.current = null;
-          draftVersionSummaryRef.current = null;
-        }
-
-        setSelectedVersionId(promoted.id);
-
-        // Reload versions and workflows
-        await loadVersions(selectedWorkflowId, promoted.id);
-        await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: promoted.id });
-
-        lastSavedSnapshotRef.current = graphSnapshot;
-        updateHasPendingChanges(false);
-
-        setSaveState("saved");
-        setSaveMessage(
-          deployToProduction
-            ? t("workflowBuilder.deploy.successProduction")
-            : t("workflowBuilder.deploy.successPublished"),
-        );
-
-        setTimeout(() => setSaveState("idle"), 1500);
-        closeDeployModal();
-        setIsDeploying(false);
-        return;
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          continue;
-        }
-        lastError =
-          error instanceof Error
-            ? error
-            : new Error(t("workflowBuilder.deploy.promoteError"));
+      // Clear draft refs if we promoted the draft
+      if (draftVersionIdRef.current === versionIdToPromote) {
+        draftVersionIdRef.current = null;
+        draftVersionSummaryRef.current = null;
       }
-    }
 
-    // All attempts failed
-    setIsDeploying(false);
-    setSaveState("error");
-    setSaveMessage(lastError?.message ?? t("workflowBuilder.deploy.publishError"));
+      setSelectedVersionId(promoted.id);
+
+      // Reload versions and workflows (React Query handles cache invalidation)
+      await loadVersions(selectedWorkflowId, promoted.id);
+      await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: promoted.id });
+
+      lastSavedSnapshotRef.current = graphSnapshot;
+      updateHasPendingChanges(false);
+
+      setSaveState("saved");
+      setSaveMessage(
+        deployToProduction
+          ? t("workflowBuilder.deploy.successProduction")
+          : t("workflowBuilder.deploy.successPublished"),
+      );
+
+      setTimeout(() => setSaveState("idle"), 1500);
+      closeDeployModal();
+      setIsDeploying(false);
+    } catch (error) {
+      // Handle deployment error
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : t("workflowBuilder.deploy.publishError");
+
+      setIsDeploying(false);
+      setSaveState("error");
+      setSaveMessage(errorMessage);
+    }
   }, [
+    token,
     selectedWorkflowId,
     resolveVersionIdToPromote,
     setSaveState,
@@ -223,7 +205,7 @@ export function useWorkflowDeployment(
     hasPendingChanges,
     handleSave,
     buildGraphPayload,
-    authHeader,
+    deployToProductionMutation,
     draftVersionIdRef,
     draftVersionSummaryRef,
     setSelectedVersionId,
