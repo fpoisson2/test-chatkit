@@ -6,6 +6,7 @@ import { App } from "./App";
 import { AuthProvider } from "./auth";
 import { AppearanceSettingsProvider } from "./features/appearance/AppearanceSettingsContext";
 import { I18nProvider } from "./i18n";
+import { TooltipProvider } from "./components";
 import { enableDevMocks } from "./dev-mock";
 import "./styles/index.css";
 
@@ -18,7 +19,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <I18nProvider>
         <AuthProvider>
           <AppearanceSettingsProvider>
-            <App />
+            <TooltipProvider>
+              <App />
+            </TooltipProvider>
           </AppearanceSettingsProvider>
         </AuthProvider>
       </I18nProvider>

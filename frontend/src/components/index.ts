@@ -10,3 +10,6 @@ export { ResponsiveTable, type ResponsiveTableProps, type Column } from './Respo
 export { LoadingSpinner, type LoadingSpinnerProps } from './feedback/LoadingSpinner';
 export { ErrorAlert, type ErrorAlertProps } from './feedback/ErrorAlert';
 export { LoadingOverlay, type LoadingOverlayProps } from './feedback/LoadingOverlay';
+
+// UI components
+export { Tooltip, TooltipProvider } from './Tooltip';

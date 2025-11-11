@@ -2012,3 +2012,77 @@ button {
     justify-content: flex-end;
   }
 }
+
+/* ==========================================
+   Tooltip Styles (Radix UI)
+   ========================================== */
+
+.tooltip {
+  background: var(--color-text-strong);
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+  max-width: 260px;
+  z-index: 1100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: tooltipFadeIn 150ms ease-out;
+  user-select: none;
+}
+
+.tooltip[data-state="delayed-open"] {
+  animation: tooltipFadeIn 150ms ease-out;
+}
+
+.tooltip[data-state="closed"] {
+  animation: tooltipFadeOut 100ms ease-in;
+}
+
+.tooltip__arrow {
+  fill: var(--color-text-strong);
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tooltipFadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+/* Support prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .tooltip {
+    animation-duration: 0.01ms !important;
+  }
+
+  @keyframes tooltipFadeIn {
+    from, to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes tooltipFadeOut {
+    from, to {
+      opacity: 0;
+      transform: scale(1);
+    }
+  }
+}

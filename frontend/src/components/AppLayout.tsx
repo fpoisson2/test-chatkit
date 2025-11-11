@@ -16,6 +16,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { ProfileMenu } from "./ProfileMenu";
+import { Tooltip } from "./Tooltip";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import type { SettingsSectionId } from "../features/settings/sections";
 import { useI18n } from "../i18n";
