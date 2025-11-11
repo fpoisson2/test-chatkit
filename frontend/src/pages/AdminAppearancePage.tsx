@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { FeedbackMessages } from "../components";
 import { AppearanceForm } from "../features/appearance/AppearanceForm";
 import { useAppearanceSettings as useAppearanceContext } from "../features/appearance/AppearanceSettingsContext";
 import { useI18n } from "../i18n";
@@ -90,8 +91,12 @@ export const AdminAppearancePage = () => {
       subtitle={t("admin.appearance.page.subtitle")}
       tabs={<AdminTabs activeTab="appearance" />}
     >
-      {error ? <div className="alert alert--danger">{error}</div> : null}
-      {success ? <div className="alert alert--success">{success}</div> : null}
+      <FeedbackMessages
+        error={error}
+        success={success}
+        onDismissError={() => setError(null)}
+        onDismissSuccess={() => setSuccess(null)}
+      />
 
       <AppearanceForm
         id="admin-appearance-form"
