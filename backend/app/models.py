@@ -881,6 +881,210 @@ class OutboundCall(Base):
     sip_account: Mapped[SipAccount] = relationship("SipAccount")
 
 
+class LTIRegistration(Base):
+    __tablename__ = "lti_registrations"
+    __table_args__ = (
+        UniqueConstraint(
+            "issuer", "client_id", name="uq_lti_registrations_issuer_client"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    key_set_url: Mapped[str] = mapped_column(Text, nullable=False)
+    authorization_endpoint: Mapped[str] = mapped_column(Text, nullable=False)
+    token_endpoint: Mapped[str] = mapped_column(Text, nullable=False)
+    deep_link_return_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    audience: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    deployments: Mapped[list["LTIDeployment"]] = relationship(
+        "LTIDeployment",
+        back_populates="registration",
+        cascade="all, delete-orphan",
+    )
+    user_sessions: Mapped[list["LTIUserSession"]] = relationship(
+        "LTIUserSession",
+        back_populates="registration",
+        cascade="all, delete-orphan",
+    )
+
+
+class LTIDeployment(Base):
+    __tablename__ = "lti_deployments"
+    __table_args__ = (
+        UniqueConstraint(
+            "registration_id",
+            "deployment_id",
+            name="uq_lti_deployments_registration_deployment",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    registration_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("lti_registrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    deployment_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    workflow_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    registration: Mapped[LTIRegistration] = relationship(
+        "LTIRegistration", back_populates="deployments"
+    )
+    workflow: Mapped[Workflow | None] = relationship("Workflow")
+    resource_links: Mapped[list["LTIResourceLink"]] = relationship(
+        "LTIResourceLink",
+        back_populates="deployment",
+        cascade="all, delete-orphan",
+    )
+    user_sessions: Mapped[list["LTIUserSession"]] = relationship(
+        "LTIUserSession", back_populates="deployment"
+    )
+
+
+class LTIResourceLink(Base):
+    __tablename__ = "lti_resource_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "deployment_id",
+            "resource_link_id",
+            name="uq_lti_resource_links_deployment_resource",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deployment_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("lti_deployments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    resource_link_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    workflow_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    deployment: Mapped[LTIDeployment] = relationship(
+        "LTIDeployment", back_populates="resource_links"
+    )
+    workflow: Mapped[Workflow | None] = relationship("Workflow")
+    user_sessions: Mapped[list["LTIUserSession"]] = relationship(
+        "LTIUserSession", back_populates="resource_link"
+    )
+
+
+class LTIUserSession(Base):
+    __tablename__ = "lti_user_sessions"
+    __table_args__ = (
+        UniqueConstraint("state", name="uq_lti_user_sessions_state"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    registration_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("lti_registrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    deployment_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("lti_deployments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    resource_link_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("lti_resource_links.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    state: Mapped[str] = mapped_column(String(255), nullable=False)
+    nonce: Mapped[str] = mapped_column(String(255), nullable=False)
+    login_hint: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    target_link_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    platform_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    platform_context_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    expires_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    launched_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    registration: Mapped[LTIRegistration] = relationship(
+        "LTIRegistration", back_populates="user_sessions"
+    )
+    deployment: Mapped[LTIDeployment] = relationship(
+        "LTIDeployment", back_populates="user_sessions"
+    )
+    resource_link: Mapped[LTIResourceLink | None] = relationship(
+        "LTIResourceLink", back_populates="user_sessions"
+    )
+    user: Mapped[User | None] = relationship("User")
+
+
 class Language(Base):
     """Traductions de langues stockées en base de données."""
 
