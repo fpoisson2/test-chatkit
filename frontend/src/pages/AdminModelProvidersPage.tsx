@@ -3,6 +3,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { ResponsiveCard } from "../components";
 import { useI18n } from "../i18n";
 import {
   type AppSettings,
@@ -329,7 +330,7 @@ export const AdminModelProvidersPage = () => {
                     {t("admin.appSettings.model.customConfigHint")}
                   </p>
                   {providerRows.map((row) => (
-                    <div key={row.localId} className="admin-provider">
+                    <ResponsiveCard key={row.localId} className="admin-provider">
                       <div className="admin-provider__header">
                         <label
                           className="label"
@@ -467,7 +468,7 @@ export const AdminModelProvidersPage = () => {
                           </span>
                         </label>
                       ) : null}
-                    </div>
+                    </ResponsiveCard>
                   ))}
                   <button
                     type="button"

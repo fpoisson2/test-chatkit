@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth";
 import {
   CreateUserPayload,
@@ -9,6 +9,7 @@ import {
 } from "../utils/backend";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { ResponsiveTable, type Column } from "../components";
 
 export const AdminPage = () => {
   const { token, logout } = useAuth();
@@ -146,6 +147,61 @@ export const AdminPage = () => {
     }
   };
 
+  const userColumns = useMemo<Column<EditableUser>[]>(
+    () => [
+      {
+        key: "email",
+        label: "E-mail",
+        render: (user) => user.email,
+      },
+      {
+        key: "role",
+        label: "Rôle",
+        render: (user) => (user.is_admin ? "Administrateur" : "Utilisateur"),
+      },
+      {
+        key: "created",
+        label: "Créé le",
+        render: (user) => new Date(user.created_at).toLocaleString(),
+      },
+      {
+        key: "updated",
+        label: "Mis à jour le",
+        render: (user) => new Date(user.updated_at).toLocaleString(),
+      },
+      {
+        key: "actions",
+        label: "Actions",
+        render: (user) => (
+          <div className="admin-table__actions">
+            <button
+              className="button button--subtle button--sm"
+              type="button"
+              onClick={() => handleToggleAdmin(user)}
+            >
+              {user.is_admin ? "Retirer admin" : "Promouvoir"}
+            </button>
+            <button
+              className="button button--ghost button--sm"
+              type="button"
+              onClick={() => handleResetPassword(user)}
+            >
+              Réinitialiser le mot de passe
+            </button>
+            <button
+              className="button button--danger button--sm"
+              type="button"
+              onClick={() => handleDelete(user)}
+            >
+              Supprimer
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [handleToggleAdmin, handleResetPassword, handleDelete],
+  );
+
   return (
     <>
       <AdminTabs activeTab="users" />
@@ -234,64 +290,12 @@ export const AdminPage = () => {
                 Aucun utilisateur pour le moment.
               </p>
             ) : (
-              <div className="admin-table-wrapper">
-                <table className="admin-table admin-table--stack">
-                  <thead>
-                    <tr>
-                      <th>E-mail</th>
-                      <th>Rôle</th>
-                      <th>Créé le</th>
-                      <th>Mis à jour le</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((editableUser) => (
-                      <tr key={editableUser.id}>
-                        <td data-label="E-mail">{editableUser.email}</td>
-                        <td data-label="Rôle">
-                          {editableUser.is_admin
-                            ? "Administrateur"
-                            : "Utilisateur"}
-                        </td>
-                        <td data-label="Créé le">
-                          {new Date(editableUser.created_at).toLocaleString()}
-                        </td>
-                        <td data-label="Mis à jour le">
-                          {new Date(editableUser.updated_at).toLocaleString()}
-                        </td>
-                        <td data-label="Actions">
-                          <div className="admin-table__actions">
-                            <button
-                              className="button button--subtle button--sm"
-                              type="button"
-                              onClick={() => handleToggleAdmin(editableUser)}
-                            >
-                              {editableUser.is_admin
-                                ? "Retirer admin"
-                                : "Promouvoir"}
-                            </button>
-                            <button
-                              className="button button--ghost button--sm"
-                              type="button"
-                              onClick={() => handleResetPassword(editableUser)}
-                            >
-                              Réinitialiser le mot de passe
-                            </button>
-                            <button
-                              className="button button--danger button--sm"
-                              type="button"
-                              onClick={() => handleDelete(editableUser)}
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ResponsiveTable
+                columns={userColumns}
+                data={users}
+                keyExtractor={(user) => user.id}
+                mobileCardView={true}
+              />
             )}
           </section>
         </div>
