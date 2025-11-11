@@ -124,6 +124,30 @@ function validateOpenAIKey(variable, value) {
   logStatus(true, `${variable} semble correctement renseignée.`);
 }
 
+function validateDatabaseUrl(value) {
+  if (!value) {
+    logStatus(
+      false,
+      "DATABASE_URL non défini.",
+      "Ajoutez un DSN de base de données (ex. postgresql+psycopg://user:pass@host:5432/db ou sqlite:///./chatkit.db).",
+    );
+    return;
+  }
+
+  const protocolMatch = value.match(/^([a-z][a-z0-9+.-]*)/i);
+  if (!protocolMatch) {
+    logStatus(
+      false,
+      `DATABASE_URL → format inattendu (${value}).`,
+      "Utilisez un DSN SQLAlchemy valide, par exemple postgresql+psycopg://user:pass@host:5432/db.",
+    );
+    return;
+  }
+
+  const driver = protocolMatch[1];
+  logStatus(true, `DATABASE_URL défini (driver ${driver}).`);
+}
+
 function main() {
   console.log("🔍 Diagnostic du fichier .env\n");
 
@@ -205,6 +229,99 @@ function main() {
       }
     }
 
+    const masterKey = sanitizeEnvName(env.LITELLM_MASTER_KEY);
+    if (!masterKey) {
+      logStatus(
+        false,
+        "LITELLM_MASTER_KEY manquante.",
+        "Renseignez la master key configurée côté LiteLLM (généralement identique à LITELLM_API_KEY).",
+      );
+    } else {
+      logStatus(true, "LITELLM_MASTER_KEY détectée.");
+    }
+
+    const storeModelRaw = sanitizeEnvName(env.STORE_MODEL_IN_DB);
+    const wantsDbStorage = storeModelRaw && storeModelRaw.toLowerCase() === "true";
+    if (storeModelRaw) {
+      if (storeModelRaw.toLowerCase() === "true" || storeModelRaw.toLowerCase() === "false") {
+        logStatus(true, `STORE_MODEL_IN_DB=${storeModelRaw}`);
+      } else {
+        logStatus(
+          false,
+          `STORE_MODEL_IN_DB=${storeModelRaw} non reconnu.`,
+          "Utilisez True ou False selon que vous voulez persister les modèles LiteLLM dans la base.",
+        );
+      }
+    } else {
+      logStatus(true, "STORE_MODEL_IN_DB non défini (le proxy ne stockera pas les modèles en base).");
+    }
+
+    const fallbackLiteLLMDsn = "postgresql://postgres:postgres@litellmdb:5432/litellm";
+    const litellmRaw = sanitizeEnvName(env.LITELLM_DATABASE_URL);
+    const databaseUrlRaw = sanitizeEnvName(env.DATABASE_URL);
+    const litellmDbUrl = litellmRaw
+      || (/^postgres(?:ql)?:\/\//i.test(databaseUrlRaw) ? databaseUrlRaw : "");
+    if (wantsDbStorage) {
+      if (!litellmDbUrl) {
+        logStatus(
+          true,
+          `Aucun DSN LiteLLM explicite dans ce fichier : docker/litellm/.env fournit DATABASE_URL=${fallbackLiteLLMDsn} et l'entrypoint applique cette valeur pour Prisma.`,
+        );
+        console.log(
+          "   → Ajustez docker/litellm/.env (variables DATABASE_URL et éventuellement LITELLM_DATABASE_URL) si vous externalisez la base LiteLLM ou si vous changez les identifiants du service litellmdb.",
+        );
+      } else if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
+        logStatus(
+          false,
+          `DSN LiteLLM → format inattendu (${litellmDbUrl}).`,
+          "LiteLLM (Prisma) attend un DSN commençant par postgresql:// ou postgres://. Mettez à jour docker/litellm/.env ou laissez l'entrypoint utiliser sa valeur par défaut.",
+        );
+      } else {
+        if (litellmDbUrl === fallbackLiteLLMDsn) {
+          logStatus(true, "DATABASE_URL/LITELLM_DATABASE_URL → utilisation du DSN LiteLLM fourni par docker-compose.");
+        } else {
+          logStatus(true, "DATABASE_URL/LITELLM_DATABASE_URL personnalisé détecté pour LiteLLM.");
+        }
+      }
+    } else if (litellmDbUrl) {
+      if (!/^postgres(?:ql)?:\/\//i.test(litellmDbUrl)) {
+        logStatus(
+          false,
+          `DSN LiteLLM → format inattendu (${litellmDbUrl}).`,
+          "LiteLLM (Prisma) attend un DSN commençant par postgresql:// ou postgres://. Supprimez la valeur ou remplacez-la.",
+        );
+      } else if (litellmDbUrl === fallbackLiteLLMDsn) {
+        logStatus(true, "DATABASE_URL/LITELLM_DATABASE_URL → utilisation du DSN LiteLLM fourni par docker-compose.");
+      } else {
+        logStatus(true, "DATABASE_URL/LITELLM_DATABASE_URL personnalisé détecté (persistance optionnelle prête).");
+      }
+    } else {
+      logStatus(
+        true,
+        `Aucun DSN LiteLLM dans ce fichier : la pile docker/litellm utilise DATABASE_URL=${fallbackLiteLLMDsn} par défaut via son entrypoint.`,
+      );
+    }
+
+    const saltKey = sanitizeEnvName(env.LITELLM_SALT_KEY);
+    if (wantsDbStorage) {
+      if (!saltKey) {
+        logStatus(
+          false,
+          "LITELLM_SALT_KEY manquante alors que STORE_MODEL_IN_DB=True.",
+          "Définissez LITELLM_SALT_KEY avant le premier démarrage du proxy (valeur immuable).",
+        );
+      } else {
+        logStatus(true, "LITELLM_SALT_KEY détectée.");
+      }
+    } else if (saltKey) {
+      logStatus(true, "LITELLM_SALT_KEY détectée (stockage en base optionnel).");
+    }
+
+    const renderPort = sanitizeEnvName(env.PORT);
+    if (renderPort) {
+      logStatus(true, `PORT → ${renderPort}`);
+    }
+
     console.log(
       "   → Pensez à exposer ANTHROPIC_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, etc. selon les modèles déclarés côté LiteLLM.",
     );
@@ -242,6 +359,8 @@ function main() {
       }
     }
   }
+
+  validateDatabaseUrl(sanitizeEnvName(env.DATABASE_URL));
 
   const origins = env.ALLOWED_ORIGINS;
   if (origins) {
