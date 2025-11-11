@@ -1,7 +1,8 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
 import {
-  CreateUserPayload,
   EditableUser,
   adminApi,
   isUnauthorizedError,
@@ -10,16 +11,26 @@ import {
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { ResponsiveTable, type Column } from "../components";
+import { adminCreateUserSchema, type AdminCreateUserFormData } from "../schemas/admin";
 
 export const AdminPage = () => {
   const { token, logout } = useAuth();
   const [users, setUsers] = useState<EditableUser[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [createPayload, setCreatePayload] = useState<CreateUserPayload>({
-    email: "",
-    password: "",
-    is_admin: false,
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors: formErrors },
+    reset,
+  } = useForm<AdminCreateUserFormData>({
+    resolver: zodResolver(adminCreateUserSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      is_admin: false,
+    },
   });
   const fetchUsers = useCallback(async () => {
     if (!token) {
@@ -50,16 +61,11 @@ export const AdminPage = () => {
     void fetchUsers();
   }, [fetchUsers]);
 
-  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!createPayload.email || !createPayload.password) {
-      return;
-    }
-
+  const handleCreate = async (data: AdminCreateUserFormData) => {
     try {
-      const created = await adminApi.createUser(token, createPayload);
+      const created = await adminApi.createUser(token, data);
       setUsers((prev) => [...prev, created]);
-      setCreatePayload({ email: "", password: "", is_admin: false });
+      reset();
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -217,52 +223,31 @@ export const AdminPage = () => {
                 usage de ChatKit.
               </p>
             </div>
-            <form className="admin-form" onSubmit={handleCreate}>
+            <form className="admin-form" onSubmit={handleSubmit(handleCreate)}>
               <div className="admin-form__row">
                 <label className="label">
                   E-mail
                   <input
                     className="input"
                     type="email"
-                    required
-                    value={createPayload.email}
-                    onChange={(event) =>
-                      setCreatePayload((prev) => ({
-                        ...prev,
-                        email: event.target.value,
-                      }))
-                    }
+                    {...register("email")}
                     placeholder="nouvel.utilisateur@example.com"
                   />
+                  {formErrors.email && <span className="error">{formErrors.email.message}</span>}
                 </label>
                 <label className="label">
                   Mot de passe temporaire
                   <input
                     className="input"
                     type="text"
-                    required
-                    value={createPayload.password}
-                    onChange={(event) =>
-                      setCreatePayload((prev) => ({
-                        ...prev,
-                        password: event.target.value,
-                      }))
-                    }
+                    {...register("password")}
                     placeholder="Mot de passe temporaire"
                   />
+                  {formErrors.password && <span className="error">{formErrors.password.message}</span>}
                 </label>
               </div>
               <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={createPayload.is_admin}
-                  onChange={(event) =>
-                    setCreatePayload((prev) => ({
-                      ...prev,
-                      is_admin: event.target.checked,
-                    }))
-                  }
-                />
+                <input type="checkbox" {...register("is_admin")} />
                 Administrateur
               </label>
               <div className="admin-form__actions">
