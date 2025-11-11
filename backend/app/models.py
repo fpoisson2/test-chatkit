@@ -203,6 +203,13 @@ class AppSettings(Base):
     model_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_api_key_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
     model_provider_configs: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lti_tool_client_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lti_tool_key_set_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lti_tool_audience: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    lti_tool_private_key_encrypted: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    lti_tool_key_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     appearance_color_scheme: Mapped[str | None] = mapped_column(
         String(16), nullable=True
     )

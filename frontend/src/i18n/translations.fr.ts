@@ -31,6 +31,7 @@ export const fr: TranslationDictionary = {
   "admin.tabs.settings": "Paramètres généraux",
   "admin.tabs.appearance": "Apparence et thème",
   "admin.tabs.languages": "Langues",
+  "admin.tabs.lti": "LTI",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Navigation du panneau d'administration",
   "admin.models.form.modelIdLabel": "Identifiant du modèle*",
@@ -121,6 +122,75 @@ export const fr: TranslationDictionary = {
   "admin.appSettings.model.providerLiteLLM":
     "LiteLLM (proxy compatible OpenAI)",
   "admin.appSettings.model.providerCustom": "Autre fournisseur…",
+  "admin.lti.page.title": "Intégrations LTI",
+  "admin.lti.page.subtitle":
+    "Gérez les émetteurs LTI autorisés à lancer ChatKit et configurez les clés de l'outil.",
+  "admin.lti.toolSettings.title": "Configuration des clés de l'outil",
+  "admin.lti.toolSettings.subtitle":
+    "Définissez les identifiants client et la clé privée utilisés par ChatKit comme outil LTI.",
+  "admin.lti.toolSettings.clientIdLabel": "Identifiant client de l'outil",
+  "admin.lti.toolSettings.keySetUrlLabel": "URL JWKS de l'outil",
+  "admin.lti.toolSettings.audienceLabel": "Audience de l'outil",
+  "admin.lti.toolSettings.keyIdLabel": "Identifiant de clé (kid)",
+  "admin.lti.toolSettings.privateKeyLabel": "Clé privée (PEM)",
+  "admin.lti.toolSettings.privateKeyHint": "Clé actuelle : {{hint}}",
+  "admin.lti.toolSettings.noPrivateKey": "Aucune clé privée enregistrée.",
+  "admin.lti.toolSettings.save": "Enregistrer les paramètres",
+  "admin.lti.toolSettings.saving": "Enregistrement…",
+  "admin.lti.toolSettings.success": "Paramètres de l'outil enregistrés.",
+  "admin.lti.toolSettings.errors.sessionExpired":
+    "Session expirée, veuillez vous reconnecter.",
+  "admin.lti.toolSettings.errors.saveFailed":
+    "Impossible d'enregistrer les paramètres de l'outil.",
+  "admin.lti.toolSettings.errors.loadFailed":
+    "Impossible de charger les paramètres de l'outil.",
+  "admin.lti.registrations.title": "Enregistrements plateformes",
+  "admin.lti.registrations.subtitle":
+    "Listez les émetteurs et leurs identifiants autorisés à lancer ChatKit via LTI.",
+  "admin.lti.registrations.table.issuer": "Issuer",
+  "admin.lti.registrations.table.clientId": "Client ID",
+  "admin.lti.registrations.table.keySetUrl": "URL JWKS",
+  "admin.lti.registrations.table.authorizationEndpoint": "Endpoint d'authentification",
+  "admin.lti.registrations.table.tokenEndpoint": "Endpoint de jeton",
+  "admin.lti.registrations.table.deepLinkReturnUrl": "URL de retour deep-link",
+  "admin.lti.registrations.table.audience": "Audience",
+  "admin.lti.registrations.table.updatedAt": "Mis à jour",
+  "admin.lti.registrations.table.actions": "Actions",
+  "admin.lti.registrations.table.empty": "Aucun enregistrement LTI configuré pour le moment.",
+  "admin.lti.registrations.table.loading": "Chargement des enregistrements…",
+  "admin.lti.registrations.form.createTitle": "Ajouter un enregistrement",
+  "admin.lti.registrations.form.editTitle": "Modifier l'enregistrement",
+  "admin.lti.registrations.form.issuerLabel": "URL de l'issuer",
+  "admin.lti.registrations.form.clientIdLabel": "Client ID",
+  "admin.lti.registrations.form.keySetUrlLabel": "URL JWKS",
+  "admin.lti.registrations.form.authorizationEndpointLabel":
+    "Endpoint d'authentification",
+  "admin.lti.registrations.form.tokenEndpointLabel": "Endpoint de jeton",
+  "admin.lti.registrations.form.deepLinkReturnUrlLabel":
+    "URL de retour deep-link (optionnel)",
+  "admin.lti.registrations.form.audienceLabel": "Audience (optionnel)",
+  "admin.lti.registrations.form.save": "Enregistrer",
+  "admin.lti.registrations.form.saving": "Enregistrement…",
+  "admin.lti.registrations.form.cancel": "Annuler",
+  "admin.lti.registrations.actions.edit": "Modifier",
+  "admin.lti.registrations.actions.delete": "Supprimer",
+  "admin.lti.registrations.confirm.delete":
+    "Supprimer l'enregistrement pour {{issuer}} ?",
+  "admin.lti.registrations.feedback.created":
+    "Enregistrement pour {{issuer}} ajouté avec succès.",
+  "admin.lti.registrations.feedback.updated":
+    "Enregistrement pour {{issuer}} mis à jour avec succès.",
+  "admin.lti.registrations.feedback.deleted": "Enregistrement supprimé.",
+  "admin.lti.registrations.errors.sessionExpired":
+    "Session expirée, veuillez vous reconnecter.",
+  "admin.lti.registrations.errors.loadFailed":
+    "Impossible de charger les enregistrements LTI.",
+  "admin.lti.registrations.errors.saveFailed":
+    "Impossible d'enregistrer la configuration.",
+  "admin.lti.registrations.errors.deleteFailed":
+    "Impossible de supprimer l'enregistrement.",
+  "admin.lti.registrations.errors.missingFields":
+    "Veuillez remplir tous les champs obligatoires avant d'enregistrer.",
   "admin.appSettings.model.providerNameLabel": "Identifiant du fournisseur",
   "admin.appSettings.model.providerNamePlaceholder": "ex. gemini, claude, litellm",
   "admin.appSettings.model.defaultProviderLabel":

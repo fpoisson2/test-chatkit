@@ -439,17 +439,17 @@ def _build_model_provider_configs(
     # Cela permet de garder OpenAI (ou autre provider .env) même si on configure
     # d'autres providers (comme Groq) dans l'admin DB
     try:
-        # Récupérer les settings de base AVANT overrides
-        # get_settings() retourne les settings avec overrides, mais comme on est EN TRAIN
-        # de calculer les nouveaux overrides, il retourne encore les anciens
+        # Récupérer les settings de base AVANT overrides.
+        # get_settings() retourne encore les anciens overrides
+        # pendant que nous calculons les nouveaux.
         base_settings = get_settings()
         if base_settings and base_settings.model_providers:
             # Identifier les slugs déjà présents dans la DB
             db_provider_slugs = {r.provider for r in records} if records else set()
 
-            # Ajouter les providers de l'env qui ne sont PAS déjà dans la DB
+            # Ajouter les providers de l'env absents de la DB
             for env_provider in base_settings.model_providers:
-                # La DB a priorité : si le même slug existe dans la DB, ne pas ajouter l'env
+                # La DB reste prioritaire : ignorer les slugs déjà présents
                 if env_provider.provider not in db_provider_slugs:
                     configs.append(env_provider)
     except Exception:  # pragma: no cover - fallback best effort
@@ -659,7 +659,10 @@ def _has_custom_appearance(settings: AppSettings | None) -> bool:
 
 
 def apply_runtime_model_overrides(settings: AppSettings | None) -> Any:
-    overrides = _compute_model_overrides(settings)
+    overrides = _compute_model_overrides(settings) or {}
+    lti_overrides = _compute_lti_overrides(settings)
+    if lti_overrides:
+        overrides.update(lti_overrides)
     set_runtime_settings_overrides(overrides or None)
     return get_settings()
 
@@ -684,6 +687,39 @@ def _resolved_sip_values(
         _normalize_optional_int(settings.sip_contact_port),
         _normalize_transport(settings.sip_contact_transport),
     )
+
+
+def _resolved_lti_tool_values(
+    settings: AppSettings | None,
+) -> tuple[str | None, str | None, str | None, str | None, str | None]:
+    if not settings:
+        return (None, None, None, None, None)
+    private_key = _decrypt_secret(settings.lti_tool_private_key_encrypted)
+    return (
+        _normalize_optional_string(settings.lti_tool_client_id),
+        _normalize_optional_string(settings.lti_tool_key_set_url),
+        _normalize_optional_string(settings.lti_tool_audience),
+        _normalize_optional_string(settings.lti_tool_key_id),
+        private_key.strip() if private_key else None,
+    )
+
+
+def _compute_lti_overrides(settings: AppSettings | None) -> dict[str, Any] | None:
+    client_id, key_set_url, audience, key_id, private_key = _resolved_lti_tool_values(
+        settings
+    )
+    overrides: dict[str, Any] = {}
+    if client_id:
+        overrides["lti_tool_client_id"] = client_id
+    if key_set_url:
+        overrides["lti_tool_key_set_url"] = key_set_url
+    if audience:
+        overrides["lti_tool_audience"] = audience
+    if key_id:
+        overrides["lti_tool_key_id"] = key_id
+    if private_key:
+        overrides["lti_tool_private_key"] = private_key
+    return overrides or None
 
 
 def apply_appearance_update(
@@ -1345,6 +1381,117 @@ def serialize_admin_settings(
         "created_at": settings.created_at if settings else None,
         "updated_at": settings.updated_at if settings else None,
     }
+
+
+def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
+    runtime_settings = get_settings()
+    (
+        stored_client_id,
+        stored_key_set_url,
+        stored_audience,
+        stored_key_id,
+        stored_private_key,
+    ) = _resolved_lti_tool_values(settings)
+
+    resolved_client_id = stored_client_id or runtime_settings.lti_tool_client_id
+    resolved_key_set_url = stored_key_set_url or runtime_settings.lti_tool_key_set_url
+    resolved_audience = stored_audience or runtime_settings.lti_tool_audience
+    resolved_key_id = stored_key_id or runtime_settings.lti_tool_key_id
+    resolved_private_key = stored_private_key or runtime_settings.lti_tool_private_key
+
+    private_key_hint = None
+    if resolved_private_key:
+        private_key_hint = _mask_secret(resolved_private_key)
+
+    return {
+        "client_id": resolved_client_id,
+        "key_set_url": resolved_key_set_url,
+        "audience": resolved_audience,
+        "key_id": resolved_key_id,
+        "has_private_key": bool(resolved_private_key),
+        "private_key_hint": private_key_hint,
+        "is_client_id_overridden": bool(stored_client_id),
+        "is_key_set_url_overridden": bool(stored_key_set_url),
+        "is_audience_overridden": bool(stored_audience),
+        "is_key_id_overridden": bool(stored_key_id),
+        "is_private_key_overridden": bool(stored_private_key),
+        "created_at": settings.created_at if settings else None,
+        "updated_at": settings.updated_at if settings else None,
+    }
+
+
+def update_lti_tool_settings(
+    session: Session,
+    *,
+    client_id: str | None | object = _UNSET,
+    key_set_url: str | None | object = _UNSET,
+    audience: str | None | object = _UNSET,
+    key_id: str | None | object = _UNSET,
+    private_key: str | None | object = _UNSET,
+) -> AppSettings:
+    default_prompt = _default_thread_title_prompt()
+    default_model = _default_thread_title_model()
+    settings = get_thread_title_prompt_override(session)
+    if settings is None:
+        settings = AppSettings(
+            thread_title_prompt=default_prompt,
+            thread_title_model=default_model,
+        )
+
+    changed = False
+
+    if client_id is not _UNSET:
+        if client_id is not None and not isinstance(client_id, str):
+            raise ValueError("L'identifiant client doit être une chaîne.")
+        settings.lti_tool_client_id = _normalize_optional_string(client_id)
+        changed = True
+
+    if key_set_url is not _UNSET:
+        if key_set_url is not None and not isinstance(key_set_url, str):
+            raise ValueError("L'URL du JWKS doit être une chaîne.")
+        candidate = _normalize_optional_string(key_set_url)
+        if candidate:
+            parsed = urlparse(candidate)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise ValueError(
+                    "L'URL du JWKS doit commencer par http(s):// et contenir un hôte."
+                )
+        settings.lti_tool_key_set_url = candidate
+        changed = True
+
+    if audience is not _UNSET:
+        if audience is not None and not isinstance(audience, str):
+            raise ValueError("L'audience doit être une chaîne.")
+        settings.lti_tool_audience = _normalize_optional_string(audience)
+        changed = True
+
+    if key_id is not _UNSET:
+        if key_id is not None and not isinstance(key_id, str):
+            raise ValueError("Le kid doit être une chaîne.")
+        settings.lti_tool_key_id = _normalize_optional_string(key_id)
+        changed = True
+
+    if private_key is not _UNSET:
+        if private_key is None:
+            settings.lti_tool_private_key_encrypted = None
+        elif not isinstance(private_key, str):
+            raise ValueError("La clé privée doit être une chaîne.")
+        else:
+            stripped = private_key.strip()
+            if stripped:
+                ensure_secret_key_available()
+                settings.lti_tool_private_key_encrypted = _encrypt_secret(stripped)
+            else:
+                settings.lti_tool_private_key_encrypted = None
+        changed = True
+
+    if changed:
+        settings.updated_at = _now()
+        session.add(settings)
+        session.commit()
+        session.refresh(settings)
+
+    return settings
 
 
 def serialize_appearance_settings(
