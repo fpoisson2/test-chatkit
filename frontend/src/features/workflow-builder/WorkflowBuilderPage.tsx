@@ -634,6 +634,55 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
+  const {
+    applySelection,
+    clearSelection,
+    onSelectionChange,
+    removeElements,
+    copySelectionToClipboard,
+    pasteClipboardGraph,
+    handleDuplicateSelection,
+    handleDeleteSelection,
+    resetCopySequence,
+  } = useGraphEditor({
+    nodeClassName: styles.flowNode,
+    setNodes,
+    setEdges,
+    setSelectedNodeId,
+    setSelectedEdgeId,
+    selectedNodeIdRef,
+    selectedEdgeIdRef,
+    selectedNodeIdsRef,
+    selectedEdgeIdsRef,
+    nodesRef,
+    edgesRef,
+    reactFlowInstanceRef,
+    reactFlowWrapperRef,
+    viewportRef,
+    setSaveState,
+    setSaveMessage,
+    updateHasPendingChanges,
+    t,
+    copySequenceRef,
+  });
+
+  // Phase 6: Extract complex loading logic into useWorkflowLoader hook
+  const { loadVersionDetail, loadVersions, loadWorkflows } = useWorkflowLoader({
+    authHeader,
+    t,
+    deviceType,
+    isHydratingRef,
+    reactFlowInstanceRef,
+    resetHistory,
+    restoreViewport,
+    applySelection,
+    decorateNode,
+    draftDisplayName,
+    persistViewportMemory,
+    buildGraphPayloadFrom,
+    hasLoadedWorkflowsRef,
+  });
+
   // Phase 8: Extract workflow synchronization into custom hook
   useWorkflowSync({
     sidebarWorkflows,
@@ -707,38 +756,6 @@ const WorkflowBuilderPage = () => {
       enabled: openWorkflowMenuId !== null,
     },
   );
-
-  const {
-    applySelection,
-    clearSelection,
-    onSelectionChange,
-    removeElements,
-    copySelectionToClipboard,
-    pasteClipboardGraph,
-    handleDuplicateSelection,
-    handleDeleteSelection,
-    resetCopySequence,
-  } = useGraphEditor({
-    nodeClassName: styles.flowNode,
-    setNodes,
-    setEdges,
-    setSelectedNodeId,
-    setSelectedEdgeId,
-    selectedNodeIdRef,
-    selectedEdgeIdRef,
-    selectedNodeIdsRef,
-    selectedEdgeIdsRef,
-    nodesRef,
-    edgesRef,
-    reactFlowInstanceRef,
-    reactFlowWrapperRef,
-    viewportRef,
-    setSaveState,
-    setSaveMessage,
-    updateHasPendingChanges,
-    t,
-    copySequenceRef,
-  });
 
   // Phase 7: Extract edge handlers into custom hook
   const { handleConditionChange, handleEdgeLabelChange } = useEdgeHandlers({
@@ -857,23 +874,6 @@ const WorkflowBuilderPage = () => {
     },
     [availableModels],
   );
-
-  // Phase 6: Extract complex loading logic into useWorkflowLoader hook
-  const { loadVersionDetail, loadVersions, loadWorkflows } = useWorkflowLoader({
-    authHeader,
-    t,
-    deviceType,
-    isHydratingRef,
-    reactFlowInstanceRef,
-    resetHistory,
-    restoreViewport,
-    applySelection,
-    decorateNode,
-    draftDisplayName,
-    persistViewportMemory,
-    buildGraphPayloadFrom,
-    hasLoadedWorkflowsRef,
-  });
 
   const loadHostedWorkflows = useCallback(async () => {
     if (!token) {
