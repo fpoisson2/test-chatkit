@@ -150,3 +150,29 @@ def test_sanitize_model_like_keeps_summary_for_native_models():
 
     assert sanitized is not settings
     assert getattr(sanitized.reasoning, "summary", None) == "auto"
+
+
+def test_sanitize_value_normalizes_minimal_effort_to_low():
+    """Normalise la valeur legacy 'minimal' en 'low' pour reasoning.effort."""
+
+    payload = {"reasoning": {"effort": "minimal", "summary": "auto"}}
+
+    sanitized, removed = sanitize_value(payload)
+
+    assert sanitized == {"reasoning": {"effort": "low", "summary": "auto"}}
+    assert removed is True
+
+
+def test_sanitize_model_like_normalizes_minimal_effort():
+    """Vérifie la normalisation de 'minimal' en 'low' pour les objets ModelSettings."""
+
+    from agents import ModelSettings
+
+    settings = ModelSettings(reasoning={"effort": "minimal"})
+
+    sanitized = sanitize_model_like(settings)
+
+    assert sanitized is not settings
+    reasoning = getattr(sanitized, "reasoning", None)
+    assert reasoning is not None
+    assert getattr(reasoning, "effort", None) == "low"

@@ -7,7 +7,7 @@ import type {
 
 export const reasoningEffortOptions = [
   { value: "", label: "Comportement par défaut" },
-  { value: "minimal", label: "Effort minimal" },
+  { value: "low", label: "Effort minimal" },
   { value: "medium", label: "Effort moyen" },
   { value: "high", label: "Effort élevé" },
 ] as const;
