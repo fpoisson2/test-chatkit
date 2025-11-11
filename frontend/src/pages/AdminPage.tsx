@@ -10,7 +10,14 @@ import {
 } from "../utils/backend";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { ResponsiveTable, type Column, LoadingSpinner, ErrorAlert } from "../components";
+import {
+  ResponsiveTable,
+  type Column,
+  LoadingSpinner,
+  FeedbackMessages,
+  FormField,
+  FormSection,
+} from "../components";
 import { adminCreateUserSchema, type AdminCreateUserFormData } from "../schemas/admin";
 
 export const AdminPage = () => {
@@ -32,6 +39,7 @@ export const AdminPage = () => {
       is_admin: false,
     },
   });
+
   const fetchUsers = useCallback(async () => {
     if (!token) {
       return;
@@ -209,80 +217,77 @@ export const AdminPage = () => {
   );
 
   return (
-    <>
-      <AdminTabs activeTab="users" />
-      <ManagementPageLayout>
-        {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
+    <ManagementPageLayout tabs={<AdminTabs activeTab="users" />}>
+      <FeedbackMessages
+        error={error}
+        onDismissError={() => setError(null)}
+      />
 
-        <div className="admin-grid">
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">Créer un utilisateur</h2>
-              <p className="admin-card__subtitle">
-                Invitez un collaborateur et attribuez-lui un rôle adapté à son
-                usage de ChatKit.
-              </p>
-            </div>
-            <form className="admin-form" onSubmit={handleSubmit(handleCreate)}>
-              <div className="admin-form__row">
-                <label className="label">
-                  E-mail
-                  <input
-                    className="input"
-                    type="email"
-                    {...register("email")}
-                    placeholder="nouvel.utilisateur@example.com"
-                  />
-                  {formErrors.email && <span className="error">{formErrors.email.message}</span>}
-                </label>
-                <label className="label">
-                  Mot de passe temporaire
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("password")}
-                    placeholder="Mot de passe temporaire"
-                  />
-                  {formErrors.password && <span className="error">{formErrors.password.message}</span>}
-                </label>
-              </div>
-              <label className="checkbox-field">
-                <input type="checkbox" {...register("is_admin")} />
-                Administrateur
-              </label>
-              <div className="admin-form__actions">
-                <button className="button" type="submit">
-                  Ajouter
-                </button>
-              </div>
-            </form>
-          </section>
+      <div className="admin-grid">
+        <FormSection
+          title="Créer un utilisateur"
+          subtitle="Invitez un collaborateur et attribuez-lui un rôle adapté à son usage de ChatKit."
+        >
+          <form className="admin-form" onSubmit={handleSubmit(handleCreate)}>
+            <div className="admin-form__row">
+              <FormField
+                label="E-mail"
+                error={formErrors.email?.message}
+              >
+                <input
+                  className="input"
+                  type="email"
+                  {...register("email")}
+                  placeholder="nouvel.utilisateur@example.com"
+                />
+              </FormField>
 
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">Utilisateurs</h2>
-              <p className="admin-card__subtitle">
-                Consultez les accès existants et appliquez des actions rapides
-                pour chaque compte.
-              </p>
+              <FormField
+                label="Mot de passe temporaire"
+                error={formErrors.password?.message}
+              >
+                <input
+                  className="input"
+                  type="text"
+                  {...register("password")}
+                  placeholder="Mot de passe temporaire"
+                />
+              </FormField>
             </div>
-            {isLoading ? (
-              <LoadingSpinner text="Chargement des utilisateurs…" />
-            ) : users.length === 0 ? (
-              <p className="admin-card__subtitle">
-                Aucun utilisateur pour le moment.
-              </p>
-            ) : (
-              <ResponsiveTable
-                columns={userColumns}
-                data={users}
-                keyExtractor={(user) => user.id}
-                mobileCardView={true}
-              />
-            )}
-          </section>
-        </div>
-      </ManagementPageLayout>
-    </>
+
+            <label className="checkbox-field">
+              <input type="checkbox" {...register("is_admin")} />
+              Administrateur
+            </label>
+
+            <div className="admin-form__actions">
+              <button className="button" type="submit">
+                Ajouter
+              </button>
+            </div>
+          </form>
+        </FormSection>
+
+        <FormSection
+          title="Utilisateurs"
+          subtitle="Consultez les accès existants et appliquez des actions rapides pour chaque compte."
+        >
+          {isLoading ? (
+            <LoadingSpinner text="Chargement des utilisateurs…" />
+          ) : users.length === 0 ? (
+            <p className="admin-card__subtitle">
+              Aucun utilisateur pour le moment.
+            </p>
+          ) : (
+            <ResponsiveTable
+              columns={userColumns}
+              data={users}
+              keyExtractor={(user) => user.id}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+      </div>
+    </ManagementPageLayout>
   );
 };
