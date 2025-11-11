@@ -218,10 +218,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   }, [isDesktopLayout]); // Fixed: removed isSidebarOpen from dependencies
 
   useEffect(() => {
-    if (!isDesktopLayout) {
-      return;
-    }
-
+    // Persist the sidebar state regardless of the responsive layout so the preference
+    // survives navigation between Chat and Workflow Builder on narrow screens.
     writeStoredSidebarOpen(isSidebarOpen);
   }, [isDesktopLayout, isSidebarOpen]);
 
