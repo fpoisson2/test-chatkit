@@ -19,9 +19,9 @@
 @import './components/cards.css';
 @import './components/layout.css';
 
-/* Note: sidebar.css and admin.css are placeholders for Phase 1 */
-/* @import './components/sidebar.css'; */
-/* @import './components/admin.css'; */
+/* Sidebar and admin component styles */
+@import './components/sidebar.css';
+@import './components/admin.css';
 
 /* 4. Legacy Styles - Remaining styles to be extracted in future phases */
 /* This includes sidebar, admin, and other component styles not yet modularized */
