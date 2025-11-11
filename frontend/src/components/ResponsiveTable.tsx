@@ -66,8 +66,8 @@ export function ResponsiveTable<T = any>({
 
   // On desktop or mobile without card view, render as table
   return (
-    <div className={`responsive-table-wrapper ${className}`}>
-      <table className="responsive-table">
+    <div className={`responsive-table-wrapper admin-table-wrapper ${className}`}>
+      <table className="responsive-table admin-table">
         <thead>
           <tr>
             {columns.map((column) => (
