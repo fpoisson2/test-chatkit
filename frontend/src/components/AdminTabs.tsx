@@ -2,6 +2,7 @@ import { MouseEvent, useCallback, useEffect, useMemo } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 import { useAppLayout, useSidebarPortal } from "./AppLayout";
+import { Tooltip } from "./Tooltip";
 import { useI18n } from "../i18n";
 import { preloadRoute } from "../utils/routePreloaders";
 
@@ -140,23 +141,25 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
 
           return (
             <li key={tab.key} className="chatkit-sidebar__workflow-compact-item">
-              <button
-                type="button"
-                className={`chatkit-sidebar__workflow-compact-button${
-                  isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-                }`}
-                onClick={() => handleCollapsedTabClick(tab.to)}
-                onMouseEnter={() => preloadRoute(tab.to)}
-                onFocus={() => preloadRoute(tab.to)}
-                tabIndex={isSidebarCollapsed ? 0 : -1}
-                aria-label={tab.label}
-                aria-current={isActive ? "page" : undefined}
-              >
-                <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
-                  {initial}
-                </span>
-                <span className="visually-hidden">{tab.label}</span>
-              </button>
+              <Tooltip content={tab.label} side="right" delayDuration={200}>
+                <button
+                  type="button"
+                  className={`chatkit-sidebar__workflow-compact-button${
+                    isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
+                  }`}
+                  onClick={() => handleCollapsedTabClick(tab.to)}
+                  onMouseEnter={() => preloadRoute(tab.to)}
+                  onFocus={() => preloadRoute(tab.to)}
+                  tabIndex={isSidebarCollapsed ? 0 : -1}
+                  aria-label={tab.label}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+                    {initial}
+                  </span>
+                  <span className="visually-hidden">{tab.label}</span>
+                </button>
+              </Tooltip>
             </li>
           );
         })}

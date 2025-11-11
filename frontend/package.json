@@ -13,6 +13,11 @@
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@openai/chatkit-react": "*",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@reactflow/core": "*",
     "@tanstack/react-query": "^5.90.7",
     "lucide-react": "^0.546.0",

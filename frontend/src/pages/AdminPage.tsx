@@ -10,9 +10,8 @@ import {
 } from "../utils/backend";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { ResponsiveTable, type Column } from "../components";
-import { adminCreateUserSchema, type AdminCreateUserFormData } from "../schemas/admin";
 import { ResponsiveTable, type Column, LoadingSpinner, ErrorAlert } from "../components";
+import { adminCreateUserSchema, type AdminCreateUserFormData } from "../schemas/admin";
 
 export const AdminPage = () => {
   const { token, logout } = useAuth();

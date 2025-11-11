@@ -568,15 +568,24 @@ button {
 }
 
 .modal__overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(2px);
+  z-index: 1000;
+  animation: overlayFadeIn 200ms ease-out;
+}
+
+.modal__overlay[data-state="closed"] {
+  animation: overlayFadeOut 150ms ease-in;
 }
 
 .modal__container {
-  position: relative;
-  z-index: 1;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
   width: min(720px, 94vw);
   max-height: 92vh;
   display: flex;
@@ -586,6 +595,51 @@ button {
   box-shadow: var(--shadow-card);
   border: 1px solid var(--color-border-subtle);
   overflow: hidden;
+  animation: contentFadeIn 200ms ease-out;
+}
+
+.modal__container[data-state="closed"] {
+  animation: contentFadeOut 150ms ease-in;
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlayFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes contentFadeOut {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
 }
 
 .modal__container--sm {
@@ -1956,5 +2010,79 @@ button {
 
   .app-content__toolbar {
     justify-content: flex-end;
+  }
+}
+
+/* ==========================================
+   Tooltip Styles (Radix UI)
+   ========================================== */
+
+.tooltip {
+  background: var(--color-text-strong);
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+  max-width: 260px;
+  z-index: 1100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: tooltipFadeIn 150ms ease-out;
+  user-select: none;
+}
+
+.tooltip[data-state="delayed-open"] {
+  animation: tooltipFadeIn 150ms ease-out;
+}
+
+.tooltip[data-state="closed"] {
+  animation: tooltipFadeOut 100ms ease-in;
+}
+
+.tooltip__arrow {
+  fill: var(--color-text-strong);
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tooltipFadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+/* Support prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .tooltip {
+    animation-duration: 0.01ms !important;
+  }
+
+  @keyframes tooltipFadeIn {
+    from, to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes tooltipFadeOut {
+    from, to {
+      opacity: 0;
+      transform: scale(1);
+    }
   }
 }

@@ -1570,10 +1570,6 @@
 }
 
 .chatkit-sidebar__profile-menu {
-  position: absolute;
-  bottom: calc(100% + 12px);
-  left: 0;
-  right: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1582,14 +1578,43 @@
   border: 1px solid rgba(15, 23, 42, 0.08);
   box-shadow: var(--shadow-soft);
   padding: 12px;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(12px);
-  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
-  pointer-events: none;
-  z-index: 2;
+  z-index: 50;
+  min-width: 220px;
+  max-width: 280px;
 }
 
+/* Radix UI animations */
+.chatkit-sidebar__profile-menu[data-state="open"] {
+  animation: slideUpAndFade 200ms ease-out;
+}
+
+.chatkit-sidebar__profile-menu[data-state="closed"] {
+  animation: slideDownAndFade 150ms ease-in;
+}
+
+@keyframes slideUpAndFade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDownAndFade {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Legacy support for non-Radix menus (if any) */
 .chatkit-sidebar__profile--open .chatkit-sidebar__profile-menu {
   opacity: 1;
   visibility: visible;

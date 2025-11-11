@@ -40,10 +40,6 @@ export const CreateWorkflowModal = ({
   const hostedInputId = useId();
   const radioName = `${formId}-kind`;
 
-  if (!isOpen) {
-    return null;
-  }
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSubmit();
@@ -76,6 +72,7 @@ export const CreateWorkflowModal = ({
       onClose={onClose}
       footer={footer}
       size="sm"
+      open={isOpen}
     >
       <form id={formId} onSubmit={handleSubmit} className="create-workflow-modal__form">
         <fieldset className="create-workflow-modal__fieldset">
