@@ -1,10 +1,11 @@
 import {
-  FormEvent,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
@@ -24,6 +25,7 @@ import {
   downloadTaskResult,
   downloadStoredLanguage,
 } from "../hooks";
+import { adminLanguageSchema, type AdminLanguageFormData } from "../schemas/admin";
 
 type Provider = {
   value: string; // Combined key "id|slug"
@@ -32,16 +34,7 @@ type Provider = {
   label: string;
 };
 
-type LanguageFormState = {
-  code: string;
-  name: string;
-  model: string;
-  provider_value: string; // Combined value "id|slug"
-  custom_prompt: string;
-  save_to_db: boolean;
-};
-
-const initialFormState: LanguageFormState = {
+const initialFormState: AdminLanguageFormData = {
   code: "",
   name: "",
   model: "",
@@ -64,6 +57,22 @@ export const AdminLanguagesPage = () => {
   const deleteStoredLanguageMutation = useDeleteStoredLanguage();
   const activateStoredLanguageMutation = useActivateStoredLanguage();
 
+  // React Hook Form
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors: formErrors },
+    watch,
+    setValue,
+    reset,
+  } = useForm<AdminLanguageFormData>({
+    resolver: zodResolver(adminLanguageSchema),
+    defaultValues: initialFormState,
+  });
+
+  // Watch form values
+  const formValues = watch();
+
   // Task tracking
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(() => {
     return localStorage.getItem('languageGenerationTaskId');
@@ -73,7 +82,6 @@ export const AdminLanguagesPage = () => {
   // Local state
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [formState, setFormState] = useState<LanguageFormState>(initialFormState);
   const [formError, setFormError] = useState<string | null>(null);
   const [instructions, setInstructions] = useState<string | null>(null);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
@@ -91,13 +99,13 @@ export const AdminLanguagesPage = () => {
   useEffect(() => {
     if (taskStatus?.status === "completed" || taskStatus?.status === "failed") {
       if (taskStatus.status === "completed") {
-        setSuccess(t("admin.languages.feedback.created", { name: formState.name }));
+        setSuccess(t("admin.languages.feedback.created", { name: formValues.name }));
       } else if (taskStatus.error_message) {
         setFormError(taskStatus.error_message);
       }
       setCurrentTaskId(null);
     }
-  }, [taskStatus, formState.name, t]);
+  }, [taskStatus, formValues.name, t]);
 
   const handleDownloadTaskResult = useCallback(async (taskId: string) => {
     try {
@@ -179,31 +187,10 @@ export const AdminLanguagesPage = () => {
   }, [availableModels]);
 
 
-  const handleFormChange = (field: keyof LanguageFormState, value: string | boolean) => {
-    setFormState((prev) => ({ ...prev, [field]: value }));
-    setFormError(null);
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (data: AdminLanguageFormData) => {
     setFormError(null);
     setSuccess(null);
     setInstructions(null);
-
-    if (!formState.code.trim()) {
-      setFormError(t("admin.languages.errors.codeRequired"));
-      return;
-    }
-
-    if (!formState.name.trim()) {
-      setFormError(t("admin.languages.errors.nameRequired"));
-      return;
-    }
-
-    if (!/^[a-z]{2}$/.test(formState.code.trim())) {
-      setFormError(t("admin.languages.errors.codeInvalid"));
-      return;
-    }
 
     try {
       const payload: {
@@ -215,19 +202,19 @@ export const AdminLanguagesPage = () => {
         custom_prompt?: string;
         save_to_db: boolean;
       } = {
-        code: formState.code.trim().toLowerCase(),
-        name: formState.name.trim(),
-        save_to_db: formState.save_to_db,
+        code: data.code.trim().toLowerCase(),
+        name: data.name.trim(),
+        save_to_db: data.save_to_db,
       };
 
       // Add optional parameters if provided
-      if (formState.model.trim()) {
-        payload.model = formState.model.trim();
+      if (data.model?.trim()) {
+        payload.model = data.model.trim();
       }
 
       // Parse provider_value to extract provider_id and provider_slug
-      if (formState.provider_value.trim()) {
-        const selectedProvider = availableProviders.find(p => p.value === formState.provider_value);
+      if (data.provider_value?.trim()) {
+        const selectedProvider = availableProviders.find(p => p.value === data.provider_value);
         if (selectedProvider) {
           if (selectedProvider.id) {
             payload.provider_id = selectedProvider.id;
@@ -238,16 +225,16 @@ export const AdminLanguagesPage = () => {
         }
       }
 
-      if (formState.custom_prompt.trim()) {
-        payload.custom_prompt = formState.custom_prompt.trim();
+      if (data.custom_prompt?.trim()) {
+        payload.custom_prompt = data.custom_prompt.trim();
       }
 
-      const data = await generateLanguage.mutateAsync({ token, payload });
+      const result = await generateLanguage.mutateAsync({ token, payload });
 
       // Set the task ID to start polling
-      setCurrentTaskId(data.task_id);
+      setCurrentTaskId(result.task_id);
       setSuccess(t("admin.languages.feedback.taskStarted"));
-      setFormState(initialFormState);
+      reset(initialFormState);
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -424,7 +411,7 @@ export const AdminLanguagesPage = () => {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="admin-form">
+              <form onSubmit={handleFormSubmit(handleSubmit)} className="admin-form">
                 <div className="form-group">
                   <label htmlFor="language-code" className="form-label">
                     {t("admin.languages.form.codeLabel")}
@@ -432,14 +419,18 @@ export const AdminLanguagesPage = () => {
                   <input
                     type="text"
                     id="language-code"
-                    value={formState.code}
-                    onChange={(e) => handleFormChange("code", e.target.value)}
+                    {...register("code")}
                     placeholder={t("admin.languages.form.codePlaceholder")}
                     disabled={generateLanguage.isPending}
                     maxLength={2}
                     className="form-input"
                     style={{ textTransform: "lowercase" }}
                   />
+                  {formErrors.code && (
+                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                      {formErrors.code.message}
+                    </span>
+                  )}
                   <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
                     {t("admin.languages.form.codeHint")}
                   </small>
@@ -452,12 +443,16 @@ export const AdminLanguagesPage = () => {
                   <input
                     type="text"
                     id="language-name"
-                    value={formState.name}
-                    onChange={(e) => handleFormChange("name", e.target.value)}
+                    {...register("name")}
                     placeholder={t("admin.languages.form.namePlaceholder")}
                     disabled={generateLanguage.isPending}
                     className="form-input"
                   />
+                  {formErrors.name && (
+                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                      {formErrors.name.message}
+                    </span>
+                  )}
                   <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
                     {t("admin.languages.form.nameHint")}
                   </small>
@@ -469,10 +464,7 @@ export const AdminLanguagesPage = () => {
                   </label>
                   <select
                     id="model-select"
-                    value={formState.model}
-                    onChange={(e) => {
-                      handleFormChange("model", e.target.value);
-                    }}
+                    {...register("model")}
                     disabled={generateLanguage.isPending}
                     className="form-input"
                   >
@@ -494,8 +486,7 @@ export const AdminLanguagesPage = () => {
                   </label>
                   <select
                     id="provider-select"
-                    value={formState.provider_value}
-                    onChange={(e) => handleFormChange("provider_value", e.target.value)}
+                    {...register("provider_value")}
                     disabled={generateLanguage.isPending}
                     className="form-input"
                   >
@@ -520,8 +511,8 @@ export const AdminLanguagesPage = () => {
                       type="button"
                       onClick={() => {
                         setShowPromptEditor(!showPromptEditor);
-                        if (!showPromptEditor && !formState.custom_prompt && defaultPrompt) {
-                          handleFormChange("custom_prompt", defaultPrompt);
+                        if (!showPromptEditor && !formValues.custom_prompt && defaultPrompt) {
+                          setValue("custom_prompt", defaultPrompt);
                         }
                       }}
                       className="button button--sm button--secondary"
@@ -534,8 +525,7 @@ export const AdminLanguagesPage = () => {
                     <>
                       <textarea
                         id="custom-prompt"
-                        value={formState.custom_prompt}
-                        onChange={(e) => handleFormChange("custom_prompt", e.target.value)}
+                        {...register("custom_prompt")}
                         placeholder={defaultPrompt || t("admin.languages.form.promptPlaceholder")}
                         disabled={generateLanguage.isPending}
                         className="form-input"
@@ -553,8 +543,7 @@ export const AdminLanguagesPage = () => {
                   <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
                     <input
                       type="checkbox"
-                      checked={formState.save_to_db}
-                      onChange={(e) => handleFormChange("save_to_db", e.target.checked)}
+                      {...register("save_to_db")}
                       disabled={generateLanguage.isPending}
                     />
                     <span>Save to database</span>
@@ -608,11 +597,11 @@ export const AdminLanguagesPage = () => {
                       ? t("admin.languages.form.creating")
                       : t("admin.languages.form.submitAdd")}
                   </button>
-                  {(formState.code || formState.name) && !generateLanguage.isPending && (
+                  {(formValues.code || formValues.name) && !generateLanguage.isPending && (
                     <button
                       type="button"
                       onClick={() => {
-                        setFormState(initialFormState);
+                        reset(initialFormState);
                         setFormError(null);
                         setInstructions(null);
                       }}

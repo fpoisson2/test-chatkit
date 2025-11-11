@@ -1,4 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   cancelMcpOAuthSession,
   isUnauthorizedError,
@@ -22,8 +24,9 @@ import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { ResponsiveTable, type Column } from "../components";
 import { useI18n } from "../i18n";
+import { adminMcpServerSchema, type AdminMcpServerFormData } from "../schemas/admin";
 
-const emptyFormState = () => ({
+const emptyFormState: AdminMcpServerFormData = {
   label: "",
   serverUrl: "",
   authorization: "",
@@ -37,9 +40,7 @@ const emptyFormState = () => ({
   oauthRedirectUri: "",
   oauthMetadata: "",
   isActive: true,
-});
-
-type McpServerFormState = ReturnType<typeof emptyFormState>;
+};
 
 type OAuthFeedbackState = {
   status: "idle" | "starting" | "pending" | "success" | "error";
@@ -167,34 +168,30 @@ const extractStringFromTokenPayload = (
 };
 
 const buildPayloadFromForm = (
-  form: McpServerFormState,
+  form: AdminMcpServerFormData,
   current: McpServerSummary | null,
-): McpServerPayload | { error: string } => {
-  const payload: McpServerPayload = {};
-  const label = form.label.trim();
-  const serverUrl = form.serverUrl.trim();
-
-  if (!label) {
-    return { error: "label" };
-  }
-  if (!serverUrl) {
-    return { error: "serverUrl" };
-  }
-
-  payload.label = label;
-  payload.server_url = serverUrl;
-  payload.is_active = Boolean(form.isActive);
-
-  const assignOptionalSecret = (
-    key: "authorization" | "access_token" | "refresh_token" | "oauth_client_secret",
-    value: string,
-  ) => {
-    const trimmed = value.trim();
-    if (trimmed) {
-      payload[key] = trimmed;
-    }
+): McpServerPayload => {
+  const payload: McpServerPayload = {
+    label: form.label,
+    server_url: form.serverUrl,
+    is_active: form.isActive,
   };
 
+  // Add optional secrets if provided
+  if (form.authorization?.trim()) {
+    payload.authorization = form.authorization.trim();
+  }
+  if (form.accessToken?.trim()) {
+    payload.access_token = form.accessToken.trim();
+  }
+  if (form.refreshToken?.trim()) {
+    payload.refresh_token = form.refreshToken.trim();
+  }
+  if (form.oauthClientSecret?.trim()) {
+    payload.oauth_client_secret = form.oauthClientSecret.trim();
+  }
+
+  // Add optional fields or set to null if clearing
   const assignOptionalField = (
     key:
       | "oauth_client_id"
@@ -202,21 +199,16 @@ const buildPayloadFromForm = (
       | "oauth_authorization_endpoint"
       | "oauth_token_endpoint"
       | "oauth_redirect_uri",
-    value: string,
+    value: string | undefined,
     currentValue: string | null | undefined,
   ) => {
-    const trimmed = value.trim();
+    const trimmed = value?.trim();
     if (trimmed) {
       payload[key] = trimmed;
     } else if (currentValue && current) {
       payload[key] = null;
     }
   };
-
-  assignOptionalSecret("authorization", form.authorization);
-  assignOptionalSecret("access_token", form.accessToken);
-  assignOptionalSecret("refresh_token", form.refreshToken);
-  assignOptionalSecret("oauth_client_secret", form.oauthClientSecret);
 
   assignOptionalField("oauth_client_id", form.oauthClientId, current?.oauth_client_id);
   assignOptionalField("oauth_scope", form.oauthScope, current?.oauth_scope);
@@ -236,17 +228,11 @@ const buildPayloadFromForm = (
     current?.oauth_redirect_uri,
   );
 
-  const metadataDraft = form.oauthMetadata.trim();
+  // Handle JSON metadata
+  const metadataDraft = form.oauthMetadata?.trim();
   if (metadataDraft) {
-    try {
-      const parsed = JSON.parse(metadataDraft);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return { error: "metadata" };
-      }
-      payload.oauth_metadata = parsed as Record<string, unknown>;
-    } catch (error) {
-      return { error: "metadata" };
-    }
+    const parsed = JSON.parse(metadataDraft);
+    payload.oauth_metadata = parsed as Record<string, unknown>;
   } else if (current?.oauth_metadata && current) {
     payload.oauth_metadata = null;
   }
@@ -264,10 +250,22 @@ export const AdminMcpServersPage = () => {
   const updateServer = useUpdateMcpServer();
   const deleteServer = useDeleteMcpServer();
 
+  // React Hook Form
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors: formErrors },
+    watch,
+    reset,
+    getValues,
+  } = useForm<AdminMcpServerFormData>({
+    resolver: zodResolver(adminMcpServerSchema),
+    defaultValues: emptyFormState,
+  });
+
   // Local UI state
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [formState, setFormState] = useState<McpServerFormState>(emptyFormState);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [refreshingId, setRefreshingId] = useState<number | null>(null);
   const [isTesting, setIsTesting] = useState<boolean>(false);
@@ -288,16 +286,16 @@ export const AdminMcpServersPage = () => {
   );
 
   const resetForm = useCallback(() => {
-    setFormState(emptyFormState());
+    reset(emptyFormState);
     setEditingId(null);
     setProbeFeedback(null);
     setProbeError(null);
     setOauthFeedback(initialOAuthFeedback);
     oauthPlanRef.current = null;
-  }, []);
+  }, [reset]);
 
   const applyServerToForm = useCallback((server: McpServerSummary) => {
-    setFormState({
+    reset({
       label: server.label ?? "",
       serverUrl: server.server_url ?? "",
       authorization: "",
@@ -318,7 +316,7 @@ export const AdminMcpServersPage = () => {
     setProbeError(null);
     setOauthFeedback(initialOAuthFeedback);
     oauthPlanRef.current = null;
-  }, []);
+  }, [reset]);
 
   // Handle React Query errors
   useEffect(() => {
@@ -476,25 +474,42 @@ export const AdminMcpServersPage = () => {
         let persisted: McpServerSummary | null = null;
 
         if (serverId != null) {
-          const updated = await mcpServersApi.update(token, serverId, payload);
-          persisted = updated;
-          setServers((prev) =>
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-          );
-          if (editingId === serverId) {
-            applyServerToForm(updated);
-          }
-        } else {
-          const created = await mcpServersApi.create(token, payload);
-          persisted = created;
-          setServers((prev) => {
-            const others = prev.filter((item) => item.id !== created.id);
-            return [...others, created].sort((a, b) =>
-              a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+          // Use React Query mutation for update
+          await new Promise<void>((resolve, reject) => {
+            updateServer.mutate(
+              { token, serverId, payload },
+              {
+                onSuccess: (updated) => {
+                  persisted = updated;
+                  if (editingId === serverId) {
+                    applyServerToForm(updated);
+                  }
+                  resolve();
+                },
+                onError: (err) => {
+                  reject(err);
+                },
+              }
             );
           });
-          setEditingId(created.id);
-          applyServerToForm(created);
+        } else {
+          // Use React Query mutation for create
+          await new Promise<void>((resolve, reject) => {
+            createServer.mutate(
+              { token, payload },
+              {
+                onSuccess: (created) => {
+                  persisted = created;
+                  setEditingId(created.id);
+                  applyServerToForm(created);
+                  resolve();
+                },
+                onError: (err) => {
+                  reject(err);
+                },
+              }
+            );
+          });
         }
 
         return { ok: true, server: persisted };
@@ -512,12 +527,13 @@ export const AdminMcpServersPage = () => {
     },
     [
       applyServerToForm,
+      createServer,
       editingId,
       logout,
       servers,
-      setEditingId,
       t,
       token,
+      updateServer,
     ],
   );
 
@@ -567,7 +583,6 @@ export const AdminMcpServersPage = () => {
         setProbeFeedback(null);
         setProbeError(null);
         oauthPlanRef.current = null;
-        void loadServers();
       } else {
         const detail =
           "error" in result && typeof result.error === "string"
@@ -588,7 +603,6 @@ export const AdminMcpServersPage = () => {
       }
     },
     [
-      loadServers,
       oauthFeedback.serverId,
       persistOAuthTokens,
       t,
@@ -765,8 +779,7 @@ export const AdminMcpServersPage = () => {
   );
 
   const handleSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
+    async (data: AdminMcpServerFormData) => {
       if (!token) {
         return;
       }
@@ -775,18 +788,7 @@ export const AdminMcpServersPage = () => {
       setProbeFeedback(null);
       setProbeError(null);
 
-      const basePayload = buildPayloadFromForm(formState, currentServer);
-      if ("error" in basePayload) {
-        const errorKey = basePayload.error;
-        if (errorKey === "label") {
-          setError(t("admin.mcpServers.errors.labelRequired"));
-        } else if (errorKey === "serverUrl") {
-          setError(t("admin.mcpServers.errors.serverUrlRequired"));
-        } else if (errorKey === "metadata") {
-          setError(t("admin.mcpServers.errors.invalidMetadata"));
-        }
-        return;
-      }
+      const basePayload = buildPayloadFromForm(data, currentServer);
 
       if (editingId == null) {
         createServer.mutate(
@@ -840,7 +842,6 @@ export const AdminMcpServersPage = () => {
       createServer,
       currentServer,
       editingId,
-      formState,
       logout,
       t,
       token,
@@ -856,25 +857,15 @@ export const AdminMcpServersPage = () => {
     setProbeError(null);
     setIsTesting(true);
 
-    const basePayload = buildPayloadFromForm(formState, currentServer);
-    if ("error" in basePayload) {
-      const errorKey = basePayload.error;
-      if (errorKey === "label") {
-        setProbeError(t("admin.mcpServers.errors.labelRequired"));
-      } else if (errorKey === "serverUrl") {
-        setProbeError(t("admin.mcpServers.errors.serverUrlRequired"));
-      } else if (errorKey === "metadata") {
-        setProbeError(t("admin.mcpServers.errors.invalidMetadata"));
-      }
-      setIsTesting(false);
-      return;
-    }
+    const formData = getValues();
 
     try {
+      const basePayload = buildPayloadFromForm(formData, currentServer);
+
       const response = await probeMcpServer(token, {
         serverId: editingId ?? undefined,
-        url: basePayload.server_url ?? formState.serverUrl.trim(),
-        authorization: basePayload.authorization ?? formState.authorization.trim(),
+        url: basePayload.server_url ?? formData.serverUrl.trim(),
+        authorization: basePayload.authorization ?? formData.authorization?.trim() ?? "",
       });
       handleProbeResponse(response);
     } catch (err) {
@@ -894,7 +885,7 @@ export const AdminMcpServersPage = () => {
   }, [
     currentServer,
     editingId,
-    formState,
+    getValues,
     logout,
     t,
     token,
@@ -912,9 +903,6 @@ export const AdminMcpServersPage = () => {
           : t("admin.mcpServers.test.success"),
       );
       setProbeError(null);
-      if (typeof response.server_id === "number") {
-        void loadServers();
-      }
     } else {
       const detail = response.detail || t("admin.mcpServers.test.errorGeneric");
       setProbeError(detail);
@@ -926,18 +914,8 @@ export const AdminMcpServersPage = () => {
     if (!token) {
       return;
     }
-    const basePayload = buildPayloadFromForm(formState, currentServer);
-    if ("error" in basePayload) {
-      const errorKey = basePayload.error;
-      if (errorKey === "label") {
-        setError(t("admin.mcpServers.errors.labelRequired"));
-      } else if (errorKey === "serverUrl") {
-        setError(t("admin.mcpServers.errors.serverUrlRequired"));
-      } else if (errorKey === "metadata") {
-        setError(t("admin.mcpServers.errors.invalidMetadata"));
-      }
-      return;
-    }
+    const formData = getValues();
+    const basePayload = buildPayloadFromForm(formData, currentServer);
 
     const previousState = oauthFeedback.stateId;
     if (previousState) {
@@ -965,9 +943,9 @@ export const AdminMcpServersPage = () => {
     try {
       const result = await startMcpOAuthNegotiation({
         token,
-        url: basePayload.server_url ?? formState.serverUrl.trim(),
-        clientId: (basePayload.oauth_client_id ?? formState.oauthClientId.trim()) || null,
-        scope: (basePayload.oauth_scope ?? formState.oauthScope.trim()) || null,
+        url: basePayload.server_url ?? formData.serverUrl.trim(),
+        clientId: (basePayload.oauth_client_id ?? formData.oauthClientId?.trim()) || null,
+        scope: (basePayload.oauth_scope ?? formData.oauthScope?.trim()) || null,
         persistence: persistencePlan,
       });
 
@@ -989,7 +967,6 @@ export const AdminMcpServersPage = () => {
         serverId,
       });
       pendingStateRef.current = result.state;
-      void loadServers();
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -1011,12 +988,11 @@ export const AdminMcpServersPage = () => {
   }, [
     currentServer,
     editingId,
-    formState,
+    getValues,
     logout,
     oauthFeedback.stateId,
     t,
     token,
-    loadServers,
   ]);
 
   const currentAuthorizationHint = currentServer?.authorization_hint;
@@ -1180,19 +1156,20 @@ export const AdminMcpServersPage = () => {
                   : t("admin.mcpServers.form.editSubtitle")}
               </p>
             </div>
-            <form className="admin-form" onSubmit={handleSubmit}>
+            <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
               <label className="label">
                 {t("admin.mcpServers.form.labelLabel")}
                 <input
                   className="input"
                   type="text"
-                  required
-                  value={formState.label}
-                  onChange={(event) =>
-                    setFormState((prev) => ({ ...prev, label: event.target.value }))
-                  }
+                  {...register("label")}
                   placeholder={t("admin.mcpServers.form.labelPlaceholder")}
                 />
+                {formErrors.label && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                    {formErrors.label.message}
+                  </span>
+                )}
               </label>
 
               <label className="label">
@@ -1200,16 +1177,14 @@ export const AdminMcpServersPage = () => {
                 <input
                   className="input"
                   type="url"
-                  required
-                  value={formState.serverUrl}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      serverUrl: event.target.value,
-                    }))
-                  }
+                  {...register("serverUrl")}
                   placeholder={t("admin.mcpServers.form.serverUrlPlaceholder")}
                 />
+                {formErrors.serverUrl && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                    {formErrors.serverUrl.message}
+                  </span>
+                )}
               </label>
 
               <label className="label">
@@ -1217,13 +1192,7 @@ export const AdminMcpServersPage = () => {
                 <input
                   className="input"
                   type="text"
-                  value={formState.authorization}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      authorization: event.target.value,
-                    }))
-                  }
+                  {...register("authorization")}
                   placeholder={t("admin.mcpServers.form.authorizationPlaceholder")}
                 />
                 {currentAuthorizationHint && (
@@ -1241,13 +1210,7 @@ export const AdminMcpServersPage = () => {
                   <input
                     className="input"
                     type="text"
-                    value={formState.accessToken}
-                    onChange={(event) =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        accessToken: event.target.value,
-                      }))
-                    }
+                    {...register("accessToken")}
                     placeholder={t("admin.mcpServers.form.accessTokenPlaceholder")}
                   />
                   {currentAccessTokenHint && (
@@ -1264,13 +1227,7 @@ export const AdminMcpServersPage = () => {
                   <input
                     className="input"
                     type="text"
-                    value={formState.refreshToken}
-                    onChange={(event) =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        refreshToken: event.target.value,
-                      }))
-                    }
+                    {...register("refreshToken")}
                     placeholder={t("admin.mcpServers.form.refreshTokenPlaceholder")}
                   />
                   {currentRefreshTokenHint && (
@@ -1288,13 +1245,7 @@ export const AdminMcpServersPage = () => {
                 <input
                   className="input"
                   type="text"
-                  value={formState.oauthClientId}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      oauthClientId: event.target.value,
-                    }))
-                  }
+                  {...register("oauthClientId")}
                   placeholder={t("admin.mcpServers.form.oauthClientIdPlaceholder")}
                 />
               </label>
@@ -1304,13 +1255,7 @@ export const AdminMcpServersPage = () => {
                 <input
                   className="input"
                   type="password"
-                  value={formState.oauthClientSecret}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      oauthClientSecret: event.target.value,
-                    }))
-                  }
+                  {...register("oauthClientSecret")}
                   placeholder={t("admin.mcpServers.form.oauthClientSecretPlaceholder")}
                 />
                 {currentClientSecretHint && (
@@ -1327,13 +1272,7 @@ export const AdminMcpServersPage = () => {
                 <input
                   className="input"
                   type="text"
-                  value={formState.oauthScope}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      oauthScope: event.target.value,
-                    }))
-                  }
+                  {...register("oauthScope")}
                   placeholder={t("admin.mcpServers.form.oauthScopePlaceholder")}
                 />
               </label>
@@ -1344,13 +1283,7 @@ export const AdminMcpServersPage = () => {
                   <input
                     className="input"
                     type="url"
-                    value={formState.oauthAuthorizationEndpoint}
-                    onChange={(event) =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        oauthAuthorizationEndpoint: event.target.value,
-                      }))
-                    }
+                    {...register("oauthAuthorizationEndpoint")}
                     placeholder={t(
                       "admin.mcpServers.form.oauthAuthorizationEndpointPlaceholder",
                     )}
@@ -1362,13 +1295,7 @@ export const AdminMcpServersPage = () => {
                   <input
                     className="input"
                     type="url"
-                    value={formState.oauthTokenEndpoint}
-                    onChange={(event) =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        oauthTokenEndpoint: event.target.value,
-                      }))
-                    }
+                    {...register("oauthTokenEndpoint")}
                     placeholder={t(
                       "admin.mcpServers.form.oauthTokenEndpointPlaceholder",
                     )}
@@ -1381,13 +1308,7 @@ export const AdminMcpServersPage = () => {
                 <input
                   className="input"
                   type="url"
-                  value={formState.oauthRedirectUri}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      oauthRedirectUri: event.target.value,
-                    }))
-                  }
+                  {...register("oauthRedirectUri")}
                   placeholder={t(
                     "admin.mcpServers.form.oauthRedirectUriPlaceholder",
                   )}
@@ -1399,15 +1320,14 @@ export const AdminMcpServersPage = () => {
                 <textarea
                   className="textarea"
                   rows={4}
-                  value={formState.oauthMetadata}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      oauthMetadata: event.target.value,
-                    }))
-                  }
+                  {...register("oauthMetadata")}
                   placeholder={t("admin.mcpServers.form.oauthMetadataPlaceholder")}
                 />
+                {formErrors.oauthMetadata && (
+                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                    {formErrors.oauthMetadata.message}
+                  </span>
+                )}
                 <span className="form-hint">
                   {t("admin.mcpServers.form.oauthMetadataHint")}
                 </span>
@@ -1416,13 +1336,7 @@ export const AdminMcpServersPage = () => {
               <label className="checkbox-field">
                 <input
                   type="checkbox"
-                  checked={formState.isActive}
-                  onChange={(event) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      isActive: event.target.checked,
-                    }))
-                  }
+                  {...register("isActive")}
                 />
                 <span>{t("admin.mcpServers.form.isActiveLabel")}</span>
               </label>

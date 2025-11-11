@@ -1,9 +1,12 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import { AuthUser, useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
 import { useI18n } from "../i18n";
+import { loginFormSchema, type LoginFormData } from "../schemas/auth";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
@@ -11,8 +14,19 @@ export const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const { t } = useI18n();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    formState: { errors: formErrors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginFormSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
+
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
@@ -21,13 +35,12 @@ export const LoginPage = () => {
     [backendUrl],
   );
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async (formData: LoginFormData) => {
     setSubmitting(true);
     setError(null);
 
     try {
-      const payload = JSON.stringify({ email, password });
+      const payload = JSON.stringify({ email: formData.email, password: formData.password });
       let lastError: Error | null = null;
       let data: { access_token: string; user: AuthUser } | null = null;
 
@@ -87,7 +100,7 @@ export const LoginPage = () => {
 
   return (
     <div className="login-layout">
-      <form className="login-card" onSubmit={handleSubmit}>
+      <form className="login-card" onSubmit={handleFormSubmit(handleSubmit)}>
         <div>
           <h1 className="login-card__title">{t("auth.login.title")}</h1>
           <p className="login-card__subtitle">{t("auth.login.subtitle")}</p>
@@ -99,11 +112,14 @@ export const LoginPage = () => {
             <input
               className="input"
               type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
+              {...register("email")}
               placeholder={t("auth.login.email.placeholder")}
             />
+            {formErrors.email && (
+              <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                {formErrors.email.message}
+              </span>
+            )}
           </label>
 
           <label className="label">
@@ -111,11 +127,14 @@ export const LoginPage = () => {
             <input
               className="input"
               type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
+              {...register("password")}
               placeholder={t("auth.login.password.placeholder")}
             />
+            {formErrors.password && (
+              <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                {formErrors.password.message}
+              </span>
+            )}
           </label>
         </div>
 
