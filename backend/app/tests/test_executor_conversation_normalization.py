@@ -77,6 +77,28 @@ def test_normalize_conversation_history_for_litellm_with_multiple_text_parts() -
     assert normalized[0]["content"] == "Salut\n\nComment ça va ?"
 
 
+def test_normalize_discards_non_text_parts_for_legacy_providers() -> None:
+    items = [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "output_text", "text": "Salut"},
+                {"type": "image_file", "image": {"file_id": "img_1"}},
+            ],
+        }
+    ]
+
+    normalized = executor_module._normalize_conversation_history_for_provider(
+        items,
+        "groq",
+    )
+
+    assert normalized is not items
+    assert normalized[0]["content"] == "Salut"
+    # Original payload must remain untouched so it can be reused elsewhere.
+    assert items[0]["content"][1]["type"] == "image_file"
+
+
 def test_normalize_conversation_history_unchanged_for_other_providers() -> None:
     items = [
         {
