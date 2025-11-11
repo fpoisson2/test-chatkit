@@ -184,3 +184,59 @@
     padding: 0.375rem 0.5rem;
   }
 }
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .inlineHelp {
+    border-color: var(--border-color, #374151);
+    background-color: var(--bg-card, #1f2937);
+  }
+
+  .inlineHelpToggle {
+    color: var(--accent-color, #60a5fa);
+  }
+
+  .inlineHelpToggle:hover {
+    background-color: var(--bg-hover, #111827);
+  }
+
+  .inlineHelpContent {
+    border-top-color: var(--border-color, #374151);
+    background-color: var(--bg-card-light, #1f2937);
+  }
+
+  .helpText {
+    color: var(--text-secondary, #d1d5db);
+  }
+
+  .examplesHeading {
+    color: var(--text-primary, #f9fafb);
+  }
+
+  .exampleLabel {
+    color: var(--text-secondary, #9ca3af);
+  }
+
+  .copyButton {
+    color: var(--text-secondary, #9ca3af);
+  }
+
+  .copyButton:hover {
+    color: var(--text-primary, #f9fafb);
+    background-color: var(--bg-hover, #111827);
+  }
+
+  .exampleCode {
+    color: var(--text-primary, #f9fafb);
+    background-color: var(--bg-code, #111827);
+    border-color: var(--border-color, #374151);
+  }
+
+  .learnMore {
+    color: var(--accent-color, #60a5fa);
+  }
+
+  .learnMore:hover {
+    color: var(--accent-hover, #3b82f6);
+  }
+}

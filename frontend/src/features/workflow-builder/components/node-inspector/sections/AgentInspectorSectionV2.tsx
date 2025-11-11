@@ -361,7 +361,14 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     },
   ];
 
-  return <TabSection tabs={tabs} defaultTab="basic" />;
+  return (
+    <TabSection
+      tabs={tabs}
+      defaultTab="basic"
+      title={t('workflowBuilder.agentInspector.title')}
+      description={t('workflowBuilder.agentInspector.description')}
+    />
+  );
 };
 
 /**

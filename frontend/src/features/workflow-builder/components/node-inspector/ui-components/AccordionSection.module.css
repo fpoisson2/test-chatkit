@@ -157,3 +157,44 @@
     padding: 0.75rem;
   }
 }
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .accordionItem {
+    border-color: var(--border-color, #374151);
+    background-color: var(--bg-card, #1f2937);
+  }
+
+  .accordionTrigger {
+    color: var(--text-primary, #f9fafb);
+  }
+
+  .accordionTrigger:hover {
+    background-color: var(--bg-hover, #111827);
+  }
+
+  .accordionIcon,
+  .accordionChevron {
+    color: var(--text-secondary, #9ca3af);
+  }
+
+  .accordionContent {
+    border-top-color: var(--border-color, #374151);
+  }
+
+  .accordionToggle {
+    background-color: var(--bg-toggle-off, #374151);
+  }
+
+  .accordionToggle:hover {
+    background-color: var(--bg-toggle-hover, #4b5563);
+  }
+
+  .accordionToggleOn {
+    background-color: var(--accent-color, #60a5fa);
+  }
+
+  .accordionToggleOn:hover {
+    background-color: var(--accent-hover, #3b82f6);
+  }
+}

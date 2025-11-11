@@ -15,20 +15,32 @@ interface TabSectionProps {
   tabs: Tab[];
   defaultTab?: string;
   onTabChange?: (tabId: string) => void;
+  title?: string;
+  description?: string;
 }
 
 export const TabSection: React.FC<TabSectionProps> = ({
   tabs,
   defaultTab,
   onTabChange,
+  title,
+  description,
 }) => {
   return (
-    <Tabs.Root
-      className={styles.tabsRoot}
-      defaultValue={defaultTab || tabs[0]?.id}
-      onValueChange={onTabChange}
-    >
-      <Tabs.List className={styles.tabsList} aria-label="Configuration sections">
+    <div className={styles.tabsContainer}>
+      {(title || description) && (
+        <div className={styles.tabsHeader}>
+          {title && <h3 className={styles.tabsTitle}>{title}</h3>}
+          {description && <p className={styles.tabsDescription}>{description}</p>}
+        </div>
+      )}
+
+      <Tabs.Root
+        className={styles.tabsRoot}
+        defaultValue={defaultTab || tabs[0]?.id}
+        onValueChange={onTabChange}
+      >
+        <Tabs.List className={styles.tabsList} aria-label="Configuration sections">
         {tabs.map((tab) => (
           <Tabs.Trigger
             key={tab.id}
@@ -55,6 +67,7 @@ export const TabSection: React.FC<TabSectionProps> = ({
           {tab.content}
         </Tabs.Content>
       ))}
-    </Tabs.Root>
+      </Tabs.Root>
+    </div>
   );
 };

@@ -1,3 +1,39 @@
+.tabsContainer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.tabsHeader {
+  margin-bottom: 1.5rem;
+}
+
+.tabsTitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+  margin: 0 0 0.5rem 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tabsTitle {
+    color: var(--text-primary, #f9fafb);
+  }
+}
+
+.tabsDescription {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #6b7280);
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tabsDescription {
+    color: var(--text-secondary, #9ca3af);
+  }
+}
+
 .tabsRoot {
   display: flex;
   flex-direction: column;
@@ -7,10 +43,16 @@
 .tabsList {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
   margin-bottom: 1rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tabsList {
+    border-bottom-color: var(--border-color, #374151);
+  }
 }
 
 .tabsTrigger {
@@ -23,7 +65,7 @@
   gap: 0.5rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
-  color: #6b7280;
+  color: var(--text-secondary, #6b7280);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
@@ -31,21 +73,47 @@
   position: relative;
 }
 
+@media (prefers-color-scheme: dark) {
+  .tabsTrigger {
+    color: var(--text-secondary, #9ca3af);
+  }
+}
+
 .tabsTrigger:hover {
-  color: #374151;
-  background-color: #f9fafb;
+  color: var(--text-primary, #374151);
+  background-color: var(--bg-hover, #f9fafb);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tabsTrigger:hover {
+    color: var(--text-primary, #f9fafb);
+    background-color: var(--bg-hover, #1f2937);
+  }
 }
 
 .tabsTrigger[data-state='active'] {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
+  color: var(--accent-color, #2563eb);
+  border-bottom-color: var(--accent-color, #2563eb);
   font-weight: 500;
 }
 
+@media (prefers-color-scheme: dark) {
+  .tabsTrigger[data-state='active'] {
+    color: var(--accent-color, #60a5fa);
+    border-bottom-color: var(--accent-color, #60a5fa);
+  }
+}
+
 .tabsTrigger:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--accent-color, #2563eb);
   outline-offset: 2px;
   border-radius: 0.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tabsTrigger:focus-visible {
+    outline-color: var(--accent-color, #60a5fa);
+  }
 }
 
 .tabIcon {

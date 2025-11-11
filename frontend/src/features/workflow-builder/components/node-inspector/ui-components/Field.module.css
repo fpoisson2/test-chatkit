@@ -130,3 +130,38 @@
     font-size: 0.875rem;
   }
 }
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .field input,
+  .field textarea,
+  .field select {
+    color: var(--text-primary, #f9fafb);
+    background-color: var(--bg-input, #1f2937);
+    border-color: var(--border-color, #374151);
+  }
+
+  .field input:hover,
+  .field textarea:hover,
+  .field select:hover {
+    border-color: var(--border-hover, #4b5563);
+  }
+
+  .field input:focus,
+  .field textarea:focus,
+  .field select:focus {
+    border-color: var(--accent-color, #60a5fa);
+    outline-color: var(--accent-color, #60a5fa);
+  }
+
+  .field input:disabled,
+  .field textarea:disabled,
+  .field select:disabled {
+    background-color: var(--bg-disabled, #111827);
+    color: var(--text-disabled, #6b7280);
+  }
+
+  .label {
+    color: var(--text-primary, #f9fafb);
+  }
+}
