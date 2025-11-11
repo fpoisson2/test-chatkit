@@ -11,6 +11,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from dotenv import load_dotenv
 
 logger = logging.getLogger("chatkit.settings")
@@ -34,6 +36,142 @@ ADMIN_MODEL_API_KEY_ENV = "APP_SETTINGS_MODEL_API_KEY"
 
 _RUNTIME_SETTINGS_OVERRIDES: dict[str, Any] | None = None
 _RUNTIME_SETTINGS_LOCK = RLock()
+
+
+def _normalize_pem(value: str | None) -> str | None:
+    """Return a normalized PEM string with Unix newlines and trailing newline."""
+
+    if not value:
+        return None
+    normalized = value.replace("\r\n", "\n").strip()
+    if not normalized:
+        return None
+    if not normalized.endswith("\n"):
+        normalized += "\n"
+    return normalized
+
+
+def ensure_lti_key_material(
+    private_path: Path,
+    public_path: Path,
+    provided_private_key: str | None,
+) -> tuple[str | None, str | None]:
+    """Ensure the managed LTI key pair exists and return their PEM contents."""
+
+    normalized_override = _normalize_pem(provided_private_key)
+
+    private_pem: str | None = normalized_override
+    public_pem: str | None = None
+
+    try:
+        private_path.parent.mkdir(parents=True, exist_ok=True)
+        public_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:  # pragma: no cover - disk errors are unexpected
+        logger.warning(
+            "Impossible de préparer le dossier des clés LTI (%s, %s) : %s",
+            private_path,
+            public_path,
+            exc,
+        )
+
+    if private_pem is None and private_path.exists():
+        try:
+            private_pem = _normalize_pem(private_path.read_text(encoding="utf-8"))
+        except OSError as exc:  # pragma: no cover - disk access issues are rare
+            logger.warning(
+                "Lecture de la clé privée LTI impossible (%s) : %s",
+                private_path,
+                exc,
+            )
+
+    private_obj = None
+
+    if private_pem is None:
+        try:
+            private_obj = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        except ValueError as exc:  # pragma: no cover - invalid key size
+            logger.error("Impossible de générer la clé privée LTI : %s", exc)
+            return None, None
+        private_bytes = private_obj.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        private_pem = _normalize_pem(private_bytes.decode("utf-8"))
+
+    if private_pem is None:
+        return None, None
+
+    if private_obj is None:
+        try:
+            private_obj = serialization.load_pem_private_key(
+                private_pem.encode("utf-8"),
+                password=None,
+            )
+        except ValueError:
+            logger.warning(
+                "Clé privée LTI invalide, génération de la clé publique impossible",
+            )
+            private_obj = None
+
+    try:
+        existing_private = (
+            private_path.read_text(encoding="utf-8") if private_path.exists() else None
+        )
+    except OSError as exc:  # pragma: no cover - disk access issues are rare
+        logger.warning(
+            "Lecture de la clé privée LTI impossible (%s) : %s",
+            private_path,
+            exc,
+        )
+        existing_private = None
+
+    if existing_private != private_pem:
+        try:
+            private_path.write_text(private_pem, encoding="utf-8")
+        except OSError as exc:  # pragma: no cover - disk access issues are rare
+            logger.warning(
+                "Impossible d'écrire la clé privée LTI gérée (%s) : %s",
+                private_path,
+                exc,
+            )
+
+    if private_obj is not None:
+        public_pem = _normalize_pem(
+            private_obj.public_key()
+            .public_bytes(
+                serialization.Encoding.PEM,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            .decode("utf-8")
+        )
+
+    if public_pem:
+        try:
+            existing_public = (
+                public_path.read_text(encoding="utf-8")
+                if public_path.exists()
+                else None
+            )
+        except OSError as exc:  # pragma: no cover - disk access issues are rare
+            logger.warning(
+                "Lecture de la clé publique LTI impossible (%s) : %s",
+                public_path,
+                exc,
+            )
+            existing_public = None
+
+        if existing_public != public_pem:
+            try:
+                public_path.write_text(public_pem, encoding="utf-8")
+            except OSError as exc:  # pragma: no cover - disk access issues are rare
+                logger.warning(
+                    "Impossible d'écrire la clé publique LTI gérée (%s) : %s",
+                    public_path,
+                    exc,
+                )
+
+    return private_pem, public_pem
 
 
 @dataclass(frozen=True)
@@ -466,6 +604,12 @@ class Settings:
                 default_lti_keys_dir / DEFAULT_LTI_PUBLIC_KEY_FILENAME
             )
 
+        private_key_pem, _ = ensure_lti_key_material(
+            resolved_private_key_path,
+            resolved_public_key_path,
+            get_stripped("LTI_TOOL_PRIVATE_KEY"),
+        )
+
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
             model_provider=model_provider,
@@ -563,7 +707,7 @@ class Settings:
             lti_tool_client_id=get_stripped("LTI_TOOL_CLIENT_ID"),
             lti_tool_key_set_url=get_stripped("LTI_TOOL_KEY_SET_URL"),
             lti_tool_audience=get_stripped("LTI_TOOL_AUDIENCE"),
-            lti_tool_private_key=get_stripped("LTI_TOOL_PRIVATE_KEY"),
+            lti_tool_private_key=private_key_pem,
             lti_tool_key_id=get_stripped("LTI_TOOL_KEY_ID"),
             lti_tool_private_key_path=str(resolved_private_key_path),
             lti_tool_public_key_path=str(resolved_public_key_path),

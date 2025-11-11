@@ -6,8 +6,8 @@ import logging
 import math
 import re
 import uuid
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlparse
@@ -15,13 +15,12 @@ from urllib.parse import urlparse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cryptography.hazmat.primitives import serialization
-
 from .config import (
     ADMIN_MODEL_API_KEY_ENV,
     DEFAULT_THREAD_TITLE_MODEL,
     DEFAULT_THREAD_TITLE_PROMPT,
     ModelProviderConfig,
+    ensure_lti_key_material,
     get_settings,
     set_runtime_settings_overrides,
 )
@@ -1404,7 +1403,7 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
 
     private_key_hint = None
     if resolved_private_key:
-        private_key_hint = _mask_secret(resolved_private_key)
+        private_key_hint = _mask_secret(resolved_private_key.strip())
 
     (
         private_key_path,
@@ -1433,7 +1432,10 @@ def serialize_lti_tool_settings(settings: AppSettings | None) -> dict[str, Any]:
                 stat_result = key_path.stat()
             except OSError as exc:  # pragma: no cover - accès fichier improbable
                 logger.debug(
-                    "Impossible de récupérer la date de modification de la clé publique LTI (%s): %s",
+                    (
+                        "Impossible de récupérer la date de modification de la clé "
+                        "publique LTI (%s): %s"
+                    ),
                     key_path,
                     exc,
                 )
@@ -1489,59 +1491,14 @@ def _ensure_managed_lti_key_files(
         return str(private_path), str(public_path), None
 
     private_key = getattr(settings, "lti_tool_private_key", None)
-    if not private_key:
-        return str(private_path), str(public_path), None
 
-    normalized_key = private_key.replace("\r\n", "\n").strip()
-    if not normalized_key:
-        return str(private_path), str(public_path), None
+    private_pem, public_pem = ensure_lti_key_material(
+        private_path,
+        public_path,
+        private_key,
+    )
 
-    private_pem = normalized_key
-    if not private_pem.endswith("\n"):
-        private_pem += "\n"
-
-    try:
-        existing_private = (
-            private_path.read_text(encoding="utf-8") if private_path.exists() else None
-        )
-        if existing_private != private_pem:
-            private_path.write_text(private_pem, encoding="utf-8")
-    except OSError as exc:  # pragma: no cover - accès disque improbable
-        logger.warning(
-            "Impossible d'écrire la clé privée LTI gérée (%s) : %s",
-            private_path,
-            exc,
-        )
-        return str(private_path), str(public_path), None
-
-    try:
-        private_obj = serialization.load_pem_private_key(
-            private_pem.encode("utf-8"),
-            password=None,
-        )
-    except (TypeError, ValueError):
-        logger.warning(
-            "Clé privée LTI invalide, génération de la clé publique impossible"
-        )
-        return str(private_path), str(public_path), None
-
-    public_pem = private_obj.public_key().public_bytes(
-        serialization.Encoding.PEM,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode("utf-8")
-
-    try:
-        existing_public = (
-            public_path.read_text(encoding="utf-8") if public_path.exists() else None
-        )
-        if existing_public != public_pem:
-            public_path.write_text(public_pem, encoding="utf-8")
-    except OSError as exc:  # pragma: no cover - accès disque improbable
-        logger.warning(
-            "Impossible d'écrire la clé publique LTI gérée (%s) : %s",
-            public_path,
-            exc,
-        )
+    if private_pem is None:
         return str(private_path), str(public_path), None
 
     return str(private_path), str(public_path), public_pem
