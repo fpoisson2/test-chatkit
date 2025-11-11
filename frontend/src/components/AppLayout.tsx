@@ -18,6 +18,7 @@ import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import type { SettingsSectionId } from "../features/settings/sections";
 import { useI18n } from "../i18n";
+import { preloadRoute } from "../utils/routePreloaders";
 
 type NavigationItem = {
   key: string;
@@ -513,6 +514,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                   isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
                 }`}
                 onClick={() => handleApplicationNavigate(application)}
+                onMouseEnter={() => preloadRoute(application.path)}
+                onFocus={() => preloadRoute(application.path)}
                 tabIndex={sidebarTabIndex}
                 aria-current={isActive ? "page" : undefined}
                 aria-label={application.label}
@@ -628,6 +631,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                     isDocsActive ? " chatkit-sidebar__footer-link--active" : ""
                   }`}
                   onClick={handleGoToDocs}
+                  onMouseEnter={() => preloadRoute("docs")}
+                  onFocus={() => preloadRoute("docs")}
                   tabIndex={sidebarTabIndex}
                   aria-label={t("app.sidebar.docs")}
                   aria-current={isDocsActive ? "page" : undefined}
@@ -670,6 +675,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                       className="chatkit-sidebar__profile-action"
                       role="menuitem"
                       onClick={handleProfileOpenSettings}
+                      onMouseEnter={() => preloadRoute("settings")}
+                      onFocus={() => preloadRoute("settings")}
                       tabIndex={isProfileMenuOpen ? 0 : -1}
                     >
                       <SidebarIcon name="settings" className="chatkit-sidebar__icon" />
@@ -681,6 +688,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                         className="chatkit-sidebar__profile-action"
                         role="menuitem"
                         onClick={handleProfileGoToAdmin}
+                        onMouseEnter={() => preloadRoute("admin")}
+                        onFocus={() => preloadRoute("admin")}
                         tabIndex={isProfileMenuOpen ? 0 : -1}
                       >
                         <SidebarIcon name="admin" className="chatkit-sidebar__icon" />

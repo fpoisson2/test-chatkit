@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 
 import { useAppLayout, useSidebarPortal } from "./AppLayout";
 import { useI18n } from "../i18n";
+import { preloadRoute } from "../utils/routePreloaders";
 
 type AdminTabKey =
   | "users"
@@ -112,6 +113,8 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
                   }`
                 }
                 onClick={handleNavLinkClick}
+                onMouseEnter={() => preloadRoute(tab.to)}
+                onFocus={() => preloadRoute(tab.to)}
               >
                 {tab.label}
               </NavLink>
@@ -143,6 +146,8 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
                   isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
                 }`}
                 onClick={() => handleCollapsedTabClick(tab.to)}
+                onMouseEnter={() => preloadRoute(tab.to)}
+                onFocus={() => preloadRoute(tab.to)}
                 tabIndex={isSidebarCollapsed ? 0 : -1}
                 aria-label={tab.label}
                 aria-current={isActive ? "page" : undefined}
