@@ -1,4 +1,6 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
@@ -12,18 +14,11 @@ import {
   isUnauthorizedError,
 } from "../utils/backend";
 import { useAppSettings, useUpdateAppSettings } from "../hooks";
-
-type ProviderRowState = {
-  localId: string;
-  id: string | null;
-  provider: string;
-  apiBase: string;
-  apiKeyInput: string;
-  hasStoredKey: boolean;
-  apiKeyHint: string | null;
-  isDefault: boolean;
-  deleteStoredKey: boolean;
-};
+import {
+  adminModelProvidersSchema,
+  type ModelProviderFormData,
+  type ModelProviderRow,
+} from "../schemas/admin";
 
 export const AdminModelProvidersPage = () => {
   const { token, logout } = useAuth();
@@ -33,13 +28,36 @@ export const AdminModelProvidersPage = () => {
   const { data: settings = null, isLoading, error: queryError } = useAppSettings(token);
   const updateSettings = useUpdateAppSettings();
 
+  // React Hook Form with useFieldArray
+  const {
+    register,
+    control,
+    handleSubmit: handleFormSubmit,
+    formState: { errors: formErrors },
+    watch,
+    setValue,
+    reset,
+  } = useForm<ModelProviderFormData>({
+    resolver: zodResolver(adminModelProvidersSchema),
+    defaultValues: {
+      providers: [],
+    },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "providers",
+  });
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [useCustomModelConfig, setUseCustomModelConfig] = useState(false);
-  const [providerRows, setProviderRows] = useState<ProviderRowState[]>([]);
   const providerIdRef = useRef(0);
   const tRef = useRef(t);
   const logoutRef = useRef(logout);
+
+  // Watch providers array
+  const providers = watch("providers");
 
   useEffect(() => {
     tRef.current = t;
@@ -65,7 +83,7 @@ export const AdminModelProvidersPage = () => {
     }
   }, [queryError]);
 
-  const createEmptyProviderRow = (isDefault: boolean): ProviderRowState => {
+  const createEmptyProviderRow = (isDefault: boolean): ModelProviderRow => {
     providerIdRef.current += 1;
     return {
       localId: `new-${providerIdRef.current}`,
@@ -81,50 +99,31 @@ export const AdminModelProvidersPage = () => {
   };
 
   const addProviderRow = () => {
-    setProviderRows((rows) => {
-      const nextRow = createEmptyProviderRow(rows.length === 0);
-      return [...rows, nextRow];
-    });
+    const nextRow = createEmptyProviderRow(fields.length === 0);
+    append(nextRow);
     setUseCustomModelConfig(true);
   };
 
-  const removeProviderRow = (localId: string) => {
-    setProviderRows((rows) => {
-      const filtered = rows.filter((row) => row.localId !== localId);
-      if (filtered.length === 0) {
-        setUseCustomModelConfig(false);
-        return filtered;
-      }
-      if (!filtered.some((row) => row.isDefault)) {
-        const [first, ...rest] = filtered;
-        return [{ ...first, isDefault: true }, ...rest];
-      }
-      return filtered;
+  const removeProviderRow = (index: number) => {
+    remove(index);
+    if (fields.length === 1) {
+      setUseCustomModelConfig(false);
+    } else if (providers && !providers.some((p: ModelProviderRow) => p.isDefault)) {
+      // If we removed the default, set the first one as default
+      setValue("providers.0.isDefault", true);
+    }
+  };
+
+  const selectDefaultProvider = (index: number) => {
+    providers?.forEach((_: ModelProviderRow, i: number) => {
+      setValue(`providers.${i}.isDefault`, i === index);
     });
-  };
-
-  const selectDefaultProvider = (localId: string) => {
-    setProviderRows((rows) =>
-      rows.map((row) => ({
-        ...row,
-        isDefault: row.localId === localId,
-      })),
-    );
-  };
-
-  const mutateProviderRow = (
-    localId: string,
-    updater: (row: ProviderRowState) => ProviderRowState,
-  ) => {
-    setProviderRows((rows) =>
-      rows.map((row) => (row.localId === localId ? updater(row) : row)),
-    );
   };
 
   // Apply settings when they are loaded
   useEffect(() => {
     if (!settings) {
-      setProviderRows([]);
+      reset({ providers: [] });
       providerIdRef.current = 0;
       setUseCustomModelConfig(false);
       return;
@@ -138,7 +137,7 @@ export const AdminModelProvidersPage = () => {
           settings.is_model_api_base_overridden ||
           settings.is_model_api_key_managed,
       );
-    const rows: ProviderRowState[] = storedProviders.map((entry) => ({
+    const rows: ModelProviderRow[] = storedProviders.map((entry) => ({
       localId: entry.id,
       id: entry.id,
       provider: entry.provider,
@@ -163,12 +162,11 @@ export const AdminModelProvidersPage = () => {
       });
     }
     providerIdRef.current = storedProviders.length;
-    setProviderRows(rows);
+    reset({ providers: rows });
     setUseCustomModelConfig(rows.length > 0);
-  }, [settings]);
+  }, [settings, reset]);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async (data: ModelProviderFormData) => {
     setError(null);
     setSuccess(null);
 
@@ -181,21 +179,13 @@ export const AdminModelProvidersPage = () => {
       const payload: AppSettingsUpdatePayload = {};
 
       if (useCustomModelConfig) {
-        if (providerRows.length === 0) {
-          setError(t("admin.appSettings.errors.modelProvidersRequired"));
-          return;
-        }
         const providersPayload: ModelProviderUpdatePayload[] = [];
-        let defaultCount = 0;
 
-        for (const row of providerRows) {
+        for (const row of data.providers) {
           const providerValue = row.provider.trim().toLowerCase();
-          if (!providerValue) {
-            setError(t("admin.appSettings.errors.modelProviderRequired"));
-            return;
-          }
           const baseValue = (row.apiBase || "").trim();
-          // Validate URL only if provided (optional for LiteLLM auto-routing)
+
+          // Validate URL only if provided
           if (baseValue) {
             try {
               const parsed = new URL(baseValue);
@@ -207,18 +197,18 @@ export const AdminModelProvidersPage = () => {
               return;
             }
           }
-          if (row.isDefault) {
-            defaultCount += 1;
-          }
+
           const trimmedKey = row.apiKeyInput.trim();
           const hasNewKey = trimmedKey.length > 0;
           // Normalize base URL only if provided (strip trailing slashes)
           const normalizedBase = baseValue ? baseValue.replace(/\/+$/, "") : "";
+
           const entry: ModelProviderUpdatePayload = {
             provider: providerValue,
             api_base: normalizedBase,
             is_default: row.isDefault,
           };
+
           if (row.id) {
             entry.id = row.id;
           }
@@ -228,11 +218,6 @@ export const AdminModelProvidersPage = () => {
             entry.delete_api_key = true;
           }
           providersPayload.push(entry);
-        }
-
-        if (defaultCount === 0) {
-          setError(t("admin.appSettings.errors.modelDefaultRequired"));
-          return;
         }
 
         payload.model_providers = providersPayload;
@@ -283,7 +268,7 @@ export const AdminModelProvidersPage = () => {
                 {t("admin.appSettings.model.cardDescription")}
               </p>
             </div>
-            <form className="admin-form" onSubmit={handleSubmit}>
+            <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
               <label className="label" htmlFor="model-config-toggle">
                 <input
                   id="model-config-toggle"
@@ -292,165 +277,151 @@ export const AdminModelProvidersPage = () => {
                   onChange={(event) => {
                     const checked = event.target.checked;
                     setUseCustomModelConfig(checked);
-                    if (checked && providerRows.length === 0) {
-                      setProviderRows((rows) => {
-                        if (rows.length > 0) {
-                          return rows;
-                        }
-                        return [createEmptyProviderRow(true)];
-                      });
+                    if (checked && fields.length === 0) {
+                      append(createEmptyProviderRow(true));
                     }
                   }}
                   disabled={isBusy}
                 />
                 <span>{t("admin.appSettings.model.enableCustomLabel")}</span>
               </label>
+              {formErrors.providers && (
+                <div className="alert alert--danger" style={{ marginTop: '0.5rem' }}>
+                  {formErrors.providers.message}
+                </div>
+              )}
               {useCustomModelConfig ? (
                 <>
                   <p className="admin-form__hint">
                     {t("admin.appSettings.model.customConfigHint")}
                   </p>
-                  {providerRows.map((row) => (
-                    <ResponsiveCard key={row.localId} className="admin-provider">
-                      <div className="admin-provider__header">
+                  {fields.map((field, index) => {
+                    const row = providers?.[index];
+                    return (
+                      <ResponsiveCard key={field.id} className="admin-provider">
+                        <div className="admin-provider__header">
+                          <label
+                            className="label"
+                            htmlFor={`provider-default-${index}`}
+                          >
+                            <input
+                              id={`provider-default-${index}`}
+                              type="radio"
+                              name="model-provider-default"
+                              checked={row?.isDefault || false}
+                              onChange={() => selectDefaultProvider(index)}
+                              disabled={isBusy}
+                            />
+                            <span>
+                              {t("admin.appSettings.model.defaultProviderLabel")}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            className="button button--ghost"
+                            onClick={() => removeProviderRow(index)}
+                            disabled={isBusy}
+                          >
+                            {t("admin.appSettings.model.removeProvider")}
+                          </button>
+                        </div>
                         <label
                           className="label"
-                          htmlFor={`provider-default-${row.localId}`}
+                          htmlFor={`provider-name-${index}`}
                         >
+                          {t("admin.appSettings.model.providerNameLabel")}
                           <input
-                            id={`provider-default-${row.localId}`}
-                            type="radio"
-                            name="model-provider-default"
-                            checked={row.isDefault}
-                            onChange={() => selectDefaultProvider(row.localId)}
+                            id={`provider-name-${index}`}
+                            className="input"
+                            type="text"
+                            {...register(`providers.${index}.provider` as const)}
+                            placeholder={t(
+                              "admin.appSettings.model.providerNamePlaceholder",
+                            )}
                             disabled={isBusy}
                           />
-                          <span>
-                            {t("admin.appSettings.model.defaultProviderLabel")}
-                          </span>
+                          {formErrors.providers?.[index]?.provider && (
+                            <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+                              {formErrors.providers[index]?.provider?.message}
+                            </span>
+                          )}
                         </label>
-                        <button
-                          type="button"
-                          className="button button--ghost"
-                          onClick={() => removeProviderRow(row.localId)}
-                          disabled={isBusy}
-                        >
-                          {t("admin.appSettings.model.removeProvider")}
-                        </button>
-                      </div>
-                      <label
-                        className="label"
-                        htmlFor={`provider-name-${row.localId}`}
-                      >
-                        {t("admin.appSettings.model.providerNameLabel")}
-                        <input
-                          id={`provider-name-${row.localId}`}
-                          className="input"
-                          type="text"
-                          value={row.provider}
-                          onChange={(event) =>
-                            mutateProviderRow(row.localId, (current) => ({
-                              ...current,
-                              provider: event.target.value,
-                            }))
-                          }
-                          placeholder={t(
-                            "admin.appSettings.model.providerNamePlaceholder",
-                          )}
-                          disabled={isBusy}
-                        />
-                      </label>
-                      <label
-                        className="label"
-                        htmlFor={`provider-base-${row.localId}`}
-                      >
-                        {t("admin.appSettings.model.apiBaseLabel")}
-                        <input
-                          id={`provider-base-${row.localId}`}
-                          className="input"
-                          type="text"
-                          value={row.apiBase}
-                          onChange={(event) =>
-                            mutateProviderRow(row.localId, (current) => ({
-                              ...current,
-                              apiBase: event.target.value,
-                            }))
-                          }
-                          placeholder={t(
-                            "admin.appSettings.model.apiBasePlaceholder",
-                          )}
-                          disabled={isBusy}
-                        />
-                      </label>
-                      <p className="admin-form__hint">
-                        {t("admin.appSettings.model.apiBaseHint")}
-                      </p>
-                      <label
-                        className="label"
-                        htmlFor={`provider-key-${row.localId}`}
-                      >
-                        {t("admin.appSettings.model.apiKeyLabel")}
-                        <input
-                          id={`provider-key-${row.localId}`}
-                          className="input"
-                          type="password"
-                          value={row.apiKeyInput}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            mutateProviderRow(row.localId, (current) => ({
-                              ...current,
-                              apiKeyInput: value,
-                              deleteStoredKey: value.trim()
-                                ? false
-                                : current.deleteStoredKey,
-                            }));
-                          }}
-                          placeholder={t(
-                            "admin.appSettings.model.apiKeyPlaceholder",
-                          )}
-                          disabled={isBusy}
-                          autoComplete="new-password"
-                        />
-                      </label>
-                      <p className="admin-form__hint">
-                        {row.hasStoredKey &&
-                        !row.deleteStoredKey &&
-                        !row.apiKeyInput.trim()
-                          ? t("admin.appSettings.model.apiKeyStoredHint", {
-                              hint:
-                                row.apiKeyHint ??
-                                t(
-                                  "admin.appSettings.model.apiKeyUnknownHint",
-                                ),
-                            })
-                          : t("admin.appSettings.model.apiKeyHelp")}
-                      </p>
-                      {row.hasStoredKey ? (
                         <label
                           className="label"
-                          htmlFor={`provider-clear-${row.localId}`}
+                          htmlFor={`provider-base-${index}`}
                         >
+                          {t("admin.appSettings.model.apiBaseLabel")}
                           <input
-                            id={`provider-clear-${row.localId}`}
-                            type="checkbox"
-                            checked={row.deleteStoredKey}
-                            onChange={(event) =>
-                              mutateProviderRow(row.localId, (current) => ({
-                                ...current,
-                                deleteStoredKey: event.target.checked,
-                              }))
-                            }
-                            disabled={
-                              isBusy || Boolean(row.apiKeyInput.trim())
-                            }
+                            id={`provider-base-${index}`}
+                            className="input"
+                            type="text"
+                            {...register(`providers.${index}.apiBase` as const)}
+                            placeholder={t(
+                              "admin.appSettings.model.apiBasePlaceholder",
+                            )}
+                            disabled={isBusy}
                           />
-                          <span>
-                            {t("admin.appSettings.model.apiKeyClearLabel")}
-                          </span>
                         </label>
-                      ) : null}
-                    </ResponsiveCard>
-                  ))}
+                        <p className="admin-form__hint">
+                          {t("admin.appSettings.model.apiBaseHint")}
+                        </p>
+                        <label
+                          className="label"
+                          htmlFor={`provider-key-${index}`}
+                        >
+                          {t("admin.appSettings.model.apiKeyLabel")}
+                          <input
+                            id={`provider-key-${index}`}
+                            className="input"
+                            type="password"
+                            {...register(`providers.${index}.apiKeyInput` as const)}
+                            onChange={(event) => {
+                              setValue(`providers.${index}.apiKeyInput`, event.target.value);
+                              if (event.target.value.trim()) {
+                                setValue(`providers.${index}.deleteStoredKey`, false);
+                              }
+                            }}
+                            placeholder={t(
+                              "admin.appSettings.model.apiKeyPlaceholder",
+                            )}
+                            disabled={isBusy}
+                            autoComplete="new-password"
+                          />
+                        </label>
+                        <p className="admin-form__hint">
+                          {row?.hasStoredKey &&
+                          !row?.deleteStoredKey &&
+                          !row?.apiKeyInput?.trim()
+                            ? t("admin.appSettings.model.apiKeyStoredHint", {
+                                hint:
+                                  row.apiKeyHint ??
+                                  t(
+                                    "admin.appSettings.model.apiKeyUnknownHint",
+                                  ),
+                              })
+                            : t("admin.appSettings.model.apiKeyHelp")}
+                        </p>
+                        {row?.hasStoredKey ? (
+                          <label
+                            className="label"
+                            htmlFor={`provider-clear-${index}`}
+                          >
+                            <input
+                              id={`provider-clear-${index}`}
+                              type="checkbox"
+                              {...register(`providers.${index}.deleteStoredKey` as const)}
+                              disabled={
+                                isBusy || Boolean(row?.apiKeyInput?.trim())
+                              }
+                            />
+                            <span>
+                              {t("admin.appSettings.model.apiKeyClearLabel")}
+                            </span>
+                          </label>
+                        ) : null}
+                      </ResponsiveCard>
+                    );
+                  })}
                   <button
                     type="button"
                     className="button button--secondary"
