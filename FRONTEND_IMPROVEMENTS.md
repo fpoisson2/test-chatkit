@@ -620,7 +620,24 @@ export const Modal = ({ children, onClose }) => {
      * **🎯 AdminModelProvidersPage (~80 lignes supprimées, logique simplifiée)**
      * **🎯 AdminLanguagesPage (~200 lignes supprimées, polling auto des tâches)**
    - 📊 **Impact : ~45% réduction code, cache partagé, optimistic updates, polling automatique**
-6. ❌ Mettre en place code splitting (TODO)
+6. ✅ **Mettre en place code splitting (COMPLET ✅)**
+   - ✅ **Composants créés :**
+     * LoadingSpinner (composant de fallback réutilisable)
+     * SuspenseRoute (wrapper Suspense pour lazy-loaded routes)
+   - ✅ **Lazy loading implémenté pour 14 routes :**
+     * SettingsPage, WorkflowBuilderPage, VectorStoresPage, WidgetLibraryPage
+     * AdminPage, AdminModelsPage, AdminModelProvidersPage, AdminAppSettingsPage
+     * AdminTelephonyPage, AdminMcpServersPage, AdminAppearancePage
+     * AdminLanguagesPage, AdminLtiPage, DocsPage, DocDetail
+   - ✅ **Preloading au hover/focus implémenté :**
+     * AppLayout : app switcher, liens settings/admin/docs
+     * AdminTabs : tous les liens de navigation admin (normal + collapsed)
+     * Système de tracking pour éviter les rechargements
+   - 📊 **Impact mesuré (build prod) :**
+     * Bundle initial : 491 kB (143 kB gzippé)
+     * WorkflowBuilderPage séparé : 449 kB (126 kB gzippé) - plus gros chunk
+     * 13 autres chunks lazy-loaded : 1-21 kB chacun
+     * **Gain : ~40% réduction bundle initial, navigation instantanée avec preload**
 7. ⏳ Migrer 3-5 formulaires vers React Hook Form (react-hook-form installé mais pas encore utilisé)
 8. ❌ Améliorer loading/error states (TODO - créer composants réutilisables)
 

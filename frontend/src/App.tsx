@@ -1,27 +1,72 @@
-import type { ReactElement } from "react";
+import { lazy, type ReactElement } from "react";
 import { Navigate, Route, Routes, Outlet } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { AppLayout } from "./components/AppLayout";
 import { WorkflowSidebarProvider } from "./features/workflows/WorkflowSidebarProvider";
+import { SuspenseRoute } from "./components/SuspenseRoute";
 import { useAuth } from "./auth";
 import { MyChat } from "./MyChat";
 import { LoginPage } from "./pages/LoginPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import WorkflowBuilderPage from "./pages/WorkflowBuilderPage"; // Phase 4: Import via pages/ to get WorkflowBuilderContainer with all providers
-import { VectorStoresPage } from "./pages/VectorStoresPage";
-import WidgetLibraryPage from "./pages/WidgetLibraryPage";
-import { AdminPage } from "./pages/AdminPage";
-import { AdminModelsPage } from "./pages/AdminModelsPage";
-import { AdminModelProvidersPage } from "./pages/AdminModelProvidersPage";
-import { AdminAppSettingsPage } from "./pages/AdminAppSettingsPage";
-import { AdminTelephonyPage } from "./pages/AdminTelephonyPage";
-import { AdminMcpServersPage } from "./pages/AdminMcpServersPage";
-import { AdminAppearancePage } from "./pages/AdminAppearancePage";
-import { AdminLanguagesPage } from "./pages/AdminLanguagesPage";
-import { AdminLtiPage } from "./pages/AdminLtiPage";
-import { DocsPage } from "./pages/docs/DocsPage";
-import { DocDetail } from "./pages/docs/DocDetail";
+
+// Lazy load heavy components for better initial load performance
+const SettingsPage = lazy(() =>
+  import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage }))
+);
+const WorkflowBuilderPage = lazy(() => import("./pages/WorkflowBuilderPage"));
+const VectorStoresPage = lazy(() =>
+  import("./pages/VectorStoresPage").then((m) => ({
+    default: m.VectorStoresPage,
+  }))
+);
+const WidgetLibraryPage = lazy(() => import("./pages/WidgetLibraryPage"));
+const AdminPage = lazy(() =>
+  import("./pages/AdminPage").then((m) => ({ default: m.AdminPage }))
+);
+const AdminModelsPage = lazy(() =>
+  import("./pages/AdminModelsPage").then((m) => ({
+    default: m.AdminModelsPage,
+  }))
+);
+const AdminModelProvidersPage = lazy(() =>
+  import("./pages/AdminModelProvidersPage").then((m) => ({
+    default: m.AdminModelProvidersPage,
+  }))
+);
+const AdminAppSettingsPage = lazy(() =>
+  import("./pages/AdminAppSettingsPage").then((m) => ({
+    default: m.AdminAppSettingsPage,
+  }))
+);
+const AdminTelephonyPage = lazy(() =>
+  import("./pages/AdminTelephonyPage").then((m) => ({
+    default: m.AdminTelephonyPage,
+  }))
+);
+const AdminMcpServersPage = lazy(() =>
+  import("./pages/AdminMcpServersPage").then((m) => ({
+    default: m.AdminMcpServersPage,
+  }))
+);
+const AdminAppearancePage = lazy(() =>
+  import("./pages/AdminAppearancePage").then((m) => ({
+    default: m.AdminAppearancePage,
+  }))
+);
+const AdminLanguagesPage = lazy(() =>
+  import("./pages/AdminLanguagesPage").then((m) => ({
+    default: m.AdminLanguagesPage,
+  }))
+);
+const AdminLtiPage = lazy(() =>
+  import("./pages/AdminLtiPage").then((m) => ({ default: m.AdminLtiPage }))
+);
+const DocsPage = lazy(() =>
+  import("./pages/docs/DocsPage").then((m) => ({ default: m.DocsPage }))
+);
+const DocDetail = lazy(() =>
+  import("./pages/docs/DocDetail").then((m) => ({ default: m.DocDetail }))
+);
 
 // Configure React Query client
 const queryClient = new QueryClient({
@@ -96,31 +141,58 @@ export const App = () => (
         }
       >
         <Route index element={<HomePage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="docs" element={<DocsPage />} />
-        <Route path="docs/:slug" element={<DocDetail />} />
+        <Route
+          path="settings"
+          element={
+            <SuspenseRoute>
+              <SettingsPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="docs"
+          element={
+            <SuspenseRoute>
+              <DocsPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="docs/:slug"
+          element={
+            <SuspenseRoute>
+              <DocDetail />
+            </SuspenseRoute>
+          }
+        />
         <Route
           path="workflows"
           element={
-            <RequireAdmin>
-              <WorkflowBuilderPage />
-            </RequireAdmin>
+            <SuspenseRoute>
+              <RequireAdmin>
+                <WorkflowBuilderPage />
+              </RequireAdmin>
+            </SuspenseRoute>
           }
         />
         <Route
           path="vector-stores"
           element={
-            <RequireAdmin>
-              <VectorStoresPage />
-            </RequireAdmin>
+            <SuspenseRoute>
+              <RequireAdmin>
+                <VectorStoresPage />
+              </RequireAdmin>
+            </SuspenseRoute>
           }
         />
         <Route
           path="widgets"
           element={
-            <RequireAdmin>
-              <WidgetLibraryPage />
-            </RequireAdmin>
+            <SuspenseRoute>
+              <RequireAdmin>
+                <WidgetLibraryPage />
+              </RequireAdmin>
+            </SuspenseRoute>
           }
         />
       </Route>
@@ -132,15 +204,78 @@ export const App = () => (
           </RequireAdmin>
         }
       >
-        <Route index element={<AdminPage />} />
-        <Route path="settings" element={<AdminAppSettingsPage />} />
-        <Route path="appearance" element={<AdminAppearancePage />} />
-        <Route path="models" element={<AdminModelsPage />} />
-        <Route path="providers" element={<AdminModelProvidersPage />} />
-        <Route path="sip-accounts" element={<AdminTelephonyPage />} />
-        <Route path="mcp-servers" element={<AdminMcpServersPage />} />
-        <Route path="languages" element={<AdminLanguagesPage />} />
-        <Route path="lti" element={<AdminLtiPage />} />
+        <Route
+          index
+          element={
+            <SuspenseRoute>
+              <AdminPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="settings"
+          element={
+            <SuspenseRoute>
+              <AdminAppSettingsPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="appearance"
+          element={
+            <SuspenseRoute>
+              <AdminAppearancePage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="models"
+          element={
+            <SuspenseRoute>
+              <AdminModelsPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="providers"
+          element={
+            <SuspenseRoute>
+              <AdminModelProvidersPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="sip-accounts"
+          element={
+            <SuspenseRoute>
+              <AdminTelephonyPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="mcp-servers"
+          element={
+            <SuspenseRoute>
+              <AdminMcpServersPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="languages"
+          element={
+            <SuspenseRoute>
+              <AdminLanguagesPage />
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="lti"
+          element={
+            <SuspenseRoute>
+              <AdminLtiPage />
+            </SuspenseRoute>
+          }
+        />
       </Route>
       <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
       <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
