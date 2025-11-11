@@ -188,21 +188,19 @@ export const WidgetLibraryPage = () => {
             </button>
           }
         >
-          <div className="widget-library">
-            <WidgetTemplateGallery
-              widgets={widgets}
-              isLoading={isLoading}
-              onPreview={(widget) =>
-                setPreviewData({
-                  title: `Widget « ${widget.title ?? widget.slug} »`,
-                  subtitle: widget.slug,
-                  definition: widget.definition,
-                })
-              }
-              onEdit={(widget) => setEditingWidget(widget)}
-              onDelete={handleDelete}
-            />
-          </div>
+          <WidgetTemplateGallery
+            widgets={widgets}
+            isLoading={isLoading}
+            onPreview={(widget) =>
+              setPreviewData({
+                title: `Widget « ${widget.title ?? widget.slug} »`,
+                subtitle: widget.slug,
+                definition: widget.definition,
+              })
+            }
+            onEdit={(widget) => setEditingWidget(widget)}
+            onDelete={handleDelete}
+          />
         </FormSection>
       </div>
 

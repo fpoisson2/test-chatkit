@@ -2740,19 +2740,6 @@ button {
   }
 }
 
-.widget-gallery {
-  display: grid;
-  gap: clamp(18px, 3vw, 28px);
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-}
-
-.widget-gallery__item {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(18px, 4vw, 28px);
-}
-
-
 .management-header__icon-button {
   border: none;
   background: transparent;
@@ -2778,7 +2765,7 @@ button {
 .widget-gallery {
   display: grid;
   gap: clamp(18px, 3vw, 28px);
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   align-items: start;
 }
 
