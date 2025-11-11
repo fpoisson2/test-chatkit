@@ -15,6 +15,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth";
 import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
+import { ProfileMenu } from "./ProfileMenu";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import type { SettingsSectionId } from "../features/settings/sections";
 import { useI18n } from "../i18n";
@@ -188,8 +189,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     return getDesktopLayoutPreference();
   });
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
   const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
   const appSwitcherLabelId = useId();
@@ -317,11 +316,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     navigate("/admin");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
-  const handleProfileOpenSettings = useCallback(() => {
-    setIsProfileMenuOpen(false);
-    handleOpenSettings();
-  }, [handleOpenSettings]);
-
   const handleGoToDocs = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
@@ -345,65 +339,11 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [handleSidebarLogin, isAuthenticated, t],
   );
 
-  useEffect(() => {
-    if (!isProfileMenuOpen) {
-      return;
+  const handleProfileNavigate = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
     }
-
-    const handleDocumentPointerDown = (event: PointerEvent) => {
-      if (!profileMenuRef.current) {
-        return;
-      }
-
-      if (event.target instanceof Node && profileMenuRef.current.contains(event.target)) {
-        return;
-      }
-
-      setIsProfileMenuOpen(false);
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsProfileMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", handleDocumentPointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handleDocumentPointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isProfileMenuOpen]);
-
-  useEffect(() => {
-    if (!isSidebarOpen) {
-      setIsProfileMenuOpen(false);
-    }
-  }, [isSidebarOpen]);
-
-  const profileInitial = useMemo(() => {
-    if (!user?.email) {
-      return "?";
-    }
-
-    return user.email.charAt(0).toUpperCase();
-  }, [user?.email]);
-
-  const handleToggleProfileMenu = useCallback(() => {
-    setIsProfileMenuOpen((previous) => !previous);
-  }, []);
-
-  const handleProfileGoToAdmin = useCallback(() => {
-    setIsProfileMenuOpen(false);
-    handleGoToAdmin();
-  }, [handleGoToAdmin]);
-
-  const handleProfileLogout = useCallback(() => {
-    setIsProfileMenuOpen(false);
-    handleSidebarLogout();
-  }, [handleSidebarLogout]);
+  }, [closeSidebar, isDesktopLayout]);
 
   const handleScrimPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -640,73 +580,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                   <SidebarIcon name="docs" className="chatkit-sidebar__icon" />
                   <span className="chatkit-sidebar__footer-link-label">{t("app.sidebar.docs")}</span>
                 </button>
-                <div
-                  className={`chatkit-sidebar__profile${isProfileMenuOpen ? " chatkit-sidebar__profile--open" : ""}`}
-                  ref={profileMenuRef}
-                >
-                  <button
-                    type="button"
-                    className="chatkit-sidebar__profile-trigger"
-                    onClick={handleToggleProfileMenu}
-                    aria-haspopup="menu"
-                    aria-expanded={isProfileMenuOpen}
-                    tabIndex={sidebarTabIndex}
-                  >
-                    <span className="chatkit-sidebar__profile-avatar" aria-hidden="true">
-                      {profileInitial}
-                    </span>
-                    <span className="chatkit-sidebar__profile-details">
-                      <span className="chatkit-sidebar__profile-name">{user.email}</span>
-                      <span className="chatkit-sidebar__profile-role">
-                        {user.is_admin
-                          ? t("app.sidebar.profile.role.admin")
-                          : t("app.sidebar.profile.role.user")}
-                      </span>
-                    </span>
-                    <span className="chatkit-sidebar__profile-caret" aria-hidden="true" />
-                  </button>
-                  <div
-                    className="chatkit-sidebar__profile-menu"
-                    role="menu"
-                    aria-hidden={!isProfileMenuOpen}
-                  >
-                    <button
-                      type="button"
-                      className="chatkit-sidebar__profile-action"
-                      role="menuitem"
-                      onClick={handleProfileOpenSettings}
-                      onMouseEnter={() => preloadRoute("settings")}
-                      onFocus={() => preloadRoute("settings")}
-                      tabIndex={isProfileMenuOpen ? 0 : -1}
-                    >
-                      <SidebarIcon name="settings" className="chatkit-sidebar__icon" />
-                      <span>{t("app.sidebar.profile.settings")}</span>
-                    </button>
-                    {user.is_admin && (
-                      <button
-                        type="button"
-                        className="chatkit-sidebar__profile-action"
-                        role="menuitem"
-                        onClick={handleProfileGoToAdmin}
-                        onMouseEnter={() => preloadRoute("admin")}
-                        onFocus={() => preloadRoute("admin")}
-                        tabIndex={isProfileMenuOpen ? 0 : -1}
-                      >
-                        <SidebarIcon name="admin" className="chatkit-sidebar__icon" />
-                        <span>{t("app.sidebar.profile.admin")}</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="chatkit-sidebar__profile-action chatkit-sidebar__profile-action--logout"
-                      role="menuitem"
-                      onClick={handleProfileLogout}
-                      tabIndex={isProfileMenuOpen ? 0 : -1}
-                    >
-                      <SidebarIcon name="logout" className="chatkit-sidebar__icon" />
-                      <span>{t("app.sidebar.profile.logout")}</span>
-                    </button>
-                  </div>
+                <div className="chatkit-sidebar__profile">
+                  <ProfileMenu tabIndex={sidebarTabIndex} onNavigate={handleProfileNavigate} />
                 </div>
               </footer>
             )}
