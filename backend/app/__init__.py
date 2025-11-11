@@ -32,6 +32,7 @@ else:
             admin,
             auth,
             docs,
+            lti,
             mcp,
             model_registry,
             outbound,
@@ -65,6 +66,7 @@ else:
         app.include_router(users.router)
         app.include_router(admin.router)
         app.include_router(docs.router)
+        app.include_router(lti.router)
         app.include_router(model_registry.router)
         app.include_router(mcp.router)
         if chatkit_routes and hasattr(chatkit_routes, "router"):

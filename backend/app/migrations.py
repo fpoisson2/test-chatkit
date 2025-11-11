@@ -1,11 +1,43 @@
-"""
-Auto-migration system - runs database migrations on startup.
-"""
+"""Auto-migration system - runs database migrations on startup."""
+
 import logging
-from sqlalchemy import text
+from collections.abc import Callable
+
+from sqlalchemy import inspect, text
+
 from .database import engine
+from .models import (
+    Base,
+    LTIDeployment,
+    LTIRegistration,
+    LTIResourceLink,
+    LTIUserSession,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _lti_tables_exist(connection) -> bool:
+    inspector = inspect(connection)
+    required = (
+        "lti_registrations",
+        "lti_deployments",
+        "lti_resource_links",
+        "lti_user_sessions",
+    )
+    return all(inspector.has_table(table) for table in required)
+
+
+def _create_lti_tables(connection) -> None:
+    Base.metadata.create_all(
+        bind=connection,
+        tables=[
+            LTIRegistration.__table__,
+            LTIDeployment.__table__,
+            LTIResourceLink.__table__,
+            LTIUserSession.__table__,
+        ],
+    )
 
 
 def check_and_apply_migrations():
@@ -33,7 +65,13 @@ def check_and_apply_migrations():
                 REFERENCES languages(id)
                 ON DELETE SET NULL;
             """,
-        }
+        },
+        {
+            "id": "002_create_lti_tables",
+            "description": "Create tables used for LTI integrations",
+            "check_fn": _lti_tables_exist,
+            "apply_fn": _create_lti_tables,
+        },
     ]
 
     logger.info("Checking database migrations...")
@@ -44,16 +82,26 @@ def check_and_apply_migrations():
 
         try:
             with engine.begin() as conn:
-                # Check if migration is needed
-                result = conn.execute(text(migration["check"]))
-                row = result.fetchone()
-
-                if row and row[0] == migration["expected"]:
-                    logger.info(f"✓ Migration {migration_id} already applied")
+                applied = False
+                check_fn: Callable | None = migration.get("check_fn")
+                if check_fn is not None:
+                    applied = bool(check_fn(conn))
                 else:
-                    logger.info(f"⚡ Applying migration {migration_id}: {description}")
+                    result = conn.execute(text(migration["check"]))
+                    row = result.fetchone()
+                    applied = bool(row) and row[0] == migration.get("expected")
+
+                if applied:
+                    logger.info(f"✓ Migration {migration_id} already applied")
+                    continue
+
+                logger.info(f"⚡ Applying migration {migration_id}: {description}")
+                apply_fn: Callable | None = migration.get("apply_fn")
+                if apply_fn is not None:
+                    apply_fn(conn)
+                else:
                     conn.execute(text(migration["sql"]))
-                    logger.info(f"✓ Migration {migration_id} applied successfully")
+                logger.info(f"✓ Migration {migration_id} applied successfully")
 
         except Exception as e:
             logger.error(f"✗ Failed to apply migration {migration_id}: {e}")
