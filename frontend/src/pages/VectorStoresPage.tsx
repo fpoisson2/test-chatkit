@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { useAuth } from "../auth";
 import { Modal } from "../components/Modal";
@@ -12,15 +12,24 @@ import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { AdminTabs } from "../components/AdminTabs";
 import { useI18n } from "../i18n";
 import {
-  VectorStoreDocument,
-  VectorStoreDocumentDetail,
-  VectorStoreSearchPayload,
-  VectorStoreSearchResult,
-  VectorStoreSummary,
+  type VectorStoreDocument,
+  type VectorStoreDocumentDetail,
+  type VectorStoreSearchPayload,
+  type VectorStoreSearchResult,
+  type VectorStoreSummary,
   WORKFLOW_VECTOR_STORE_SLUG,
   isUnauthorizedError,
   vectorStoreApi,
 } from "../utils/backend";
+import {
+  useVectorStores,
+  useCreateVectorStore,
+  useDeleteVectorStore,
+  useVectorStoreDocuments,
+  useIngestDocument,
+  useDeleteDocument,
+  useSearchVectorStore,
+} from "../hooks";
 
 type BaseDocumentDefaults = {
   docId: string;
@@ -65,8 +74,6 @@ const sortStores = (stores: VectorStoreSummary[]): VectorStoreSummary[] =>
 export const VectorStoresPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const [stores, setStores] = useState<VectorStoreSummary[]>([]);
-  const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<ReactNode>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -79,84 +86,50 @@ export const VectorStoresPage = () => {
   const [documentPreview, setDocumentPreview] = useState<VectorStoreDocumentDetail | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
-  const [documents, setDocuments] = useState<VectorStoreDocument[]>([]);
-  const [documentsError, setDocumentsError] = useState<string | null>(null);
-  const [documentsLoading, setDocumentsLoading] = useState(false);
 
+  // Fetch vector stores using React Query
+  const { data: storesData = [], isLoading, refetch: refetchStores } = useVectorStores(token);
+  const createStore = useCreateVectorStore();
+  const deleteStore = useDeleteVectorStore();
+  const ingestDocument = useIngestDocument();
+  const deleteDocument = useDeleteDocument();
+  const searchStore = useSearchVectorStore();
+
+  // Fetch documents for selected store
+  const {
+    data: documents = [],
+    isLoading: documentsLoading,
+    error: documentsQueryError,
+    refetch: refetchDocuments,
+  } = useVectorStoreDocuments(token, selectedStore?.slug ?? "");
+
+  // Sort stores by updated_at
+  const stores = useMemo(() => sortStores(storesData), [storesData]);
+
+  // Extract ingestion defaults if viewing workflow vector store
   const ingestionDefaults =
     selectedStore && selectedStore.slug === WORKFLOW_VECTOR_STORE_SLUG
       ? extractBaseDocumentDefaults(selectedStore.metadata)
       : null;
 
-  const refreshStores = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const data = await vectorStoreApi.listStores(token);
-      setStores(sortStores(data));
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError("Session expirée, veuillez vous reconnecter.");
-        return;
-      }
-      setError(err instanceof Error ? err.message : "Impossible de récupérer les vector stores");
-    } finally {
-      setLoading(false);
-    }
-  }, [logout, token]);
-
-  const loadDocuments = useCallback(
-    async (slug: string) => {
-      if (!token) {
-        return;
-      }
-      setDocumentsLoading(true);
-      setDocumentsError(null);
-      try {
-        const data = await vectorStoreApi.listDocuments(token, slug);
-        setDocuments(data);
-      } catch (err) {
-        if (isUnauthorizedError(err)) {
-          logout();
-          setShowDocumentsModal(false);
-          setError("Session expirée, veuillez vous reconnecter.");
-          return;
-        }
-        setDocumentsError(
-          err instanceof Error ? err.message : "Impossible de récupérer les documents",
-        );
-      } finally {
-        setDocumentsLoading(false);
-      }
-    },
-    [logout, token],
-  );
-
-  useEffect(() => {
-    if (!token) {
-      setStores([]);
-      setLoading(false);
-      return;
-    }
-    void refreshStores();
-  }, [refreshStores, token]);
+  // Handle documents query error
+  const documentsError = documentsQueryError instanceof Error
+    ? documentsQueryError.message
+    : documentsQueryError
+    ? "Impossible de récupérer les documents"
+    : null;
 
   const handleCreateStore = async (payload: Parameters<typeof vectorStoreApi.createStore>[1]) => {
     if (!token) {
       throw new Error("Authentification requise");
     }
+    setError(null);
+    setSuccess(null);
     try {
-      const created = await vectorStoreApi.createStore(token, payload);
-      setStores((prev) => sortStores([...prev, created]));
-      setSuccess(`Vector store « ${created.slug} » créé avec succès.`);
+      const created = await createStore.mutateAsync({ token, payload });
+      setSuccess(`Vector store « ${created.slug} » créé avec succès.`);
       setShowCreateModal(false);
     } catch (err) {
-      setSuccess(null);
       if (isUnauthorizedError(err)) {
         logout();
         setShowCreateModal(false);
@@ -170,15 +143,15 @@ export const VectorStoresPage = () => {
     if (!token) {
       return;
     }
-    if (!window.confirm(`Supprimer le vector store « ${store.slug} » ?`)) {
+    if (!window.confirm(`Supprimer le vector store « ${store.slug} » ?`)) {
       return;
     }
+    setError(null);
+    setSuccess(null);
     try {
-      await vectorStoreApi.deleteStore(token, store.slug);
-      setStores((prev) => prev.filter((item) => item.slug !== store.slug));
-      setSuccess(`Vector store « ${store.slug} » supprimé.`);
+      await deleteStore.mutateAsync({ token, slug: store.slug });
+      setSuccess(`Vector store « ${store.slug} » supprimé.`);
     } catch (err) {
-      setSuccess(null);
       if (isUnauthorizedError(err)) {
         logout();
         setError("Session expirée, veuillez vous reconnecter.");
@@ -207,11 +180,8 @@ export const VectorStoresPage = () => {
   const openDocumentsModal = (store: VectorStoreSummary) => {
     setSelectedStore(store);
     setShowDocumentsModal(true);
-    setDocuments([]);
-    setDocumentsError(null);
     setDocumentPreview(null);
     setDocumentError(null);
-    void loadDocuments(store.slug);
   };
 
   const handleIngestion = async (
@@ -220,8 +190,14 @@ export const VectorStoresPage = () => {
     if (!token || !selectedStore) {
       throw new Error("Sélection invalide");
     }
+    setError(null);
+    setSuccess(null);
     try {
-      const document = await vectorStoreApi.ingestDocument(token, selectedStore.slug, payload);
+      const document = await ingestDocument.mutateAsync({
+        token,
+        slug: selectedStore.slug,
+        payload,
+      });
       const pluralSuffix = document.chunk_count > 1 ? "s" : "";
       const baseMessage = t("vectorStore.ingestion.success.document", {
         docId: document.doc_id,
@@ -230,9 +206,8 @@ export const VectorStoresPage = () => {
       });
       setSuccess(baseMessage);
       setShowIngestionModal(false);
-      await refreshStores();
+      await refetchStores();
     } catch (err) {
-      setSuccess(null);
       if (isUnauthorizedError(err)) {
         logout();
         setShowIngestionModal(false);
@@ -250,7 +225,11 @@ export const VectorStoresPage = () => {
     setSuccess(null);
     setDocumentPreview(null);
     try {
-      const results = await vectorStoreApi.search(token, selectedStore.slug, payload);
+      const results = await searchStore.mutateAsync({
+        token,
+        slug: selectedStore.slug,
+        payload,
+      });
       setSearchResults(results);
       setHasSearched(true);
     } catch (err) {
@@ -305,25 +284,29 @@ export const VectorStoresPage = () => {
     if (!token || !selectedStore) {
       return;
     }
-    if (!window.confirm(`Supprimer le document « ${document.doc_id} » ?`)) {
+    if (!window.confirm(`Supprimer le document « ${document.doc_id} » ?`)) {
       return;
     }
-    setDocumentsError(null);
+    setDocumentError(null);
+    setError(null);
+    setSuccess(null);
     try {
-      await vectorStoreApi.deleteDocument(token, selectedStore.slug, document.doc_id);
-      setDocuments((prev) => prev.filter((item) => item.doc_id !== document.doc_id));
+      await deleteDocument.mutateAsync({
+        token,
+        slug: selectedStore.slug,
+        docId: document.doc_id,
+      });
       setDocumentPreview((current) => (current?.doc_id === document.doc_id ? null : current));
-      setSuccess(`Document « ${document.doc_id} » supprimé.`);
-      await refreshStores();
+      setSuccess(`Document « ${document.doc_id} » supprimé.`);
+      await refetchStores();
     } catch (err) {
-      setSuccess(null);
       if (isUnauthorizedError(err)) {
         logout();
         setShowDocumentsModal(false);
         setError("Session expirée, veuillez vous reconnecter.");
         return;
       }
-      setDocumentsError(err instanceof Error ? err.message : "Suppression impossible");
+      setDocumentError(err instanceof Error ? err.message : "Suppression impossible");
     }
   };
 
@@ -369,7 +352,7 @@ export const VectorStoresPage = () => {
       ) : null}
 
       {showIngestionModal && selectedStore ? (
-        <Modal title={`Ingestion dans « ${selectedStore.slug} »`} onClose={() => setShowIngestionModal(false)} size="lg">
+        <Modal title={`Ingestion dans « ${selectedStore.slug} »`} onClose={() => setShowIngestionModal(false)} size="lg">
           <VectorStoreIngestionForm
             key={selectedStore.slug}
             onSubmit={handleIngestion}
@@ -396,7 +379,7 @@ export const VectorStoresPage = () => {
           {documentError ? <div className="alert alert--danger">{documentError}</div> : null}
           {documentPreview ? (
             <div className="vector-store__preview">
-              <h3>Document « {documentPreview.doc_id} »</h3>
+              <h3>Document « {documentPreview.doc_id} »</h3>
               <p className="admin-card__subtitle">
                 {documentPreview.chunk_count} segment{documentPreview.chunk_count > 1 ? "s" : ""} indexé{documentPreview.chunk_count > 1 ? "s" : ""}.
               </p>
@@ -409,7 +392,7 @@ export const VectorStoresPage = () => {
       {showDocumentsModal && selectedStore ? (
         <Modal title={`Documents — ${selectedStore.slug}`} onClose={() => setShowDocumentsModal(false)} size="lg">
           <div className="admin-table__actions" style={{ justifyContent: "flex-end", marginBottom: "1rem" }}>
-            <button className="button button--ghost button--sm" type="button" onClick={() => void loadDocuments(selectedStore.slug)}>
+            <button className="button button--ghost button--sm" type="button" onClick={() => void refetchDocuments()}>
               Actualiser
             </button>
           </div>
@@ -423,7 +406,7 @@ export const VectorStoresPage = () => {
           {documentError ? <div className="alert alert--danger">{documentError}</div> : null}
           {documentPreview ? (
             <div className="vector-store__preview">
-              <h3>Document « {documentPreview.doc_id} »</h3>
+              <h3>Document « {documentPreview.doc_id} »</h3>
               <p className="admin-card__subtitle">
                 {documentPreview.chunk_count} segment{documentPreview.chunk_count > 1 ? "s" : ""} indexé{documentPreview.chunk_count > 1 ? "s" : ""}.
               </p>
@@ -435,6 +418,6 @@ export const VectorStoresPage = () => {
       </ManagementPageLayout>
     </>
   );
-}
+};
 
 export default VectorStoresPage;

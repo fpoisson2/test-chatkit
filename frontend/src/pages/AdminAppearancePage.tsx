@@ -1,62 +1,59 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { AppearanceForm } from "../features/appearance/AppearanceForm";
-import { useAppearanceSettings } from "../features/appearance/AppearanceSettingsContext";
+import { useAppearanceSettings as useAppearanceContext } from "../features/appearance/AppearanceSettingsContext";
 import { useI18n } from "../i18n";
 import {
-  type AppearanceSettings,
   type AppearanceSettingsUpdatePayload,
-  appearanceSettingsApi,
   isUnauthorizedError,
 } from "../utils/backend";
+import {
+  useAppearanceSettings,
+  useUpdateAppearanceSettings,
+} from "../hooks";
 
 export const AdminAppearancePage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
-  const { applySnapshot } = useAppearanceSettings();
-  const [settings, setSettings] = useState<AppearanceSettings | null>(null);
-  const [isLoading, setLoading] = useState(true);
-  const [isSaving, setSaving] = useState(false);
+  const { applySnapshot } = useAppearanceContext();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const fetchSettings = useCallback(async () => {
-    if (!token) {
-      setSettings(null);
-      setLoading(false);
-      return;
+  // Fetch appearance settings using React Query
+  const {
+    data: settings = null,
+    isLoading,
+    error: queryError,
+  } = useAppearanceSettings(token, { scope: "admin" });
+
+  // Update appearance settings mutation
+  const updateSettings = useUpdateAppearanceSettings();
+
+  // Apply snapshot when settings change
+  useEffect(() => {
+    if (settings) {
+      applySnapshot(settings);
     }
+  }, [applySnapshot, settings]);
 
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const data = await appearanceSettingsApi.get(token, { scope: "admin" });
-      setSettings(data);
-      applySnapshot(data);
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
+  // Handle query error
+  useEffect(() => {
+    if (queryError) {
+      if (isUnauthorizedError(queryError)) {
         logout();
         setError(t("admin.appearance.feedback.sessionExpired"));
-        return;
+      } else {
+        setError(
+          queryError instanceof Error
+            ? queryError.message
+            : t("admin.appearance.feedback.loadError"),
+        );
       }
-      setError(
-        err instanceof Error
-          ? err.message
-          : t("admin.appearance.feedback.loadError"),
-      );
-    } finally {
-      setLoading(false);
     }
-  }, [applySnapshot, logout, t, token]);
-
-  useEffect(() => {
-    void fetchSettings();
-  }, [fetchSettings]);
+  }, [logout, queryError, t]);
 
   const handleSubmit = useCallback(
     async (payload: AppearanceSettingsUpdatePayload) => {
@@ -64,13 +61,11 @@ export const AdminAppearancePage = () => {
         return;
       }
 
-      setSaving(true);
       setError(null);
       setSuccess(null);
 
       try {
-        const updated = await appearanceSettingsApi.update(token, payload);
-        setSettings(updated);
+        const updated = await updateSettings.mutateAsync({ token, payload });
         applySnapshot(updated);
         setSuccess(t("admin.appearance.feedback.saved"));
       } catch (err) {
@@ -84,11 +79,9 @@ export const AdminAppearancePage = () => {
             ? err.message
             : t("admin.appearance.feedback.error"),
         );
-      } finally {
-        setSaving(false);
       }
     },
-    [applySnapshot, logout, t, token],
+    [applySnapshot, logout, t, token, updateSettings],
   );
 
   return (
@@ -104,7 +97,7 @@ export const AdminAppearancePage = () => {
         id="admin-appearance-form"
         initialSettings={settings}
         isLoading={isLoading}
-        isBusy={isSaving}
+        isBusy={updateSettings.isPending}
         autoFocus
         onSubmit={handleSubmit}
       />

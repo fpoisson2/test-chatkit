@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useAuth } from "../auth";
 import { Modal } from "../components/Modal";
@@ -10,9 +10,15 @@ import { AdminTabs } from "../components/AdminTabs";
 import {
   ApiError,
   isUnauthorizedError,
-  widgetLibraryApi,
   type WidgetTemplate,
 } from "../utils/backend";
+import {
+  useWidgets,
+  useCreateWidget,
+  useUpdateWidget,
+  useDeleteWidget,
+  usePreviewWidget,
+} from "../hooks";
 
 type WidgetFormPayload = {
   slug: string;
@@ -26,8 +32,6 @@ const sortWidgets = (widgets: WidgetTemplate[]): WidgetTemplate[] =>
 
 export const WidgetLibraryPage = () => {
   const { token, logout } = useAuth();
-  const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
-  const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -38,57 +42,35 @@ export const WidgetLibraryPage = () => {
     definition: Record<string, unknown>;
   } | null>(null);
 
-  const refreshWidgets = useCallback(async () => {
-    if (!token) {
-      setWidgets([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const data = await widgetLibraryApi.listWidgets(token);
-      setWidgets(sortWidgets(data));
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError("Session expirée, veuillez vous reconnecter.");
-        return;
-      }
-      setError(
-        err instanceof Error ? err.message : "Impossible de récupérer la bibliothèque de widgets",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [logout, token]);
+  // Fetch widgets using React Query
+  const { data: widgetsData = [], isLoading } = useWidgets(token);
+  const createWidget = useCreateWidget();
+  const updateWidget = useUpdateWidget();
+  const deleteWidget = useDeleteWidget();
+  const previewWidgetMutation = usePreviewWidget();
 
-  useEffect(() => {
-    if (!token) {
-      setWidgets([]);
-      setLoading(false);
-      return;
-    }
-    void refreshWidgets();
-  }, [refreshWidgets, token]);
+  // Sort widgets by updated_at
+  const widgets = useMemo(() => sortWidgets(widgetsData), [widgetsData]);
 
   const handleCreate = async (payload: WidgetFormPayload) => {
     if (!token) {
       throw new Error("Authentification requise");
     }
+    setError(null);
+    setSuccess(null);
     try {
-      const created = await widgetLibraryApi.createWidget(token, {
-        slug: payload.slug,
-        title: payload.title ?? undefined,
-        description: payload.description ?? undefined,
-        definition: payload.definition,
+      const created = await createWidget.mutateAsync({
+        token,
+        payload: {
+          slug: payload.slug,
+          title: payload.title ?? undefined,
+          description: payload.description ?? undefined,
+          definition: payload.definition,
+        },
       });
-      setWidgets((prev) => sortWidgets([...prev, created]));
       setShowCreateModal(false);
-      setSuccess(`Widget « ${created.slug} » créé avec succès.`);
+      setSuccess(`Widget « ${created.slug} » créé avec succès.`);
     } catch (err) {
-      setSuccess(null);
       if (isUnauthorizedError(err)) {
         logout();
         setShowCreateModal(false);
@@ -102,19 +84,21 @@ export const WidgetLibraryPage = () => {
     if (!token || !editingWidget) {
       throw new Error("Sélection de widget invalide");
     }
+    setError(null);
+    setSuccess(null);
     try {
-      const updated = await widgetLibraryApi.updateWidget(token, editingWidget.slug, {
-        title: payload.title ?? undefined,
-        description: payload.description ?? undefined,
-        definition: payload.definition,
+      const updated = await updateWidget.mutateAsync({
+        token,
+        slug: editingWidget.slug,
+        payload: {
+          title: payload.title ?? undefined,
+          description: payload.description ?? undefined,
+          definition: payload.definition,
+        },
       });
-      setWidgets((prev) =>
-        sortWidgets(prev.map((widget) => (widget.slug === updated.slug ? updated : widget))),
-      );
       setEditingWidget(null);
-      setSuccess(`Widget « ${updated.slug} » mis à jour.`);
+      setSuccess(`Widget « ${updated.slug} » mis à jour.`);
     } catch (err) {
-      setSuccess(null);
       if (isUnauthorizedError(err)) {
         logout();
         setEditingWidget(null);
@@ -128,15 +112,15 @@ export const WidgetLibraryPage = () => {
     if (!token) {
       return;
     }
-    if (!window.confirm(`Supprimer le widget « ${widget.slug} » ?`)) {
+    if (!window.confirm(`Supprimer le widget « ${widget.slug} » ?`)) {
       return;
     }
+    setError(null);
+    setSuccess(null);
     try {
-      await widgetLibraryApi.deleteWidget(token, widget.slug);
-      setWidgets((prev) => prev.filter((item) => item.slug !== widget.slug));
-      setSuccess(`Widget « ${widget.slug} » supprimé.`);
+      await deleteWidget.mutateAsync({ token, slug: widget.slug });
+      setSuccess(`Widget « ${widget.slug} » supprimé.`);
     } catch (err) {
-      setSuccess(null);
       if (isUnauthorizedError(err)) {
         logout();
         setError("Session expirée, veuillez vous reconnecter.");
@@ -153,7 +137,7 @@ export const WidgetLibraryPage = () => {
       throw new Error("Authentification requise");
     }
     try {
-      return await widgetLibraryApi.previewWidget(token, definition);
+      return await previewWidgetMutation.mutateAsync({ token, definition });
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -195,7 +179,7 @@ export const WidgetLibraryPage = () => {
           isLoading={isLoading}
           onPreview={(widget) =>
             setPreviewData({
-              title: `Widget « ${widget.title ?? widget.slug} »`,
+              title: `Widget « ${widget.title ?? widget.slug} »`,
               subtitle: widget.slug,
               definition: widget.definition,
             })
@@ -217,7 +201,7 @@ export const WidgetLibraryPage = () => {
       ) : null}
 
       {editingWidget ? (
-        <Modal title={`Modifier le widget « ${editingWidget.slug} »`} onClose={() => setEditingWidget(null)} size="lg">
+        <Modal title={`Modifier le widget « ${editingWidget.slug} »`} onClose={() => setEditingWidget(null)} size="lg">
           <WidgetTemplateForm
             mode="edit"
             initialValue={editingWidget}
