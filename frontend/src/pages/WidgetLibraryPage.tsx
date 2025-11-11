@@ -7,7 +7,7 @@ import { WidgetTemplateForm } from "../components/WidgetTemplateForm";
 import { WidgetTemplateGallery } from "../components/WidgetTemplateGallery";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { AdminTabs } from "../components/AdminTabs";
-import { ErrorAlert } from "../components";
+import { FeedbackMessages } from "../components";
 import {
   ApiError,
   isUnauthorizedError,
@@ -154,25 +154,28 @@ export const WidgetLibraryPage = () => {
   };
 
   return (
-    <>
-      <AdminTabs activeTab="widgets" />
-      <ManagementPageLayout
-        actions={
-          <button
-            type="button"
-            className="management-header__icon-button"
-            aria-label="Créer un nouveau widget"
-            title="Nouveau widget"
-            onClick={() => setShowCreateModal(true)}
-          >
-            <svg aria-hidden={true} width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </button>
-        }
-      >
-      {success && <ErrorAlert message={success} type="info" dismissible onDismiss={() => setSuccess(null)} />}
-      {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
+    <ManagementPageLayout
+      tabs={<AdminTabs activeTab="widgets" />}
+      actions={
+        <button
+          type="button"
+          className="management-header__icon-button"
+          aria-label="Créer un nouveau widget"
+          title="Nouveau widget"
+          onClick={() => setShowCreateModal(true)}
+        >
+          <svg aria-hidden={true} width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
+      }
+    >
+      <FeedbackMessages
+        error={error}
+        success={success}
+        onDismissError={() => setError(null)}
+        onDismissSuccess={() => setSuccess(null)}
+      />
 
       <div className="widget-library">
         <WidgetTemplateGallery
@@ -221,8 +224,7 @@ export const WidgetLibraryPage = () => {
           onClose={() => setPreviewData(null)}
         />
       ) : null}
-      </ManagementPageLayout>
-    </>
+    </ManagementPageLayout>
   );
 };
 
