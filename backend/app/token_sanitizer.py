@@ -21,6 +21,11 @@ UNSUPPORTED_REASONING_FIELDS = {
     "verbosity",
 }
 
+# Mapping pour normaliser les valeurs de reasoning.effort invalides
+REASONING_EFFORT_MAPPING = {
+    "minimal": "low",  # Valeur legacy à normaliser
+}
+
 
 def strip_max_token_fields(value: Any) -> tuple[Any, bool]:
     """Supprime récursivement les champs liés aux limites de jetons."""
@@ -75,6 +80,15 @@ def strip_unsupported_reasoning_fields(
                             and field_value.strip()
                         ):
                             pending_text_verbosity = field_value.strip()
+                        continue
+                    # Normaliser les valeurs de reasoning.effort
+                    if field == "effort" and isinstance(field_value, str):
+                        normalized_effort = REASONING_EFFORT_MAPPING.get(
+                            field_value.strip().lower(), field_value
+                        )
+                        if normalized_effort != field_value:
+                            removed_reasoning = True
+                        sanitized_reasoning[field] = normalized_effort
                         continue
                     sanitized_value, removed_nested = (
                         strip_unsupported_reasoning_fields(
