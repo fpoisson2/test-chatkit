@@ -1098,8 +1098,16 @@ export const ToolSettingsPanel = ({
   const workflowValidationFunctionEnabled =
     getAgentWorkflowValidationToolEnabled(parameters);
 
+  const hasFunctionToolEnabled =
+    weatherFunctionEnabled ||
+    widgetValidationFunctionEnabled ||
+    workflowValidationFunctionEnabled;
+
   const workflowToolConfigs = getAgentWorkflowTools(parameters);
   const workflowToolSlugs = workflowToolConfigs.map((config) => config.slug);
+  const hasWorkflowToolEnabled = workflowToolSlugs.length > 0;
+
+  const hasSelectedMcpServers = selectedServers.size > 0;
 
   const availableNestedWorkflows = useMemo(
     () => workflows.filter((workflow) => workflow.id !== currentWorkflowId),
@@ -1451,7 +1459,7 @@ export const ToolSettingsPanel = ({
         id="function-tools"
         title={t("workflowBuilder.agentInspector.functionToolsTitle")}
         icon={Wrench}
-        expandedByDefault
+        expandedByDefault={hasFunctionToolEnabled}
         showToggle={false}
       >
         <div className={v2Styles.sectionHeader}>
@@ -1489,7 +1497,7 @@ export const ToolSettingsPanel = ({
         id="mcp-servers"
         title={t("workflowBuilder.agentInspector.mcpServersTitle")}
         icon={Server}
-        expandedByDefault
+        expandedByDefault={hasSelectedMcpServers}
         showToggle={false}
       >
         <div className={v2Styles.sectionHeader}>
@@ -1734,7 +1742,7 @@ export const ToolSettingsPanel = ({
         id="workflow-tools"
         title={t("workflowBuilder.agentInspector.workflowToolsTitle")}
         icon={GitBranch}
-        expandedByDefault
+        expandedByDefault={hasWorkflowToolEnabled}
         showToggle={false}
       >
         <div className={v2Styles.sectionHeader}>

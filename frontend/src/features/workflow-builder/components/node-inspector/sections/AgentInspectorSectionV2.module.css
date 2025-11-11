@@ -381,22 +381,26 @@ textarea[data-schema-editor="true"] {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .mcpServerLabel {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-primary, #1f2937);
+  word-break: break-word;
 }
 
 .mutedText {
   font-size: 0.875rem;
   color: var(--text-secondary, #6b7280);
+  word-break: break-word;
 }
 
 .mutedTextSmall {
   font-size: 0.75rem;
   color: var(--text-tertiary, #9ca3af);
+  word-break: break-word;
 }
 
 .mcpServerDetails {
@@ -497,5 +501,35 @@ textarea[data-schema-editor="true"] {
     border-color: var(--border-color, #4b5563);
     background-color: rgba(96, 165, 250, 0.12);
     color: var(--text-primary, #f9fafb);
+  }
+}
+
+@media (max-width: 640px) {
+  .mcpServerCard {
+    padding: 0.875rem 1rem;
+  }
+
+  .mcpServerHeader {
+    align-items: stretch;
+  }
+
+  .mcpServerHeading {
+    width: 100%;
+  }
+
+  .inlineField {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inlineField input {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .inlineField button,
+  .inlineField .btn {
+    width: 100%;
   }
 }
