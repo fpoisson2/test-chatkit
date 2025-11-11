@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -126,6 +127,7 @@ const buildFormFromModel = (model: AvailableModel): AdminModelFormData =>
 export const AdminModelsPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
+  const createFormRef = useRef<HTMLDivElement>(null);
 
   // React Query hooks
   const { data: modelsData = [], isLoading: isLoadingModels, error: modelsError } = useModelsAdmin(token);
@@ -449,8 +451,33 @@ export const AdminModelsPage = () => {
     [editingModelId, handleDelete, handleEdit, isEditing, t],
   );
 
+  const scrollToCreateForm = () => {
+    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
-    <ManagementPageLayout tabs={<AdminTabs activeTab="models" />}>
+    <ManagementPageLayout
+      tabs={<AdminTabs activeTab="models" />}
+      actions={
+        <button
+          type="button"
+          className="management-header__icon-button"
+          aria-label="Ajouter un modèle"
+          title="Ajouter un modèle"
+          onClick={scrollToCreateForm}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      }
+    >
       <FeedbackMessages
         error={error}
         success={success}
@@ -459,7 +486,8 @@ export const AdminModelsPage = () => {
       />
 
       <div className="admin-grid">
-        <FormSection
+        <div ref={createFormRef}>
+          <FormSection
           title={
             isEditing
               ? t("admin.models.form.editTitle")
@@ -564,7 +592,8 @@ export const AdminModelsPage = () => {
               </button>
             </div>
           </form>
-        </FormSection>
+          </FormSection>
+        </div>
 
         <FormSection
           title="Modèles autorisés"

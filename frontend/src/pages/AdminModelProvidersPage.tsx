@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -23,6 +23,7 @@ import {
 export const AdminModelProvidersPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
+  const createFormRef = useRef<HTMLDivElement>(null);
 
   // Fetch app settings using React Query
   const { data: settings = null, isLoading, error: queryError } = useAppSettings(token);
@@ -248,8 +249,33 @@ export const AdminModelProvidersPage = () => {
   const effectiveProvider = settings?.model_provider ?? "";
   const effectiveBase = settings?.model_api_base ?? "";
 
+  const scrollToCreateForm = () => {
+    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
-    <ManagementPageLayout tabs={<AdminTabs activeTab="providers" />}>
+    <ManagementPageLayout
+      tabs={<AdminTabs activeTab="providers" />}
+      actions={
+        <button
+          type="button"
+          className="management-header__icon-button"
+          aria-label="Configurer un fournisseur"
+          title="Configurer un fournisseur"
+          onClick={scrollToCreateForm}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      }
+    >
       <FeedbackMessages
         error={error}
         success={success}
@@ -258,7 +284,8 @@ export const AdminModelProvidersPage = () => {
       />
 
       <div className="admin-grid">
-        <FormSection
+        <div ref={createFormRef}>
+          <FormSection
           title={t("admin.appSettings.model.cardTitle")}
           subtitle={t("admin.appSettings.model.cardDescription")}
         >
@@ -439,7 +466,8 @@ export const AdminModelProvidersPage = () => {
               </button>
             </div>
           </form>
-        </FormSection>
+          </FormSection>
+        </div>
       </div>
     </ManagementPageLayout>
   );

@@ -283,6 +283,7 @@ export const AdminMcpServersPage = () => {
   );
   const oauthPlanRef = useRef<McpOAuthPersistencePlan | null>(null);
   const pendingStateRef = useRef<string | null>(null);
+  const createFormRef = useRef<HTMLDivElement>(null);
 
   const isSaving = createServer.isPending || updateServer.isPending;
   const deletingId = deleteServer.variables?.serverId ?? null;
@@ -351,6 +352,13 @@ export const AdminMcpServersPage = () => {
         );
       }
     }
+  };
+
+  const scrollToCreateForm = () => {
+    handleCreate();
+    setTimeout(() => {
+      createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   const handleRefreshTools = async (server: McpServerSummary) => {
@@ -775,13 +783,26 @@ export const AdminMcpServersPage = () => {
       title={t("admin.mcpServers.page.title")}
       subtitle={t("admin.mcpServers.page.subtitle")}
       tabs={<AdminTabs activeTab="mcp-servers" />}
-    >
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1.5rem" }}>
-        <button type="button" className="button" onClick={handleCreate}>
-          {t("admin.mcpServers.actions.startCreate")}
+      actions={
+        <button
+          type="button"
+          className="management-header__icon-button"
+          aria-label="Ajouter un serveur MCP"
+          title="Ajouter un serveur MCP"
+          onClick={scrollToCreateForm}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
-      </div>
-
+      }
+    >
       <FeedbackMessages
         error={error}
         success={success}
@@ -809,20 +830,21 @@ export const AdminMcpServersPage = () => {
           )}
         </FormSection>
 
-        <FormSection
-          title={
-            editingId == null
-              ? t("admin.mcpServers.form.createTitle")
-              : t("admin.mcpServers.form.editTitle", {
-                  label: currentServer?.label ?? "",
-                })
-          }
-          subtitle={
-            editingId == null
-              ? t("admin.mcpServers.form.createSubtitle")
-              : t("admin.mcpServers.form.editSubtitle")
-          }
-        >
+        <div ref={createFormRef}>
+          <FormSection
+            title={
+              editingId == null
+                ? t("admin.mcpServers.form.createTitle")
+                : t("admin.mcpServers.form.editTitle", {
+                    label: currentServer?.label ?? "",
+                  })
+            }
+            subtitle={
+              editingId == null
+                ? t("admin.mcpServers.form.createSubtitle")
+                : t("admin.mcpServers.form.editSubtitle")
+            }
+          >
           <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
             <FormField
               label={t("admin.mcpServers.form.labelLabel")}
@@ -1061,7 +1083,8 @@ export const AdminMcpServersPage = () => {
             )}
             {probeError && <div className="alert alert--danger">{probeError}</div>}
           </form>
-        </FormSection>
+          </FormSection>
+        </div>
       </div>
     </ManagementPageLayout>
   );

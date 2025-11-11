@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -61,6 +62,7 @@ const normalizeOptionalField = (value: string | undefined) => {
 export const AdminLtiPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
+  const createFormRef = useRef<HTMLDivElement>(null);
 
   // Registration Form - React Hook Form
   const {
@@ -339,6 +341,10 @@ export const AdminLtiPage = () => {
     }
   }, [token, t, logout, setToolValue]);
 
+  const scrollToCreateForm = () => {
+    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const registrationColumns: Column<LtiRegistration>[] = useMemo(() => [
     {
       key: "issuer",
@@ -409,6 +415,25 @@ export const AdminLtiPage = () => {
       title={t("admin.lti.page.title")}
       subtitle={t("admin.lti.page.subtitle")}
       tabs={<AdminTabs activeTab="lti" />}
+      actions={
+        <button
+          type="button"
+          className="management-header__icon-button"
+          aria-label="Ajouter une registration LTI"
+          title="Ajouter une registration LTI"
+          onClick={scrollToCreateForm}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      }
     >
       <FeedbackMessages
         error={toolError || registrationsError}
@@ -424,10 +449,11 @@ export const AdminLtiPage = () => {
       />
 
       <div className="admin-grid">
-        <FormSection
-          title={t("admin.lti.toolSettings.keys.title")}
-          subtitle={t("admin.lti.toolSettings.keys.subtitle")}
-        >
+        <div ref={createFormRef}>
+          <FormSection
+            title={t("admin.lti.toolSettings.keys.title")}
+            subtitle={t("admin.lti.toolSettings.keys.subtitle")}
+          >
           {toolLoading ? (
             <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
           ) : (
@@ -478,7 +504,8 @@ export const AdminLtiPage = () => {
               </p>
             </>
           )}
-        </FormSection>
+          </FormSection>
+        </div>
 
         <FormSection
           title={t("admin.lti.toolSettings.title")}

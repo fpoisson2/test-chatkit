@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
@@ -25,6 +25,7 @@ export const AdminPage = () => {
   const [users, setUsers] = useState<EditableUser[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const createFormRef = useRef<HTMLElement>(null);
 
   const {
     register,
@@ -216,18 +217,44 @@ export const AdminPage = () => {
     [handleToggleAdmin, handleResetPassword, handleDelete],
   );
 
+  const scrollToCreateForm = () => {
+    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
-    <ManagementPageLayout tabs={<AdminTabs activeTab="users" />}>
+    <ManagementPageLayout
+      tabs={<AdminTabs activeTab="users" />}
+      actions={
+        <button
+          type="button"
+          className="management-header__icon-button"
+          aria-label="Créer un utilisateur"
+          title="Créer un utilisateur"
+          onClick={scrollToCreateForm}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      }
+    >
       <FeedbackMessages
         error={error}
         onDismissError={() => setError(null)}
       />
 
       <div className="admin-grid">
-        <FormSection
-          title="Créer un utilisateur"
-          subtitle="Invitez un collaborateur et attribuez-lui un rôle adapté à son usage de ChatKit."
-        >
+        <div ref={createFormRef}>
+          <FormSection
+            title="Créer un utilisateur"
+            subtitle="Invitez un collaborateur et attribuez-lui un rôle adapté à son usage de ChatKit."
+          >
           <form className="admin-form" onSubmit={handleSubmit(handleCreate)}>
             <div className="admin-form__row">
               <FormField
@@ -266,7 +293,8 @@ export const AdminPage = () => {
               </button>
             </div>
           </form>
-        </FormSection>
+          </FormSection>
+        </div>
 
         <FormSection
           title="Utilisateurs"

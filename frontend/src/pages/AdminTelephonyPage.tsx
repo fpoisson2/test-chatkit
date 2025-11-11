@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
@@ -43,6 +43,7 @@ const emptySipAccountForm = (): AdminTelephonyFormData => ({
 export const AdminTelephonyPage = () => {
   const { token } = useAuth();
   const { t } = useI18n();
+  const createFormRef = useRef<HTMLDivElement>(null);
 
   // React Query hooks
   const { data: accounts = [], isLoading } = useSipAccounts(token);
@@ -146,6 +147,13 @@ export const AdminTelephonyPage = () => {
     }
   };
 
+  const scrollToCreateForm = () => {
+    handleCreateAccount();
+    setTimeout(() => {
+      createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   // ========== Table Columns ==========
 
   const columns: Column<SipAccount>[] = [
@@ -206,7 +214,28 @@ export const AdminTelephonyPage = () => {
   const showForm = isCreatingAccount || editingAccountId;
 
   return (
-    <ManagementPageLayout tabs={<AdminTabs activeTab="telephony" />}>
+    <ManagementPageLayout
+      tabs={<AdminTabs activeTab="telephony" />}
+      actions={
+        <button
+          type="button"
+          className="management-header__icon-button"
+          aria-label="Ajouter un trunk SIP"
+          title="Ajouter un trunk SIP"
+          onClick={scrollToCreateForm}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      }
+    >
       <FeedbackMessages
         error={error}
         success={success}
@@ -216,7 +245,8 @@ export const AdminTelephonyPage = () => {
 
       <div className="admin-grid">
         {showForm ? (
-          <FormSection
+          <div ref={createFormRef}>
+            <FormSection
             title={isCreatingAccount ? "Nouveau compte SIP" : "Modifier le compte SIP"}
             subtitle="Configurez les paramètres de connexion au trunk SIP."
           >
@@ -342,6 +372,7 @@ export const AdminTelephonyPage = () => {
               />
             </form>
           </FormSection>
+          </div>
         ) : (
           <FormSection
             title="Comptes SIP"
