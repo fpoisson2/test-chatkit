@@ -634,6 +634,23 @@ const WorkflowBuilderPage = () => {
     saveStateRef.current = saveState;
   }, [saveState]);
 
+  // Phase 6: Extract complex loading logic into useWorkflowLoader hook
+  const { loadVersionDetail, loadVersions, loadWorkflows } = useWorkflowLoader({
+    authHeader,
+    t,
+    deviceType,
+    isHydratingRef,
+    reactFlowInstanceRef,
+    resetHistory,
+    restoreViewport,
+    applySelection,
+    decorateNode,
+    draftDisplayName,
+    persistViewportMemory,
+    buildGraphPayloadFrom,
+    hasLoadedWorkflowsRef,
+  });
+
   // Phase 8: Extract workflow synchronization into custom hook
   useWorkflowSync({
     sidebarWorkflows,
@@ -857,23 +874,6 @@ const WorkflowBuilderPage = () => {
     },
     [availableModels],
   );
-
-  // Phase 6: Extract complex loading logic into useWorkflowLoader hook
-  const { loadVersionDetail, loadVersions, loadWorkflows } = useWorkflowLoader({
-    authHeader,
-    t,
-    deviceType,
-    isHydratingRef,
-    reactFlowInstanceRef,
-    resetHistory,
-    restoreViewport,
-    applySelection,
-    decorateNode,
-    draftDisplayName,
-    persistViewportMemory,
-    buildGraphPayloadFrom,
-    hasLoadedWorkflowsRef,
-  });
 
   const loadHostedWorkflows = useCallback(async () => {
     if (!token) {
