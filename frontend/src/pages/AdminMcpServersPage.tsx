@@ -22,7 +22,14 @@ import {
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { ResponsiveTable, type Column } from "../components";
+import {
+  ResponsiveTable,
+  type Column,
+  FeedbackMessages,
+  FormField,
+  FormSection,
+  LoadingSpinner,
+} from "../components";
 import { useI18n } from "../i18n";
 import { adminMcpServerSchema, type AdminMcpServerFormData } from "../schemas/admin";
 
@@ -307,593 +314,139 @@ export const AdminMcpServersPage = () => {
       oauthAuthorizationEndpoint: server.oauth_authorization_endpoint ?? "",
       oauthTokenEndpoint: server.oauth_token_endpoint ?? "",
       oauthRedirectUri: server.oauth_redirect_uri ?? "",
-      oauthMetadata: server.oauth_metadata
-        ? JSON.stringify(server.oauth_metadata, null, 2)
-        : "",
-      isActive: Boolean(server.is_active),
+      oauthMetadata: server.oauth_metadata ? JSON.stringify(server.oauth_metadata, null, 2) : "",
+      isActive: server.is_active ?? true,
     });
-    setProbeFeedback(null);
-    setProbeError(null);
-    setOauthFeedback(initialOAuthFeedback);
-    oauthPlanRef.current = null;
+    setEditingId(server.id);
   }, [reset]);
 
-  // Handle React Query errors
-  useEffect(() => {
-    if (serversError) {
-      if (isUnauthorizedError(serversError)) {
+  const handleCreate = () => {
+    resetForm();
+  };
+
+  const handleEdit = (server: McpServerSummary) => {
+    applyServerToForm(server);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleDelete = async (server: McpServerSummary) => {
+    if (!window.confirm(t("admin.mcpServers.confirm.delete", { label: server.label }))) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await deleteServer.mutateAsync({ token, serverId: server.id });
+      setSuccess(t("admin.mcpServers.feedback.deleted", { label: server.label }));
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
         logout();
         setError(t("admin.mcpServers.errors.sessionExpired"));
       } else {
         setError(
-          serversError instanceof Error
-            ? serversError.message
-            : t("admin.mcpServers.errors.loadFailed")
+          err instanceof Error ? err.message : t("admin.mcpServers.errors.deleteFailed"),
         );
       }
     }
-  }, [serversError, logout, t]);
+  };
 
-  useEffect(() => {
-    pendingStateRef.current = oauthFeedback.stateId;
-  }, [oauthFeedback.stateId]);
-
-  useEffect(() => {
-    return () => {
-      const pendingState = pendingStateRef.current;
-      if (pendingState) {
-        void cancelMcpOAuthSession({ token: token ?? null, state: pendingState }).catch(
-          () => {},
-        );
-      }
-    };
-  }, [token]);
-
-  const persistOAuthTokens = useCallback(
-    async ({
-      serverId,
-      tokenPayload,
-      plan,
-    }: {
-      serverId: number | null;
-      tokenPayload: Record<string, unknown>;
-      plan: McpOAuthPersistencePlan | null;
-    }): Promise<
-      | { ok: true; server: McpServerSummary | null }
-      | { ok: false; message: string }
-    > => {
-      if (!token) {
-        return { ok: false, message: t("admin.mcpServers.errors.sessionExpired") };
-      }
-
-      const planPayload: McpServerPayload = { ...(plan?.payload ?? {}) };
-      const existingServer =
-        serverId != null ? servers.find((item) => item.id === serverId) ?? null : null;
-
-      if (!planPayload.label && existingServer?.label) {
-        planPayload.label = existingServer.label;
-      }
-      if (!planPayload.server_url && existingServer?.server_url) {
-        planPayload.server_url = existingServer.server_url;
-      }
-      if (planPayload.is_active === undefined && existingServer) {
-        planPayload.is_active = Boolean(existingServer.is_active);
-      }
-      if (!planPayload.transport && existingServer?.transport) {
-        planPayload.transport = existingServer.transport ?? undefined;
-      }
-
-      const resolvedLabel =
-        typeof planPayload.label === "string" ? planPayload.label.trim() : "";
-      const resolvedUrl =
-        typeof planPayload.server_url === "string" ? planPayload.server_url.trim() : "";
-
-      if (!resolvedLabel || !resolvedUrl) {
-        return {
-          ok: false,
-          message: t("admin.mcpServers.oauth.errorMissingDraft"),
-        };
-      }
-
-      const accessToken =
-        extractStringFromTokenPayload(tokenPayload, ["access_token", "accesstoken", "access-token"]) || "";
-      const refreshToken =
-        extractStringFromTokenPayload(tokenPayload, ["refresh_token", "refreshtoken", "refresh-token"]) || "";
-      const tokenType =
-        extractStringFromTokenPayload(tokenPayload, ["token_type", "tokentype", "type"]) || "";
-      const explicitAuthorization =
-        extractStringFromTokenPayload(tokenPayload, [
-          "authorization",
-          "authorization_header",
-          "authorizationheader",
-        ]) || "";
-
-      const shouldRefreshTools =
-        plan?.refreshToolsOnSuccess === undefined
-          ? true
-          : Boolean(plan.refreshToolsOnSuccess);
-
-      const payload: McpServerPayload = {
-        ...planPayload,
-        label: resolvedLabel,
-        server_url: resolvedUrl,
-        refresh_tools: shouldRefreshTools,
-      };
-
-      if (accessToken) {
-        payload.access_token = accessToken;
-      }
-
-      const resolvedAuthorization = (() => {
-        if (explicitAuthorization) {
-          return explicitAuthorization;
-        }
-        if (!accessToken) {
-          return "";
-        }
-        const scheme = tokenType || "Bearer";
-        return `${scheme} ${accessToken}`.trim();
-      })();
-
-      if (resolvedAuthorization) {
-        payload.authorization = resolvedAuthorization;
-      }
-
-      if (refreshToken) {
-        payload.refresh_token = refreshToken;
-      }
-
-      const shouldStoreMetadata = plan?.storeTokenMetadata ?? true;
-      const planMetadata = planPayload.oauth_metadata;
-
-      if (shouldStoreMetadata) {
-        const existingMetadata = existingServer?.oauth_metadata;
-        const baseMetadata = (() => {
-          if (planMetadata && typeof planMetadata === "object" && !Array.isArray(planMetadata)) {
-            return planMetadata;
-          }
-          if (
-            existingMetadata &&
-            typeof existingMetadata === "object" &&
-            !Array.isArray(existingMetadata)
-          ) {
-            return existingMetadata;
-          }
-          return undefined;
-        })();
-
-        payload.oauth_metadata = {
-          ...(baseMetadata ?? {}),
-          token: tokenPayload,
-        };
-      } else if (planMetadata !== undefined) {
-        payload.oauth_metadata = planMetadata ?? null;
-      }
-
-      try {
-        let persisted: McpServerSummary | null = null;
-
-        if (serverId != null) {
-          // Use React Query mutation for update
-          await new Promise<void>((resolve, reject) => {
-            updateServer.mutate(
-              { token, serverId, payload },
-              {
-                onSuccess: (updated) => {
-                  persisted = updated;
-                  if (editingId === serverId) {
-                    applyServerToForm(updated);
-                  }
-                  resolve();
-                },
-                onError: (err) => {
-                  reject(err);
-                },
-              }
-            );
-          });
-        } else {
-          // Use React Query mutation for create
-          await new Promise<void>((resolve, reject) => {
-            createServer.mutate(
-              { token, payload },
-              {
-                onSuccess: (created) => {
-                  persisted = created;
-                  setEditingId(created.id);
-                  applyServerToForm(created);
-                  resolve();
-                },
-                onError: (err) => {
-                  reject(err);
-                },
-              }
-            );
-          });
-        }
-
-        return { ok: true, server: persisted };
-      } catch (err) {
-        if (isUnauthorizedError(err)) {
-          logout();
-          return { ok: false, message: t("admin.mcpServers.errors.sessionExpired") };
-        }
-        const message =
-          err instanceof Error
-            ? err.message
-            : t("admin.mcpServers.oauth.errorGeneric");
-        return { ok: false, message };
-      }
-    },
-    [
-      applyServerToForm,
-      createServer,
-      editingId,
-      logout,
-      servers,
-      t,
-      token,
-      updateServer,
-    ],
-  );
-
-  const handleOAuthResult = useCallback(
-    async (result: McpOAuthSessionStatus) => {
-      if (result.status === "pending") {
-        return;
-      }
-
-      pendingStateRef.current = null;
-
-      if (result.status === "ok") {
-        const plan = oauthPlanRef.current;
-        const fallbackServerId = plan?.serverId ?? oauthFeedback.serverId ?? null;
-        let persistedServerId: number | null = fallbackServerId;
-
-        if (result.token && typeof result.token === "object") {
-          const outcome = await persistOAuthTokens({
-            serverId: fallbackServerId,
-            tokenPayload: result.token as Record<string, unknown>,
-            plan: plan ?? null,
-          });
-
-          if (!outcome.ok) {
-            const message = outcome.message;
-            setOauthFeedback({
-              status: "error",
-              message,
-              stateId: null,
-              serverId: fallbackServerId,
-            });
-            setError(message);
-            return;
-          }
-
-          persistedServerId = outcome.server?.id ?? fallbackServerId ?? null;
-        }
-
-        setOauthFeedback({
-          status: "success",
-          message: t("admin.mcpServers.oauth.success"),
-          stateId: null,
-          serverId: persistedServerId,
-        });
-        setSuccess(t("admin.mcpServers.feedback.oauthSuccess"));
-        setError(null);
-        setProbeFeedback(null);
-        setProbeError(null);
-        oauthPlanRef.current = null;
-      } else {
-        const detail =
-          "error" in result && typeof result.error === "string"
-            ? result.error
-            : undefined;
-        const message = detail
-          ? t("admin.mcpServers.oauth.errorWithDetail", { detail })
-          : t("admin.mcpServers.oauth.errorGeneric");
-        setOauthFeedback({
-          status: "error",
-          message,
-          stateId: null,
-          serverId: oauthFeedback.serverId ?? null,
-        });
-        if (detail) {
-          setError(message);
-        }
-      }
-    },
-    [
-      oauthFeedback.serverId,
-      persistOAuthTokens,
-      t,
-    ],
-  );
-
-  useEffect(() => {
-    if (oauthFeedback.status !== "pending" || !oauthFeedback.stateId) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-
-    const poll = async () => {
-      if (!token) {
-        return;
-      }
-      try {
-        const plan = oauthPlanRef.current;
-        const result = await pollMcpOAuthSession({
-          token,
-          state: oauthFeedback.stateId as string,
-          persistence: plan
-            ? { ...plan, serverId: plan.serverId ?? oauthFeedback.serverId ?? undefined }
-            : undefined,
-        });
-        if (cancelled) {
-          return;
-        }
-        if (result.status === "pending") {
-          timeoutHandle = setTimeout(() => {
-            timeoutHandle = null;
-            void poll();
-          }, 1500);
-          return;
-        }
-        await handleOAuthResult(result);
-      } catch (err) {
-        if (cancelled) {
-          return;
-        }
-        if (isUnauthorizedError(err)) {
-          logout();
-          setError(t("admin.mcpServers.errors.sessionExpired"));
-        } else {
-          const message =
-            err instanceof Error
-              ? err.message
-              : t("admin.mcpServers.oauth.errorGeneric");
-          setOauthFeedback({
-            status: "error",
-            message,
-            stateId: null,
-            serverId: oauthFeedback.serverId,
-          });
-        }
-      }
-    };
-
-    void poll();
-
-    return () => {
-      cancelled = true;
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-    };
-  }, [
-    handleOAuthResult,
-    logout,
-    oauthFeedback,
-    t,
-    token,
-  ]);
-
-  const handleCreate = useCallback(() => {
-    resetForm();
-    setSuccess(null);
+  const handleRefreshTools = async (server: McpServerSummary) => {
+    setRefreshingId(server.id);
     setError(null);
-  }, [resetForm]);
-
-  const handleEdit = useCallback(
-    (server: McpServerSummary) => {
-      setEditingId(server.id);
-      applyServerToForm(server);
-      setSuccess(null);
-      setError(null);
-    },
-    [applyServerToForm],
-  );
-
-  const handleDelete = useCallback(
-    async (server: McpServerSummary) => {
-      if (!token) {
-        return;
-      }
-      const confirmation = window.confirm(
-        t("admin.mcpServers.confirm.delete", { label: server.label }),
-      );
-      if (!confirmation) {
-        return;
-      }
-
-      setError(null);
-      setSuccess(null);
-      deleteServer.mutate(
-        { token, serverId: server.id },
-        {
-          onSuccess: () => {
-            if (editingId === server.id) {
-              resetForm();
-            }
-            setSuccess(t("admin.mcpServers.feedback.deleted", { label: server.label }));
-          },
-          onError: (err) => {
-            if (isUnauthorizedError(err)) {
-              logout();
-              setError(t("admin.mcpServers.errors.sessionExpired"));
-            } else {
-              setError(
-                err instanceof Error
-                  ? err.message
-                  : t("admin.mcpServers.errors.deleteFailed")
-              );
-            }
-          },
-        }
-      );
-    },
-    [deleteServer, editingId, logout, resetForm, t, token],
-  );
-
-  const handleRefreshTools = useCallback(
-    async (server: McpServerSummary) => {
-      if (!token) {
-        return;
-      }
-      setRefreshingId(server.id);
-      setError(null);
-      setSuccess(null);
-
-      updateServer.mutate(
-        {
-          token,
-          serverId: server.id,
-          payload: { refresh_tools: true },
-        },
-        {
-          onSuccess: (updated) => {
-            setSuccess(t("admin.mcpServers.feedback.toolsRefreshed", { label: server.label }));
-            if (editingId === server.id) {
-              applyServerToForm(updated);
-            }
-            setRefreshingId(null);
-          },
-          onError: (err) => {
-            if (isUnauthorizedError(err)) {
-              logout();
-              setError(t("admin.mcpServers.errors.sessionExpired"));
-            } else {
-              setError(
-                err instanceof Error
-                  ? err.message
-                  : t("admin.mcpServers.errors.refreshFailed")
-              );
-            }
-            setRefreshingId(null);
-          },
-        }
-      );
-    },
-    [applyServerToForm, editingId, logout, t, token, updateServer],
-  );
-
-  const handleSubmit = useCallback(
-    async (data: AdminMcpServerFormData) => {
-      if (!token) {
-        return;
-      }
-      setError(null);
-      setSuccess(null);
-      setProbeFeedback(null);
-      setProbeError(null);
-
-      const basePayload = buildPayloadFromForm(data, currentServer);
-
-      if (editingId == null) {
-        createServer.mutate(
-          { token, payload: basePayload },
-          {
-            onSuccess: (created) => {
-              setEditingId(created.id);
-              applyServerToForm(created);
-              setSuccess(t("admin.mcpServers.feedback.created", { label: created.label }));
-            },
-            onError: (err) => {
-              if (isUnauthorizedError(err)) {
-                logout();
-                setError(t("admin.mcpServers.errors.sessionExpired"));
-              } else {
-                setError(
-                  err instanceof Error
-                    ? err.message
-                    : t("admin.mcpServers.errors.saveFailed")
-                );
-              }
-            },
-          }
-        );
-      } else {
-        updateServer.mutate(
-          { token, serverId: editingId, payload: basePayload },
-          {
-            onSuccess: (updated) => {
-              applyServerToForm(updated);
-              setSuccess(t("admin.mcpServers.feedback.updated", { label: updated.label }));
-            },
-            onError: (err) => {
-              if (isUnauthorizedError(err)) {
-                logout();
-                setError(t("admin.mcpServers.errors.sessionExpired"));
-              } else {
-                setError(
-                  err instanceof Error
-                    ? err.message
-                    : t("admin.mcpServers.errors.saveFailed")
-                );
-              }
-            },
-          }
-        );
-      }
-    },
-    [
-      applyServerToForm,
-      createServer,
-      currentServer,
-      editingId,
-      logout,
-      t,
-      token,
-      updateServer,
-    ],
-  );
-
-  const handleTestConnection = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-    setProbeFeedback(null);
-    setProbeError(null);
-    setIsTesting(true);
-
-    const formData = getValues();
+    setSuccess(null);
 
     try {
-      const basePayload = buildPayloadFromForm(formData, currentServer);
-
-      const response = await probeMcpServer(token, {
-        serverId: editingId ?? undefined,
-        url: basePayload.server_url ?? formData.serverUrl.trim(),
-        authorization: basePayload.authorization ?? formData.authorization?.trim() ?? "",
+      await updateServer.mutateAsync({
+        token,
+        serverId: server.id,
+        payload: { refresh_tools: true },
       });
-      handleProbeResponse(response);
+      setSuccess(t("admin.mcpServers.feedback.refreshed", { label: server.label }));
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
-        setProbeError(t("admin.mcpServers.errors.sessionExpired"));
+        setError(t("admin.mcpServers.errors.sessionExpired"));
       } else {
-        const message =
+        setError(
           err instanceof Error
             ? err.message
-            : t("admin.mcpServers.errors.testFailed");
-        setProbeError(message);
+            : t("admin.mcpServers.errors.refreshFailed"),
+        );
       }
     } finally {
-      setIsTesting(false);
+      setRefreshingId(null);
     }
-  }, [
-    currentServer,
-    editingId,
-    getValues,
-    logout,
-    t,
-    token,
-  ]);
+  };
 
-  const handleProbeResponse = (response: McpTestConnectionResponse) => {
-    if (response.status === "ok") {
-      const names = Array.isArray(response.tool_names) ? response.tool_names : [];
+  const handleSubmit = async (data: AdminMcpServerFormData) => {
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const payload = buildPayloadFromForm(data, currentServer);
+
+      if (editingId == null) {
+        const created = await createServer.mutateAsync({ token, payload });
+        setSuccess(t("admin.mcpServers.feedback.created", { label: created.label }));
+        resetForm();
+      } else {
+        const updated = await updateServer.mutateAsync({ token, serverId: editingId, payload });
+        setSuccess(t("admin.mcpServers.feedback.updated", { label: updated.label }));
+        applyServerToForm(updated);
+      }
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setError(t("admin.mcpServers.errors.sessionExpired"));
+      } else {
+        setError(
+          err instanceof Error ? err.message : t("admin.mcpServers.errors.saveFailed"),
+        );
+      }
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!token) {
+      return;
+    }
+
+    setIsTesting(true);
+    setProbeFeedback(null);
+    setProbeError(null);
+    setError(null);
+    setSuccess(null);
+
+    const formData = getValues();
+
+    let response: McpTestConnectionResponse;
+    try {
+      response = await probeMcpServer({
+        token,
+        url: formData.serverUrl,
+        authorization: formData.authorization || null,
+        accessToken: formData.accessToken || null,
+      });
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setError(t("admin.mcpServers.errors.sessionExpired"));
+      } else {
+        setProbeError(
+          err instanceof Error ? err.message : t("admin.mcpServers.test.errorGeneric"),
+        );
+      }
+      setIsTesting(false);
+      return;
+    }
+
+    setIsTesting(false);
+
+    if (response.success) {
+      const names = response.tool_names ?? [];
       setProbeFeedback(
         names.length
           ? t("admin.mcpServers.test.successWithTools", {
@@ -993,6 +546,121 @@ export const AdminMcpServersPage = () => {
     oauthFeedback.stateId,
     t,
     token,
+  ]);
+
+  // OAuth polling
+  useEffect(() => {
+    const currentState = pendingStateRef.current;
+    if (!currentState || !token || oauthFeedback.status !== "pending") {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const poll = async () => {
+      while (!isCancelled && pendingStateRef.current === currentState) {
+        try {
+          const status: McpOAuthSessionStatus = await pollMcpOAuthSession({
+            token,
+            state: currentState,
+          });
+
+          if (status.status === "completed") {
+            if (isCancelled) {
+              return;
+            }
+
+            const plan = oauthPlanRef.current;
+            if (plan) {
+              const { access_token, refresh_token, metadata } = status;
+              const accessTokenDraft = access_token
+                ? extractStringFromTokenPayload(access_token, [
+                    "access_token",
+                    "accessToken",
+                    "token",
+                  ]) ?? ""
+                : "";
+
+              const refreshTokenDraft = refresh_token
+                ? extractStringFromTokenPayload(refresh_token, [
+                    "refresh_token",
+                    "refreshToken",
+                  ]) ?? ""
+                : "";
+
+              reset((prev) => ({
+                ...prev,
+                accessToken: accessTokenDraft,
+                refreshToken: refreshTokenDraft,
+                oauthMetadata: metadata ? JSON.stringify(metadata, null, 2) : "",
+              }));
+            }
+
+            setOauthFeedback({
+              status: "success",
+              message: t("admin.mcpServers.oauth.success"),
+              stateId: null,
+              serverId: oauthFeedback.serverId,
+            });
+            pendingStateRef.current = null;
+            break;
+          }
+
+          if (status.status === "failed") {
+            if (isCancelled) {
+              return;
+            }
+
+            const errMsg = status.error || t("admin.mcpServers.oauth.errorGeneric");
+            setOauthFeedback({
+              status: "error",
+              message: errMsg,
+              stateId: null,
+              serverId: oauthFeedback.serverId,
+            });
+            pendingStateRef.current = null;
+            break;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        } catch (err) {
+          if (isCancelled) {
+            return;
+          }
+
+          if (isUnauthorizedError(err)) {
+            logout();
+            setError(t("admin.mcpServers.errors.sessionExpired"));
+          } else {
+            const errMsg =
+              err instanceof Error
+                ? err.message
+                : t("admin.mcpServers.oauth.errorGeneric");
+            setOauthFeedback({
+              status: "error",
+              message: errMsg,
+              stateId: null,
+              serverId: oauthFeedback.serverId,
+            });
+          }
+          pendingStateRef.current = null;
+          break;
+        }
+      }
+    };
+
+    void poll();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    oauthFeedback.status,
+    oauthFeedback.serverId,
+    token,
+    logout,
+    t,
+    reset,
   ]);
 
   const currentAuthorizationHint = currentServer?.authorization_hint;
@@ -1103,312 +771,298 @@ export const AdminMcpServersPage = () => {
   );
 
   return (
-    <>
-      <AdminTabs activeTab="mcp-servers" />
-      <ManagementPageLayout>
-        <header className="admin-page-header">
-          <div>
-            <h1 className="admin-page-title">{t("admin.mcpServers.page.title")}</h1>
-            <p className="admin-page-subtitle">{t("admin.mcpServers.page.subtitle")}</p>
-          </div>
-          <button type="button" className="button" onClick={handleCreate}>
-            {t("admin.mcpServers.actions.startCreate")}
-          </button>
-        </header>
+    <ManagementPageLayout
+      title={t("admin.mcpServers.page.title")}
+      subtitle={t("admin.mcpServers.page.subtitle")}
+      tabs={<AdminTabs activeTab="mcp-servers" />}
+    >
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1.5rem" }}>
+        <button type="button" className="button" onClick={handleCreate}>
+          {t("admin.mcpServers.actions.startCreate")}
+        </button>
+      </div>
 
-        {error && <div className="alert alert--danger">{error}</div>}
-        {success && <div className="alert alert--success">{success}</div>}
+      <FeedbackMessages
+        error={error}
+        success={success}
+        onDismissError={() => setError(null)}
+        onDismissSuccess={() => setSuccess(null)}
+      />
 
-        <div className="admin-grid">
-          <section className="admin-card admin-card--wide">
-            <div>
-              <h2 className="admin-card__title">{t("admin.mcpServers.list.title")}</h2>
-              <p className="admin-card__subtitle">
-                {t("admin.mcpServers.list.subtitle")}
-              </p>
-            </div>
-            {loading ? (
-              <p>{t("admin.mcpServers.list.loading")}</p>
-            ) : servers.length === 0 ? (
-              <p>{t("admin.mcpServers.list.empty")}</p>
-            ) : (
-              <ResponsiveTable
-                columns={mcpServerColumns}
-                data={servers}
-                keyExtractor={(server) => server.id.toString()}
-                mobileCardView={true}
+      <div className="admin-grid">
+        <FormSection
+          title={t("admin.mcpServers.list.title")}
+          subtitle={t("admin.mcpServers.list.subtitle")}
+          className="admin-card--wide"
+        >
+          {loading ? (
+            <LoadingSpinner text={t("admin.mcpServers.list.loading")} />
+          ) : servers.length === 0 ? (
+            <p className="admin-card__subtitle">{t("admin.mcpServers.list.empty")}</p>
+          ) : (
+            <ResponsiveTable
+              columns={mcpServerColumns}
+              data={servers}
+              keyExtractor={(server) => server.id.toString()}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+
+        <FormSection
+          title={
+            editingId == null
+              ? t("admin.mcpServers.form.createTitle")
+              : t("admin.mcpServers.form.editTitle", {
+                  label: currentServer?.label ?? "",
+                })
+          }
+          subtitle={
+            editingId == null
+              ? t("admin.mcpServers.form.createSubtitle")
+              : t("admin.mcpServers.form.editSubtitle")
+          }
+        >
+          <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+            <FormField
+              label={t("admin.mcpServers.form.labelLabel")}
+              error={formErrors.label?.message}
+            >
+              <input
+                className="input"
+                type="text"
+                {...register("label")}
+                placeholder={t("admin.mcpServers.form.labelPlaceholder")}
               />
-            )}
-          </section>
+            </FormField>
 
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">
-                {editingId == null
-                  ? t("admin.mcpServers.form.createTitle")
-                  : t("admin.mcpServers.form.editTitle", {
-                      label: currentServer?.label ?? "",
-                    })}
-              </h2>
-              <p className="admin-card__subtitle">
-                {editingId == null
-                  ? t("admin.mcpServers.form.createSubtitle")
-                  : t("admin.mcpServers.form.editSubtitle")}
-              </p>
-            </div>
-            <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
-              <label className="label">
-                {t("admin.mcpServers.form.labelLabel")}
-                <input
-                  className="input"
-                  type="text"
-                  {...register("label")}
-                  placeholder={t("admin.mcpServers.form.labelPlaceholder")}
-                />
-                {formErrors.label && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                    {formErrors.label.message}
-                  </span>
-                )}
-              </label>
+            <FormField
+              label={t("admin.mcpServers.form.serverUrlLabel")}
+              error={formErrors.serverUrl?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...register("serverUrl")}
+                placeholder={t("admin.mcpServers.form.serverUrlPlaceholder")}
+              />
+            </FormField>
 
-              <label className="label">
-                {t("admin.mcpServers.form.serverUrlLabel")}
-                <input
-                  className="input"
-                  type="url"
-                  {...register("serverUrl")}
-                  placeholder={t("admin.mcpServers.form.serverUrlPlaceholder")}
-                />
-                {formErrors.serverUrl && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                    {formErrors.serverUrl.message}
-                  </span>
-                )}
-              </label>
-
-              <label className="label">
-                <span>{t("admin.mcpServers.form.authorizationLabel")}</span>
-                <input
-                  className="input"
-                  type="text"
-                  {...register("authorization")}
-                  placeholder={t("admin.mcpServers.form.authorizationPlaceholder")}
-                />
-                {currentAuthorizationHint && (
-                  <span className="form-hint">
-                    {t("admin.mcpServers.form.authorizationHint", {
+            <FormField
+              label={t("admin.mcpServers.form.authorizationLabel")}
+              hint={
+                currentAuthorizationHint
+                  ? t("admin.mcpServers.form.authorizationHint", {
                       hint: currentAuthorizationHint,
-                    })}
-                  </span>
-                )}
-              </label>
+                    })
+                  : undefined
+              }
+            >
+              <input
+                className="input"
+                type="text"
+                {...register("authorization")}
+                placeholder={t("admin.mcpServers.form.authorizationPlaceholder")}
+              />
+            </FormField>
 
-              <div className="admin-form__row">
-                <label className="label">
-                  {t("admin.mcpServers.form.accessTokenLabel")}
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("accessToken")}
-                    placeholder={t("admin.mcpServers.form.accessTokenPlaceholder")}
-                  />
-                  {currentAccessTokenHint && (
-                    <span className="form-hint">
-                      {t("admin.mcpServers.form.accessTokenHint", {
+            <div className="admin-form__row">
+              <FormField
+                label={t("admin.mcpServers.form.accessTokenLabel")}
+                hint={
+                  currentAccessTokenHint
+                    ? t("admin.mcpServers.form.accessTokenHint", {
                         hint: currentAccessTokenHint,
-                      })}
-                    </span>
-                  )}
-                </label>
+                      })
+                    : undefined
+                }
+              >
+                <input
+                  className="input"
+                  type="text"
+                  {...register("accessToken")}
+                  placeholder={t("admin.mcpServers.form.accessTokenPlaceholder")}
+                />
+              </FormField>
 
-                <label className="label">
-                  {t("admin.mcpServers.form.refreshTokenLabel")}
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("refreshToken")}
-                    placeholder={t("admin.mcpServers.form.refreshTokenPlaceholder")}
-                  />
-                  {currentRefreshTokenHint && (
-                    <span className="form-hint">
-                      {t("admin.mcpServers.form.refreshTokenHint", {
+              <FormField
+                label={t("admin.mcpServers.form.refreshTokenLabel")}
+                hint={
+                  currentRefreshTokenHint
+                    ? t("admin.mcpServers.form.refreshTokenHint", {
                         hint: currentRefreshTokenHint,
-                      })}
-                    </span>
-                  )}
-                </label>
-              </div>
-
-              <label className="label">
-                {t("admin.mcpServers.form.oauthClientIdLabel")}
+                      })
+                    : undefined
+                }
+              >
                 <input
                   className="input"
                   type="text"
-                  {...register("oauthClientId")}
-                  placeholder={t("admin.mcpServers.form.oauthClientIdPlaceholder")}
+                  {...register("refreshToken")}
+                  placeholder={t("admin.mcpServers.form.refreshTokenPlaceholder")}
                 />
-              </label>
+              </FormField>
+            </div>
 
-              <label className="label">
-                {t("admin.mcpServers.form.oauthClientSecretLabel")}
-                <input
-                  className="input"
-                  type="password"
-                  {...register("oauthClientSecret")}
-                  placeholder={t("admin.mcpServers.form.oauthClientSecretPlaceholder")}
-                />
-                {currentClientSecretHint && (
-                  <span className="form-hint">
-                    {t("admin.mcpServers.form.oauthClientSecretHint", {
+            <FormField label={t("admin.mcpServers.form.oauthClientIdLabel")}>
+              <input
+                className="input"
+                type="text"
+                {...register("oauthClientId")}
+                placeholder={t("admin.mcpServers.form.oauthClientIdPlaceholder")}
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.mcpServers.form.oauthClientSecretLabel")}
+              hint={
+                currentClientSecretHint
+                  ? t("admin.mcpServers.form.oauthClientSecretHint", {
                       hint: currentClientSecretHint,
-                    })}
-                  </span>
-                )}
-              </label>
+                    })
+                  : undefined
+              }
+            >
+              <input
+                className="input"
+                type="password"
+                {...register("oauthClientSecret")}
+                placeholder={t("admin.mcpServers.form.oauthClientSecretPlaceholder")}
+              />
+            </FormField>
 
-              <label className="label">
-                {t("admin.mcpServers.form.oauthScopeLabel")}
-                <input
-                  className="input"
-                  type="text"
-                  {...register("oauthScope")}
-                  placeholder={t("admin.mcpServers.form.oauthScopePlaceholder")}
-                />
-              </label>
+            <FormField label={t("admin.mcpServers.form.oauthScopeLabel")}>
+              <input
+                className="input"
+                type="text"
+                {...register("oauthScope")}
+                placeholder={t("admin.mcpServers.form.oauthScopePlaceholder")}
+              />
+            </FormField>
 
-              <div className="admin-form__row">
-                <label className="label">
-                  {t("admin.mcpServers.form.oauthAuthorizationEndpointLabel")}
-                  <input
-                    className="input"
-                    type="url"
-                    {...register("oauthAuthorizationEndpoint")}
-                    placeholder={t(
-                      "admin.mcpServers.form.oauthAuthorizationEndpointPlaceholder",
-                    )}
-                  />
-                </label>
-
-                <label className="label">
-                  {t("admin.mcpServers.form.oauthTokenEndpointLabel")}
-                  <input
-                    className="input"
-                    type="url"
-                    {...register("oauthTokenEndpoint")}
-                    placeholder={t(
-                      "admin.mcpServers.form.oauthTokenEndpointPlaceholder",
-                    )}
-                  />
-                </label>
-              </div>
-
-              <label className="label">
-                {t("admin.mcpServers.form.oauthRedirectUriLabel")}
+            <div className="admin-form__row">
+              <FormField label={t("admin.mcpServers.form.oauthAuthorizationEndpointLabel")}>
                 <input
                   className="input"
                   type="url"
-                  {...register("oauthRedirectUri")}
+                  {...register("oauthAuthorizationEndpoint")}
                   placeholder={t(
-                    "admin.mcpServers.form.oauthRedirectUriPlaceholder",
+                    "admin.mcpServers.form.oauthAuthorizationEndpointPlaceholder",
                   )}
                 />
-              </label>
+              </FormField>
 
-              <label className="label">
-                {t("admin.mcpServers.form.oauthMetadataLabel")}
-                <textarea
-                  className="textarea"
-                  rows={4}
-                  {...register("oauthMetadata")}
-                  placeholder={t("admin.mcpServers.form.oauthMetadataPlaceholder")}
-                />
-                {formErrors.oauthMetadata && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                    {formErrors.oauthMetadata.message}
-                  </span>
-                )}
-                <span className="form-hint">
-                  {t("admin.mcpServers.form.oauthMetadataHint")}
-                </span>
-              </label>
-
-              <label className="checkbox-field">
+              <FormField label={t("admin.mcpServers.form.oauthTokenEndpointLabel")}>
                 <input
-                  type="checkbox"
-                  {...register("isActive")}
+                  className="input"
+                  type="url"
+                  {...register("oauthTokenEndpoint")}
+                  placeholder={t(
+                    "admin.mcpServers.form.oauthTokenEndpointPlaceholder",
+                  )}
                 />
-                <span>{t("admin.mcpServers.form.isActiveLabel")}</span>
-              </label>
+              </FormField>
+            </div>
 
-              <div className="admin-form__actions">
-                <button
-                  type="submit"
-                  className="button"
-                  disabled={isSaving}
-                >
-                  {isSaving
-                    ? t("admin.mcpServers.form.saving")
-                    : editingId == null
-                    ? t("admin.mcpServers.form.createSubmit")
-                    : t("admin.mcpServers.form.updateSubmit")}
-                </button>
-                {editingId != null && (
-                  <button
-                    type="button"
-                    className="button button--secondary"
-                    onClick={resetForm}
-                  >
-                    {t("admin.mcpServers.form.cancelEdit")}
-                  </button>
+            <FormField label={t("admin.mcpServers.form.oauthRedirectUriLabel")}>
+              <input
+                className="input"
+                type="url"
+                {...register("oauthRedirectUri")}
+                placeholder={t(
+                  "admin.mcpServers.form.oauthRedirectUriPlaceholder",
                 )}
-              </div>
+              />
+            </FormField>
 
-              <div className="admin-form__actions">
+            <FormField
+              label={t("admin.mcpServers.form.oauthMetadataLabel")}
+              error={formErrors.oauthMetadata?.message}
+              hint={t("admin.mcpServers.form.oauthMetadataHint")}
+            >
+              <textarea
+                className="textarea"
+                rows={4}
+                {...register("oauthMetadata")}
+                placeholder={t("admin.mcpServers.form.oauthMetadataPlaceholder")}
+              />
+            </FormField>
+
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                {...register("isActive")}
+              />
+              <span>{t("admin.mcpServers.form.isActiveLabel")}</span>
+            </label>
+
+            <div className="admin-form__actions">
+              <button
+                type="submit"
+                className="button"
+                disabled={isSaving}
+              >
+                {isSaving
+                  ? t("admin.mcpServers.form.saving")
+                  : editingId == null
+                  ? t("admin.mcpServers.form.createSubmit")
+                  : t("admin.mcpServers.form.updateSubmit")}
+              </button>
+              {editingId != null && (
                 <button
                   type="button"
                   className="button button--secondary"
-                  onClick={handleStartOAuth}
-                  disabled={oauthFeedback.status === "starting" || oauthFeedback.status === "pending"}
+                  onClick={resetForm}
                 >
-                  {oauthFeedback.status === "starting"
-                    ? t("admin.mcpServers.oauth.starting")
-                    : t("admin.mcpServers.form.oauthButton")}
+                  {t("admin.mcpServers.form.cancelEdit")}
                 </button>
-                <button
-                  type="button"
-                  className="button button--ghost"
-                  onClick={handleTestConnection}
-                  disabled={isTesting}
-                >
-                  {isTesting
-                    ? t("admin.mcpServers.test.running")
-                    : t("admin.mcpServers.form.testButton")}
-                </button>
+              )}
+            </div>
+
+            <div className="admin-form__actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={handleStartOAuth}
+                disabled={oauthFeedback.status === "starting" || oauthFeedback.status === "pending"}
+              >
+                {oauthFeedback.status === "starting"
+                  ? t("admin.mcpServers.oauth.starting")
+                  : t("admin.mcpServers.form.oauthButton")}
+              </button>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+              >
+                {isTesting
+                  ? t("admin.mcpServers.test.running")
+                  : t("admin.mcpServers.form.testButton")}
+              </button>
+            </div>
+
+            {oauthFeedback.message && (
+              <div
+                className={`alert ${
+                  oauthFeedback.status === "error"
+                    ? "alert--danger"
+                    : oauthFeedback.status === "success"
+                    ? "alert--success"
+                    : "alert--info"
+                }`}
+              >
+                {oauthFeedback.message}
               </div>
+            )}
 
-              {oauthFeedback.message && (
-                <div
-                  className={`alert ${
-                    oauthFeedback.status === "error"
-                      ? "alert--danger"
-                      : oauthFeedback.status === "success"
-                      ? "alert--success"
-                      : "alert--info"
-                  }`}
-                >
-                  {oauthFeedback.message}
-                </div>
-              )}
-
-              {probeFeedback && (
-                <div className="alert alert--success">{probeFeedback}</div>
-              )}
-              {probeError && <div className="alert alert--danger">{probeError}</div>}
-            </form>
-          </section>
-        </div>
-      </ManagementPageLayout>
-    </>
+            {probeFeedback && (
+              <div className="alert alert--success">{probeFeedback}</div>
+            )}
+            {probeError && <div className="alert alert--danger">{probeError}</div>}
+          </form>
+        </FormSection>
+      </div>
+    </ManagementPageLayout>
   );
 };
