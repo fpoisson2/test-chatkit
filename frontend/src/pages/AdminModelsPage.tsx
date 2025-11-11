@@ -12,7 +12,7 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { ResponsiveTable, type Column } from "../components";
+import { ResponsiveTable, type Column, LoadingSpinner, ErrorAlert } from "../components";
 import {
   AppSettings,
   AvailableModel,
@@ -446,8 +446,8 @@ export const AdminModelsPage = () => {
     <>
       <AdminTabs activeTab="models" />
       <ManagementPageLayout>
-        {error && <div className="alert alert--danger">{error}</div>}
-        {success && <div className="alert alert--success">{success}</div>}
+        {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
+        {success && <ErrorAlert message={success} type="info" dismissible onDismiss={() => setSuccess(null)} />}
 
         <div className="admin-grid">
           <section className="admin-card">
@@ -572,7 +572,7 @@ export const AdminModelsPage = () => {
               </p>
             </div>
             {isLoading ? (
-              <p style={{ color: "#475569" }}>Chargement des modèles…</p>
+              <LoadingSpinner text="Chargement des modèles…" />
             ) : models.length === 0 ? (
               <p style={{ color: "#475569" }}>
                 Aucun modèle n'est encore enregistré. Ajoutez-en un pour

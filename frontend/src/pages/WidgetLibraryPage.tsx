@@ -7,6 +7,7 @@ import { WidgetTemplateForm } from "../components/WidgetTemplateForm";
 import { WidgetTemplateGallery } from "../components/WidgetTemplateGallery";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { AdminTabs } from "../components/AdminTabs";
+import { ErrorAlert } from "../components";
 import {
   ApiError,
   isUnauthorizedError,
@@ -170,8 +171,8 @@ export const WidgetLibraryPage = () => {
           </button>
         }
       >
-      {success ? <div className="alert alert--success">{success}</div> : null}
-      {error ? <div className="alert alert--danger">{error}</div> : null}
+      {success && <ErrorAlert message={success} type="info" dismissible onDismiss={() => setSuccess(null)} />}
+      {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
 
       <div className="widget-library">
         <WidgetTemplateGallery
