@@ -124,8 +124,8 @@ def _normalize_conversation_history_for_provider(
 
     Some providers still rely on the legacy Chat Completions format and reject
     Responses-specific content blocks such as `input_text` and `output_text`.
-    When we detect such providers we coerce these types to the more widely
-    supported `text` variant.
+    When we detect such providers we collapse textual content blocks into the
+    plain-string representation accepted by the Chat Completions API.
     """
 
     if not provider_slug or not isinstance(provider_slug, str):
@@ -141,30 +141,60 @@ def _normalize_conversation_history_for_provider(
 
     changed = False
     normalized: list[TResponseInputItem] = []
-    for item in items:
-        if isinstance(item, Mapping):
-            copied_item = copy.deepcopy(item)
-            content = copied_item.get("content")
-            if isinstance(content, list):
-                for index, part in enumerate(content):
-                    if not isinstance(part, Mapping):
-                        continue
-                    part_type = part.get("type")
-                    if (
-                        isinstance(part_type, str)
-                        and part_type in {"input_text", "output_text"}
-                    ):
-                        coerced_part = dict(part)
-                        coerced_part["type"] = "text"
-                        content[index] = coerced_part
-                        changed = True
-            normalized.append(copied_item)
-        else:
-            normalized.append(item)
+    text_content_types = {"input_text", "output_text", "text"}
 
-    if not changed:
-        return items
-    return normalized
+    for item in items:
+        if not isinstance(item, Mapping):
+            normalized.append(item)
+            continue
+
+        copied_item = copy.deepcopy(item)
+        content = copied_item.get("content")
+
+        if isinstance(content, list):
+            text_parts: list[str] = []
+            convertible_to_string = True
+
+            for part in content:
+                if (
+                    isinstance(part, Mapping)
+                    and isinstance(part.get("type"), str)
+                    and part["type"] in text_content_types
+                    and isinstance(part.get("text"), str)
+                ):
+                    text_parts.append(part["text"])
+                else:
+                    convertible_to_string = False
+                    break
+
+            if convertible_to_string and text_parts:
+                copied_item["content"] = "\n\n".join(text_parts)
+                normalized.append(copied_item)
+                changed = True
+                continue
+
+            rewritten_content: list[Any] = []
+            replaced_any = False
+
+            for part in content:
+                if (
+                    isinstance(part, Mapping)
+                    and isinstance(part.get("type"), str)
+                    and part["type"] in text_content_types
+                    and isinstance(part.get("text"), str)
+                ):
+                    rewritten_content.append(part["text"])
+                    replaced_any = True
+                else:
+                    rewritten_content.append(part)
+
+            if replaced_any:
+                copied_item["content"] = rewritten_content
+                changed = True
+
+        normalized.append(copied_item)
+
+    return items if not changed else normalized
 
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer
