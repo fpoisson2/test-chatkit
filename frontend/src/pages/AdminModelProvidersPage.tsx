@@ -281,6 +281,83 @@ export const AdminModelProvidersPage = () => {
         onDismissSuccess={() => setSuccess(null)}
       />
 
+      <div className="admin-grid">
+        <FormSection
+          title={t("admin.appSettings.model.cardTitle")}
+          subtitle={t("admin.appSettings.model.cardDescription")}
+        >
+          {isLoading ? (
+            <p>Chargement de la configuration...</p>
+          ) : (
+            <>
+              {settings?.model_providers && settings.model_providers.length > 0 ? (
+                <div style={{ marginBottom: "1rem" }}>
+                  <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                    Fournisseurs configurés
+                  </h3>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    {settings.model_providers.map((provider, index) => (
+                      <li
+                        key={index}
+                        style={{
+                          padding: "0.75rem",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "0.375rem",
+                          marginBottom: "0.5rem",
+                          backgroundColor: provider.is_default ? "#f0fdf4" : "transparent"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <strong>{provider.provider}</strong>
+                          {provider.is_default && (
+                            <span style={{
+                              fontSize: "0.75rem",
+                              padding: "0.125rem 0.5rem",
+                              backgroundColor: "#22c55e",
+                              color: "white",
+                              borderRadius: "9999px"
+                            }}>
+                              Par défaut
+                            </span>
+                          )}
+                        </div>
+                        {provider.api_base && (
+                          <div style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem" }}>
+                            Base URL: {provider.api_base}
+                          </div>
+                        )}
+                        {provider.has_api_key && (
+                          <div style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem" }}>
+                            ✓ Clé API configurée {provider.api_key_hint && `(${provider.api_key_hint})`}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="admin-card__subtitle">
+                  {effectiveProvider
+                    ? t("admin.appSettings.model.environmentSummary", {
+                        provider: effectiveProvider || t("admin.appSettings.model.providerUnknown"),
+                        base: effectiveBase || t("admin.appSettings.model.baseUnknown"),
+                      })
+                    : "Aucun fournisseur de modèle configuré. Utilisez le bouton + pour en ajouter."}
+                </p>
+              )}
+              <button
+                type="button"
+                className="button"
+                onClick={() => setShowConfigModal(true)}
+                style={{ marginTop: "1rem" }}
+              >
+                Configurer les fournisseurs
+              </button>
+            </>
+          )}
+        </FormSection>
+      </div>
+
       {showConfigModal && (
         <Modal
           title={t("admin.appSettings.model.cardTitle")}
