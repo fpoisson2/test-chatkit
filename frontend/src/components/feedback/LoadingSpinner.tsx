@@ -50,7 +50,7 @@ export const LoadingSpinner = ({
         className="loading-spinner"
         style={sizeStyles[size]}
         role="status"
-        aria-label={text || "Loading"}
+        aria-label={text || "Chargement"}
         aria-live="polite"
       />
       {text && <p className="loading-spinner-text">{text}</p>}

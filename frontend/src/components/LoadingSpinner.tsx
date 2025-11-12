@@ -9,7 +9,7 @@ interface LoadingSpinnerProps {
 
 export const LoadingSpinner = ({
   size = "md",
-  text = "Loading...",
+  text = "Chargement…",
   className = "",
 }: LoadingSpinnerProps) => {
   const sizeStyles: Record<string, CSSProperties> = {
