@@ -4,8 +4,8 @@
 
 /* Modal container with extra-large size */
 .admin-modal {
-  width: min(96vw, 1500px);
-  max-width: 1500px;
+  width: min(98vw, 1600px);
+  max-width: 1600px;
   height: min(92vh, 960px);
   max-height: 960px;
   display: flex;
@@ -51,7 +51,7 @@
 @media (min-width: 1024px) {
   .admin-modal__desktop {
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: 240px minmax(0, 1fr);
     grid-template-rows: 1fr;
     height: 100%;
     min-height: 0;
