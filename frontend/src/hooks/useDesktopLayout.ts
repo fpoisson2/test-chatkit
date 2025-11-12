@@ -32,22 +32,17 @@ const getViewportWidthCandidates = () => {
   ];
 
   if (window.visualViewport) {
-    const { width, scale } = window.visualViewport;
+    const { width } = window.visualViewport;
 
     if (typeof width === "number" && Number.isFinite(width)) {
       candidates.push(width);
-
-      if (typeof scale === "number" && Number.isFinite(scale) && scale > 0) {
-        candidates.push(width * scale);
-        candidates.push(width / scale);
-      }
     }
   }
 
   return candidates.filter((value) => Number.isFinite(value) && value > 0);
 };
 
-const isDesktopForcedByBrowser = () => {
+const isDesktopForcedByBrowser = (viewportWidth: number) => {
   const nav = getNavigator();
   if (!nav) {
     return false;
@@ -59,6 +54,10 @@ const isDesktopForcedByBrowser = () => {
   }
 
   if (uaData.mobile) {
+    return false;
+  }
+
+  if (viewportWidth < DESKTOP_BREAKPOINT) {
     return false;
   }
 
@@ -81,11 +80,13 @@ export const getDesktopLayoutPreference = () => {
   }
 
   const candidates = getViewportWidthCandidates();
-  if (candidates.some((value) => value >= DESKTOP_BREAKPOINT)) {
+  const maxViewportWidth = candidates.length > 0 ? Math.max(...candidates) : 0;
+
+  if (maxViewportWidth >= DESKTOP_BREAKPOINT) {
     return true;
   }
 
-  if (isDesktopForcedByBrowser()) {
+  if (isDesktopForcedByBrowser(maxViewportWidth)) {
     return true;
   }
 
