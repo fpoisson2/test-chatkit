@@ -37,6 +37,7 @@ export const useChatkitWorkflowSync = ({
   const controlRef = useRef(control);
   const lastVisibilityRefreshRef = useRef(0);
   const previousThreadIdRef = useRef<string | null>(initialThreadId);
+  const fetchedThreadsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     fetchUpdatesRef.current = fetchUpdates;
@@ -46,6 +47,46 @@ export const useChatkitWorkflowSync = ({
       controlRef.current = undefined;
     };
   }, [fetchUpdates, control]);
+
+  // Fetch messages when reopening a workflow with an existing thread
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    // Only fetch if we have a thread ID (meaning we're resuming a conversation)
+    if (!initialThreadId) {
+      return;
+    }
+
+    // Don't fetch if we've already fetched this thread
+    if (fetchedThreadsRef.current.has(initialThreadId)) {
+      return;
+    }
+
+    // Don't fetch if this is an auto-start workflow (it will trigger its own messages)
+    if (chatkitWorkflowInfo?.auto_start && !previousThreadIdRef.current) {
+      return;
+    }
+
+    // Mark this thread as fetched before making the request to avoid duplicates
+    fetchedThreadsRef.current.add(initialThreadId);
+
+    // Fetch updates to retrieve any messages that were sent while the workflow was closed
+    const timeoutId = setTimeout(() => {
+      fetchUpdates().catch((err) => {
+        if (import.meta.env.DEV) {
+          console.warn("[ChatKit] Failed to fetch messages on thread load", err);
+        }
+        // Remove from set if fetch failed so we can retry later
+        fetchedThreadsRef.current.delete(initialThreadId);
+      });
+    }, 100); // Small delay to ensure ChatKit is ready
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [enabled, initialThreadId, chatkitWorkflowInfo?.auto_start, fetchUpdates]);
 
   const requestRefresh = useCallback(
     (context?: string) => {
@@ -174,6 +215,7 @@ export const useChatkitWorkflowSync = ({
     if (!enabled) {
       autoStartAttemptRef.current = false;
       previousThreadIdRef.current = initialThreadId;
+      fetchedThreadsRef.current.clear();
       return;
     }
 
