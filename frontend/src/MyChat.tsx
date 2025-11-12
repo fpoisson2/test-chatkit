@@ -492,8 +492,8 @@ export function MyChat() {
 
       // Detect LTI context
       const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
-      // Apply LTI options if in LTI context OR if testing (always apply when lti_enabled)
-      const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && (isLtiContext || true); // TODO: remove || true for production
+      // Apply LTI options only in LTI context
+      const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
 
       return {
         api: apiConfig,
@@ -678,7 +678,7 @@ export function MyChat() {
   // Apply LTI sidebar visibility setting
   useEffect(() => {
     const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
-    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && (isLtiContext || true); // TODO: remove || true for production
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
     const shouldHideSidebar = shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar;
 
     setHideSidebar(shouldHideSidebar);

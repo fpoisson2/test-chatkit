@@ -362,10 +362,11 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         "chatkit-layout",
         isSidebarOpen ? "chatkit-layout--sidebar-open" : "",
         isDesktopLayout ? "chatkit-layout--desktop" : "",
+        hideSidebar ? "chatkit-layout--sidebar-hidden" : "",
       ]
         .filter(Boolean)
         .join(" "),
-    [isDesktopLayout, isSidebarOpen],
+    [isDesktopLayout, isSidebarOpen, hideSidebar],
   );
 
   const sidebarClassName = useMemo(
