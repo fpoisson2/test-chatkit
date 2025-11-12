@@ -15,13 +15,6 @@ export const WaitForUserInputInspectorSection = ({
     aria-label="Configuration de l'attente utilisateur"
     className={styles.nodeInspectorPanelSpacious}
   >
-    <header>
-      <h3 className={styles.nodeInspectorSectionHeading}>Attendre une réponse</h3>
-      <p className={styles.nodeInspectorMutedTextHighlight}>
-        Utilisez ce bloc pour suspendre le workflow jusqu'à la prochaine saisie utilisateur. Un message assistant optionnel peut
-        préparer la relance.
-      </p>
-    </header>
     <label className={styles.nodeInspectorField}>
       <span className={styles.nodeInspectorLabel}>Message diffusé avant l'attente</span>
       <textarea

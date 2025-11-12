@@ -696,8 +696,6 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     <TabSection
       tabs={tabs}
       defaultTab={DEFAULT_TAB}
-      title={t('workflowBuilder.agentInspector.title')}
-      description={t('workflowBuilder.agentInspector.description')}
       tabsLabel={t('workflowBuilder.agentInspector.tabsLabel')}
     />
   );

@@ -311,12 +311,6 @@ const WidgetNodeContentEditor = ({
 
   return (
     <section aria-label="Contenu du widget" className={styles.nodeInspectorPanel}>
-      <header>
-        <h3 className={styles.nodeInspectorSectionHeading}>Contenu du widget</h3>
-        <p className={styles.nodeInspectorSectionDescription}>
-          Modifiez les textes diffusés par ce bloc. Les valeurs sont enregistrées dans les propriétés du workflow.
-        </p>
-      </header>
       {loading ? (
         <p className={styles.nodeInspectorMutedText}>Chargement de la prévisualisation…</p>
       ) : error ? (

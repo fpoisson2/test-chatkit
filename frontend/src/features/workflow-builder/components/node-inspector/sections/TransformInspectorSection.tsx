@@ -19,18 +19,6 @@ export const TransformInspectorSection = ({
     aria-label="Configuration du bloc transform"
     className={styles.nodeInspectorPanelSpacious}
   >
-    <header>
-      <h3 className={styles.nodeInspectorSectionHeading}>Restructuration des données</h3>
-      <p className={styles.nodeInspectorMutedTextHighlight}>
-        Définissez la forme JSON qui doit être transmise au bloc suivant. Les expressions <code
-          className={styles.nodeInspectorInlineCode}
-        >
-          {"{{ }}"}
-        </code>{" "}
-        sont évaluées à partir du contexte du bloc précédent (par exemple <code>{"{{ input.output_structured }}"}</code>).
-      </p>
-    </header>
-
     <label className={styles.nodeInspectorInputGroup}>
       <span className={styles.nodeInspectorLabel}>Expressions JSON</span>
       <textarea
