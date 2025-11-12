@@ -276,6 +276,77 @@
   margin: 0;
 }
 
+/* Constrain widget gallery width when displayed inside the admin modal */
+.admin-modal__tab-content .widget-gallery,
+.admin-modal__mobile-content .widget-gallery {
+  width: 100%;
+  max-width: clamp(0px, calc(100vw - 3rem), 1040px);
+  margin: 0 auto;
+  padding-inline: clamp(0.75rem, 3vw, 1.5rem);
+  box-sizing: border-box;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: clamp(0.9rem, 3vw, 1.75rem);
+}
+
+@supports (max-width: clamp(0px, calc(100dvw - 3rem), 1040px)) {
+  .admin-modal__tab-content .widget-gallery,
+  .admin-modal__mobile-content .widget-gallery {
+    max-width: clamp(0px, calc(100dvw - 3rem), 1040px);
+  }
+}
+
+@media (max-width: 600px) {
+  .admin-modal__tab-content .widget-gallery,
+  .admin-modal__mobile-content .widget-gallery {
+    padding-inline: clamp(0.5rem, 4vw, 0.9rem);
+    gap: clamp(0.75rem, 4vw, 1.25rem);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-modal__tab-content .widget-gallery__item,
+  .admin-modal__mobile-content .widget-gallery__item {
+    gap: clamp(0.9rem, 5vw, 1.5rem);
+    align-items: stretch;
+  }
+
+  .admin-modal__tab-content .widget-gallery__actions,
+  .admin-modal__mobile-content .widget-gallery__actions {
+    position: static;
+    top: auto;
+    right: auto;
+    left: auto;
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0;
+    border-radius: clamp(0.75rem, 3vw, 1rem);
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    box-shadow: none;
+  }
+
+  .admin-modal__tab-content .widget-gallery__actions .button,
+  .admin-modal__mobile-content .widget-gallery__actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .admin-modal__tab-content .widget-gallery .widget-preview__card,
+  .admin-modal__tab-content .widget-gallery .widget-preview__basic,
+  .admin-modal__tab-content .widget-gallery .widget-preview__collection,
+  .admin-modal__mobile-content .widget-gallery .widget-preview__card,
+  .admin-modal__mobile-content .widget-gallery .widget-preview__basic,
+  .admin-modal__mobile-content .widget-gallery .widget-preview__collection {
+    padding: clamp(1.1rem, 4vw, 1.35rem);
+    border-radius: clamp(1rem, 5vw, 1.4rem);
+  }
+}
+
 /* Accessibility improvements */
 .admin-modal__tab-trigger:focus-visible,
 .admin-modal__select-trigger:focus-visible {
