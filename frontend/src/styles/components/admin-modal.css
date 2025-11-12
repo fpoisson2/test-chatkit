@@ -278,10 +278,34 @@
 
 /* Constrain widget gallery width when displayed inside the admin modal */
 .admin-modal__tab-content .widget-gallery {
-  max-width: min(100%, 1040px);
   width: 100%;
+  max-width: clamp(0px, calc(100vw - 3rem), 1040px);
   margin: 0 auto;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  padding-inline: clamp(0.75rem, 3vw, 1.5rem);
+  box-sizing: border-box;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: clamp(0.9rem, 3vw, 1.75rem);
+}
+
+@supports (max-width: clamp(0px, calc(100dvw - 3rem), 1040px)) {
+  .admin-modal__tab-content .widget-gallery {
+    max-width: clamp(0px, calc(100dvw - 3rem), 1040px);
+  }
+}
+
+@media (max-width: 600px) {
+  .admin-modal__tab-content .widget-gallery {
+    padding-inline: clamp(0.5rem, 4vw, 0.9rem);
+    gap: clamp(0.75rem, 4vw, 1.25rem);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-modal__tab-content .widget-gallery .widget-preview__card,
+  .admin-modal__tab-content .widget-gallery .widget-preview__basic,
+  .admin-modal__tab-content .widget-gallery .widget-preview__collection {
+    padding: clamp(1.1rem, 4vw, 1.35rem);
+    border-radius: clamp(1rem, 5vw, 1.4rem);
+  }
 }
 
 /* Accessibility improvements */
