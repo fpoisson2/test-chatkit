@@ -12,8 +12,14 @@
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
+:global(:root[data-theme='dark' i]) :local(.sectionCard) {
+  border-color: var(--border-color, #374151);
+  background-color: var(--panel-background, #111827);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.32);
+}
+
 @media (prefers-color-scheme: dark) {
-  .sectionCard {
+  :global(:root:not([data-theme])) :local(.sectionCard) {
     border-color: var(--border-color, #374151);
     background-color: var(--panel-background, #111827);
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.32);
@@ -41,12 +47,20 @@
   margin: 0;
 }
 
+:global(:root[data-theme='dark' i]) :local(.sectionTitle) {
+  color: var(--text-primary, #f9fafb);
+}
+
+:global(:root[data-theme='dark' i]) :local(.sectionDescription) {
+  color: var(--text-secondary, #9ca3af);
+}
+
 @media (prefers-color-scheme: dark) {
-  .sectionTitle {
+  :global(:root:not([data-theme])) :local(.sectionTitle) {
     color: var(--text-primary, #f9fafb);
   }
 
-  .sectionDescription {
+  :global(:root:not([data-theme])) :local(.sectionDescription) {
     color: var(--text-secondary, #9ca3af);
   }
 }
@@ -84,18 +98,34 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+:global(:root[data-theme='dark' i]) :local(.radioOption) {
+  border-color: var(--border-color, #374151);
+  background-color: var(--bg-muted, #1f2937);
+}
+
+:global(:root[data-theme='dark' i]) :local(.radioOption:hover) {
+  border-color: var(--border-hover, #4b5563);
+  background-color: var(--bg-hover, #2d3748);
+}
+
+:global(:root[data-theme='dark' i]) :local(.radioOptionSelected) {
+  border-color: var(--accent-color, #60a5fa);
+  background-color: rgba(96, 165, 250, 0.12);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+}
+
 @media (prefers-color-scheme: dark) {
-  .radioOption {
+  :global(:root:not([data-theme])) :local(.radioOption) {
     border-color: var(--border-color, #374151);
     background-color: var(--bg-muted, #1f2937);
   }
 
-  .radioOption:hover {
+  :global(:root:not([data-theme])) :local(.radioOption:hover) {
     border-color: var(--border-hover, #4b5563);
     background-color: var(--bg-hover, #2d3748);
   }
 
-  .radioOptionSelected {
+  :global(:root:not([data-theme])) :local(.radioOptionSelected) {
     border-color: var(--accent-color, #60a5fa);
     background-color: rgba(96, 165, 250, 0.12);
     box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
@@ -129,12 +159,20 @@
   color: var(--text-primary, #1f2937);
 }
 
+:global(:root[data-theme='dark' i]) :local(.statusMessage) {
+  color: var(--text-secondary, #d1d5db);
+}
+
+:global(:root[data-theme='dark' i]) :local(.statusMessageStrong) {
+  color: var(--text-primary, #f9fafb);
+}
+
 @media (prefers-color-scheme: dark) {
-  .statusMessage {
+  :global(:root:not([data-theme])) :local(.statusMessage) {
     color: var(--text-secondary, #d1d5db);
   }
 
-  .statusMessageStrong {
+  :global(:root:not([data-theme])) :local(.statusMessageStrong) {
     color: var(--text-primary, #f9fafb);
   }
 }
@@ -148,8 +186,13 @@
   line-height: 1.4;
 }
 
+:global(:root[data-theme='dark' i]) :local(.noticeCard) {
+  background-color: rgba(96, 165, 250, 0.12);
+  color: var(--accent-color, #93c5fd);
+}
+
 @media (prefers-color-scheme: dark) {
-  .noticeCard {
+  :global(:root:not([data-theme])) :local(.noticeCard) {
     background-color: rgba(96, 165, 250, 0.12);
     color: var(--accent-color, #93c5fd);
   }
@@ -176,8 +219,13 @@
   gap: 0.75rem;
 }
 
+:global(:root[data-theme='dark' i]) :local(.widgetInfo) {
+  border-color: var(--border-color, #374151);
+  background-color: var(--bg-muted, #1f2937);
+}
+
 @media (prefers-color-scheme: dark) {
-  .widgetInfo {
+  :global(:root:not([data-theme])) :local(.widgetInfo) {
     border-color: var(--border-color, #374151);
     background-color: var(--bg-muted, #1f2937);
   }
@@ -197,8 +245,12 @@
   color: var(--text-primary, #1f2937);
 }
 
+:global(:root[data-theme='dark' i]) :local(.widgetInfoTitle) {
+  color: var(--text-primary, #f9fafb);
+}
+
 @media (prefers-color-scheme: dark) {
-  .widgetInfoTitle {
+  :global(:root:not([data-theme])) :local(.widgetInfoTitle) {
     color: var(--text-primary, #f9fafb);
   }
 }
@@ -231,8 +283,12 @@
   color: var(--text-secondary, #4b5563);
 }
 
+:global(:root[data-theme='dark' i]) :local(.widgetBindingsList) {
+  color: var(--text-secondary, #d1d5db);
+}
+
 @media (prefers-color-scheme: dark) {
-  .widgetBindingsList {
+  :global(:root:not([data-theme])) :local(.widgetBindingsList) {
     color: var(--text-secondary, #d1d5db);
   }
 }
@@ -250,8 +306,13 @@
   color: var(--text-primary, #0f172a);
 }
 
+:global(:root[data-theme='dark' i]) :local(.widgetJsonPreview) {
+  background-color: rgba(148, 163, 184, 0.12);
+  color: var(--text-primary, #f8fafc);
+}
+
 @media (prefers-color-scheme: dark) {
-  .widgetJsonPreview {
+  :global(:root:not([data-theme])) :local(.widgetJsonPreview) {
     background-color: rgba(148, 163, 184, 0.12);
     color: var(--text-primary, #f8fafc);
   }
@@ -264,8 +325,12 @@
   color: var(--text-secondary, #6b7280);
 }
 
+:global(:root[data-theme='dark' i]) :local(.hintList) {
+  color: var(--text-secondary, #d1d5db);
+}
+
 @media (prefers-color-scheme: dark) {
-  .hintList {
+  :global(:root:not([data-theme])) :local(.hintList) {
     color: var(--text-secondary, #d1d5db);
   }
 }
@@ -289,8 +354,13 @@
   font-weight: 600;
 }
 
+:global(:root[data-theme='dark' i]) :local(.badge) {
+  background-color: rgba(96, 165, 250, 0.16);
+  color: var(--accent-color, #93c5fd);
+}
+
 @media (prefers-color-scheme: dark) {
-  .badge {
+  :global(:root:not([data-theme])) :local(.badge) {
     background-color: rgba(96, 165, 250, 0.16);
     color: var(--accent-color, #93c5fd);
   }
@@ -303,8 +373,12 @@
   margin-top: 0.5rem;
 }
 
+:global(:root[data-theme='dark' i]) :local(.errorMessage) {
+  color: #f87171;
+}
+
 @media (prefers-color-scheme: dark) {
-  .errorMessage {
+  :global(:root:not([data-theme])) :local(.errorMessage) {
     color: #f87171;
   }
 }
@@ -315,8 +389,12 @@
   color: var(--text-secondary, #6b7280);
 }
 
+:global(:root[data-theme='dark' i]) :local(.mutedMessage) {
+  color: var(--text-secondary, #9ca3af);
+}
+
 @media (prefers-color-scheme: dark) {
-  .mutedMessage {
+  :global(:root:not([data-theme])) :local(.mutedMessage) {
     color: var(--text-secondary, #9ca3af);
   }
 }
@@ -468,36 +546,70 @@ textarea[data-schema-editor="true"] {
   font-weight: 600;
 }
 
+:global(:root[data-theme='dark' i]) :local(.mcpServerCard) {
+  border-color: var(--border-color, #374151);
+  background-color: var(--panel-muted, #1f2937);
+}
+
+:global(:root[data-theme='dark' i]) :local(.mcpServerLabel) {
+  color: var(--text-primary, #f9fafb);
+}
+
+:global(:root[data-theme='dark' i]) :local(.mutedText) {
+  color: var(--text-secondary, #9ca3af);
+}
+
+:global(:root[data-theme='dark' i]) :local(.mutedTextSmall) {
+  color: var(--text-tertiary, #6b7280);
+}
+
+:global(:root[data-theme='dark' i]) :local(.chip) {
+  border-color: var(--border-color, #4b5563);
+  background-color: var(--panel-background, #111827);
+  color: var(--text-primary, #f9fafb);
+}
+
+:global(:root[data-theme='dark' i]) :local(.chipSelected) {
+  border-color: var(--accent-color, #60a5fa);
+  background-color: rgba(96, 165, 250, 0.16);
+}
+
+:global(:root[data-theme='dark' i]) :local(.customChip) {
+  border-color: var(--border-color, #4b5563);
+  background-color: rgba(96, 165, 250, 0.12);
+  color: var(--text-primary, #f9fafb);
+}
+
 @media (prefers-color-scheme: dark) {
-  .mcpServerCard {
+  :global(:root:not([data-theme])) :local(.mcpServerCard) {
     border-color: var(--border-color, #374151);
     background-color: var(--panel-muted, #1f2937);
   }
 
-  .mcpServerLabel {
+  :global(:root:not([data-theme])) :local(.mcpServerLabel) {
     color: var(--text-primary, #f9fafb);
   }
 
-  .mutedText {
+  :global(:root:not([data-theme])) :local(.mutedText) {
     color: var(--text-secondary, #9ca3af);
   }
 
-  .mutedTextSmall {
+  :global(:root:not([data-theme])) :local(.mutedTextSmall) {
     color: var(--text-tertiary, #6b7280);
   }
 
-  .chip {
+  :global(:root:not([data-theme])) :local(.chip) {
     border-color: var(--border-color, #4b5563);
     background-color: var(--panel-background, #111827);
     color: var(--text-primary, #f9fafb);
   }
 
-  .chipSelected {
+  :global(:root:not([data-theme])) :local(.chipSelected) {
     border-color: var(--accent-color, #60a5fa);
     background-color: rgba(96, 165, 250, 0.16);
   }
 
-  .customChip {
+  :global(:root:not([data-theme])) :local(.customChip) {
     border-color: var(--border-color, #4b5563);
     background-color: rgba(96, 165, 250, 0.12);
     color: var(--text-primary, #f9fafb);
