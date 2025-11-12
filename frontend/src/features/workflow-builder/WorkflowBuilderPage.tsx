@@ -122,6 +122,7 @@ import WorkflowBuilderCanvas, {
 import WorkflowBuilderToast from "./components/WorkflowBuilderToast";
 import WorkflowBuilderModals from "./components/WorkflowBuilderModals";
 import WorkflowBuilderPropertiesPanel from "./components/WorkflowBuilderPropertiesPanel";
+import EditableBlockTitle from "./components/EditableBlockTitle";
 import WorkflowBuilderHeader from "./components/WorkflowBuilderHeader";
 import useWorkflowNodeHandlers from "./hooks/useWorkflowNodeHandlers";
 import useGraphEditor from "./hooks/useGraphEditor";
@@ -1389,9 +1390,19 @@ const WorkflowBuilderPage = () => {
       <header className={styles.propertiesPanelHeader}>
         <div className={styles.propertiesPanelHeaderMeta}>
           <p className={styles.propertiesPanelOverline}>Propriétés du bloc</p>
-          <h2 id={propertiesPanelTitleId} className={styles.propertiesPanelTitle}>
-            {selectedElementLabel || "Bloc"}
-          </h2>
+          {selectedNode ? (
+            <EditableBlockTitle
+              value={selectedNode.data.displayName}
+              nodeId={selectedNode.id}
+              onSave={nodeHandlers.handleDisplayNameChange}
+              placeholder="Bloc"
+              className={styles.propertiesPanelTitle}
+            />
+          ) : (
+            <h2 id={propertiesPanelTitleId} className={styles.propertiesPanelTitle}>
+              {selectedElementLabel || "Bloc"}
+            </h2>
+          )}
         </div>
         <button
           type="button"
