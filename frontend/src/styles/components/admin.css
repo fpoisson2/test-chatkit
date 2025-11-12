@@ -153,11 +153,12 @@
   .admin-layout {
     align-items: flex-start;
     justify-content: flex-start;
-    padding: clamp(16px, 4vw, 24px);
+    padding: 12px;
   }
 
   .admin-shell {
     width: 100%;
+    max-width: 100%;
   }
 }
 
@@ -443,11 +444,13 @@
   }
 
   .admin-card {
-    padding: clamp(16px, 4vw, 24px);
-    border-radius: 18px;
+    padding: 12px;
+    border-radius: 16px;
   }
 
-  .admin-card * {
+  .admin-card pre,
+  .admin-card code,
+  .admin-card .code-block {
     max-width: 100%;
     box-sizing: border-box;
   }
