@@ -211,24 +211,24 @@ export const AdminLtiPage = () => {
 
   const registrationColumns: Column<LtiRegistration>[] = [
     {
-      header: t("admin.lti.registrations.table.issuer"),
-      accessorKey: "issuer",
-      cell: (entry) => entry.issuer,
+      key: "issuer",
+      label: t("admin.lti.registrations.table.issuer"),
+      render: (entry) => entry.issuer,
     },
     {
-      header: t("admin.lti.registrations.table.clientId"),
-      accessorKey: "client_id",
-      cell: (entry) => entry.client_id,
+      key: "client_id",
+      label: t("admin.lti.registrations.table.clientId"),
+      render: (entry) => entry.client_id,
     },
     {
-      header: t("admin.lti.registrations.table.keySetUrl"),
-      accessorKey: "key_set_url",
-      cell: (entry) => entry.key_set_url,
+      key: "key_set_url",
+      label: t("admin.lti.registrations.table.keySetUrl"),
+      render: (entry) => entry.key_set_url,
     },
     {
-      header: t("admin.lti.registrations.table.actions"),
-      accessorKey: "actions",
-      cell: (entry) => (
+      key: "actions",
+      label: t("admin.lti.registrations.table.actions"),
+      render: (entry) => (
         <div className="management-actions">
           <button
             type="button"
