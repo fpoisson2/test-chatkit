@@ -442,6 +442,21 @@
     overflow-x: hidden;
   }
 
+  .admin-card {
+    padding: clamp(16px, 4vw, 24px);
+    border-radius: 18px;
+  }
+
+  .admin-form__actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .admin-form__actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+
   .admin-provider {
     padding: 16px;
     overflow: hidden;

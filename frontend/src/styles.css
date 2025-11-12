@@ -2386,6 +2386,32 @@ button {
   max-width: 100%;
 }
 
+@media (max-width: 768px) {
+  .admin-key-details__row {
+    gap: 8px;
+  }
+
+  .admin-key-details__label {
+    font-size: 0.8rem;
+  }
+
+  .admin-key-details__value {
+    font-size: 0.8rem;
+    padding: 8px 10px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .admin-key-details__public-key {
+    overflow: hidden;
+  }
+
+  .admin-key-details__code {
+    font-size: 0.75rem;
+    padding: 12px;
+  }
+}
+
 .admin-form__default-block pre {
   margin: 8px 0 0;
   font-family: inherit;
