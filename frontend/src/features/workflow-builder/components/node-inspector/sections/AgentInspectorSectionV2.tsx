@@ -920,29 +920,13 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
       }
       setHostedWorkflowIdInput(value);
       const matched = findHostedWorkflow(value);
-      if (matched?.slug) {
-        setHostedWorkflowSlugValue(matched.slug);
-      }
+      const slug = matched?.slug ?? value;
+      setHostedWorkflowSlugValue(slug);
       if (workflowMode === 'hosted') {
-        emitNestedWorkflowChange('hosted', value, matched?.slug ?? hostedWorkflowSlugValue);
+        emitNestedWorkflowChange('hosted', value, slug);
       }
     },
-    [
-      emitNestedWorkflowChange,
-      findHostedWorkflow,
-      hostedWorkflowSlugValue,
-      workflowMode,
-    ],
-  );
-
-  const handleHostedSlugChange = useCallback(
-    (value: string) => {
-      setHostedWorkflowSlugValue(value);
-      if (workflowMode === 'hosted') {
-        emitNestedWorkflowChange('hosted', hostedWorkflowIdInput, value);
-      }
-    },
-    [emitNestedWorkflowChange, hostedWorkflowIdInput, workflowMode],
+    [emitNestedWorkflowChange, findHostedWorkflow, workflowMode],
   );
 
   const selectedNestedWorkflow = useMemo(() => {
@@ -976,7 +960,7 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
     workflowMode === 'local'
       ? Boolean(selectedNestedWorkflow)
       : workflowMode === 'hosted'
-        ? Boolean(hostedWorkflowIdInput.trim() || hostedWorkflowSlugValue.trim())
+        ? Boolean(selectedHostedWorkflow)
         : false;
 
   const nestedWorkflowSummary = useMemo(() => {
@@ -990,22 +974,10 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
       });
     }
 
-    if (workflowMode === 'hosted') {
-      if (selectedHostedWorkflow) {
-        return t('workflowBuilder.agentInspector.nestedWorkflowSelectedInfo', {
-          name: selectedHostedWorkflow.label || selectedHostedWorkflow.slug,
-        });
-      }
-      if (hostedWorkflowSlugValue.trim()) {
-        return t('workflowBuilder.agentInspector.nestedWorkflowSlugInfo', {
-          slug: hostedWorkflowSlugValue.trim(),
-        });
-      }
-      if (hostedWorkflowIdInput.trim()) {
-        return t('workflowBuilder.agentInspector.nestedWorkflowSlugInfo', {
-          slug: hostedWorkflowIdInput.trim(),
-        });
-      }
+    if (workflowMode === 'hosted' && selectedHostedWorkflow) {
+      return t('workflowBuilder.agentInspector.nestedWorkflowSelectedInfo', {
+        name: selectedHostedWorkflow.label || selectedHostedWorkflow.slug,
+      });
     }
 
     return t('workflowBuilder.agentInspector.nestedWorkflowSelectedInfoUnknown');
@@ -1144,38 +1116,6 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
               </select>
             </Field>
 
-            <div className={styles.inlineFields}>
-              <Field
-                label={t('workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel')}
-              >
-                <input
-                  type="text"
-                  value={hostedWorkflowIdInput}
-                  onChange={(event) => setHostedWorkflowIdInput(event.target.value)}
-                  onBlur={(event) =>
-                    handleHostedWorkflowSelect(event.target.value.trim())
-                  }
-                  placeholder={t(
-                    'workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder',
-                  )}
-                />
-              </Field>
-
-              <Field
-                label={t('workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel')}
-                hint={t('workflowBuilder.agentInspector.nestedWorkflowHostedSlugHint')}
-              >
-                <input
-                  type="text"
-                  value={hostedWorkflowSlugValue}
-                  onChange={(event) => handleHostedSlugChange(event.target.value)}
-                  placeholder={t(
-                    'workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder',
-                  )}
-                />
-              </Field>
-            </div>
-
             {hostedWorkflowsError ? (
               <p className={styles.errorMessage}>{hostedWorkflowsError}</p>
             ) : null}
@@ -1196,12 +1136,6 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
           </p>
         ) : null}
 
-        {workflowMode === 'hosted' && hostedWorkflowSlugValue.trim() &&
-        !selectedHostedWorkflow ? (
-          <p className={styles.mutedMessage}>
-            {t('workflowBuilder.agentInspector.nestedWorkflowHostedManualInfo')}
-          </p>
-        ) : null}
       </div>
     </div>
   );

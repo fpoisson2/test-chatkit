@@ -414,8 +414,6 @@ export const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Hosted workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedLoading": "Loading workflows…",
   "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "No hosted workflows available",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Workflow ID",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "e.g. 123",
   "workflowBuilder.agentInspector.nestedWorkflowMissing":
     "The selected workflow is no longer available.",
   "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
@@ -557,13 +555,7 @@ export const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowMode.local": "Use another workflow from this workspace",
   "workflowBuilder.agentInspector.nestedWorkflowMode.hosted": "Use a hosted workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedHint":
-    "Pick a hosted workflow or paste its ID/slug to delegate the whole agent block.",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Hosted slug",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugHint":
-    "Paste the slug provided by the hosted workflow provider.",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder": "e.g. acme-catalog-search",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedManualInfo":
-    "The hosted workflow will be executed even if it is not available in the list yet.",
+    "Pick a hosted workflow from the list to delegate the whole agent block.",
   "workflowBuilder.agentInspector.providerHint":
     "Filter the model list by provider. Leave empty to show every configured model.",
   "workflowBuilder.agentInspector.modelParametersTitle": "Model parameters",
