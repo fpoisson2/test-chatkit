@@ -2,6 +2,7 @@ import { useRef, useMemo, type CSSProperties } from "react";
 import { useUIContext } from "../contexts";
 import NodeInspector from "./NodeInspector";
 import EdgeInspector from "./EdgeInspector";
+import EditableBlockTitle from "./EditableBlockTitle";
 import styles from "../WorkflowBuilderPage.module.css";
 
 import type {
@@ -54,6 +55,7 @@ interface WorkflowBuilderPropertiesPanelProps {
   onRemoveEdge: (id: string) => void;
   onConditionChange: (edgeId: string, value: string) => void;
   onLabelChange: (edgeId: string, value: string) => void;
+  onNodeLabelChange: (nodeId: string, value: string) => void;
   onClosePropertiesPanel: () => void;
 }
 
@@ -90,6 +92,7 @@ export default function WorkflowBuilderPropertiesPanel({
   onRemoveEdge,
   onConditionChange,
   onLabelChange,
+  onNodeLabelChange,
   onClosePropertiesPanel,
 }: WorkflowBuilderPropertiesPanelProps) {
   const { isPropertiesPanelOpen } = useUIContext();
@@ -115,9 +118,19 @@ export default function WorkflowBuilderPropertiesPanel({
       <header className={styles.propertiesPanelHeader}>
         <div className={styles.propertiesPanelHeaderMeta}>
           <p className={styles.propertiesPanelOverline}>Propriétés du bloc</p>
-          <h2 id={propertiesPanelTitleId} className={styles.propertiesPanelTitle}>
-            {selectedElementLabel || "Bloc"}
-          </h2>
+          {selectedNode ? (
+            <EditableBlockTitle
+              value={selectedNode.data.displayName}
+              nodeId={selectedNode.id}
+              onSave={onNodeLabelChange}
+              placeholder="Bloc"
+              className={styles.propertiesPanelTitle}
+            />
+          ) : (
+            <h2 id={propertiesPanelTitleId} className={styles.propertiesPanelTitle}>
+              {selectedElementLabel || "Bloc"}
+            </h2>
+          )}
         </div>
         <button
           type="button"
