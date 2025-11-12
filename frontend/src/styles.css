@@ -2277,6 +2277,11 @@ button {
   overflow: hidden;
 }
 
+.admin-card--narrow {
+  width: min(100%, 720px);
+  margin-inline: auto;
+}
+
 .admin-card__title {
   margin: 0;
   font-size: clamp(1.1rem, 2.6vw, 1.35rem);
