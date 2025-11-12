@@ -59,7 +59,8 @@
   border-top-color: var(--primary-color, #2563eb);
   border-right-color: var(--primary-color, #2563eb);
   opacity: 1;
-  animation: spinFade 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite,
+    spinFade 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
 }
 
 /* Anneau secondaire avec effet de brillance */
