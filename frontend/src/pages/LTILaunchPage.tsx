@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth, type AuthUser } from "../auth";
 
 /**
@@ -9,13 +9,19 @@ import { useAuth, type AuthUser } from "../auth";
  * logs the user in automatically, and redirects to the chat interface.
  */
 export const LTILaunchPage = () => {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>("");
+  const hasProcessed = useRef(false);
 
   useEffect(() => {
+    // Prevent re-execution in strict mode or on re-renders
+    if (hasProcessed.current) {
+      console.log("LTI Launch: Already processed, skipping");
+      return;
+    }
+
     const token = searchParams.get("token");
     const userJson = searchParams.get("user");
 
@@ -28,8 +34,9 @@ export const LTILaunchPage = () => {
     if (!token || !userJson) {
       console.error("LTI Launch: Missing token or user data");
       setError("Paramètres manquants dans l'URL");
+      hasProcessed.current = true;
       setTimeout(() => {
-        navigate("/login", { replace: true });
+        window.location.replace("/login");
       }, 3000);
       return;
     }
@@ -44,18 +51,22 @@ export const LTILaunchPage = () => {
       login(token, user);
       console.log("LTI Launch: Login successful, redirecting to /");
 
-      // Redirect to the chat interface
+      hasProcessed.current = true;
+
+      // Use window.location.replace to force a hard reload and avoid infinite loop
       setTimeout(() => {
-        navigate("/", { replace: true });
+        console.log("LTI Launch: Performing hard redirect to /");
+        window.location.replace("/");
       }, 100);
     } catch (error) {
       console.error("LTI Launch: Failed to parse user data", error);
       setError(`Erreur: ${error instanceof Error ? error.message : String(error)}`);
+      hasProcessed.current = true;
       setTimeout(() => {
-        navigate("/login", { replace: true });
+        window.location.replace("/login");
       }, 3000);
     }
-  }, [searchParams, login, navigate]);
+  }, [searchParams, login]);
 
   return (
     <div style={{
