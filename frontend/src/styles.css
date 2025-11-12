@@ -2290,6 +2290,12 @@ button {
   justify-self: center;
 }
 
+.admin-card--stretch {
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+}
+
 .admin-card__title {
   margin: 0;
   font-size: clamp(1.1rem, 2.6vw, 1.35rem);
@@ -2398,8 +2404,7 @@ button {
 .admin-key-details__code {
   margin: 0;
   min-width: 0;
-  width: min(100%, 520px);
-  margin-inline: auto;
+  width: 100%;
   box-sizing: border-box;
   overflow-wrap: anywhere;
 }
