@@ -1538,6 +1538,7 @@ export type WorkflowVersionResponse = {
 };
 
 export type CreateWorkflowPayload = {
+  slug: string;
   display_name: string;
   description?: string | null;
 };

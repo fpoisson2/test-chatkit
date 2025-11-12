@@ -220,6 +220,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       const workflow = await createWorkflowMutation.mutateAsync({
         token,
         payload: {
+          slug: slugifyWorkflowName(trimmedName),
           display_name: trimmedName,
           description: null,
         },
