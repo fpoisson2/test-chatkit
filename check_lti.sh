@@ -10,7 +10,7 @@ SELECT
     authorization_endpoint,
     token_endpoint,
     key_set_url
-FROM lti_registration
+FROM lti_registrations
 WHERE issuer = 'https://climoilou.moodle.decclic.qc.ca';
 "
 
@@ -19,7 +19,7 @@ echo "=== Test de l'endpoint authorization_endpoint ==="
 echo "Vérification si l'URL retourne 404..."
 
 # Récupérer l'authorization_endpoint de la DB
-AUTH_ENDPOINT=$(docker-compose exec db psql -U chatkit -d chatkit -t -c "SELECT authorization_endpoint FROM lti_registration WHERE issuer = 'https://climoilou.moodle.decclic.qc.ca' LIMIT 1;" | tr -d ' \r')
+AUTH_ENDPOINT=$(docker-compose exec db psql -U chatkit -d chatkit -t -c "SELECT authorization_endpoint FROM lti_registrations WHERE issuer = 'https://climoilou.moodle.decclic.qc.ca' LIMIT 1;" | tr -d ' \r')
 
 if [ -n "$AUTH_ENDPOINT" ]; then
     echo "Authorization endpoint configuré: $AUTH_ENDPOINT"
