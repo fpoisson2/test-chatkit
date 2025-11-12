@@ -295,10 +295,12 @@ export function MyChat() {
     loadStoredThreadId(sessionOwner, persistenceSlug),
   );
 
-  // Create a unique key for the ChatKit component to force remounting when workflow changes
+  // Create a unique key for the ChatKit component based on workflow to force remounting
+  // This ensures old messages are cleared when switching workflows
+  // Messages added to a thread while viewing another workflow will be loaded when switching back
   const chatkitKey = useMemo(() => {
-    return `${mode}:${persistenceSlug}:${initialThreadId ?? 'new'}`;
-  }, [mode, persistenceSlug, initialThreadId]);
+    return `${mode}:${persistenceSlug}`;
+  }, [mode, persistenceSlug]);
 
   const resetChatState = useCallback(
     ({
@@ -324,15 +326,8 @@ export function MyChat() {
         : null;
       setInitialThreadId(nextInitialThreadId);
 
-      // Switch to the new thread without destroying the ChatKit component
-      if (controlRef.current && typeof controlRef.current.setThreadId === 'function') {
-        if (nextInitialThreadId) {
-          controlRef.current.setThreadId(nextInitialThreadId);
-        } else {
-          // Start a new thread by setting threadId to null
-          controlRef.current.setThreadId(null);
-        }
-      }
+      // The ChatKit component will be remounted due to key change, which clears old messages
+      // No need to manually call setThreadId here
 
       // Arrêter la session vocale si elle est en cours
       stopVoiceSessionRef.current?.();
