@@ -86,6 +86,48 @@ def _add_app_settings_lti_columns(connection) -> None:
         )
 
 
+def _workflows_has_lti_chatkit_options(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("workflows"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("workflows")}
+    required = {
+        "lti_show_sidebar",
+        "lti_show_header",
+        "lti_enable_history",
+    }
+    return required.issubset(columns)
+
+
+def _add_workflows_lti_chatkit_options(connection) -> None:
+    inspector = inspect(connection)
+
+    if not inspector.has_table("workflows"):
+        logger.warning(
+            "Cannot add LTI ChatKit options to workflows because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("workflows")
+    }
+
+    statements: tuple[tuple[str, str], ...] = (
+        ("lti_show_sidebar", "BOOLEAN NOT NULL DEFAULT TRUE"),
+        ("lti_show_header", "BOOLEAN NOT NULL DEFAULT TRUE"),
+        ("lti_enable_history", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    )
+
+    for column_name, column_type in statements:
+        if column_name in existing_columns:
+            continue
+        connection.execute(
+            text(
+                f"ALTER TABLE workflows ADD COLUMN {column_name} {column_type}"
+            )
+        )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -123,6 +165,12 @@ def check_and_apply_migrations():
             "description": "Add columns to store LTI tool configuration",
             "check_fn": _app_settings_has_lti_columns,
             "apply_fn": _add_app_settings_lti_columns,
+        },
+        {
+            "id": "004_add_lti_chatkit_options",
+            "description": "Add LTI ChatKit options to workflows table",
+            "check_fn": _workflows_has_lti_chatkit_options,
+            "apply_fn": _add_workflows_lti_chatkit_options,
         },
     ]
 
