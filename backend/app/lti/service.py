@@ -6,6 +6,7 @@ import base64
 import datetime
 import hashlib
 import json
+import logging
 import secrets
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -17,7 +18,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
@@ -31,6 +32,8 @@ from ..models import (
 )
 from ..schemas import TokenResponse
 from ..security import create_access_token, hash_password
+
+logger = logging.getLogger(__name__)
 
 
 def _now_utc() -> datetime.datetime:
@@ -138,17 +141,39 @@ class LTIService:
     def initiate_login(self, params: Mapping[str, Any]) -> RedirectResponse:
         issuer = str(params.get("iss") or "").strip()
         client_id = str(params.get("client_id") or "").strip()
-        deployment_ref = str(params.get("lti_deployment_id") or "").strip()
+        raw_deployment_ref = params.get("lti_deployment_id")
+        deployment_ref = (
+            str(raw_deployment_ref).strip() if raw_deployment_ref is not None else None
+        )
         target_link_uri = str(params.get("target_link_uri") or "").strip()
 
-        if not issuer or not client_id or not target_link_uri or not deployment_ref:
+        if not issuer or not client_id or not target_link_uri:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 detail="Paramètres OIDC manquants",
             )
 
-        registration = self._get_registration(issuer, client_id)
+        registration = self._get_registration(issuer, client_id, deployment_ref)
         deployment = self._get_deployment(registration, deployment_ref)
+
+        logger.info(
+            (
+                "Initialisation de la connexion LTI réussie "
+                "(issuer='%s', client_id='%s', deployment_id='%s', "
+                "target_link_uri='%s')"
+            ),
+            registration.issuer,
+            registration.client_id,
+            deployment.deployment_id,
+            target_link_uri,
+            extra={
+                "event": "lti_login_initiated",
+                "issuer": registration.issuer,
+                "client_id": registration.client_id,
+                "deployment_id": deployment.deployment_id,
+                "target_link_uri": target_link_uri,
+            },
+        )
 
         state = secrets.token_urlsafe(32)
         nonce = secrets.token_urlsafe(16)
@@ -413,30 +438,151 @@ class LTIService:
                     return candidate
         return keys[0] if keys else None
 
-    def _get_registration(self, issuer: str, client_id: str) -> LTIRegistration:
-        registration = self.session.scalar(
+    @staticmethod
+    def _issuer_candidates(issuer: str) -> set[str]:
+        candidates = {issuer}
+        normalized = issuer.rstrip("/")
+        if normalized:
+            candidates.add(normalized)
+            candidates.add(f"{normalized}/")
+        return {candidate for candidate in candidates if candidate}
+
+    def _get_registration(
+        self, issuer: str, client_id: str, deployment_id: str | None = None
+    ) -> LTIRegistration:
+        issuer_candidates = self._issuer_candidates(issuer)
+        base_query = (
             select(LTIRegistration)
-            .where(LTIRegistration.issuer == issuer)
             .where(LTIRegistration.client_id == client_id)
+            .where(LTIRegistration.issuer.in_(tuple(issuer_candidates)))
+        )
+        if deployment_id:
+            registration_with_deployment = self.session.scalar(
+                base_query.join(LTIDeployment).where(
+                    LTIDeployment.deployment_id == deployment_id
+                )
+            )
+            if registration_with_deployment is not None:
+                return registration_with_deployment
+
+        normalized = issuer.rstrip("/")
+        ordering_clauses: list[tuple[Any, int]] = [
+            (LTIRegistration.issuer == issuer, 0)
+        ]
+        if normalized and normalized != issuer:
+            ordering_clauses.append((LTIRegistration.issuer == normalized, 1))
+        normalized_with_slash = f"{normalized}/" if normalized else ""
+        if normalized_with_slash and normalized_with_slash != issuer:
+            ordering_clauses.append(
+                (LTIRegistration.issuer == normalized_with_slash, 2)
+            )
+
+        priority = case(*ordering_clauses, else_=3)
+        registration = self.session.scalar(
+            base_query.order_by(priority, LTIRegistration.id.asc())
         )
         if registration is None:
+            available = self.session.scalars(
+                select(LTIRegistration.issuer).where(
+                    LTIRegistration.client_id == client_id
+                )
+            ).all()
+            issuer_list = sorted(issuer_candidates)
+            available_list = sorted(value for value in available if value)
+            logger.warning(
+                (
+                    "Enregistrement LTI introuvable "
+                    "(issuer='%s', client_id='%s', candidats=%s, "
+                    "enregistrements=%s)"
+                ),
+                issuer,
+                client_id,
+                issuer_list,
+                available_list,
+                extra={
+                    "event": "lti_registration_missing",
+                    "issuer": issuer,
+                    "client_id": client_id,
+                    "issuer_candidates": issuer_list,
+                    "available_issuers": available_list,
+                },
+            )
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, detail="Enregistrement LTI introuvable"
             )
         return registration
 
     def _get_deployment(
-        self, registration: LTIRegistration, deployment_id: str
+        self, registration: LTIRegistration, deployment_id: str | None
     ) -> LTIDeployment:
-        deployment = self.session.scalar(
-            select(LTIDeployment)
-            .where(LTIDeployment.registration_id == registration.id)
-            .where(LTIDeployment.deployment_id == deployment_id)
+        normalized_id = deployment_id.strip() if deployment_id else ""
+        base_query = select(LTIDeployment).where(
+            LTIDeployment.registration_id == registration.id
         )
-        if deployment is None:
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND, detail="Déploiement LTI introuvable"
+        if normalized_id:
+            deployment = self.session.scalar(
+                base_query.where(LTIDeployment.deployment_id == normalized_id)
             )
+            if deployment is not None:
+                return deployment
+
+            existing = self.session.scalar(
+                base_query.order_by(LTIDeployment.id.asc())
+            )
+            if existing is not None:
+                logger.info(
+                    (
+                        "Réutilisation d'un déploiement LTI existant "
+                        "(issuer='%s', client_id='%s', deployment_id='%s', "
+                        "demandé='%s')"
+                    ),
+                    registration.issuer,
+                    registration.client_id,
+                    existing.deployment_id,
+                    normalized_id,
+                    extra={
+                        "event": "lti_deployment_reused",
+                        "issuer": registration.issuer,
+                        "client_id": registration.client_id,
+                        "deployment_id": existing.deployment_id,
+                        "requested_deployment_id": normalized_id,
+                    },
+                )
+                return existing
+
+        if not normalized_id:
+            deployment = self.session.scalar(
+                base_query.order_by(LTIDeployment.id.asc())
+            )
+            if deployment is not None:
+                return deployment
+
+        generated_id = normalized_id or f"auto-{registration.id}"
+        deployment = LTIDeployment(
+            registration_id=registration.id,
+            deployment_id=generated_id,
+            workflow_id=None,
+        )
+        self.session.add(deployment)
+        self.session.flush()
+        logger.info(
+            (
+                "Création automatique d'un déploiement LTI "
+                "(issuer='%s', client_id='%s', deployment_id='%s', motif='%s')"
+            ),
+            registration.issuer,
+            registration.client_id,
+            generated_id,
+            "absent" if normalized_id else "defaut",
+            extra={
+                "event": "lti_deployment_auto_created",
+                "issuer": registration.issuer,
+                "client_id": registration.client_id,
+                "deployment_id": generated_id,
+                "source_deployment_id": deployment_id,
+                "reason": "missing" if normalized_id else "default",
+            },
+        )
         return deployment
 
     def _get_session_from_state(self, state: str) -> LTIUserSession:
