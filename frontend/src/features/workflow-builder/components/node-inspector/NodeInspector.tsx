@@ -262,6 +262,14 @@ const NodeInspector = ({
     <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
       <div className={styles.nodeInspectorHeader}>
         <div className={styles.nodeInspectorSummary}>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => onDisplayNameChange(node.id, e.target.value)}
+            placeholder="Entrez le titre du bloc..."
+            aria-label="Titre du bloc"
+            className={styles.nodeInspectorTitleInput}
+          />
           <span className={styles.nodeInspectorSubtitle}>Identifiant : {node.data.slug}</span>
         </div>
         {!isFixed ? (

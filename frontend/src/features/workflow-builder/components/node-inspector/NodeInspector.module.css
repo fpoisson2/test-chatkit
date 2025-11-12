@@ -10,6 +10,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .nodeInspectorTitle {
@@ -49,11 +51,27 @@
   gap: 0.25rem 0.75rem;
 }
 
-.nodeInspectorDisplayNameField {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+.nodeInspectorTitleInput {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--color-text-strong);
+  background-color: var(--surface-color);
+  border: 1px solid var(--surface-border);
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.nodeInspectorTitleInput:hover {
+  border-color: var(--surface-border-hover);
+}
+
+.nodeInspectorTitleInput:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 0;
+  border-color: #2563eb;
 }
 
 .nodeInspectorField {
