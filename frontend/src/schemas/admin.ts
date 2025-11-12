@@ -64,6 +64,19 @@ export type ModelProviderFormData = z.infer<typeof adminModelProvidersSchema>;
 export type ModelProviderRow = z.infer<typeof modelProviderRowSchema>;
 
 /**
+ * Single Model Provider Schema - for create/edit modal
+ */
+export const singleModelProviderSchema = z.object({
+  provider: trimmedNonEmptyString.transform((val) => val.toLowerCase()),
+  apiBase: optionalUrlSchema,
+  apiKey: z.string().optional(),
+  isDefault: z.boolean().default(false),
+  deleteStoredKey: z.boolean().default(false)
+});
+
+export type SingleModelProviderFormData = z.infer<typeof singleModelProviderSchema>;
+
+/**
  * Admin App Settings Page Schema
  */
 export const adminAppSettingsSchema = z.object({

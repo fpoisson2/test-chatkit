@@ -13,3 +13,10 @@ export { LoadingOverlay, type LoadingOverlayProps } from './feedback/LoadingOver
 
 // UI components
 export { Tooltip, TooltipProvider } from './Tooltip';
+
+// Admin components
+export { FeedbackMessages, type FeedbackMessagesProps } from './admin/FeedbackMessages';
+export { FormField, type FormFieldProps } from './admin/FormField';
+export { FormSection, type FormSectionProps } from './admin/FormSection';
+export { FormActions, type FormActionsProps } from './admin/FormActions';
+export { TableActions, type TableActionsProps } from './admin/TableActions';

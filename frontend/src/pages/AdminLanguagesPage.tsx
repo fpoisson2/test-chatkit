@@ -11,7 +11,15 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { ResponsiveTable, type Column } from "../components";
+import { Modal } from "../components/Modal";
+import {
+  ResponsiveTable,
+  type Column,
+  FeedbackMessages,
+  FormField,
+  FormSection,
+  LoadingSpinner,
+} from "../components";
 import { isUnauthorizedError } from "../utils/backend";
 import {
   useLanguages,
@@ -85,8 +93,8 @@ export const AdminLanguagesPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [instructions, setInstructions] = useState<string | null>(null);
   const [showPromptEditor, setShowPromptEditor] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Persist currentTaskId to localStorage
   useEffect(() => {
@@ -192,7 +200,6 @@ export const AdminLanguagesPage = () => {
   const handleSubmit = async (data: AdminLanguageFormData) => {
     setFormError(null);
     setSuccess(null);
-    setInstructions(null);
 
     try {
       const payload: {
@@ -237,6 +244,8 @@ export const AdminLanguagesPage = () => {
       setCurrentTaskId(result.task_id);
       setSuccess(t("admin.languages.feedback.taskStarted"));
       reset(initialFormState);
+      setShowCreateModal(false);
+      setShowPromptEditor(false);
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -339,7 +348,7 @@ export const AdminLanguagesPage = () => {
         key: "actions",
         label: "Actions",
         render: (lang) => (
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="admin-table__actions">
             <button
               type="button"
               onClick={() => handleActivateStoredLanguage(lang.id, lang.code, lang.name)}
@@ -369,305 +378,262 @@ export const AdminLanguagesPage = () => {
   );
 
   return (
-    <>
-      <AdminTabs activeTab="languages" />
-      <ManagementPageLayout>
-        <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "2rem" }}>
-          <header style={{ marginBottom: "2rem" }}>
-            <h1 style={{ fontSize: "2rem", fontWeight: 600, marginBottom: "0.5rem" }}>
-              {t("admin.languages.page.title")}
-            </h1>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.95rem" }}>
-              {t("admin.languages.page.subtitle")}
+    <ManagementPageLayout
+      tabs={<AdminTabs activeTab="languages" />}
+    >
+      <FeedbackMessages
+        error={error}
+        success={success}
+        onDismissError={() => setError(null)}
+        onDismissSuccess={() => setSuccess(null)}
+      />
+
+      <div className="admin-grid">
+        <FormSection
+          title={t("admin.languages.list.title")}
+          subtitle={t("admin.languages.list.subtitle")}
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label={t("admin.languages.form.addTitle")}
+              title={t("admin.languages.form.addTitle")}
+              onClick={() => setShowCreateModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
+        >
+          {loading ? (
+            <LoadingSpinner text={t("admin.languages.list.loading")} />
+          ) : (
+            <ResponsiveTable
+              columns={languageColumns}
+              data={languages}
+              keyExtractor={(lang) => lang.code}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+
+        <FormSection
+          title="Stored Languages"
+          subtitle="Languages saved in the database"
+        >
+          {loadingStored ? (
+            <LoadingSpinner text="Loading stored languages..." />
+          ) : storedLanguages.length === 0 ? (
+            <p className="admin-card__subtitle">
+              No stored languages yet. Enable "Save to database" when generating a language.
             </p>
-          </header>
+          ) : (
+            <ResponsiveTable
+              columns={storedLanguageColumns}
+              data={storedLanguages}
+              keyExtractor={(lang) => lang.id.toString()}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+      </div>
 
-          {error && (
-            <div className="alert alert--danger" role="alert" style={{ marginBottom: "1.5rem" }}>
-              {error}
+      {showCreateModal && (
+        <Modal
+          title={t("admin.languages.form.addTitle")}
+          onClose={() => {
+            setShowCreateModal(false);
+            setFormError(null);
+            setShowPromptEditor(false);
+          }}
+          size="lg"
+          footer={
+            <>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setFormError(null);
+                  setShowPromptEditor(false);
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                form="create-language-form"
+                disabled={generateLanguage.isPending || !!currentTaskId}
+                className="button"
+              >
+                {generateLanguage.isPending
+                  ? t("admin.languages.form.creating")
+                  : t("admin.languages.form.submitAdd")}
+              </button>
+            </>
+          }
+        >
+          {formError && (
+            <div className="alert alert--danger" role="alert" style={{ marginBottom: "1rem" }}>
+              {formError}
             </div>
           )}
 
-          {success && (
-            <div className="alert alert--success" role="alert" style={{ marginBottom: "1.5rem" }}>
-              {success}
-            </div>
-          )}
+          <form id="create-language-form" onSubmit={handleFormSubmit(handleSubmit)} className="admin-form">
+            <FormField
+              label={t("admin.languages.form.codeLabel")}
+              error={formErrors.code?.message}
+              hint={t("admin.languages.form.codeHint")}
+            >
+              <input
+                type="text"
+                className="input"
+                {...register("code")}
+                placeholder={t("admin.languages.form.codePlaceholder")}
+                disabled={generateLanguage.isPending}
+                maxLength={2}
+                style={{ textTransform: "lowercase" }}
+              />
+            </FormField>
 
-          {instructions && (
-            <div className="alert alert--info" role="alert" style={{ marginBottom: "1.5rem", whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "0.875rem" }}>
-              {instructions}
-            </div>
-          )}
+            <FormField
+              label={t("admin.languages.form.nameLabel")}
+              error={formErrors.name?.message}
+              hint={t("admin.languages.form.nameHint")}
+            >
+              <input
+                type="text"
+                className="input"
+                {...register("name")}
+                placeholder={t("admin.languages.form.namePlaceholder")}
+                disabled={generateLanguage.isPending}
+              />
+            </FormField>
 
-          <div className="admin-grid">
-            {/* Generate Language Form */}
-            <section className="admin-card">
-              <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-                {t("admin.languages.form.addTitle")}
-              </h2>
+            <FormField
+              label={t("admin.languages.form.modelLabel")}
+              hint={t("admin.languages.form.modelHint")}
+            >
+              <select
+                className="input"
+                {...register("model")}
+                disabled={generateLanguage.isPending}
+              >
+                <option value="">{t("admin.languages.form.modelPlaceholder")}</option>
+                {availableModels.map((model) => (
+                  <option key={model.id} value={model.name}>
+                    {model.name}{model.provider_slug ? ` (${model.provider_slug})` : ''}
+                  </option>
+                ))}
+              </select>
+            </FormField>
 
-              {formError && (
-                <div className="alert alert--danger" role="alert" style={{ marginBottom: "1rem" }}>
-                  {formError}
-                </div>
+            <FormField
+              label={t("admin.languages.form.providerLabel")}
+              hint={t("admin.languages.form.providerHint")}
+            >
+              <select
+                className="input"
+                {...register("provider_value")}
+                disabled={generateLanguage.isPending}
+              >
+                <option value="">{t("admin.languages.form.providerPlaceholder")}</option>
+                {availableProviders.map((provider) => (
+                  <option key={provider.value} value={provider.value}>
+                    {provider.label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <div className="admin-form__field">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <label className="admin-form__label" style={{ margin: 0 }}>
+                  {t("admin.languages.form.promptLabel")}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPromptEditor(!showPromptEditor);
+                    if (!showPromptEditor && !formValues.custom_prompt && defaultPrompt) {
+                      setValue("custom_prompt", defaultPrompt);
+                    }
+                  }}
+                  className="button button--sm button--secondary"
+                  disabled={generateLanguage.isPending}
+                >
+                  {showPromptEditor ? t("admin.languages.form.hidePrompt") : t("admin.languages.form.showPrompt")}
+                </button>
+              </div>
+              {showPromptEditor && (
+                <FormField hint={t("admin.languages.form.promptHint")}>
+                  <textarea
+                    className="textarea"
+                    {...register("custom_prompt")}
+                    placeholder={defaultPrompt || t("admin.languages.form.promptPlaceholder")}
+                    disabled={generateLanguage.isPending}
+                    rows={12}
+                    style={{ fontFamily: "monospace", fontSize: "0.875rem" }}
+                  />
+                </FormField>
               )}
+            </div>
 
-              <form onSubmit={handleFormSubmit(handleSubmit)} className="admin-form">
-                <div className="form-group">
-                  <label htmlFor="language-code" className="form-label">
-                    {t("admin.languages.form.codeLabel")}
-                  </label>
-                  <input
-                    type="text"
-                    id="language-code"
-                    {...register("code")}
-                    placeholder={t("admin.languages.form.codePlaceholder")}
-                    disabled={generateLanguage.isPending}
-                    maxLength={2}
-                    className="form-input"
-                    style={{ textTransform: "lowercase" }}
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                {...register("save_to_db")}
+                disabled={generateLanguage.isPending}
+              />
+              <span>Save to database</span>
+            </label>
+            <p className="admin-form__hint">
+              Store the generated translation in the database for later reuse
+            </p>
+
+            {/* Progress bar */}
+            {taskStatus && (
+              <div className="alert alert--info" style={{ marginTop: "1rem" }}>
+                <div style={{ marginBottom: "0.5rem" }}>
+                  <strong>Status:</strong> {taskStatus.status} ({taskStatus.progress}%)
+                </div>
+                <div style={{ height: "8px", background: "var(--surface-2)", borderRadius: "4px", overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${taskStatus.progress}%`,
+                      background: taskStatus.status === "failed" ? "var(--color-danger)" : "var(--color-primary)",
+                      transition: "width 0.3s ease"
+                    }}
                   />
-                  {formErrors.code && (
-                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                      {formErrors.code.message}
-                    </span>
-                  )}
-                  <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-                    {t("admin.languages.form.codeHint")}
-                  </small>
                 </div>
-
-                <div className="form-group">
-                  <label htmlFor="language-name" className="form-label">
-                    {t("admin.languages.form.nameLabel")}
-                  </label>
-                  <input
-                    type="text"
-                    id="language-name"
-                    {...register("name")}
-                    placeholder={t("admin.languages.form.namePlaceholder")}
-                    disabled={generateLanguage.isPending}
-                    className="form-input"
-                  />
-                  {formErrors.name && (
-                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                      {formErrors.name.message}
-                    </span>
-                  )}
-                  <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-                    {t("admin.languages.form.nameHint")}
-                  </small>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="model-select" className="form-label">
-                    {t("admin.languages.form.modelLabel")}
-                  </label>
-                  <select
-                    id="model-select"
-                    {...register("model")}
-                    disabled={generateLanguage.isPending}
-                    className="form-input"
-                  >
-                    <option value="">{t("admin.languages.form.modelPlaceholder")}</option>
-                    {availableModels.map((model) => (
-                      <option key={model.id} value={model.name}>
-                        {model.name}{model.provider_slug ? ` (${model.provider_slug})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-                    {t("admin.languages.form.modelHint")}
-                  </small>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="provider-select" className="form-label">
-                    {t("admin.languages.form.providerLabel")}
-                  </label>
-                  <select
-                    id="provider-select"
-                    {...register("provider_value")}
-                    disabled={generateLanguage.isPending}
-                    className="form-input"
-                  >
-                    <option value="">{t("admin.languages.form.providerPlaceholder")}</option>
-                    {availableProviders.map((provider) => (
-                      <option key={provider.value} value={provider.value}>
-                        {provider.label}
-                      </option>
-                    ))}
-                  </select>
-                  <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-                    {t("admin.languages.form.providerHint")}
-                  </small>
-                </div>
-
-                <div className="form-group">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                    <label htmlFor="custom-prompt" className="form-label" style={{ margin: 0 }}>
-                      {t("admin.languages.form.promptLabel")}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPromptEditor(!showPromptEditor);
-                        if (!showPromptEditor && !formValues.custom_prompt && defaultPrompt) {
-                          setValue("custom_prompt", defaultPrompt);
-                        }
-                      }}
-                      className="button button--sm button--secondary"
-                      disabled={generateLanguage.isPending}
-                    >
-                      {showPromptEditor ? t("admin.languages.form.hidePrompt") : t("admin.languages.form.showPrompt")}
-                    </button>
-                  </div>
-                  {showPromptEditor && (
-                    <>
-                      <textarea
-                        id="custom-prompt"
-                        {...register("custom_prompt")}
-                        placeholder={defaultPrompt || t("admin.languages.form.promptPlaceholder")}
-                        disabled={generateLanguage.isPending}
-                        className="form-input"
-                        rows={12}
-                        style={{ fontFamily: "monospace", fontSize: "0.875rem" }}
-                      />
-                      <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-                        {t("admin.languages.form.promptHint")}
-                      </small>
-                    </>
-                  )}
-                </div>
-
-                <div className="form-group">
-                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      {...register("save_to_db")}
-                      disabled={generateLanguage.isPending}
-                    />
-                    <span>Save to database</span>
-                  </label>
-                  <small style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-                    Store the generated translation in the database for later reuse
-                  </small>
-                </div>
-
-                {/* Progress bar */}
-                {taskStatus && (
-                  <div className="alert alert--info" style={{ marginTop: "1rem" }}>
-                    <div style={{ marginBottom: "0.5rem" }}>
-                      <strong>Status:</strong> {taskStatus.status} ({taskStatus.progress}%)
-                    </div>
-                    <div style={{ height: "8px", background: "var(--surface-2)", borderRadius: "4px", overflow: "hidden" }}>
-                      <div
-                        style={{
-                          height: "100%",
-                          width: `${taskStatus.progress}%`,
-                          background: taskStatus.status === "failed" ? "var(--color-danger)" : "var(--color-primary)",
-                          transition: "width 0.3s ease"
-                        }}
-                      />
-                    </div>
-                    {taskStatus.error_message && (
-                      <div style={{ marginTop: "0.5rem", color: "var(--color-danger)" }}>
-                        <strong>Error:</strong> {taskStatus.error_message}
-                      </div>
-                    )}
-                    {taskStatus.can_download && (
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadTaskResult(taskStatus.task_id)}
-                        className="button button--sm button--secondary"
-                        style={{ marginTop: "0.5rem" }}
-                      >
-                        Download Result
-                      </button>
-                    )}
+                {taskStatus.error_message && (
+                  <div style={{ marginTop: "0.5rem", color: "var(--color-danger)" }}>
+                    <strong>Error:</strong> {taskStatus.error_message}
                   </div>
                 )}
-
-                <div style={{ display: "flex", gap: "0.75rem" }}>
+                {taskStatus.can_download && (
                   <button
-                    type="submit"
-                    disabled={generateLanguage.isPending || !!currentTaskId}
-                    className="button button--primary"
+                    type="button"
+                    onClick={() => handleDownloadTaskResult(taskStatus.task_id)}
+                    className="button button--sm button--secondary"
+                    style={{ marginTop: "0.5rem" }}
                   >
-                    {generateLanguage.isPending
-                      ? t("admin.languages.form.creating")
-                      : t("admin.languages.form.submitAdd")}
+                    Download Result
                   </button>
-                  {(formValues.code || formValues.name) && !generateLanguage.isPending && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        reset(initialFormState);
-                        setFormError(null);
-                        setInstructions(null);
-                      }}
-                      className="button button--secondary"
-                    >
-                      {t("admin.languages.form.cancel")}
-                    </button>
-                  )}
-                </div>
-              </form>
-            </section>
-
-            {/* Languages List */}
-            <section className="admin-card">
-              <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.5rem" }}>
-                {t("admin.languages.list.title")}
-              </h2>
-              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
-                {t("admin.languages.list.subtitle")}
-              </p>
-
-              {loading ? (
-                <p style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
-                  {t("admin.languages.list.loading")}
-                </p>
-              ) : (
-                <ResponsiveTable
-                  columns={languageColumns}
-                  data={languages}
-                  keyExtractor={(lang) => lang.code}
-                  mobileCardView={true}
-                />
-              )}
-            </section>
-
-            {/* Stored Languages */}
-            <section className="admin-card">
-              <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "0.5rem" }}>
-                Stored Languages
-              </h2>
-              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
-                Languages saved in the database
-              </p>
-
-              {loadingStored ? (
-                <p style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
-                  Loading stored languages...
-                </p>
-              ) : storedLanguages.length === 0 ? (
-                <p style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
-                  No stored languages yet. Enable "Save to database" when generating a language.
-                </p>
-              ) : (
-                <ResponsiveTable
-                  columns={storedLanguageColumns}
-                  data={storedLanguages}
-                  keyExtractor={(lang) => lang.id.toString()}
-                  mobileCardView={true}
-                />
-              )}
-            </section>
-          </div>
-        </div>
-      </ManagementPageLayout>
-    </>
+                )}
+              </div>
+            )}
+          </form>
+        </Modal>
+      )}
+    </ManagementPageLayout>
   );
 };

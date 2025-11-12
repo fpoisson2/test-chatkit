@@ -10,6 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { Modal } from "../components/Modal";
 import { useI18n } from "../i18n";
 import {
   type LtiRegistration,
@@ -26,6 +27,14 @@ import {
   type AdminLtiToolSettingsFormData,
   type AdminLtiRegistrationFormData,
 } from "../schemas/admin";
+import {
+  FeedbackMessages,
+  FormField,
+  FormSection,
+  ResponsiveTable,
+  LoadingSpinner,
+  type Column,
+} from "../components";
 
 const emptyRegistrationForm: AdminLtiRegistrationFormData = {
   issuer: "",
@@ -53,6 +62,7 @@ const normalizeOptionalField = (value: string | undefined) => {
 export const AdminLtiPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
+  const [showCreateRegistrationModal, setShowCreateRegistrationModal] = useState(false);
 
   // Registration Form - React Hook Form
   const {
@@ -180,6 +190,7 @@ export const AdminLtiPage = () => {
 
   const resetRegistrationForm = useCallback(() => {
     setEditingRegistrationId(null);
+    setShowCreateRegistrationModal(false);
     resetRegForm(emptyRegistrationForm);
   }, [resetRegForm]);
 
@@ -271,9 +282,12 @@ export const AdminLtiPage = () => {
         setRegistrationsSuccess(
           t("admin.lti.registrations.feedback.created", { issuer: created.issuer }),
         );
+        setShowCreateRegistrationModal(false);
       }
       await fetchRegistrations();
-      resetRegistrationForm();
+      if (editingRegistrationId) {
+        resetRegistrationForm();
+      }
     } catch (error) {
       if (isUnauthorizedError(error)) {
         logout();
@@ -331,362 +345,475 @@ export const AdminLtiPage = () => {
     }
   }, [token, t, logout, setToolValue]);
 
-  const tableRows = useMemo(() => {
-    return registrations.map((entry) => (
-      <tr key={entry.id}>
-        <td>{entry.issuer}</td>
-        <td>{entry.client_id}</td>
-        <td>{entry.key_set_url}</td>
-        <td>{entry.authorization_endpoint}</td>
-        <td>{entry.token_endpoint}</td>
-        <td>{entry.deep_link_return_url ?? "—"}</td>
-        <td>{entry.audience ?? "—"}</td>
-        <td>{new Date(entry.updated_at).toLocaleString()}</td>
-        <td>
-          <div className="admin-table__actions">
-            <button
-              type="button"
-              className="button button--subtle button--sm"
-              onClick={() => handleEditRegistration(entry)}
-            >
-              {t("admin.lti.registrations.actions.edit")}
-            </button>
-            <button
-              type="button"
-              className="button button--danger button--sm"
-              onClick={() => handleDeleteRegistration(entry)}
-            >
-              {t("admin.lti.registrations.actions.delete")}
-            </button>
-          </div>
-        </td>
-      </tr>
-    ));
-  }, [registrations, t]);
+
+  const registrationColumns: Column<LtiRegistration>[] = useMemo(() => [
+    {
+      key: "issuer",
+      label: t("admin.lti.registrations.table.issuer"),
+      render: (entry) => entry.issuer,
+    },
+    {
+      key: "clientId",
+      label: t("admin.lti.registrations.table.clientId"),
+      render: (entry) => entry.client_id,
+    },
+    {
+      key: "keySetUrl",
+      label: t("admin.lti.registrations.table.keySetUrl"),
+      render: (entry) => entry.key_set_url,
+    },
+    {
+      key: "authEndpoint",
+      label: t("admin.lti.registrations.table.authorizationEndpoint"),
+      render: (entry) => entry.authorization_endpoint,
+    },
+    {
+      key: "tokenEndpoint",
+      label: t("admin.lti.registrations.table.tokenEndpoint"),
+      render: (entry) => entry.token_endpoint,
+    },
+    {
+      key: "deepLink",
+      label: t("admin.lti.registrations.table.deepLinkReturnUrl"),
+      render: (entry) => entry.deep_link_return_url ?? "—",
+    },
+    {
+      key: "audience",
+      label: t("admin.lti.registrations.table.audience"),
+      render: (entry) => entry.audience ?? "—",
+    },
+    {
+      key: "updated",
+      label: t("admin.lti.registrations.table.updatedAt"),
+      render: (entry) => new Date(entry.updated_at).toLocaleString(),
+    },
+    {
+      key: "actions",
+      label: t("admin.lti.registrations.table.actions"),
+      render: (entry) => (
+        <div className="admin-table__actions">
+          <button
+            type="button"
+            className="button button--subtle button--sm"
+            onClick={() => handleEditRegistration(entry)}
+          >
+            {t("admin.lti.registrations.actions.edit")}
+          </button>
+          <button
+            type="button"
+            className="button button--danger button--sm"
+            onClick={() => handleDeleteRegistration(entry)}
+          >
+            {t("admin.lti.registrations.actions.delete")}
+          </button>
+        </div>
+      ),
+    },
+  ], [t, handleEditRegistration, handleDeleteRegistration]);
 
   return (
     <ManagementPageLayout
-      title={t("admin.lti.page.title")}
-      subtitle={t("admin.lti.page.subtitle")}
       tabs={<AdminTabs activeTab="lti" />}
     >
-        {toolError && <div className="alert alert--danger">{toolError}</div>}
-        {toolSuccess && <div className="alert alert--success">{toolSuccess}</div>}
-        {registrationsError && (
-          <div className="alert alert--danger">{registrationsError}</div>
-        )}
-        {registrationsSuccess && (
-          <div className="alert alert--success">{registrationsSuccess}</div>
-        )}
+      <FeedbackMessages
+        error={toolError || registrationsError}
+        success={toolSuccess || registrationsSuccess}
+        onDismissError={() => {
+          setToolError(null);
+          setRegistrationsError(null);
+        }}
+        onDismissSuccess={() => {
+          setToolSuccess(null);
+          setRegistrationsSuccess(null);
+        }}
+      />
 
-        <div className="admin-grid">
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">{t("admin.lti.toolSettings.keys.title")}</h2>
-              <p className="admin-card__subtitle">
-                {t("admin.lti.toolSettings.keys.subtitle")}
-              </p>
-            </div>
-            {toolLoading ? (
-              <p className="admin-form__hint">{t("admin.lti.registrations.table.loading")}</p>
-            ) : (
-              <>
-                <div className="admin-key-details">
-                  <div className="admin-key-details__row">
-                    <span className="admin-key-details__label">
-                      {t("admin.lti.toolSettings.keys.privateKeyPath")}
-                    </span>
-                    <span className="admin-key-details__value">
-                      {toolSettings?.private_key_path ??
-                        t("admin.lti.toolSettings.keys.noData")}
-                    </span>
-                  </div>
-                  <div className="admin-key-details__row">
-                    <span className="admin-key-details__label">
-                      {t("admin.lti.toolSettings.keys.publicKeyPath")}
-                    </span>
-                    <span className="admin-key-details__value">
-                      {toolSettings?.public_key_path ??
-                        t("admin.lti.toolSettings.keys.noData")}
-                    </span>
-                  </div>
-                  <div className="admin-key-details__row">
-                    <span className="admin-key-details__label">
-                      {t("admin.lti.toolSettings.keys.lastUpdated")}
-                    </span>
-                    <span className="admin-key-details__value">
-                      {toolSettings?.public_key_last_updated_at
-                        ? formattedPublicKeyUpdatedAt ??
-                          toolSettings.public_key_last_updated_at
-                        : t("admin.lti.toolSettings.keys.noData")}
-                    </span>
-                  </div>
+      <div className="admin-grid">
+        <FormSection
+          title={t("admin.lti.toolSettings.keys.title")}
+          subtitle={t("admin.lti.toolSettings.keys.subtitle")}
+        >
+          {toolLoading ? (
+            <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
+          ) : (
+            <>
+              <div className="admin-key-details">
+                <div className="admin-key-details__row">
+                  <span className="admin-key-details__label">
+                    {t("admin.lti.toolSettings.keys.privateKeyPath")}
+                  </span>
+                  <span className="admin-key-details__value">
+                    {toolSettings?.private_key_path ??
+                      t("admin.lti.toolSettings.keys.noData")}
+                  </span>
                 </div>
-                {toolSettings?.public_key_pem ? (
-                  <div className="admin-key-details__public-key">
-                    <span className="admin-key-details__label admin-key-details__label--block">
-                      {t("admin.lti.toolSettings.keys.publicKeyHeading")}
-                    </span>
-                    <pre className="code-block admin-key-details__code">
-                      {toolSettings.public_key_pem}
-                    </pre>
-                  </div>
-                ) : null}
-                <p className="admin-form__hint">
-                  {t("admin.lti.toolSettings.keys.readOnlyNotice")}
-                </p>
-              </>
-            )}
-          </section>
-
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">{t("admin.lti.toolSettings.title")}</h2>
-              <p className="admin-card__subtitle">
-                {t("admin.lti.toolSettings.subtitle")}
-              </p>
-            </div>
-            {toolLoading ? (
-              <p className="admin-form__hint">{t("admin.lti.registrations.table.loading")}</p>
-            ) : (
-              <form className="admin-form" onSubmit={handleToolSubmit(handleToolFormSubmit)}>
-                <label className="admin-form__field">
-                  <span className="admin-form__label">
-                    {t("admin.lti.toolSettings.clientIdLabel")}
+                <div className="admin-key-details__row">
+                  <span className="admin-key-details__label">
+                    {t("admin.lti.toolSettings.keys.publicKeyPath")}
                   </span>
-                  <input
-                    type="text"
-                    {...registerTool("clientId")}
-                    autoComplete="off"
-                  />
-                  {toolErrors.clientId && (
-                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                      {toolErrors.clientId.message}
-                    </span>
-                  )}
-                </label>
-                <label className="admin-form__field">
-                  <span className="admin-form__label">
-                    {t("admin.lti.toolSettings.keySetUrlLabel")}
+                  <span className="admin-key-details__value">
+                    {toolSettings?.public_key_path ??
+                      t("admin.lti.toolSettings.keys.noData")}
                   </span>
-                  <input
-                    type="url"
-                    {...registerTool("keySetUrl")}
-                    autoComplete="off"
-                  />
-                  {toolErrors.keySetUrl && (
-                    <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                      {toolErrors.keySetUrl.message}
-                    </span>
-                  )}
-                </label>
-                <label className="admin-form__field">
-                  <span className="admin-form__label">
-                    {t("admin.lti.toolSettings.audienceLabel")}
-                  </span>
-                  <input
-                    type="text"
-                    {...registerTool("audience")}
-                    autoComplete="off"
-                  />
-                </label>
-                <label className="admin-form__field">
-                  <span className="admin-form__label">
-                    {t("admin.lti.toolSettings.keyIdLabel")}
-                  </span>
-                  <input
-                    type="text"
-                    {...registerTool("keyId")}
-                    autoComplete="off"
-                  />
-                </label>
-                <label className="admin-form__field">
-                  <span className="admin-form__label">
-                    {t("admin.lti.toolSettings.privateKeyLabel")}
-                  </span>
-                  <textarea
-                    {...registerTool("privateKey")}
-                    rows={5}
-                  />
-                  <span className="admin-form__hint">
-                    {toolSettings?.has_private_key
-                      ? t("admin.lti.toolSettings.privateKeyHint", {
-                          hint: toolSettings.private_key_hint ?? "••••",
-                        })
-                      : t("admin.lti.toolSettings.noPrivateKey")}
-                  </span>
-                </label>
-                <div className="admin-form__actions">
-                  <button className="button button--primary" type="submit" disabled={toolSaving}>
-                    {toolSaving
-                      ? t("admin.lti.toolSettings.saving")
-                      : t("admin.lti.toolSettings.save")}
-                  </button>
                 </div>
-              </form>
-            )}
-          </section>
-
-          <section className="admin-card admin-card--wide">
-            <div>
-              <h2 className="admin-card__title">{t("admin.lti.registrations.title")}</h2>
-              <p className="admin-card__subtitle">
-                {t("admin.lti.registrations.subtitle")}
-              </p>
-            </div>
-            {registrationsLoading ? (
-              <p>{t("admin.lti.registrations.table.loading")}</p>
-            ) : registrations.length === 0 ? (
-              <p>{t("admin.lti.registrations.table.empty")}</p>
-            ) : (
-              <div className="admin-table-wrapper">
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>{t("admin.lti.registrations.table.issuer")}</th>
-                      <th>{t("admin.lti.registrations.table.clientId")}</th>
-                      <th>{t("admin.lti.registrations.table.keySetUrl")}</th>
-                      <th>{t("admin.lti.registrations.table.authorizationEndpoint")}</th>
-                      <th>{t("admin.lti.registrations.table.tokenEndpoint")}</th>
-                      <th>{t("admin.lti.registrations.table.deepLinkReturnUrl")}</th>
-                      <th>{t("admin.lti.registrations.table.audience")}</th>
-                      <th>{t("admin.lti.registrations.table.updatedAt")}</th>
-                      <th>{t("admin.lti.registrations.table.actions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>{tableRows}</tbody>
-                </table>
+                <div className="admin-key-details__row">
+                  <span className="admin-key-details__label">
+                    {t("admin.lti.toolSettings.keys.lastUpdated")}
+                  </span>
+                  <span className="admin-key-details__value">
+                    {toolSettings?.public_key_last_updated_at
+                      ? formattedPublicKeyUpdatedAt ??
+                        toolSettings.public_key_last_updated_at
+                      : t("admin.lti.toolSettings.keys.noData")}
+                  </span>
+                </div>
               </div>
-            )}
-          </section>
+              {toolSettings?.public_key_pem && (
+                <div className="admin-key-details__public-key">
+                  <span className="admin-key-details__label admin-key-details__label--block">
+                    {t("admin.lti.toolSettings.keys.publicKeyHeading")}
+                  </span>
+                  <pre className="code-block admin-key-details__code">
+                    {toolSettings.public_key_pem}
+                  </pre>
+                </div>
+              )}
+              <p className="admin-form__hint">
+                {t("admin.lti.toolSettings.keys.readOnlyNotice")}
+              </p>
+            </>
+          )}
+        </FormSection>
 
-          <section className="admin-card">
-            <div>
-              <h2 className="admin-card__title">
-                {editingRegistrationId
-                  ? t("admin.lti.registrations.form.editTitle")
-                  : t("admin.lti.registrations.form.createTitle")}
-              </h2>
-            </div>
-            <form className="admin-form" onSubmit={handleRegSubmit(handleRegistrationSubmit)}>
-              <label className="admin-form__field">
-                <span className="admin-form__label">
-                  {t("admin.lti.registrations.form.issuerLabel")}
-                </span>
+        <FormSection
+          title={t("admin.lti.toolSettings.title")}
+          subtitle={t("admin.lti.toolSettings.subtitle")}
+        >
+          {toolLoading ? (
+            <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
+          ) : (
+            <form className="admin-form" onSubmit={handleToolSubmit(handleToolFormSubmit)}>
+              <FormField
+                label={t("admin.lti.toolSettings.clientIdLabel")}
+                error={toolErrors.clientId?.message}
+              >
                 <input
-                  type="url"
-                  {...registerReg("issuer")}
-                  autoComplete="off"
-                />
-                {regErrors.issuer && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                    {regErrors.issuer.message}
-                  </span>
-                )}
-              </label>
-              <label className="admin-form__field">
-                <span className="admin-form__label">
-                  {t("admin.lti.registrations.form.clientIdLabel")}
-                </span>
-                <input
+                  className="input"
                   type="text"
-                  {...registerReg("clientId")}
+                  {...registerTool("clientId")}
                   autoComplete="off"
                 />
-                {regErrors.clientId && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                    {regErrors.clientId.message}
-                  </span>
-                )}
-              </label>
-              <label className="admin-form__field">
-                <span className="admin-form__label">
-                  {t("admin.lti.registrations.form.keySetUrlLabel")}
-                </span>
+              </FormField>
+
+              <FormField
+                label={t("admin.lti.toolSettings.keySetUrlLabel")}
+                error={toolErrors.keySetUrl?.message}
+              >
                 <input
+                  className="input"
                   type="url"
-                  {...registerReg("keySetUrl")}
+                  {...registerTool("keySetUrl")}
                   autoComplete="off"
                 />
-                {regErrors.keySetUrl && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                    {regErrors.keySetUrl.message}
-                  </span>
-                )}
-              </label>
-              <label className="admin-form__field">
-                <span className="admin-form__label">
-                  {t("admin.lti.registrations.form.authorizationEndpointLabel")}
-                </span>
+              </FormField>
+
+              <FormField label={t("admin.lti.toolSettings.audienceLabel")}>
                 <input
-                  type="url"
-                  {...registerReg("authorizationEndpoint")}
-                  autoComplete="off"
-                />
-                {regErrors.authorizationEndpoint && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                    {regErrors.authorizationEndpoint.message}
-                  </span>
-                )}
-              </label>
-              <label className="admin-form__field">
-                <span className="admin-form__label">
-                  {t("admin.lti.registrations.form.tokenEndpointLabel")}
-                </span>
-                <input
-                  type="url"
-                  {...registerReg("tokenEndpoint")}
-                  autoComplete="off"
-                />
-                {regErrors.tokenEndpoint && (
-                  <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
-                    {regErrors.tokenEndpoint.message}
-                  </span>
-                )}
-              </label>
-              <label className="admin-form__field">
-                <span className="admin-form__label">
-                  {t("admin.lti.registrations.form.deepLinkReturnUrlLabel")}
-                </span>
-                <input
-                  type="url"
-                  {...registerReg("deepLinkReturnUrl")}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="admin-form__field">
-                <span className="admin-form__label">
-                  {t("admin.lti.registrations.form.audienceLabel")}
-                </span>
-                <input
+                  className="input"
                   type="text"
-                  {...registerReg("audience")}
+                  {...registerTool("audience")}
                   autoComplete="off"
                 />
-              </label>
+              </FormField>
+
+              <FormField label={t("admin.lti.toolSettings.keyIdLabel")}>
+                <input
+                  className="input"
+                  type="text"
+                  {...registerTool("keyId")}
+                  autoComplete="off"
+                />
+              </FormField>
+
+              <FormField
+                label={t("admin.lti.toolSettings.privateKeyLabel")}
+                hint={
+                  toolSettings?.has_private_key
+                    ? t("admin.lti.toolSettings.privateKeyHint", {
+                        hint: toolSettings.private_key_hint ?? "••••",
+                      })
+                    : t("admin.lti.toolSettings.noPrivateKey")
+                }
+              >
+                <textarea
+                  className="textarea"
+                  {...registerTool("privateKey")}
+                  rows={5}
+                />
+              </FormField>
+
               <div className="admin-form__actions">
-                <button
-                  className="button button--primary"
-                  type="submit"
-                  disabled={isSavingRegistration}
-                >
-                  {isSavingRegistration
-                    ? t("admin.lti.registrations.form.saving")
-                    : t("admin.lti.registrations.form.save")}
+                <button className="button" type="submit" disabled={toolSaving}>
+                  {toolSaving
+                    ? t("admin.lti.toolSettings.saving")
+                    : t("admin.lti.toolSettings.save")}
                 </button>
-                {editingRegistrationId && (
-                  <button
-                    className="button button--ghost"
-                    type="button"
-                    onClick={resetRegistrationForm}
-                  >
-                    {t("admin.lti.registrations.form.cancel")}
-                  </button>
-                )}
               </div>
             </form>
-          </section>
-        </div>
-      </ManagementPageLayout>
+          )}
+        </FormSection>
+
+        <FormSection
+          title={t("admin.lti.registrations.title")}
+          subtitle={t("admin.lti.registrations.subtitle")}
+          className="admin-card--wide"
+          headerAction={
+            <button
+              type="button"
+              className="management-header__icon-button"
+              aria-label="Ajouter une registration LTI"
+              title="Ajouter une registration LTI"
+              onClick={() => setShowCreateRegistrationModal(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M10 4v12M4 10h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          }
+        >
+          {registrationsLoading ? (
+            <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
+          ) : registrations.length === 0 ? (
+            <p>{t("admin.lti.registrations.table.empty")}</p>
+          ) : (
+            <ResponsiveTable
+              columns={registrationColumns}
+              data={registrations}
+              keyExtractor={(entry) => entry.id.toString()}
+              mobileCardView={true}
+            />
+          )}
+        </FormSection>
+
+        {editingRegistrationId && (
+          <FormSection
+            title={t("admin.lti.registrations.form.editTitle")}
+          >
+          <form className="admin-form" onSubmit={handleRegSubmit(handleRegistrationSubmit)}>
+            <FormField
+              label={t("admin.lti.registrations.form.issuerLabel")}
+              error={regErrors.issuer?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("issuer")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.clientIdLabel")}
+              error={regErrors.clientId?.message}
+            >
+              <input
+                className="input"
+                type="text"
+                {...registerReg("clientId")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.keySetUrlLabel")}
+              error={regErrors.keySetUrl?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("keySetUrl")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.authorizationEndpointLabel")}
+              error={regErrors.authorizationEndpoint?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("authorizationEndpoint")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.tokenEndpointLabel")}
+              error={regErrors.tokenEndpoint?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("tokenEndpoint")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField label={t("admin.lti.registrations.form.deepLinkReturnUrlLabel")}>
+              <input
+                className="input"
+                type="url"
+                {...registerReg("deepLinkReturnUrl")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField label={t("admin.lti.registrations.form.audienceLabel")}>
+              <input
+                className="input"
+                type="text"
+                {...registerReg("audience")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <div className="admin-form__actions">
+              <button
+                className="button"
+                type="submit"
+                disabled={isSavingRegistration}
+              >
+                {isSavingRegistration
+                  ? t("admin.lti.registrations.form.saving")
+                  : t("admin.lti.registrations.form.save")}
+              </button>
+              {editingRegistrationId && (
+                <button
+                  className="button button--ghost"
+                  type="button"
+                  onClick={resetRegistrationForm}
+                >
+                  {t("admin.lti.registrations.form.cancel")}
+                </button>
+              )}
+            </div>
+          </form>
+        </FormSection>
+        )}
+      </div>
+
+      {showCreateRegistrationModal && (
+        <Modal
+          title={t("admin.lti.registrations.form.createTitle")}
+          onClose={() => setShowCreateRegistrationModal(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => setShowCreateRegistrationModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="button"
+                type="submit"
+                form="create-lti-registration-form"
+                disabled={isSavingRegistration}
+              >
+                {t("admin.lti.registrations.form.save")}
+              </button>
+            </>
+          }
+        >
+          <form id="create-lti-registration-form" className="admin-form" onSubmit={handleRegSubmit(handleRegistrationSubmit)}>
+            <FormField
+              label={t("admin.lti.registrations.form.issuerLabel")}
+              error={regErrors.issuer?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("issuer")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.clientIdLabel")}
+              error={regErrors.clientId?.message}
+            >
+              <input
+                className="input"
+                type="text"
+                {...registerReg("clientId")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.keySetUrlLabel")}
+              error={regErrors.keySetUrl?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("keySetUrl")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.authorizationEndpointLabel")}
+              error={regErrors.authorizationEndpoint?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("authorizationEndpoint")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField
+              label={t("admin.lti.registrations.form.tokenEndpointLabel")}
+              error={regErrors.tokenEndpoint?.message}
+            >
+              <input
+                className="input"
+                type="url"
+                {...registerReg("tokenEndpoint")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField label={t("admin.lti.registrations.form.deepLinkReturnUrlLabel")}>
+              <input
+                className="input"
+                type="url"
+                {...registerReg("deepLinkReturnUrl")}
+                autoComplete="off"
+              />
+            </FormField>
+
+            <FormField label={t("admin.lti.registrations.form.audienceLabel")}>
+              <input
+                className="input"
+                type="text"
+                {...registerReg("audience")}
+                autoComplete="off"
+              />
+            </FormField>
+          </form>
+        </Modal>
+      )}
+    </ManagementPageLayout>
   );
 };
