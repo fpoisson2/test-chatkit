@@ -18,7 +18,8 @@ type AdminTabKey =
   | "appearance"
   | "languages"
   | "lti"
-  | "docs";
+  | "docs"
+  | "preferences";
 
 type AdminTabsProps = {
   activeTab: AdminTabKey;
@@ -37,6 +38,7 @@ const TAB_DEFINITIONS: { key: AdminTabKey; to: string; labelKey: string }[] = [
   { key: "languages", to: "/admin/languages", labelKey: "admin.tabs.languages" },
   { key: "lti", to: "/admin/lti", labelKey: "admin.tabs.lti" },
   { key: "docs", to: "/docs", labelKey: "admin.tabs.docs" },
+  { key: "preferences", to: "/settings", labelKey: "admin.tabs.preferences" },
 ];
 
 export const AdminTabs = ({ activeTab }: AdminTabsProps) => {

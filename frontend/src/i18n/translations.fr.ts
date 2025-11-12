@@ -33,6 +33,7 @@ export const fr: TranslationDictionary = {
   "admin.tabs.languages": "Langues",
   "admin.tabs.lti": "LTI",
   "admin.tabs.docs": "Documentation",
+  "admin.tabs.preferences": "Préférences utilisateur",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Navigation du panneau d'administration",
   "admin.models.form.modelIdLabel": "Identifiant du modèle*",
