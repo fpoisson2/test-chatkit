@@ -223,6 +223,7 @@ export const AgentInspectorSection = ({
     fileSearchConfig,
     fileSearchEnabled,
     fileSearchValidationMessage,
+    fileSearchValidationReason,
     computerUseConfig,
     computerUseEnabled,
     computerUseDisplayWidthValue,
@@ -254,6 +255,7 @@ export const AgentInspectorSection = ({
     responseWidgetDefinitionExpression,
     widgetSelectValue,
     widgetValidationMessage,
+    widgetValidationReason,
     responseWidgetDefinition,
     responseWidgetDefinitionLoading,
     responseWidgetDefinitionError,
@@ -331,6 +333,33 @@ export const AgentInspectorSection = ({
   );
 
   const { t } = useI18n();
+  const localizedFileSearchValidationMessage = useMemo(() => {
+    switch (fileSearchValidationReason) {
+      case 'no_vector_stores':
+        return t('workflowBuilder.agentInspector.fileSearch.validation.noStores');
+      case 'selection_unavailable':
+        return t('workflowBuilder.agentInspector.fileSearch.validation.unavailable');
+      case 'missing_selection':
+        return t('workflowBuilder.agentInspector.fileSearch.validation.missing');
+      default:
+        return fileSearchValidationMessage;
+    }
+  }, [fileSearchValidationMessage, fileSearchValidationReason, t]);
+
+  const localizedWidgetValidationMessage = useMemo(() => {
+    switch (widgetValidationReason) {
+      case 'library_empty':
+        return t('workflowBuilder.agentInspector.widgetValidation.libraryEmpty');
+      case 'library_missing_selection':
+        return t('workflowBuilder.agentInspector.widgetValidation.libraryMissing');
+      case 'library_selection_unavailable':
+        return t('workflowBuilder.agentInspector.widgetValidation.libraryUnavailable');
+      case 'variable_missing_expression':
+        return t('workflowBuilder.agentInspector.widgetValidation.variableMissing');
+      default:
+        return widgetValidationMessage;
+    }
+  }, [t, widgetValidationMessage, widgetValidationReason]);
   const handleStartMcpOAuth = useCallback(
     (payload: { url: string; clientId: string | null; scope: string | null }) =>
       startMcpOAuthNegotiation({
@@ -1261,7 +1290,7 @@ export const AgentInspectorSection = ({
                         )
                       }
                       aria-describedby={
-                        widgetValidationMessage
+                        localizedWidgetValidationMessage
                           ? `${widgetSelectId}-message`
                           : undefined
                       }
@@ -1295,12 +1324,12 @@ export const AgentInspectorSection = ({
                     </p>
                   ) : null}
 
-                  {widgetValidationMessage ? (
+                  {localizedWidgetValidationMessage ? (
                     <p
                       id={`${widgetSelectId}-message`}
                       className={styles.nodeInspectorErrorTextTightTop}
                     >
-                      {widgetValidationMessage}
+                      {localizedWidgetValidationMessage}
                     </p>
                   ) : null}
 
@@ -1342,12 +1371,12 @@ export const AgentInspectorSection = ({
                     La valeur doit être un objet JSON valide conforme aux
                     spécifications ChatKit Widget.
                   </p>
-                  {widgetValidationMessage ? (
+                  {localizedWidgetValidationMessage ? (
                     <p
                       id={`${widgetSelectId}-message`}
                       className={styles.nodeInspectorErrorTextTightTop}
                     >
-                      {widgetValidationMessage}
+                      {localizedWidgetValidationMessage}
                     </p>
                   ) : null}
                 </>
@@ -1503,9 +1532,9 @@ export const AgentInspectorSection = ({
                         </option>
                       ))}
                     </select>
-                    {fileSearchValidationMessage ? (
+                    {localizedFileSearchValidationMessage ? (
                       <p className={styles.nodeInspectorErrorText}>
-                        {fileSearchValidationMessage}
+                        {localizedFileSearchValidationMessage}
                       </p>
                     ) : null}
                   </label>

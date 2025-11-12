@@ -1,0 +1,200 @@
+.accordionRoot {
+  width: 100%;
+}
+
+.accordionItem {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  background-color: white;
+}
+
+.accordionHeaderWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-right: 0.75rem;
+}
+
+.accordionTrigger {
+  all: unset;
+  font-family: inherit;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1f2937;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.accordionTrigger:hover {
+  background-color: #f9fafb;
+}
+
+.accordionTrigger:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+.accordionTriggerContent {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.accordionChevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  color: #6b7280;
+}
+
+.accordionTrigger[data-state='open'] .accordionChevron {
+  transform: rotate(90deg);
+}
+
+.accordionIcon {
+  flex-shrink: 0;
+  color: #6b7280;
+}
+
+.accordionTitle {
+  flex: 1;
+}
+
+/* Toggle Switch */
+.accordionToggle {
+  all: unset;
+  width: 2.75rem;
+  height: 1.5rem;
+  background-color: #d1d5db;
+  border-radius: 9999px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.accordionToggle:hover {
+  background-color: #9ca3af;
+}
+
+.accordionToggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.accordionToggleOn {
+  background-color: #2563eb;
+}
+
+.accordionToggleOn:hover {
+  background-color: #1d4ed8;
+}
+
+.accordionToggleThumb {
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+  background-color: white;
+  border-radius: 9999px;
+  transition: transform 0.2s ease;
+  transform: translateX(0.125rem);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+}
+
+.accordionToggleOn .accordionToggleThumb {
+  transform: translateX(1.375rem);
+}
+
+/* Content */
+.accordionContent {
+  overflow: hidden;
+  border-top: 1px solid #e5e7eb;
+}
+
+.accordionContent[data-state='open'] {
+  animation: slideDown 0.3s cubic-bezier(0.87, 0, 0.13, 1);
+}
+
+.accordionContent[data-state='closed'] {
+  animation: slideUp 0.3s cubic-bezier(0.87, 0, 0.13, 1);
+}
+
+.accordionContentInner {
+  padding: 1rem;
+}
+
+@keyframes slideDown {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .accordionTrigger {
+    padding: 0.625rem 0.75rem;
+  }
+
+  .accordionContentInner {
+    padding: 0.75rem;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .accordionItem {
+    border-color: var(--border-color, #374151);
+    background-color: var(--bg-card, #1f2937);
+  }
+
+  .accordionTrigger {
+    color: var(--text-primary, #f9fafb);
+  }
+
+  .accordionTrigger:hover {
+    background-color: var(--bg-hover, #111827);
+  }
+
+  .accordionIcon,
+  .accordionChevron {
+    color: var(--text-secondary, #9ca3af);
+  }
+
+  .accordionContent {
+    border-top-color: var(--border-color, #374151);
+  }
+
+  .accordionToggle {
+    background-color: var(--bg-toggle-off, #374151);
+  }
+
+  .accordionToggle:hover {
+    background-color: var(--bg-toggle-hover, #4b5563);
+  }
+
+  .accordionToggleOn {
+    background-color: var(--accent-color, #60a5fa);
+  }
+
+  .accordionToggleOn:hover {
+    background-color: var(--accent-hover, #3b82f6);
+  }
+}

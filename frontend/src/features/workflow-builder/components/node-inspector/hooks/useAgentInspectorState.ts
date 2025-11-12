@@ -98,6 +98,11 @@ type AgentInspectorState = {
   fileSearchConfig: ReturnType<typeof getAgentFileSearchConfig>;
   fileSearchEnabled: boolean;
   fileSearchValidationMessage: string | null;
+  fileSearchValidationReason:
+    | 'no_vector_stores'
+    | 'missing_selection'
+    | 'selection_unavailable'
+    | null;
   computerUseConfig: ReturnType<typeof getAgentComputerUseConfig>;
   computerUseEnabled: boolean;
   computerUseDisplayWidthValue: string;
@@ -138,6 +143,12 @@ type AgentInspectorState = {
   responseWidgetDefinitionExpression: string;
   widgetSelectValue: string;
   widgetValidationMessage: string | null;
+  widgetValidationReason:
+    | 'library_empty'
+    | 'library_missing_selection'
+    | 'library_selection_unavailable'
+    | 'variable_missing_expression'
+    | null;
   responseWidgetDefinition: Record<string, unknown> | null;
   responseWidgetDefinitionLoading: boolean;
   responseWidgetDefinitionError: string | null;
@@ -369,19 +380,22 @@ export const useAgentInspectorState = ({
     (!trimmedVectorStoreSlug ||
       (!vectorStoresError && vectorStores.length > 0 && !selectedVectorStoreExists));
 
-  let fileSearchValidationMessage: string | null = null;
+  let fileSearchValidationReason:
+    | 'no_vector_stores'
+    | 'missing_selection'
+    | 'selection_unavailable'
+    | null = null;
   if (fileSearchMissingVectorStore && !vectorStoresLoading) {
     if (!vectorStoresError && vectorStores.length === 0) {
-      fileSearchValidationMessage =
-        "Créez un vector store avant d'activer la recherche documentaire.";
+      fileSearchValidationReason = 'no_vector_stores';
     } else if (trimmedVectorStoreSlug && !selectedVectorStoreExists) {
-      fileSearchValidationMessage =
-        "Le vector store sélectionné n'est plus disponible. Choisissez-en un autre.";
+      fileSearchValidationReason = 'selection_unavailable';
     } else {
-      fileSearchValidationMessage =
-        "Sélectionnez un vector store pour activer la recherche documentaire.";
+      fileSearchValidationReason = 'missing_selection';
     }
   }
+
+  let fileSearchValidationMessage: string | null = null;
 
   const responseWidgetSource =
     responseFormat.kind === "widget" ? responseFormat.source : "library";
@@ -452,7 +466,7 @@ export const useAgentInspectorState = ({
         }
         setResponseWidgetDefinition(null);
         setResponseWidgetDefinitionError(
-          error instanceof Error ? error.message : "Impossible de charger le widget sélectionné.",
+          error instanceof Error ? error.message : "Unable to load the selected widget.",
         );
       })
       .finally(() => {
@@ -471,7 +485,12 @@ export const useAgentInspectorState = ({
     token,
   ]);
 
-  let widgetValidationMessage: string | null = null;
+  let widgetValidationReason:
+    | 'library_empty'
+    | 'library_missing_selection'
+    | 'library_selection_unavailable'
+    | 'variable_missing_expression'
+    | null = null;
   if (
     responseFormat.kind === "widget" &&
     responseWidgetSource === "library" &&
@@ -479,20 +498,19 @@ export const useAgentInspectorState = ({
     !widgetsError
   ) {
     if (widgets.length === 0) {
-      widgetValidationMessage = "Aucun widget n'est disponible dans la bibliothèque.";
+      widgetValidationReason = 'library_empty';
     } else if (!trimmedWidgetSlug) {
-      widgetValidationMessage = "Sélectionnez un widget de sortie.";
+      widgetValidationReason = 'library_missing_selection';
     } else if (!selectedWidgetExists) {
-      widgetValidationMessage =
-        "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
+      widgetValidationReason = 'library_selection_unavailable';
     }
   } else if (responseFormat.kind === "widget" && responseWidgetSource === "variable") {
     if (!responseWidgetDefinitionExpression.trim()) {
-      widgetValidationMessage =
-        "Renseignez une expression qui retourne le JSON du widget (ex. state.widget_json).";
+      widgetValidationReason = 'variable_missing_expression';
     }
   }
 
+  let widgetValidationMessage: string | null = null;
   const widgetSelectValue =
     responseWidgetSource === "library" && selectedWidgetExists ? trimmedWidgetSlug : "";
 
@@ -575,6 +593,7 @@ export const useAgentInspectorState = ({
     fileSearchConfig,
     fileSearchEnabled,
     fileSearchValidationMessage,
+    fileSearchValidationReason,
     computerUseConfig,
     computerUseEnabled,
     computerUseDisplayWidthValue,
@@ -610,6 +629,7 @@ export const useAgentInspectorState = ({
     responseWidgetDefinitionExpression,
     widgetSelectValue,
     widgetValidationMessage,
+    widgetValidationReason,
     responseWidgetDefinition,
     responseWidgetDefinitionLoading,
     responseWidgetDefinitionError,

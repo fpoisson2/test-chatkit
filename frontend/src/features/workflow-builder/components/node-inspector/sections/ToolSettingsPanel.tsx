@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GitBranch, Server, Wrench } from "lucide-react";
 
 import { useAuth } from "../../../../../auth";
 import { Modal } from "../../../../../components/Modal";
@@ -25,7 +26,9 @@ import type {
   McpSseToolConfig,
 } from "../../../types";
 import { ToggleRow } from "../components/ToggleRow";
-import styles from "../NodeInspector.module.css";
+import { AccordionSection, Field } from "../ui-components";
+import legacyStyles from "../NodeInspector.module.css";
+import v2Styles from "./AgentInspectorSectionV2.module.css";
 
 type PersistedServerSelection = {
   toolNames: string[];
@@ -473,7 +476,7 @@ const McpServerModal = ({
   }, [oauthFeedback.status, oauthFeedback.stateId, onPollOAuth, t]);
 
   const footer = (
-    <div className={styles.nodeInspectorModalFooter}>
+    <div className={legacyStyles.nodeInspectorModalFooter}>
       <button type="button" className="btn btn-secondary" onClick={onClose}>
         {t("workflowBuilder.agentInspector.mcpServersModalCancel")}
       </button>
@@ -494,11 +497,11 @@ const McpServerModal = ({
     >
       <form
         id="mcp-server-modal-form"
-        className={styles.nodeInspectorModalForm}
+        className={legacyStyles.nodeInspectorModalForm}
         onSubmit={handleSubmit}
       >
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
+        <label className={legacyStyles.nodeInspectorField}>
+          <span className={legacyStyles.nodeInspectorLabel}>
             {t("workflowBuilder.agentInspector.mcpServersModalLabel")}
           </span>
           <input
@@ -510,8 +513,8 @@ const McpServerModal = ({
             autoComplete="off"
           />
         </label>
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
+        <label className={legacyStyles.nodeInspectorField}>
+          <span className={legacyStyles.nodeInspectorLabel}>
             {t("workflowBuilder.agentInspector.mcpServersModalUrl")}
           </span>
           <input
@@ -524,8 +527,8 @@ const McpServerModal = ({
             autoComplete="off"
           />
         </label>
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
+        <label className={legacyStyles.nodeInspectorField}>
+          <span className={legacyStyles.nodeInspectorLabel}>
             {t("workflowBuilder.agentInspector.mcpAuthorizationLabel")}
           </span>
           <input
@@ -543,9 +546,9 @@ const McpServerModal = ({
             autoComplete="off"
           />
         </label>
-        <div className={styles.nodeInspectorFieldGroup}>
-          <label className={styles.nodeInspectorField}>
-            <span className={styles.nodeInspectorLabel}>
+        <div className={legacyStyles.nodeInspectorFieldGroup}>
+          <label className={legacyStyles.nodeInspectorField}>
+            <span className={legacyStyles.nodeInspectorLabel}>
               {t("workflowBuilder.agentInspector.mcpClientIdLabel")}
             </span>
             <input
@@ -563,8 +566,8 @@ const McpServerModal = ({
               autoComplete="off"
             />
           </label>
-          <label className={styles.nodeInspectorField}>
-            <span className={styles.nodeInspectorLabel}>
+          <label className={legacyStyles.nodeInspectorField}>
+            <span className={legacyStyles.nodeInspectorLabel}>
               {t("workflowBuilder.agentInspector.mcpScopeLabel")}
             </span>
             <input
@@ -582,8 +585,8 @@ const McpServerModal = ({
               autoComplete="off"
             />
           </label>
-          <label className={styles.nodeInspectorField}>
-            <span className={styles.nodeInspectorLabel}>
+          <label className={legacyStyles.nodeInspectorField}>
+            <span className={legacyStyles.nodeInspectorLabel}>
               {t("workflowBuilder.agentInspector.mcpServersModalClientSecret")}
             </span>
             <input
@@ -599,9 +602,9 @@ const McpServerModal = ({
             />
           </label>
         </div>
-        <div className={styles.nodeInspectorFieldGroup}>
-          <label className={styles.nodeInspectorField}>
-            <span className={styles.nodeInspectorLabel}>
+        <div className={legacyStyles.nodeInspectorFieldGroup}>
+          <label className={legacyStyles.nodeInspectorField}>
+            <span className={legacyStyles.nodeInspectorLabel}>
               {t("workflowBuilder.agentInspector.mcpServersModalAccessToken")}
             </span>
             <input
@@ -616,8 +619,8 @@ const McpServerModal = ({
               autoComplete="off"
             />
           </label>
-          <label className={styles.nodeInspectorField}>
-            <span className={styles.nodeInspectorLabel}>
+          <label className={legacyStyles.nodeInspectorField}>
+            <span className={legacyStyles.nodeInspectorLabel}>
               {t("workflowBuilder.agentInspector.mcpServersModalRefreshToken")}
             </span>
             <input
@@ -633,8 +636,8 @@ const McpServerModal = ({
             />
           </label>
         </div>
-        <div className={styles.nodeInspectorField}>
-          <div className={styles.nodeInspectorButtonRow}>
+        <div className={legacyStyles.nodeInspectorField}>
+          <div className={legacyStyles.nodeInspectorButtonRow}>
             <button
               type="button"
               className="btn"
@@ -661,8 +664,8 @@ const McpServerModal = ({
               role="status"
               className={
                 oauthFeedback.status === "error"
-                  ? styles.nodeInspectorErrorTextSmall
-                  : styles.nodeInspectorInfoMessage
+                  ? legacyStyles.nodeInspectorErrorTextSmall
+                  : legacyStyles.nodeInspectorInfoMessage
               }
             >
               {oauthFeedback.message}
@@ -673,8 +676,8 @@ const McpServerModal = ({
               role="status"
               className={
                 probeState.status === "error"
-                  ? styles.nodeInspectorErrorTextSmall
-                  : styles.nodeInspectorInfoMessage
+                  ? legacyStyles.nodeInspectorErrorTextSmall
+                  : legacyStyles.nodeInspectorInfoMessage
               }
             >
               {probeState.message}
@@ -682,7 +685,7 @@ const McpServerModal = ({
           ) : null}
         </div>
         {error ? (
-          <div className={styles.nodeInspectorErrorTextSmall}>{error}</div>
+          <div className={legacyStyles.nodeInspectorErrorTextSmall}>{error}</div>
         ) : null}
       </form>
     </Modal>
@@ -694,6 +697,7 @@ type ToolSettingsPanelProps = {
   parameters: FlowNode["data"]["parameters"];
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
+  variant?: "legacy" | "v2";
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
@@ -714,6 +718,7 @@ export const ToolSettingsPanel = ({
   parameters,
   workflows,
   currentWorkflowId,
+  variant = "legacy",
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
@@ -1093,8 +1098,16 @@ export const ToolSettingsPanel = ({
   const workflowValidationFunctionEnabled =
     getAgentWorkflowValidationToolEnabled(parameters);
 
+  const hasFunctionToolEnabled =
+    weatherFunctionEnabled ||
+    widgetValidationFunctionEnabled ||
+    workflowValidationFunctionEnabled;
+
   const workflowToolConfigs = getAgentWorkflowTools(parameters);
   const workflowToolSlugs = workflowToolConfigs.map((config) => config.slug);
+  const hasWorkflowToolEnabled = workflowToolSlugs.length > 0;
+
+  const hasSelectedMcpServers = selectedServers.size > 0;
 
   const availableNestedWorkflows = useMemo(
     () => workflows.filter((workflow) => workflow.id !== currentWorkflowId),
@@ -1130,209 +1143,543 @@ export const ToolSettingsPanel = ({
     />
   ) : null;
 
+  if (variant === "legacy") {
+    return (
+      <>
+        <div className={legacyStyles.nodeInspectorPanelSpacious}>
+          <div className={legacyStyles.nodeInspectorPanelInnerAccentTight}>
+            <strong className={legacyStyles.nodeInspectorSectionTitleSmall}>
+              {t("workflowBuilder.agentInspector.functionToolsTitle")}
+            </strong>
+            <ToggleRow
+              label={t("workflowBuilder.agentInspector.weatherToolLabel")}
+              checked={weatherFunctionEnabled}
+              onChange={(next) => onAgentWeatherToolChange(nodeId, next)}
+              help={t("workflowBuilder.agentInspector.weatherToolHelp")}
+            />
+            <ToggleRow
+              label={t("workflowBuilder.agentInspector.widgetValidationLabel")}
+              checked={widgetValidationFunctionEnabled}
+              onChange={(next) => onAgentWidgetValidationToolChange(nodeId, next)}
+              help={t("workflowBuilder.agentInspector.widgetValidationHelp")}
+            />
+            <ToggleRow
+              label={t("workflowBuilder.agentInspector.workflowValidationLabel")}
+              checked={workflowValidationFunctionEnabled}
+              onChange={(next) => onAgentWorkflowValidationToolChange(nodeId, next)}
+              help={t("workflowBuilder.agentInspector.workflowValidationHelp")}
+            />
+          </div>
+
+          <div className={legacyStyles.nodeInspectorPanelInner}>
+            <strong className={legacyStyles.nodeInspectorSectionTitleSmall}>
+              {t("workflowBuilder.agentInspector.mcpServersTitle")}
+            </strong>
+            <p className={legacyStyles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.agentInspector.mcpServersDescription")}
+            </p>
+            <div className={legacyStyles.nodeInspectorButtonRow}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setIsCreateModalOpen(true)}
+              >
+                {t("workflowBuilder.agentInspector.mcpServersAddButton")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  void refreshServers(true);
+                }}
+                disabled={serversLoading}
+              >
+                {serversLoading
+                  ? t("workflowBuilder.agentInspector.mcpServersRefreshing")
+                  : t("workflowBuilder.agentInspector.mcpServersRefreshButton")}
+              </button>
+            </div>
+            {serversError ? (
+              <div className={legacyStyles.nodeInspectorErrorTextSmall}>{serversError}</div>
+            ) : null}
+            {servers.length === 0 && !serversLoading ? (
+              <p className={legacyStyles.nodeInspectorEmptyLabel}>
+                {t("workflowBuilder.agentInspector.mcpServersEmpty")}
+              </p>
+            ) : null}
+            {serversLoading && servers.length === 0 ? (
+              <p className={legacyStyles.nodeInspectorHintTextTight}>
+                {t("workflowBuilder.agentInspector.mcpServersLoading")}
+              </p>
+            ) : null}
+            <div className={legacyStyles.mcpServerList}>
+              {servers.map((server) => {
+                const selection = selectedServers.get(server.id);
+                const availableNames = extractToolNamesFromSummary(server);
+                const isRestricted = Boolean(selection && selection.toolNames.length > 0);
+                const manualDraft = manualToolDrafts[server.id] ?? "";
+                const probe = getProbeState(server.id);
+                const customNames =
+                  selection && selection.toolNames.length > 0
+                    ? selection.toolNames.filter((name) => !availableNames.includes(name))
+                    : [];
+
+                return (
+                  <div key={server.id} className={legacyStyles.mcpServerCard}>
+                    <label className={legacyStyles.mcpServerHeader}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selection)}
+                        onChange={(event) =>
+                          handleServerToggle(server, event.target.checked)
+                        }
+                      />
+                      <div>
+                        <div className={legacyStyles.mcpServerLabel}>{server.label}</div>
+                        <div className={legacyStyles.nodeInspectorHintTextTight}>
+                          {server.server_url}
+                        </div>
+                        {server.authorization_hint ? (
+                          <div className={legacyStyles.nodeInspectorHintTextMuted}>
+                            {t(
+                              "workflowBuilder.agentInspector.mcpServersAuthorizationStored",
+                              { hint: server.authorization_hint },
+                            )}
+                          </div>
+                        ) : null}
+                        {server.tools_cache_updated_at ? (
+                          <div className={legacyStyles.nodeInspectorHintTextMuted}>
+                            {t(
+                              "workflowBuilder.agentInspector.mcpServersCacheUpdated",
+                              { value: server.tools_cache_updated_at },
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    </label>
+                    {selection ? (
+                      <div className={legacyStyles.mcpServerDetails}>
+                        <label className={legacyStyles.nodeInspectorField}>
+                          <span className={legacyStyles.nodeInspectorLabel}>
+                            {t(
+                              "workflowBuilder.agentInspector.mcpServersAuthorizationOverrideLabel",
+                            )}
+                          </span>
+                          <input
+                            type="password"
+                            value={selection.authorizationOverride ?? ""}
+                            onChange={(event) =>
+                              handleAuthorizationOverrideChange(
+                                server.id,
+                                event.target.value,
+                              )
+                            }
+                            placeholder={server.authorization_hint ?? undefined}
+                            autoComplete="off"
+                          />
+                        </label>
+                        <ToggleRow
+                          label={t(
+                            "workflowBuilder.agentInspector.mcpServersRestrictToggle",
+                          )}
+                          checked={isRestricted}
+                          onChange={(next) =>
+                            handleRestrictionToggle(server.id, next, availableNames)
+                          }
+                          help={t(
+                            "workflowBuilder.agentInspector.mcpServersRestrictHelp",
+                          )}
+                        />
+                        {availableNames.length > 0 ? (
+                          <div className={legacyStyles.mcpToolChipGroup}>
+                            {availableNames.map((name) => {
+                              const isChecked =
+                                !isRestricted || selection.toolNames.includes(name);
+                              return (
+                                <label
+                                  key={name}
+                                  className={
+                                    isChecked
+                                      ? `${legacyStyles.mcpToolChip} ${legacyStyles.mcpToolChipSelected}`
+                                      : legacyStyles.mcpToolChip
+                                  }
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(event) =>
+                                      handleToolToggle(
+                                        server.id,
+                                        name,
+                                        availableNames,
+                                        event.target.checked,
+                                      )
+                                    }
+                                  />
+                                  <span>{name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className={legacyStyles.nodeInspectorHintTextTight}>
+                            {t("workflowBuilder.agentInspector.mcpServersNoTools")}
+                          </p>
+                        )}
+                        {customNames.length > 0 ? (
+                          <div className={legacyStyles.mcpToolChipGroup}>
+                            {customNames.map((name) => (
+                              <button
+                                key={name}
+                                type="button"
+                                className={legacyStyles.mcpCustomToolChip}
+                                onClick={() => handleManualToolRemove(server.id, name)}
+                              >
+                                {name}
+                                <span
+                                  className={legacyStyles.mcpCustomToolChipRemove}
+                                  aria-hidden="true"
+                                >
+                                  ×
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className={legacyStyles.nodeInspectorInlineField}>
+                          <span className={legacyStyles.nodeInspectorLabel}>
+                            {t("workflowBuilder.agentInspector.mcpServersAddToolLabel")}
+                          </span>
+                          <input
+                            type="text"
+                            value={manualDraft}
+                            onChange={(event) =>
+                              handleManualToolDraftChange(server.id, event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                handleManualToolAdd(server.id);
+                              }
+                            }}
+                            placeholder={t(
+                              "workflowBuilder.agentInspector.mcpServersAddToolPlaceholder",
+                            )}
+                            autoComplete="off"
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => handleManualToolAdd(server.id)}
+                            disabled={!manualDraft.trim()}
+                          >
+                            {t("workflowBuilder.agentInspector.mcpServersAddToolButton")}
+                          </button>
+                        </div>
+                        <div className={legacyStyles.nodeInspectorField}>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => handleProbeServer(server)}
+                            disabled={probe.status === "loading"}
+                          >
+                            {t("workflowBuilder.agentInspector.mcpServersProbeButton")}
+                          </button>
+                          {probe.status !== "idle" && probe.message ? (
+                            <div
+                              role="status"
+                              className={
+                                probe.status === "error"
+                                  ? legacyStyles.nodeInspectorErrorTextSmall
+                                  : legacyStyles.nodeInspectorInfoMessage
+                              }
+                            >
+                              {probe.message}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <strong className={legacyStyles.nodeInspectorSectionTitleSmall}>
+              {t("workflowBuilder.agentInspector.workflowToolsTitle")}
+            </strong>
+            <p className={legacyStyles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.agentInspector.workflowToolsDescription")}
+            </p>
+            {availableNestedWorkflows.length > 0 ? (
+              <div className={legacyStyles.nodeInspectorToggleGroup}>
+                {availableNestedWorkflows.map((workflow) => {
+                  const slug = workflow.slug;
+                  const label = workflow.display_name?.trim() || slug;
+                  return (
+                    <ToggleRow
+                      key={workflow.id}
+                      label={label}
+                      checked={workflowToolSlugSet.has(slug)}
+                      onChange={(next) => onAgentWorkflowToolToggle(nodeId, slug, next)}
+                      help={t(
+                        "workflowBuilder.agentInspector.workflowToolsToggleHelp",
+                        { slug },
+                      )}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <p className={legacyStyles.nodeInspectorEmptyLabel}>
+                {t("workflowBuilder.agentInspector.workflowToolsEmpty")}
+              </p>
+            )}
+            {missingWorkflowToolSlugs.length > 0 ? (
+              <div className={legacyStyles.nodeInspectorInfoMessage}>
+                {missingWorkflowToolSlugs.map((slug) => (
+                  <div key={slug}>
+                    {t("workflowBuilder.agentInspector.workflowToolsMissing", { slug })}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {modal}
+      </>
+    );
+  }
+
   return (
     <>
-      <div className={styles.nodeInspectorPanelSpacious}>
-        <div className={styles.nodeInspectorPanelInnerAccentTight}>
-          <strong className={styles.nodeInspectorSectionTitleSmall}>Function tool</strong>
-          <ToggleRow
-            label="Autoriser la fonction météo Python"
-            checked={weatherFunctionEnabled}
-            onChange={(next) => onAgentWeatherToolChange(nodeId, next)}
-            help="Ajoute l'outil fetch_weather pour récupérer la météo via le backend."
-          />
-          <ToggleRow
-            label="Autoriser la fonction de validation de widget"
-            checked={widgetValidationFunctionEnabled}
-            onChange={(next) => onAgentWidgetValidationToolChange(nodeId, next)}
-            help="Ajoute l'outil validate_widget pour vérifier une définition de widget ChatKit."
-          />
-          <ToggleRow
-            label="Autoriser la fonction de validation de workflow"
-            checked={workflowValidationFunctionEnabled}
-            onChange={(next) => onAgentWorkflowValidationToolChange(nodeId, next)}
-            help="Ajoute l'outil validate_workflow_graph pour vérifier un graphe de workflow."
-          />
+      <AccordionSection
+        id="function-tools"
+        title={t("workflowBuilder.agentInspector.functionToolsTitle")}
+        icon={Wrench}
+        expandedByDefault={hasFunctionToolEnabled}
+        showToggle={false}
+      >
+        <div className={v2Styles.sectionHeader}>
+          <p className={v2Styles.sectionDescription}>
+            {t("workflowBuilder.agentInspector.functionToolsDescription")}
+          </p>
         </div>
 
-        <div className={styles.nodeInspectorPanelInner}>
-          <strong className={styles.nodeInspectorSectionTitleSmall}>
-            {t("workflowBuilder.agentInspector.mcpServersTitle")}
-          </strong>
-          <p className={styles.nodeInspectorHintTextTight}>
+        <div className={v2Styles.toggleGroup}>
+          <ToggleRow
+            label={t("workflowBuilder.agentInspector.weatherToolLabel")}
+            checked={weatherFunctionEnabled}
+            onChange={(next) => onAgentWeatherToolChange(nodeId, next)}
+            help={t("workflowBuilder.agentInspector.weatherToolHelp")}
+            className={v2Styles.toggleRow}
+          />
+          <ToggleRow
+            label={t("workflowBuilder.agentInspector.widgetValidationLabel")}
+            checked={widgetValidationFunctionEnabled}
+            onChange={(next) => onAgentWidgetValidationToolChange(nodeId, next)}
+            help={t("workflowBuilder.agentInspector.widgetValidationHelp")}
+            className={v2Styles.toggleRow}
+          />
+          <ToggleRow
+            label={t("workflowBuilder.agentInspector.workflowValidationLabel")}
+            checked={workflowValidationFunctionEnabled}
+            onChange={(next) => onAgentWorkflowValidationToolChange(nodeId, next)}
+            help={t("workflowBuilder.agentInspector.workflowValidationHelp")}
+            className={v2Styles.toggleRow}
+          />
+        </div>
+      </AccordionSection>
+
+      <AccordionSection
+        id="mcp-servers"
+        title={t("workflowBuilder.agentInspector.mcpServersTitle")}
+        icon={Server}
+        expandedByDefault={hasSelectedMcpServers}
+        showToggle={false}
+      >
+        <div className={v2Styles.sectionHeader}>
+          <p className={v2Styles.sectionDescription}>
             {t("workflowBuilder.agentInspector.mcpServersDescription")}
           </p>
-          <div className={styles.nodeInspectorButtonRow}>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setIsCreateModalOpen(true)}
-            >
-              {t("workflowBuilder.agentInspector.mcpServersAddButton")}
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => {
-                void refreshServers(true);
-              }}
-              disabled={serversLoading}
-            >
-              {serversLoading
-                ? t("workflowBuilder.agentInspector.mcpServersRefreshing")
-                : t("workflowBuilder.agentInspector.mcpServersRefreshButton")}
-            </button>
+        </div>
+
+        <div className={v2Styles.buttonRow}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setIsCreateModalOpen(true)}
+          >
+            {t("workflowBuilder.agentInspector.mcpServersAddButton")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              void refreshServers(true);
+            }}
+            disabled={serversLoading}
+          >
+            {serversLoading
+              ? t("workflowBuilder.agentInspector.mcpServersRefreshing")
+              : t("workflowBuilder.agentInspector.mcpServersRefreshButton")}
+          </button>
+        </div>
+
+        {serversError ? (
+          <div className={v2Styles.errorMessage}>{serversError}</div>
+        ) : null}
+
+        {servers.length === 0 && !serversLoading ? (
+          <div className={v2Styles.statusMessage}>
+            {t("workflowBuilder.agentInspector.mcpServersEmpty")}
           </div>
-          {serversError ? (
-            <div className={styles.nodeInspectorErrorTextSmall}>{serversError}</div>
-          ) : null}
-          {servers.length === 0 && !serversLoading ? (
-            <p className={styles.nodeInspectorEmptyLabel}>
-              {t("workflowBuilder.agentInspector.mcpServersEmpty")}
-            </p>
-          ) : null}
-          {serversLoading && servers.length === 0 ? (
-            <p className={styles.nodeInspectorHintTextTight}>
-              {t("workflowBuilder.agentInspector.mcpServersLoading")}
-            </p>
-          ) : null}
-          <div className={styles.mcpServerList}>
-            {servers.map((server) => {
-              const selection = selectedServers.get(server.id);
-              const availableNames = extractToolNamesFromSummary(server);
-              const isRestricted = Boolean(selection && selection.toolNames.length > 0);
-              const manualDraft = manualToolDrafts[server.id] ?? "";
-              const probe = getProbeState(server.id);
-              const customNames =
-                selection && selection.toolNames.length > 0
-                  ? selection.toolNames.filter((name) => !availableNames.includes(name))
-                  : [];
-              return (
-                <div key={server.id} className={styles.mcpServerCard}>
-                  <label className={styles.mcpServerHeader}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selection)}
-                      onChange={(event) =>
-                        handleServerToggle(server, event.target.checked)
-                      }
-                    />
-                    <div>
-                      <div className={styles.mcpServerLabel}>{server.label}</div>
-                      <div className={styles.nodeInspectorHintTextTight}>
-                        {server.server_url}
+        ) : null}
+
+        {serversLoading && servers.length === 0 ? (
+          <div className={v2Styles.statusMessage}>
+            {t("workflowBuilder.agentInspector.mcpServersLoading")}
+          </div>
+        ) : null}
+
+        <div className={v2Styles.mcpServerList}>
+          {servers.map((server) => {
+            const selection = selectedServers.get(server.id);
+            const availableNames = extractToolNamesFromSummary(server);
+            const isRestricted = Boolean(selection && selection.toolNames.length > 0);
+            const manualDraft = manualToolDrafts[server.id] ?? "";
+            const probe = getProbeState(server.id);
+            const customNames =
+              selection && selection.toolNames.length > 0
+                ? selection.toolNames.filter((name) => !availableNames.includes(name))
+                : [];
+
+            return (
+              <div key={server.id} className={v2Styles.mcpServerCard}>
+                <label className={v2Styles.mcpServerHeader}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selection)}
+                    onChange={(event) =>
+                      handleServerToggle(server, event.target.checked)
+                    }
+                  />
+                  <div className={v2Styles.mcpServerHeading}>
+                    <div className={v2Styles.mcpServerLabel}>{server.label}</div>
+                    <div className={v2Styles.mutedText}>{server.server_url}</div>
+                    {server.authorization_hint ? (
+                      <div className={v2Styles.mutedTextSmall}>
+                        {t(
+                          "workflowBuilder.agentInspector.mcpServersAuthorizationStored",
+                          { hint: server.authorization_hint },
+                        )}
                       </div>
-                      {server.authorization_hint ? (
-                        <div className={styles.nodeInspectorHintTextMuted}>
-                          {t(
-                            "workflowBuilder.agentInspector.mcpServersAuthorizationStored",
-                            { hint: server.authorization_hint },
-                          )}
-                        </div>
-                      ) : null}
-                      {server.tools_cache_updated_at ? (
-                        <div className={styles.nodeInspectorHintTextMuted}>
-                          {t(
-                            "workflowBuilder.agentInspector.mcpServersCacheUpdated",
-                            { value: server.tools_cache_updated_at },
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                  </label>
-                  {selection ? (
-                    <div className={styles.mcpServerDetails}>
-                      <label className={styles.nodeInspectorField}>
-                        <span className={styles.nodeInspectorLabel}>
-                          {t(
-                            "workflowBuilder.agentInspector.mcpServersAuthorizationOverrideLabel",
-                          )}
-                        </span>
-                        <input
-                          type="password"
-                          value={selection.authorizationOverride ?? ""}
-                          onChange={(event) =>
-                            handleAuthorizationOverrideChange(
-                              server.id,
-                              event.target.value,
-                            )
-                          }
-                          placeholder={server.authorization_hint ?? undefined}
-                          autoComplete="off"
-                        />
-                      </label>
-                      <ToggleRow
-                        label={t(
-                          "workflowBuilder.agentInspector.mcpServersRestrictToggle",
+                    ) : null}
+                    {server.tools_cache_updated_at ? (
+                      <div className={v2Styles.mutedTextSmall}>
+                        {t(
+                          "workflowBuilder.agentInspector.mcpServersCacheUpdated",
+                          { value: server.tools_cache_updated_at },
                         )}
-                        checked={isRestricted}
-                        onChange={(next) =>
-                          handleRestrictionToggle(server.id, next, availableNames)
-                        }
-                        help={t(
-                          "workflowBuilder.agentInspector.mcpServersRestrictHelp",
-                        )}
-                      />
-                      {availableNames.length > 0 ? (
-                        <div className={styles.mcpToolChipGroup}>
-                          {availableNames.map((name) => {
-                            const isChecked =
-                              !isRestricted || selection.toolNames.includes(name);
-                            return (
-                              <label
-                                key={name}
-                                className={
-                                  isChecked
-                                    ? `${styles.mcpToolChip} ${styles.mcpToolChipSelected}`
-                                    : styles.mcpToolChip
-                                }
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={(event) =>
-                                    handleToolToggle(
-                                      server.id,
-                                      name,
-                                      availableNames,
-                                      event.target.checked,
-                                    )
-                                  }
-                                />
-                                <span>{name}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className={styles.nodeInspectorHintTextTight}>
-                          {t("workflowBuilder.agentInspector.mcpServersNoTools")}
-                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                </label>
+
+                {selection ? (
+                  <div className={v2Styles.mcpServerDetails}>
+                    <Field
+                      label={t(
+                        "workflowBuilder.agentInspector.mcpServersAuthorizationOverrideLabel",
                       )}
-                      {customNames.length > 0 ? (
-                        <div className={styles.mcpToolChipGroup}>
-                          {customNames.map((name) => (
-                            <button
+                      className={v2Styles.field}
+                    >
+                      <input
+                        type="password"
+                        value={selection.authorizationOverride ?? ""}
+                        onChange={(event) =>
+                          handleAuthorizationOverrideChange(
+                            server.id,
+                            event.target.value,
+                          )
+                        }
+                        placeholder={server.authorization_hint ?? undefined}
+                        autoComplete="off"
+                      />
+                    </Field>
+
+                    <ToggleRow
+                      label={t("workflowBuilder.agentInspector.mcpServersRestrictToggle")}
+                      checked={isRestricted}
+                      onChange={(next) =>
+                        handleRestrictionToggle(server.id, next, availableNames)
+                      }
+                      help={t("workflowBuilder.agentInspector.mcpServersRestrictHelp")}
+                      className={v2Styles.toggleRow}
+                    />
+
+                    {availableNames.length > 0 ? (
+                      <div className={v2Styles.chipGroup}>
+                        {availableNames.map((name) => {
+                          const isChecked =
+                            !isRestricted || selection.toolNames.includes(name);
+                          return (
+                            <label
                               key={name}
-                              type="button"
-                              className={styles.mcpCustomToolChip}
-                              onClick={() => handleManualToolRemove(server.id, name)}
+                              className={
+                                isChecked
+                                  ? `${v2Styles.chip} ${v2Styles.chipSelected}`
+                                  : v2Styles.chip
+                              }
                             >
-                              {name}
-                              <span
-                                className={styles.mcpCustomToolChipRemove}
-                                aria-hidden="true"
-                              >
-                                ×
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                      <div className={styles.nodeInspectorInlineField}>
-                        <span className={styles.nodeInspectorLabel}>
-                          {t("workflowBuilder.agentInspector.mcpServersAddToolLabel")}
-                        </span>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(event) =>
+                                  handleToolToggle(
+                                    server.id,
+                                    name,
+                                    availableNames,
+                                    event.target.checked,
+                                  )
+                                }
+                              />
+                              <span>{name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className={v2Styles.mutedText}>
+                        {t("workflowBuilder.agentInspector.mcpServersNoTools")}
+                      </p>
+                    )}
+
+                    {customNames.length > 0 ? (
+                      <div className={v2Styles.chipGroup}>
+                        {customNames.map((name) => (
+                          <button
+                            key={name}
+                            type="button"
+                            className={v2Styles.customChip}
+                            onClick={() => handleManualToolRemove(server.id, name)}
+                          >
+                            {name}
+                            <span className={v2Styles.customChipRemove} aria-hidden="true">
+                              ×
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <Field
+                      label={t("workflowBuilder.agentInspector.mcpServersAddToolLabel")}
+                      className={v2Styles.field}
+                    >
+                      <div className={v2Styles.inlineField}>
                         <input
                           type="text"
                           value={manualDraft}
@@ -1359,79 +1706,84 @@ export const ToolSettingsPanel = ({
                           {t("workflowBuilder.agentInspector.mcpServersAddToolButton")}
                         </button>
                       </div>
-                      <div className={styles.nodeInspectorField}>
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => handleProbeServer(server)}
-                          disabled={probe.status === "loading"}
+                    </Field>
+
+                    <div className={v2Styles.inlineField}>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => handleProbeServer(server)}
+                        disabled={probe.status === "loading"}
+                      >
+                        {t("workflowBuilder.agentInspector.mcpServersProbeButton")}
+                      </button>
+                      {probe.status !== "idle" && probe.message ? (
+                        <div
+                          role="status"
+                          className={
+                            probe.status === "error"
+                              ? v2Styles.errorMessage
+                              : v2Styles.statusMessage
+                          }
                         >
-                          {t("workflowBuilder.agentInspector.mcpServersProbeButton")}
-                        </button>
-                        {probe.status !== "idle" && probe.message ? (
-                          <div
-                            role="status"
-                            className={
-                              probe.status === "error"
-                                ? styles.nodeInspectorErrorTextSmall
-                                : styles.nodeInspectorInfoMessage
-                            }
-                          >
-                            {probe.message}
-                          </div>
-                        ) : null}
-                      </div>
+                          {probe.message}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </AccordionSection>
+
+      <AccordionSection
+        id="workflow-tools"
+        title={t("workflowBuilder.agentInspector.workflowToolsTitle")}
+        icon={GitBranch}
+        expandedByDefault={hasWorkflowToolEnabled}
+        showToggle={false}
+      >
+        <div className={v2Styles.sectionHeader}>
+          <p className={v2Styles.sectionDescription}>
+            {t("workflowBuilder.agentInspector.workflowToolsDescription")}
+          </p>
+        </div>
+
+        {availableNestedWorkflows.length > 0 ? (
+          <div className={v2Styles.toggleGroup}>
+            {availableNestedWorkflows.map((workflow) => {
+              const slug = workflow.slug;
+              const label = workflow.display_name?.trim() || slug;
+              return (
+                <ToggleRow
+                  key={workflow.id}
+                  label={label}
+                  checked={workflowToolSlugSet.has(slug)}
+                  onChange={(next) => onAgentWorkflowToolToggle(nodeId, slug, next)}
+                  help={t("workflowBuilder.agentInspector.workflowToolsToggleHelp", { slug })}
+                  className={v2Styles.toggleRow}
+                />
               );
             })}
           </div>
-        </div>
+        ) : (
+          <div className={v2Styles.statusMessage}>
+            {t("workflowBuilder.agentInspector.workflowToolsEmpty")}
+          </div>
+        )}
 
-
-        <div>
-          <strong className={styles.nodeInspectorSectionTitleSmall}>
-            {t("workflowBuilder.agentInspector.workflowToolsTitle")}
-          </strong>
-          <p className={styles.nodeInspectorHintTextTight}>
-            {t("workflowBuilder.agentInspector.workflowToolsDescription")}
-          </p>
-          {availableNestedWorkflows.length > 0 ? (
-            <div className={styles.nodeInspectorToggleGroup}>
-              {availableNestedWorkflows.map((workflow) => {
-                const slug = workflow.slug;
-                const label = workflow.display_name?.trim() || slug;
-                return (
-                  <ToggleRow
-                    key={workflow.id}
-                    label={label}
-                    checked={workflowToolSlugSet.has(slug)}
-                    onChange={(next) => onAgentWorkflowToolToggle(nodeId, slug, next)}
-                    help={t(
-                      "workflowBuilder.agentInspector.workflowToolsToggleHelp",
-                      { slug },
-                    )}
-                  />
-                );
-              })}
-            </div>
-          ) : (
-            <p className={styles.nodeInspectorEmptyLabel}>
-              {t("workflowBuilder.agentInspector.workflowToolsEmpty")}
-            </p>
-          )}
-          {missingWorkflowToolSlugs.length > 0 ? (
-            <div className={styles.nodeInspectorInfoMessage}>
-              {missingWorkflowToolSlugs.map((slug) => (
-                <div key={slug}>
-                  {t("workflowBuilder.agentInspector.workflowToolsMissing", { slug })}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
+        {missingWorkflowToolSlugs.length > 0 ? (
+          <div className={v2Styles.noticeCard}>
+            {missingWorkflowToolSlugs.map((slug) => (
+              <div key={slug}>
+                {t("workflowBuilder.agentInspector.workflowToolsMissing", { slug })}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </AccordionSection>
       {modal}
     </>
   );
