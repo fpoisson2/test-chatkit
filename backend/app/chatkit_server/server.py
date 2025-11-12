@@ -75,6 +75,7 @@ from ..workflows import (
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
 )
+from .event_buffer import get_event_buffer
 from .actions import (
     _UNSET,
     _apply_widget_variable_values,
@@ -379,6 +380,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             open_attachment=attachment_store.open_attachment,
         )
         self.attachment_store = attachment_store
+        self._event_buffer = get_event_buffer()
 
     async def _process_streaming_impl(
         self,
@@ -621,6 +623,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         if workflow_input is None:
             return
+
+        # Envoyer les événements bufferisés (messages manqués pendant la déconnexion)
+        buffered_events = await self._event_buffer.get_buffered_events(thread.id)
+        if buffered_events:
+            logger.info(
+                "Envoi de %d événements bufferisés pour le fil %s",
+                len(buffered_events),
+                thread.id,
+            )
+            for event in buffered_events:
+                yield event
 
         workflow_result = _WorkflowStreamResult(
             runner=self._execute_workflow(
@@ -947,7 +960,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     event.update, WidgetRootUpdated
                 ):
                     most_recent_widget_item_id = event.item_id
+
+                # Envoyer à la queue locale (pour la connexion SSE actuelle)
                 await event_queue.put(event)
+
+                # Aussi bufferiser globalement pour les reconnexions futures
+                await self._event_buffer.add_event(thread.id, event)
 
             async def on_step_stream(
                 update: WorkflowStepStreamUpdate,

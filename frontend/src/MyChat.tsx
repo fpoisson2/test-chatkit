@@ -4,7 +4,6 @@ import type { ChatKitOptions, StartScreenPrompt } from "@openai/chatkit";
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
-import { ChatKitThreadManager } from "./components/my-chat/ChatKitThreadManager";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { OutboundCallAudioPlayer } from "./components/my-chat/OutboundCallAudioPlayer";
@@ -43,13 +42,6 @@ type ResetChatStateOptions = {
   selection?: WorkflowActivation | null;
   preserveStoredThread?: boolean;
   targetMode?: HostedFlowMode;
-};
-
-type ThreadInfo = {
-  threadId: string;
-  workflowSlug: string;
-  status: { type: string; reason?: string };
-  lastActivity: number;
 };
 
 const HOSTED_STORAGE_PREFIX = "hosted::";
@@ -224,7 +216,6 @@ export function MyChat() {
   const hostedWorkflowSlug =
     workflowSelection.kind === "hosted" ? workflowSelection.slug : null;
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
-  const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
@@ -236,38 +227,6 @@ export function MyChat() {
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
-
-  // Automatic cleanup of closed/locked threads after inactivity
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveThreads(prev => {
-        const next = new Map(prev);
-        const now = Date.now();
-        const INACTIVE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-
-        for (const [threadId, thread] of next.entries()) {
-          // Never remove the current thread
-          if (threadId === currentThreadId) {
-            continue;
-          }
-
-          // Remove if closed/locked AND inactive for > 30 minutes
-          const shouldRemove =
-            (thread.status.type === "closed" || thread.status.type === "locked") &&
-            (now - thread.lastActivity) > INACTIVE_TIMEOUT;
-
-          if (shouldRemove) {
-            console.log(`[ChatKit] Cleaning up thread ${threadId} (status: ${thread.status.type})`);
-            next.delete(threadId);
-          }
-        }
-
-        return next.size !== prev.size ? next : prev;
-      });
-    }, 60000); // Check every minute
-
-    return () => clearInterval(interval);
-  }, [currentThreadId]);
 
   // Detect outbound calls via WebSocket events (like voice sessions)
   const handleOutboundTranscript = useCallback(() => {
@@ -333,10 +292,6 @@ export function MyChat() {
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
     loadStoredThreadId(sessionOwner, persistenceSlug),
   );
-
-  // Multi-thread support: track all active threads
-  const [activeThreads, setActiveThreads] = useState<Map<string, ThreadInfo>>(new Map());
-  const [currentThreadId, setCurrentThreadId] = useState<string | null>(initialThreadId);
 
   const resetChatState = useCallback(
     ({
@@ -627,31 +582,6 @@ export function MyChat() {
           console.debug("[ChatKit] thread change", { threadId });
           persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
           setInitialThreadId((current) => (current === threadId ? current : threadId));
-
-          // Track thread in activeThreads for multi-thread support
-          if (threadId) {
-            setCurrentThreadId(threadId);
-
-            setActiveThreads(prev => {
-              if (prev.has(threadId)) {
-                // Thread already exists, just update lastActivity
-                const next = new Map(prev);
-                const thread = next.get(threadId)!;
-                thread.lastActivity = Date.now();
-                return next;
-              }
-
-              // New thread, add it
-              const next = new Map(prev);
-              next.set(threadId, {
-                threadId,
-                workflowSlug: persistenceSlug ?? "__default__",
-                status: { type: "active" },
-                lastActivity: Date.now(),
-              });
-              return next;
-            });
-          }
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });
@@ -670,43 +600,12 @@ export function MyChat() {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
               const thread = data.thread as Record<string, unknown>;
-              const threadId = thread.id as string | undefined;
-              const status = thread.status as { type: string; reason?: string } | undefined;
-
               lastThreadSnapshotRef.current = thread;
               // Update state to trigger re-render and useOutboundCallDetector
               setCurrentThread(thread);
 
-              // Update activeThreads with status
-              if (threadId) {
-                setActiveThreads(prev => {
-                  const next = new Map(prev);
-                  const existing = next.get(threadId);
-
-                  if (existing) {
-                    // Update existing thread
-                    existing.status = status ?? { type: "active" };
-                    existing.lastActivity = Date.now();
-                  } else {
-                    // New thread detected
-                    next.set(threadId, {
-                      threadId,
-                      workflowSlug: persistenceSlug ?? "__default__",
-                      status: status ?? { type: "active" },
-                      lastActivity: Date.now(),
-                    });
-                  }
-
-                  return next;
-                });
-
-                setCurrentThreadId(threadId);
-              }
-
               // Debug: Log thread structure
               console.log('[MyChat] Thread updated:', {
-                threadId,
-                status: status?.type,
                 keys: Object.keys(thread),
                 hasItems: 'items' in thread,
                 hasMessages: 'messages' in thread,
@@ -765,15 +664,7 @@ export function MyChat() {
         setMode={setMode}
         onWorkflowActivated={handleWorkflowActivated}
       />
-      {activeThreads.size > 0 ? (
-        <ChatKitThreadManager
-          activeThreads={activeThreads}
-          currentThreadId={currentThreadId}
-          chatKitOptions={chatkitOptions}
-        />
-      ) : (
-        <ChatKitHost control={control} />
-      )}
+      <ChatKitHost control={control} />
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",
