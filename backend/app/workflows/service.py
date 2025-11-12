@@ -3232,6 +3232,9 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "is_chatkit_default": workflow.is_chatkit_default,
         "lti_enabled": workflow.lti_enabled,
         "lti_registration_ids": [reg.id for reg in workflow.lti_registrations],
+        "lti_show_sidebar": workflow.lti_show_sidebar,
+        "lti_show_header": workflow.lti_show_header,
+        "lti_enable_history": workflow.lti_enable_history,
         "versions_count": len(workflow.versions),
     }
 
