@@ -12,7 +12,7 @@ interface SuspenseRouteProps {
  */
 export const SuspenseRoute = ({
   children,
-  fallback = <LoadingSpinner size="lg" text="Loading page..." />,
+  fallback = <LoadingSpinner size="lg" text="Chargement de la page…" />,
 }: SuspenseRouteProps) => {
   return <Suspense fallback={fallback}>{children}</Suspense>;
 };

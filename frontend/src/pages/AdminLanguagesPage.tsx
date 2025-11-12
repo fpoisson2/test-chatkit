@@ -425,7 +425,7 @@ export const AdminLanguagesPage = () => {
           subtitle="Languages saved in the database"
         >
           {loadingStored ? (
-            <LoadingSpinner text="Loading stored languages..." />
+            <LoadingSpinner text="Chargement des langues enregistrées…" />
           ) : storedLanguages.length === 0 ? (
             <p className="admin-card__subtitle">
               No stored languages yet. Enable "Save to database" when generating a language.

@@ -9,13 +9,31 @@ interface LoadingSpinnerProps {
 
 export const LoadingSpinner = ({
   size = "md",
-  text = "Loading...",
+  text = "Chargement…",
   className = "",
 }: LoadingSpinnerProps) => {
   const sizeStyles: Record<string, CSSProperties> = {
-    sm: { width: "20px", height: "20px", borderWidth: "2px" },
-    md: { width: "40px", height: "40px", borderWidth: "4px" },
-    lg: { width: "60px", height: "60px", borderWidth: "6px" },
+    sm: {
+      width: "20px",
+      height: "20px",
+      borderWidth: "2px",
+      borderStyle: "solid",
+      borderColor: "transparent",
+    },
+    md: {
+      width: "40px",
+      height: "40px",
+      borderWidth: "3px",
+      borderStyle: "solid",
+      borderColor: "transparent",
+    },
+    lg: {
+      width: "60px",
+      height: "60px",
+      borderWidth: "4px",
+      borderStyle: "solid",
+      borderColor: "transparent",
+    },
   };
 
   return (
