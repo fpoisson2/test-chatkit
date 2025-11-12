@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -9,6 +9,7 @@ import {
   type LtiRegistration,
   type LtiRegistrationCreatePayload,
   type LtiRegistrationUpdatePayload,
+  type LtiToolSettings,
   isUnauthorizedError,
   ltiAdminApi,
 } from "../utils/backend";
@@ -62,6 +63,24 @@ export const AdminLtiPage = () => {
   const [editingRegistrationId, setEditingRegistrationId] = useState<number | null>(null);
   const [isSavingRegistration, setSavingRegistration] = useState(false);
 
+  const [toolSettings, setToolSettings] = useState<LtiToolSettings | null>(null);
+  const [toolSettingsLoading, setToolSettingsLoading] = useState(true);
+  const [toolSettingsError, setToolSettingsError] = useState<string | null>(null);
+
+  const formattedPublicKeyUpdatedAt = useMemo(() => {
+    const raw = toolSettings?.public_key_last_updated_at;
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      return raw;
+    }
+
+    return parsed.toLocaleString();
+  }, [toolSettings?.public_key_last_updated_at]);
+
   const fetchRegistrations = useCallback(async () => {
     if (!token) {
       setRegistrations([]);
@@ -92,6 +111,38 @@ export const AdminLtiPage = () => {
   useEffect(() => {
     void fetchRegistrations();
   }, [fetchRegistrations]);
+
+  const fetchToolSettings = useCallback(async () => {
+    if (!token) {
+      setToolSettings(null);
+      setToolSettingsLoading(false);
+      return;
+    }
+
+    setToolSettingsLoading(true);
+    setToolSettingsError(null);
+    try {
+      const data = await ltiAdminApi.getToolSettings(token);
+      setToolSettings(data);
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        logout();
+        setToolSettingsError(t("admin.lti.toolSettings.errors.sessionExpired"));
+      } else {
+        setToolSettingsError(
+          error instanceof Error
+            ? error.message
+            : t("admin.lti.toolSettings.errors.loadFailed"),
+        );
+      }
+    } finally {
+      setToolSettingsLoading(false);
+    }
+  }, [logout, t, token]);
+
+  useEffect(() => {
+    void fetchToolSettings();
+  }, [fetchToolSettings]);
 
   const resetRegistrationForm = useCallback(() => {
     setEditingRegistrationId(null);
@@ -252,9 +303,10 @@ export const AdminLtiPage = () => {
   return (
     <>
       <FeedbackMessages
-        error={registrationsError}
+        error={toolSettingsError ?? registrationsError}
         success={registrationsSuccess}
         onDismissError={() => {
+          setToolSettingsError(null);
           setRegistrationsError(null);
         }}
         onDismissSuccess={() => {
@@ -263,6 +315,67 @@ export const AdminLtiPage = () => {
       />
 
       <div className="admin-grid">
+        <FormSection
+          title={t("admin.lti.toolSettings.keys.title")}
+          subtitle={t("admin.lti.toolSettings.keys.subtitle")}
+          className="admin-card--narrow"
+        >
+          {toolSettingsLoading ? (
+            <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
+          ) : toolSettingsError ? (
+            <p className="admin-form__hint">
+              {t("admin.lti.toolSettings.errors.loadFailed")}
+            </p>
+          ) : (
+            <>
+              <div className="admin-key-details">
+                <div className="admin-key-details__row">
+                  <span className="admin-key-details__label">
+                    {t("admin.lti.toolSettings.keys.privateKeyPath")}
+                  </span>
+                  <span className="admin-key-details__value">
+                    {toolSettings?.private_key_path ??
+                      t("admin.lti.toolSettings.keys.noData")}
+                  </span>
+                </div>
+                <div className="admin-key-details__row">
+                  <span className="admin-key-details__label">
+                    {t("admin.lti.toolSettings.keys.publicKeyPath")}
+                  </span>
+                  <span className="admin-key-details__value">
+                    {toolSettings?.public_key_path ??
+                      t("admin.lti.toolSettings.keys.noData")}
+                  </span>
+                </div>
+                <div className="admin-key-details__row">
+                  <span className="admin-key-details__label">
+                    {t("admin.lti.toolSettings.keys.lastUpdated")}
+                  </span>
+                  <span className="admin-key-details__value">
+                    {toolSettings?.public_key_last_updated_at
+                      ? formattedPublicKeyUpdatedAt ??
+                        toolSettings.public_key_last_updated_at
+                      : t("admin.lti.toolSettings.keys.noData")}
+                  </span>
+                </div>
+              </div>
+              {toolSettings?.public_key_pem && (
+                <div className="admin-key-details__public-key">
+                  <span className="admin-key-details__label admin-key-details__label--block">
+                    {t("admin.lti.toolSettings.keys.publicKeyHeading")}
+                  </span>
+                  <pre className="code-block admin-key-details__code">
+                    {toolSettings.public_key_pem}
+                  </pre>
+                </div>
+              )}
+              <p className="admin-form__hint">
+                {t("admin.lti.toolSettings.keys.readOnlyNotice")}
+              </p>
+            </>
+          )}
+        </FormSection>
+
         <FormSection
           title={t("admin.lti.registrations.title")}
           subtitle={t("admin.lti.registrations.subtitle")}

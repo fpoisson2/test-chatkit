@@ -127,6 +127,20 @@ export const fr: TranslationDictionary = {
   "admin.lti.page.title": "Intégrations LTI",
   "admin.lti.page.subtitle":
     "Gérez les émetteurs LTI autorisés à lancer ChatKit.",
+  "admin.lti.toolSettings.keys.title": "Clés LTI",
+  "admin.lti.toolSettings.keys.subtitle":
+    "Consultez les chemins des clés gérées par le serveur et la clé publique actuelle.",
+  "admin.lti.toolSettings.keys.privateKeyPath": "Clé privée",
+  "admin.lti.toolSettings.keys.publicKeyPath": "Clé publique",
+  "admin.lti.toolSettings.keys.lastUpdated": "Dernière mise à jour",
+  "admin.lti.toolSettings.keys.publicKeyHeading": "Clé publique actuelle",
+  "admin.lti.toolSettings.keys.readOnlyNotice":
+    "Ces clés sont gérées en lecture seule depuis la configuration du serveur.",
+  "admin.lti.toolSettings.keys.noData": "Non disponible",
+  "admin.lti.toolSettings.errors.sessionExpired":
+    "Session expirée, veuillez vous reconnecter.",
+  "admin.lti.toolSettings.errors.loadFailed":
+    "Impossible de charger les paramètres de l'outil.",
   "admin.lti.registrations.title": "Enregistrements plateformes",
   "admin.lti.registrations.subtitle":
     "Listez les émetteurs et leurs identifiants autorisés à lancer ChatKit via LTI.",

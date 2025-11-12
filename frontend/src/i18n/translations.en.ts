@@ -124,6 +124,20 @@ export const en: TranslationDictionary = {
   "admin.lti.page.title": "LTI integrations",
   "admin.lti.page.subtitle":
     "Manage LTI issuers that can launch ChatKit.",
+  "admin.lti.toolSettings.keys.title": "LTI key pair",
+  "admin.lti.toolSettings.keys.subtitle":
+    "The server exposes the tool key paths and current public key below.",
+  "admin.lti.toolSettings.keys.privateKeyPath": "Private key",
+  "admin.lti.toolSettings.keys.publicKeyPath": "Public key",
+  "admin.lti.toolSettings.keys.lastUpdated": "Last updated",
+  "admin.lti.toolSettings.keys.publicKeyHeading": "Current public key",
+  "admin.lti.toolSettings.keys.readOnlyNotice":
+    "These keys are managed in read-only mode from the server configuration.",
+  "admin.lti.toolSettings.keys.noData": "Not available",
+  "admin.lti.toolSettings.errors.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.lti.toolSettings.errors.loadFailed":
+    "Unable to load the tool settings.",
   "admin.lti.registrations.title": "Platform registrations",
   "admin.lti.registrations.subtitle":
     "List the issuers and credentials allowed to launch ChatKit via LTI.",
