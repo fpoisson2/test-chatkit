@@ -185,58 +185,111 @@
   }
 }
 
-/* Dark mode support */
+:global(:root[data-theme='dark' i]) :local(.inlineHelp) {
+  border-color: var(--border-color, #374151);
+  background-color: var(--bg-card, #1f2937);
+}
+
+:global(:root[data-theme='dark' i]) :local(.inlineHelpToggle) {
+  color: var(--accent-color, #60a5fa);
+}
+
+:global(:root[data-theme='dark' i]) :local(.inlineHelpToggle:hover) {
+  background-color: var(--bg-hover, #111827);
+}
+
+:global(:root[data-theme='dark' i]) :local(.inlineHelpContent) {
+  border-top-color: var(--border-color, #374151);
+  background-color: var(--bg-card-light, #1f2937);
+}
+
+:global(:root[data-theme='dark' i]) :local(.helpText) {
+  color: var(--text-secondary, #d1d5db);
+}
+
+:global(:root[data-theme='dark' i]) :local(.examplesHeading) {
+  color: var(--text-primary, #f9fafb);
+}
+
+:global(:root[data-theme='dark' i]) :local(.exampleLabel) {
+  color: var(--text-secondary, #9ca3af);
+}
+
+:global(:root[data-theme='dark' i]) :local(.copyButton) {
+  color: var(--text-secondary, #9ca3af);
+}
+
+:global(:root[data-theme='dark' i]) :local(.copyButton:hover) {
+  color: var(--text-primary, #f9fafb);
+  background-color: var(--bg-hover, #111827);
+}
+
+:global(:root[data-theme='dark' i]) :local(.exampleCode) {
+  color: var(--text-primary, #f9fafb);
+  background-color: var(--bg-code, #111827);
+  border-color: var(--border-color, #374151);
+}
+
+:global(:root[data-theme='dark' i]) :local(.learnMore) {
+  color: var(--accent-color, #60a5fa);
+}
+
+:global(:root[data-theme='dark' i]) :local(.learnMore:hover) {
+  color: var(--accent-hover, #3b82f6);
+}
+
+/* Dark mode fallback to system preference when no explicit theme is set */
 @media (prefers-color-scheme: dark) {
-  .inlineHelp {
+  :global(:root:not([data-theme])) :local(.inlineHelp) {
     border-color: var(--border-color, #374151);
     background-color: var(--bg-card, #1f2937);
   }
 
-  .inlineHelpToggle {
+  :global(:root:not([data-theme])) :local(.inlineHelpToggle) {
     color: var(--accent-color, #60a5fa);
   }
 
-  .inlineHelpToggle:hover {
+  :global(:root:not([data-theme])) :local(.inlineHelpToggle:hover) {
     background-color: var(--bg-hover, #111827);
   }
 
-  .inlineHelpContent {
+  :global(:root:not([data-theme])) :local(.inlineHelpContent) {
     border-top-color: var(--border-color, #374151);
     background-color: var(--bg-card-light, #1f2937);
   }
 
-  .helpText {
+  :global(:root:not([data-theme])) :local(.helpText) {
     color: var(--text-secondary, #d1d5db);
   }
 
-  .examplesHeading {
+  :global(:root:not([data-theme])) :local(.examplesHeading) {
     color: var(--text-primary, #f9fafb);
   }
 
-  .exampleLabel {
+  :global(:root:not([data-theme])) :local(.exampleLabel) {
     color: var(--text-secondary, #9ca3af);
   }
 
-  .copyButton {
+  :global(:root:not([data-theme])) :local(.copyButton) {
     color: var(--text-secondary, #9ca3af);
   }
 
-  .copyButton:hover {
+  :global(:root:not([data-theme])) :local(.copyButton:hover) {
     color: var(--text-primary, #f9fafb);
     background-color: var(--bg-hover, #111827);
   }
 
-  .exampleCode {
+  :global(:root:not([data-theme])) :local(.exampleCode) {
     color: var(--text-primary, #f9fafb);
     background-color: var(--bg-code, #111827);
     border-color: var(--border-color, #374151);
   }
 
-  .learnMore {
+  :global(:root:not([data-theme])) :local(.learnMore) {
     color: var(--accent-color, #60a5fa);
   }
 
-  .learnMore:hover {
+  :global(:root:not([data-theme])) :local(.learnMore:hover) {
     color: var(--accent-hover, #3b82f6);
   }
 }
