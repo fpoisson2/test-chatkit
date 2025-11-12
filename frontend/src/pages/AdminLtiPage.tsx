@@ -428,7 +428,7 @@ export const AdminLtiPage = () => {
         <FormSection
           title={t("admin.lti.toolSettings.keys.title")}
           subtitle={t("admin.lti.toolSettings.keys.subtitle")}
-          className="admin-card--narrow"
+          className="admin-card--stretch"
         >
           {toolLoading ? (
             <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
