@@ -498,7 +498,9 @@ export function MyChat() {
       return {
         api: apiConfig,
         initialThread: initialThreadId,
-        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header ? {} : {
+        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header ? {
+          header: { enabled: false },
+        } : {
           header: {
             leftAction: {
               icon: "menu",
@@ -641,6 +643,7 @@ export function MyChat() {
       sessionOwner,
       activeWorkflow?.id,
       activeWorkflow?.lti_enabled,
+      activeWorkflow?.lti_show_sidebar,
       activeWorkflow?.lti_show_header,
       activeWorkflow?.lti_enable_history,
       activeWorkflowSlug,
