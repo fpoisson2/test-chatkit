@@ -126,10 +126,7 @@ export const fr: TranslationDictionary = {
   "admin.appSettings.model.providerCustom": "Autre fournisseur…",
   "admin.lti.page.title": "Intégrations LTI",
   "admin.lti.page.subtitle":
-    "Gérez les émetteurs LTI autorisés à lancer ChatKit et configurez les clés de l'outil.",
-  "admin.lti.toolSettings.title": "Configuration des clés de l'outil",
-  "admin.lti.toolSettings.subtitle":
-    "Définissez les identifiants client et la clé privée utilisés par ChatKit comme outil LTI.",
+    "Gérez les émetteurs LTI autorisés à lancer ChatKit et consultez la clé publique de l'outil.",
   "admin.lti.toolSettings.keys.title": "Clés LTI",
   "admin.lti.toolSettings.keys.subtitle":
     "Consultez les chemins des clés gérées par le serveur et la clé publique actuelle.",
@@ -140,20 +137,8 @@ export const fr: TranslationDictionary = {
   "admin.lti.toolSettings.keys.readOnlyNotice":
     "Ces clés sont gérées en lecture seule depuis la configuration du serveur.",
   "admin.lti.toolSettings.keys.noData": "Non disponible",
-  "admin.lti.toolSettings.clientIdLabel": "Identifiant client de l'outil",
-  "admin.lti.toolSettings.keySetUrlLabel": "URL JWKS de l'outil",
-  "admin.lti.toolSettings.audienceLabel": "Audience de l'outil",
-  "admin.lti.toolSettings.keyIdLabel": "Identifiant de clé (kid)",
-  "admin.lti.toolSettings.privateKeyLabel": "Clé privée (PEM)",
-  "admin.lti.toolSettings.privateKeyHint": "Clé actuelle : {{hint}}",
-  "admin.lti.toolSettings.noPrivateKey": "Aucune clé privée enregistrée.",
-  "admin.lti.toolSettings.save": "Enregistrer les paramètres",
-  "admin.lti.toolSettings.saving": "Enregistrement…",
-  "admin.lti.toolSettings.success": "Paramètres de l'outil enregistrés.",
   "admin.lti.toolSettings.errors.sessionExpired":
     "Session expirée, veuillez vous reconnecter.",
-  "admin.lti.toolSettings.errors.saveFailed":
-    "Impossible d'enregistrer les paramètres de l'outil.",
   "admin.lti.toolSettings.errors.loadFailed":
     "Impossible de charger les paramètres de l'outil.",
   "admin.lti.registrations.title": "Enregistrements plateformes",

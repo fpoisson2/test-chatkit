@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -15,14 +10,11 @@ import {
   type LtiRegistrationCreatePayload,
   type LtiRegistrationUpdatePayload,
   type LtiToolSettings,
-  type LtiToolSettingsUpdatePayload,
   isUnauthorizedError,
   ltiAdminApi,
 } from "../utils/backend";
 import {
-  adminLtiToolSettingsSchema,
   adminLtiRegistrationSchema,
-  type AdminLtiToolSettingsFormData,
   type AdminLtiRegistrationFormData,
 } from "../schemas/admin";
 import {
@@ -42,14 +34,6 @@ const emptyRegistrationForm: AdminLtiRegistrationFormData = {
   tokenEndpoint: "",
   deepLinkReturnUrl: "",
   audience: "",
-};
-
-const emptyToolSettingsForm: AdminLtiToolSettingsFormData = {
-  clientId: "",
-  keySetUrl: "",
-  audience: "",
-  keyId: "",
-  privateKey: "",
 };
 
 const normalizeOptionalField = (value: string | undefined) => {
@@ -73,18 +57,6 @@ export const AdminLtiPage = () => {
     defaultValues: emptyRegistrationForm,
   });
 
-  // Tool Settings Form - React Hook Form
-  const {
-    register: registerTool,
-    handleSubmit: handleToolSubmit,
-    formState: { errors: toolErrors },
-    reset: resetToolForm,
-    setValue: setToolValue,
-  } = useForm<AdminLtiToolSettingsFormData>({
-    resolver: zodResolver(adminLtiToolSettingsSchema),
-    defaultValues: emptyToolSettingsForm,
-  });
-
   const [registrations, setRegistrations] = useState<LtiRegistration[]>([]);
   const [registrationsLoading, setRegistrationsLoading] = useState(true);
   const [registrationsError, setRegistrationsError] = useState<string | null>(null);
@@ -95,8 +67,6 @@ export const AdminLtiPage = () => {
   const [toolSettings, setToolSettings] = useState<LtiToolSettings | null>(null);
   const [toolLoading, setToolLoading] = useState(true);
   const [toolError, setToolError] = useState<string | null>(null);
-  const [toolSuccess, setToolSuccess] = useState<string | null>(null);
-  const [toolSaving, setToolSaving] = useState(false);
 
   const formattedPublicKeyUpdatedAt = useMemo(() => {
     const raw = toolSettings?.public_key_last_updated_at;
@@ -171,20 +141,6 @@ export const AdminLtiPage = () => {
   useEffect(() => {
     void fetchToolSettings();
   }, [fetchToolSettings]);
-
-  useEffect(() => {
-    if (!toolSettings) {
-      resetToolForm(emptyToolSettingsForm);
-      return;
-    }
-    resetToolForm({
-      clientId: toolSettings.client_id ?? "",
-      keySetUrl: toolSettings.key_set_url ?? "",
-      audience: toolSettings.audience ?? "",
-      keyId: toolSettings.key_id ?? "",
-      privateKey: "", // Don't populate private key for security
-    });
-  }, [toolSettings, resetToolForm]);
 
   const resetRegistrationForm = useCallback(() => {
     setEditingRegistrationId(null);
@@ -302,48 +258,6 @@ export const AdminLtiPage = () => {
     }
   }, [token, editingRegistrationId, t, fetchRegistrations, resetRegistrationForm, logout]);
 
-  const handleToolFormSubmit = useCallback(async (data: AdminLtiToolSettingsFormData) => {
-    if (!token) {
-      setToolError(t("admin.lti.toolSettings.errors.sessionExpired"));
-      return;
-    }
-
-    const payload: LtiToolSettingsUpdatePayload = {
-      client_id: data.clientId,
-      key_set_url: data.keySetUrl,
-      audience: normalizeOptionalField(data.audience),
-      key_id: normalizeOptionalField(data.keyId),
-    };
-    if (data.privateKey?.trim()) {
-      payload.private_key = data.privateKey;
-    }
-
-    setToolSaving(true);
-    setToolError(null);
-    setToolSuccess(null);
-    try {
-      const updated = await ltiAdminApi.updateToolSettings(token, payload);
-      setToolSettings(updated);
-      setToolSuccess(t("admin.lti.toolSettings.success"));
-      // Clear private key field after successful save
-      setToolValue("privateKey", "");
-    } catch (error) {
-      if (isUnauthorizedError(error)) {
-        logout();
-        setToolError(t("admin.lti.toolSettings.errors.sessionExpired"));
-      } else {
-        setToolError(
-          error instanceof Error
-            ? error.message
-            : t("admin.lti.toolSettings.errors.saveFailed"),
-        );
-      }
-    } finally {
-      setToolSaving(false);
-    }
-  }, [token, t, logout, setToolValue]);
-
-
   const registrationColumns: Column<LtiRegistration>[] = useMemo(() => [
     {
       key: "issuer",
@@ -413,13 +327,12 @@ export const AdminLtiPage = () => {
     <>
       <FeedbackMessages
         error={toolError || registrationsError}
-        success={toolSuccess || registrationsSuccess}
+        success={registrationsSuccess}
         onDismissError={() => {
           setToolError(null);
           setRegistrationsError(null);
         }}
         onDismissSuccess={() => {
-          setToolSuccess(null);
           setRegistrationsSuccess(null);
         }}
       />
@@ -479,84 +392,6 @@ export const AdminLtiPage = () => {
                 {t("admin.lti.toolSettings.keys.readOnlyNotice")}
               </p>
             </>
-          )}
-        </FormSection>
-
-        <FormSection
-          title={t("admin.lti.toolSettings.title")}
-          subtitle={t("admin.lti.toolSettings.subtitle")}
-        >
-          {toolLoading ? (
-            <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
-          ) : (
-            <form className="admin-form" onSubmit={handleToolSubmit(handleToolFormSubmit)}>
-              <FormField
-                label={t("admin.lti.toolSettings.clientIdLabel")}
-                error={toolErrors.clientId?.message}
-              >
-                <input
-                  className="input"
-                  type="text"
-                  {...registerTool("clientId")}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField
-                label={t("admin.lti.toolSettings.keySetUrlLabel")}
-                error={toolErrors.keySetUrl?.message}
-              >
-                <input
-                  className="input"
-                  type="url"
-                  {...registerTool("keySetUrl")}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField label={t("admin.lti.toolSettings.audienceLabel")}>
-                <input
-                  className="input"
-                  type="text"
-                  {...registerTool("audience")}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField label={t("admin.lti.toolSettings.keyIdLabel")}>
-                <input
-                  className="input"
-                  type="text"
-                  {...registerTool("keyId")}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField
-                label={t("admin.lti.toolSettings.privateKeyLabel")}
-                hint={
-                  toolSettings?.has_private_key
-                    ? t("admin.lti.toolSettings.privateKeyHint", {
-                        hint: toolSettings.private_key_hint ?? "••••",
-                      })
-                    : t("admin.lti.toolSettings.noPrivateKey")
-                }
-              >
-                <textarea
-                  className="textarea"
-                  {...registerTool("privateKey")}
-                  rows={5}
-                />
-              </FormField>
-
-              <div className="admin-form__actions">
-                <button className="button" type="submit" disabled={toolSaving}>
-                  {toolSaving
-                    ? t("admin.lti.toolSettings.saving")
-                    : t("admin.lti.toolSettings.save")}
-                </button>
-              </div>
-            </form>
           )}
         </FormSection>
 
