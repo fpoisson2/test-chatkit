@@ -10,7 +10,7 @@
   max-height: 900px;
   display: flex;
   flex-direction: column;
-  background: var(--background-color, #ffffff);
+  background: var(--color-surface);
   border-radius: 16px;
   overflow: hidden;
 }
@@ -21,7 +21,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 1.5rem 2rem;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  border-bottom: 1px solid var(--color-border-subtle);
   flex-shrink: 0;
 }
 
@@ -29,7 +29,7 @@
   font-size: 1.5rem;
   font-weight: 600;
   margin: 0;
-  color: var(--text-color, #1f2937);
+  color: var(--color-text);
 }
 
 .admin-modal__close {
@@ -39,12 +39,12 @@
   cursor: pointer;
   padding: 0.5rem;
   line-height: 1;
-  color: var(--text-muted, #6b7280);
+  color: var(--color-text-muted);
   transition: color 0.2s ease;
 }
 
 .admin-modal__close:hover {
-  color: var(--text-color, #1f2937);
+  color: var(--color-text);
 }
 
 /* Desktop layout - sidebar + content */
@@ -57,9 +57,9 @@
   }
 
   .admin-modal__sidebar {
-    border-right: 1px solid var(--border-color, #e5e7eb);
+    border-right: 1px solid var(--color-border-subtle);
     overflow-y: auto;
-    background: var(--sidebar-background, #f9fafb);
+    background: var(--color-surface-subtle);
   }
 
   .admin-modal__tabs-list {
@@ -77,7 +77,7 @@
     padding: 0.75rem 1rem;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--text-muted, #6b7280);
+    color: var(--color-text-muted);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -86,18 +86,18 @@
   }
 
   .admin-modal__tab-trigger:hover {
-    background: var(--hover-background, #f3f4f6);
-    color: var(--text-color, #1f2937);
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+    color: var(--color-text);
   }
 
   .admin-modal__tab-trigger[data-state="active"] {
-    background: var(--primary-background, #eff6ff);
-    color: var(--primary-color, #2563eb);
+    background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    color: var(--primary-color);
     font-weight: 600;
   }
 
   .admin-modal__tab-trigger:focus-visible {
-    outline: 2px solid var(--primary-color, #2563eb);
+    outline: 2px solid var(--primary-color);
     outline-offset: 2px;
   }
 
@@ -137,7 +137,7 @@
 
   .admin-modal__select-wrapper {
     padding: 1rem;
-    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    border-bottom: 1px solid var(--color-border-subtle);
     flex-shrink: 0;
   }
 
@@ -149,20 +149,20 @@
     padding: 0.75rem 1rem;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--text-color, #1f2937);
-    background: var(--input-background, #ffffff);
-    border: 1px solid var(--border-color, #e5e7eb);
+    color: var(--color-text);
+    background: var(--form-field-background);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
   }
 
   .admin-modal__select-trigger:hover {
-    border-color: var(--primary-color, #2563eb);
+    border-color: var(--primary-color);
   }
 
   .admin-modal__select-trigger:focus {
-    outline: 2px solid var(--primary-color, #2563eb);
+    outline: 2px solid var(--primary-color);
     outline-offset: 2px;
   }
 
@@ -188,9 +188,9 @@
 /* Radix Select Content Styles */
 .admin-modal__select-content {
   overflow: visible;
-  background: var(--background-color, #ffffff);
+  background: var(--color-surface);
   border-radius: 8px;
-  border: 1px solid var(--border-color, #e5e7eb);
+  border: 1px solid var(--color-border-subtle);
   box-shadow: 0 10px 38px -10px rgba(0, 0, 0, 0.2),
     0 10px 20px -15px rgba(0, 0, 0, 0.1);
   z-index: 100000;
@@ -213,17 +213,17 @@
 }
 
 .admin-modal__select-viewport::-webkit-scrollbar-track {
-  background: var(--background-color, #f1f1f1);
+  background: var(--color-surface-subtle);
   border-radius: 4px;
 }
 
 .admin-modal__select-viewport::-webkit-scrollbar-thumb {
-  background: var(--text-muted, #888);
+  background: var(--color-text-muted);
   border-radius: 4px;
 }
 
 .admin-modal__select-viewport::-webkit-scrollbar-thumb:hover {
-  background: var(--text-color, #555);
+  background: var(--color-text);
 }
 
 .admin-modal__select-item {
@@ -233,7 +233,7 @@
   align-items: center;
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
-  color: var(--text-color, #1f2937);
+  color: var(--color-text);
   border-radius: 6px;
   cursor: pointer;
   user-select: none;
@@ -242,13 +242,13 @@
 }
 
 .admin-modal__select-item[data-highlighted] {
-  background: var(--hover-background, #f3f4f6);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
   outline: none;
 }
 
 .admin-modal__select-item[data-state="checked"] {
-  background: var(--primary-background, #eff6ff);
-  color: var(--primary-color, #2563eb);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--primary-color);
   font-weight: 600;
 }
 
@@ -268,7 +268,7 @@
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  color: var(--text-muted, #6b7280);
+  color: var(--color-text-muted);
 }
 
 /* Ensure admin sections don't have double padding */
@@ -276,26 +276,10 @@
   margin: 0;
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .admin-modal,
-  .admin-modal__select-content {
-    --background-color: #1f2937;
-    --border-color: #374151;
-    --text-color: #f9fafb;
-    --text-muted: #9ca3af;
-    --sidebar-background: #111827;
-    --hover-background: #374151;
-    --primary-background: #1e3a8a;
-    --primary-color: #60a5fa;
-    --input-background: #374151;
-  }
-}
-
 /* Accessibility improvements */
 .admin-modal__tab-trigger:focus-visible,
 .admin-modal__select-trigger:focus-visible {
-  outline: 2px solid var(--primary-color, #2563eb);
+  outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 
