@@ -438,13 +438,18 @@
   .admin-grid,
   .admin-card,
   .admin-form {
-    max-width: 100vw;
+    max-width: 100%;
     overflow-x: hidden;
   }
 
   .admin-card {
     padding: clamp(16px, 4vw, 24px);
     border-radius: 18px;
+  }
+
+  .admin-card * {
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .admin-form__actions {

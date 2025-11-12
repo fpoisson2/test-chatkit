@@ -2389,11 +2389,13 @@ button {
 @media (max-width: 768px) {
   .admin-key-details {
     overflow: hidden;
+    max-width: 100%;
   }
 
   .admin-key-details__row {
     gap: 8px;
     overflow: hidden;
+    max-width: 100%;
   }
 
   .admin-key-details__label {
@@ -2406,10 +2408,13 @@ button {
     word-break: break-all;
     overflow-wrap: anywhere;
     hyphens: auto;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .admin-key-details__public-key {
     overflow: hidden;
+    max-width: 100%;
   }
 
   .admin-key-details__code {
@@ -2417,6 +2422,17 @@ button {
     padding: 10px;
     line-height: 1.4;
     overflow-x: auto;
+    max-width: 100%;
+    box-sizing: border-box;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+
+  /* Ensure code-block specifically doesn't overflow on mobile */
+  .code-block {
+    max-width: 100%;
+    overflow-x: auto;
+    box-sizing: border-box;
   }
 }
 
