@@ -95,17 +95,56 @@ def _as_str_sequence(value: Any) -> list[str]:
     return [str(item) for item in values if isinstance(item, str) and item]
 
 
-@router.get("/api/lti/workflows")
-async def list_lti_workflows(session: Session = Depends(get_session)) -> list[dict[str, Any]]:
-    """Liste tous les workflows disponibles pour LTI Deep Linking."""
-    from ..models import Workflow
+@router.get("/api/lti/registrations")
+async def list_lti_registrations(session: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    """Liste toutes les registrations LTI disponibles."""
+    from ..models import LTIRegistration
     from sqlalchemy import select
 
-    workflows = session.scalars(
+    registrations = session.scalars(select(LTIRegistration)).all()
+
+    return [
+        {
+            "id": reg.id,
+            "issuer": reg.issuer,
+            "client_id": reg.client_id,
+        }
+        for reg in registrations
+    ]
+
+
+@router.get("/api/lti/workflows")
+async def list_lti_workflows(
+    issuer: str | None = None,
+    session: Session = Depends(get_session)
+) -> list[dict[str, Any]]:
+    """Liste tous les workflows disponibles pour LTI Deep Linking.
+
+    Args:
+        issuer: Optionnel. Si fourni, ne retourne que les workflows autorisés pour cet issuer.
+    """
+    from ..models import Workflow, LTIRegistration, workflow_lti_registrations
+    from sqlalchemy import select
+
+    query = (
         select(Workflow)
-        .where(Workflow.lti_enabled == True)
         .where(Workflow.active_version_id.is_not(None))
-    ).all()
+    )
+
+    if issuer:
+        # Filter workflows authorized for this specific issuer
+        query = query.join(
+            workflow_lti_registrations,
+            Workflow.id == workflow_lti_registrations.c.workflow_id
+        ).join(
+            LTIRegistration,
+            workflow_lti_registrations.c.lti_registration_id == LTIRegistration.id
+        ).where(LTIRegistration.issuer == issuer)
+    else:
+        # No issuer specified, fall back to lti_enabled flag
+        query = query.where(Workflow.lti_enabled == True)
+
+    workflows = session.scalars(query).all()
 
     return [
         {

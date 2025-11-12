@@ -22,6 +22,7 @@ from ..database import SessionLocal
 from ..models import (
     AvailableModel,
     HostedWorkflow,
+    LTIRegistration,
     Workflow,
     WorkflowAppearance,
     WorkflowDefinition,
@@ -2370,6 +2371,18 @@ class WorkflowService:
                 lti_enabled = bool(updates["lti_enabled"])
                 workflow.lti_enabled = lti_enabled
 
+            if "lti_registration_ids" in updates:
+                lti_registration_ids = updates["lti_registration_ids"]
+                if lti_registration_ids is not None:
+                    # Fetch the registrations
+                    registrations = db.scalars(
+                        select(LTIRegistration).where(
+                            LTIRegistration.id.in_(lti_registration_ids)
+                        )
+                    ).all()
+                    # Update the relationship
+                    workflow.lti_registrations = list(registrations)
+
             workflow.updated_at = datetime.datetime.now(datetime.UTC)
             db.add(workflow)
             db.commit()
@@ -3209,6 +3222,7 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "active_version_number": active_version.version if active_version else None,
         "is_chatkit_default": workflow.is_chatkit_default,
         "lti_enabled": workflow.lti_enabled,
+        "lti_registration_ids": [reg.id for reg in workflow.lti_registrations],
         "versions_count": len(workflow.versions),
     }
 

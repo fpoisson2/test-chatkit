@@ -7,6 +7,7 @@ export type WorkflowSummary = {
   active_version_number: number | null;
   is_chatkit_default: boolean;
   lti_enabled: boolean;
+  lti_registration_ids: number[];
   versions_count: number;
   created_at: string;
   updated_at: string;

@@ -8,12 +8,14 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Column,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
     String,
+    Table,
     Text,
     UniqueConstraint,
 )
@@ -41,6 +43,15 @@ class PortableJSONB(TypeDecorator):
         if dialect.name == "postgresql":
             return dialect.type_descriptor(JSONB(astext_type=Text()))
         return dialect.type_descriptor(JSON())
+
+
+# Association table for many-to-many relationship between Workflow and LTIRegistration
+workflow_lti_registrations = Table(
+    "workflow_lti_registrations",
+    Base.metadata,
+    Column("workflow_id", Integer, ForeignKey("workflows.id", ondelete="CASCADE"), primary_key=True),
+    Column("lti_registration_id", Integer, ForeignKey("lti_registrations.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class User(Base):
@@ -414,6 +425,11 @@ class Workflow(Base):
         back_populates="workflow",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    lti_registrations: Mapped[list["LTIRegistration"]] = relationship(
+        "LTIRegistration",
+        secondary=workflow_lti_registrations,
+        back_populates="workflows",
     )
 
 
@@ -928,6 +944,11 @@ class LTIRegistration(Base):
         "LTIUserSession",
         back_populates="registration",
         cascade="all, delete-orphan",
+    )
+    workflows: Mapped[list["Workflow"]] = relationship(
+        "Workflow",
+        secondary=workflow_lti_registrations,
+        back_populates="lti_registrations",
     )
 
 

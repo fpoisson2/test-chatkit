@@ -70,6 +70,7 @@ export type NodeInspectorProps = {
   nodeHandlers: WorkflowNodeHandlers;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
+  currentWorkflow?: WorkflowSummary | null;
   hostedWorkflows: HostedWorkflowMetadata[];
   hostedWorkflowsLoading: boolean;
   hostedWorkflowsError: string | null;
@@ -84,6 +85,7 @@ export type NodeInspectorProps = {
   widgetsLoading: boolean;
   widgetsError: string | null;
   onRemove: (nodeId: string) => void;
+  onWorkflowUpdate?: () => void;
 };
 
 const NodeInspector = ({
@@ -91,6 +93,7 @@ const NodeInspector = ({
   nodeHandlers,
   workflows,
   currentWorkflowId,
+  currentWorkflow,
   hostedWorkflows,
   hostedWorkflowsLoading,
   hostedWorkflowsError,
@@ -105,7 +108,9 @@ const NodeInspector = ({
   widgetsLoading,
   widgetsError,
   onRemove,
+  onWorkflowUpdate,
 }: NodeInspectorProps) => {
+  const { token } = useAuth();
   const {
     handleDisplayNameChange: onDisplayNameChange,
     handleAgentMessageChange: onAgentMessageChange,
@@ -172,7 +177,48 @@ const NodeInspector = ({
     handleWaitForUserInputMessageChange: onWaitForUserInputMessageChange,
     handleUserMessageChange: onUserMessageChange,
   } = nodeHandlers;
-  const { token } = useAuth();
+
+  // LTI workflow-level handlers
+  const handleLtiEnabledChange = useCallback(
+    async (value: boolean) => {
+      if (!currentWorkflow || !token) return;
+      try {
+        await fetch(`/api/workflows/${currentWorkflow.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ lti_enabled: value }),
+        });
+        onWorkflowUpdate?.();
+      } catch (error) {
+        console.error("Failed to update LTI enabled:", error);
+      }
+    },
+    [currentWorkflow, token, onWorkflowUpdate]
+  );
+
+  const handleLtiRegistrationIdsChange = useCallback(
+    async (value: number[]) => {
+      if (!currentWorkflow || !token) return;
+      try {
+        await fetch(`/api/workflows/${currentWorkflow.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ lti_registration_ids: value }),
+        });
+        onWorkflowUpdate?.();
+      } catch (error) {
+        console.error("Failed to update LTI registration IDs:", error);
+      }
+    },
+    [currentWorkflow, token, onWorkflowUpdate]
+  );
+
   const { t } = useI18n();
   const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
@@ -286,12 +332,16 @@ const NodeInspector = ({
           startTelephonySipAccountId={startTelephonySipAccountId}
           startTelephonyRingTimeout={startTelephonyRingTimeout}
           startTelephonySpeakFirst={startTelephonySpeakFirst}
+          ltiEnabled={currentWorkflow?.lti_enabled ?? false}
+          ltiRegistrationIds={currentWorkflow?.lti_registration_ids ?? []}
           onStartAutoRunChange={onStartAutoRunChange}
           onStartAutoRunMessageChange={onStartAutoRunMessageChange}
           onStartAutoRunAssistantMessageChange={onStartAutoRunAssistantMessageChange}
           onStartTelephonySipAccountIdChange={onStartTelephonySipAccountIdChange}
           onStartTelephonyRingTimeoutChange={onStartTelephonyRingTimeoutChange}
           onStartTelephonySpeakFirstChange={onStartTelephonySpeakFirstChange}
+          onLtiEnabledChange={handleLtiEnabledChange}
+          onLtiRegistrationIdsChange={handleLtiRegistrationIdsChange}
           workflowId={currentWorkflowId}
         />
       ) : null}
