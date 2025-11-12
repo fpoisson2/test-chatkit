@@ -268,8 +268,11 @@ class LTIService:
             "updated_at": user.updated_at.isoformat(),
         }
         user_json = quote(json.dumps(user_data))
+        token_encoded = quote(token)  # URL-encode the JWT token
 
-        launch_url = f"{frontend_base}/lti/launch?token={token}&user={user_json}"
+        launch_url = f"{frontend_base}/lti/launch?token={token_encoded}&user={user_json}"
+
+        logger.info("LTI Launch: Redirecting to frontend %s (token length: %d)", launch_url[:100], len(token))
 
         return RedirectResponse(url=launch_url, status_code=status.HTTP_302_FOUND)
 

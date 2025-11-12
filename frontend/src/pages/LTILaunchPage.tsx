@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth, type AuthUser } from "../auth";
 
@@ -12,28 +12,48 @@ export const LTILaunchPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>("");
 
   useEffect(() => {
     const token = searchParams.get("token");
     const userJson = searchParams.get("user");
 
+    console.log("LTI Launch: token present?", !!token);
+    console.log("LTI Launch: user present?", !!userJson);
+    console.log("LTI Launch: full URL", window.location.href);
+
+    setDebugInfo(`Token: ${token ? "présent" : "absent"}, User: ${userJson ? "présent" : "absent"}`);
+
     if (!token || !userJson) {
       console.error("LTI Launch: Missing token or user data");
-      navigate("/login", { replace: true });
+      setError("Paramètres manquants dans l'URL");
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 3000);
       return;
     }
 
     try {
+      console.log("LTI Launch: Parsing user JSON...");
       const user: AuthUser = JSON.parse(decodeURIComponent(userJson));
+      console.log("LTI Launch: User parsed successfully", user);
 
       // Log the user in (stores token and user in localStorage)
+      console.log("LTI Launch: Calling login...");
       login(token, user);
+      console.log("LTI Launch: Login successful, redirecting to /");
 
       // Redirect to the chat interface
-      navigate("/", { replace: true });
+      setTimeout(() => {
+        navigate("/", { replace: true });
+      }, 100);
     } catch (error) {
       console.error("LTI Launch: Failed to parse user data", error);
-      navigate("/login", { replace: true });
+      setError(`Erreur: ${error instanceof Error ? error.message : String(error)}`);
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 3000);
     }
   }, [searchParams, login, navigate]);
 
@@ -45,9 +65,26 @@ export const LTILaunchPage = () => {
       height: "100vh",
       fontFamily: "system-ui, sans-serif"
     }}>
-      <div style={{ textAlign: "center" }}>
+      <div style={{ textAlign: "center", maxWidth: "500px", padding: "20px" }}>
         <h2>Connexion LTI en cours...</h2>
         <p>Vous allez être redirigé vers l'application.</p>
+        {debugInfo && (
+          <p style={{ fontSize: "0.9em", color: "#666", marginTop: "20px" }}>
+            {debugInfo}
+          </p>
+        )}
+        {error && (
+          <div style={{
+            marginTop: "20px",
+            padding: "10px",
+            backgroundColor: "#fee",
+            border: "1px solid #fcc",
+            borderRadius: "4px",
+            color: "#c00"
+          }}>
+            {error}
+          </div>
+        )}
       </div>
     </div>
   );
