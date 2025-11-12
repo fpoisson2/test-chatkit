@@ -2398,8 +2398,7 @@ button {
 .admin-key-details__code {
   margin: 0;
   min-width: 0;
-  width: min(100%, 520px);
-  margin-inline: auto;
+  width: 100%;
   box-sizing: border-box;
   overflow-wrap: anywhere;
 }
