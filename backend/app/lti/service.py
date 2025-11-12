@@ -6,6 +6,7 @@ import base64
 import datetime
 import hashlib
 import json
+import logging
 import secrets
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -31,6 +32,8 @@ from ..models import (
 )
 from ..schemas import TokenResponse
 from ..security import create_access_token, hash_password
+
+logger = logging.getLogger(__name__)
 
 
 def _now_utc() -> datetime.datetime:
@@ -146,6 +149,14 @@ class LTIService:
                 status.HTTP_400_BAD_REQUEST,
                 detail="Paramètres OIDC manquants",
             )
+
+        # Debug logging for LTI registration lookup
+        logger.info(
+            "LTI login attempt - issuer: %r, client_id: %r, deployment: %r",
+            issuer,
+            client_id,
+            deployment_ref,
+        )
 
         registration = self._get_registration(issuer, client_id)
         deployment = self._get_deployment(registration, deployment_ref)
@@ -420,6 +431,18 @@ class LTIService:
             .where(LTIRegistration.client_id == client_id)
         )
         if registration is None:
+            # Log available registrations for debugging
+            all_registrations = self.session.scalars(select(LTIRegistration)).all()
+            logger.warning(
+                "LTI registration not found for issuer=%r, client_id=%r. "
+                "Available registrations: %s",
+                issuer,
+                client_id,
+                [
+                    f"(issuer={r.issuer!r}, client_id={r.client_id!r})"
+                    for r in all_registrations
+                ],
+            )
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, detail="Enregistrement LTI introuvable"
             )
