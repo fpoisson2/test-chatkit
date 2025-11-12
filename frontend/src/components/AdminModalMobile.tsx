@@ -75,8 +75,8 @@ export const AdminModalMobile = ({
             <Select.Content
               className="admin-modal__select-content"
               position="popper"
-              side="bottom"
-              align="start"
+              sideOffset={5}
+              collisionPadding={20}
             >
               <Select.Viewport className="admin-modal__select-viewport">
                 {ADMIN_SECTIONS.map((section) => (
