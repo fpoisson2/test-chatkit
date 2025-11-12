@@ -2367,9 +2367,9 @@ button {
   background: var(--color-surface-subtle);
   border-radius: 12px;
   padding: 10px 12px;
-  word-break: break-all;
+  word-break: break-word;
   overflow-wrap: anywhere;
-  overflow-x: auto;
+  overflow-x: hidden;
   min-width: 0;
   max-width: 100%;
 }
@@ -2383,12 +2383,12 @@ button {
 
 .admin-key-details__code {
   margin: 0;
-  overflow-x: auto;
   word-break: break-word;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   min-width: 0;
   max-width: 100%;
+  overflow-x: hidden;
 }
 
 .admin-form__default-block pre {
