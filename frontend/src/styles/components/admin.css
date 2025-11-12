@@ -159,6 +159,7 @@
   .admin-shell {
     width: 100%;
     max-width: 100%;
+    padding: 12px;
   }
 }
 
@@ -439,13 +440,19 @@
   .admin-grid,
   .admin-card,
   .admin-form {
+    width: 100%;
     max-width: 100%;
     overflow-x: hidden;
+  }
+
+  .admin-grid {
+    gap: 16px;
   }
 
   .admin-card {
     padding: 12px;
     border-radius: 16px;
+    width: 100%;
   }
 
   .admin-card pre,
