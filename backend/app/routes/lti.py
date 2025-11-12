@@ -163,6 +163,55 @@ async def list_lti_workflows(
     ]
 
 
+@router.get("/api/lti/current-workflow")
+async def get_current_lti_workflow(
+    session: Session = Depends(get_session)
+) -> dict[str, Any] | None:
+    """Get the workflow associated with the current user's LTI session.
+
+    This endpoint can be called without authentication and will return None
+    if the user is not authenticated or not an LTI user.
+    """
+    from ..dependencies import get_optional_user
+    from ..models import LTIUserSession
+    from sqlalchemy import select, desc
+
+    # Try to get current user (optional, won't raise if not authenticated)
+    try:
+        user = await get_optional_user(None, session)
+    except Exception:
+        return None
+
+    if not user or not user.email.endswith('@lti.local'):
+        return None
+
+    # Find the most recent LTI session for this user
+    lti_session = session.scalar(
+        select(LTIUserSession)
+        .where(LTIUserSession.user_id == user.id)
+        .order_by(desc(LTIUserSession.launched_at))
+        .limit(1)
+    )
+
+    if not lti_session or not lti_session.resource_link:
+        return None
+
+    workflow = lti_session.resource_link.workflow
+    if not workflow or workflow.active_version_id is None:
+        return None
+
+    return {
+        "id": workflow.id,
+        "slug": workflow.slug,
+        "display_name": workflow.display_name,
+        "description": workflow.description,
+        "lti_enabled": workflow.lti_enabled,
+        "lti_show_sidebar": workflow.lti_show_sidebar,
+        "lti_show_header": workflow.lti_show_header,
+        "lti_enable_history": workflow.lti_enable_history,
+    }
+
+
 @router.post("/api/lti/deep-link")
 async def lti_deep_link(
     request: Request, service: LTIService = Depends(_get_service)

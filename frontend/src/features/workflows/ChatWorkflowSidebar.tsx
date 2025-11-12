@@ -191,6 +191,63 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     );
   }, [mode, selectedWorkflowId, workflows]);
 
+  // Auto-select LTI workflow for LTI users
+  const hasCheckedLtiWorkflow = useRef(false);
+  useEffect(() => {
+    if (hasCheckedLtiWorkflow.current || !user || !token) {
+      return;
+    }
+
+    // Check if user is LTI user
+    if (!user.email.endsWith('@lti.local')) {
+      hasCheckedLtiWorkflow.current = true;
+      return;
+    }
+
+    // Fetch LTI workflow and auto-select it
+    const fetchLtiWorkflow = async () => {
+      try {
+        const response = await fetch('/api/lti/current-workflow', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          hasCheckedLtiWorkflow.current = true;
+          return;
+        }
+
+        const ltiWorkflow = await response.json();
+        if (!ltiWorkflow || !ltiWorkflow.id) {
+          hasCheckedLtiWorkflow.current = true;
+          return;
+        }
+
+        // Check if this workflow is already in the list
+        const workflowInList = workflows.find((w) => w.id === ltiWorkflow.id);
+
+        if (workflowInList) {
+          // If workflow is in list and not already selected, select it
+          if (selectedWorkflowId !== ltiWorkflow.id) {
+            setSelectedWorkflowId(ltiWorkflow.id);
+            onWorkflowActivatedRef.current(
+              { kind: "local", workflow: workflowInList },
+              { reason: "initial" },
+            );
+          }
+        }
+
+        hasCheckedLtiWorkflow.current = true;
+      } catch (error) {
+        console.error('Failed to fetch LTI workflow:', error);
+        hasCheckedLtiWorkflow.current = true;
+      }
+    };
+
+    fetchLtiWorkflow();
+  }, [user, token, workflows, selectedWorkflowId, setSelectedWorkflowId]);
+
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
       if (!token || !isAdmin || workflowId === selectedWorkflowId || isUpdating) {
