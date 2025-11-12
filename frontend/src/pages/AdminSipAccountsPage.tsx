@@ -9,7 +9,6 @@ import {
   FeedbackMessages,
   FormField,
   FormSection,
-  FormActions,
   TableActions,
   ResponsiveTable,
   LoadingSpinner,
@@ -42,7 +41,7 @@ const emptySipAccountForm = (): AdminTelephonyFormData => ({
 export const AdminSipAccountsPage = () => {
   const { token } = useAuth();
   const { t } = useI18n();
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   // React Query hooks
   const { data: accounts = [], isLoading } = useSipAccounts(token);
@@ -69,8 +68,15 @@ export const AdminSipAccountsPage = () => {
 
   // ========== Handlers ==========
 
+  const resetFormState = () => {
+    setShowModal(false);
+    setIsCreatingAccount(false);
+    setEditingAccountId(null);
+    reset(emptySipAccountForm());
+  };
+
   const handleCreateAccount = () => {
-    setShowCreateModal(true);
+    setShowModal(true);
     setIsCreatingAccount(true);
     setEditingAccountId(null);
     reset(emptySipAccountForm());
@@ -79,6 +85,7 @@ export const AdminSipAccountsPage = () => {
   };
 
   const handleEditAccount = (account: SipAccount) => {
+    setShowModal(true);
     setIsCreatingAccount(false);
     setEditingAccountId(account.id);
     reset({
@@ -97,10 +104,7 @@ export const AdminSipAccountsPage = () => {
   };
 
   const handleCancelAccount = () => {
-    setShowCreateModal(false);
-    setIsCreatingAccount(false);
-    setEditingAccountId(null);
-    reset(emptySipAccountForm());
+    resetFormState();
     setError(null);
     setSuccess(null);
   };
@@ -125,18 +129,12 @@ export const AdminSipAccountsPage = () => {
       if (isCreatingAccount) {
         await createMutation.mutateAsync({ token, payload });
         setSuccess("Compte SIP créé avec succès");
-        setShowCreateModal(false);
       } else if (editingAccountId) {
         await updateMutation.mutateAsync({ token, id: editingAccountId, payload });
         setSuccess("Compte SIP mis à jour avec succès");
       }
 
-      if (isCreatingAccount) {
-        setIsCreatingAccount(false);
-        reset(emptySipAccountForm());
-      } else {
-        handleCancelAccount();
-      }
+      resetFormState();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
     }
@@ -212,8 +210,6 @@ export const AdminSipAccountsPage = () => {
   // ========== Render ==========
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
-  const showForm = isCreatingAccount || editingAccountId;
-
   return (
     <>
       <FeedbackMessages
@@ -224,135 +220,6 @@ export const AdminSipAccountsPage = () => {
       />
 
       <div className="admin-grid">
-        {editingAccountId && (
-          <FormSection
-            title="Modifier le compte SIP"
-            subtitle="Configurez les paramètres de connexion au trunk SIP."
-          >
-            <form className="admin-form" onSubmit={handleFormSubmit(handleSubmitAccount)}>
-              <div className="admin-form__row">
-                <FormField
-                  label="Label"
-                  error={formErrors.label?.message}
-                  required
-                >
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("label")}
-                    placeholder="Trunk Principal"
-                    disabled={isSaving}
-                  />
-                </FormField>
-
-                <FormField
-                  label="URI SIP"
-                  error={formErrors.trunk_uri?.message}
-                  hint="Format requis : sip:username@provider.com ou sips:username@provider.com"
-                  required
-                >
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("trunk_uri")}
-                    placeholder="sip:username@provider.com"
-                    disabled={isSaving}
-                  />
-                </FormField>
-              </div>
-
-              <div className="admin-form__row">
-                <FormField label="Nom d'utilisateur">
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("username")}
-                    disabled={isSaving}
-                  />
-                </FormField>
-
-                <FormField
-                  label="Mot de passe"
-                  hint={editingAccountId ? "(laisser vide pour ne pas changer)" : undefined}
-                >
-                  <input
-                    className="input"
-                    type="password"
-                    {...register("password")}
-                    disabled={isSaving}
-                  />
-                </FormField>
-              </div>
-
-              <div className="admin-form__divider" />
-
-              <div className="admin-form__row">
-                <FormField label="Hôte de contact">
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("contact_host")}
-                    placeholder="votre-ip-publique.com"
-                    disabled={isSaving}
-                  />
-                </FormField>
-
-                <FormField
-                  label="Port de contact"
-                  error={formErrors.contact_port?.message}
-                >
-                  <input
-                    className="input"
-                    type="text"
-                    {...register("contact_port")}
-                    placeholder="5060"
-                    disabled={isSaving}
-                  />
-                </FormField>
-
-                <FormField label="Transport">
-                  <select
-                    className="input"
-                    {...register("contact_transport")}
-                    disabled={isSaving}
-                  >
-                    <option value="udp">UDP</option>
-                    <option value="tcp">TCP</option>
-                    <option value="tls">TLS</option>
-                  </select>
-                </FormField>
-              </div>
-
-              <div className="admin-form__divider" />
-
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  {...register("is_default")}
-                  disabled={isSaving}
-                />
-                Compte par défaut
-              </label>
-
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  {...register("is_active")}
-                  disabled={isSaving}
-                />
-                Actif
-              </label>
-
-              <FormActions
-                submitLabel={isCreatingAccount ? "Créer le compte" : "Enregistrer"}
-                onCancel={handleCancelAccount}
-                isSubmitting={isSaving}
-                showCancel
-              />
-            </form>
-          </FormSection>
-        )}
-
         <FormSection
             title="Comptes SIP"
             subtitle="Gérez les comptes SIP pour connecter ChatKit à vos trunks téléphoniques. Chaque compte peut être associé à des workflows spécifiques."
@@ -397,9 +264,9 @@ export const AdminSipAccountsPage = () => {
           </FormSection>
       </div>
 
-      {showCreateModal && (
+      {showModal && (
         <Modal
-          title="Nouveau compte SIP"
+          title={isCreatingAccount ? "Nouveau compte SIP" : "Modifier le compte SIP"}
           onClose={handleCancelAccount}
           footer={
             <>
@@ -416,7 +283,7 @@ export const AdminSipAccountsPage = () => {
                 form="create-sip-account-form"
                 disabled={isSaving}
               >
-                Créer le compte
+                {isCreatingAccount ? "Créer le compte" : "Enregistrer"}
               </button>
             </>
           }
@@ -463,7 +330,10 @@ export const AdminSipAccountsPage = () => {
                 />
               </FormField>
 
-              <FormField label="Mot de passe">
+              <FormField
+                label="Mot de passe"
+                hint={isCreatingAccount ? undefined : "(laisser vide pour ne pas changer)"}
+              >
                 <input
                   className="input"
                   type="password"
