@@ -1,11 +1,35 @@
+.editableTitleWrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
 .editableTitle {
   cursor: pointer;
   transition: opacity 0.2s;
   margin: 0;
+  flex: 1;
 }
 
 .editableTitle:hover {
   opacity: 0.7;
+}
+
+.editIcon {
+  cursor: pointer;
+  color: currentColor;
+  opacity: 0.4;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.editableTitleWrapper:hover .editIcon {
+  opacity: 0.8;
+}
+
+.editIcon:hover {
+  opacity: 1 !important;
 }
 
 .editableInput {
