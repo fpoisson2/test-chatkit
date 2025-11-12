@@ -123,36 +123,7 @@ export const en: TranslationDictionary = {
   "admin.appSettings.model.providerCustom": "Other provider…",
   "admin.lti.page.title": "LTI integrations",
   "admin.lti.page.subtitle":
-    "Manage LTI issuers that can launch ChatKit and configure the tool keys.",
-  "admin.lti.toolSettings.title": "Tool key configuration",
-  "admin.lti.toolSettings.subtitle":
-    "Set the client credentials and private key used by ChatKit as an LTI tool.",
-  "admin.lti.toolSettings.keys.title": "LTI key pair",
-  "admin.lti.toolSettings.keys.subtitle":
-    "The server exposes the tool key paths and current public key below.",
-  "admin.lti.toolSettings.keys.privateKeyPath": "Private key",
-  "admin.lti.toolSettings.keys.publicKeyPath": "Public key",
-  "admin.lti.toolSettings.keys.lastUpdated": "Last updated",
-  "admin.lti.toolSettings.keys.publicKeyHeading": "Current public key",
-  "admin.lti.toolSettings.keys.readOnlyNotice":
-    "These keys are managed in read-only mode from the server configuration.",
-  "admin.lti.toolSettings.keys.noData": "Not available",
-  "admin.lti.toolSettings.clientIdLabel": "Tool client ID",
-  "admin.lti.toolSettings.keySetUrlLabel": "Tool JWKS URL",
-  "admin.lti.toolSettings.audienceLabel": "Tool audience",
-  "admin.lti.toolSettings.keyIdLabel": "Key identifier (kid)",
-  "admin.lti.toolSettings.privateKeyLabel": "Private key (PEM)",
-  "admin.lti.toolSettings.privateKeyHint": "Current key: {{hint}}",
-  "admin.lti.toolSettings.noPrivateKey": "No private key stored.",
-  "admin.lti.toolSettings.save": "Save settings",
-  "admin.lti.toolSettings.saving": "Saving…",
-  "admin.lti.toolSettings.success": "Tool settings saved successfully.",
-  "admin.lti.toolSettings.errors.sessionExpired":
-    "Session expired, please sign in again.",
-  "admin.lti.toolSettings.errors.saveFailed":
-    "Unable to save the tool settings.",
-  "admin.lti.toolSettings.errors.loadFailed":
-    "Unable to load the tool settings.",
+    "Manage LTI issuers that can launch ChatKit.",
   "admin.lti.registrations.title": "Platform registrations",
   "admin.lti.registrations.subtitle":
     "List the issuers and credentials allowed to launch ChatKit via LTI.",

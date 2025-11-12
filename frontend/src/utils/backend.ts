@@ -258,34 +258,6 @@ export type LtiRegistrationUpdatePayload = {
   audience?: NullableString;
 };
 
-export type LtiToolSettings = {
-  client_id: string | null;
-  key_set_url: string | null;
-  audience: string | null;
-  key_id: string | null;
-  has_private_key: boolean;
-  private_key_hint: string | null;
-   private_key_path: string | null;
-   public_key_path: string | null;
-   public_key_pem: string | null;
-   public_key_last_updated_at: string | null;
-  is_client_id_overridden: boolean;
-  is_key_set_url_overridden: boolean;
-  is_audience_overridden: boolean;
-  is_key_id_overridden: boolean;
-  is_private_key_overridden: boolean;
-  created_at: string | null;
-  updated_at: string | null;
-};
-
-export type LtiToolSettingsUpdatePayload = {
-  client_id?: NullableString;
-  key_set_url?: NullableString;
-  audience?: NullableString;
-  key_id?: NullableString;
-  private_key?: NullableString;
-};
-
 export type McpServerProbeRequest = {
   serverId?: number | null;
   url: string;
@@ -666,33 +638,6 @@ const buildLtiRegistrationUpdateBody = (
   return body;
 };
 
-const buildLtiToolSettingsBody = (
-  payload: LtiToolSettingsUpdatePayload,
-): Record<string, unknown> => {
-  const body: Record<string, unknown> = {};
-  if (payload.client_id !== undefined) {
-    const normalized = normalizeOptionalString(payload.client_id);
-    body.client_id = normalized === undefined ? null : normalized;
-  }
-  if (payload.key_set_url !== undefined) {
-    const normalized = normalizeOptionalString(payload.key_set_url);
-    body.key_set_url = normalized === undefined ? null : normalized;
-  }
-  if (payload.audience !== undefined) {
-    const normalized = normalizeOptionalString(payload.audience);
-    body.audience = normalized === undefined ? null : normalized;
-  }
-  if (payload.key_id !== undefined) {
-    const normalized = normalizeOptionalString(payload.key_id);
-    body.key_id = normalized === undefined ? null : normalized;
-  }
-  if (payload.private_key !== undefined) {
-    const normalized = normalizeOptionalString(payload.private_key);
-    body.private_key = normalized === undefined ? null : normalized;
-  }
-  return body;
-};
-
 const mergeMcpServerPayload = (
   base: McpServerPayload | undefined,
   updates: McpServerPayload,
@@ -971,26 +916,6 @@ export const ltiAdminApi = {
         status: response.status,
       });
     }
-  },
-
-  async getToolSettings(token: string | null): Promise<LtiToolSettings> {
-    const response = await requestWithFallback("/api/admin/lti/tool-settings", {
-      headers: withAuthHeaders(token),
-    });
-    return response.json();
-  },
-
-  async updateToolSettings(
-    token: string | null,
-    payload: LtiToolSettingsUpdatePayload,
-  ): Promise<LtiToolSettings> {
-    const body = buildLtiToolSettingsBody(payload);
-    const response = await requestWithFallback("/api/admin/lti/tool-settings", {
-      method: "PATCH",
-      headers: withAuthHeaders(token),
-      body: JSON.stringify(body),
-    });
-    return response.json();
   },
 };
 
