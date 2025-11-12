@@ -48,23 +48,9 @@ async def get_jwks() -> dict[str, Any]:
     to verify Deep Linking response JWTs.
     """
     from ..config import get_settings
+    from ..lti.service import _int_to_b64, _derive_kid
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
-    import base64
-    import hashlib
-
-    def _int_to_b64(value: int) -> str:
-        """Convert an integer to base64url encoding."""
-        value_hex = format(value, 'x')
-        if len(value_hex) % 2:
-            value_hex = '0' + value_hex
-        value_bytes = bytes.fromhex(value_hex)
-        return base64.urlsafe_b64encode(value_bytes).rstrip(b'=').decode('ascii')
-
-    def _derive_kid(n: int) -> str:
-        """Derive a key ID from the RSA modulus."""
-        n_bytes = n.to_bytes((n.bit_length() + 7) // 8, byteorder='big')
-        return hashlib.sha256(n_bytes).hexdigest()[:16]
 
     settings = get_settings()
     raw_key = settings.lti_tool_private_key
@@ -75,7 +61,7 @@ async def get_jwks() -> dict[str, Any]:
             detail="Clé privée LTI non configurée"
         )
 
-    # Load the private key
+    # Load the private key (same logic as LTIService._ensure_private_key)
     normalized = raw_key.replace("\\n", "\n").encode("utf-8")
     try:
         private_key = serialization.load_pem_private_key(normalized, password=None)
@@ -94,7 +80,7 @@ async def get_jwks() -> dict[str, Any]:
 
     numbers = private_key.public_key().public_numbers()
 
-    # Use configured key_id or derive one from the public key
+    # Use configured key_id or derive one using the same logic as LTIService
     key_id = settings.lti_tool_key_id or _derive_kid(numbers.n)
 
     public_jwk = {
