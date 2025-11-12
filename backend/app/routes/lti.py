@@ -40,8 +40,73 @@ async def _extract_request_data(request: Request) -> dict[str, Any]:
 
 
 @router.get("/.well-known/jwks.json")
-async def get_jwks(service: LTIService = Depends(_get_service)) -> dict[str, Any]:
-    return service.get_tool_jwks()
+async def get_jwks() -> dict[str, Any]:
+    """Public endpoint for JWKS - must be accessible without authentication.
+
+    This endpoint exposes the tool's public key for JWT signature verification by LMS platforms.
+    It must be publicly accessible without authentication to allow platforms like Moodle
+    to verify Deep Linking response JWTs.
+    """
+    from ..config import get_settings
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    import base64
+    import hashlib
+
+    def _int_to_b64(value: int) -> str:
+        """Convert an integer to base64url encoding."""
+        value_hex = format(value, 'x')
+        if len(value_hex) % 2:
+            value_hex = '0' + value_hex
+        value_bytes = bytes.fromhex(value_hex)
+        return base64.urlsafe_b64encode(value_bytes).rstrip(b'=').decode('ascii')
+
+    def _derive_kid(n: int) -> str:
+        """Derive a key ID from the RSA modulus."""
+        n_bytes = n.to_bytes((n.bit_length() + 7) // 8, byteorder='big')
+        return hashlib.sha256(n_bytes).hexdigest()[:16]
+
+    settings = get_settings()
+    raw_key = settings.lti_tool_private_key
+
+    if not raw_key:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Clé privée LTI non configurée"
+        )
+
+    # Load the private key
+    normalized = raw_key.replace("\\n", "\n").encode("utf-8")
+    try:
+        private_key = serialization.load_pem_private_key(normalized, password=None)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Clé privée LTI invalide"
+        ) from exc
+
+    # Generate JWK from public key
+    if not isinstance(private_key, rsa.RSAPrivateKey):
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Type de clé non supporté (RSA requis)"
+        )
+
+    numbers = private_key.public_key().public_numbers()
+
+    # Use configured key_id or derive one from the public key
+    key_id = settings.lti_tool_key_id or _derive_kid(numbers.n)
+
+    public_jwk = {
+        "kty": "RSA",
+        "use": "sig",
+        "alg": "RS256",
+        "kid": key_id,
+        "n": _int_to_b64(numbers.n),
+        "e": _int_to_b64(numbers.e),
+    }
+
+    return {"keys": [public_jwk]}
 
 
 @router.post("/api/lti/login")
