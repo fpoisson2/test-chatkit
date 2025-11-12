@@ -265,10 +265,10 @@ export type LtiToolSettings = {
   key_id: string | null;
   has_private_key: boolean;
   private_key_hint: string | null;
-   private_key_path: string | null;
-   public_key_path: string | null;
-   public_key_pem: string | null;
-   public_key_last_updated_at: string | null;
+  private_key_path: string | null;
+  public_key_path: string | null;
+  public_key_pem: string | null;
+  public_key_last_updated_at: string | null;
   is_client_id_overridden: boolean;
   is_key_set_url_overridden: boolean;
   is_audience_overridden: boolean;
@@ -670,26 +670,32 @@ const buildLtiToolSettingsBody = (
   payload: LtiToolSettingsUpdatePayload,
 ): Record<string, unknown> => {
   const body: Record<string, unknown> = {};
+
   if (payload.client_id !== undefined) {
     const normalized = normalizeOptionalString(payload.client_id);
     body.client_id = normalized === undefined ? null : normalized;
   }
+
   if (payload.key_set_url !== undefined) {
     const normalized = normalizeOptionalString(payload.key_set_url);
     body.key_set_url = normalized === undefined ? null : normalized;
   }
+
   if (payload.audience !== undefined) {
     const normalized = normalizeOptionalString(payload.audience);
     body.audience = normalized === undefined ? null : normalized;
   }
+
   if (payload.key_id !== undefined) {
     const normalized = normalizeOptionalString(payload.key_id);
     body.key_id = normalized === undefined ? null : normalized;
   }
+
   if (payload.private_key !== undefined) {
     const normalized = normalizeOptionalString(payload.private_key);
     body.private_key = normalized === undefined ? null : normalized;
   }
+
   return body;
 };
 

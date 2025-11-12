@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -15,14 +10,11 @@ import {
   type LtiRegistrationCreatePayload,
   type LtiRegistrationUpdatePayload,
   type LtiToolSettings,
-  type LtiToolSettingsUpdatePayload,
   isUnauthorizedError,
   ltiAdminApi,
 } from "../utils/backend";
 import {
-  adminLtiToolSettingsSchema,
   adminLtiRegistrationSchema,
-  type AdminLtiToolSettingsFormData,
   type AdminLtiRegistrationFormData,
 } from "../schemas/admin";
 import {
@@ -44,14 +36,6 @@ const emptyRegistrationForm: AdminLtiRegistrationFormData = {
   audience: "",
 };
 
-const emptyToolSettingsForm: AdminLtiToolSettingsFormData = {
-  clientId: "",
-  keySetUrl: "",
-  audience: "",
-  keyId: "",
-  privateKey: "",
-};
-
 const normalizeOptionalField = (value: string | undefined) => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -62,7 +46,6 @@ export const AdminLtiPage = () => {
   const { t } = useI18n();
   const [showCreateRegistrationModal, setShowCreateRegistrationModal] = useState(false);
 
-  // Registration Form - React Hook Form
   const {
     register: registerReg,
     handleSubmit: handleRegSubmit,
@@ -73,18 +56,6 @@ export const AdminLtiPage = () => {
     defaultValues: emptyRegistrationForm,
   });
 
-  // Tool Settings Form - React Hook Form
-  const {
-    register: registerTool,
-    handleSubmit: handleToolSubmit,
-    formState: { errors: toolErrors },
-    reset: resetToolForm,
-    setValue: setToolValue,
-  } = useForm<AdminLtiToolSettingsFormData>({
-    resolver: zodResolver(adminLtiToolSettingsSchema),
-    defaultValues: emptyToolSettingsForm,
-  });
-
   const [registrations, setRegistrations] = useState<LtiRegistration[]>([]);
   const [registrationsLoading, setRegistrationsLoading] = useState(true);
   const [registrationsError, setRegistrationsError] = useState<string | null>(null);
@@ -93,20 +64,20 @@ export const AdminLtiPage = () => {
   const [isSavingRegistration, setSavingRegistration] = useState(false);
 
   const [toolSettings, setToolSettings] = useState<LtiToolSettings | null>(null);
-  const [toolLoading, setToolLoading] = useState(true);
-  const [toolError, setToolError] = useState<string | null>(null);
-  const [toolSuccess, setToolSuccess] = useState<string | null>(null);
-  const [toolSaving, setToolSaving] = useState(false);
+  const [toolSettingsLoading, setToolSettingsLoading] = useState(true);
+  const [toolSettingsError, setToolSettingsError] = useState<string | null>(null);
 
   const formattedPublicKeyUpdatedAt = useMemo(() => {
     const raw = toolSettings?.public_key_last_updated_at;
     if (!raw) {
       return null;
     }
+
     const parsed = new Date(raw);
     if (Number.isNaN(parsed.getTime())) {
       return raw;
     }
+
     return parsed.toLocaleString();
   }, [toolSettings?.public_key_last_updated_at]);
 
@@ -137,54 +108,41 @@ export const AdminLtiPage = () => {
     }
   }, [logout, t, token]);
 
+  useEffect(() => {
+    void fetchRegistrations();
+  }, [fetchRegistrations]);
+
   const fetchToolSettings = useCallback(async () => {
     if (!token) {
       setToolSettings(null);
-      setToolLoading(false);
+      setToolSettingsLoading(false);
       return;
     }
-    setToolLoading(true);
-    setToolError(null);
+
+    setToolSettingsLoading(true);
+    setToolSettingsError(null);
     try {
       const data = await ltiAdminApi.getToolSettings(token);
       setToolSettings(data);
     } catch (error) {
       if (isUnauthorizedError(error)) {
         logout();
-        setToolError(t("admin.lti.toolSettings.errors.sessionExpired"));
+        setToolSettingsError(t("admin.lti.toolSettings.errors.sessionExpired"));
       } else {
-        setToolError(
+        setToolSettingsError(
           error instanceof Error
             ? error.message
             : t("admin.lti.toolSettings.errors.loadFailed"),
         );
       }
     } finally {
-      setToolLoading(false);
+      setToolSettingsLoading(false);
     }
   }, [logout, t, token]);
 
   useEffect(() => {
-    void fetchRegistrations();
-  }, [fetchRegistrations]);
-
-  useEffect(() => {
     void fetchToolSettings();
   }, [fetchToolSettings]);
-
-  useEffect(() => {
-    if (!toolSettings) {
-      resetToolForm(emptyToolSettingsForm);
-      return;
-    }
-    resetToolForm({
-      clientId: toolSettings.client_id ?? "",
-      keySetUrl: toolSettings.key_set_url ?? "",
-      audience: toolSettings.audience ?? "",
-      keyId: toolSettings.key_id ?? "",
-      privateKey: "", // Don't populate private key for security
-    });
-  }, [toolSettings, resetToolForm]);
 
   const resetRegistrationForm = useCallback(() => {
     setEditingRegistrationId(null);
@@ -302,97 +260,30 @@ export const AdminLtiPage = () => {
     }
   }, [token, editingRegistrationId, t, fetchRegistrations, resetRegistrationForm, logout]);
 
-  const handleToolFormSubmit = useCallback(async (data: AdminLtiToolSettingsFormData) => {
-    if (!token) {
-      setToolError(t("admin.lti.toolSettings.errors.sessionExpired"));
-      return;
-    }
-
-    const payload: LtiToolSettingsUpdatePayload = {
-      client_id: data.clientId,
-      key_set_url: data.keySetUrl,
-      audience: normalizeOptionalField(data.audience),
-      key_id: normalizeOptionalField(data.keyId),
-    };
-    if (data.privateKey?.trim()) {
-      payload.private_key = data.privateKey;
-    }
-
-    setToolSaving(true);
-    setToolError(null);
-    setToolSuccess(null);
-    try {
-      const updated = await ltiAdminApi.updateToolSettings(token, payload);
-      setToolSettings(updated);
-      setToolSuccess(t("admin.lti.toolSettings.success"));
-      // Clear private key field after successful save
-      setToolValue("privateKey", "");
-    } catch (error) {
-      if (isUnauthorizedError(error)) {
-        logout();
-        setToolError(t("admin.lti.toolSettings.errors.sessionExpired"));
-      } else {
-        setToolError(
-          error instanceof Error
-            ? error.message
-            : t("admin.lti.toolSettings.errors.saveFailed"),
-        );
-      }
-    } finally {
-      setToolSaving(false);
-    }
-  }, [token, t, logout, setToolValue]);
-
-
-  const registrationColumns: Column<LtiRegistration>[] = useMemo(() => [
+  const registrationColumns: Column<LtiRegistration>[] = [
     {
       key: "issuer",
       label: t("admin.lti.registrations.table.issuer"),
       render: (entry) => entry.issuer,
     },
     {
-      key: "clientId",
+      key: "client_id",
       label: t("admin.lti.registrations.table.clientId"),
       render: (entry) => entry.client_id,
     },
     {
-      key: "keySetUrl",
+      key: "key_set_url",
       label: t("admin.lti.registrations.table.keySetUrl"),
       render: (entry) => entry.key_set_url,
-    },
-    {
-      key: "authEndpoint",
-      label: t("admin.lti.registrations.table.authorizationEndpoint"),
-      render: (entry) => entry.authorization_endpoint,
-    },
-    {
-      key: "tokenEndpoint",
-      label: t("admin.lti.registrations.table.tokenEndpoint"),
-      render: (entry) => entry.token_endpoint,
-    },
-    {
-      key: "deepLink",
-      label: t("admin.lti.registrations.table.deepLinkReturnUrl"),
-      render: (entry) => entry.deep_link_return_url ?? "—",
-    },
-    {
-      key: "audience",
-      label: t("admin.lti.registrations.table.audience"),
-      render: (entry) => entry.audience ?? "—",
-    },
-    {
-      key: "updated",
-      label: t("admin.lti.registrations.table.updatedAt"),
-      render: (entry) => new Date(entry.updated_at).toLocaleString(),
     },
     {
       key: "actions",
       label: t("admin.lti.registrations.table.actions"),
       render: (entry) => (
-        <div className="admin-table__actions">
+        <div className="management-actions">
           <button
             type="button"
-            className="button button--subtle button--sm"
+            className="button button--ghost button--sm"
             onClick={() => handleEditRegistration(entry)}
           >
             {t("admin.lti.registrations.actions.edit")}
@@ -407,19 +298,18 @@ export const AdminLtiPage = () => {
         </div>
       ),
     },
-  ], [t, handleEditRegistration, handleDeleteRegistration]);
+  ];
 
   return (
     <>
       <FeedbackMessages
-        error={toolError || registrationsError}
-        success={toolSuccess || registrationsSuccess}
+        error={toolSettingsError ?? registrationsError}
+        success={registrationsSuccess}
         onDismissError={() => {
-          setToolError(null);
+          setToolSettingsError(null);
           setRegistrationsError(null);
         }}
         onDismissSuccess={() => {
-          setToolSuccess(null);
           setRegistrationsSuccess(null);
         }}
       />
@@ -430,8 +320,12 @@ export const AdminLtiPage = () => {
           subtitle={t("admin.lti.toolSettings.keys.subtitle")}
           className="admin-card--stretch"
         >
-          {toolLoading ? (
+          {toolSettingsLoading ? (
             <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
+          ) : toolSettingsError ? (
+            <p className="admin-form__hint">
+              {t("admin.lti.toolSettings.errors.loadFailed")}
+            </p>
           ) : (
             <>
               <div className="admin-key-details">
@@ -483,84 +377,6 @@ export const AdminLtiPage = () => {
         </FormSection>
 
         <FormSection
-          title={t("admin.lti.toolSettings.title")}
-          subtitle={t("admin.lti.toolSettings.subtitle")}
-        >
-          {toolLoading ? (
-            <LoadingSpinner text={t("admin.lti.registrations.table.loading")} />
-          ) : (
-            <form className="admin-form" onSubmit={handleToolSubmit(handleToolFormSubmit)}>
-              <FormField
-                label={t("admin.lti.toolSettings.clientIdLabel")}
-                error={toolErrors.clientId?.message}
-              >
-                <input
-                  className="input"
-                  type="text"
-                  {...registerTool("clientId")}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField
-                label={t("admin.lti.toolSettings.keySetUrlLabel")}
-                error={toolErrors.keySetUrl?.message}
-              >
-                <input
-                  className="input"
-                  type="url"
-                  {...registerTool("keySetUrl")}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField label={t("admin.lti.toolSettings.audienceLabel")}>
-                <input
-                  className="input"
-                  type="text"
-                  {...registerTool("audience")}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField label={t("admin.lti.toolSettings.keyIdLabel")}>
-                <input
-                  className="input"
-                  type="text"
-                  {...registerTool("keyId")}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField
-                label={t("admin.lti.toolSettings.privateKeyLabel")}
-                hint={
-                  toolSettings?.has_private_key
-                    ? t("admin.lti.toolSettings.privateKeyHint", {
-                        hint: toolSettings.private_key_hint ?? "••••",
-                      })
-                    : t("admin.lti.toolSettings.noPrivateKey")
-                }
-              >
-                <textarea
-                  className="textarea"
-                  {...registerTool("privateKey")}
-                  rows={5}
-                />
-              </FormField>
-
-              <div className="admin-form__actions">
-                <button className="button" type="submit" disabled={toolSaving}>
-                  {toolSaving
-                    ? t("admin.lti.toolSettings.saving")
-                    : t("admin.lti.toolSettings.save")}
-                </button>
-              </div>
-            </form>
-          )}
-        </FormSection>
-
-        <FormSection
           title={t("admin.lti.registrations.title")}
           subtitle={t("admin.lti.registrations.subtitle")}
           className="admin-card--wide"
@@ -602,107 +418,103 @@ export const AdminLtiPage = () => {
           <FormSection
             title={t("admin.lti.registrations.form.editTitle")}
           >
-          <form className="admin-form" onSubmit={handleRegSubmit(handleRegistrationSubmit)}>
-            <FormField
-              label={t("admin.lti.registrations.form.issuerLabel")}
-              error={regErrors.issuer?.message}
-            >
-              <input
-                className="input"
-                type="url"
-                {...registerReg("issuer")}
-                autoComplete="off"
-              />
-            </FormField>
-
-            <FormField
-              label={t("admin.lti.registrations.form.clientIdLabel")}
-              error={regErrors.clientId?.message}
-            >
-              <input
-                className="input"
-                type="text"
-                {...registerReg("clientId")}
-                autoComplete="off"
-              />
-            </FormField>
-
-            <FormField
-              label={t("admin.lti.registrations.form.keySetUrlLabel")}
-              error={regErrors.keySetUrl?.message}
-            >
-              <input
-                className="input"
-                type="url"
-                {...registerReg("keySetUrl")}
-                autoComplete="off"
-              />
-            </FormField>
-
-            <FormField
-              label={t("admin.lti.registrations.form.authorizationEndpointLabel")}
-              error={regErrors.authorizationEndpoint?.message}
-            >
-              <input
-                className="input"
-                type="url"
-                {...registerReg("authorizationEndpoint")}
-                autoComplete="off"
-              />
-            </FormField>
-
-            <FormField
-              label={t("admin.lti.registrations.form.tokenEndpointLabel")}
-              error={regErrors.tokenEndpoint?.message}
-            >
-              <input
-                className="input"
-                type="url"
-                {...registerReg("tokenEndpoint")}
-                autoComplete="off"
-              />
-            </FormField>
-
-            <FormField label={t("admin.lti.registrations.form.deepLinkReturnUrlLabel")}>
-              <input
-                className="input"
-                type="url"
-                {...registerReg("deepLinkReturnUrl")}
-                autoComplete="off"
-              />
-            </FormField>
-
-            <FormField label={t("admin.lti.registrations.form.audienceLabel")}>
-              <input
-                className="input"
-                type="text"
-                {...registerReg("audience")}
-                autoComplete="off"
-              />
-            </FormField>
-
-            <div className="admin-form__actions">
-              <button
-                className="button"
-                type="submit"
-                disabled={isSavingRegistration}
+            <form className="admin-form" onSubmit={handleRegSubmit(handleRegistrationSubmit)}>
+              <FormField
+                label={t("admin.lti.registrations.form.issuerLabel")}
+                error={regErrors.issuer?.message}
               >
-                {isSavingRegistration
-                  ? t("admin.lti.registrations.form.saving")
-                  : t("admin.lti.registrations.form.save")}
-              </button>
-              {editingRegistrationId && (
-                <button
-                  className="button button--ghost"
-                  type="button"
-                  onClick={resetRegistrationForm}
-                >
-                  {t("admin.lti.registrations.form.cancel")}
+                <input
+                  className="input"
+                  type="url"
+                  {...registerReg("issuer")}
+                  autoComplete="off"
+                />
+              </FormField>
+
+              <FormField
+                label={t("admin.lti.registrations.form.clientIdLabel")}
+                error={regErrors.clientId?.message}
+              >
+                <input
+                  className="input"
+                  type="text"
+                  {...registerReg("clientId")}
+                  autoComplete="off"
+                />
+              </FormField>
+
+              <FormField
+                label={t("admin.lti.registrations.form.keySetUrlLabel")}
+                error={regErrors.keySetUrl?.message}
+              >
+                <input
+                  className="input"
+                  type="url"
+                  {...registerReg("keySetUrl")}
+                  autoComplete="off"
+                />
+              </FormField>
+
+              <FormField
+                label={t("admin.lti.registrations.form.authorizationEndpointLabel")}
+                error={regErrors.authorizationEndpoint?.message}
+              >
+                <input
+                  className="input"
+                  type="url"
+                  {...registerReg("authorizationEndpoint")}
+                  autoComplete="off"
+                />
+              </FormField>
+
+              <FormField
+                label={t("admin.lti.registrations.form.tokenEndpointLabel")}
+                error={regErrors.tokenEndpoint?.message}
+              >
+                <input
+                  className="input"
+                  type="url"
+                  {...registerReg("tokenEndpoint")}
+                  autoComplete="off"
+                />
+              </FormField>
+
+              <FormField label={t("admin.lti.registrations.form.deepLinkReturnUrlLabel")}>
+                <input
+                  className="input"
+                  type="url"
+                  {...registerReg("deepLinkReturnUrl")}
+                  autoComplete="off"
+                />
+              </FormField>
+
+              <FormField label={t("admin.lti.registrations.form.audienceLabel")}>
+                <input
+                  className="input"
+                  type="text"
+                  {...registerReg("audience")}
+                  autoComplete="off"
+                />
+              </FormField>
+
+              <div className="admin-form__actions">
+                <button className="button" type="submit" disabled={isSavingRegistration}>
+                  {isSavingRegistration
+                    ? t("admin.lti.registrations.form.saving")
+                    : t("admin.lti.registrations.form.save")}
                 </button>
-              )}
-            </div>
-          </form>
-        </FormSection>
+                {editingRegistrationId && (
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    onClick={resetRegistrationForm}
+                  >
+                    {t("admin.lti.registrations.form.cancel")}
+                  </button>
+                )}
+              </div>
+            </form>
+          </FormSection>
         )}
       </div>
 
