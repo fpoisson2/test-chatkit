@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
@@ -150,7 +150,7 @@ class LTIService:
                 detail="Paramètres OIDC manquants",
             )
 
-        registration = self._get_registration(issuer, client_id)
+        registration = self._get_registration(issuer, client_id, deployment_ref)
         deployment = self._get_deployment(registration, deployment_ref)
 
         logger.info(
@@ -444,12 +444,39 @@ class LTIService:
             candidates.add(f"{normalized}/")
         return {candidate for candidate in candidates if candidate}
 
-    def _get_registration(self, issuer: str, client_id: str) -> LTIRegistration:
+    def _get_registration(
+        self, issuer: str, client_id: str, deployment_id: str | None = None
+    ) -> LTIRegistration:
         issuer_candidates = self._issuer_candidates(issuer)
-        registration = self.session.scalar(
+        base_query = (
             select(LTIRegistration)
             .where(LTIRegistration.client_id == client_id)
-            .where(LTIRegistration.issuer.in_(issuer_candidates))
+            .where(LTIRegistration.issuer.in_(tuple(issuer_candidates)))
+        )
+        if deployment_id:
+            registration_with_deployment = self.session.scalar(
+                base_query.join(LTIDeployment).where(
+                    LTIDeployment.deployment_id == deployment_id
+                )
+            )
+            if registration_with_deployment is not None:
+                return registration_with_deployment
+
+        normalized = issuer.rstrip("/")
+        ordering_clauses: list[tuple[Any, int]] = [
+            (LTIRegistration.issuer == issuer, 0)
+        ]
+        if normalized and normalized != issuer:
+            ordering_clauses.append((LTIRegistration.issuer == normalized, 1))
+        normalized_with_slash = f"{normalized}/" if normalized else ""
+        if normalized_with_slash and normalized_with_slash != issuer:
+            ordering_clauses.append(
+                (LTIRegistration.issuer == normalized_with_slash, 2)
+            )
+
+        priority = case(*ordering_clauses, else_=3)
+        registration = self.session.scalar(
+            base_query.order_by(priority, LTIRegistration.id.asc())
         )
         if registration is None:
             available = self.session.scalars(

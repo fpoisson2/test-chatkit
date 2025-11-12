@@ -348,6 +348,63 @@ def test_lti_login_accepts_trailing_slash_variants(client, monkeypatch):
     assert response_with_slash.status_code == 302
 
 
+def test_lti_login_prefers_registration_with_matching_deployment(
+    client, monkeypatch
+):
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        workflow = models.Workflow(slug="demo", display_name="Demo workflow")
+        session.add(workflow)
+        session.flush()
+
+        shared_kwargs = {
+            "client_id": "platform-client",
+            "key_set_url": "https://platform.example/jwks",
+            "authorization_endpoint": "https://platform.example/oidc",
+            "token_endpoint": "https://platform.example/token",
+            "deep_link_return_url": "https://platform.example/deep-link",
+            "audience": "platform-audience",
+        }
+
+        registration_without_deployment = models.LTIRegistration(
+            issuer="https://platform.example",
+            **shared_kwargs,
+        )
+        session.add(registration_without_deployment)
+        session.flush()
+
+        registration_with_deployment = models.LTIRegistration(
+            issuer="https://platform.example/",
+            **shared_kwargs,
+        )
+        session.add(registration_with_deployment)
+        session.flush()
+
+        deployment = models.LTIDeployment(
+            registration_id=registration_with_deployment.id,
+            deployment_id="deployment-123",
+            workflow_id=workflow.id,
+        )
+        session.add(deployment)
+        session.commit()
+
+    response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example/",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-123",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+
+
 def test_lti_login_logs_context_when_registration_missing(client, caplog):
     caplog.set_level(logging.WARNING, logger="backend.app.lti.service")
 
