@@ -2278,7 +2278,7 @@ button {
 }
 
 .admin-card--narrow {
-  width: min(100%, 720px);
+  width: min(100%, 560px);
   margin-inline: auto;
 }
 
@@ -2388,7 +2388,7 @@ button {
 .admin-key-details__code {
   margin: 0;
   min-width: 0;
-  width: min(100%, 640px);
+  width: min(100%, 520px);
   margin-inline: auto;
 }
 
