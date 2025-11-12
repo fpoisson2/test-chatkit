@@ -7,6 +7,7 @@ import { renderWidgetIcon } from "./widgetIcons";
 
 type WidgetPreviewProps = {
   definition: Record<string, unknown>;
+  density?: "default" | "condensed";
 };
 
 type BoxLike =
@@ -833,10 +834,14 @@ const normalizeDefinition = (
   return definition as Widgets.WidgetRoot;
 };
 
-export const WidgetPreview = ({ definition }: WidgetPreviewProps) => {
+export const WidgetPreview = ({ definition, density = "default" }: WidgetPreviewProps) => {
   const normalized = useMemo(() => normalizeDefinition(definition), [definition]);
   if (!normalized) {
     return <div className="widget-preview__unsupported">Définition du widget invalide.</div>;
   }
-  return <div className="widget-preview">{renderNode(normalized)}</div>;
+  const classNames = ["widget-preview"];
+  if (density === "condensed") {
+    classNames.push("widget-preview--condensed");
+  }
+  return <div className={classNames.join(" ")}>{renderNode(normalized)}</div>;
 };

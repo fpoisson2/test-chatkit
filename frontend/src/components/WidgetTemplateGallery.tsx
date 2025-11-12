@@ -36,7 +36,7 @@ export const WidgetTemplateGallery = ({
       <div className="widget-gallery" role="list">
         {widgets.map((widget) => (
           <article key={widget.slug} className="widget-gallery__item" role="listitem">
-            <WidgetPreview definition={widget.definition} />
+            <WidgetPreview density="condensed" definition={widget.definition} />
 
             <div className="widget-gallery__actions">
               <button

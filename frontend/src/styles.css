@@ -3445,9 +3445,19 @@ button {
 }
 
 .widget-preview {
+  --widget-preview-container-padding: 1.25rem;
+  --widget-preview-card-width: min(520px, 100%);
+  --widget-preview-card-width-sm: min(360px, 100%);
+  --widget-preview-card-width-lg: min(640px, 100%);
+  --widget-preview-card-width-full: 100%;
+  --widget-preview-card-padding: 1.5rem;
+  --widget-preview-card-gap: 0.75rem;
+  --widget-preview-stack-gap: 0.75rem;
+  --widget-preview-actions-gap: 0.75rem;
+  --widget-preview-list-padding: 1rem;
   border: 1px solid var(--color-border-subtle);
   border-radius: 1rem;
-  padding: 1.25rem;
+  padding: var(--widget-preview-container-padding);
   background: var(--color-surface-subtle);
   display: flex;
   justify-content: center;
@@ -3457,14 +3467,14 @@ button {
 .widget-preview__card,
 .widget-preview__basic,
 .widget-preview__collection {
-  width: min(520px, 100%);
+  width: var(--widget-preview-card-width);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--widget-preview-card-gap);
   border-radius: 0.9rem;
   background: var(--widget-preview-card-bg, var(--color-surface));
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-  padding: 1.5rem;
+  padding: var(--widget-preview-card-padding);
   color: var(--color-text);
   position: relative;
   --widget-preview-status-bg: color-mix(in srgb, var(--color-text) 12%, transparent);
@@ -3472,15 +3482,28 @@ button {
 }
 
 .widget-preview__card--sm {
-  width: min(360px, 100%);
+  width: var(--widget-preview-card-width-sm);
 }
 
 .widget-preview__card--lg {
-  width: min(640px, 100%);
+  width: var(--widget-preview-card-width-lg);
 }
 
 .widget-preview__card--full {
-  width: 100%;
+  width: var(--widget-preview-card-width-full);
+}
+
+.widget-preview--condensed {
+  --widget-preview-container-padding: clamp(0.75rem, 3.8vw, 1rem);
+  --widget-preview-card-width: clamp(240px, 82vw, 320px);
+  --widget-preview-card-width-sm: clamp(230px, 78vw, 300px);
+  --widget-preview-card-width-lg: clamp(260px, 88vw, 360px);
+  --widget-preview-card-width-full: min(100%, clamp(260px, 90vw, 360px));
+  --widget-preview-card-padding: clamp(1rem, 4.6vw, 1.35rem);
+  --widget-preview-card-gap: clamp(0.55rem, 3.4vw, 0.85rem);
+  --widget-preview-stack-gap: clamp(0.5rem, 3vw, 0.75rem);
+  --widget-preview-actions-gap: clamp(0.45rem, 3vw, 0.65rem);
+  --widget-preview-list-padding: clamp(0.75rem, 4.5vw, 0.95rem);
 }
 
 .widget-preview__card--collapsed {
@@ -3522,7 +3545,7 @@ button {
 
 .widget-preview__card-actions {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--widget-preview-actions-gap);
   flex-wrap: wrap;
   margin-top: 0.5rem;
   align-items: center;
@@ -3531,7 +3554,7 @@ button {
 .widget-preview__box {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--widget-preview-stack-gap);
   min-width: 0;
   max-width: 100%;
 }
@@ -3609,13 +3632,13 @@ button {
 .widget-preview__list-view {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--widget-preview-stack-gap);
 }
 
 .widget-preview__list-item {
   border: 1px solid var(--color-border-subtle);
   border-radius: 0.75rem;
-  padding: 1rem;
+  padding: var(--widget-preview-list-padding);
   background: var(--widget-preview-item-bg, var(--color-surface));
   transition: background 0.2s ease, border-color 0.2s ease;
 }
