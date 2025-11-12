@@ -46,8 +46,10 @@ export const WidgetTemplateGallery = ({
                   event.stopPropagation();
                   onPreview(widget);
                 }}
+                aria-label="Voir en plein écran"
               >
-                Voir en plein écran
+                <span className="widget-gallery__actions-full-text">Voir en plein écran</span>
+                <span className="widget-gallery__actions-short-text">Aperçu</span>
               </button>
               <button
                 className="button button--subtle button--sm"
