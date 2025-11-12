@@ -1,0 +1,275 @@
+/* ================================================================
+   Admin Modal - Modal container for administration sections
+   ================================================================ */
+
+/* Modal container with extra-large size */
+.admin-modal {
+  width: 95vw;
+  max-width: 1400px;
+  height: 90vh;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  background: var(--background-color, #ffffff);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* Modal header */
+.admin-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  flex-shrink: 0;
+}
+
+.admin-modal__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-color, #1f2937);
+}
+
+.admin-modal__close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  line-height: 1;
+  color: var(--text-muted, #6b7280);
+  transition: color 0.2s ease;
+}
+
+.admin-modal__close:hover {
+  color: var(--text-color, #1f2937);
+}
+
+/* Desktop layout - sidebar + content */
+@media (min-width: 1024px) {
+  .admin-modal__desktop {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .admin-modal__sidebar {
+    border-right: 1px solid var(--border-color, #e5e7eb);
+    overflow-y: auto;
+    background: var(--sidebar-background, #f9fafb);
+  }
+
+  .admin-modal__tabs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem;
+  }
+
+  .admin-modal__tab-trigger {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-muted, #6b7280);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    width: 100%;
+  }
+
+  .admin-modal__tab-trigger:hover {
+    background: var(--hover-background, #f3f4f6);
+    color: var(--text-color, #1f2937);
+  }
+
+  .admin-modal__tab-trigger[data-state="active"] {
+    background: var(--primary-background, #eff6ff);
+    color: var(--primary-color, #2563eb);
+    font-weight: 600;
+  }
+
+  .admin-modal__tab-trigger:focus-visible {
+    outline: 2px solid var(--primary-color, #2563eb);
+    outline-offset: 2px;
+  }
+
+  .admin-modal__content-wrapper {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .admin-modal__tab-content {
+    padding: 2rem;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .admin-modal__tab-content[data-state="inactive"] {
+    display: none;
+  }
+}
+
+/* Mobile layout - stacked with select dropdown */
+@media (max-width: 1023px) {
+  .admin-modal {
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .admin-modal__mobile {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .admin-modal__select-wrapper {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    flex-shrink: 0;
+  }
+
+  .admin-modal__select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-color, #1f2937);
+    background: var(--input-background, #ffffff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .admin-modal__select-trigger:hover {
+    border-color: var(--primary-color, #2563eb);
+  }
+
+  .admin-modal__select-trigger:focus {
+    outline: 2px solid var(--primary-color, #2563eb);
+    outline-offset: 2px;
+  }
+
+  .admin-modal__select-icon {
+    width: 1rem;
+    height: 1rem;
+    transition: transform 0.2s ease;
+  }
+
+  .admin-modal__select-trigger[data-state="open"] .admin-modal__select-icon {
+    transform: rotate(180deg);
+  }
+
+  .admin-modal__mobile-content {
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+    padding: 1rem;
+  }
+}
+
+/* Radix Select Content Styles */
+.admin-modal__select-content {
+  overflow: hidden;
+  background: var(--background-color, #ffffff);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  box-shadow: 0 10px 38px -10px rgba(0, 0, 0, 0.2),
+    0 10px 20px -15px rgba(0, 0, 0, 0.1);
+  max-height: 400px;
+  z-index: 1000;
+}
+
+.admin-modal__select-viewport {
+  padding: 0.5rem;
+}
+
+.admin-modal__select-item {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-color, #1f2937);
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.admin-modal__select-item[data-highlighted] {
+  background: var(--hover-background, #f3f4f6);
+  outline: none;
+}
+
+.admin-modal__select-item[data-state="checked"] {
+  background: var(--primary-background, #eff6ff);
+  color: var(--primary-color, #2563eb);
+  font-weight: 600;
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Loading spinner for lazy-loaded content */
+.admin-modal__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-muted, #6b7280);
+}
+
+/* Ensure admin sections don't have double padding */
+.admin-modal__tab-content .admin-grid {
+  margin: 0;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .admin-modal {
+    --background-color: #1f2937;
+    --border-color: #374151;
+    --text-color: #f9fafb;
+    --text-muted: #9ca3af;
+    --sidebar-background: #111827;
+    --hover-background: #374151;
+    --primary-background: #1e3a8a;
+    --primary-color: #60a5fa;
+    --input-background: #374151;
+  }
+}
+
+/* Accessibility improvements */
+.admin-modal__tab-trigger:focus-visible,
+.admin-modal__select-trigger:focus-visible {
+  outline: 2px solid var(--primary-color, #2563eb);
+  outline-offset: 2px;
+}
+
+/* Smooth scrolling */
+.admin-modal__content-wrapper,
+.admin-modal__mobile-content,
+.admin-modal__sidebar {
+  scroll-behavior: smooth;
+}

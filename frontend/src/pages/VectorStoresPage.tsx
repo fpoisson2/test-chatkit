@@ -8,8 +8,6 @@ import { VectorStoreIngestionForm } from "../components/VectorStoreIngestionForm
 import { VectorStoreSearchForm } from "../components/VectorStoreSearchForm";
 import { VectorStoreSearchResults } from "../components/VectorStoreSearchResults";
 import { VectorStoreTable } from "../components/VectorStoreTable";
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { AdminTabs } from "../components/AdminTabs";
 import { LoadingSpinner, ErrorAlert, FeedbackMessages, FormSection } from "../components";
 import { useI18n } from "../i18n";
 import {
@@ -312,9 +310,7 @@ export const VectorStoresPage = () => {
   };
 
   return (
-    <ManagementPageLayout
-      tabs={<AdminTabs activeTab="vector-stores" />}
-    >
+    <>
       <FeedbackMessages
         error={error}
         success={success ? String(success) : null}
@@ -427,7 +423,7 @@ export const VectorStoresPage = () => {
           ) : null}
         </Modal>
       ) : null}
-    </ManagementPageLayout>
+    </>
   );
 };
 

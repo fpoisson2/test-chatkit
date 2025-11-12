@@ -2912,6 +2912,11 @@ button {
   width: min(960px, 96vw);
 }
 
+.modal__container--xl {
+  width: min(1400px, 95vw);
+  max-height: 90vh;
+}
+
 .modal__header {
   display: flex;
   align-items: center;

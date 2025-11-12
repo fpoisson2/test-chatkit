@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth";
-import { AdminTabs } from "../../components/AdminTabs";
-import { ManagementPageLayout } from "../../components/ManagementPageLayout";
 import { FormSection } from "../../components";
 import { useI18n } from "../../i18n";
 import {
@@ -198,7 +196,7 @@ export const DocsPage = () => {
 
   return (
     <>
-      <ManagementPageLayout tabs={<AdminTabs activeTab="docs" />}>
+      <>
         <div className="admin-grid">
           <FormSection
             title={t("docs.title")}
@@ -228,7 +226,7 @@ export const DocsPage = () => {
             <div className={styles.pageContent}>{renderContent}</div>
           </FormSection>
         </div>
-      </ManagementPageLayout>
+      </>
       <DocEditor
         mode="create"
         isOpen={isEditorOpen}

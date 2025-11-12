@@ -10,8 +10,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
-import { AdminTabs } from "../components/AdminTabs";
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { Modal } from "../components/Modal";
 import {
   ResponsiveTable,
@@ -453,9 +451,7 @@ export const AdminModelsPage = () => {
   );
 
   return (
-    <ManagementPageLayout
-      tabs={<AdminTabs activeTab="models" />}
-    >
+    <>
       <FeedbackMessages
         error={error}
         success={success}
@@ -697,6 +693,6 @@ export const AdminModelsPage = () => {
           </form>
         </Modal>
       )}
-    </ManagementPageLayout>
+    </>
   );
 };

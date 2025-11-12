@@ -20,47 +20,6 @@ const VectorStoresPage = lazy(() =>
   }))
 );
 const WidgetLibraryPage = lazy(() => import("./pages/WidgetLibraryPage"));
-const AdminPage = lazy(() =>
-  import("./pages/AdminPage").then((m) => ({ default: m.AdminPage }))
-);
-const AdminModelsPage = lazy(() =>
-  import("./pages/AdminModelsPage").then((m) => ({
-    default: m.AdminModelsPage,
-  }))
-);
-const AdminModelProvidersPage = lazy(() =>
-  import("./pages/AdminModelProvidersPage").then((m) => ({
-    default: m.AdminModelProvidersPage,
-  }))
-);
-const AdminAppSettingsPage = lazy(() =>
-  import("./pages/AdminAppSettingsPage").then((m) => ({
-    default: m.AdminAppSettingsPage,
-  }))
-);
-const AdminTelephonyPage = lazy(() =>
-  import("./pages/AdminTelephonyPage").then((m) => ({
-    default: m.AdminTelephonyPage,
-  }))
-);
-const AdminMcpServersPage = lazy(() =>
-  import("./pages/AdminMcpServersPage").then((m) => ({
-    default: m.AdminMcpServersPage,
-  }))
-);
-const AdminAppearancePage = lazy(() =>
-  import("./pages/AdminAppearancePage").then((m) => ({
-    default: m.AdminAppearancePage,
-  }))
-);
-const AdminLanguagesPage = lazy(() =>
-  import("./pages/AdminLanguagesPage").then((m) => ({
-    default: m.AdminLanguagesPage,
-  }))
-);
-const AdminLtiPage = lazy(() =>
-  import("./pages/AdminLtiPage").then((m) => ({ default: m.AdminLtiPage }))
-);
 const DocsPage = lazy(() =>
   import("./pages/docs/DocsPage").then((m) => ({ default: m.DocsPage }))
 );
@@ -196,90 +155,16 @@ export const App = () => (
           }
         />
       </Route>
-      <Route
-        path="/admin"
-        element={
-          <RequireAdmin>
-            <AuthenticatedAppLayout />
-          </RequireAdmin>
-        }
-      >
-        <Route
-          index
-          element={
-            <SuspenseRoute>
-              <AdminPage />
-            </SuspenseRoute>
-          }
-        />
-        <Route
-          path="settings"
-          element={
-            <SuspenseRoute>
-              <AdminAppSettingsPage />
-            </SuspenseRoute>
-          }
-        />
-        <Route
-          path="appearance"
-          element={
-            <SuspenseRoute>
-              <AdminAppearancePage />
-            </SuspenseRoute>
-          }
-        />
-        <Route
-          path="models"
-          element={
-            <SuspenseRoute>
-              <AdminModelsPage />
-            </SuspenseRoute>
-          }
-        />
-        <Route
-          path="providers"
-          element={
-            <SuspenseRoute>
-              <AdminModelProvidersPage />
-            </SuspenseRoute>
-          }
-        />
-        <Route
-          path="sip-accounts"
-          element={
-            <SuspenseRoute>
-              <AdminTelephonyPage />
-            </SuspenseRoute>
-          }
-        />
-        <Route
-          path="mcp-servers"
-          element={
-            <SuspenseRoute>
-              <AdminMcpServersPage />
-            </SuspenseRoute>
-          }
-        />
-        <Route
-          path="languages"
-          element={
-            <SuspenseRoute>
-              <AdminLanguagesPage />
-            </SuspenseRoute>
-          }
-        />
-        <Route
-          path="lti"
-          element={
-            <SuspenseRoute>
-              <AdminLtiPage />
-            </SuspenseRoute>
-          }
-        />
-      </Route>
-      <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
-      <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
-      <Route path="/admin/workflows" element={<Navigate to="/workflows" replace />} />
+      {/* Redirect old admin routes to home with admin modal query param */}
+      <Route path="/admin" element={<Navigate to="/?admin=users" replace />} />
+      <Route path="/admin/settings" element={<Navigate to="/?admin=settings" replace />} />
+      <Route path="/admin/appearance" element={<Navigate to="/?admin=appearance" replace />} />
+      <Route path="/admin/models" element={<Navigate to="/?admin=models" replace />} />
+      <Route path="/admin/providers" element={<Navigate to="/?admin=providers" replace />} />
+      <Route path="/admin/sip-accounts" element={<Navigate to="/?admin=telephony" replace />} />
+      <Route path="/admin/mcp-servers" element={<Navigate to="/?admin=mcp-servers" replace />} />
+      <Route path="/admin/languages" element={<Navigate to="/?admin=languages" replace />} />
+      <Route path="/admin/lti" element={<Navigate to="/?admin=lti" replace />} />
       <Route
         path="*"
         element={
