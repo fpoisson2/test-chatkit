@@ -331,13 +331,16 @@ class LTIService:
         launch_url = session_record.target_link_uri or self._default_launch_url()
         content_items: list[dict[str, Any]] = []
         for workflow in selected_workflows:
+            # Encode workflow slug in the title to retrieve it later
+            # Format: "WorkflowName [slug:workflow-slug]"
+            title_with_slug = f"{workflow.display_name} [wf:{workflow.slug}]"
             content_items.append(
                 {
                     "type": "ltiResourceLink",
-                    "title": workflow.display_name,
+                    "title": title_with_slug,
                     "url": launch_url,
                     "custom": {
-                        "workflow_id": workflow.id,
+                        "workflow_id": str(workflow.id),
                         "workflow_slug": workflow.slug,
                     },
                 }
@@ -584,17 +587,35 @@ class LTIService:
         resource_link: LTIResourceLink | None,
         deployment: LTIDeployment,
     ) -> Workflow | None:
+        import re
+
         custom_claim = payload.get(
             "https://purl.imsglobal.org/spec/lti/claim/custom", {}
         )
+        resource_claim = payload.get(
+            "https://purl.imsglobal.org/spec/lti/claim/resource_link", {}
+        )
         workflow: Workflow | None = None
 
+        logger.info(
+            "Resolving workflow: custom_claim=%s, resource_link_id=%s, "
+            "resource_link_workflow_id=%s, deployment_workflow_id=%s, resource_title=%s",
+            custom_claim if isinstance(custom_claim, Mapping) else type(custom_claim),
+            resource_link.id if resource_link else None,
+            resource_link.workflow_id if resource_link else None,
+            deployment.workflow_id if deployment else None,
+            resource_claim.get("title") if isinstance(resource_claim, Mapping) else None,
+        )
+
+        # Try custom parameters first
         workflow_id = None
         if isinstance(custom_claim, Mapping):
             workflow_id = custom_claim.get("workflow_id")
         if workflow_id is not None:
             try:
                 workflow = self.session.get(Workflow, int(workflow_id))
+                if workflow:
+                    logger.info("Workflow resolved from custom claim workflow_id: %s", workflow.id)
             except (TypeError, ValueError):  # pragma: no cover - valeur invalide
                 workflow = None
 
@@ -604,12 +625,45 @@ class LTIService:
                 workflow = self.session.scalar(
                     select(Workflow).where(Workflow.slug == str(slug))
                 )
+                if workflow:
+                    logger.info("Workflow resolved from custom claim workflow_slug: %s", workflow.slug)
+
+        # Try to extract workflow slug from resource link title [wf:slug]
+        if workflow is None and isinstance(resource_claim, Mapping):
+            title = resource_claim.get("title", "")
+            if isinstance(title, str):
+                match = re.search(r'\[wf:([^\]]+)\]', title)
+                if match:
+                    slug = match.group(1)
+                    workflow = self.session.scalar(
+                        select(Workflow).where(Workflow.slug == slug)
+                    )
+                    if workflow:
+                        logger.info("Workflow resolved from resource title slug: %s", workflow.slug)
+                        # Store workflow in resource_link for future launches
+                        if resource_link and not resource_link.workflow_id:
+                            resource_link.workflow = workflow
+                            self.session.flush()
 
         if workflow is None and resource_link is not None:
             workflow = resource_link.workflow
+            if workflow:
+                logger.info("Workflow resolved from resource_link: %s", workflow.id)
 
         if workflow is None:
             workflow = deployment.workflow
+            if workflow:
+                logger.info("Workflow resolved from deployment default: %s", workflow.id)
+
+        if workflow is None:
+            logger.error(
+                "Failed to resolve workflow: custom_claim=%s, resource_link=%s, "
+                "deployment=%s, resource_title=%s",
+                custom_claim,
+                resource_link.id if resource_link else None,
+                deployment.id if deployment else None,
+                resource_claim.get("title") if isinstance(resource_claim, Mapping) else None,
+            )
 
         return workflow
 
