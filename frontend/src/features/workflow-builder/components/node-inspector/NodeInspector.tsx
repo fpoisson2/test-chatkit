@@ -262,9 +262,6 @@ const NodeInspector = ({
     <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
       <div className={styles.nodeInspectorHeader}>
         <div className={styles.nodeInspectorSummary}>
-          <span className={styles.nodeInspectorTitle}>
-            {displayName.trim() ? displayName : `Bloc ${labelForKind(kind, t)}`}
-          </span>
           <span className={styles.nodeInspectorSubtitle}>Identifiant : {node.data.slug}</span>
         </div>
         {!isFixed ? (
