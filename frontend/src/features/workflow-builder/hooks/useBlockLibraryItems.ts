@@ -18,6 +18,7 @@ export interface NodeHandlers {
   handleAddUserMessageNode: () => void;
   handleAddVectorStoreNode: () => void;
   handleAddWidgetNode: () => void;
+  handleAddWhileNode: () => void;
   handleAddEndNode: () => void;
 }
 
@@ -104,6 +105,7 @@ export const useBlockLibraryItems = ({
         onClick: nodeHandlers.handleAddVectorStoreNode,
       },
       { key: "widget", kind: "widget", shortLabel: "W", onClick: nodeHandlers.handleAddWidgetNode },
+      { key: "while", kind: "while", shortLabel: "WH", onClick: nodeHandlers.handleAddWhileNode },
       { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
     ];
 
@@ -128,6 +130,7 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddUserMessageNode,
     nodeHandlers.handleAddVectorStoreNode,
     nodeHandlers.handleAddWidgetNode,
+    nodeHandlers.handleAddWhileNode,
     nodeHandlers.handleAddEndNode,
   ]);
 };

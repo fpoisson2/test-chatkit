@@ -25,6 +25,7 @@ export type NodeKind =
   | "parallel_split"
   | "parallel_join"
   | "widget"
+  | "while"
   | "end";
 
 export type ApiWorkflowNode = {

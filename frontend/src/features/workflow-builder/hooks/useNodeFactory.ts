@@ -366,6 +366,35 @@ const useNodeFactory = ({
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
 
+  const handleAddWhileNode = useCallback(() => {
+    const slug = `while-${Date.now()}`;
+    const parameters: AgentParameters = {
+      condition_path: "",
+      condition_mode: "truthy",
+      condition_value: null,
+      max_iterations: 100,
+    };
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 440, y: 280 },
+      data: {
+        slug,
+        kind: "while",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, humanizeSlug]);
+
   const handleAddEndNode = useCallback(() => {
     const slug = `end-${Date.now()}`;
     const parameters = setEndMessage({}, DEFAULT_END_MESSAGE);
@@ -404,6 +433,7 @@ const useNodeFactory = ({
     handleAddUserMessageNode,
     handleAddVectorStoreNode,
     handleAddWidgetNode,
+    handleAddWhileNode,
     handleAddEndNode,
   };
 };

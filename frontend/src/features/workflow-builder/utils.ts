@@ -23,6 +23,7 @@ export const NODE_COLORS: Record<NodeKind, string> = {
   parallel_split: "#84cc16",
   parallel_join: "#06b6d4",
   widget: "#ec4899",
+  while: "#a855f7",
   end: "#7c3aed",
 };
 
@@ -42,6 +43,7 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   parallel_split: "rgba(132, 204, 22, 0.16)",
   parallel_join: "rgba(6, 182, 212, 0.18)",
   widget: "rgba(236, 72, 153, 0.15)",
+  while: "rgba(168, 85, 247, 0.16)",
   end: "rgba(124, 58, 237, 0.12)",
 };
 
@@ -61,6 +63,7 @@ const NODE_GLOW_COLORS: Record<NodeKind, string> = {
   parallel_split: "rgba(132, 204, 22, 0.45)",
   parallel_join: "rgba(6, 182, 212, 0.5)",
   widget: "rgba(236, 72, 153, 0.45)",
+  while: "rgba(168, 85, 247, 0.45)",
   end: "rgba(124, 58, 237, 0.45)",
 };
 
@@ -214,6 +217,7 @@ const NODE_KIND_LABEL_KEYS: Record<NodeKind, string> = {
   parallel_split: "workflowBuilder.node.kind.parallel_split",
   parallel_join: "workflowBuilder.node.kind.parallel_join",
   widget: "workflowBuilder.node.kind.widget",
+  while: "workflowBuilder.node.kind.while",
   end: "workflowBuilder.node.kind.end",
 };
 
