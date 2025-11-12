@@ -2890,6 +2890,7 @@ button {
   }
 
   .widget-gallery__actions .button {
+    display: flex;
     font-size: 0.85rem;
     padding: 0.4rem 0.7rem;
     white-space: nowrap;
