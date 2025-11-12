@@ -2881,6 +2881,7 @@ button {
 
   .widget-gallery__actions {
     flex-direction: column;
+    align-items: stretch;
     gap: 0.4rem;
     padding: 0.5rem 0.6rem;
     right: clamp(8px, 2vw, 12px);
@@ -2892,7 +2893,8 @@ button {
     font-size: 0.85rem;
     padding: 0.4rem 0.7rem;
     white-space: nowrap;
-    min-width: max-content;
+    width: 100%;
+    justify-content: center;
   }
 }
 
