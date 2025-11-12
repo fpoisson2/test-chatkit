@@ -14,3 +14,4 @@
 /.pip-cache
 logs/
 test_config.env
+lti_private_key.pem

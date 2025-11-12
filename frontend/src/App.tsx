@@ -26,6 +26,10 @@ const DocsPage = lazy(() =>
 const DocDetail = lazy(() =>
   import("./pages/docs/DocDetail").then((m) => ({ default: m.DocDetail }))
 );
+const LTIDeepLinkPage = lazy(() => import("./pages/LTIDeepLinkPage"));
+const LTILaunchPage = lazy(() =>
+  import("./pages/LTILaunchPage").then((m) => ({ default: m.LTILaunchPage }))
+);
 
 // Configure React Query client
 const queryClient = new QueryClient({
@@ -89,6 +93,22 @@ export const App = () => (
           <RequireGuest>
             <LoginPage />
           </RequireGuest>
+        }
+      />
+      <Route
+        path="/lti/deep-link"
+        element={
+          <SuspenseRoute>
+            <LTIDeepLinkPage />
+          </SuspenseRoute>
+        }
+      />
+      <Route
+        path="/lti/launch"
+        element={
+          <SuspenseRoute>
+            <LTILaunchPage />
+          </SuspenseRoute>
         }
       />
       <Route

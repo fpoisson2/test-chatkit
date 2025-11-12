@@ -78,6 +78,10 @@ export default defineConfig({
           target: backendTarget,
           changeOrigin: true,
         },
+        "/.well-known": {
+          target: backendTarget,
+          changeOrigin: true,
+        },
       },
     } : {}),
   },

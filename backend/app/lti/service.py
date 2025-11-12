@@ -6,10 +6,11 @@ import base64
 import datetime
 import hashlib
 import json
+import logging
 import secrets
 from collections.abc import Mapping, Sequence
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 import httpx
 import jwt
@@ -29,8 +30,9 @@ from ..models import (
     User,
     Workflow,
 )
-from ..schemas import TokenResponse
 from ..security import create_access_token, hash_password
+
+logger = logging.getLogger(__name__)
 
 
 def _now_utc() -> datetime.datetime:
@@ -147,6 +149,14 @@ class LTIService:
                 detail="Paramètres OIDC manquants",
             )
 
+        # Debug logging for LTI registration lookup
+        logger.info(
+            "LTI login attempt - issuer: %r, client_id: %r, deployment: %r",
+            issuer,
+            client_id,
+            deployment_ref,
+        )
+
         registration = self._get_registration(issuer, client_id)
         deployment = self._get_deployment(registration, deployment_ref)
 
@@ -187,9 +197,14 @@ class LTIService:
             },
         )
 
+        logger.info(
+            "Redirecting to platform authorization endpoint: %s",
+            registration.authorization_endpoint,
+        )
+
         return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
-    def complete_launch(self, *, state: str, id_token: str) -> TokenResponse:
+    def complete_launch(self, *, state: str, id_token: str) -> RedirectResponse:
         session_record = self._get_session_from_state(state)
         payload = self._verify_id_token(session_record.registration, id_token)
         self._validate_common_claims(session_record, payload)
@@ -238,7 +253,28 @@ class LTIService:
         self.session.commit()
 
         token = create_access_token(user)
-        return TokenResponse(access_token=token, user=user)
+
+        # Redirect to frontend LTI launch handler
+        # Use first allowed origin or fall back to backend URL
+        frontend_base = self.settings.allowed_origins[0] if self.settings.allowed_origins else self.settings.backend_public_base_url
+        frontend_base = frontend_base.rstrip("/")
+
+        # Serialize user data for URL parameter
+        user_data = {
+            "id": user.id,
+            "email": user.email,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at.isoformat(),
+            "updated_at": user.updated_at.isoformat(),
+        }
+        user_json = quote(json.dumps(user_data))
+        token_encoded = quote(token)  # URL-encode the JWT token
+
+        launch_url = f"{frontend_base}/lti/launch?token={token_encoded}&user={user_json}"
+
+        logger.info("LTI Launch: Redirecting to frontend %s (token length: %d)", launch_url[:100], len(token))
+
+        return RedirectResponse(url=launch_url, status_code=status.HTTP_302_FOUND)
 
     def handle_deep_link(
         self,
@@ -267,24 +303,65 @@ class LTIService:
                 detail="Aucun workflow sélectionné",
             )
 
-        return_url = payload.get(
-            "https://purl.imsglobal.org/spec/lti-dl/claim/return_url"
-        ) or session_record.registration.deep_link_return_url
-        if not return_url:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, detail="Return URL LTI manquante"
+        # Extract return URL from Deep Linking settings
+        deep_linking_settings = payload.get(
+            "https://purl.imsglobal.org/spec/lti-dl/claim/deep_linking_settings", {}
+        )
+        return_url_from_jwt = deep_linking_settings.get("deep_link_return_url")
+
+        # Fallback to direct claim (legacy/non-standard) or database config
+        if not return_url_from_jwt:
+            return_url_from_jwt = payload.get(
+                "https://purl.imsglobal.org/spec/lti-dl/claim/return_url"
             )
 
-        launch_url = session_record.target_link_uri or self._default_launch_url()
+        return_url = return_url_from_jwt or session_record.registration.deep_link_return_url
+
+        logger.info(
+            "Deep Linking return_url resolution: "
+            "jwt_deep_linking_settings=%s, jwt_claim_direct=%s, db_configured=%s, final=%s",
+            deep_linking_settings.get("deep_link_return_url"),
+            payload.get("https://purl.imsglobal.org/spec/lti-dl/claim/return_url"),
+            session_record.registration.deep_link_return_url,
+            return_url
+        )
+
+        if not return_url:
+            # Log all Deep Linking claims for debugging
+            dl_claims = {
+                k: v for k, v in payload.items()
+                if "lti-dl" in k or "deep" in k.lower()
+            }
+            logger.error(
+                "Return URL LTI manquante. Registration ID: %s, Issuer: %s, "
+                "Deep Linking claims dans JWT: %s",
+                session_record.registration.id,
+                session_record.registration.issuer,
+                dl_claims
+            )
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Return URL LTI manquante. Vérifiez que le champ "
+                    "'deep_link_return_url' est configuré dans les paramètres LTI "
+                    "de votre plateforme (Moodle)."
+                )
+            )
+
+        # Use default launch URL for content items, not the deep linking URL
+        launch_url = self._default_launch_url()
         content_items: list[dict[str, Any]] = []
         for workflow in selected_workflows:
+            # Encode workflow slug in the title to retrieve it later
+            # Format: "WorkflowName [slug:workflow-slug]"
+            title_with_slug = f"{workflow.display_name} [wf:{workflow.slug}]"
             content_items.append(
                 {
                     "type": "ltiResourceLink",
-                    "title": workflow.display_name,
+                    "title": title_with_slug,
                     "url": launch_url,
                     "custom": {
-                        "workflow_id": workflow.id,
+                        "workflow_id": str(workflow.id),
                         "workflow_slug": workflow.slug,
                     },
                 }
@@ -305,6 +382,8 @@ class LTIService:
             "iat": int(now.timestamp()),
             "exp": int(expires_at.timestamp()),
             "nonce": secrets.token_urlsafe(8),
+            "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiDeepLinkingResponse",
+            "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
             "https://purl.imsglobal.org/spec/lti/claim/deployment_id": payload.get(
                 "https://purl.imsglobal.org/spec/lti/claim/deployment_id"
             ),
@@ -312,7 +391,6 @@ class LTIService:
             "https://purl.imsglobal.org/spec/lti-dl/claim/msg": (
                 "Workflows sélectionnés"
             ),
-            "https://purl.imsglobal.org/spec/lti-dl/claim/version": "1.3.0",
         }
 
         private_key_pem, _ = self._ensure_private_key()
@@ -323,11 +401,21 @@ class LTIService:
             headers={"kid": self.key_id},
         )
 
+        logger.info(
+            "Deep Linking JWT created: iss=%s, aud=%s, content_items_count=%d, return_url=%s, kid=%s",
+            response_payload.get("iss"),
+            response_payload.get("aud"),
+            len(content_items),
+            return_url,
+            self.key_id,
+        )
+        logger.debug("Deep Linking JWT (first 100 chars): %s", deep_link_jwt[:100])
+
         self.session.commit()
 
         return {
             "return_url": return_url,
-            "deep_link_jwt": deep_link_jwt,
+            "jwt": deep_link_jwt,
             "content_items": content_items,
         }
 
@@ -420,9 +508,27 @@ class LTIService:
             .where(LTIRegistration.client_id == client_id)
         )
         if registration is None:
+            # Log available registrations for debugging
+            all_registrations = self.session.scalars(select(LTIRegistration)).all()
+            logger.warning(
+                "LTI registration not found for issuer=%r, client_id=%r. "
+                "Available registrations: %s",
+                issuer,
+                client_id,
+                [
+                    f"(issuer={r.issuer!r}, client_id={r.client_id!r})"
+                    for r in all_registrations
+                ],
+            )
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, detail="Enregistrement LTI introuvable"
             )
+        logger.info(
+            "LTI registration found: id=%s, issuer=%r, client_id=%r",
+            registration.id,
+            registration.issuer,
+            registration.client_id,
+        )
         return registration
 
     def _get_deployment(
@@ -434,9 +540,28 @@ class LTIService:
             .where(LTIDeployment.deployment_id == deployment_id)
         )
         if deployment is None:
+            # Log available deployments for this registration
+            all_deployments = self.session.scalars(
+                select(LTIDeployment).where(
+                    LTIDeployment.registration_id == registration.id
+                )
+            ).all()
+            logger.warning(
+                "LTI deployment not found for deployment_id=%r (registration_id=%s). "
+                "Available deployments for this registration: %s",
+                deployment_id,
+                registration.id,
+                [f"(id={d.id}, deployment_id={d.deployment_id!r})" for d in all_deployments],
+            )
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, detail="Déploiement LTI introuvable"
             )
+        logger.info(
+            "LTI deployment found: id=%s, deployment_id=%r, registration_id=%s",
+            deployment.id,
+            deployment.deployment_id,
+            deployment.registration_id,
+        )
         return deployment
 
     def _get_session_from_state(self, state: str) -> LTIUserSession:
@@ -494,17 +619,35 @@ class LTIService:
         resource_link: LTIResourceLink | None,
         deployment: LTIDeployment,
     ) -> Workflow | None:
+        import re
+
         custom_claim = payload.get(
             "https://purl.imsglobal.org/spec/lti/claim/custom", {}
         )
+        resource_claim = payload.get(
+            "https://purl.imsglobal.org/spec/lti/claim/resource_link", {}
+        )
         workflow: Workflow | None = None
 
+        logger.info(
+            "Resolving workflow: custom_claim=%s, resource_link_id=%s, "
+            "resource_link_workflow_id=%s, deployment_workflow_id=%s, resource_title=%s",
+            custom_claim if isinstance(custom_claim, Mapping) else type(custom_claim),
+            resource_link.id if resource_link else None,
+            resource_link.workflow_id if resource_link else None,
+            deployment.workflow_id if deployment else None,
+            resource_claim.get("title") if isinstance(resource_claim, Mapping) else None,
+        )
+
+        # Try custom parameters first
         workflow_id = None
         if isinstance(custom_claim, Mapping):
             workflow_id = custom_claim.get("workflow_id")
         if workflow_id is not None:
             try:
                 workflow = self.session.get(Workflow, int(workflow_id))
+                if workflow:
+                    logger.info("Workflow resolved from custom claim workflow_id: %s", workflow.id)
             except (TypeError, ValueError):  # pragma: no cover - valeur invalide
                 workflow = None
 
@@ -514,12 +657,45 @@ class LTIService:
                 workflow = self.session.scalar(
                     select(Workflow).where(Workflow.slug == str(slug))
                 )
+                if workflow:
+                    logger.info("Workflow resolved from custom claim workflow_slug: %s", workflow.slug)
+
+        # Try to extract workflow slug from resource link title [wf:slug]
+        if workflow is None and isinstance(resource_claim, Mapping):
+            title = resource_claim.get("title", "")
+            if isinstance(title, str):
+                match = re.search(r'\[wf:([^\]]+)\]', title)
+                if match:
+                    slug = match.group(1)
+                    workflow = self.session.scalar(
+                        select(Workflow).where(Workflow.slug == slug)
+                    )
+                    if workflow:
+                        logger.info("Workflow resolved from resource title slug: %s", workflow.slug)
+                        # Store workflow in resource_link for future launches
+                        if resource_link and not resource_link.workflow_id:
+                            resource_link.workflow = workflow
+                            self.session.flush()
 
         if workflow is None and resource_link is not None:
             workflow = resource_link.workflow
+            if workflow:
+                logger.info("Workflow resolved from resource_link: %s", workflow.id)
 
         if workflow is None:
             workflow = deployment.workflow
+            if workflow:
+                logger.info("Workflow resolved from deployment default: %s", workflow.id)
+
+        if workflow is None:
+            logger.error(
+                "Failed to resolve workflow: custom_claim=%s, resource_link=%s, "
+                "deployment=%s, resource_title=%s",
+                custom_claim,
+                resource_link.id if resource_link else None,
+                deployment.id if deployment else None,
+                resource_claim.get("title") if isinstance(resource_claim, Mapping) else None,
+            )
 
         return workflow
 

@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..lti.service import LTIService
-from ..schemas import TokenResponse
 
 router = APIRouter()
 
@@ -40,7 +39,14 @@ async def _extract_request_data(request: Request) -> dict[str, Any]:
 
 
 @router.get("/.well-known/jwks.json")
-async def get_jwks(service: LTIService = Depends(_get_service)) -> dict[str, Any]:
+async def get_jwks(session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Public endpoint for JWKS - must be accessible without authentication.
+
+    This endpoint exposes the tool's public key for JWT signature verification by LMS platforms.
+    The session dependency is required to instantiate LTIService, but the JWKS generation
+    itself does not use the database.
+    """
+    service = LTIService(session=session)
     return service.get_tool_jwks()
 
 
@@ -52,10 +58,10 @@ async def lti_login(
     return service.initiate_login(params)
 
 
-@router.post("/api/lti/launch", response_model=TokenResponse)
+@router.post("/api/lti/launch")
 async def lti_launch(
     request: Request, service: LTIService = Depends(_get_service)
-) -> TokenResponse:
+):
     payload = await _extract_request_data(request)
     state = payload.get("state")
     id_token = payload.get("id_token")
@@ -95,10 +101,75 @@ def _as_str_sequence(value: Any) -> list[str]:
     return [str(item) for item in values if isinstance(item, str) and item]
 
 
+@router.get("/api/lti/registrations")
+async def list_lti_registrations(session: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    """Liste toutes les registrations LTI disponibles."""
+    from ..models import LTIRegistration
+    from sqlalchemy import select
+
+    registrations = session.scalars(select(LTIRegistration)).all()
+
+    return [
+        {
+            "id": reg.id,
+            "issuer": reg.issuer,
+            "client_id": reg.client_id,
+        }
+        for reg in registrations
+    ]
+
+
+@router.get("/api/lti/workflows")
+async def list_lti_workflows(
+    issuer: str | None = None,
+    session: Session = Depends(get_session)
+) -> list[dict[str, Any]]:
+    """Liste tous les workflows disponibles pour LTI Deep Linking.
+
+    Args:
+        issuer: Optionnel. Si fourni, ne retourne que les workflows autorisés pour cet issuer.
+    """
+    from ..models import Workflow, LTIRegistration, workflow_lti_registrations
+    from sqlalchemy import select
+
+    query = (
+        select(Workflow)
+        .where(Workflow.active_version_id.is_not(None))
+    )
+
+    if issuer:
+        # Filter workflows authorized for this specific issuer
+        query = query.join(
+            workflow_lti_registrations,
+            Workflow.id == workflow_lti_registrations.c.workflow_id
+        ).join(
+            LTIRegistration,
+            workflow_lti_registrations.c.lti_registration_id == LTIRegistration.id
+        ).where(LTIRegistration.issuer == issuer)
+    else:
+        # No issuer specified, fall back to lti_enabled flag
+        query = query.where(Workflow.lti_enabled == True)
+
+    workflows = session.scalars(query).all()
+
+    return [
+        {
+            "id": w.id,
+            "slug": w.slug,
+            "display_name": w.display_name,
+            "description": w.description,
+        }
+        for w in workflows
+    ]
+
+
 @router.post("/api/lti/deep-link")
 async def lti_deep_link(
     request: Request, service: LTIService = Depends(_get_service)
 ) -> dict[str, Any]:
+    from fastapi.responses import RedirectResponse
+    from urllib.parse import urlencode
+
     payload = await _extract_request_data(request)
     state = payload.get("state")
     id_token = payload.get("id_token")
@@ -111,6 +182,15 @@ async def lti_deep_link(
     workflow_ids = _as_int_sequence(payload.get("workflow_ids"))
     workflow_slugs = _as_str_sequence(payload.get("workflow_slugs"))
 
+    # Si aucun workflow n'est sélectionné, rediriger vers la page de sélection
+    if not workflow_ids and not workflow_slugs:
+        params = urlencode({"state": state, "id_token": id_token})
+        return RedirectResponse(
+            url=f"/lti/deep-link?{params}",
+            status_code=status.HTTP_302_FOUND
+        )
+
+    # Sinon, traiter la sélection
     return service.handle_deep_link(
         state=state,
         id_token=id_token,

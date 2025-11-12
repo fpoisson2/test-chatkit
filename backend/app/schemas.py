@@ -491,7 +491,7 @@ class LoginRequest(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    email: EmailStr
+    email: str  # Changed from EmailStr to allow LTI synthetic emails like user@lti.local
     is_admin: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -1191,6 +1191,8 @@ class WorkflowSummaryResponse(BaseModel):
     active_version_id: int | None = None
     active_version_number: int | None = None
     is_chatkit_default: bool
+    lti_enabled: bool
+    lti_registration_ids: list[int] = Field(default_factory=list)
     versions_count: int
 
 
@@ -1215,6 +1217,8 @@ class WorkflowUpdateRequest(BaseModel):
     slug: str | None = None
     display_name: str | None = None
     description: str | None = None
+    lti_enabled: bool | None = None
+    lti_registration_ids: list[int] | None = None
 
 
 class WorkflowVersionCreateRequest(BaseModel):

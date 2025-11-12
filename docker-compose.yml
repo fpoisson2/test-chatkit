@@ -34,6 +34,7 @@ services:
       SIP_BIND_PORT: ${SIP_BIND_PORT:-40118}
       SIP_CONTACT_HOST: ${SIP_CONTACT_HOST:-192.168.1.116}
       SIP_TRANSPORT: ${SIP_TRANSPORT:-udp}
+      LTI_TOOL_PRIVATE_KEY: ${LTI_TOOL_PRIVATE_KEY:-}
     depends_on:
       - db
       - redis
@@ -119,6 +120,8 @@ services:
       SIP_BIND_PORT: ${SIP_BIND_PORT:-40118}
       SIP_CONTACT_HOST: ${SIP_CONTACT_HOST:-192.168.1.116}
       SIP_TRANSPORT: ${SIP_TRANSPORT:-udp}
+      # LTI Configuration
+      LTI_TOOL_PRIVATE_KEY: ${LTI_TOOL_PRIVATE_KEY:-}
     depends_on:
       - db
       - redis

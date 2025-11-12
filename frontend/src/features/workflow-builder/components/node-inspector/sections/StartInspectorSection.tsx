@@ -13,6 +13,12 @@ interface SipAccountAvailability {
   assigned_workflow_slug: string | null;
 }
 
+interface LTIRegistration {
+  id: number;
+  issuer: string;
+  client_id: string;
+}
+
 type StartInspectorSectionProps = {
   nodeId: string;
   startAutoRun: boolean;
@@ -21,12 +27,16 @@ type StartInspectorSectionProps = {
   startTelephonySipAccountId: number | null;
   startTelephonyRingTimeout: number;
   startTelephonySpeakFirst: boolean;
+  ltiEnabled: boolean;
+  ltiRegistrationIds: number[];
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
   onStartTelephonySipAccountIdChange: (nodeId: string, value: number | null) => void;
   onStartTelephonyRingTimeoutChange: (nodeId: string, value: number) => void;
   onStartTelephonySpeakFirstChange: (nodeId: string, value: boolean) => void;
+  onLtiEnabledChange: (value: boolean) => void;
+  onLtiRegistrationIdsChange: (value: number[]) => void;
   workflowId: number | null;
 };
 
@@ -38,18 +48,24 @@ export const StartInspectorSection = ({
   startTelephonySipAccountId,
   startTelephonyRingTimeout,
   startTelephonySpeakFirst,
+  ltiEnabled,
+  ltiRegistrationIds,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
   onStartTelephonySipAccountIdChange,
   onStartTelephonyRingTimeoutChange,
   onStartTelephonySpeakFirstChange,
+  onLtiEnabledChange,
+  onLtiRegistrationIdsChange,
   workflowId,
 }: StartInspectorSectionProps) => {
   const { t } = useI18n();
   const { token } = useAuth();
   const [sipAccounts, setSipAccounts] = useState<SipAccountAvailability[]>([]);
   const [sipAccountsLoading, setSipAccountsLoading] = useState(false);
+  const [ltiRegistrations, setLtiRegistrations] = useState<LTIRegistration[]>([]);
+  const [ltiRegistrationsLoading, setLtiRegistrationsLoading] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -68,6 +84,19 @@ export const StartInspectorSection = ({
       .catch((err) => console.error("Failed to load SIP accounts:", err))
       .finally(() => setSipAccountsLoading(false));
   }, [token, workflowId]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    setLtiRegistrationsLoading(true);
+    fetch("/api/lti/registrations", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => setLtiRegistrations(data))
+      .catch((err) => console.error("Failed to load LTI registrations:", err))
+      .finally(() => setLtiRegistrationsLoading(false));
+  }, [token]);
 
   const hasStartAutoRunUserMessage = startAutoRunMessage.trim().length > 0;
   const hasStartAutoRunAssistantMessage = startAutoRunAssistantMessage.trim().length > 0;
@@ -191,6 +220,52 @@ export const StartInspectorSection = ({
           />
         </>
       ) : null}
+
+      <ToggleRow
+        label="Activer LTI"
+        checked={ltiEnabled}
+        onChange={onLtiEnabledChange}
+        help="Permet à ce workflow d'être utilisé via LTI (Learning Tools Interoperability) par les plateformes autorisées."
+      />
+
+      {ltiEnabled && (
+        <div className={styles.nodeInspectorField}>
+          <span className={styles.nodeInspectorLabel}>
+            Plateformes LTI autorisées
+          </span>
+          {ltiRegistrationsLoading ? (
+            <p>Chargement des plateformes LTI...</p>
+          ) : ltiRegistrations.length === 0 ? (
+            <p className={styles.nodeInspectorHintTextTight}>
+              Aucune plateforme LTI configurée. Configurez une plateforme LTI dans les paramètres d'administration.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {ltiRegistrations.map((registration) => (
+                <label key={registration.id} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input
+                    type="checkbox"
+                    checked={ltiRegistrationIds.includes(registration.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        onLtiRegistrationIdsChange([...ltiRegistrationIds, registration.id]);
+                      } else {
+                        onLtiRegistrationIdsChange(
+                          ltiRegistrationIds.filter((id) => id !== registration.id)
+                        );
+                      }
+                    }}
+                  />
+                  <span style={{ fontSize: "14px" }}>{registration.issuer}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <p className={styles.nodeInspectorHintTextTight}>
+            Sélectionnez les plateformes LTI autorisées à utiliser ce workflow. Si aucune plateforme n'est sélectionnée, toutes les plateformes pourront utiliser ce workflow.
+          </p>
+        </div>
+      )}
     </>
   );
 };

@@ -864,6 +864,38 @@ def _run_ad_hoc_migrations() -> None:
                         )
                     )
 
+            if "lti_enabled" not in workflow_columns:
+                logger.info(
+                    "Migration du schéma des workflows : ajout de la colonne "
+                    "lti_enabled"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflows "
+                        "ADD COLUMN lti_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+
+        # Migration pour la table d'association workflow_lti_registrations
+        if "workflow_lti_registrations" not in table_names:
+            logger.info(
+                "Création de la table workflow_lti_registrations pour "
+                "l'autorisation LTI par issuer"
+            )
+            connection.execute(
+                text(
+                    "CREATE TABLE workflow_lti_registrations ("
+                    "workflow_id INTEGER NOT NULL, "
+                    "lti_registration_id INTEGER NOT NULL, "
+                    "PRIMARY KEY (workflow_id, lti_registration_id), "
+                    "FOREIGN KEY (workflow_id) REFERENCES workflows (id) "
+                    "ON DELETE CASCADE, "
+                    "FOREIGN KEY (lti_registration_id) REFERENCES lti_registrations (id) "
+                    "ON DELETE CASCADE"
+                    ")"
+                )
+            )
+
         if "workflow_steps" in table_names:
             dialect = connection.dialect.name
 
