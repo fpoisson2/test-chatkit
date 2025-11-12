@@ -295,6 +295,11 @@ export function MyChat() {
     loadStoredThreadId(sessionOwner, persistenceSlug),
   );
 
+  // Create a unique key for the ChatKit component to force remounting when workflow changes
+  const chatkitKey = useMemo(() => {
+    return `${mode}:${persistenceSlug}:${initialThreadId ?? 'new'}`;
+  }, [mode, persistenceSlug, initialThreadId]);
+
   const resetChatState = useCallback(
     ({
       selection,
@@ -683,7 +688,7 @@ export function MyChat() {
         setMode={setMode}
         onWorkflowActivated={handleWorkflowActivated}
       />
-      <ChatKitHost control={control} />
+      <ChatKitHost control={control} chatkitKey={chatkitKey} />
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",
