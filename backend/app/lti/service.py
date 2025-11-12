@@ -198,6 +198,11 @@ class LTIService:
             },
         )
 
+        logger.info(
+            "Redirecting to platform authorization endpoint: %s",
+            registration.authorization_endpoint,
+        )
+
         return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
     def complete_launch(self, *, state: str, id_token: str) -> TokenResponse:
