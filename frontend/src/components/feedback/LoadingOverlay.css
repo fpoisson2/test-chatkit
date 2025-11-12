@@ -31,6 +31,17 @@
   background: var(--color-surface, #1f2937);
 }
 
+.loading-overlay__message {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--color-text-muted, #4b5563);
+  text-align: center;
+}
+
+[data-theme="dark"] .loading-overlay__message {
+  color: var(--color-text, #e2e8f0);
+}
+
 .loading-overlay__cancel {
   min-width: 120px;
 }
