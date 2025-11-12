@@ -24,14 +24,14 @@ export const LTILaunchPage = () => {
 
     const token = searchParams.get("token");
     const userJson = searchParams.get("user");
-    const workflowId = searchParams.get("workflow");
+    const workflowJson = searchParams.get("workflow");
 
     console.log("LTI Launch: token present?", !!token);
     console.log("LTI Launch: user present?", !!userJson);
-    console.log("LTI Launch: workflow present?", !!workflowId);
+    console.log("LTI Launch: workflow present?", !!workflowJson);
     console.log("LTI Launch: full URL", window.location.href);
 
-    setDebugInfo(`Token: ${token ? "présent" : "absent"}, User: ${userJson ? "présent" : "absent"}, Workflow: ${workflowId || "absent"}`);
+    setDebugInfo(`Token: ${token ? "présent" : "absent"}, User: ${userJson ? "présent" : "absent"}, Workflow: ${workflowJson ? "présent" : "absent"}`);
 
     if (!token || !userJson) {
       console.error("LTI Launch: Missing token or user data");
@@ -53,10 +53,10 @@ export const LTILaunchPage = () => {
       login(token, user);
       console.log("LTI Launch: Login successful");
 
-      // Store the workflow ID from the Deep Link for the ChatWorkflowSidebar
-      if (workflowId) {
-        console.log("LTI Launch: Storing workflow ID", workflowId);
-        localStorage.setItem('lti_launch_workflow_id', workflowId);
+      // Store the full workflow from the Deep Link for the ChatWorkflowSidebar
+      if (workflowJson) {
+        console.log("LTI Launch: Storing workflow data");
+        localStorage.setItem('lti_launch_workflow', workflowJson);
       }
 
       console.log("LTI Launch: Redirecting to /");
