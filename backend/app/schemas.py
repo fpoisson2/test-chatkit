@@ -491,7 +491,7 @@ class LoginRequest(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    email: EmailStr
+    email: str  # Changed from EmailStr to allow LTI synthetic emails like user@lti.local
     is_admin: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
