@@ -980,7 +980,7 @@ export const ltiAdminApi = {
   },
 
   async getToolSettings(token: string | null): Promise<LtiToolSettings> {
-    const response = await requestWithFallback("/api/admin/lti/tool", {
+    const response = await requestWithFallback("/api/admin/lti/tool-settings", {
       headers: withAuthHeaders(token),
     });
     return response.json();
@@ -991,7 +991,7 @@ export const ltiAdminApi = {
     payload: LtiToolSettingsUpdatePayload,
   ): Promise<LtiToolSettings> {
     const body = buildLtiToolSettingsBody(payload);
-    const response = await requestWithFallback("/api/admin/lti/tool", {
+    const response = await requestWithFallback("/api/admin/lti/tool-settings", {
       method: "PATCH",
       headers: withAuthHeaders(token),
       body: JSON.stringify(body),
