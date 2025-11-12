@@ -101,6 +101,7 @@ export default function LTIDeepLinkPage() {
       console.log("Submitting form to Moodle:", {
         action: form.action,
         jwt_length: jwtInput.value?.length,
+        jwt: jwtInput.value, // Log the full JWT for debugging
       });
 
       form.appendChild(jwtInput);

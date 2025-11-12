@@ -381,12 +381,14 @@ class LTIService:
         )
 
         logger.info(
-            "Deep Linking JWT created: iss=%s, aud=%s, content_items_count=%d, return_url=%s",
+            "Deep Linking JWT created: iss=%s, aud=%s, content_items_count=%d, return_url=%s, kid=%s",
             response_payload.get("iss"),
             response_payload.get("aud"),
             len(content_items),
             return_url,
+            self.key_id,
         )
+        logger.debug("Deep Linking JWT (first 100 chars): %s", deep_link_jwt[:100])
 
         self.session.commit()
 
