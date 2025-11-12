@@ -118,6 +118,12 @@
   resize: vertical;
   min-height: 120px;
   background-color: var(--form-field-background);
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .textarea:focus {
