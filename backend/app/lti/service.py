@@ -270,28 +270,8 @@ class LTIService:
         user_json = quote(json.dumps(user_data))
         token_encoded = quote(token)  # URL-encode the JWT token
 
-        # Include full workflow data in launch URL so frontend can use it directly
-        # without needing to fetch it (important for non-admin LTI users who can't access /api/workflows)
-        workflow_data = {
-            "id": workflow.id,
-            "slug": workflow.slug,
-            "display_name": workflow.display_name,
-            "description": workflow.description,
-            "active_version_id": workflow.active_version_id,
-            "active_version_number": workflow.active_version_number,
-            "is_chatkit_default": workflow.is_chatkit_default,
-            "lti_enabled": workflow.lti_enabled,
-            "lti_registration_ids": workflow.lti_registration_ids,
-            "lti_show_sidebar": workflow.lti_show_sidebar,
-            "lti_show_header": workflow.lti_show_header,
-            "lti_enable_history": workflow.lti_enable_history,
-            "versions_count": len(workflow.versions),
-            "created_at": workflow.created_at.isoformat(),
-            "updated_at": workflow.updated_at.isoformat(),
-        }
-        workflow_json = quote(json.dumps(workflow_data))
-
-        launch_url = f"{frontend_base}/lti/launch?token={token_encoded}&user={user_json}&workflow={workflow_json}"
+        # Include workflow_id in launch URL - LTI users now have API access to their workflows
+        launch_url = f"{frontend_base}/lti/launch?token={token_encoded}&user={user_json}&workflow={workflow.id}"
 
         logger.info("LTI Launch: Redirecting to frontend %s (token length: %d)", launch_url[:100], len(token))
 

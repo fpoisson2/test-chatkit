@@ -204,45 +204,41 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       return;
     }
 
-    // Get the workflow data from the LTI launch (stored in localStorage)
-    const ltiWorkflowJson = localStorage.getItem('lti_launch_workflow');
-    if (!ltiWorkflowJson) {
+    // Get the workflow ID from the LTI launch (stored in localStorage)
+    const ltiWorkflowId = localStorage.getItem('lti_launch_workflow_id');
+    if (!ltiWorkflowId) {
       hasCheckedLtiWorkflow.current = true;
       return;
     }
 
-    // Parse and clear from localStorage (one-time use)
-    localStorage.removeItem('lti_launch_workflow');
+    // Convert to number and clear from localStorage (one-time use)
+    const workflowId = parseInt(ltiWorkflowId, 10);
+    localStorage.removeItem('lti_launch_workflow_id');
 
-    try {
-      const ltiWorkflow: WorkflowSummary = JSON.parse(decodeURIComponent(ltiWorkflowJson));
-      console.log('LTI workflow loaded from Deep Link:', ltiWorkflow);
+    if (isNaN(workflowId)) {
+      hasCheckedLtiWorkflow.current = true;
+      return;
+    }
 
-      // Check if this workflow is already in the list
-      let workflowToSelect = workflows.find((w) => w.id === ltiWorkflow.id);
+    // Find the workflow in the list (loaded via API with LTI user permissions)
+    const workflowInList = workflows.find((w) => w.id === workflowId);
 
-      // If not in list, add it (important for non-admin LTI users)
-      if (!workflowToSelect) {
-        console.log('Adding LTI workflow to available workflows:', ltiWorkflow.id);
-        setWorkflows((prev) => [...prev, ltiWorkflow]);
-        workflowToSelect = ltiWorkflow;
-      }
-
-      // Auto-select the workflow
-      if (selectedWorkflowId !== ltiWorkflow.id) {
-        console.log('Auto-selecting LTI workflow from Deep Link:', ltiWorkflow.id);
-        setSelectedWorkflowId(ltiWorkflow.id);
+    if (workflowInList) {
+      // Auto-select the workflow from the Deep Link
+      if (selectedWorkflowId !== workflowId) {
+        console.log('Auto-selecting LTI workflow from Deep Link:', workflowId);
+        setSelectedWorkflowId(workflowId);
         onWorkflowActivatedRef.current(
-          { kind: "local", workflow: workflowToSelect },
+          { kind: "local", workflow: workflowInList },
           { reason: "initial" },
         );
       }
-    } catch (error) {
-      console.error('Failed to parse LTI workflow data:', error);
+    } else {
+      console.warn('LTI workflow not found in available workflows:', workflowId);
     }
 
     hasCheckedLtiWorkflow.current = true;
-  }, [user, workflows, selectedWorkflowId, setSelectedWorkflowId, setWorkflows]);
+  }, [user, workflows, selectedWorkflowId, setSelectedWorkflowId]);
 
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
