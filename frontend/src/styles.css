@@ -2387,8 +2387,13 @@ button {
 }
 
 @media (max-width: 768px) {
+  .admin-key-details {
+    overflow: hidden;
+  }
+
   .admin-key-details__row {
     gap: 8px;
+    overflow: hidden;
   }
 
   .admin-key-details__label {
@@ -2396,10 +2401,11 @@ button {
   }
 
   .admin-key-details__value {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     padding: 8px 10px;
-    overflow-x: auto;
-    white-space: nowrap;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+    hyphens: auto;
   }
 
   .admin-key-details__public-key {
@@ -2407,8 +2413,10 @@ button {
   }
 
   .admin-key-details__code {
-    font-size: 0.75rem;
-    padding: 12px;
+    font-size: 0.7rem;
+    padding: 10px;
+    line-height: 1.4;
+    overflow-x: auto;
   }
 }
 
