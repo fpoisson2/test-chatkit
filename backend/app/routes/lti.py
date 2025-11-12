@@ -169,6 +169,10 @@ async def get_current_lti_workflow(
 ) -> dict[str, Any] | None:
     """Get the workflow associated with the current user's LTI session.
 
+    DEPRECATED: This endpoint is no longer used. The workflow is now passed
+    directly in the LTI launch URL and stored in localStorage on the frontend.
+    This endpoint remains for backward compatibility only.
+
     This endpoint can be called without authentication and will return None
     if the user is not authenticated or not an LTI user.
     """
