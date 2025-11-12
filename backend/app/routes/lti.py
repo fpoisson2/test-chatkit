@@ -40,59 +40,15 @@ async def _extract_request_data(request: Request) -> dict[str, Any]:
 
 
 @router.get("/.well-known/jwks.json")
-async def get_jwks() -> dict[str, Any]:
+async def get_jwks(session: Session = Depends(get_session)) -> dict[str, Any]:
     """Public endpoint for JWKS - must be accessible without authentication.
 
     This endpoint exposes the tool's public key for JWT signature verification by LMS platforms.
-    It must be publicly accessible without authentication to allow platforms like Moodle
-    to verify Deep Linking response JWTs.
+    The session dependency is required to instantiate LTIService, but the JWKS generation
+    itself does not use the database.
     """
-    from ..config import get_settings
-    from ..lti.service import _int_to_b64, _derive_kid
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
-
-    settings = get_settings()
-    raw_key = settings.lti_tool_private_key
-
-    if not raw_key:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Clé privée LTI non configurée"
-        )
-
-    # Load the private key (same logic as LTIService._ensure_private_key)
-    normalized = raw_key.replace("\\n", "\n").encode("utf-8")
-    try:
-        private_key = serialization.load_pem_private_key(normalized, password=None)
-    except ValueError as exc:
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Clé privée LTI invalide"
-        ) from exc
-
-    # Generate JWK from public key
-    if not isinstance(private_key, rsa.RSAPrivateKey):
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Type de clé non supporté (RSA requis)"
-        )
-
-    numbers = private_key.public_key().public_numbers()
-
-    # Use configured key_id or derive one using the same logic as LTIService
-    key_id = settings.lti_tool_key_id or _derive_kid(numbers.n)
-
-    public_jwk = {
-        "kty": "RSA",
-        "use": "sig",
-        "alg": "RS256",
-        "kid": key_id,
-        "n": _int_to_b64(numbers.n),
-        "e": _int_to_b64(numbers.e),
-    }
-
-    return {"keys": [public_jwk]}
+    service = LTIService(session=session)
+    return service.get_tool_jwks()
 
 
 @router.post("/api/lti/login")
