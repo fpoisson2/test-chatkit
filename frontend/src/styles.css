@@ -2363,6 +2363,7 @@ button {
 }
 
 .admin-key-details__value {
+  display: block;
   font-family: var(
     --font-family-mono,
     "SFMono-Regular",
@@ -2374,8 +2375,9 @@ button {
   background: var(--color-surface-subtle);
   border-radius: 12px;
   padding: 10px 12px;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  box-sizing: border-box;
+  word-break: break-all;
+  overflow-wrap: anywhere;
   min-width: 0;
   max-width: 100%;
 }
