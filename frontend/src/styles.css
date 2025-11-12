@@ -2343,6 +2343,8 @@ button {
   gap: 6px;
   min-width: 0;
   max-width: 100%;
+  align-items: start;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
 }
 
 .admin-key-details__label {
@@ -2379,6 +2381,12 @@ button {
   gap: 8px;
   min-width: 0;
   max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .admin-key-details__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .admin-key-details__code {
