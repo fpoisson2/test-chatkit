@@ -194,7 +194,7 @@ export function MyChat() {
     setActiveWorkflow: setAppearanceWorkflow,
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
-  const { openSidebar } = useAppLayout();
+  const { openSidebar, setHideSidebar } = useAppLayout();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -675,21 +675,27 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
-  // Determine if sidebar should be shown based on LTI context
-  const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
-  // Hide sidebar if LTI options apply and lti_show_sidebar is false
-  const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && (isLtiContext || true); // TODO: remove || true for production
-  const shouldShowSidebar = !(shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar);
+  // Apply LTI sidebar visibility setting
+  useEffect(() => {
+    const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && (isLtiContext || true); // TODO: remove || true for production
+    const shouldHideSidebar = shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar;
+
+    setHideSidebar(shouldHideSidebar);
+
+    // Cleanup: restore sidebar when unmounting or when conditions change
+    return () => {
+      setHideSidebar(false);
+    };
+  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, user?.email, setHideSidebar]);
 
   return (
     <>
-      {shouldShowSidebar && (
-        <ChatSidebar
-          mode={mode}
-          setMode={setMode}
-          onWorkflowActivated={handleWorkflowActivated}
-        />
-      )}
+      <ChatSidebar
+        mode={mode}
+        setMode={setMode}
+        onWorkflowActivated={handleWorkflowActivated}
+      />
       <ChatKitHost
         control={control}
         chatInstanceKey={chatInstanceKey}

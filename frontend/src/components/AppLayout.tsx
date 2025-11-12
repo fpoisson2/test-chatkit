@@ -141,6 +141,8 @@ type AppLayoutContextValue = {
   isDesktopLayout: boolean;
   isSidebarOpen: boolean;
   isSidebarCollapsed: boolean;
+  hideSidebar: boolean;
+  setHideSidebar: (hide: boolean) => void;
 };
 
 const AppLayoutContext = createContext<AppLayoutContextValue | undefined>(undefined);
@@ -195,6 +197,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   });
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
   const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
+  const [hideSidebar, setHideSidebar] = useState(false);
   const appSwitcherLabelId = useId();
 
   useEffect(() => {
@@ -384,8 +387,10 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       isDesktopLayout,
       isSidebarOpen,
       isSidebarCollapsed,
+      hideSidebar,
+      setHideSidebar,
     }),
-    [closeSidebar, isDesktopLayout, isSidebarCollapsed, isSidebarOpen, openSidebar],
+    [closeSidebar, hideSidebar, isDesktopLayout, isSidebarCollapsed, isSidebarOpen, openSidebar],
   );
 
   const handleSetSidebarContent = useCallback((content: ReactNode | null) => {
@@ -481,11 +486,12 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     <SidebarPortalContext.Provider value={sidebarPortalValue}>
       <AppLayoutContext.Provider value={contextValue}>
         <div className={layoutClassName}>
-          <aside
-            className={sidebarClassName}
-            aria-label={t("app.sidebar.ariaLabel")}
-            aria-hidden={!isSidebarOpen && !isDesktopLayout}
-          >
+          {!hideSidebar && (
+            <aside
+              className={sidebarClassName}
+              aria-label={t("app.sidebar.ariaLabel")}
+              aria-hidden={!isSidebarOpen && !isDesktopLayout}
+            >
             <div className="chatkit-sidebar__scroll-area">
               <header className="chatkit-sidebar__header">
                 <div className="chatkit-sidebar__topline">
@@ -570,6 +576,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               </footer>
             )}
           </aside>
+          )}
           <button
             type="button"
             className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
