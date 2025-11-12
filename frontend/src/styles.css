@@ -2278,8 +2278,10 @@ button {
 }
 
 .admin-card--narrow {
-  width: min(100%, 560px);
+  width: 100%;
+  max-width: 560px;
   margin-inline: auto;
+  justify-self: center;
 }
 
 .admin-card__title {
