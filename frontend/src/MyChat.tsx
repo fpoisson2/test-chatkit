@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatKitOptions, StartScreenPrompt } from "@openai/chatkit";
+import type { ChatKitControl } from "@openai/chatkit-react";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
@@ -216,7 +217,6 @@ export function MyChat() {
   const hostedWorkflowSlug =
     workflowSelection.kind === "hosted" ? workflowSelection.slug : null;
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
-  const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
@@ -224,6 +224,7 @@ export function MyChat() {
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
+  const controlRef = useRef<ChatKitControl | null>(null);
 
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
@@ -317,7 +318,16 @@ export function MyChat() {
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
         : null;
       setInitialThreadId(nextInitialThreadId);
-      setChatInstanceKey((value) => value + 1);
+
+      // Switch to the new thread without destroying the ChatKit component
+      if (controlRef.current) {
+        if (nextInitialThreadId) {
+          controlRef.current.setThreadId(nextInitialThreadId);
+        } else {
+          // Start a new thread by setting threadId to null
+          controlRef.current.setThreadId(null);
+        }
+      }
 
       // Arrêter la session vocale si elle est en cours
       stopVoiceSessionRef.current?.();
@@ -645,6 +655,14 @@ export function MyChat() {
     mode,
   });
 
+  // Store control in ref so resetChatState can access it
+  useEffect(() => {
+    controlRef.current = control;
+    return () => {
+      controlRef.current = null;
+    };
+  }, [control]);
+
   useEffect(() => {
     requestRefreshRef.current = requestRefresh;
     return () => {
@@ -665,10 +683,7 @@ export function MyChat() {
         setMode={setMode}
         onWorkflowActivated={handleWorkflowActivated}
       />
-      <ChatKitHost
-        control={control}
-        chatInstanceKey={chatInstanceKey}
-      />
+      <ChatKitHost control={control} />
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",
