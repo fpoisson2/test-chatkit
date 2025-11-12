@@ -430,8 +430,6 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Workflow hébergé",
   "workflowBuilder.agentInspector.nestedWorkflowHostedLoading": "Chargement des workflows…",
   "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "Aucun workflow hébergé disponible",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Identifiant du workflow",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "Ex. 123",
   "workflowBuilder.agentInspector.nestedWorkflowMissing":
     "Le workflow sélectionné n'est plus disponible.",
   "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
@@ -576,13 +574,7 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowMode.local": "Utiliser un workflow de cet espace",
   "workflowBuilder.agentInspector.nestedWorkflowMode.hosted": "Utiliser un workflow hébergé",
   "workflowBuilder.agentInspector.nestedWorkflowHostedHint":
-    "Choisissez un workflow hébergé ou collez son identifiant/slug pour déléguer tout le bloc agent.",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Slug hébergé",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugHint":
-    "Collez le slug fourni par le fournisseur du workflow hébergé.",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder": "ex. acme-catalog-search",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedManualInfo":
-    "Le workflow hébergé sera exécuté même s'il n'apparaît pas encore dans la liste.",
+    "Choisissez un workflow hébergé dans la liste pour déléguer tout le bloc agent.",
   "workflowBuilder.agentInspector.providerHint":
     "Filtrez la liste des modèles par fournisseur. Laissez vide pour afficher tous les modèles configurés.",
   "workflowBuilder.agentInspector.modelParametersTitle": "Paramètres du modèle",
