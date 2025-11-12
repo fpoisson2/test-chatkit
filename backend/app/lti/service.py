@@ -446,6 +446,12 @@ class LTIService:
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, detail="Enregistrement LTI introuvable"
             )
+        logger.info(
+            "LTI registration found: id=%s, issuer=%r, client_id=%r",
+            registration.id,
+            registration.issuer,
+            registration.client_id,
+        )
         return registration
 
     def _get_deployment(
@@ -457,9 +463,28 @@ class LTIService:
             .where(LTIDeployment.deployment_id == deployment_id)
         )
         if deployment is None:
+            # Log available deployments for this registration
+            all_deployments = self.session.scalars(
+                select(LTIDeployment).where(
+                    LTIDeployment.registration_id == registration.id
+                )
+            ).all()
+            logger.warning(
+                "LTI deployment not found for deployment_id=%r (registration_id=%s). "
+                "Available deployments for this registration: %s",
+                deployment_id,
+                registration.id,
+                [f"(id={d.id}, deployment_id={d.deployment_id!r})" for d in all_deployments],
+            )
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, detail="Déploiement LTI introuvable"
             )
+        logger.info(
+            "LTI deployment found: id=%s, deployment_id=%r, registration_id=%s",
+            deployment.id,
+            deployment.deployment_id,
+            deployment.registration_id,
+        )
         return deployment
 
     def _get_session_from_state(self, state: str) -> LTIUserSession:
