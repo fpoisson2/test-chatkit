@@ -472,6 +472,81 @@ def test_lti_login_auto_creates_missing_deployment(client, monkeypatch, caplog):
     )
 
 
+def test_lti_login_reuses_existing_deployment_for_unknown_id(
+    client, monkeypatch, caplog
+):
+    caplog.set_level(logging.INFO, logger="backend.app.lti.service")
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        registration, deployment, _ = _setup_registration(session)
+
+    response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-unknown",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+    with database.SessionLocal() as session:
+        deployments = session.scalars(
+            select(models.LTIDeployment).where(
+                models.LTIDeployment.registration_id == registration.id
+            )
+        ).all()
+        assert len(deployments) == 1
+        assert deployments[0].deployment_id == "deployment-123"
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(models.LTIUserSession.state == state)
+        )
+        assert session_record is not None
+        assert session_record.deployment_id == deployments[0].id
+
+    messages = [record.message for record in caplog.records]
+    assert any(
+        "Réutilisation d'un déploiement LTI existant" in message
+        for message in messages
+    )
+
+
+def test_lti_login_without_deployment_id_uses_existing(client, monkeypatch):
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        registration, deployment, _ = _setup_registration(session)
+
+    response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example",
+            "client_id": "platform-client",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+    with database.SessionLocal() as session:
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(models.LTIUserSession.state == state)
+        )
+        assert session_record is not None
+        assert session_record.deployment_id == deployment.id
+
+
 def test_lti_deep_link_returns_content_items(client, monkeypatch):
     database = importlib.import_module("backend.app.database")
     models = importlib.import_module("backend.app.models")

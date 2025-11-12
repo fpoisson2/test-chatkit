@@ -141,10 +141,13 @@ class LTIService:
     def initiate_login(self, params: Mapping[str, Any]) -> RedirectResponse:
         issuer = str(params.get("iss") or "").strip()
         client_id = str(params.get("client_id") or "").strip()
-        deployment_ref = str(params.get("lti_deployment_id") or "").strip()
+        raw_deployment_ref = params.get("lti_deployment_id")
+        deployment_ref = (
+            str(raw_deployment_ref).strip() if raw_deployment_ref is not None else None
+        )
         target_link_uri = str(params.get("target_link_uri") or "").strip()
 
-        if not issuer or not client_id or not target_link_uri or not deployment_ref:
+        if not issuer or not client_id or not target_link_uri:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 detail="Paramètres OIDC manquants",
@@ -510,9 +513,9 @@ class LTIService:
         return registration
 
     def _get_deployment(
-        self, registration: LTIRegistration, deployment_id: str
+        self, registration: LTIRegistration, deployment_id: str | None
     ) -> LTIDeployment:
-        normalized_id = deployment_id.strip()
+        normalized_id = deployment_id.strip() if deployment_id else ""
         base_query = select(LTIDeployment).where(
             LTIDeployment.registration_id == registration.id
         )
@@ -522,6 +525,30 @@ class LTIService:
             )
             if deployment is not None:
                 return deployment
+
+            existing = self.session.scalar(
+                base_query.order_by(LTIDeployment.id.asc())
+            )
+            if existing is not None:
+                logger.info(
+                    (
+                        "Réutilisation d'un déploiement LTI existant "
+                        "(issuer='%s', client_id='%s', deployment_id='%s', "
+                        "demandé='%s')"
+                    ),
+                    registration.issuer,
+                    registration.client_id,
+                    existing.deployment_id,
+                    normalized_id,
+                    extra={
+                        "event": "lti_deployment_reused",
+                        "issuer": registration.issuer,
+                        "client_id": registration.client_id,
+                        "deployment_id": existing.deployment_id,
+                        "requested_deployment_id": normalized_id,
+                    },
+                )
+                return existing
 
         if not normalized_id:
             deployment = self.session.scalar(
