@@ -220,6 +220,66 @@ const NodeInspector = ({
     [currentWorkflow, token, onWorkflowUpdate]
   );
 
+  const handleLtiShowSidebarChange = useCallback(
+    async (value: boolean) => {
+      if (!currentWorkflow || !token) return;
+      try {
+        await fetch(`/api/workflows/${currentWorkflow.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ lti_show_sidebar: value }),
+        });
+        onWorkflowUpdate?.();
+      } catch (error) {
+        console.error("Failed to update LTI show sidebar:", error);
+      }
+    },
+    [currentWorkflow, token, onWorkflowUpdate]
+  );
+
+  const handleLtiShowHeaderChange = useCallback(
+    async (value: boolean) => {
+      if (!currentWorkflow || !token) return;
+      try {
+        await fetch(`/api/workflows/${currentWorkflow.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ lti_show_header: value }),
+        });
+        onWorkflowUpdate?.();
+      } catch (error) {
+        console.error("Failed to update LTI show header:", error);
+      }
+    },
+    [currentWorkflow, token, onWorkflowUpdate]
+  );
+
+  const handleLtiEnableHistoryChange = useCallback(
+    async (value: boolean) => {
+      if (!currentWorkflow || !token) return;
+      try {
+        await fetch(`/api/workflows/${currentWorkflow.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ lti_enable_history: value }),
+        });
+        onWorkflowUpdate?.();
+      } catch (error) {
+        console.error("Failed to update LTI enable history:", error);
+      }
+    },
+    [currentWorkflow, token, onWorkflowUpdate]
+  );
+
   const { t } = useI18n();
   const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
@@ -335,6 +395,9 @@ const NodeInspector = ({
           startTelephonySpeakFirst={startTelephonySpeakFirst}
           ltiEnabled={currentWorkflow?.lti_enabled ?? false}
           ltiRegistrationIds={currentWorkflow?.lti_registration_ids ?? []}
+          ltiShowSidebar={currentWorkflow?.lti_show_sidebar ?? true}
+          ltiShowHeader={currentWorkflow?.lti_show_header ?? true}
+          ltiEnableHistory={currentWorkflow?.lti_enable_history ?? true}
           onStartAutoRunChange={onStartAutoRunChange}
           onStartAutoRunMessageChange={onStartAutoRunMessageChange}
           onStartAutoRunAssistantMessageChange={onStartAutoRunAssistantMessageChange}
@@ -343,6 +406,9 @@ const NodeInspector = ({
           onStartTelephonySpeakFirstChange={onStartTelephonySpeakFirstChange}
           onLtiEnabledChange={handleLtiEnabledChange}
           onLtiRegistrationIdsChange={handleLtiRegistrationIdsChange}
+          onLtiShowSidebarChange={handleLtiShowSidebarChange}
+          onLtiShowHeaderChange={handleLtiShowHeaderChange}
+          onLtiEnableHistoryChange={handleLtiEnableHistoryChange}
           workflowId={currentWorkflowId}
         />
       ) : null}

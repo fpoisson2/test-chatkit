@@ -490,15 +490,24 @@ export function MyChat() {
         appearanceSettings.start_screen_disclaimer,
       );
 
+      // Detect LTI context
+      const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
+      const shouldApplyLtiOptions = isLtiContext && activeWorkflow?.lti_enabled;
+
       return {
         api: apiConfig,
         initialThread: initialThreadId,
-        header: {
-          leftAction: {
-            icon: "menu",
-            onClick: openSidebar,
+        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header ? {} : {
+          header: {
+            leftAction: {
+              icon: "menu",
+              onClick: openSidebar,
+            },
           },
-        },
+        }),
+        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history ? {
+          history: { enabled: false },
+        } : {}),
         theme: {
           colorScheme,
           radius: "pill",
@@ -630,9 +639,13 @@ export function MyChat() {
       preferredColorScheme,
       sessionOwner,
       activeWorkflow?.id,
+      activeWorkflow?.lti_enabled,
+      activeWorkflow?.lti_show_header,
+      activeWorkflow?.lti_enable_history,
       activeWorkflowSlug,
       persistenceSlug,
       reportError,
+      user?.email,
     ],
   );
 
@@ -658,13 +671,19 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
+  // Determine if sidebar should be shown based on LTI context
+  const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
+  const shouldShowSidebar = !(isLtiContext && activeWorkflow?.lti_enabled && !activeWorkflow?.lti_show_sidebar);
+
   return (
     <>
-      <ChatSidebar
-        mode={mode}
-        setMode={setMode}
-        onWorkflowActivated={handleWorkflowActivated}
-      />
+      {shouldShowSidebar && (
+        <ChatSidebar
+          mode={mode}
+          setMode={setMode}
+          onWorkflowActivated={handleWorkflowActivated}
+        />
+      )}
       <ChatKitHost
         control={control}
         chatInstanceKey={chatInstanceKey}

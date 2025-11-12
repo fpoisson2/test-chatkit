@@ -8,6 +8,9 @@ export type WorkflowSummary = {
   is_chatkit_default: boolean;
   lti_enabled: boolean;
   lti_registration_ids: number[];
+  lti_show_sidebar: boolean;
+  lti_show_header: boolean;
+  lti_enable_history: boolean;
   versions_count: number;
   created_at: string;
   updated_at: string;

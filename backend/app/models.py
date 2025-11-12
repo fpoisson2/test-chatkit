@@ -395,6 +395,15 @@ class Workflow(Base):
     lti_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    lti_show_sidebar: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    lti_show_header: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    lti_enable_history: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

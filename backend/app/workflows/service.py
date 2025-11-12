@@ -2383,6 +2383,15 @@ class WorkflowService:
                     # Update the relationship
                     workflow.lti_registrations = list(registrations)
 
+            if "lti_show_sidebar" in updates:
+                workflow.lti_show_sidebar = bool(updates["lti_show_sidebar"])
+
+            if "lti_show_header" in updates:
+                workflow.lti_show_header = bool(updates["lti_show_header"])
+
+            if "lti_enable_history" in updates:
+                workflow.lti_enable_history = bool(updates["lti_enable_history"])
+
             workflow.updated_at = datetime.datetime.now(datetime.UTC)
             db.add(workflow)
             db.commit()

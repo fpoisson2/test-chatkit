@@ -29,6 +29,9 @@ type StartInspectorSectionProps = {
   startTelephonySpeakFirst: boolean;
   ltiEnabled: boolean;
   ltiRegistrationIds: number[];
+  ltiShowSidebar: boolean;
+  ltiShowHeader: boolean;
+  ltiEnableHistory: boolean;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
@@ -37,6 +40,9 @@ type StartInspectorSectionProps = {
   onStartTelephonySpeakFirstChange: (nodeId: string, value: boolean) => void;
   onLtiEnabledChange: (value: boolean) => void;
   onLtiRegistrationIdsChange: (value: number[]) => void;
+  onLtiShowSidebarChange: (value: boolean) => void;
+  onLtiShowHeaderChange: (value: boolean) => void;
+  onLtiEnableHistoryChange: (value: boolean) => void;
   workflowId: number | null;
 };
 
@@ -50,6 +56,9 @@ export const StartInspectorSection = ({
   startTelephonySpeakFirst,
   ltiEnabled,
   ltiRegistrationIds,
+  ltiShowSidebar,
+  ltiShowHeader,
+  ltiEnableHistory,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
@@ -58,6 +67,9 @@ export const StartInspectorSection = ({
   onStartTelephonySpeakFirstChange,
   onLtiEnabledChange,
   onLtiRegistrationIdsChange,
+  onLtiShowSidebarChange,
+  onLtiShowHeaderChange,
+  onLtiEnableHistoryChange,
   workflowId,
 }: StartInspectorSectionProps) => {
   const { t } = useI18n();
@@ -265,6 +277,31 @@ export const StartInspectorSection = ({
             Sélectionnez les plateformes LTI autorisées à utiliser ce workflow. Si aucune plateforme n'est sélectionnée, toutes les plateformes pourront utiliser ce workflow.
           </p>
         </div>
+      )}
+
+      {ltiEnabled && (
+        <>
+          <ToggleRow
+            label="Afficher la sidebar"
+            checked={ltiShowSidebar}
+            onChange={onLtiShowSidebarChange}
+            help="Affiche la barre latérale dans ChatKit lors d'un lancement LTI."
+          />
+
+          <ToggleRow
+            label="Afficher le header ChatKit"
+            checked={ltiShowHeader}
+            onChange={onLtiShowHeaderChange}
+            help="Affiche l'en-tête de ChatKit lors d'un lancement LTI."
+          />
+
+          <ToggleRow
+            label="Activer l'historique"
+            checked={ltiEnableHistory}
+            onChange={onLtiEnableHistoryChange}
+            help="Permet l'accès à l'historique des conversations dans ChatKit lors d'un lancement LTI."
+          />
+        </>
       )}
     </>
   );
