@@ -2889,9 +2889,11 @@ button {
   }
 
   .widget-gallery__item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
   }
 
   .widget-gallery__actions {
@@ -2909,6 +2911,15 @@ button {
     pointer-events: auto !important;
     transform: none !important;
     border-radius: 0 !important;
+  }
+
+  /* Show short text on mobile, hide full text */
+  .widget-gallery__actions-short-text {
+    display: inline !important;
+  }
+
+  .widget-gallery__actions-full-text {
+    display: none !important;
   }
 
   .widget-gallery__actions .button,
