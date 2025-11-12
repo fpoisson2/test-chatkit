@@ -280,22 +280,6 @@ const NodeInspector = ({
         ) : null}
       </div>
 
-      <dl className={styles.nodeInspectorMetaGrid}>
-        <dt>Identifiant</dt>
-        <dd>{node.data.slug}</dd>
-        <dt>Type</dt>
-        <dd>{labelForKind(kind, t)}</dd>
-      </dl>
-
-      <label className={styles.nodeInspectorDisplayNameField}>
-        <span>Nom affiché</span>
-        <input
-          type="text"
-          value={displayName}
-          onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
-        />
-      </label>
-
       {kind === "start" ? (
         <StartInspectorSection
           nodeId={node.id}
