@@ -328,7 +328,8 @@ class LTIService:
                 )
             )
 
-        launch_url = session_record.target_link_uri or self._default_launch_url()
+        # Use default launch URL for content items, not the deep linking URL
+        launch_url = self._default_launch_url()
         content_items: list[dict[str, Any]] = []
         for workflow in selected_workflows:
             # Encode workflow slug in the title to retrieve it later
