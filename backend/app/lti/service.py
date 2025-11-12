@@ -283,12 +283,49 @@ class LTIService:
                 detail="Aucun workflow sélectionné",
             )
 
-        return_url = payload.get(
-            "https://purl.imsglobal.org/spec/lti-dl/claim/return_url"
-        ) or session_record.registration.deep_link_return_url
+        # Extract return URL from Deep Linking settings
+        deep_linking_settings = payload.get(
+            "https://purl.imsglobal.org/spec/lti-dl/claim/deep_linking_settings", {}
+        )
+        return_url_from_jwt = deep_linking_settings.get("deep_link_return_url")
+
+        # Fallback to direct claim (legacy/non-standard) or database config
+        if not return_url_from_jwt:
+            return_url_from_jwt = payload.get(
+                "https://purl.imsglobal.org/spec/lti-dl/claim/return_url"
+            )
+
+        return_url = return_url_from_jwt or session_record.registration.deep_link_return_url
+
+        logger.info(
+            "Deep Linking return_url resolution: "
+            "jwt_deep_linking_settings=%s, jwt_claim_direct=%s, db_configured=%s, final=%s",
+            deep_linking_settings.get("deep_link_return_url"),
+            payload.get("https://purl.imsglobal.org/spec/lti-dl/claim/return_url"),
+            session_record.registration.deep_link_return_url,
+            return_url
+        )
+
         if not return_url:
+            # Log all Deep Linking claims for debugging
+            dl_claims = {
+                k: v for k, v in payload.items()
+                if "lti-dl" in k or "deep" in k.lower()
+            }
+            logger.error(
+                "Return URL LTI manquante. Registration ID: %s, Issuer: %s, "
+                "Deep Linking claims dans JWT: %s",
+                session_record.registration.id,
+                session_record.registration.issuer,
+                dl_claims
+            )
             raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, detail="Return URL LTI manquante"
+                status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Return URL LTI manquante. Vérifiez que le champ "
+                    "'deep_link_return_url' est configuré dans les paramètres LTI "
+                    "de votre plateforme (Moodle)."
+                )
             )
 
         launch_url = session_record.target_link_uri or self._default_launch_url()
