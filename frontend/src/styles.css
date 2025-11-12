@@ -2177,6 +2177,12 @@ button {
   resize: vertical;
   min-height: 120px;
   background-color: var(--form-field-background);
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .textarea:focus {
@@ -2277,6 +2283,13 @@ button {
   overflow: hidden;
 }
 
+.admin-card--narrow {
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+  justify-self: center;
+}
+
 .admin-card__title {
   margin: 0;
   font-size: clamp(1.1rem, 2.6vw, 1.35rem);
@@ -2356,6 +2369,7 @@ button {
 }
 
 .admin-key-details__value {
+  display: block;
   font-family: var(
     --font-family-mono,
     "SFMono-Regular",
@@ -2367,8 +2381,9 @@ button {
   background: var(--color-surface-subtle);
   border-radius: 12px;
   padding: 10px 12px;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  box-sizing: border-box;
+  word-break: break-all;
+  overflow-wrap: anywhere;
   min-width: 0;
   max-width: 100%;
 }
@@ -2383,7 +2398,10 @@ button {
 .admin-key-details__code {
   margin: 0;
   min-width: 0;
-  max-width: 100%;
+  width: min(100%, 520px);
+  margin-inline: auto;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
 }
 
 .admin-form__default-block pre {
