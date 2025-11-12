@@ -52,7 +52,12 @@ export const LoadingSpinner = ({
   return (
     <div className={containerClass}>
       <div className="loading-spinner" role="status" aria-live="polite" aria-busy="true" aria-label={resolvedAriaLabel}>
-        <span className="loading-spinner__icon" style={SIZE_STYLES[size]} aria-hidden="true" />
+        <span className="loading-spinner__icon" style={SIZE_STYLES[size]} aria-hidden="true">
+          <svg className="loading-spinner__svg" viewBox="0 0 48 48" focusable="false">
+            <circle className="loading-spinner__track" cx="24" cy="24" r="20" />
+            <circle className="loading-spinner__arc" cx="24" cy="24" r="20" />
+          </svg>
+        </span>
       </div>
       {text && <p className="loading-spinner-text">{text}</p>}
     </div>

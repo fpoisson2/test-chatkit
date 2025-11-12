@@ -26,6 +26,9 @@ const DocsPage = lazy(() =>
 const DocDetail = lazy(() =>
   import("./pages/docs/DocDetail").then((m) => ({ default: m.DocDetail }))
 );
+const LoadingPreviewPage = lazy(() =>
+  import("./pages/LoadingPreviewPage").then((m) => ({ default: m.LoadingPreviewPage }))
+);
 
 // Configure React Query client
 const queryClient = new QueryClient({
@@ -150,6 +153,16 @@ export const App = () => (
             <SuspenseRoute>
               <RequireAdmin>
                 <WidgetLibraryPage />
+              </RequireAdmin>
+            </SuspenseRoute>
+          }
+        />
+        <Route
+          path="styleguide/loading"
+          element={
+            <SuspenseRoute>
+              <RequireAdmin>
+                <LoadingPreviewPage />
               </RequireAdmin>
             </SuspenseRoute>
           }
