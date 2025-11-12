@@ -2383,6 +2383,15 @@ class WorkflowService:
                     # Update the relationship
                     workflow.lti_registrations = list(registrations)
 
+            if "lti_show_sidebar" in updates:
+                workflow.lti_show_sidebar = bool(updates["lti_show_sidebar"])
+
+            if "lti_show_header" in updates:
+                workflow.lti_show_header = bool(updates["lti_show_header"])
+
+            if "lti_enable_history" in updates:
+                workflow.lti_enable_history = bool(updates["lti_enable_history"])
+
             workflow.updated_at = datetime.datetime.now(datetime.UTC)
             db.add(workflow)
             db.commit()
@@ -3223,6 +3232,9 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "is_chatkit_default": workflow.is_chatkit_default,
         "lti_enabled": workflow.lti_enabled,
         "lti_registration_ids": [reg.id for reg in workflow.lti_registrations],
+        "lti_show_sidebar": workflow.lti_show_sidebar,
+        "lti_show_header": workflow.lti_show_header,
+        "lti_enable_history": workflow.lti_enable_history,
         "versions_count": len(workflow.versions),
     }
 

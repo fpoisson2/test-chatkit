@@ -194,7 +194,7 @@ export function MyChat() {
     setActiveWorkflow: setAppearanceWorkflow,
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
-  const { openSidebar } = useAppLayout();
+  const { openSidebar, setHideSidebar } = useAppLayout();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -490,15 +490,27 @@ export function MyChat() {
         appearanceSettings.start_screen_disclaimer,
       );
 
+      // Detect LTI context
+      const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
+      // Apply LTI options only in LTI context
+      const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
+
       return {
         api: apiConfig,
         initialThread: initialThreadId,
-        header: {
-          leftAction: {
-            icon: "menu",
-            onClick: openSidebar,
+        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header ? {
+          header: { enabled: false },
+        } : {
+          header: {
+            leftAction: {
+              icon: "menu",
+              onClick: openSidebar,
+            },
           },
-        },
+        }),
+        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history ? {
+          history: { enabled: false },
+        } : {}),
         theme: {
           colorScheme,
           radius: "pill",
@@ -630,9 +642,14 @@ export function MyChat() {
       preferredColorScheme,
       sessionOwner,
       activeWorkflow?.id,
+      activeWorkflow?.lti_enabled,
+      activeWorkflow?.lti_show_sidebar,
+      activeWorkflow?.lti_show_header,
+      activeWorkflow?.lti_enable_history,
       activeWorkflowSlug,
       persistenceSlug,
       reportError,
+      user?.email,
     ],
   );
 
@@ -657,6 +674,20 @@ export function MyChat() {
     : voiceStatus === "connecting"
     ? "Connexion audio en cours..."
     : null;
+
+  // Apply LTI sidebar visibility setting
+  useEffect(() => {
+    const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
+    const shouldHideSidebar = shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar;
+
+    setHideSidebar(shouldHideSidebar);
+
+    // Cleanup: restore sidebar when unmounting or when conditions change
+    return () => {
+      setHideSidebar(false);
+    };
+  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, user?.email, setHideSidebar]);
 
   return (
     <>
