@@ -427,9 +427,10 @@ def test_lti_login_logs_context_when_registration_missing(client, caplog):
     )
 
 
-def test_lti_login_logs_context_when_deployment_missing(client, monkeypatch, caplog):
-    caplog.set_level(logging.WARNING, logger="backend.app.lti.service")
+def test_lti_login_auto_creates_missing_deployment(client, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="backend.app.lti.service")
     database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
     _patch_platform_keys(monkeypatch)
 
     with database.SessionLocal() as session:
@@ -448,11 +449,26 @@ def test_lti_login_logs_context_when_deployment_missing(client, monkeypatch, cap
         follow_redirects=False,
     )
 
-    assert response.status_code == 404
-    warning_messages = [record.message for record in caplog.records]
+    assert response.status_code == 302
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+    with database.SessionLocal() as session:
+        created = session.scalar(
+            select(models.LTIDeployment).where(
+                models.LTIDeployment.deployment_id == "deployment-unknown"
+            )
+        )
+        assert created is not None
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(models.LTIUserSession.state == state)
+        )
+        assert session_record is not None
+        assert session_record.deployment_id == created.id
+
+    messages = [record.message for record in caplog.records]
     assert any(
-        "deployment_id='deployment-unknown'" in message and "disponibles=" in message
-        for message in warning_messages
+        "Création automatique d'un déploiement LTI" in message
+        for message in messages
     )
 
 

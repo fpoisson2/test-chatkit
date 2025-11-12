@@ -512,39 +512,50 @@ class LTIService:
     def _get_deployment(
         self, registration: LTIRegistration, deployment_id: str
     ) -> LTIDeployment:
-        deployment = self.session.scalar(
-            select(LTIDeployment)
-            .where(LTIDeployment.registration_id == registration.id)
-            .where(LTIDeployment.deployment_id == deployment_id)
+        normalized_id = deployment_id.strip()
+        base_query = select(LTIDeployment).where(
+            LTIDeployment.registration_id == registration.id
         )
-        if deployment is None:
-            available = self.session.scalars(
-                select(LTIDeployment.deployment_id).where(
-                    LTIDeployment.registration_id == registration.id
-                )
-            ).all()
-            available_list = sorted(value for value in available if value)
-            logger.warning(
-                (
-                    "Déploiement LTI introuvable "
-                    "(issuer='%s', client_id='%s', deployment_id='%s', "
-                    "disponibles=%s)"
-                ),
-                registration.issuer,
-                registration.client_id,
-                deployment_id,
-                available_list,
-                extra={
-                    "event": "lti_deployment_missing",
-                    "issuer": registration.issuer,
-                    "client_id": registration.client_id,
-                    "deployment_id": deployment_id,
-                    "available_deployments": available_list,
-                },
+        if normalized_id:
+            deployment = self.session.scalar(
+                base_query.where(LTIDeployment.deployment_id == normalized_id)
             )
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND, detail="Déploiement LTI introuvable"
+            if deployment is not None:
+                return deployment
+
+        if not normalized_id:
+            deployment = self.session.scalar(
+                base_query.order_by(LTIDeployment.id.asc())
             )
+            if deployment is not None:
+                return deployment
+
+        generated_id = normalized_id or f"auto-{registration.id}"
+        deployment = LTIDeployment(
+            registration_id=registration.id,
+            deployment_id=generated_id,
+            workflow_id=None,
+        )
+        self.session.add(deployment)
+        self.session.flush()
+        logger.info(
+            (
+                "Création automatique d'un déploiement LTI "
+                "(issuer='%s', client_id='%s', deployment_id='%s', motif='%s')"
+            ),
+            registration.issuer,
+            registration.client_id,
+            generated_id,
+            "absent" if normalized_id else "defaut",
+            extra={
+                "event": "lti_deployment_auto_created",
+                "issuer": registration.issuer,
+                "client_id": registration.client_id,
+                "deployment_id": generated_id,
+                "source_deployment_id": deployment_id,
+                "reason": "missing" if normalized_id else "default",
+            },
+        )
         return deployment
 
     def _get_session_from_state(self, state: str) -> LTIUserSession:
