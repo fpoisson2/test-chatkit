@@ -131,37 +131,69 @@
   }
 }
 
-/* Dark mode support */
+:global(:root[data-theme='dark' i]) :local(.field) input,
+:global(:root[data-theme='dark' i]) :local(.field) textarea,
+:global(:root[data-theme='dark' i]) :local(.field) select {
+  color: var(--text-primary, #f9fafb);
+  background-color: var(--bg-input, #1f2937);
+  border-color: var(--border-color, #374151);
+}
+
+:global(:root[data-theme='dark' i]) :local(.field) input:hover,
+:global(:root[data-theme='dark' i]) :local(.field) textarea:hover,
+:global(:root[data-theme='dark' i]) :local(.field) select:hover {
+  border-color: var(--border-hover, #4b5563);
+}
+
+:global(:root[data-theme='dark' i]) :local(.field) input:focus,
+:global(:root[data-theme='dark' i]) :local(.field) textarea:focus,
+:global(:root[data-theme='dark' i]) :local(.field) select:focus {
+  border-color: var(--accent-color, #60a5fa);
+  outline-color: var(--accent-color, #60a5fa);
+}
+
+:global(:root[data-theme='dark' i]) :local(.field) input:disabled,
+:global(:root[data-theme='dark' i]) :local(.field) textarea:disabled,
+:global(:root[data-theme='dark' i]) :local(.field) select:disabled {
+  background-color: var(--bg-disabled, #111827);
+  color: var(--text-disabled, #6b7280);
+}
+
+:global(:root[data-theme='dark' i]) :local(.label) {
+  color: var(--text-primary, #f9fafb);
+}
+
+/* Dark mode fallback to system preference when no explicit theme is set */
 @media (prefers-color-scheme: dark) {
-  .field input,
-  .field textarea,
-  .field select {
+  :global(:root:not([data-theme])) :local(.field) input,
+  :global(:root:not([data-theme])) :local(.field) textarea,
+  :global(:root:not([data-theme])) :local(.field) select {
     color: var(--text-primary, #f9fafb);
     background-color: var(--bg-input, #1f2937);
     border-color: var(--border-color, #374151);
   }
 
-  .field input:hover,
-  .field textarea:hover,
-  .field select:hover {
+  :global(:root:not([data-theme])) :local(.field) input:hover,
+  :global(:root:not([data-theme])) :local(.field) textarea:hover,
+  :global(:root:not([data-theme])) :local(.field) select:hover {
     border-color: var(--border-hover, #4b5563);
   }
 
-  .field input:focus,
-  .field textarea:focus,
-  .field select:focus {
+  :global(:root:not([data-theme])) :local(.field) input:focus,
+  :global(:root:not([data-theme])) :local(.field) textarea:focus,
+  :global(:root:not([data-theme])) :local(.field) select:focus {
     border-color: var(--accent-color, #60a5fa);
     outline-color: var(--accent-color, #60a5fa);
   }
 
-  .field input:disabled,
-  .field textarea:disabled,
-  .field select:disabled {
+  :global(:root:not([data-theme])) :local(.field) input:disabled,
+  :global(:root:not([data-theme])) :local(.field) textarea:disabled,
+  :global(:root:not([data-theme])) :local(.field) select:disabled {
     background-color: var(--bg-disabled, #111827);
     color: var(--text-disabled, #6b7280);
   }
 
-  .label {
+  :global(:root:not([data-theme])) :local(.label) {
     color: var(--text-primary, #f9fafb);
   }
 }
