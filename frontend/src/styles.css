@@ -2874,6 +2874,28 @@ button {
   }
 }
 
+@media (max-width: 768px) {
+  .widget-gallery {
+    grid-template-columns: 1fr;
+  }
+
+  .widget-gallery__actions {
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem 0.6rem;
+    right: clamp(8px, 2vw, 12px);
+    top: clamp(8px, 2vw, 12px);
+    max-width: calc(100% - 16px);
+  }
+
+  .widget-gallery__actions .button {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.7rem;
+    white-space: nowrap;
+    min-width: max-content;
+  }
+}
+
 .modal {
   position: fixed;
   inset: 0;
