@@ -2343,6 +2343,8 @@ button {
   gap: 6px;
   min-width: 0;
   max-width: 100%;
+  align-items: start;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
 }
 
 .admin-key-details__label {
@@ -2368,7 +2370,8 @@ button {
   border-radius: 12px;
   padding: 10px 12px;
   word-break: break-word;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
   min-width: 0;
   max-width: 100%;
 }
@@ -2380,10 +2383,20 @@ button {
   max-width: 100%;
 }
 
+@media (max-width: 640px) {
+  .admin-key-details__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .admin-key-details__code {
   margin: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   min-width: 0;
   max-width: 100%;
+  overflow-x: hidden;
 }
 
 .admin-form__default-block pre {
@@ -3115,6 +3128,15 @@ button {
   white-space: pre-wrap;
   min-width: 0;
   max-width: 100%;
+}
+
+.admin-key-details__code {
+  font-size: clamp(0.75rem, 2.6vw, 0.9rem);
+  line-height: 1.5;
+  overflow-x: hidden;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .accordion {
