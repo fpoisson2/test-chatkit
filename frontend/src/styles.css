@@ -3532,10 +3532,31 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.widget-preview__box > * {
+  min-width: 0;
 }
 
 .widget-preview__box--row {
   flex-direction: row;
+}
+
+.widget-preview__box--row > * {
+  flex-shrink: 1;
+}
+
+@media (max-width: 768px) {
+  .widget-preview__box--row {
+    flex-wrap: wrap;
+    row-gap: 1rem;
+  }
+
+  .widget-preview__box--row > * {
+    flex-basis: 100%;
+  }
 }
 
 .widget-preview__status {

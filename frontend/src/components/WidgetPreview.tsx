@@ -379,9 +379,13 @@ const renderText = (component: Widgets.TextComponent) => {
       style.color = color;
     }
   }
-  if (component.width) {
-    style.width = typeof component.width === "number" ? `${component.width}px` : component.width;
+  if (component.width !== undefined) {
+    const formattedWidth = formatDimension(component.width);
+    if (formattedWidth) {
+      style.width = formattedWidth;
+    }
   }
+  enforceResponsiveWidth(style);
   return (
     <p className={classNames.join(" ")} style={style}>
       {component.value}
