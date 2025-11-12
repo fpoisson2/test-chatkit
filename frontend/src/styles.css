@@ -2392,6 +2392,8 @@ button {
   min-width: 0;
   width: min(100%, 520px);
   margin-inline: auto;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
 }
 
 .admin-form__default-block pre {
