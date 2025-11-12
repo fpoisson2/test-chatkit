@@ -5,8 +5,6 @@ import { Modal } from "../components/Modal";
 import { WidgetPreviewModal } from "../components/WidgetPreviewModal";
 import { WidgetTemplateForm } from "../components/WidgetTemplateForm";
 import { WidgetTemplateGallery } from "../components/WidgetTemplateGallery";
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { AdminTabs } from "../components/AdminTabs";
 import { FeedbackMessages, FormSection } from "../components";
 import {
   ApiError,
@@ -154,9 +152,7 @@ export const WidgetLibraryPage = () => {
   };
 
   return (
-    <ManagementPageLayout
-      tabs={<AdminTabs activeTab="widgets" />}
-    >
+    <>
       <FeedbackMessages
         error={error}
         success={success}
@@ -235,7 +231,7 @@ export const WidgetLibraryPage = () => {
           onClose={() => setPreviewData(null)}
         />
       ) : null}
-    </ManagementPageLayout>
+    </>
   );
 };
 

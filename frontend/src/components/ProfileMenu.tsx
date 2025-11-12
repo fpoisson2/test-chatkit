@@ -9,17 +9,22 @@ import { preloadRoute } from "../utils/routePreloaders";
 type ProfileMenuProps = {
   tabIndex: number;
   onNavigate?: () => void;
+  onGoToAdmin?: () => void;
 };
 
-export const ProfileMenu = ({ tabIndex, onNavigate }: ProfileMenuProps) => {
+export const ProfileMenu = ({ tabIndex, onNavigate, onGoToAdmin }: ProfileMenuProps) => {
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
 
   const handleGoToAdmin = useCallback(() => {
-    navigate("/admin");
+    if (onGoToAdmin) {
+      onGoToAdmin();
+    } else {
+      navigate("/admin");
+    }
     onNavigate?.();
-  }, [navigate, onNavigate]);
+  }, [navigate, onNavigate, onGoToAdmin]);
 
   const handleLogout = useCallback(() => {
     logout();

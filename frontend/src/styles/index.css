@@ -22,6 +22,7 @@
 /* Sidebar and admin component styles */
 @import './components/sidebar.css';
 @import './components/admin.css';
+@import './components/admin-modal.css';
 
 /* 4. Animations and Micro-interactions */
 @import './animations.css';

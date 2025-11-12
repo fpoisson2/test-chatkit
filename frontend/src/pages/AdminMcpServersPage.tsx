@@ -20,8 +20,6 @@ import {
   useDeleteMcpServer,
 } from "../hooks";
 import { useAuth } from "../auth";
-import { AdminTabs } from "../components/AdminTabs";
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { Modal } from "../components/Modal";
 import {
   ResponsiveTable,
@@ -776,9 +774,7 @@ export const AdminMcpServersPage = () => {
   );
 
   return (
-    <ManagementPageLayout
-      tabs={<AdminTabs activeTab="mcp-servers" />}
-    >
+    <>
       <FeedbackMessages
         error={error}
         success={success}
@@ -1288,6 +1284,6 @@ export const AdminMcpServersPage = () => {
           </form>
         </Modal>
       )}
-    </ManagementPageLayout>
+    </>
   );
 };

@@ -8,8 +8,6 @@ import {
   isUnauthorizedError,
   resetUserPassword,
 } from "../utils/backend";
-import { AdminTabs } from "../components/AdminTabs";
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { Modal } from "../components/Modal";
 import {
   ResponsiveTable,
@@ -220,9 +218,7 @@ export const AdminPage = () => {
   );
 
   return (
-    <ManagementPageLayout
-      tabs={<AdminTabs activeTab="users" />}
-    >
+    <>
       <FeedbackMessages
         error={error}
         onDismissError={() => setError(null)}
@@ -326,6 +322,6 @@ export const AdminPage = () => {
           </form>
         </Modal>
       )}
-    </ManagementPageLayout>
+    </>
   );
 };

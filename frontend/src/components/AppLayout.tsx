@@ -11,7 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth";
 import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
@@ -20,6 +20,8 @@ import { Tooltip } from "./Tooltip";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import { useI18n } from "../i18n";
 import { preloadRoute } from "../utils/routePreloaders";
+import { useAdminModal } from "../hooks/useAdminModal";
+import { AdminModal } from "./AdminModal";
 
 type NavigationItem = {
   key: string;
@@ -179,7 +181,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const isAdmin = Boolean(user?.is_admin);
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isDesktopLayout = useIsDesktopLayout();
+  const adminModal = useAdminModal();
   const previousIsDesktopRef = useRef(isDesktopLayout);
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const storedPreference = readStoredSidebarOpen();
@@ -215,6 +219,22 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     writeStoredSidebarOpen(isSidebarOpen);
   }, [isDesktopLayout, isSidebarOpen]);
+
+  // Handle admin modal query parameter
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+
+    const adminTab = searchParams.get("admin");
+    if (adminTab) {
+      adminModal.openAdmin(adminTab as any);
+      // Remove the query param after opening the modal
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("admin");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, isAdmin, adminModal, setSearchParams]);
 
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);
@@ -300,8 +320,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       closeSidebar();
     }
 
-    navigate("/admin");
-  }, [closeSidebar, isDesktopLayout, navigate]);
+    adminModal.openAdmin();
+  }, [closeSidebar, isDesktopLayout, adminModal]);
 
 
   const navigationItems = useMemo(
@@ -541,7 +561,11 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             {isAuthenticated && (
               <footer className="chatkit-sidebar__footer">
                 <div className="chatkit-sidebar__profile">
-                  <ProfileMenu tabIndex={sidebarTabIndex} onNavigate={handleProfileNavigate} />
+                  <ProfileMenu
+                    tabIndex={sidebarTabIndex}
+                    onNavigate={handleProfileNavigate}
+                    onGoToAdmin={isAdmin ? handleGoToAdmin : undefined}
+                  />
                 </div>
               </footer>
             )}
@@ -562,6 +586,16 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
           <div className="chatkit-layout__main" {...mainInteractionHandlers}>
             {children ?? <Outlet />}
           </div>
+          {isAdmin && (
+            <AdminModal
+              isOpen={adminModal.isOpen}
+              onClose={adminModal.closeAdmin}
+              activeTab={adminModal.activeTab}
+              setActiveTab={adminModal.setActiveTab}
+              saveScrollPosition={adminModal.saveScrollPosition}
+              getScrollPosition={adminModal.getScrollPosition}
+            />
+          )}
         </div>
       </AppLayoutContext.Provider>
     </SidebarPortalContext.Provider>

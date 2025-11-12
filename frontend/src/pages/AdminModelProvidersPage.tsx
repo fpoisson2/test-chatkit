@@ -3,8 +3,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "../auth";
-import { AdminTabs } from "../components/AdminTabs";
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { Modal } from "../components/Modal";
 import { FeedbackMessages, FormField, FormSection } from "../components";
 import { useI18n } from "../i18n";
@@ -230,7 +228,7 @@ export const AdminModelProvidersPage = () => {
     : null;
 
   return (
-    <ManagementPageLayout tabs={<AdminTabs activeTab="providers" />}>
+    <>
       <FeedbackMessages
         error={error}
         success={success}
@@ -429,6 +427,6 @@ export const AdminModelProvidersPage = () => {
           </form>
         </Modal>
       )}
-    </ManagementPageLayout>
+    </>
   );
 };

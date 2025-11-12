@@ -2,8 +2,6 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../auth";
-import { AdminTabs } from "../components/AdminTabs";
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { Modal } from "../components/Modal";
 import { useI18n } from "../i18n";
 import { adminTelephonySchema, type AdminTelephonyFormData } from "../schemas/admin";
@@ -217,9 +215,7 @@ export const AdminSipAccountsPage = () => {
   const showForm = isCreatingAccount || editingAccountId;
 
   return (
-    <ManagementPageLayout
-      tabs={<AdminTabs activeTab="sip-accounts" />}
-    >
+    <>
       <FeedbackMessages
         error={error}
         success={success}
@@ -538,6 +534,6 @@ export const AdminSipAccountsPage = () => {
           </form>
         </Modal>
       )}
-    </ManagementPageLayout>
+    </>
   );
 };

@@ -8,8 +8,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "../auth";
-import { AdminTabs } from "../components/AdminTabs";
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { Modal } from "../components/Modal";
 import { useI18n } from "../i18n";
 import {
@@ -412,9 +410,7 @@ export const AdminLtiPage = () => {
   ], [t, handleEditRegistration, handleDeleteRegistration]);
 
   return (
-    <ManagementPageLayout
-      tabs={<AdminTabs activeTab="lti" />}
-    >
+    <>
       <FeedbackMessages
         error={toolError || registrationsError}
         success={toolSuccess || registrationsSuccess}
@@ -814,6 +810,6 @@ export const AdminLtiPage = () => {
           </form>
         </Modal>
       )}
-    </ManagementPageLayout>
+    </>
   );
 };

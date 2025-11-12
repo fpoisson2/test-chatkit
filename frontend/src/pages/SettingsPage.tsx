@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { ManagementPageLayout } from "../components/ManagementPageLayout";
-import { AdminTabs } from "../components/AdminTabs";
 import { Modal } from "../components/Modal";
 import { useI18n } from "../i18n";
 import {
@@ -75,9 +73,7 @@ export function SettingsPage() {
     sections.find((section) => section.id === activeSectionId) ?? sections[0] ?? null;
 
   return (
-    <ManagementPageLayout
-      tabs={<AdminTabs activeTab="preferences" />}
-    >
+    <>
         <div className="admin-grid">
           {activeSection?.id === "preferences" ? (
             <SettingsPreferencesSection
@@ -125,7 +121,7 @@ export function SettingsPage() {
           </nav>
         </Modal>
       ) : null}
-    </ManagementPageLayout>
+    </>
   );
 }
 
