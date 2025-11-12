@@ -413,11 +413,21 @@ class LTIService:
                     return candidate
         return keys[0] if keys else None
 
+    @staticmethod
+    def _issuer_candidates(issuer: str) -> set[str]:
+        candidates = {issuer}
+        normalized = issuer.rstrip("/")
+        if normalized:
+            candidates.add(normalized)
+            candidates.add(f"{normalized}/")
+        return {candidate for candidate in candidates if candidate}
+
     def _get_registration(self, issuer: str, client_id: str) -> LTIRegistration:
+        issuer_candidates = self._issuer_candidates(issuer)
         registration = self.session.scalar(
             select(LTIRegistration)
-            .where(LTIRegistration.issuer == issuer)
             .where(LTIRegistration.client_id == client_id)
+            .where(LTIRegistration.issuer.in_(issuer_candidates))
         )
         if registration is None:
             raise HTTPException(

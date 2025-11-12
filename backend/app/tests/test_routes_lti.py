@@ -150,7 +150,7 @@ def test_jwks_endpoint_returns_public_key(client):
     assert payload["keys"] == [_build_jwk(TOOL_KEY, "tool-key")]
 
 
-def _setup_registration(session):
+def _setup_registration(session, *, issuer="https://platform.example"):
     models = importlib.import_module("backend.app.models")
 
     workflow = models.Workflow(slug="demo-workflow", display_name="Workflow Demo")
@@ -158,7 +158,7 @@ def _setup_registration(session):
     session.flush()
 
     registration = models.LTIRegistration(
-        issuer="https://platform.example",
+        issuer=issuer,
         client_id="platform-client",
         key_set_url="https://platform.example/jwks",
         authorization_endpoint="https://platform.example/oidc",
@@ -303,6 +303,48 @@ def test_lti_launch_provisions_user_and_returns_token(client, monkeypatch):
                 models.LTIUserSession.user_id == user.id
             )
         ) is not None
+
+
+def test_lti_login_accepts_trailing_slash_variants(client, monkeypatch):
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        _setup_registration(session, issuer="https://platform.example/")
+
+    response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-123",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+
+    with database.SessionLocal() as session:
+        registration = session.scalar(select(models.LTIRegistration))
+        assert registration is not None
+        registration.issuer = "https://platform.example"
+        session.add(registration)
+        session.commit()
+
+    response_with_slash = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example/",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-123",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+        },
+        follow_redirects=False,
+    )
+
+    assert response_with_slash.status_code == 302
 
 
 def test_lti_deep_link_returns_content_items(client, monkeypatch):

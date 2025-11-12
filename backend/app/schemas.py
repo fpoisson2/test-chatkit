@@ -535,6 +535,17 @@ class TelephonyRouteResponse(TelephonyRouteBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+def _normalize_lti_issuer(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return candidate
+        return candidate.rstrip("/")
+    return value
+
+
 class LTIRegistrationBase(BaseModel):
     issuer: constr(strip_whitespace=True, min_length=1, max_length=512)
     client_id: constr(strip_whitespace=True, min_length=1, max_length=255)
@@ -545,6 +556,11 @@ class LTIRegistrationBase(BaseModel):
     audience: constr(strip_whitespace=True, max_length=512) | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("issuer", mode="before")
+    @classmethod
+    def _normalize_issuer(cls, value: Any) -> Any:
+        return _normalize_lti_issuer(value)
 
     @field_validator("deep_link_return_url", mode="before")
     @classmethod
@@ -581,6 +597,11 @@ class LTIRegistrationUpdateRequest(BaseModel):
     audience: constr(strip_whitespace=True, max_length=512) | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("issuer", mode="before")
+    @classmethod
+    def _normalize_issuer(cls, value: Any) -> Any:
+        return _normalize_lti_issuer(value)
 
     @field_validator(
         "issuer",
