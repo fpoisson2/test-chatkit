@@ -2866,6 +2866,26 @@ button {
   transform: translateY(0);
 }
 
+@media (max-width: 768px) {
+  .widget-library__section {
+    padding: clamp(18px, 5vw, 24px);
+  }
+
+  .widget-library__section .widget-gallery {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .widget-library__section .widget-gallery__item .widget-preview {
+    padding: clamp(14px, 6vw, 18px);
+  }
+
+  .widget-library__section .widget-gallery__item .widget-preview__card,
+  .widget-library__section .widget-gallery__item .widget-preview__basic,
+  .widget-library__section .widget-gallery__item .widget-preview__collection {
+    width: 100%;
+  }
+}
+
 @media (hover: none) {
   .widget-gallery__actions {
     opacity: 1;
