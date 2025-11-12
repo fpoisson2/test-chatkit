@@ -300,6 +300,36 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .admin-modal__tab-content .widget-gallery__item {
+    gap: clamp(0.9rem, 5vw, 1.5rem);
+    align-items: stretch;
+  }
+
+  .admin-modal__tab-content .widget-gallery__actions {
+    position: static;
+    top: auto;
+    right: auto;
+    left: auto;
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0;
+    border-radius: clamp(0.75rem, 3vw, 1rem);
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    box-shadow: none;
+  }
+
+  .admin-modal__tab-content .widget-gallery__actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+
   .admin-modal__tab-content .widget-gallery .widget-preview__card,
   .admin-modal__tab-content .widget-gallery .widget-preview__basic,
   .admin-modal__tab-content .widget-gallery .widget-preview__collection {
