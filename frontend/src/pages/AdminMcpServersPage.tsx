@@ -280,7 +280,7 @@ export const AdminMcpServersPage = () => {
   const [oauthFeedback, setOauthFeedback] = useState<OAuthFeedbackState>(
     initialOAuthFeedback,
   );
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const oauthPlanRef = useRef<McpOAuthPersistencePlan | null>(null);
   const pendingStateRef = useRef<string | null>(null);
 
@@ -321,14 +321,17 @@ export const AdminMcpServersPage = () => {
   }, [reset]);
 
   const handleCreate = () => {
-    setShowCreateModal(true);
     resetForm();
+    setError(null);
+    setSuccess(null);
+    setIsModalOpen(true);
   };
 
   const handleEdit = (server: McpServerSummary) => {
     applyServerToForm(server);
     setError(null);
     setSuccess(null);
+    setIsModalOpen(true);
   };
 
   const handleDelete = async (server: McpServerSummary) => {
@@ -393,12 +396,13 @@ export const AdminMcpServersPage = () => {
       if (editingId == null) {
         const created = await createServer.mutateAsync({ token, payload });
         setSuccess(t("admin.mcpServers.feedback.created", { label: created.label }));
-        setShowCreateModal(false);
+        setIsModalOpen(false);
         resetForm();
       } else {
         const updated = await updateServer.mutateAsync({ token, serverId: editingId, payload });
         setSuccess(t("admin.mcpServers.feedback.updated", { label: updated.label }));
-        applyServerToForm(updated);
+        setIsModalOpen(false);
+        resetForm();
       }
     } catch (err) {
       if (isUnauthorizedError(err)) {
@@ -411,6 +415,11 @@ export const AdminMcpServersPage = () => {
       }
     }
   };
+
+  const handleCloseModal = useCallback(() => {
+    setIsModalOpen(false);
+    resetForm();
+  }, [resetForm]);
 
   const handleTestConnection = async () => {
     if (!token) {
@@ -671,6 +680,24 @@ export const AdminMcpServersPage = () => {
   const currentRefreshTokenHint = currentServer?.refresh_token_hint;
   const currentClientSecretHint = currentServer?.oauth_client_secret_hint;
 
+  const isEditing = editingId != null;
+  const watchedLabel = watch("label");
+  const modalTitle = isEditing
+    ? t("admin.mcpServers.form.editTitle", {
+        label: currentServer?.label ?? watchedLabel ?? "",
+      })
+    : t("admin.mcpServers.form.createTitle");
+  const modalSubtitle = isEditing
+    ? t("admin.mcpServers.form.editSubtitle")
+    : t("admin.mcpServers.form.createSubtitle");
+  const submitLabel = isEditing
+    ? t("admin.mcpServers.form.updateSubmit")
+    : t("admin.mcpServers.form.createSubmit");
+  const cancelLabel = isEditing
+    ? t("admin.mcpServers.form.cancelEdit")
+    : t("admin.mcpServers.form.cancel");
+  const formId = "admin-mcp-server-modal-form";
+
   const mcpServerColumns = useMemo<Column<McpServerSummary>[]>(
     () => [
       {
@@ -821,14 +848,38 @@ export const AdminMcpServersPage = () => {
           )}
         </FormSection>
 
-        {editingId != null && (
-          <FormSection
-            title={t("admin.mcpServers.form.editTitle", {
-              label: currentServer?.label ?? "",
-            })}
-            subtitle={t("admin.mcpServers.form.editSubtitle")}
-          >
-          <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+      </div>
+
+      {isModalOpen ? (
+        <Modal
+          title={modalTitle}
+          onClose={handleCloseModal}
+          size="lg"
+          footer={
+            <>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={handleCloseModal}
+              >
+                {cancelLabel}
+              </button>
+              <button
+                type="submit"
+                className="button"
+                form={formId}
+                disabled={isSaving}
+              >
+                {isSaving ? t("admin.mcpServers.form.saving") : submitLabel}
+              </button>
+            </>
+          }
+        >
+          <form id={formId} className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+            {modalSubtitle ? (
+              <p className="admin-card__subtitle">{modalSubtitle}</p>
+            ) : null}
+
             <FormField
               label={t("admin.mcpServers.form.labelLabel")}
               error={formErrors.label?.message}
@@ -994,249 +1045,7 @@ export const AdminMcpServersPage = () => {
             </FormField>
 
             <label className="checkbox-field">
-              <input
-                type="checkbox"
-                {...register("isActive")}
-              />
-              <span>{t("admin.mcpServers.form.isActiveLabel")}</span>
-            </label>
-
-            <div className="admin-form__actions">
-              <button
-                type="submit"
-                className="button"
-                disabled={isSaving}
-              >
-                {isSaving
-                  ? t("admin.mcpServers.form.saving")
-                  : editingId == null
-                  ? t("admin.mcpServers.form.createSubmit")
-                  : t("admin.mcpServers.form.updateSubmit")}
-              </button>
-              {editingId != null && (
-                <button
-                  type="button"
-                  className="button button--secondary"
-                  onClick={resetForm}
-                >
-                  {t("admin.mcpServers.form.cancelEdit")}
-                </button>
-              )}
-            </div>
-
-            <div className="admin-form__actions">
-              <button
-                type="button"
-                className="button button--secondary"
-                onClick={handleStartOAuth}
-                disabled={oauthFeedback.status === "starting" || oauthFeedback.status === "pending"}
-              >
-                {oauthFeedback.status === "starting"
-                  ? t("admin.mcpServers.oauth.starting")
-                  : t("admin.mcpServers.form.oauthButton")}
-              </button>
-              <button
-                type="button"
-                className="button button--ghost"
-                onClick={handleTestConnection}
-                disabled={isTesting}
-              >
-                {isTesting
-                  ? t("admin.mcpServers.test.running")
-                  : t("admin.mcpServers.form.testButton")}
-              </button>
-            </div>
-
-            {oauthFeedback.message && (
-              <div
-                className={`alert ${
-                  oauthFeedback.status === "error"
-                    ? "alert--danger"
-                    : oauthFeedback.status === "success"
-                    ? "alert--success"
-                    : "alert--info"
-                }`}
-              >
-                {oauthFeedback.message}
-              </div>
-            )}
-
-            {probeFeedback && (
-              <div className="alert alert--success">{probeFeedback}</div>
-            )}
-            {probeError && <div className="alert alert--danger">{probeError}</div>}
-          </form>
-          </FormSection>
-        )}
-      </div>
-
-      {showCreateModal && (
-        <Modal
-          title={t("admin.mcpServers.form.createTitle")}
-          onClose={() => setShowCreateModal(false)}
-          size="lg"
-          footer={
-            <>
-              <button
-                type="button"
-                className="button button--ghost"
-                onClick={() => setShowCreateModal(false)}
-              >
-                Annuler
-              </button>
-              <button
-                type="submit"
-                className="button"
-                form="create-mcp-server-form"
-                disabled={isSaving}
-              >
-                {t("admin.mcpServers.form.createSubmit")}
-              </button>
-            </>
-          }
-        >
-          <form id="create-mcp-server-form" className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
-            <FormField
-              label={t("admin.mcpServers.form.labelLabel")}
-              error={formErrors.label?.message}
-            >
-              <input
-                className="input"
-                type="text"
-                {...register("label")}
-                placeholder={t("admin.mcpServers.form.labelPlaceholder")}
-              />
-            </FormField>
-
-            <FormField
-              label={t("admin.mcpServers.form.serverUrlLabel")}
-              error={formErrors.serverUrl?.message}
-            >
-              <input
-                className="input"
-                type="url"
-                {...register("serverUrl")}
-                placeholder={t("admin.mcpServers.form.serverUrlPlaceholder")}
-              />
-            </FormField>
-
-            <FormField
-              label={t("admin.mcpServers.form.authorizationLabel")}
-            >
-              <input
-                className="input"
-                type="text"
-                {...register("authorization")}
-                placeholder={t("admin.mcpServers.form.authorizationPlaceholder")}
-              />
-            </FormField>
-
-            <div className="admin-form__row">
-              <FormField
-                label={t("admin.mcpServers.form.accessTokenLabel")}
-              >
-                <input
-                  className="input"
-                  type="text"
-                  {...register("accessToken")}
-                  placeholder={t("admin.mcpServers.form.accessTokenPlaceholder")}
-                />
-              </FormField>
-
-              <FormField
-                label={t("admin.mcpServers.form.refreshTokenLabel")}
-              >
-                <input
-                  className="input"
-                  type="text"
-                  {...register("refreshToken")}
-                  placeholder={t("admin.mcpServers.form.refreshTokenPlaceholder")}
-                />
-              </FormField>
-            </div>
-
-            <FormField label={t("admin.mcpServers.form.oauthClientIdLabel")}>
-              <input
-                className="input"
-                type="text"
-                {...register("oauthClientId")}
-                placeholder={t("admin.mcpServers.form.oauthClientIdPlaceholder")}
-              />
-            </FormField>
-
-            <FormField
-              label={t("admin.mcpServers.form.oauthClientSecretLabel")}
-            >
-              <input
-                className="input"
-                type="password"
-                {...register("oauthClientSecret")}
-                placeholder={t("admin.mcpServers.form.oauthClientSecretPlaceholder")}
-              />
-            </FormField>
-
-            <FormField label={t("admin.mcpServers.form.oauthScopeLabel")}>
-              <input
-                className="input"
-                type="text"
-                {...register("oauthScope")}
-                placeholder={t("admin.mcpServers.form.oauthScopePlaceholder")}
-              />
-            </FormField>
-
-            <div className="admin-form__row">
-              <FormField label={t("admin.mcpServers.form.oauthAuthorizationEndpointLabel")}>
-                <input
-                  className="input"
-                  type="url"
-                  {...register("oauthAuthorizationEndpoint")}
-                  placeholder={t(
-                    "admin.mcpServers.form.oauthAuthorizationEndpointPlaceholder",
-                  )}
-                />
-              </FormField>
-
-              <FormField label={t("admin.mcpServers.form.oauthTokenEndpointLabel")}>
-                <input
-                  className="input"
-                  type="url"
-                  {...register("oauthTokenEndpoint")}
-                  placeholder={t(
-                    "admin.mcpServers.form.oauthTokenEndpointPlaceholder",
-                  )}
-                />
-              </FormField>
-            </div>
-
-            <FormField label={t("admin.mcpServers.form.oauthRedirectUriLabel")}>
-              <input
-                className="input"
-                type="url"
-                {...register("oauthRedirectUri")}
-                placeholder={t(
-                  "admin.mcpServers.form.oauthRedirectUriPlaceholder",
-                )}
-              />
-            </FormField>
-
-            <FormField
-              label={t("admin.mcpServers.form.oauthMetadataLabel")}
-              error={formErrors.oauthMetadata?.message}
-              hint={t("admin.mcpServers.form.oauthMetadataHint")}
-            >
-              <textarea
-                className="textarea"
-                rows={4}
-                {...register("oauthMetadata")}
-                placeholder={t("admin.mcpServers.form.oauthMetadataPlaceholder")}
-              />
-            </FormField>
-
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                {...register("isActive")}
-              />
+              <input type="checkbox" {...register("isActive")} />
               <span>{t("admin.mcpServers.form.isActiveLabel")}</span>
             </label>
 
@@ -1245,7 +1054,9 @@ export const AdminMcpServersPage = () => {
                 type="button"
                 className="button button--secondary"
                 onClick={handleStartOAuth}
-                disabled={oauthFeedback.status === "starting" || oauthFeedback.status === "pending"}
+                disabled={
+                  oauthFeedback.status === "starting" || oauthFeedback.status === "pending"
+                }
               >
                 {oauthFeedback.status === "starting"
                   ? t("admin.mcpServers.oauth.starting")
@@ -1283,7 +1094,8 @@ export const AdminMcpServersPage = () => {
             {probeError && <div className="alert alert--danger">{probeError}</div>}
           </form>
         </Modal>
-      )}
+      ) : null}
+
     </>
   );
 };
