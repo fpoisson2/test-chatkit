@@ -1436,7 +1436,7 @@ const WorkflowBuilderPage = () => {
             widgetsLoading={widgetsLoading}
             widgetsError={widgetsError}
             onRemove={handleRemoveNode}
-            onWorkflowUpdate={refetch}
+            onWorkflowUpdate={() => loadWorkflows({ suppressLoadingState: true })}
           />
         ) : selectedEdge ? (
           <EdgeInspector
