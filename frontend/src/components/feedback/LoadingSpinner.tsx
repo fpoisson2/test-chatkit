@@ -52,9 +52,7 @@ export const LoadingSpinner = ({
   return (
     <div className={containerClass}>
       <div className="loading-spinner" role="status" aria-live="polite" aria-busy="true" aria-label={resolvedAriaLabel}>
-        <span className="loading-spinner__icon" style={SIZE_STYLES[size]} aria-hidden="true">
-          <span className="loading-spinner__pulse" />
-        </span>
+        <span className="loading-spinner__icon" style={SIZE_STYLES[size]} aria-hidden="true" />
       </div>
       {text && <p className="loading-spinner-text">{text}</p>}
     </div>
