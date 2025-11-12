@@ -154,7 +154,15 @@ class LTIService:
         deployment = self._get_deployment(registration, deployment_ref)
 
         logger.info(
-            "Initialisation de la connexion LTI réussie",
+            (
+                "Initialisation de la connexion LTI réussie "
+                "(issuer='%s', client_id='%s', deployment_id='%s', "
+                "target_link_uri='%s')"
+            ),
+            registration.issuer,
+            registration.client_id,
+            deployment.deployment_id,
+            target_link_uri,
             extra={
                 "event": "lti_login_initiated",
                 "issuer": registration.issuer,
@@ -449,16 +457,24 @@ class LTIService:
                     LTIRegistration.client_id == client_id
                 )
             ).all()
+            issuer_list = sorted(issuer_candidates)
+            available_list = sorted(value for value in available if value)
             logger.warning(
-                "Enregistrement LTI introuvable",
+                (
+                    "Enregistrement LTI introuvable "
+                    "(issuer='%s', client_id='%s', candidats=%s, "
+                    "enregistrements=%s)"
+                ),
+                issuer,
+                client_id,
+                issuer_list,
+                available_list,
                 extra={
                     "event": "lti_registration_missing",
                     "issuer": issuer,
                     "client_id": client_id,
-                    "issuer_candidates": sorted(issuer_candidates),
-                    "available_issuers": sorted(
-                        value for value in available if value
-                    ),
+                    "issuer_candidates": issuer_list,
+                    "available_issuers": available_list,
                 },
             )
             raise HTTPException(
@@ -480,16 +496,23 @@ class LTIService:
                     LTIDeployment.registration_id == registration.id
                 )
             ).all()
+            available_list = sorted(value for value in available if value)
             logger.warning(
-                "Déploiement LTI introuvable",
+                (
+                    "Déploiement LTI introuvable "
+                    "(issuer='%s', client_id='%s', deployment_id='%s', "
+                    "disponibles=%s)"
+                ),
+                registration.issuer,
+                registration.client_id,
+                deployment_id,
+                available_list,
                 extra={
                     "event": "lti_deployment_missing",
                     "issuer": registration.issuer,
                     "client_id": registration.client_id,
                     "deployment_id": deployment_id,
-                    "available_deployments": sorted(
-                        value for value in available if value
-                    ),
+                    "available_deployments": available_list,
                 },
             )
             raise HTTPException(

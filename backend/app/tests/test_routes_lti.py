@@ -1,6 +1,7 @@
 import base64
 import datetime
 import importlib
+import logging
 import os
 import sys
 from pathlib import Path
@@ -345,6 +346,57 @@ def test_lti_login_accepts_trailing_slash_variants(client, monkeypatch):
     )
 
     assert response_with_slash.status_code == 302
+
+
+def test_lti_login_logs_context_when_registration_missing(client, caplog):
+    caplog.set_level(logging.WARNING, logger="backend.app.lti.service")
+
+    response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://unknown.example",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-123",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+    warning_messages = [record.message for record in caplog.records]
+    assert any(
+        "issuer='https://unknown.example'" in message and "candidats=" in message
+        for message in warning_messages
+    )
+
+
+def test_lti_login_logs_context_when_deployment_missing(client, monkeypatch, caplog):
+    caplog.set_level(logging.WARNING, logger="backend.app.lti.service")
+    database = importlib.import_module("backend.app.database")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        registration, deployment, _ = _setup_registration(session)
+        session.delete(deployment)
+        session.commit()
+
+    response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-unknown",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+    warning_messages = [record.message for record in caplog.records]
+    assert any(
+        "deployment_id='deployment-unknown'" in message and "disponibles=" in message
+        for message in warning_messages
+    )
 
 
 def test_lti_deep_link_returns_content_items(client, monkeypatch):
