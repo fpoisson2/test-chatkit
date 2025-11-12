@@ -182,21 +182,21 @@
 
 /* Radix Select Content Styles */
 .admin-modal__select-content {
-  overflow: hidden;
+  overflow: visible;
   background: var(--background-color, #ffffff);
   border-radius: 8px;
   border: 1px solid var(--border-color, #e5e7eb);
   box-shadow: 0 10px 38px -10px rgba(0, 0, 0, 0.2),
     0 10px 20px -15px rgba(0, 0, 0, 0.1);
-  max-height: min(400px, 60vh);
   z-index: 100000;
   width: var(--radix-select-trigger-width);
 }
 
 .admin-modal__select-viewport {
   padding: 0.5rem;
-  max-height: min(400px, 60vh);
+  max-height: min(500px, 70vh);
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .admin-modal__select-item {
