@@ -2877,12 +2877,16 @@ button {
 
   .widget-library__section .widget-gallery__item .widget-preview {
     padding: clamp(14px, 6vw, 18px);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .widget-library__section .widget-gallery__item .widget-preview__card,
   .widget-library__section .widget-gallery__item .widget-preview__basic,
   .widget-library__section .widget-gallery__item .widget-preview__collection {
     width: 100%;
+    max-width: 100%;
+    margin-inline: auto;
   }
 }
 
