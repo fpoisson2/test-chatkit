@@ -381,6 +381,9 @@ class Workflow(Base):
     is_chatkit_default: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    lti_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

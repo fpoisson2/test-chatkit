@@ -2366,6 +2366,10 @@ class WorkflowService:
                     description = str(description_raw).strip()
                     workflow.description = description or None
 
+            if "lti_enabled" in updates:
+                lti_enabled = bool(updates["lti_enabled"])
+                workflow.lti_enabled = lti_enabled
+
             workflow.updated_at = datetime.datetime.now(datetime.UTC)
             db.add(workflow)
             db.commit()
@@ -3204,6 +3208,7 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "active_version_id": workflow.active_version_id,
         "active_version_number": active_version.version if active_version else None,
         "is_chatkit_default": workflow.is_chatkit_default,
+        "lti_enabled": workflow.lti_enabled,
         "versions_count": len(workflow.versions),
     }
 

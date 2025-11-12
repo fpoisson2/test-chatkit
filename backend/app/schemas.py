@@ -1191,6 +1191,7 @@ class WorkflowSummaryResponse(BaseModel):
     active_version_id: int | None = None
     active_version_number: int | None = None
     is_chatkit_default: bool
+    lti_enabled: bool
     versions_count: int
 
 
@@ -1215,6 +1216,7 @@ class WorkflowUpdateRequest(BaseModel):
     slug: str | None = None
     display_name: str | None = None
     description: str | None = None
+    lti_enabled: bool | None = None
 
 
 class WorkflowVersionCreateRequest(BaseModel):

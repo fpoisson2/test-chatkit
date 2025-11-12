@@ -864,6 +864,18 @@ def _run_ad_hoc_migrations() -> None:
                         )
                     )
 
+            if "lti_enabled" not in workflow_columns:
+                logger.info(
+                    "Migration du schéma des workflows : ajout de la colonne "
+                    "lti_enabled"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflows "
+                        "ADD COLUMN lti_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+
         if "workflow_steps" in table_names:
             dialect = connection.dialect.name
 

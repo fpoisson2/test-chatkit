@@ -95,6 +95,29 @@ def _as_str_sequence(value: Any) -> list[str]:
     return [str(item) for item in values if isinstance(item, str) and item]
 
 
+@router.get("/api/lti/workflows")
+async def list_lti_workflows(session: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    """Liste tous les workflows disponibles pour LTI Deep Linking."""
+    from ..models import Workflow
+    from sqlalchemy import select
+
+    workflows = session.scalars(
+        select(Workflow)
+        .where(Workflow.lti_enabled == True)
+        .where(Workflow.active_version_id.is_not(None))
+    ).all()
+
+    return [
+        {
+            "id": w.id,
+            "slug": w.slug,
+            "display_name": w.display_name,
+            "description": w.description,
+        }
+        for w in workflows
+    ]
+
+
 @router.post("/api/lti/deep-link")
 async def lti_deep_link(
     request: Request, service: LTIService = Depends(_get_service)
