@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..lti.service import LTIService
-from ..schemas import TokenResponse
 
 router = APIRouter()
 
@@ -59,10 +58,10 @@ async def lti_login(
     return service.initiate_login(params)
 
 
-@router.post("/api/lti/launch", response_model=TokenResponse)
+@router.post("/api/lti/launch")
 async def lti_launch(
     request: Request, service: LTIService = Depends(_get_service)
-) -> TokenResponse:
+):
     payload = await _extract_request_data(request)
     state = payload.get("state")
     id_token = payload.get("id_token")

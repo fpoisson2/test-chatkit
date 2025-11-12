@@ -10,7 +10,7 @@ import logging
 import secrets
 from collections.abc import Mapping, Sequence
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 import httpx
 import jwt
@@ -30,7 +30,6 @@ from ..models import (
     User,
     Workflow,
 )
-from ..schemas import TokenResponse
 from ..security import create_access_token, hash_password
 
 logger = logging.getLogger(__name__)
@@ -205,7 +204,7 @@ class LTIService:
 
         return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
-    def complete_launch(self, *, state: str, id_token: str) -> TokenResponse:
+    def complete_launch(self, *, state: str, id_token: str) -> RedirectResponse:
         session_record = self._get_session_from_state(state)
         payload = self._verify_id_token(session_record.registration, id_token)
         self._validate_common_claims(session_record, payload)
@@ -254,7 +253,25 @@ class LTIService:
         self.session.commit()
 
         token = create_access_token(user)
-        return TokenResponse(access_token=token, user=user)
+
+        # Redirect to frontend LTI launch handler
+        # Use first allowed origin or fall back to backend URL
+        frontend_base = self.settings.allowed_origins[0] if self.settings.allowed_origins else self.settings.backend_public_base_url
+        frontend_base = frontend_base.rstrip("/")
+
+        # Serialize user data for URL parameter
+        user_data = {
+            "id": user.id,
+            "email": user.email,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at.isoformat(),
+            "updated_at": user.updated_at.isoformat(),
+        }
+        user_json = quote(json.dumps(user_data))
+
+        launch_url = f"{frontend_base}/lti/launch?token={token}&user={user_json}"
+
+        return RedirectResponse(url=launch_url, status_code=status.HTTP_302_FOUND)
 
     def handle_deep_link(
         self,
