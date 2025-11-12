@@ -6,6 +6,7 @@ import base64
 import datetime
 import hashlib
 import json
+import logging
 import secrets
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -31,6 +32,8 @@ from ..models import (
 )
 from ..schemas import TokenResponse
 from ..security import create_access_token, hash_password
+
+logger = logging.getLogger(__name__)
 
 
 def _now_utc() -> datetime.datetime:
@@ -149,6 +152,17 @@ class LTIService:
 
         registration = self._get_registration(issuer, client_id)
         deployment = self._get_deployment(registration, deployment_ref)
+
+        logger.info(
+            "Initialisation de la connexion LTI réussie",
+            extra={
+                "event": "lti_login_initiated",
+                "issuer": registration.issuer,
+                "client_id": registration.client_id,
+                "deployment_id": deployment.deployment_id,
+                "target_link_uri": target_link_uri,
+            },
+        )
 
         state = secrets.token_urlsafe(32)
         nonce = secrets.token_urlsafe(16)
@@ -430,6 +444,23 @@ class LTIService:
             .where(LTIRegistration.issuer.in_(issuer_candidates))
         )
         if registration is None:
+            available = self.session.scalars(
+                select(LTIRegistration.issuer).where(
+                    LTIRegistration.client_id == client_id
+                )
+            ).all()
+            logger.warning(
+                "Enregistrement LTI introuvable",
+                extra={
+                    "event": "lti_registration_missing",
+                    "issuer": issuer,
+                    "client_id": client_id,
+                    "issuer_candidates": sorted(issuer_candidates),
+                    "available_issuers": sorted(
+                        value for value in available if value
+                    ),
+                },
+            )
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, detail="Enregistrement LTI introuvable"
             )
@@ -444,6 +475,23 @@ class LTIService:
             .where(LTIDeployment.deployment_id == deployment_id)
         )
         if deployment is None:
+            available = self.session.scalars(
+                select(LTIDeployment.deployment_id).where(
+                    LTIDeployment.registration_id == registration.id
+                )
+            ).all()
+            logger.warning(
+                "Déploiement LTI introuvable",
+                extra={
+                    "event": "lti_deployment_missing",
+                    "issuer": registration.issuer,
+                    "client_id": registration.client_id,
+                    "deployment_id": deployment_id,
+                    "available_deployments": sorted(
+                        value for value in available if value
+                    ),
+                },
+            )
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, detail="Déploiement LTI introuvable"
             )
