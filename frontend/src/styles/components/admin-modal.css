@@ -3,6 +3,7 @@
    ================================================================ */
 
 /* Modal container with extra-large size */
+.modal__container--xl.admin-modal,
 .admin-modal {
   width: min(98vw, 1600px);
   max-width: 1600px;
@@ -51,7 +52,7 @@
 @media (min-width: 1024px) {
   .admin-modal__desktop {
     display: grid;
-    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-columns: 210px minmax(0, 1fr);
     grid-template-rows: 1fr;
     height: 100%;
     min-height: 0;
