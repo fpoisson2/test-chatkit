@@ -1047,6 +1047,7 @@ export const en: TranslationDictionary = {
   "admin.mcpServers.form.saving": "Saving…",
   "admin.mcpServers.form.createSubmit": "Create server",
   "admin.mcpServers.form.updateSubmit": "Save changes",
+  "admin.mcpServers.form.cancel": "Cancel",
   "admin.mcpServers.form.cancelEdit": "Cancel edit",
   "admin.mcpServers.form.oauthButton": "Start OAuth",
   "admin.mcpServers.form.testButton": "Test connection",
