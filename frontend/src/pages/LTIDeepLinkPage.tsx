@@ -82,6 +82,12 @@ export default function LTIDeepLinkPage() {
 
       const result = await response.json();
 
+      console.log("Deep Linking response:", {
+        return_url: result.return_url,
+        has_jwt: !!result.deep_link_jwt,
+        content_items_count: result.content_items?.length,
+      });
+
       // Créer un formulaire invisible pour POST le JWT vers Moodle
       const form = document.createElement("form");
       form.method = "POST";
@@ -90,7 +96,12 @@ export default function LTIDeepLinkPage() {
       const jwtInput = document.createElement("input");
       jwtInput.type = "hidden";
       jwtInput.name = "JWT";
-      jwtInput.value = result.jwt;
+      jwtInput.value = result.deep_link_jwt || result.jwt;
+
+      console.log("Submitting form to Moodle:", {
+        action: form.action,
+        jwt_length: jwtInput.value?.length,
+      });
 
       form.appendChild(jwtInput);
       document.body.appendChild(form);

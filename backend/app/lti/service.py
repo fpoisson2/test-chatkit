@@ -361,6 +361,8 @@ class LTIService:
             "iat": int(now.timestamp()),
             "exp": int(expires_at.timestamp()),
             "nonce": secrets.token_urlsafe(8),
+            "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiDeepLinkingResponse",
+            "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
             "https://purl.imsglobal.org/spec/lti/claim/deployment_id": payload.get(
                 "https://purl.imsglobal.org/spec/lti/claim/deployment_id"
             ),
@@ -368,7 +370,6 @@ class LTIService:
             "https://purl.imsglobal.org/spec/lti-dl/claim/msg": (
                 "Workflows sélectionnés"
             ),
-            "https://purl.imsglobal.org/spec/lti-dl/claim/version": "1.3.0",
         }
 
         private_key_pem, _ = self._ensure_private_key()
@@ -379,11 +380,19 @@ class LTIService:
             headers={"kid": self.key_id},
         )
 
+        logger.info(
+            "Deep Linking JWT created: iss=%s, aud=%s, content_items_count=%d, return_url=%s",
+            response_payload.get("iss"),
+            response_payload.get("aud"),
+            len(content_items),
+            return_url,
+        )
+
         self.session.commit()
 
         return {
             "return_url": return_url,
-            "deep_link_jwt": deep_link_jwt,
+            "jwt": deep_link_jwt,
             "content_items": content_items,
         }
 
