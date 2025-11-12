@@ -2883,6 +2883,52 @@ button {
   display: inline;
 }
 
+/* Dans les modaux, toujours afficher en colonne car l'espace est limité */
+.modal .widget-gallery__item {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.75rem !important;
+  align-items: stretch !important;
+}
+
+.modal .widget-gallery__item .widget-preview,
+.modal .widget-gallery__item .widget-preview__card,
+.modal .widget-gallery__item .widget-preview__basic {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+.modal .widget-gallery__actions {
+  position: static !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 0.5rem !important;
+  padding: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  border-radius: 0 !important;
+}
+
+.modal .widget-gallery__actions .button,
+.modal .widget-gallery__actions .button--ghost,
+.modal .widget-gallery__actions .button--subtle,
+.modal .widget-gallery__actions .button--danger {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  font-size: 0.875rem !important;
+  padding: 0.6rem 0.75rem !important;
+  white-space: nowrap !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+}
+
 @media (max-width: 1024px) {
   .widget-gallery {
     grid-template-columns: 1fr !important;
