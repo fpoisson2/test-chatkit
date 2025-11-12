@@ -122,6 +122,9 @@ async def list_lti_workflows(session: Session = Depends(get_session)) -> list[di
 async def lti_deep_link(
     request: Request, service: LTIService = Depends(_get_service)
 ) -> dict[str, Any]:
+    from fastapi.responses import RedirectResponse
+    from urllib.parse import urlencode
+
     payload = await _extract_request_data(request)
     state = payload.get("state")
     id_token = payload.get("id_token")
@@ -134,6 +137,15 @@ async def lti_deep_link(
     workflow_ids = _as_int_sequence(payload.get("workflow_ids"))
     workflow_slugs = _as_str_sequence(payload.get("workflow_slugs"))
 
+    # Si aucun workflow n'est sélectionné, rediriger vers la page de sélection
+    if not workflow_ids and not workflow_slugs:
+        params = urlencode({"state": state, "id_token": id_token})
+        return RedirectResponse(
+            url=f"/lti/deep-link?{params}",
+            status_code=status.HTTP_302_FOUND
+        )
+
+    # Sinon, traiter la sélection
     return service.handle_deep_link(
         state=state,
         id_token=id_token,
