@@ -308,10 +308,14 @@ async def create_lti_registration(
     registration = LTIRegistration(
         issuer=issuer,
         client_id=client_id,
-        key_set_url=payload.key_set_url,
-        authorization_endpoint=payload.authorization_endpoint,
-        token_endpoint=payload.token_endpoint,
-        deep_link_return_url=payload.deep_link_return_url,
+        key_set_url=str(payload.key_set_url),
+        authorization_endpoint=str(payload.authorization_endpoint),
+        token_endpoint=str(payload.token_endpoint),
+        deep_link_return_url=(
+            str(payload.deep_link_return_url)
+            if payload.deep_link_return_url is not None
+            else None
+        ),
         audience=payload.audience,
     )
     session.add(registration)
@@ -362,20 +366,32 @@ async def update_lti_registration(
         registration.client_id = new_client_id
 
     if "key_set_url" in payload.model_fields_set:
-        registration.key_set_url = payload.key_set_url or registration.key_set_url
+        registration.key_set_url = (
+            str(payload.key_set_url)
+            if payload.key_set_url is not None
+            else registration.key_set_url
+        )
 
     if "authorization_endpoint" in payload.model_fields_set:
         registration.authorization_endpoint = (
-            payload.authorization_endpoint or registration.authorization_endpoint
+            str(payload.authorization_endpoint)
+            if payload.authorization_endpoint is not None
+            else registration.authorization_endpoint
         )
 
     if "token_endpoint" in payload.model_fields_set:
         registration.token_endpoint = (
-            payload.token_endpoint or registration.token_endpoint
+            str(payload.token_endpoint)
+            if payload.token_endpoint is not None
+            else registration.token_endpoint
         )
 
     if "deep_link_return_url" in payload.model_fields_set:
-        registration.deep_link_return_url = payload.deep_link_return_url
+        registration.deep_link_return_url = (
+            str(payload.deep_link_return_url)
+            if payload.deep_link_return_url is not None
+            else None
+        )
 
     if "audience" in payload.model_fields_set:
         registration.audience = payload.audience
