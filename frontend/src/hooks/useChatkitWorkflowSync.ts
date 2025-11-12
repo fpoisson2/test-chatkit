@@ -101,7 +101,7 @@ export const useChatkitWorkflowSync = ({
       const ctrl = controlRef.current;
       const shouldForceReload =
         context?.includes('[Voice]') || context?.includes('[OutboundCall]');
-      if (ctrl?.threadId && shouldForceReload) {
+      if (ctrl?.threadId && shouldForceReload && typeof ctrl.setThreadId === 'function') {
         if (import.meta.env.DEV) {
           console.log('[WorkflowSync] Forçant rechargement du thread pour transcriptions vocales ou sortantes', {
             threadId: ctrl.threadId,

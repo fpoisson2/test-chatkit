@@ -320,7 +320,7 @@ export function MyChat() {
       setInitialThreadId(nextInitialThreadId);
 
       // Switch to the new thread without destroying the ChatKit component
-      if (controlRef.current) {
+      if (controlRef.current && typeof controlRef.current.setThreadId === 'function') {
         if (nextInitialThreadId) {
           controlRef.current.setThreadId(nextInitialThreadId);
         } else {

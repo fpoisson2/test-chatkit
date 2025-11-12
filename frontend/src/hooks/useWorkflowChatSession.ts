@@ -39,7 +39,7 @@ export const useWorkflowChatSession = ({
       const currentThread = control.threadId;
       const shouldForceReload =
         context?.includes('[Voice]') || context?.includes('[OutboundCall]');
-      if (currentThread && shouldForceReload) {
+      if (currentThread && shouldForceReload && typeof control.setThreadId === 'function') {
         if (import.meta.env.DEV) {
           console.log('[WorkflowChat] Forçant rechargement du thread pour transcriptions vocales ou sortantes', {
             threadId: currentThread,
