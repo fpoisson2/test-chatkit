@@ -22,6 +22,12 @@ export const AdminModalMobile = ({
   const { t } = useI18n();
   const contentRef = useRef<HTMLDivElement | null>(null);
 
+  // Debug: Log number of sections
+  useEffect(() => {
+    console.log('[AdminModalMobile] Total sections:', ADMIN_SECTIONS.length);
+    console.log('[AdminModalMobile] Sections:', ADMIN_SECTIONS.map(s => ({ key: s.key, label: s.labelKey })));
+  }, []);
+
   // Save scroll position when switching tabs
   const handleTabChange = useCallback(
     (newTab: AdminSectionKey) => {
@@ -66,7 +72,12 @@ export const AdminModalMobile = ({
           </Select.Trigger>
 
           <Select.Portal>
-            <Select.Content className="admin-modal__select-content" position="popper">
+            <Select.Content
+              className="admin-modal__select-content"
+              position="popper"
+              side="bottom"
+              align="start"
+            >
               <Select.Viewport className="admin-modal__select-viewport">
                 {ADMIN_SECTIONS.map((section) => (
                   <Select.Item
