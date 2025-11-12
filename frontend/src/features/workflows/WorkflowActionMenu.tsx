@@ -29,13 +29,13 @@ export const getActionMenuStyle = (
           top: "auto",
           bottom: "calc(100% + 0.5rem)",
           right: "0",
-          left: "0",
+          left: "auto",
         }
       : {
           top: "calc(100% + 0.5rem)",
           bottom: "auto",
           right: "0",
-          left: "0",
+          left: "auto",
         }
     : placement === "up"
       ? {
@@ -55,9 +55,9 @@ export const getActionMenuStyle = (
   border: "1px solid var(--surface-border)",
   boxShadow: "var(--shadow-card)",
   padding: "0.5rem",
-  minWidth: isMobile ? "0" : "220px",
-  width: isMobile ? "auto" : "max-content",
-  maxWidth: isMobile ? "none" : "min(320px, 100%)",
+  minWidth: isMobile ? "200px" : "220px",
+  width: isMobile ? "max-content" : "max-content",
+  maxWidth: isMobile ? "calc(100vw - 2rem)" : "min(320px, 100%)",
   display: "flex",
   flexDirection: "column",
   gap: "0.25rem",

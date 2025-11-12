@@ -972,6 +972,13 @@
   z-index: 40;
 }
 
+@media (max-width: 768px) {
+  .chatkit-sidebar__workflow-menu {
+    transform: translateX(0);
+    margin-right: 0;
+  }
+}
+
 .chatkit-sidebar__workflow-action-button {
   border: none;
   background: transparent;
