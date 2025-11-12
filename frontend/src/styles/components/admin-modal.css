@@ -276,6 +276,13 @@
   margin: 0;
 }
 
+/* Constrain widget gallery width when displayed inside the admin modal */
+.admin-modal__tab-content .widget-gallery {
+  max-width: min(100%, 1040px);
+  margin: 0 auto;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
 /* Accessibility improvements */
 .admin-modal__tab-trigger:focus-visible,
 .admin-modal__select-trigger:focus-visible {
