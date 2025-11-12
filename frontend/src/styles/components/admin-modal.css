@@ -279,8 +279,9 @@
 /* Constrain widget gallery width when displayed inside the admin modal */
 .admin-modal__tab-content .widget-gallery {
   max-width: min(100%, 1040px);
+  width: 100%;
   margin: 0 auto;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 
 /* Accessibility improvements */
