@@ -173,9 +173,11 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             expected_workflow = self._current_workflow_metadata()
             workflow_metadata = metadata.get("workflow")
             if self._has_complete_workflow_metadata(workflow_metadata):
-                if not self._workflow_matches(workflow_metadata, expected_workflow):
-                    raise NotFoundError(f"Thread {thread.id} introuvable")
+                # Garder les métadonnées de workflow existantes
+                # Permet aux threads de différents workflows de coexister (cache frontend)
+                pass
             else:
+                # Assigner le workflow actuel si pas de métadonnées complètes
                 metadata["workflow"] = dict(expected_workflow)
             thread.metadata = metadata
             payload["metadata"] = metadata
