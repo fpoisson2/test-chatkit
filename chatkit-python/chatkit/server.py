@@ -1,5 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import contextmanager
 from datetime import datetime
@@ -269,6 +270,8 @@ class ChatKitServer(ABC, Generic[TContext]):
     ):
         self.store = store
         self.attachment_store = attachment_store
+        self._pending_thread_events: dict[str, list[ThreadStreamEvent]] = defaultdict(list)
+        self._pending_events_lock = asyncio.Lock()
 
     def _get_attachment_store(self) -> AttachmentStore[TContext]:
         """Return the configured AttachmentStore or raise if missing."""
@@ -629,11 +632,26 @@ class ChatKitServer(ABC, Generic[TContext]):
         thread: ThreadMetadata,
         context: TContext,
         stream: Callable[[], AsyncIterator[ThreadStreamEvent]],
+        *,
+        capture_only: bool = False,
     ) -> AsyncIterator[ThreadStreamEvent]:
         await asyncio.sleep(0)  # allow the response to start streaming
 
         last_thread = thread.model_copy(deep=True)
         id_map: dict[str, str] = {}
+
+        async def _queue_pending_event(event: ThreadStreamEvent) -> None:
+            async with self._pending_events_lock:
+                self._pending_thread_events[thread.id].append(event)
+
+        async def _drain_pending_events() -> list[ThreadStreamEvent]:
+            async with self._pending_events_lock:
+                pending = self._pending_thread_events.pop(thread.id, [])
+            return pending
+
+        if not capture_only:
+            for pending_event in await _drain_pending_events():
+                yield pending_event
 
         def resolve_store_item_type(item: ThreadItem) -> StoreItemType:
             if item.type in ("user_message", "assistant_message"):
@@ -770,42 +788,73 @@ class ChatKitServer(ABC, Generic[TContext]):
                     ) and isinstance(event.item, HiddenContextItem)
 
                     if not should_swallow_event:
-                        yield event
+                        if capture_only:
+                            await _queue_pending_event(event)
+                        else:
+                            yield event
 
                     # in case user updated the thread while streaming
                     if thread != last_thread:
                         last_thread = thread.model_copy(deep=True)
                         await self.store.save_thread(thread, context=context)
-                        yield ThreadUpdatedEvent(
+                        thread_event = ThreadUpdatedEvent(
                             thread=self._to_thread_response(thread)
                         )
+                        if capture_only:
+                            await _queue_pending_event(thread_event)
+                        else:
+                            yield thread_event
                 # in case user updated the thread while streaming
                 if thread != last_thread:
                     last_thread = thread.model_copy(deep=True)
                     await self.store.save_thread(thread, context=context)
-                    yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
+                    thread_event = ThreadUpdatedEvent(
+                        thread=self._to_thread_response(thread)
+                    )
+                    if capture_only:
+                        await _queue_pending_event(thread_event)
+                    else:
+                        yield thread_event
         except CustomStreamError as e:
-            yield ErrorEvent(
+            error_event = ErrorEvent(
                 code="custom",
                 message=e.message,
                 allow_retry=e.allow_retry,
             )
+            if capture_only:
+                await _queue_pending_event(error_event)
+            else:
+                yield error_event
         except StreamError as e:
-            yield ErrorEvent(
+            error_event = ErrorEvent(
                 code=e.code,
                 allow_retry=e.allow_retry,
             )
+            if capture_only:
+                await _queue_pending_event(error_event)
+            else:
+                yield error_event
         except Exception as e:
-            yield ErrorEvent(
+            error_event = ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
                 allow_retry=True,
             )
+            if capture_only:
+                await _queue_pending_event(error_event)
+            else:
+                yield error_event
             logger.exception(e)
 
         if thread != last_thread:
             # in case user updated the thread at the end of the stream
             await self.store.save_thread(thread, context=context)
-            yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
+            thread_event = ThreadUpdatedEvent(
+                thread=self._to_thread_response(thread)
+            )
+            if capture_only:
+                await _queue_pending_event(thread_event)
+            else:
+                yield thread_event
 
     async def _build_user_message_item(
         self, input: UserMessageInput, thread: ThreadMetadata, context: TContext

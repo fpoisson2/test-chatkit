@@ -358,3 +358,85 @@ async def test_process_events_persists_streaming_state() -> None:
     assert final_workflow.workflow.tasks[1].content.endswith("Résultat\n\n42")
     assert final_workflow.workflow.tasks[2].queries == ["chatgpt", "openai"]
     assert final_workflow.workflow.tasks[2].sources[0].url == "https://openai.com"
+
+
+@pytest.mark.asyncio
+async def test_process_events_replays_pending_events_after_disconnect() -> None:
+    store = _MemoryStore()
+    server = _TestServer(store)
+    thread = ThreadMetadata(id="thr_replay", created_at=datetime.now())
+    await store.save_thread(thread, None)
+
+    assistant_initial = AssistantMessageItem(
+        id="__assistant__",
+        thread_id=thread.id,
+        created_at=datetime.now(),
+        content=[AssistantMessageContent(text="", annotations=[])],
+    )
+
+    events: list[ThreadStreamEvent] = [
+        ThreadItemAddedEvent(item=assistant_initial),
+        ThreadItemUpdated(
+            item_id="__assistant__",
+            update=AssistantMessageContentPartTextDelta(
+                content_index=0,
+                delta="Bonjour",
+            ),
+        ),
+        ThreadItemDoneEvent(
+            item=AssistantMessageItem(
+                id="__assistant__",
+                thread_id=thread.id,
+                created_at=assistant_initial.created_at,
+                content=[
+                    AssistantMessageContent(
+                        text="Bonjour",
+                        annotations=[],
+                    )
+                ],
+            )
+        ),
+    ]
+
+    async for _ in server._process_events(
+        thread, None, _stream_from(events), capture_only=True
+    ):
+        pass
+
+    stored_items = await store.load_thread_items(
+        thread.id, None, 10, "asc", None
+    )
+    assert len(stored_items.data) == 1
+    stored_assistant = stored_items.data[0]
+    assert isinstance(stored_assistant, AssistantMessageItem)
+    assert stored_assistant.content[0].text == "Bonjour"
+
+    emitted: list[ThreadStreamEvent] = []
+    async for event in server._process_events(
+        thread, None, _stream_from([])
+    ):
+        emitted.append(event)
+
+    assert [type(evt) for evt in emitted] == [
+        ThreadItemAddedEvent,
+        ThreadItemUpdated,
+        ThreadItemDoneEvent,
+    ]
+
+    assistant_id = stored_assistant.id
+    assert isinstance(emitted[0], ThreadItemAddedEvent)
+    assert emitted[0].item.id == assistant_id
+
+    assert isinstance(emitted[1], ThreadItemUpdated)
+    assert emitted[1].item_id == assistant_id
+
+    assert isinstance(emitted[2], ThreadItemDoneEvent)
+    assert emitted[2].item.id == assistant_id
+
+    replayed_again = [
+        evt
+        async for evt in server._process_events(
+            thread, None, _stream_from([])
+        )
+    ]
+    assert replayed_again == []

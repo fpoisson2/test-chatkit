@@ -649,6 +649,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     thread,
                     context,
                     lambda: _workflow_stream(),
+                    capture_only=True,
                 ):
                     pass
                 try:
