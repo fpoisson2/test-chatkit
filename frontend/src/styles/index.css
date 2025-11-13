@@ -3,17 +3,30 @@
  * Imports all modular CSS files in the correct order
  */
 
-/* 1. Design Tokens - CSS Custom Properties */
+/* 0. Declare layer order explicitly - utilities NOT in layer to have highest priority */
+@layer base, components;
+
+/* 1. Design System - CSS Custom Properties and Variables */
+@import './tokens/design-system-vars.css';
+
+/* 2. Design Tokens - CSS Custom Properties */
 @import './tokens/colors.css';
 @import './tokens/typography.css';
 @import './tokens/spacing.css';
 @import './tokens/shadows.css';
 
-/* 2. Base Styles - Resets and global styles */
+/* 3. Design System Base - Resets and global styles with cascade layers */
+@import './design-system/base.css';
+
+/* 4. Base Styles - Resets and global styles */
 @import './base/reset.css';
 @import './base/utilities.css';
 
-/* 3. Component Styles - Reusable UI components */
+/* 5. Design System Components - UI components with cascade layers */
+@import './design-system/components-1.css';
+@import './design-system/components-2.css';
+
+/* 6. Component Styles - Reusable UI components */
 @import './components/buttons.css';
 @import './components/forms.css';
 @import './components/cards.css';
@@ -24,9 +37,13 @@
 @import './components/admin.css';
 @import './components/admin-modal.css';
 
-/* 4. Animations and Micro-interactions */
+/* 7. Animations and Micro-interactions */
 @import './animations.css';
 
-/* 5. Legacy Styles - Remaining styles to be extracted in future phases */
+/* 8. Legacy Styles - Must come before utilities so utility classes can override */
 /* This includes sidebar, admin, and other component styles not yet modularized */
 @import './legacy.css';
+
+/* 9. Design System Utilities - Utility classes with cascade layers */
+/* MUST be imported after legacy.css to ensure utilities can override legacy styles */
+@import './design-system/utilities.css';

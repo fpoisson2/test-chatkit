@@ -46,7 +46,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const formatSpacing = (value: unknown): string | undefined => {
   if (typeof value === "number") {
-    return `${value}px`;
+    // Use design system spacing: 1 unit = 4px (like Tailwind)
+    // padding={8} becomes calc(var(--spacing) * 8) = calc(4px * 8) = 32px
+    return `calc(var(--spacing, 4px) * ${value})`;
   }
   if (typeof value === "string") {
     return value;
@@ -313,32 +315,109 @@ const applyBoxStyles = (box: BoxLike): React.CSSProperties => {
 };
 
 const renderText = (component: Widgets.TextComponent) => {
-  const classNames = ["widget-preview__text"];
-  if (component.weight === "semibold" || component.weight === "bold" || component.weight === "medium") {
-    classNames.push("widget-preview__text--bold");
-  }
-  if (component.italic) {
-    classNames.push("widget-preview__text--italic");
-  }
+  const classNames: string[] = [];
+
   const style: React.CSSProperties = {};
-  if (component.size) {
-    classNames.push(`widget-preview__text--${component.size}`);
+
+  // Weight mapping
+  if (component.weight === "bold") {
+    classNames.push("font-bold");
+  } else if (component.weight === "semibold") {
+    classNames.push("font-semibold");
+  } else if (component.weight === "medium") {
+    classNames.push("font-medium");
+  } else if (component.weight === "normal") {
+    classNames.push("font-normal");
   }
+
+  // Italic
+  if (component.italic) {
+    classNames.push("italic");
+  }
+
+  // Size mapping - extended range
+  if (component.size === "3xs") {
+    style.fontSize = "var(--font-text-3xs-size, 0.5rem)";
+    style.lineHeight = "var(--font-text-3xs-line-height, 0.75rem)";
+  } else if (component.size === "2xs") {
+    style.fontSize = "var(--font-text-2xs-size, 0.625rem)";
+    style.lineHeight = "var(--font-text-2xs-line-height, 0.875rem)";
+  } else if (component.size === "xs") {
+    classNames.push("text-xs");
+  } else if (component.size === "sm") {
+    classNames.push("text-sm");
+  } else if (component.size === "md") {
+    classNames.push("text-base");
+  } else if (component.size === "lg") {
+    classNames.push("text-lg");
+  } else if (component.size === "xl") {
+    classNames.push("text-xl");
+  } else if (component.size === "2xl") {
+    classNames.push("text-2xl");
+  } else if (component.size === "3xl") {
+    classNames.push("text-3xl");
+  } else if (component.size === "4xl") {
+    classNames.push("text-4xl");
+  } else if (component.size === "5xl") {
+    classNames.push("text-5xl");
+  } else {
+    classNames.push("text-base");
+  }
+
+  // Line through
   if (component.lineThrough) {
-    style.textDecoration = "line-through";
+    classNames.push("line-through");
   }
-  if (component.textAlign) {
-    style.textAlign = component.textAlign as React.CSSProperties["textAlign"];
+
+  // Text alignment
+  if (component.textAlign === "center") {
+    classNames.push("text-center");
+  } else if (component.textAlign === "right") {
+    classNames.push("text-right");
+  } else if (component.textAlign === "left") {
+    classNames.push("text-left");
   }
+
+  // Color handling - support semantic colors, primitive tokens, and alpha values
   if (component.color) {
-    const color = toThemeColor(component.color);
-    if (color) {
-      style.color = color;
+    if (typeof component.color === "string") {
+      // Handle text color tokens (prose, primary, emphasis, secondary, tertiary, success, warning, danger)
+      const semanticColors = ["prose", "primary", "emphasis", "secondary", "tertiary", "success", "warning", "danger"];
+      if (semanticColors.includes(component.color)) {
+        classNames.push(`text-${component.color}`);
+      }
+      // Handle alpha colors like "alpha-70" using CSS variables
+      else if (component.color.startsWith("alpha-")) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle primitive color tokens like "red-100", "blue-900", "gray-500"
+      else if (/^(red|blue|green|yellow|purple|pink|gray|orange|teal|cyan|indigo)-\d{2,3}$/.test(component.color)) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle CSS color strings or custom theme colors
+      else {
+        const color = toThemeColor(component.color);
+        if (color) {
+          style.color = color;
+        } else {
+          // Use as direct CSS color value
+          style.color = component.color;
+        }
+      }
+    } else {
+      // Object color (with light/dark variants)
+      const color = toThemeColor(component.color);
+      if (color) {
+        style.color = color;
+      }
     }
   }
+
+  // Width
   if (component.width) {
     style.width = typeof component.width === "number" ? `${component.width}px` : component.width;
   }
+
   return (
     <p className={classNames.join(" ")} style={style}>
       {component.value}
@@ -347,20 +426,91 @@ const renderText = (component: Widgets.TextComponent) => {
 };
 
 const renderTitle = (component: Widgets.Title) => {
-  const classNames = ["widget-preview__title"];
-  if (component.size) {
-    classNames.push(`widget-preview__title--${component.size}`);
+  const classNames: string[] = [];
+
+  // Weight mapping
+  if (component.weight === "bold") {
+    classNames.push("font-bold");
+  } else if (component.weight === "semibold") {
+    classNames.push("font-semibold");
+  } else if (component.weight === "medium") {
+    classNames.push("font-medium");
+  } else if (component.weight === "normal") {
+    classNames.push("font-normal");
+  } else {
+    // Default for Title is semibold
+    classNames.push("font-semibold");
   }
+
+  // Size mapping - 1:1 mapping with text utilities
+  if (component.size === "xs") {
+    classNames.push("text-xs");
+  } else if (component.size === "sm") {
+    classNames.push("text-sm");
+  } else if (component.size === "md") {
+    classNames.push("text-base");
+  } else if (component.size === "lg") {
+    classNames.push("text-lg");
+  } else if (component.size === "xl") {
+    classNames.push("text-xl");
+  } else if (component.size === "2xl") {
+    classNames.push("text-2xl"); // 36px (2.25rem)
+  } else if (component.size === "3xl") {
+    classNames.push("text-3xl"); // 48px (3rem)
+  } else if (component.size === "4xl") {
+    classNames.push("text-4xl"); // 60px (3.75rem)
+  } else if (component.size === "5xl") {
+    classNames.push("text-5xl"); // 72px (4.5rem)
+  } else {
+    classNames.push("text-base");
+  }
+
   const style: React.CSSProperties = {};
-  if (component.textAlign) {
-    style.textAlign = component.textAlign as React.CSSProperties["textAlign"];
+
+  // Text alignment
+  if (component.textAlign === "center") {
+    classNames.push("text-center");
+  } else if (component.textAlign === "right") {
+    classNames.push("text-right");
+  } else if (component.textAlign === "left") {
+    classNames.push("text-left");
   }
+
+  // Color handling - support semantic colors, primitive tokens, and alpha values (same as renderText)
   if (component.color) {
-    const color = toThemeColor(component.color);
-    if (color) {
-      style.color = color;
+    if (typeof component.color === "string") {
+      // Handle text color tokens (prose, primary, emphasis, secondary, tertiary, success, warning, danger)
+      const semanticColors = ["prose", "primary", "emphasis", "secondary", "tertiary", "success", "warning", "danger"];
+      if (semanticColors.includes(component.color)) {
+        classNames.push(`text-${component.color}`);
+      }
+      // Handle alpha colors like "alpha-70" using CSS variables
+      else if (component.color.startsWith("alpha-")) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle primitive color tokens like "red-100", "blue-900", "gray-500"
+      else if (/^(red|blue|green|yellow|purple|pink|gray|orange|teal|cyan|indigo)-\d{2,3}$/.test(component.color)) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle CSS color strings or custom theme colors
+      else {
+        const color = toThemeColor(component.color);
+        if (color) {
+          style.color = color;
+        } else {
+          // Use as direct CSS color value
+          style.color = component.color;
+        }
+      }
+    } else {
+      // Object color (with light/dark variants)
+      const color = toThemeColor(component.color);
+      if (color) {
+        style.color = color;
+      }
     }
   }
+
   return (
     <h3 className={classNames.join(" ")} style={style}>
       {component.value}
@@ -369,17 +519,57 @@ const renderTitle = (component: Widgets.Title) => {
 };
 
 const renderCaption = (component: Widgets.Caption) => {
-  const classNames = ["widget-preview__caption"];
-  if (component.size) {
-    classNames.push(`widget-preview__caption--${component.size}`);
+  const classNames: string[] = [];
+
+  // Size mapping
+  if (component.size === "xs") {
+    classNames.push("text-xs");
+  } else if (component.size === "sm") {
+    classNames.push("text-sm");
+  } else {
+    classNames.push("text-sm");
   }
+
   const style: React.CSSProperties = {};
+
+  // Color handling - support semantic colors, primitive tokens, and alpha values (same as renderText)
   if (component.color) {
-    const color = toThemeColor(component.color);
-    if (color) {
-      style.color = color;
+    if (typeof component.color === "string") {
+      // Handle text color tokens (prose, primary, emphasis, secondary, tertiary, success, warning, danger)
+      const semanticColors = ["prose", "primary", "emphasis", "secondary", "tertiary", "success", "warning", "danger"];
+      if (semanticColors.includes(component.color)) {
+        classNames.push(`text-${component.color}`);
+      }
+      // Handle alpha colors like "alpha-70" using CSS variables
+      else if (component.color.startsWith("alpha-")) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle primitive color tokens like "red-100", "blue-900", "gray-500"
+      else if (/^(red|blue|green|yellow|purple|pink|gray|orange|teal|cyan|indigo)-\d{2,3}$/.test(component.color)) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle CSS color strings or custom theme colors
+      else {
+        const color = toThemeColor(component.color);
+        if (color) {
+          style.color = color;
+        } else {
+          // Use as direct CSS color value
+          style.color = component.color;
+        }
+      }
+    } else {
+      // Object color (with light/dark variants)
+      const color = toThemeColor(component.color);
+      if (color) {
+        style.color = color;
+      }
     }
+  } else {
+    // Default caption color
+    classNames.push("text-secondary");
   }
+
   return (
     <p className={classNames.join(" ")} style={style}>
       {component.value}
@@ -388,19 +578,37 @@ const renderCaption = (component: Widgets.Caption) => {
 };
 
 const renderBadge = (component: Widgets.Badge) => {
-  const classNames = ["widget-preview__badge"];
-  if (component.color) {
-    classNames.push(`widget-preview__badge--${component.color}`);
+  const classNames = ["badge"];
+
+  // Color variants
+  if (component.color === "primary" || component.color === "blue") {
+    classNames.push("badge-primary");
+  } else if (component.color === "secondary" || component.color === "gray") {
+    classNames.push("badge-secondary");
+  } else if (component.color === "danger" || component.color === "red") {
+    classNames.push("badge-danger");
+  } else if (component.color === "success" || component.color === "green") {
+    classNames.push("badge-success");
+  } else if (component.color === "warning" || component.color === "yellow") {
+    classNames.push("badge-warning");
+  } else if (component.color === "info" || component.color === "cyan") {
+    classNames.push("badge-info");
   }
-  if (component.variant) {
-    classNames.push(`widget-preview__badge--${component.variant}`);
+
+  // Variant (solid, outline, soft)
+  if (component.variant === "outline") {
+    classNames.push("badge-outline");
+  } else if (component.variant === "soft") {
+    classNames.push("badge-soft");
   }
-  if (component.size) {
-    classNames.push(`widget-preview__badge--${component.size}`);
+
+  // Size
+  if (component.size === "sm") {
+    classNames.push("badge-sm");
+  } else if (component.size === "lg") {
+    classNames.push("badge-lg");
   }
-  if (component.pill) {
-    classNames.push("widget-preview__badge--pill");
-  }
+
   return <span className={classNames.join(" ")}>{component.label}</span>;
 };
 
@@ -408,71 +616,81 @@ const renderStatus = (status?: Widgets.WidgetStatus) => {
   if (!status) {
     return null;
   }
-  const classNames = ["widget-preview__status"];
+  const classNames = ["flex items-center gap-2 text-sm"];
   if ("frame" in status && status.frame) {
-    classNames.push("widget-preview__status--framed");
+    classNames.push("p-3 rounded-lg bg-surface-elevated border");
   }
   const iconName = "icon" in status ? status.icon : undefined;
   const favicon = "favicon" in status ? status.favicon : undefined;
   return (
     <div className={classNames.join(" ")} role="status">
       {favicon ? (
-        <span className="widget-preview__status-favicon" aria-hidden>
-          <img src={favicon} alt="" />
+        <span className="inline-flex w-4 h-4" aria-hidden>
+          <img src={favicon} alt="" className="w-full h-full object-contain" />
         </span>
       ) : null}
       {iconName ? (
-        <span className="widget-preview__status-icon" aria-hidden>
+        <span className="inline-flex w-4 h-4 text-secondary" aria-hidden>
           {renderWidgetIcon(iconName)}
         </span>
       ) : null}
-      <span className="widget-preview__status-text">{status.text}</span>
+      <span className="text-secondary">{status.text}</span>
     </div>
   );
 };
 
 const renderButton = (component: Widgets.Button) => {
-  const classNames = ["widget-preview__button"];
+  const classNames = ["btn"];
+
+  // Style mapping: primary (default) or secondary
   if (component.style === "secondary") {
-    classNames.push("widget-preview__button--secondary");
+    classNames.push("btn-secondary");
+  } else {
+    classNames.push("btn-primary");
   }
-  if (component.variant) {
-    classNames.push(`widget-preview__button--${component.variant}`);
+
+  // Variant mapping (solid, outline, ghost)
+  if (component.variant === "outline") {
+    classNames.push("btn-outline");
+  } else if (component.variant === "ghost") {
+    classNames.push("btn-ghost");
   }
-  if (component.color) {
-    classNames.push(`widget-preview__button--${component.color}`);
+
+  // Color variants
+  if (component.color === "danger" || component.color === "red") {
+    classNames.push("btn-danger");
+  } else if (component.color === "success" || component.color === "green") {
+    classNames.push("btn-success");
   }
-  if (component.block) {
-    classNames.push("widget-preview__button--block");
+
+  // Size variants
+  if (component.size === "sm") {
+    classNames.push("btn-sm");
+  } else if (component.size === "lg") {
+    classNames.push("btn-lg");
   }
-  if (component.pill) {
-    classNames.push("widget-preview__button--pill");
+
+  // Block button (full width)
+  if (component.block || component.uniform) {
+    classNames.push("w-full");
   }
-  if (component.uniform) {
-    classNames.push("widget-preview__button--uniform");
-  }
-  if (component.size) {
-    classNames.push(`widget-preview__button--size-${component.size}`);
-  }
-  if (component.disabled) {
-    classNames.push("widget-preview__button--disabled");
-  }
+
   const iconStyle = component.iconSize ? { fontSize: buttonIconSizeMap[component.iconSize] } : undefined;
   return (
     <button
       className={classNames.join(" ")}
       type={component.submit ? "submit" : "button"}
-      disabled
+      disabled={component.disabled}
       aria-disabled={component.disabled ?? false}
     >
       {component.iconStart ? (
-        <span className="widget-preview__button-icon widget-preview__button-icon--start" style={iconStyle} aria-hidden>
+        <span className="btn-icon" style={iconStyle} aria-hidden>
           {renderWidgetIcon(component.iconStart)}
         </span>
       ) : null}
-      <span className="widget-preview__button-label">{component.label ?? "Bouton"}</span>
+      <span>{component.label ?? "Bouton"}</span>
       {component.iconEnd ? (
-        <span className="widget-preview__button-icon widget-preview__button-icon--end" style={iconStyle} aria-hidden>
+        <span className="btn-icon" style={iconStyle} aria-hidden>
           {renderWidgetIcon(component.iconEnd)}
         </span>
       ) : null}
@@ -480,18 +698,81 @@ const renderButton = (component: Widgets.Button) => {
   );
 };
 
-const renderImage = (component: Widgets.Image) => (
-  <figure className="widget-preview__image">
-    <img src={component.src} alt={component.alt ?? "Prévisualisation du widget"} />
-    {component.caption ? <figcaption>{component.caption}</figcaption> : null}
-  </figure>
-);
+const renderImage = (component: Widgets.Image) => {
+  const style: React.CSSProperties = {};
+  const props = component as unknown as Record<string, unknown>;
+
+  // Handle size, width, and height properties
+  if (props.size !== undefined) {
+    const formatted = formatDimension(props.size);
+    if (formatted) {
+      style.width = formatted;
+      style.height = formatted;
+    }
+  } else {
+    if (props.width !== undefined) {
+      const formatted = formatDimension(props.width);
+      if (formatted) {
+        style.width = formatted;
+      }
+    }
+    if (props.height !== undefined) {
+      const formatted = formatDimension(props.height);
+      if (formatted) {
+        style.height = formatted;
+      }
+    }
+  }
+
+  // Apply radius if specified
+  if (props.radius !== undefined) {
+    const formatted = formatRadius(props.radius);
+    if (formatted) {
+      style.borderRadius = formatted;
+    }
+  }
+
+  // Default classes - use object-cover when size is specified, otherwise responsive
+  const hasFixedSize = style.width !== undefined || style.height !== undefined;
+  const imgClasses = hasFixedSize
+    ? "rounded-lg object-cover"
+    : "w-full h-auto rounded-lg";
+
+  return (
+    <figure className="my-4">
+      <img
+        src={component.src}
+        alt={component.alt ?? "Prévisualisation du widget"}
+        className={imgClasses}
+        style={Object.keys(style).length > 0 ? style : undefined}
+      />
+      {component.caption ? (
+        <figcaption className="text-sm text-secondary mt-2 text-center">
+          {component.caption}
+        </figcaption>
+      ) : null}
+    </figure>
+  );
+};
 
 const renderIcon = (component: Widgets.Icon) => {
-  const classNames = ["widget-preview__icon"];
-  if (component.size) {
-    classNames.push(`widget-preview__icon--${component.size}`);
+  const classNames = ["inline-flex"];
+
+  // Size mapping
+  if (component.size === "xs") {
+    classNames.push("w-3 h-3");
+  } else if (component.size === "sm") {
+    classNames.push("w-4 h-4");
+  } else if (component.size === "md") {
+    classNames.push("w-5 h-5");
+  } else if (component.size === "lg") {
+    classNames.push("w-6 h-6");
+  } else if (component.size === "xl") {
+    classNames.push("w-8 h-8");
+  } else {
+    classNames.push("w-5 h-5");
   }
+
   const style: React.CSSProperties = {};
   if (component.color) {
     const color = toThemeColor(component.color);
@@ -499,10 +780,15 @@ const renderIcon = (component: Widgets.Icon) => {
       style.color = color;
     }
   }
+
   const iconElement = renderWidgetIcon(component.name);
   return (
     <span className={classNames.join(" ")} aria-hidden style={style}>
-      {iconElement ?? <span className="widget-preview__icon-fallback">{component.name}</span>}
+      {iconElement ?? (
+        <span className="inline-flex items-center justify-center text-xs bg-surface-elevated rounded px-1">
+          {component.name}
+        </span>
+      )}
     </span>
   );
 };
@@ -524,72 +810,76 @@ const renderDivider = (component: Widgets.Divider) => {
   if (component.spacing) {
     applySpacing(style, "margin", component.spacing);
   }
-  return <hr className="widget-preview__divider" style={style} />;
+  return <hr className="divider" style={style} />;
 };
 
 const renderCheckbox = (component: Widgets.Checkbox) => (
-  <label className="widget-preview__control">
+  <label className="checkbox">
     <input type="checkbox" checked={Boolean(component.defaultChecked)} disabled />
     <span>{component.label ?? component.name}</span>
   </label>
 );
 
 const renderInput = (component: Widgets.Input) => (
-  <label className="widget-preview__control">
-    <span className="widget-preview__control-label">{component.placeholder ?? component.name}</span>
-    <input type={component.inputType ?? "text"} defaultValue={component.defaultValue} disabled />
-  </label>
+  <div className="form-group">
+    <label className="form-label">{component.placeholder ?? component.name}</label>
+    <input className="input" type={component.inputType ?? "text"} defaultValue={component.defaultValue} disabled />
+  </div>
 );
 
 const renderTextarea = (component: Widgets.Textarea) => (
-  <label className="widget-preview__control">
-    <span className="widget-preview__control-label">{component.placeholder ?? component.name}</span>
-    <textarea rows={component.rows ?? 3} defaultValue={component.defaultValue} disabled />
-  </label>
+  <div className="form-group">
+    <label className="form-label">{component.placeholder ?? component.name}</label>
+    <textarea className="textarea" rows={component.rows ?? 3} defaultValue={component.defaultValue} disabled />
+  </div>
 );
 
 const renderSelect = (component: Widgets.Select) => (
-  <label className="widget-preview__control">
-    <span className="widget-preview__control-label">{component.placeholder ?? component.name}</span>
-    <select defaultValue={component.defaultValue} disabled>
+  <div className="form-group">
+    <label className="form-label">{component.placeholder ?? component.name}</label>
+    <select className="input" defaultValue={component.defaultValue} disabled>
       {component.options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
         </option>
       ))}
     </select>
-  </label>
+  </div>
 );
 
 const renderDatePicker = (component: Widgets.DatePicker) => (
-  <label className="widget-preview__control">
-    <span className="widget-preview__control-label">{component.placeholder ?? component.name}</span>
-    <input type="date" defaultValue={component.defaultValue} min={component.min} max={component.max} disabled />
-  </label>
+  <div className="form-group">
+    <label className="form-label">{component.placeholder ?? component.name}</label>
+    <input className="input" type="date" defaultValue={component.defaultValue} min={component.min} max={component.max} disabled />
+  </div>
 );
 
 const renderLabel = (component: Widgets.Label) => (
-  <span className="widget-preview__label">{component.text}</span>
+  <span className="form-label">{component.text}</span>
 );
 
 const renderRadioGroup = (component: Widgets.RadioGroup) => (
-  <fieldset className="widget-preview__control">
-    <legend className="widget-preview__control-label">{component.name}</legend>
-    {component.options.map((option) => (
-      <label key={option.value} className="widget-preview__radio-option">
-        <input type="radio" name={component.name} defaultChecked={option.defaultChecked} disabled />
-        <span>{option.label}</span>
-      </label>
-    ))}
+  <fieldset className="form-group">
+    <legend className="form-label">{component.name}</legend>
+    <div className="flex flex-col gap-2">
+      {component.options.map((option) => (
+        <label key={option.value} className="radio">
+          <input type="radio" name={component.name} defaultChecked={option.defaultChecked} disabled />
+          <span>{option.label}</span>
+        </label>
+      ))}
+    </div>
   </fieldset>
 );
 
 const renderMarkdown = (component: Widgets.Markdown) => (
-  <ReactMarkdown className="widget-preview__markdown">{component.value}</ReactMarkdown>
+  <div className="prose prose-sm max-w-none">
+    <ReactMarkdown>{component.value}</ReactMarkdown>
+  </div>
 );
 
 const renderUnsupported = (type: string) => (
-  <div className="widget-preview__unsupported">Composant non pris en charge : {type}</div>
+  <div className="alert alert-warning text-sm">Composant non pris en charge : {type}</div>
 );
 
 const renderChildren = (children: unknown[]): React.ReactNode =>
@@ -600,9 +890,8 @@ const renderChildren = (children: unknown[]): React.ReactNode =>
 const renderBox = (box: BoxLike & { children?: unknown[] }) => {
   const styles = applyBoxStyles(box);
   const orientation = styles.flexDirection === "row" ? "row" : "column";
-  const classNames = ["widget-preview__box", `widget-preview__box--${orientation}`];
   return (
-    <div className={classNames.join(" ")} style={styles} data-orientation={orientation}>
+    <div className="flex" style={styles} data-orientation={orientation}>
       {renderChildren(Array.isArray(box.children) ? box.children : [])}
     </div>
   );
@@ -611,9 +900,9 @@ const renderBox = (box: BoxLike & { children?: unknown[] }) => {
 const renderForm = (box: Widgets.Form) => {
   const styles = applyBoxStyles(box);
   return (
-    <form className="widget-preview__box" style={styles}>
+    <form className="flex flex-col gap-4" style={styles}>
       {renderChildren(Array.isArray(box.children) ? box.children : [])}
-      <p className="widget-preview__hint">Actions de formulaire désactivées en prévisualisation.</p>
+      <p className="form-hint text-sm">Actions de formulaire désactivées en prévisualisation.</p>
     </form>
   );
 };
@@ -621,28 +910,22 @@ const renderForm = (box: Widgets.Form) => {
 const renderListView = (listView: Widgets.ListView) => {
   const children = Array.isArray(listView.children) ? listView.children : [];
   const limited = typeof listView.limit === "number" ? children.slice(0, listView.limit) : children;
-  const wrapperClassNames = ["widget-preview__collection"];
-  if (listView.theme) {
-    wrapperClassNames.push(`widget-preview__collection--${listView.theme}`);
-  }
+  const wrapperClassNames = ["flex flex-col gap-3 p-4"];
+  // Theme is handled via data-theme attribute
   const wrapperStyles: React.CSSProperties = {};
   applyBlockProps(wrapperStyles, listView as unknown as Record<string, unknown>);
 
   return (
     <section className={wrapperClassNames.join(" ")} style={wrapperStyles} data-theme={listView.theme}>
       {renderStatus(listView.status)}
-      <div className="widget-preview__list-view">
+      <div className="flex flex-col gap-3">
         {limited.map((item, index) => {
           const entry = item as Widgets.ListViewItem;
-          const itemClassNames = ["widget-preview__list-item"];
+          const itemClassNames = ["flex flex-col gap-3 p-3"];
           if (entry.onClickAction) {
-            itemClassNames.push("widget-preview__list-item--actionable");
+            itemClassNames.push("cursor-pointer hover:bg-surface-elevated rounded-lg transition-colors");
           }
-          const itemStyles: React.CSSProperties = {
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.75rem",
-          };
+          const itemStyles: React.CSSProperties = {};
           if (entry.align) {
             itemStyles.alignItems =
               entry.align === "start"
@@ -678,21 +961,30 @@ const renderCard = (card: Widgets.Card) => {
     styles.background = background;
   }
   if (card.padding !== undefined) {
+    // Disable card-body's default padding when widget has custom padding
+    (styles as any)['--card-body-padding'] = '0';
+    // Apply widget's padding to the section element
     applySpacing(styles, "padding", card.padding);
   }
-  const classNames = ["widget-preview__card"];
-  if (card.size) {
-    classNames.push(`widget-preview__card--${card.size}`);
+  const classNames = ["card"];
+
+  // Size variants - only control width
+  if (card.size === "sm") {
+    classNames.push("card-sm");
+  } else if (card.size === "md") {
+    classNames.push("card-md");
+  } else if (card.size === "lg") {
+    classNames.push("card-lg");
   }
-  if (card.collapsed) {
-    classNames.push("widget-preview__card--collapsed");
-  }
+
   return (
     <section className={classNames.join(" ")} style={styles} data-theme={card.theme}>
       {renderStatus(card.status)}
-      {renderChildren(Array.isArray(card.children) ? card.children : [])}
+      <div className="card-body">
+        {renderChildren(Array.isArray(card.children) ? card.children : [])}
+      </div>
       {card.confirm || card.cancel ? (
-        <div className="widget-preview__card-actions">
+        <div className="card-footer flex items-center gap-3 justify-end">
           {card.confirm ? renderButton({
             type: "Button",
             label: card.confirm.label ?? "Confirmer",
@@ -712,7 +1004,7 @@ const renderCard = (card: Widgets.Card) => {
 const renderBasicRoot = (root: Widgets.BasicRoot) => {
   const styles = applyBoxStyles(root);
   return (
-    <section className="widget-preview__basic" style={styles} data-theme={root.theme}>
+    <section className="p-4" style={styles} data-theme={root.theme}>
       {renderChildren(Array.isArray(root.children) ? root.children : [])}
     </section>
   );
@@ -771,7 +1063,7 @@ const renderNode = (node: unknown): React.ReactNode => {
     case "Transition":
       return renderNode((node as Widgets.Transition).children);
     case "Spacer":
-      return <div className="widget-preview__spacer" />;
+      return <div className="h-4" />;
     default:
       return renderUnsupported(type);
   }
@@ -789,7 +1081,7 @@ const normalizeDefinition = (
 export const WidgetPreview = ({ definition }: WidgetPreviewProps) => {
   const normalized = useMemo(() => normalizeDefinition(definition), [definition]);
   if (!normalized) {
-    return <div className="widget-preview__unsupported">Définition du widget invalide.</div>;
+    return <div className="alert alert-danger text-sm">Définition du widget invalide.</div>;
   }
   return <div className="widget-preview">{renderNode(normalized)}</div>;
 };

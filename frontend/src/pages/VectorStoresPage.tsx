@@ -399,8 +399,8 @@ export const VectorStoresPage = () => {
 
       {showDocumentsModal && selectedStore ? (
         <Modal title={`Documents — ${selectedStore.slug}`} onClose={() => setShowDocumentsModal(false)} size="lg">
-          <div className="admin-table__actions" style={{ justifyContent: "flex-end", marginBottom: "1rem" }}>
-            <button className="button button--ghost button--sm" type="button" onClick={() => void refetchDocuments()}>
+          <div className="flex items-center justify-end gap-3 mb-4">
+            <button className="btn btn-sm btn-ghost" type="button" onClick={() => void refetchDocuments()}>
               Actualiser
             </button>
           </div>

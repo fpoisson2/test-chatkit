@@ -193,25 +193,27 @@ export const WidgetTemplateForm = ({
   };
 
   return (
-    <form className="admin-form" onSubmit={rhfHandleSubmit(handleSubmit)} aria-label={header}>
-      <h3 className="admin-card__title">{header}</h3>
-      <p className="admin-card__subtitle">
-        Décrivez votre widget ChatKit en JSON. Chaque définition est validée via <code>chatkit.widgets.WidgetRoot</code> avant
-        d'être sauvegardée.
-      </p>
-      {error && <div className="alert alert--danger">{error}</div>}
+    <form className="flex flex-col gap-6" onSubmit={rhfHandleSubmit(handleSubmit)} aria-label={header}>
+      <div>
+        <h3 className="card-title">{header}</h3>
+        <p className="card-subtitle">
+          Décrivez votre widget ChatKit en JSON. Chaque définition est validée via <code className="code-inline">chatkit.widgets.WidgetRoot</code> avant
+          d'être sauvegardée.
+        </p>
+      </div>
+      {error && <div className="alert alert-danger">{error}</div>}
       {validationErrors.length > 0 && (
-        <div className="alert alert--danger">
+        <div className="alert alert-danger">
           <p>Erreurs de validation :</p>
-          <ul>
+          <ul className="pl-4">
             {validationErrors.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
         </div>
       )}
-      <label className="label">
-        Slug (identifiant unique)
+      <div className="form-group">
+        <label className="form-label">Slug (identifiant unique)</label>
         <input
           className="input"
           type="text"
@@ -219,61 +221,67 @@ export const WidgetTemplateForm = ({
           placeholder="ex: tableau-de-bord"
           disabled={mode === "edit"}
         />
-        {formErrors.slug && <span className="error">{formErrors.slug.message}</span>}
-      </label>
-      <label className="label">
-        Titre (optionnel)
+        {formErrors.slug && <span className="form-error">{formErrors.slug.message}</span>}
+      </div>
+      <div className="form-group">
+        <label className="form-label">Titre (optionnel)</label>
         <input
           className="input"
           type="text"
           {...register("title")}
           placeholder="Résumé commercial"
         />
-        {formErrors.title && <span className="error">{formErrors.title.message}</span>}
-      </label>
-      <label className="label">
-        Description (optionnelle)
+        {formErrors.title && <span className="form-error">{formErrors.title.message}</span>}
+      </div>
+      <div className="form-group">
+        <label className="form-label">Description (optionnelle)</label>
         <textarea
           className="textarea"
           rows={3}
           {...register("description")}
           placeholder="Informations supplémentaires pour l'équipe Ops"
         />
-        {formErrors.description && <span className="error">{formErrors.description.message}</span>}
-      </label>
-      <label className="label">
-        Définition JSON du widget
+        {formErrors.description && <span className="form-error">{formErrors.description.message}</span>}
+      </div>
+      <div className="form-group">
+        <label className="form-label">Définition JSON du widget</label>
         <textarea
           className="textarea"
           rows={14}
           {...register("definitionInput")}
           spellCheck={false}
         />
-        {formErrors.definitionInput && <span className="error">{formErrors.definitionInput.message}</span>}
-      </label>
-      <div className="admin-form__actions">
-        <button className="button button--subtle" type="button" onClick={onCancel} disabled={isSubmitting || isPreviewing}>
+        {formErrors.definitionInput && <span className="form-error">{formErrors.definitionInput.message}</span>}
+      </div>
+      <div className="flex items-center justify-end gap-3">
+        <button className="btn btn-secondary" type="button" onClick={onCancel} disabled={isSubmitting || isPreviewing}>
           Annuler
         </button>
         {onPreview ? (
-          <button className="button button--ghost" type="button" onClick={handlePreview} disabled={isPreviewing}>
+          <button className="btn btn-ghost" type="button" onClick={handlePreview} disabled={isPreviewing}>
             {isPreviewing ? "Validation…" : "Prévisualiser"}
           </button>
         ) : null}
-        <button className="button" type="submit" disabled={isSubmitting}>
+        <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Enregistrement…" : mode === "edit" ? "Mettre à jour" : "Créer"}
         </button>
       </div>
       {previewDefinition ? (
-        <section className="widget-preview-section">
-          <h4 className="widget-preview-section__title">Prévisualisation du widget</h4>
-          <WidgetPreviewPlayground definition={previewDefinition} />
-          <details className="accordion">
-            <summary>Définition normalisée</summary>
-            <pre className="code-block" aria-label="Prévisualisation du widget">
-              {toJson(previewDefinition)}
-            </pre>
-          </details>
+        <section className="card mt-6">
+          <div className="card-header">
+            <h4 className="card-title text-lg">Prévisualisation du widget</h4>
+          </div>
+          <div className="card-body">
+            <WidgetPreviewPlayground definition={previewDefinition} />
+            <details className="accordion-item mt-6">
+              <summary className="accordion-trigger cursor-pointer">Définition normalisée</summary>
+              <div className="accordion-content">
+                <pre className="code-block" aria-label="Prévisualisation du widget">
+                  {toJson(previewDefinition)}
+                </pre>
+              </div>
+            </details>
+          </div>
         </section>
       ) : null}
     </form>

@@ -18,22 +18,24 @@ export const VectorStoreTable = ({
   onDelete,
 }: VectorStoreTableProps) => {
   if (isLoading) {
-    return <p className="admin-card__subtitle">Chargement des vector stores…</p>;
+    return <p className="text-center text-secondary py-8">Chargement des vector stores…</p>;
   }
 
   if (stores.length === 0) {
     return (
-      <p className="admin-card__subtitle">
-        Aucun vector store pour le moment. Créez-en un pour commencer l'ingestion.
-      </p>
+      <div className="empty-state">
+        <p className="empty-state-description">
+          Aucun vector store pour le moment. Créez-en un pour commencer l'ingestion.
+        </p>
+      </div>
     );
   }
 
   return (
     <div className="vector-store-list">
       <div className="vector-store-list__table">
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
+        <div className="overflow-x-auto">
+          <table className="table">
             <thead>
               <tr>
                 <th>Slug</th>
@@ -53,16 +55,16 @@ export const VectorStoreTable = ({
                     <td>{store.documents_count}</td>
                     <td>{new Date(store.updated_at).toLocaleString()}</td>
                     <td>
-                      <div className="admin-table__actions">
+                      <div className="flex items-center gap-2">
                         <button
-                          className="button button--subtle button--sm"
+                          className="btn btn-sm btn-secondary"
                           type="button"
                           onClick={() => onIngest(store)}
                         >
                           Ingestion JSON
                         </button>
                         <button
-                          className="button button--ghost button--sm"
+                          className="btn btn-sm btn-ghost"
                           type="button"
                           onClick={() => onSearch(store)}
                         >
@@ -70,7 +72,7 @@ export const VectorStoreTable = ({
                         </button>
                         {onDocuments ? (
                           <button
-                            className="button button--ghost button--sm"
+                            className="btn btn-sm btn-ghost"
                             type="button"
                             onClick={() => onDocuments(store)}
                           >
@@ -79,7 +81,7 @@ export const VectorStoreTable = ({
                         ) : null}
                         {onDelete && !isProtected ? (
                           <button
-                            className="button button--danger button--sm"
+                            className="btn btn-sm btn-danger"
                             type="button"
                             onClick={() => onDelete(store)}
                           >
@@ -100,31 +102,33 @@ export const VectorStoreTable = ({
         {stores.map((store) => {
           const isProtected = store.slug === WORKFLOW_VECTOR_STORE_SLUG;
           return (
-            <article className="vector-store-card" key={store.slug}>
-              <header className="vector-store-card__header">
-                <h3 className="vector-store-card__title">{store.title ?? "Sans titre"}</h3>
-                <p className="vector-store-card__slug">{store.slug}</p>
-              </header>
-              <dl className="vector-store-card__meta">
-                <div>
-                  <dt>Documents</dt>
-                  <dd>{store.documents_count}</dd>
-                </div>
-                <div>
-                  <dt>Dernière mise à jour</dt>
-                  <dd>{new Date(store.updated_at).toLocaleString()}</dd>
-                </div>
-              </dl>
-              <div className="admin-table__actions vector-store-card__actions">
+            <article className="card" key={store.slug}>
+              <div className="card-body">
+                <header className="mb-4">
+                  <h3 className="card-title">{store.title ?? "Sans titre"}</h3>
+                  <p className="text-sm text-secondary">{store.slug}</p>
+                </header>
+                <dl className="flex flex-col gap-2 mb-4">
+                  <div className="flex justify-between">
+                    <dt className="font-medium">Documents</dt>
+                    <dd>{store.documents_count}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium">Dernière mise à jour</dt>
+                    <dd>{new Date(store.updated_at).toLocaleString()}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="card-footer flex items-center gap-2 flex-wrap">
                 <button
-                  className="button button--subtle button--sm"
+                  className="btn btn-sm btn-secondary"
                   type="button"
                   onClick={() => onIngest(store)}
                 >
                   Ingestion JSON
                 </button>
                 <button
-                  className="button button--ghost button--sm"
+                  className="btn btn-sm btn-ghost"
                   type="button"
                   onClick={() => onSearch(store)}
                 >
@@ -132,7 +136,7 @@ export const VectorStoreTable = ({
                 </button>
                 {onDocuments ? (
                   <button
-                    className="button button--ghost button--sm"
+                    className="btn btn-sm btn-ghost"
                     type="button"
                     onClick={() => onDocuments(store)}
                   >
@@ -141,7 +145,7 @@ export const VectorStoreTable = ({
                 ) : null}
                 {onDelete && !isProtected ? (
                   <button
-                    className="button button--danger button--sm"
+                    className="btn btn-sm btn-danger"
                     type="button"
                     onClick={() => onDelete(store)}
                   >

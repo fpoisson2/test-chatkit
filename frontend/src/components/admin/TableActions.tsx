@@ -50,11 +50,11 @@ export const TableActions = ({
   };
 
   return (
-    <div className={`admin-table__actions ${className}`.trim()}>
+    <div className={`flex items-center gap-2 ${className}`.trim()}>
       {onEdit && (
         <button
           type="button"
-          className="button button--sm button--secondary"
+          className="btn btn-sm btn-secondary"
           onClick={onEdit}
         >
           {editLabel}
@@ -63,7 +63,7 @@ export const TableActions = ({
       {onTest && (
         <button
           type="button"
-          className="button button--sm button--secondary"
+          className="btn btn-sm btn-secondary"
           onClick={onTest}
         >
           {testLabel}
@@ -72,7 +72,7 @@ export const TableActions = ({
       {onDelete && (
         <button
           type="button"
-          className="button button--sm button--danger"
+          className="btn btn-sm btn-danger"
           onClick={handleDelete}
         >
           {deleteLabel}

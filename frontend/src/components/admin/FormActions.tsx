@@ -37,11 +37,11 @@ export const FormActions = ({
   children,
 }: FormActionsProps) => {
   return (
-    <div className={`admin-form__actions ${className}`.trim()}>
+    <div className={`flex items-center justify-end gap-3 ${className}`.trim()}>
       {showCancel && onCancel && (
         <button
           type="button"
-          className="button button--secondary"
+          className="btn btn-secondary"
           onClick={onCancel}
           disabled={isSubmitting}
         >
@@ -51,7 +51,7 @@ export const FormActions = ({
       {children}
       <button
         type="submit"
-        className="button"
+        className="btn btn-primary"
         disabled={isSubmitting}
       >
         {isSubmitting ? "Enregistrement..." : submitLabel}

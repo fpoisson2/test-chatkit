@@ -1,0 +1,667 @@
+/**
+ * Design System Variables
+ * Variables CSS pour le design system (inspiré OpenAI)
+ */
+
+:root, [data-theme="light"] {
+  /* Colors - Surface */
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f5f5f5;
+  --color-surface-tertiary: #ebebeb;
+  --color-surface-elevated: #f4f4f5;
+  --color-surface-elevated-secondary: #e9e9eb;
+
+  /* Colors - Accent Primary */
+  --accent-color-primary: #2563eb;
+  --accent-color-primary-hover: #1453dd;
+  --accent-color-primary-active: #1350d4;
+  --accent-color-primary-inverse: #ffffff;
+  --accent-color-primary-ring: rgba(37, 99, 235, 0.8);
+  --accent-color-primary-surface: #e8eefd;
+  --accent-color-primary-surface-text: #071b46;
+
+  /* Font Weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Font Tracking (letter-spacing) */
+  --font-tracking-wide: 0em;
+  --font-tracking-normal: -0.01em;
+  --font-tracking-tight: -0.02em;
+
+  /* Spacing */
+  --spacing: 4px;
+
+  /* Radius */
+  --radius-2xs: 0.125rem;
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.25rem;
+  --radius-4xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* Breakpoints */
+  --breakpoint-xs: 380px;
+  --breakpoint-sm: 576px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* Transitions */
+  --default-transition-duration: 0.15s;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-duration-basic: 0.15s;
+  --transition-ease-basic: cubic-bezier(0.4, 0, 0.2, 1);
+  --cubic-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --cubic-exit: cubic-bezier(0.4, 0, 1, 1);
+  --cubic-exit-snappy: cubic-bezier(0.4, 0, 0.6, 1);
+  --cubic-move: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Fonts */
+  --font-sans: "Inter", ui-sans-serif, -apple-system, system-ui, "Segoe UI", "Noto Sans", "Helvetica", "Arial", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Menlo", "Monaco", "Consolas", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
+  --default-font-family: var(--font-sans);
+  --default-mono-font-family: var(--font-mono);
+
+  /* Text Sizes */
+  --font-text-xs-size: 0.75rem;
+  --font-text-xs-line-height: 1rem;
+  --font-text-xs-tracking: 0em;
+  --font-text-xs-weight: 400;
+
+  --font-text-sm-size: 0.875rem;
+  --font-text-sm-line-height: 1.25rem;
+  --font-text-sm-tracking: 0em;
+  --font-text-sm-weight: 400;
+
+  --font-text-md-size: 1rem;
+  --font-text-md-line-height: 1.5rem;
+  --font-text-md-tracking: 0em;
+  --font-text-md-weight: 400;
+
+  --font-text-lg-size: 1.125rem;
+  --font-text-lg-line-height: 1.75rem;
+  --font-text-lg-tracking: 0em;
+  --font-text-lg-weight: 400;
+
+  --font-text-xl-size: 1.25rem;
+  --font-text-xl-line-height: 1.75rem;
+  --font-text-xl-tracking: 0em;
+
+  --font-text-2xl-size: 1.5rem;
+  --font-text-2xl-line-height: 2rem;
+  --font-text-2xl-tracking: 0em;
+
+  --font-text-3xl-size: 1.875rem;
+  --font-text-3xl-line-height: 2.25rem;
+  --font-text-3xl-tracking: 0em;
+
+  --font-text-4xl-size: 2.25rem;
+  --font-text-4xl-line-height: 2.5rem;
+  --font-text-4xl-tracking: 0em;
+
+  --font-text-5xl-size: 3rem;
+  --font-text-5xl-line-height: 1;
+  --font-text-5xl-tracking: 0em;
+
+  /* Text Size Aliases (for utility classes) */
+  /* Small sizes use text sizes */
+  --text-xs: var(--font-text-xs-size);
+  --text-sm: var(--font-text-sm-size);
+  --text-base: var(--font-text-md-size);
+  --text-lg: var(--font-text-lg-size);
+
+  /* Large sizes use heading sizes for proper scale */
+  --text-xl: var(--font-heading-xl-size);    /* 2rem */
+  --text-2xl: var(--font-heading-2xl-size);  /* 2.25rem */
+  --text-3xl: var(--font-heading-3xl-size);  /* 3rem */
+  --text-4xl: var(--font-heading-4xl-size);  /* 3.75rem */
+  --text-5xl: var(--font-heading-5xl-size);  /* 4.5rem */
+
+  /* Line Height Variables (for utility classes) */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  /* Heading Sizes */
+  --font-heading-sm-size: 0.875rem;
+  --font-heading-sm-line-height: 1.25rem;
+  --font-heading-sm-tracking: 0em;
+
+  --font-heading-md-size: 1rem;
+  --font-heading-md-line-height: 1.5rem;
+  --font-heading-md-tracking: 0em;
+
+  --font-heading-lg-size: 1.125rem;
+  --font-heading-lg-line-height: 1.75rem;
+  --font-heading-lg-tracking: 0em;
+  --font-heading-lg-weight: 600;
+
+  --font-heading-xl-size: 2rem;
+  --font-heading-xl-line-height: 2.375rem;
+  --font-heading-xl-tracking: var(--font-tracking-tight);
+  --font-heading-xl-weight: var(--font-weight-semibold);
+
+  --font-heading-2xl-size: 2.25rem;
+  --font-heading-2xl-line-height: 2.625rem;
+  --font-heading-2xl-tracking: var(--font-tracking-tight);
+  --font-heading-2xl-weight: var(--font-weight-semibold);
+
+  --font-heading-3xl-size: 3rem;
+  --font-heading-3xl-line-height: 3rem;
+  --font-heading-3xl-tracking: var(--font-tracking-tight);
+  --font-heading-3xl-weight: var(--font-weight-semibold);
+
+  --font-heading-4xl-size: 3.75rem;
+  --font-heading-4xl-line-height: 3.75rem;
+  --font-heading-4xl-tracking: var(--font-tracking-tight);
+  --font-heading-4xl-weight: var(--font-weight-semibold);
+
+  --font-heading-5xl-size: 4.5rem;
+  --font-heading-5xl-line-height: 4.5rem;
+  --font-heading-5xl-tracking: var(--font-tracking-tight);
+  --font-heading-5xl-weight: var(--font-weight-semibold);
+
+  /* Shadows */
+  --shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-hairline: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-200: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-300: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+
+  /* Icon Sizes */
+  --icon-size-default: 20px;
+  --icon-size-xs: 12px;
+  --icon-size-sm: 16px;
+  --icon-size-md: 20px;
+  --icon-size-lg: 24px;
+
+  /* Control Sizes */
+  --control-size-3xs: 24px;
+  --control-size-2xs: 28px;
+  --control-size-xs: 32px;
+  --control-size-sm: 36px;
+  --control-size-md: 40px;
+  --control-size-lg: 44px;
+  --control-size-xl: 48px;
+  --control-size-2xl: 56px;
+  --control-size-3xl: 64px;
+
+  /* Control Gutters */
+  --control-gutter-2xs: 8px;
+  --control-gutter-xs: 10px;
+  --control-gutter-sm: 12px;
+  --control-gutter-md: 14px;
+  --control-gutter-lg: 16px;
+  --control-gutter-xl: 20px;
+  --control-gutter-pill-scaling: 1.2;
+
+  /* Control Radius */
+  --control-radius-sm: var(--radius-sm);
+  --control-radius-md: var(--radius-md);
+  --control-radius-lg: var(--radius-lg);
+  --control-radius-xl: var(--radius-xl);
+
+  /* Control Font Sizes */
+  --control-font-size-sm: 0.875rem;
+  --control-font-size-md: 1rem;
+  --control-font-size-lg: 1.125rem;
+
+  /* Control Icon Sizes */
+  --control-icon-size-xs: 12px;
+  --control-icon-size-sm: 16px;
+  --control-icon-size-md: 20px;
+
+  /* Alpha Colors */
+  --alpha-base: #000000;
+  --alpha-0: color-mix(in oklab, var(--alpha-base) 0%, transparent);
+  --alpha-02: color-mix(in oklab, var(--alpha-base) 2%, transparent);
+  --alpha-04: color-mix(in oklab, var(--alpha-base) 4%, transparent);
+  --alpha-05: color-mix(in oklab, var(--alpha-base) 5%, transparent);
+  --alpha-06: color-mix(in oklab, var(--alpha-base) 6%, transparent);
+  --alpha-08: color-mix(in oklab, var(--alpha-base) 8%, transparent);
+  --alpha-10: color-mix(in oklab, var(--alpha-base) 10%, transparent);
+  --alpha-12: color-mix(in oklab, var(--alpha-base) 12%, transparent);
+  --alpha-15: color-mix(in oklab, var(--alpha-base) 15%, transparent);
+  --alpha-16: color-mix(in oklab, var(--alpha-base) 16%, transparent);
+  --alpha-20: color-mix(in oklab, var(--alpha-base) 20%, transparent);
+  --alpha-25: color-mix(in oklab, var(--alpha-base) 25%, transparent);
+  --alpha-30: color-mix(in oklab, var(--alpha-base) 30%, transparent);
+  --alpha-35: color-mix(in oklab, var(--alpha-base) 35%, transparent);
+  --alpha-40: color-mix(in oklab, var(--alpha-base) 40%, transparent);
+  --alpha-50: color-mix(in oklab, var(--alpha-base) 50%, transparent);
+  --alpha-60: color-mix(in oklab, var(--alpha-base) 60%, transparent);
+  --alpha-70: color-mix(in oklab, var(--alpha-base) 70%, transparent);
+
+  /* Base Colors */
+  --white: #fff;
+  --black: #000;
+
+  /* Gray Colors */
+  --gray-0: #ffffff;
+  --gray-25: #fafafa;
+  --gray-50: #f5f5f5;
+  --gray-100: #ebebeb;
+  --gray-150: #e1e1e1;
+  --gray-200: #d4d4d4;
+  --gray-300: #a3a3a3;
+  --gray-350: #8e8e8e;
+  --gray-500: #5d5d5d;
+  --gray-600: #4a4a4a;
+  --gray-700: #3a3a3a;
+  --gray-800: #262626;
+  --gray-900: #181818;
+
+  /* Green Colors */
+  --green-25: #edfaf2;
+  --green-50: #d9f4e4;
+  --green-100: #8cdfad;
+  --green-200: #66d492;
+  --green-300: #40c977;
+  --green-400: #04b84c;
+  --green-500: #00a240;
+  --green-600: #008635;
+  --green-a25: rgba(4, 184, 76, 0.1);
+  --green-a50: rgba(4, 184, 76, 0.2);
+
+  /* Blue Colors */
+  --blue-400: #3b82f6;
+
+  /* Red Colors */
+  --red-300: #f87171;
+  --red-400: #ef4444;
+  --red-500: #dc2626;
+  --red-a25: rgba(239, 68, 68, 0.1);
+  --red-a50: rgba(239, 68, 68, 0.2);
+
+  /* Orange Colors */
+  --orange-500: #f97316;
+  --orange-a50: rgba(249, 115, 22, 0.2);
+  --orange-a25: rgba(249, 115, 22, 0.1);
+
+  /* Yellow Colors */
+  --yellow-500: #eab308;
+
+  /* Purple Colors */
+  --purple-400: #a855f7;
+
+  /* Text Colors */
+  --color-text: var(--gray-900);
+  --color-text-emphasis: var(--gray-900);
+  --color-text-prose: var(--gray-900);
+  --color-text-secondary: var(--gray-600);
+  --color-text-tertiary: var(--gray-500);
+  --color-text-inverse: var(--white);
+
+  /* Border Colors */
+  --color-border: var(--gray-200);
+  --color-border-strong: var(--gray-300);
+  --color-border-subtle: var(--gray-150);
+
+  /* Ring Color */
+  --color-ring: var(--accent-color-primary-ring);
+
+  /* Button Colors */
+  --button-background-color: var(--gray-100);
+  --button-ring-color: var(--color-ring);
+
+  /* Input Colors */
+  --input-text-color: var(--color-text);
+  --input-placeholder-text-color: var(--color-text-tertiary);
+  --input-outline-border-color: var(--color-border);
+  --input-outline-border-color-hover: var(--gray-300);
+  --input-outline-border-color-focus: var(--gray-500);
+  --input-soft-background-color: var(--gray-50);
+  --input-soft-border-color-focus: var(--gray-400);
+  --input-border-color-invalid: var(--red-500);
+  --input-gap-xs: 4px;
+  --input-gap-sm: 6px;
+  --input-gap-md: 8px;
+  --input-gap-lg: 10px;
+
+  /* Menu Colors */
+  --menu-radius: var(--radius-xl);
+  --menu-font-size: 0.875rem;
+  --menu-line-height: 1.25rem;
+  --menu-gutter: 8px;
+  --menu-item-padding: 8px 12px;
+  --menu-item-gap: 8px;
+  --menu-item-background-color: var(--gray-100);
+  --menu-separator-background-color: var(--color-border);
+  --menu-separator-gutter: 8px 0;
+  --menu-radio-indicator-size: 16px;
+  --menu-radio-indicator-hole-size: 6px;
+  --menu-checkbox-indicator-size: 16px;
+
+  /* Popover Colors */
+  --popover-radius: var(--radius-xl);
+  --popover-width: auto;
+  --popover-min-width: 300px;
+  --popover-max-width: 700px;
+  --popover-max-height: 400px;
+
+  /* Dialog Colors */
+  --dialog-backdrop-dim-background: rgba(0, 0, 0, 0.5);
+  --dialog-backdrop-fade-background: rgba(0, 0, 0, 0.1);
+  --dialog-container-inner-padding: 16px;
+  --dialog-min-width: 320px;
+  --dialog-max-width: 600px;
+
+  /* Badge Colors */
+  --badge-size-sm: 20px;
+  --badge-size-md: 24px;
+  --badge-size-lg: 28px;
+  --badge-gutter-sm: 6px;
+  --badge-gutter-md: 8px;
+  --badge-gutter-lg: 10px;
+  --badge-font-size-sm: 0.75rem;
+  --badge-font-size-md: 0.875rem;
+  --badge-font-size-lg: 1rem;
+  --badge-font-weight-sm: 600;
+  --badge-font-weight-md: 600;
+  --badge-font-weight-lg: 600;
+  --badge-tracking-sm: 0em;
+  --badge-tracking-md: 0em;
+  --badge-tracking-lg: 0em;
+  --badge-radius-sm: var(--radius-full);
+  --badge-radius-md: var(--radius-full);
+  --badge-radius-lg: var(--radius-full);
+  --badge-icon-font-size-sm: 12px;
+  --badge-icon-font-size-md: 16px;
+  --badge-icon-font-size-lg: 20px;
+  --badge-indicator-size-sm: 8px;
+  --badge-indicator-size-md: 10px;
+  --badge-indicator-size-lg: 12px;
+
+  /* Status Colors */
+  --color-background-primary-soft: #e8eefd;
+  --color-text-primary-soft: #071b46;
+  --color-ring-primary-soft: var(--accent-color-primary-ring);
+
+  --color-background-secondary-soft: var(--gray-100);
+  --color-background-secondary-soft-alpha: var(--alpha-06);
+  --color-text-secondary-soft: var(--gray-700);
+  --color-ring-secondary-soft: var(--gray-300);
+
+  --color-background-success-soft: var(--green-50);
+  --color-background-success-soft-alpha: var(--green-a25);
+  --color-text-success-soft: #065f46;
+  --color-ring-success-soft: var(--green-300);
+
+  --color-background-warning-soft: #fef3c7;
+  --color-background-warning-soft-alpha: rgba(254, 243, 199, 0.5);
+  --color-text-warning-soft: #92400e;
+  --color-ring-warning-soft: #fbbf24;
+
+  --color-background-danger-soft: #fee2e2;
+  --color-background-danger-soft-alpha: var(--red-a25);
+  --color-text-danger-soft: #991b1b;
+  --color-ring-danger-soft: var(--red-400);
+
+  --color-background-info-soft: #dbeafe;
+  --color-background-info-soft-alpha: rgba(219, 234, 254, 0.5);
+  --color-text-info-soft: #1e40af;
+  --color-ring-info-soft: #3b82f6;
+
+  --color-background-discovery-soft: #f3e8ff;
+  --color-background-discovery-soft-alpha: rgba(243, 232, 255, 0.5);
+  --color-text-discovery-soft: #6b21a8;
+  --color-ring-discovery-soft: var(--purple-400);
+
+  /* Solid Colors */
+  --color-background-primary-solid: var(--accent-color-primary);
+  --color-text-primary-solid: var(--white);
+
+  --color-background-secondary-solid: var(--gray-700);
+  --color-text-secondary-solid: var(--white);
+
+  --color-background-success-solid: var(--green-500);
+  --color-text-success-solid: var(--white);
+
+  --color-background-warning-solid: var(--yellow-500);
+  --color-text-warning-solid: var(--gray-900);
+
+  --color-background-danger-solid: var(--red-500);
+  --color-text-danger-solid: var(--white);
+
+  --color-background-info-solid: var(--blue-400);
+  --color-text-info-solid: var(--white);
+
+  --color-background-discovery-solid: var(--purple-400);
+  --color-text-discovery-solid: var(--white);
+
+  /* Outline Colors */
+  --color-border-secondary-outline: var(--color-border);
+  --color-text-secondary-outline: var(--color-text);
+
+  --color-border-success-outline: var(--green-300);
+  --color-text-success-outline: #065f46;
+
+  --color-border-warning-outline: #fbbf24;
+  --color-text-warning-outline: #92400e;
+
+  --color-border-danger-outline: var(--red-400);
+  --color-text-danger-outline: #991b1b;
+
+  --color-border-info-outline: #3b82f6;
+  --color-text-info-outline: #1e40af;
+
+  --color-border-discovery-outline: var(--purple-400);
+  --color-text-discovery-outline: #6b21a8;
+
+  /* Surface Colors for Alerts */
+  --color-background-primary-surface: #e8eefd;
+  --color-border-primary-surface: rgba(37, 99, 235, 0.2);
+
+  --color-background-success-surface: var(--green-50);
+  --color-border-success-surface: rgba(4, 184, 76, 0.3);
+  --color-text-success-surface: #065f46;
+
+  --color-background-warning-surface: #fef3c7;
+  --color-border-warning-surface: rgba(251, 191, 36, 0.4);
+  --color-text-warning-surface: #92400e;
+
+  --color-background-caution-surface: #fff7ed;
+  --color-border-caution-surface: rgba(249, 115, 22, 0.3);
+  --color-text-caution-surface: #9a3412;
+
+  --color-background-danger-surface: #fee2e2;
+  --color-border-danger-surface: rgba(239, 68, 68, 0.3);
+  --color-text-danger-surface: #991b1b;
+  --color-text-danger: #dc2626;
+
+  --color-background-info-surface: #dbeafe;
+  --color-border-info-surface: rgba(59, 130, 246, 0.3);
+  --color-text-info-surface: #1e40af;
+
+  --color-background-discovery-surface: #f3e8ff;
+  --color-border-discovery-surface: rgba(168, 85, 247, 0.3);
+  --color-text-discovery-surface: #6b21a8;
+
+  /* Radio Group Colors */
+  --radio-group-indicator-background-color: var(--gray-900);
+  --radio-group-indicator-hole-background-color: var(--white);
+  --radio-group-indicator-border-color: var(--gray-300);
+  --radio-group-indicator-border-color-hover: var(--gray-400);
+  --radio-group-row-gap: 12px;
+  --radio-group-col-gap: 16px;
+  --radio-group-item-gap: 8px;
+  --radio-group-item-font-size: 1rem;
+  --radio-group-item-line-height: 1.5rem;
+  --radio-group-indicator-size: 18px;
+  --radio-group-indicator-hole-size: 6px;
+
+  /* Alert Colors */
+  --alert-gap: 12px;
+  --alert-gutter: 16px;
+  --alert-border-radius: var(--radius-xl);
+  --alert-font-size: 1rem;
+  --alert-line-height: 1.5rem;
+  --alert-title-font-weight: 600;
+  --alert-indicator-size: 20px;
+
+  /* Avatar Colors */
+  --avatar-size: 40px;
+  --avatar-radius: var(--radius-full);
+  --avatar-font-size-scaling: 0.4;
+  --avatar-overflow-font-size-scaling-one: 0.4;
+  --avatar-overflow-font-size-scaling-two: 0.35;
+  --avatar-overflow-font-size-scaling-three: 0.3;
+  --avatar-image-border-color: var(--alpha-10);
+  --avatar-group-cutout-width: 2px;
+  --avatar-group-cutout-color: var(--color-surface);
+  --avatar-group-spacing: -8px;
+
+  /* Link Colors */
+  --link-primary-text-color: var(--accent-color-primary);
+  --link-primary-text-color-hover: var(--accent-color-primary-hover);
+  --link-gap: 4px;
+  --link-radius: var(--radius-sm);
+  --link-font-weight: 500;
+  --link-underline-decoration-offset: 2px;
+
+  /* Codeblock Colors */
+  --codeblock-background-color: var(--gray-50);
+  --codeblock-syntax-1: #0969da;
+  --codeblock-syntax-2: #cf222e;
+  --codeblock-syntax-3: #0a3069;
+  --codeblock-syntax-4: #8250df;
+  --codeblock-syntax-5: #0550ae;
+
+  /* Chat Colors */
+  --chat-background-color: var(--white);
+  --chat-gutter: 24px;
+  --chat-max-width: 768px;
+  --chat-scrollbar-width: 0px;
+  --thread-gutter: 24px;
+  --user-message-background-color: var(--gray-100);
+  --user-message-text-color: var(--color-text);
+
+  /* Composer Colors */
+  --composer-background-color: var(--white);
+  --composer-radius: var(--radius-3xl);
+  --composer-gutter: 16px;
+  --composer-compact-gutter: 8px;
+  --composer-prompt-inline-offset-top: 0px;
+  --composer-leading-action-offset: 0px;
+  --composer-end-action-offset: 0px;
+  --composer-action-row-height: 40px;
+
+  /* Scrollbar Colors */
+  --scrollbar-color: var(--gray-300);
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+  /* Override light theme colors for dark mode */
+  --color-surface: #18181b;
+  --color-surface-secondary: #27272a;
+  --color-surface-tertiary: #3f3f46;
+  --color-surface-elevated: #27272a;
+  --color-surface-elevated-secondary: #3f3f46;
+
+  --alpha-base: #ffffff;
+
+  --gray-0: #09090b;
+  --gray-25: #18181b;
+  --gray-50: #27272a;
+  --gray-100: #3f3f46;
+  --gray-150: #52525b;
+  --gray-200: #71717a;
+  --gray-300: #a1a1aa;
+  --gray-350: #d4d4d8;
+  --gray-500: #e4e4e7;
+  --gray-600: #f4f4f5;
+  --gray-700: #fafafa;
+  --gray-800: #ffffff;
+  --gray-900: #ffffff;
+
+  --color-text: #e4e4e7;
+  --color-text-emphasis: #fafafa;
+  --color-text-prose: #e4e4e7;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #71717a;
+  --color-text-inverse: #18181b;
+
+  --color-border: #3f3f46;
+  --color-border-strong: #52525b;
+  --color-border-subtle: #27272a;
+
+  --button-background-color: var(--gray-100);
+
+  --input-outline-border-color: var(--gray-100);
+  --input-outline-border-color-hover: var(--gray-200);
+  --input-outline-border-color-focus: var(--gray-300);
+  --input-soft-background-color: var(--gray-50);
+  --input-soft-border-color-focus: var(--gray-200);
+
+  --menu-item-background-color: var(--gray-100);
+  --menu-separator-background-color: var(--color-border);
+
+  --radio-group-indicator-background-color: var(--gray-0);
+  --radio-group-indicator-hole-background-color: var(--gray-900);
+  --radio-group-indicator-border-color: var(--gray-200);
+  --radio-group-indicator-border-color-hover: var(--gray-300);
+
+  --color-background-secondary-soft-alpha: var(--alpha-08);
+  --color-text-secondary-soft: var(--gray-300);
+
+  --color-background-success-soft: #0f2417;
+  --color-background-success-soft-alpha: rgba(15, 36, 23, 0.5);
+  --color-text-success-soft: #86efac;
+
+  --color-background-warning-soft: #3a2a0c;
+  --color-background-warning-soft-alpha: rgba(58, 42, 12, 0.5);
+  --color-text-warning-soft: #fde047;
+
+  --color-background-danger-soft: #3a0f0f;
+  --color-background-danger-soft-alpha: rgba(58, 15, 15, 0.5);
+  --color-text-danger-soft: #fca5a5;
+
+  --color-background-info-soft: #0f1e3a;
+  --color-background-info-soft-alpha: rgba(15, 30, 58, 0.5);
+  --color-text-info-soft: #93c5fd;
+
+  --color-background-discovery-soft: #2a0f3a;
+  --color-background-discovery-soft-alpha: rgba(42, 15, 58, 0.5);
+  --color-text-discovery-soft: #d8b4fe;
+
+  --color-background-secondary-solid: var(--gray-300);
+  --color-text-secondary-solid: var(--gray-900);
+
+  --chat-background-color: var(--gray-25);
+  --user-message-background-color: var(--gray-100);
+  --user-message-text-color: var(--color-text);
+
+  --composer-background-color: var(--gray-50);
+
+  --codeblock-background-color: var(--gray-100);
+  --codeblock-syntax-1: #79c0ff;
+  --codeblock-syntax-2: #ff7b72;
+  --codeblock-syntax-3: #a5d6ff;
+  --codeblock-syntax-4: #d2a8ff;
+  --codeblock-syntax-5: #79c0ff;
+
+  --scrollbar-color: var(--gray-300);
+
+  --avatar-group-cutout-color: var(--gray-25);
+}
+
+/* System Dark Mode Preference */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    /* Apply dark theme variables when no explicit theme is set */
+    /* Same as [data-theme="dark"] above */
+  }
+}

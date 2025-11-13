@@ -18,20 +18,25 @@ export const ErrorAlert = ({
   dismissible = false,
   className = "",
 }: ErrorAlertProps) => {
-  const alertClass = `error-alert error-alert--${type} ${className}`.trim();
+  const typeMap = {
+    error: "alert-danger",
+    warning: "alert-warning",
+    info: "alert-info",
+  };
+  const alertClass = `alert ${typeMap[type]} ${className}`.trim();
 
   return (
     <div className={alertClass} role="alert" aria-live="assertive">
-      <div className="error-alert__icon">
+      <div className="alert-icon">
         <AlertCircle size={20} aria-hidden="true" />
       </div>
-      <div className="error-alert__content">
-        {title && <div className="error-alert__title">{title}</div>}
-        <div className="error-alert__message">{message}</div>
+      <div className="alert-content">
+        {title && <div className="alert-title">{title}</div>}
+        <div>{message}</div>
       </div>
       {dismissible && onDismiss && (
         <button
-          className="error-alert__dismiss"
+          className="alert-close"
           onClick={onDismiss}
           aria-label="Fermer l'alerte"
           type="button"

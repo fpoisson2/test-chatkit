@@ -33,20 +33,22 @@ export const VectorStoreDocumentsTable = ({
   onDelete,
 }: VectorStoreDocumentsTableProps) => {
   if (isLoading) {
-    return <p className="admin-card__subtitle">Chargement des documents…</p>;
+    return <p className="text-center text-secondary py-8">Chargement des documents…</p>;
   }
 
   if (documents.length === 0) {
     return (
-      <p className="admin-card__subtitle">
-        Aucun document n'est associé à ce vector store pour le moment.
-      </p>
+      <div className="empty-state">
+        <p className="empty-state-description">
+          Aucun document n'est associé à ce vector store pour le moment.
+        </p>
+      </div>
     );
   }
 
   return (
-    <div className="admin-table-wrapper">
-      <table className="admin-table admin-table--stack">
+    <div className="overflow-x-auto">
+      <table className="table">
         <thead>
           <tr>
             <th>Identifiant</th>
@@ -72,9 +74,9 @@ export const VectorStoreDocumentsTable = ({
                   {new Date(document.updated_at).toLocaleString()}
                 </td>
                 <td data-label="Actions">
-                  <div className="admin-table__actions">
+                  <div className="flex items-center gap-2">
                     <button
-                      className="button button--ghost button--sm"
+                      className="btn btn-sm btn-ghost"
                       type="button"
                       onClick={() => onInspect(document)}
                     >
@@ -82,7 +84,7 @@ export const VectorStoreDocumentsTable = ({
                     </button>
                     {onDelete ? (
                       <button
-                        className="button button--danger button--sm"
+                        className="btn btn-sm btn-danger"
                         type="button"
                         onClick={() => onDelete(document)}
                       >

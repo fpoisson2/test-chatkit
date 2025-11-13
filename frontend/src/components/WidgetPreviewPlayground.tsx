@@ -122,26 +122,26 @@ export const WidgetPreviewPlayground = ({ definition }: WidgetPreviewPlaygroundP
   );
 
   return (
-    <div className="widget-preview-playground" style={{ display: "grid", gap: "0.75rem" }}>
+    <div className="flex flex-col gap-3">
       <WidgetPreview definition={appliedDefinition} />
-      <details className="accordion" key={detailsKey} defaultOpen={hasBindings}>
-        <summary>Paramètres de test du widget</summary>
-        <div style={{ display: "grid", gap: "0.75rem" }}>
-          <p style={{ margin: 0, color: "#475569" }}>
+      <details className="accordion-item" key={detailsKey} open={hasBindings}>
+        <summary className="accordion-trigger cursor-pointer">Paramètres de test du widget</summary>
+        <div className="accordion-content flex flex-col gap-3">
+          <p className="text-secondary m-0">
             Ces valeurs simulent le JSON transmis au widget lors de l'exécution du workflow. Modifiez-les pour
             vérifier le rendu en temps réel.
           </p>
           {hasBindings ? (
-            <p style={{ margin: 0, color: "var(--text-color)" }}>
+            <p className="m-0">
               <strong>Champs dynamiques disponibles :</strong> {availableBindings}
             </p>
           ) : (
-            <p style={{ margin: 0, color: "#475569" }}>
+            <p className="text-secondary m-0">
               Ce widget n'expose aucun champ dynamique. Le JSON d'entrée peut rester vide.
             </p>
           )}
-          <label className="label" style={{ display: "grid", gap: "0.35rem" }}>
-            <span style={{ color: "var(--color-text-strong)", fontWeight: 600 }}>JSON d'entrée du widget</span>
+          <div className="form-group">
+            <label className="form-label">JSON d'entrée du widget</label>
             <textarea
               className="textarea"
               rows={hasBindings ? 8 : 5}
@@ -150,16 +150,16 @@ export const WidgetPreviewPlayground = ({ definition }: WidgetPreviewPlaygroundP
               spellCheck={false}
               aria-label="JSON d'entrée du widget"
             />
-          </label>
+          </div>
           {inputError ? (
-            <p style={{ margin: 0, color: "#b91c1c" }}>{inputError}</p>
+            <p className="form-error m-0">{inputError}</p>
           ) : (
-            <p style={{ margin: 0, color: "#64748b", fontSize: "0.9rem" }}>
+            <p className="form-hint text-sm m-0">
               Utilisez des chaînes ou des listes de chaînes. Les autres types seront ignorés.
             </p>
           )}
-          <div style={{ display: "flex", gap: "0.75rem" }}>
-            <button className="button button--ghost button--sm" type="button" onClick={handleReset}>
+          <div className="flex gap-3">
+            <button className="btn btn-sm btn-ghost" type="button" onClick={handleReset}>
               Réinitialiser les valeurs
             </button>
           </div>

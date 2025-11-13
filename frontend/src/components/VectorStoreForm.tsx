@@ -61,10 +61,10 @@ export const VectorStoreForm = ({ onSubmit, onCancel }: VectorStoreFormProps) =>
   };
 
   return (
-    <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
-      {error ? <div className="alert alert--danger">{error}</div> : null}
-      <label className="label">
-        Slug (identifiant unique)
+    <form className="flex flex-col gap-6" onSubmit={handleFormSubmit(handleSubmit)}>
+      {error ? <div className="alert alert-danger">{error}</div> : null}
+      <div className="form-group">
+        <label className="form-label">Slug (identifiant unique)</label>
         <input
           className="input"
           type="text"
@@ -72,31 +72,31 @@ export const VectorStoreForm = ({ onSubmit, onCancel }: VectorStoreFormProps) =>
           placeholder="ex: guides"
         />
         {formErrors.slug && (
-          <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+          <span className="form-error">
             {formErrors.slug.message}
           </span>
         )}
-      </label>
-      <label className="label">
-        Titre (optionnel)
+      </div>
+      <div className="form-group">
+        <label className="form-label">Titre (optionnel)</label>
         <input
           className="input"
           type="text"
           {...register("title")}
           placeholder="Collection de guides"
         />
-      </label>
-      <label className="label">
-        Description (optionnelle)
+      </div>
+      <div className="form-group">
+        <label className="form-label">Description (optionnelle)</label>
         <textarea
           className="textarea"
           rows={3}
           {...register("description")}
           placeholder="Brève description du contenu indexé"
         />
-      </label>
-      <label className="label">
-        Métadonnées (JSON)
+      </div>
+      <div className="form-group">
+        <label className="form-label">Métadonnées (JSON)</label>
         <textarea
           className="textarea"
           rows={4}
@@ -104,16 +104,16 @@ export const VectorStoreForm = ({ onSubmit, onCancel }: VectorStoreFormProps) =>
           spellCheck={false}
         />
         {formErrors.metadataInput && (
-          <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+          <span className="form-error">
             {formErrors.metadataInput.message}
           </span>
         )}
-      </label>
-      <div className="admin-form__actions">
-        <button className="button button--subtle" type="button" onClick={onCancel} disabled={isSubmitting}>
+      </div>
+      <div className="flex items-center justify-end gap-3">
+        <button className="btn btn-secondary" type="button" onClick={onCancel} disabled={isSubmitting}>
           Annuler
         </button>
-        <button className="button" type="submit" disabled={isSubmitting}>
+        <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Création…" : "Créer"}
         </button>
       </div>

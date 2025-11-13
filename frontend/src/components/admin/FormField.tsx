@@ -40,14 +40,14 @@ export const FormField = ({
   className = "",
 }: FormFieldProps) => {
   return (
-    <label className={`label ${className}`.trim()}>
-      <span>
+    <div className={`form-group ${className}`.trim()}>
+      <label className="form-label">
         {label}
-        {required && <span style={{ color: "#dc2626" }}> *</span>}
-      </span>
+        {required && <span className="text-danger"> *</span>}
+      </label>
       {children}
-      {error && <span className="form-error-message">{error}</span>}
-      {hint && !error && <p className="admin-form__hint">{hint}</p>}
-    </label>
+      {error && <span className="form-error">{error}</span>}
+      {hint && !error && <p className="form-hint">{hint}</p>}
+    </div>
   );
 };

@@ -12,12 +12,16 @@ export const VectorStoreSearchResults = ({
   onInspect,
 }: VectorStoreSearchResultsProps) => {
   if (results.length === 0) {
-    return <p className="admin-card__subtitle">Aucun résultat pour cette requête.</p>;
+    return (
+      <div className="empty-state">
+        <p className="empty-state-description">Aucun résultat pour cette requête.</p>
+      </div>
+    );
   }
 
   return (
-    <div className="admin-table-wrapper">
-      <table className="admin-table">
+    <div className="overflow-x-auto">
+      <table className="table">
         <thead>
           <tr>
             <th>Document</th>
@@ -38,12 +42,12 @@ export const VectorStoreSearchResults = ({
               <td>{formatScore(result.dense_score)}</td>
               <td>{formatScore(result.bm25_score)}</td>
               <td>
-                <span className="vector-store__snippet">{result.text}</span>
+                <span className="text-sm">{result.text}</span>
               </td>
               {onInspect ? (
                 <td>
                   <button
-                    className="button button--subtle button--sm"
+                    className="btn btn-sm btn-secondary"
                     type="button"
                     onClick={() => onInspect(result)}
                   >
