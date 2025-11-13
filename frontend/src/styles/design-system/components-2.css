@@ -67,6 +67,23 @@
     transform: translateY(0);
   }
 
+  /* Card Size Variants */
+  .card-sm {
+    --card-header-padding: calc(var(--spacing) * 3);
+    --card-body-padding: calc(var(--spacing) * 3);
+    --card-footer-padding: calc(var(--spacing) * 3);
+    --card-title-font-size: var(--text-base);
+    --card-subtitle-font-size: var(--text-xs);
+  }
+
+  .card-lg {
+    --card-header-padding: calc(var(--spacing) * 6);
+    --card-body-padding: calc(var(--spacing) * 6);
+    --card-footer-padding: calc(var(--spacing) * 6);
+    --card-title-font-size: var(--text-xl);
+    --card-subtitle-font-size: var(--text-base);
+  }
+
   /* Alert Styles */
   .alert {
     display: flex;
