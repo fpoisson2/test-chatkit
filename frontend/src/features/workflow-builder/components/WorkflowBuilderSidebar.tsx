@@ -1,4 +1,10 @@
-import { useEffect, useMemo, type CSSProperties, type MutableRefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  type CSSProperties,
+  type MutableRefObject,
+  type ReactNode,
+} from "react";
 
 import { useSidebarPortal } from "../../../components/AppLayout";
 import { useI18n } from "../../../i18n";
@@ -13,7 +19,10 @@ import type { WorkflowAppearanceTarget } from "../../workflows/WorkflowAppearanc
 import type {
   ActionMenuPlacement,
 } from "../../workflows/WorkflowActionMenu";
-import WorkflowSidebarListItem from "../../workflows/WorkflowSidebarListItem";
+import WorkflowSidebarSection, {
+  WorkflowSidebarCompact,
+  type WorkflowSidebarSectionEntry,
+} from "../../workflows/WorkflowSidebarSection";
 import { useWorkflowContext } from "../contexts/WorkflowContext";
 import { useModalContext } from "../contexts/ModalContext";
 import { useUIContext } from "../contexts/UIContext";
@@ -111,82 +120,43 @@ const WorkflowBuilderSidebar = ({
     return null;
   }, [workflowSortCollator]);
 
-  const workflowSidebarContent = useMemo(() => {
-    const sectionId = "workflow-builder-sidebar";
-    const warningStyle: CSSProperties = {
+  const warningStyle = useMemo<CSSProperties>(
+    () => ({
       color: "var(--text-muted)",
       fontWeight: 600,
-    };
-    const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
+    }),
+    [],
+  );
 
-    type CombinedEntry =
-      | { kind: "hosted"; hosted: HostedWorkflowMetadata; isPinned: boolean }
-      | { kind: "local"; workflow: WorkflowSummary; isPinned: boolean };
+  const managedHosted = useMemo(
+    () => hostedWorkflows.filter((workflow) => workflow.managed),
+    [hostedWorkflows],
+  );
 
-    const orderingOptions = orderingCollator
-      ? { collator: orderingCollator, pinnedLookup }
-      : { pinnedLookup };
+  const orderingOptions = useMemo(
+    () => (orderingCollator ? { collator: orderingCollator, pinnedLookup } : { pinnedLookup }),
+    [orderingCollator, pinnedLookup],
+  );
 
-    const combinedEntries: CombinedEntry[] = orderWorkflowEntries(
-      [
-        ...managedHosted.map((hosted) => ({ kind: "hosted" as const, workflow: hosted })),
-        ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
-      ],
-      lastUsedAt,
-      orderingOptions,
-    ).map((entry) =>
-      entry.kind === "hosted"
-        ? ({
-            kind: "hosted" as const,
-            hosted: entry.workflow,
-            isPinned: isWorkflowPinned(entry, pinnedLookup),
-          } satisfies CombinedEntry)
-        : ({
-            kind: "local" as const,
-            workflow: entry.workflow,
-            isPinned: isWorkflowPinned(entry, pinnedLookup),
-          } satisfies CombinedEntry),
-    );
+  const orderedEntries = useMemo(
+    () =>
+      orderWorkflowEntries(
+        [
+          ...managedHosted.map((hosted) => ({ kind: "hosted" as const, workflow: hosted })),
+          ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
+        ],
+        lastUsedAt,
+        orderingOptions,
+      ),
+    [managedHosted, workflows, lastUsedAt, orderingOptions],
+  );
 
-    const pinnedEntries: CombinedEntry[] = [];
-    const regularEntries: CombinedEntry[] = [];
-
-    for (const entry of combinedEntries) {
-      if (entry.isPinned) {
-        pinnedEntries.push(entry);
-      } else {
-        regularEntries.push(entry);
-      }
-    }
-
-    const renderWorkflowList = () => {
-      if (loading && combinedEntries.length === 0) {
-        return (
-          <p className="chatkit-sidebar__section-text" aria-live="polite">
-            Chargement des workflows…
-          </p>
-        );
-      }
-
-      if (loadError) {
-        return (
-          <p className="chatkit-sidebar__section-error" aria-live="polite">
-            {loadError}
-          </p>
-        );
-      }
-
-      if (combinedEntries.length === 0) {
-        return (
-          <p className="chatkit-sidebar__section-text" aria-live="polite">
-            Aucun workflow disponible pour le moment.
-          </p>
-        );
-      }
-
-      const renderEntry = (entry: CombinedEntry) => {
+  const sidebarEntries = useMemo<WorkflowSidebarSectionEntry[]>(
+    () =>
+      orderedEntries.map((entry) => {
         if (entry.kind === "hosted") {
-          const { hosted, isPinned } = entry;
+          const hosted = entry.workflow;
+          const isPinned = isWorkflowPinned(entry, pinnedLookup);
           const menuKey = `hosted:${hosted.slug}`;
           const isMenuOpen = openWorkflowMenuId === menuKey;
           const menuId = `workflow-actions-${hosted.slug}`;
@@ -215,35 +185,35 @@ const WorkflowBuilderSidebar = ({
             },
           ];
 
-          return (
-            <WorkflowSidebarListItem
-              key={`hosted:${hosted.slug}`}
-              isPinned={isPinned}
-              pinLabel={pinLabel}
-              onTogglePin={(event) => {
-                event.stopPropagation();
-                onToggleHostedPin(hosted.slug);
-              }}
-              menuProps={{
-                menuId,
-                isOpen: isMenuOpen,
-                isMobileLayout,
-                placement: isMenuOpen ? workflowMenuPlacement : "down",
-                triggerDisabled: hostedLoading,
-                triggerLabel: t("workflowBuilder.hostedSection.openActions", {
-                  label: hosted.label,
-                }),
-                onOpen: (placement) => {
-                  setWorkflowMenuPlacement(placement);
-                  setOpenWorkflowMenuId(menuKey);
-                },
-                onClose: closeWorkflowMenu,
-                triggerRef: workflowMenuTriggerRef,
-                menuRef: workflowMenuRef,
-                items: hostedMenuItems,
-              }}
-              dataAttributes={{ "data-hosted-workflow": "" }}
-            >
+          return {
+            key: `hosted:${hosted.slug}`,
+            kind: "hosted" as const,
+            isPinned,
+            pinLabel,
+            onTogglePin: (event) => {
+              event.stopPropagation();
+              onToggleHostedPin(hosted.slug);
+            },
+            menuProps: {
+              menuId,
+              isOpen: isMenuOpen,
+              isMobileLayout,
+              placement: isMenuOpen ? workflowMenuPlacement : "down",
+              triggerDisabled: hostedLoading,
+              triggerLabel: t("workflowBuilder.hostedSection.openActions", {
+                label: hosted.label,
+              }),
+              onOpen: (placement) => {
+                setWorkflowMenuPlacement(placement);
+                setOpenWorkflowMenuId(menuKey);
+              },
+              onClose: closeWorkflowMenu,
+              triggerRef: workflowMenuTriggerRef,
+              menuRef: workflowMenuRef,
+              items: hostedMenuItems,
+            },
+            dataAttributes: { "data-hosted-workflow": "" },
+            content: (
               <button
                 type="button"
                 className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
@@ -258,11 +228,20 @@ const WorkflowBuilderSidebar = ({
                   {t("workflows.hostedBadge")}
                 </span>
               </button>
-            </WorkflowSidebarListItem>
-          );
+            ),
+            compact: {
+              label: hosted.label,
+              initials: getWorkflowInitials(hosted.label),
+              disabled: true,
+              isActive: false,
+              ariaLabel: t("workflows.hostedCompactLabel", { label: hosted.label }),
+              hiddenLabelSuffix: t("workflows.hostedBadge"),
+            },
+          } satisfies WorkflowSidebarSectionEntry;
         }
 
-        const { workflow, isPinned } = entry;
+        const workflow = entry.workflow;
+        const isPinned = isWorkflowPinned(entry, pinnedLookup);
         const isActive = workflow.id === selectedWorkflowId;
         const menuId = `workflow-actions-${workflow.id}`;
         const isMenuOpen = openWorkflowMenuId === workflow.id;
@@ -314,50 +293,50 @@ const WorkflowBuilderSidebar = ({
           },
         ];
 
-        return (
-          <WorkflowSidebarListItem
-            key={`local:${workflow.id}`}
-            isPinned={isPinned}
-            pinLabel={pinLabel}
-            onTogglePin={(event) => {
-              event.stopPropagation();
-              onToggleLocalPin(workflow.id);
-            }}
-            menuProps={{
-              menuId,
-              isOpen: isMenuOpen,
-              isMobileLayout,
-              placement: isMenuOpen ? workflowMenuPlacement : "down",
-              triggerDisabled: loading,
-              triggerLabel: t("workflowBuilder.localSection.openActions", {
-                label: workflow.display_name,
-              }),
-              onOpen: (placement) => {
-                setWorkflowMenuPlacement(placement);
-                setOpenWorkflowMenuId(workflow.id);
-              },
-              onClose: closeWorkflowMenu,
-              triggerRef: workflowMenuTriggerRef,
-              menuRef: workflowMenuRef,
-              items: localMenuItems,
-            }}
-            dataAttributes={{
-              "data-local-workflow": "",
-              "data-selected": isActive ? "" : undefined,
-            }}
-            trailingContent={
-              <>
-                {!workflow.is_chatkit_default && !workflow.active_version_id ? (
-                  <p className="chatkit-sidebar__workflow-meta" aria-live="polite" style={warningStyle}>
-                    {t("workflowBuilder.localSection.missingProduction")}
-                  </p>
-                ) : null}
-                {workflow.description ? (
-                  <p className="chatkit-sidebar__workflow-meta">{workflow.description}</p>
-                ) : null}
-              </>
-            }
-          >
+        return {
+          key: `local:${workflow.id}`,
+          kind: "local" as const,
+          isPinned,
+          pinLabel,
+          onTogglePin: (event) => {
+            event.stopPropagation();
+            onToggleLocalPin(workflow.id);
+          },
+          menuProps: {
+            menuId,
+            isOpen: isMenuOpen,
+            isMobileLayout,
+            placement: isMenuOpen ? workflowMenuPlacement : "down",
+            triggerDisabled: loading,
+            triggerLabel: t("workflowBuilder.localSection.openActions", {
+              label: workflow.display_name,
+            }),
+            onOpen: (placement) => {
+              setWorkflowMenuPlacement(placement);
+              setOpenWorkflowMenuId(workflow.id);
+            },
+            onClose: closeWorkflowMenu,
+            triggerRef: workflowMenuTriggerRef,
+            menuRef: workflowMenuRef,
+            items: localMenuItems,
+          },
+          dataAttributes: {
+            "data-local-workflow": "",
+            "data-selected": isActive ? "" : undefined,
+          },
+          trailingContent: (
+            <>
+              {!workflow.is_chatkit_default && !workflow.active_version_id ? (
+                <p className="chatkit-sidebar__workflow-meta" aria-live="polite" style={warningStyle}>
+                  {t("workflowBuilder.localSection.missingProduction")}
+                </p>
+              ) : null}
+              {workflow.description ? (
+                <p className="chatkit-sidebar__workflow-meta">{workflow.description}</p>
+              ) : null}
+            </>
+          ),
+          content: (
             <button
               type="button"
               className={`chatkit-sidebar__workflow-button${
@@ -368,118 +347,140 @@ const WorkflowBuilderSidebar = ({
               aria-current={isActive ? "true" : undefined}
               title={workflow.description ?? undefined}
             >
-              <span className="chatkit-sidebar__workflow-label">
-                {workflow.display_name}
-              </span>
+              <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
             </button>
-          </WorkflowSidebarListItem>
-        );
-      };
+          ),
+          compact: {
+            label: workflow.display_name,
+            initials: getWorkflowInitials(workflow.display_name),
+            onClick: () => onSelectWorkflow(workflow.id),
+            disabled: loading,
+            isActive,
+            ariaLabel: workflow.display_name,
+          },
+        } satisfies WorkflowSidebarSectionEntry;
+      }),
+    [
+      closeWorkflowMenu,
+      hostedLoading,
+      loading,
+      onDeleteHostedWorkflow,
+      onDeleteWorkflow,
+      onDuplicateWorkflow,
+      onExportWorkflow,
+      onOpenAppearanceModal,
+      onRenameWorkflow,
+      onSelectWorkflow,
+      onToggleHostedPin,
+      onToggleLocalPin,
+      openWorkflowMenuId,
+      orderedEntries,
+      pinnedLookup,
+      isMobileLayout,
+      workflowMenuPlacement,
+      setOpenWorkflowMenuId,
+      setWorkflowMenuPlacement,
+      t,
+      selectedWorkflowId,
+      warningStyle,
+      workflowMenuRef,
+      workflowMenuTriggerRef,
+    ],
+  );
 
-      return (
-        <>
-          {hostedError ? (
-            <p className="chatkit-sidebar__section-error" aria-live="polite">
-              {hostedError}
-            </p>
-          ) : null}
-          {hostedLoading && managedHosted.length === 0 ? (
-            <p className="chatkit-sidebar__section-text" aria-live="polite">
-              {t("workflowBuilder.hostedSection.loading")}
-            </p>
-          ) : null}
-          {pinnedEntries.length > 0 ? (
-            <div
-              className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
-              data-workflow-group="pinned"
-            >
-              <h3 className="chatkit-sidebar__workflow-group-title">
-                {t("workflows.pinnedSectionTitle")}
-              </h3>
-              <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
-                {pinnedEntries.map((entry) => renderEntry(entry))}
-              </ul>
-            </div>
-          ) : null}
-          {regularEntries.length > 0 ? (
-            <div className="chatkit-sidebar__workflow-group" data-workflow-group="default">
-              <h3 className="chatkit-sidebar__workflow-group-title">
-                {t("workflows.defaultSectionTitle")}
-              </h3>
-              <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
-                {regularEntries.map((entry) => renderEntry(entry))}
-              </ul>
-            </div>
-          ) : null}
-        </>
+  const workflowSidebarContent = useMemo(() => {
+    const sectionId = "workflow-builder-sidebar";
+
+    const beforeGroupsContent =
+      hostedError || (hostedLoading && managedHosted.length === 0)
+        ? (
+            <>
+              {hostedError ? (
+                <p className="chatkit-sidebar__section-error" aria-live="polite">
+                  {hostedError}
+                </p>
+              ) : null}
+              {hostedLoading && managedHosted.length === 0 ? (
+                <p className="chatkit-sidebar__section-text" aria-live="polite">
+                  {t("workflowBuilder.hostedSection.loading")}
+                </p>
+              ) : null}
+            </>
+          )
+        : undefined;
+
+    const entriesForSection = loadError ? [] : sidebarEntries;
+
+    let emptyContent: ReactNode | undefined;
+    if (loadError) {
+      emptyContent = (
+        <p className="chatkit-sidebar__section-error" aria-live="polite">
+          {loadError}
+        </p>
       );
-    };
+    } else if (loading && orderedEntries.length === 0) {
+      emptyContent = (
+        <p className="chatkit-sidebar__section-text" aria-live="polite">
+          Chargement des workflows…
+        </p>
+      );
+    } else if (orderedEntries.length === 0) {
+      emptyContent = (
+        <p className="chatkit-sidebar__section-text" aria-live="polite">
+          Aucun workflow disponible pour le moment.
+        </p>
+      );
+    }
+
+    const footerContent =
+      selectedWorkflow?.description || (selectedWorkflow && !selectedWorkflow.active_version_id)
+        ? (
+            <>
+              {selectedWorkflow?.description ? (
+                <p className="chatkit-sidebar__section-text">
+                  {selectedWorkflow.description}
+                </p>
+              ) : null}
+              {selectedWorkflow && !selectedWorkflow.active_version_id ? (
+                <p className="chatkit-sidebar__section-text" style={warningStyle}>
+                  Publiez une version pour l'utiliser.
+                </p>
+              ) : null}
+            </>
+          )
+        : null;
 
     return (
-      <section
-        className="chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
-        aria-labelledby={`${sectionId}-title`}
-      >
-        <h2 id={`${sectionId}-title`} className="visually-hidden">
-          {t("workflows.defaultSectionTitle")}
-        </h2>
-        <div className="chatkit-sidebar__section-floating-action">
-          <button
-            type="button"
-            className="chatkit-sidebar__section-icon-button"
-            onClick={onOpenCreateModal}
-            aria-label={t("workflowBuilder.createWorkflow.openModal")}
-            title={t("workflowBuilder.createWorkflow.openModal")}
-            disabled={isCreatingWorkflow}
-          >
-            <span aria-hidden="true">+</span>
-          </button>
-        </div>
-        {renderWorkflowList()}
-        {selectedWorkflow?.description ? (
-          <p className="chatkit-sidebar__section-text">
-            {selectedWorkflow.description}
-          </p>
-        ) : null}
-        {selectedWorkflow && !selectedWorkflow.active_version_id ? (
-          <p className="chatkit-sidebar__section-text" style={warningStyle}>
-            Publiez une version pour l'utiliser.
-          </p>
-        ) : null}
-      </section>
+      <WorkflowSidebarSection
+        sectionId={sectionId}
+        title={t("workflows.defaultSectionTitle")}
+        entries={entriesForSection}
+        pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
+        defaultSectionTitle={t("workflows.defaultSectionTitle")}
+        floatingAction={{
+          icon: <span aria-hidden="true">+</span>,
+          label: t("workflowBuilder.createWorkflow.openModal"),
+          onClick: onOpenCreateModal,
+          disabled: isCreatingWorkflow,
+        }}
+        beforeGroups={beforeGroupsContent}
+        emptyState={emptyContent}
+        footerContent={footerContent}
+      />
     );
   }, [
-    closeWorkflowMenu,
     hostedError,
     hostedLoading,
-    hostedWorkflows,
     isCreatingWorkflow,
-    isMobileLayout,
-    lastUsedAt,
     loadError,
     loading,
-    onDeleteHostedWorkflow,
-    onDeleteWorkflow,
-    onDuplicateWorkflow,
-    onExportWorkflow,
-    onOpenAppearanceModal,
+    managedHosted,
     onOpenCreateModal,
-    onRenameWorkflow,
-    onSelectWorkflow,
-    onToggleHostedPin,
-    onToggleLocalPin,
-    openWorkflowMenuId,
-    orderingCollator,
-    pinnedLookup,
+    orderedEntries,
+    sidebarEntries,
     selectedWorkflow,
-    selectedWorkflowId,
-    setOpenWorkflowMenuId,
-    setWorkflowMenuPlacement,
     t,
-    workflowMenuPlacement,
-    workflowMenuRef,
-    workflowMenuTriggerRef,
-    workflows,
+    warningStyle,
   ]);
 
   const collapsedWorkflowShortcuts = useMemo(() => {
@@ -487,149 +488,15 @@ const WorkflowBuilderSidebar = ({
       return null;
     }
 
-    const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
-    const orderingOptions = orderingCollator
-      ? { collator: orderingCollator, pinnedLookup }
-      : { pinnedLookup };
-
-    const orderedEntries = orderWorkflowEntries(
-      [
-        ...managedHosted.map((workflow) => ({ kind: "hosted" as const, workflow })),
-        ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
-      ],
-      lastUsedAt,
-      orderingOptions,
-    );
-
-    type ShortcutEntry = {
-      key: string;
-      label: string;
-      onClick: (() => void) | undefined;
-      disabled: boolean;
-      isActive: boolean;
-      initials: string;
-      kind: "hosted" | "local";
-      isPinned: boolean;
-    };
-
-    const entries: ShortcutEntry[] = orderedEntries.map((entry) => {
-      if (entry.kind === "hosted") {
-        const workflow = entry.workflow;
-        return {
-          key: `hosted:${workflow.slug}`,
-          label: workflow.label,
-          onClick: undefined,
-          disabled: true,
-          isActive: false,
-          initials: getWorkflowInitials(workflow.label),
-          kind: "hosted" as const,
-          isPinned: isWorkflowPinned(entry, pinnedLookup),
-        } satisfies ShortcutEntry;
-      }
-
-      const workflow = entry.workflow;
-      return {
-        key: `local:${workflow.id}`,
-        label: workflow.display_name,
-        onClick: () => onSelectWorkflow(workflow.id),
-        disabled: loading,
-        isActive: workflow.id === selectedWorkflowId,
-        initials: getWorkflowInitials(workflow.display_name),
-        kind: "local" as const,
-        isPinned: isWorkflowPinned(entry, pinnedLookup),
-      } satisfies ShortcutEntry;
-    });
-
-    if (entries.length === 0) {
-      return null;
-    }
-
-    const pinnedEntries: ShortcutEntry[] = [];
-    const regularEntries: ShortcutEntry[] = [];
-
-    for (const entry of entries) {
-      if (entry.isPinned) {
-        pinnedEntries.push(entry);
-      } else {
-        regularEntries.push(entry);
-      }
-    }
-
-    const renderShortcut = (workflow: ShortcutEntry) => (
-      <li
-        key={workflow.key}
-        className="chatkit-sidebar__workflow-compact-item"
-        data-pinned={workflow.isPinned ? "" : undefined}
-      >
-        <button
-          type="button"
-          className={`chatkit-sidebar__workflow-compact-button${
-            workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-          }${workflow.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}${
-            workflow.isPinned ? " chatkit-sidebar__workflow-compact-button--pinned" : ""
-          }`}
-          onClick={workflow.onClick}
-          disabled={workflow.disabled}
-          aria-current={workflow.isActive ? "true" : undefined}
-          title={workflow.label}
-          tabIndex={isSidebarCollapsed ? 0 : -1}
-          aria-label={
-            workflow.kind === "hosted"
-              ? t("workflows.hostedCompactLabel", { label: workflow.label })
-              : workflow.label
-          }
-        >
-          <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
-            {workflow.initials}
-          </span>
-          <span className="visually-hidden">
-            {workflow.label}
-            {workflow.kind === "hosted" ? ` (${t("workflows.hostedBadge")})` : ""}
-          </span>
-        </button>
-      </li>
-    );
-
     return (
-      <div className="chatkit-sidebar__workflow-compact-groups">
-        {pinnedEntries.length > 0 ? (
-          <div
-            className="chatkit-sidebar__workflow-compact-group chatkit-sidebar__workflow-compact-group--pinned"
-            data-workflow-group="pinned"
-          >
-            <h3 className="chatkit-sidebar__workflow-compact-group-title">
-              {t("workflows.pinnedSectionTitle")}
-            </h3>
-            <ul className="chatkit-sidebar__workflow-compact-list chatkit-sidebar__workflow-compact-list--grouped">
-              {pinnedEntries.map((workflow) => renderShortcut(workflow))}
-            </ul>
-          </div>
-        ) : null}
-        {regularEntries.length > 0 ? (
-          <div className="chatkit-sidebar__workflow-compact-group" data-workflow-group="default">
-            <h3 className="chatkit-sidebar__workflow-compact-group-title">
-              {t("workflows.defaultSectionTitle")}
-            </h3>
-            <ul className="chatkit-sidebar__workflow-compact-list">
-              {regularEntries.map((workflow) => renderShortcut(workflow))}
-            </ul>
-          </div>
-        ) : null}
-      </div>
+      <WorkflowSidebarCompact
+        entries={sidebarEntries}
+        pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
+        defaultSectionTitle={t("workflows.defaultSectionTitle")}
+        isSidebarCollapsed={isSidebarCollapsed}
+      />
     );
-  }, [
-    hostedWorkflows,
-    isSidebarCollapsed,
-    lastUsedAt,
-    loadError,
-    loading,
-    onSelectWorkflow,
-    orderingCollator,
-    pinnedLookup,
-    selectedWorkflowId,
-    t,
-    workflows,
-  ]);
+  }, [isSidebarCollapsed, loadError, sidebarEntries, t]);
 
   useEffect(() => {
     setSidebarContent(workflowSidebarContent);

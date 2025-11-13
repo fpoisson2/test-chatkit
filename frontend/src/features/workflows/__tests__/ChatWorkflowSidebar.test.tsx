@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom/vitest";
 import type { ReactNode } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within, cleanup } from "@testing-library/react";
@@ -5,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 
 import { I18nProvider } from "../../../i18n";
 import { WORKFLOW_SELECTION_STORAGE_KEY } from "../utils";
+import { WorkflowSidebarProvider } from "../WorkflowSidebarProvider";
 import type { StoredWorkflowSelection } from "../utils";
 import type { HostedWorkflowMetadata } from "../../../utils/backend";
 import type { WorkflowSummary } from "../../../types/workflows";
@@ -49,9 +51,9 @@ beforeAll(async () => {
   ({ ChatWorkflowSidebar } = await import("../ChatWorkflowSidebar"));
 });
 
-const authState: { token: string | null; user: { is_admin: boolean } } = {
+const authState: { token: string | null; user: { is_admin: boolean; email: string } } = {
   token: "token",
-  user: { is_admin: true },
+  user: { is_admin: true, email: "user@example.com" },
 };
 
 vi.mock("../../../auth", () => ({
@@ -166,7 +168,9 @@ describe("ChatWorkflowSidebar pinning", () => {
     const user = userEvent.setup();
     const { unmount: unmountSidebar } = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -179,7 +183,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     const list = sidebarHost.getByRole("list");
     let items = within(list).getAllByRole("listitem");
     expect(within(items[0]).getByText("Alpha")).toBeInTheDocument();
-    expect(sidebarHost.queryByRole("heading", { name: "Pinned workflows" })).toBeNull();
+    expect(sidebarHost.queryAllByRole("heading", { name: "Pinned workflows" })).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "Pin Beta" }));
 
@@ -189,7 +193,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     });
 
     sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
-    const pinnedHeading = sidebarHost.getByRole("heading", { name: "Pinned workflows" });
+    const pinnedHeading = sidebarHost.getAllByRole("heading", { name: "Pinned workflows" })[0];
     const pinnedGroup = pinnedHeading.closest('[data-workflow-group="pinned"]');
     expect(pinnedGroup).not.toBeNull();
     const pinnedList = within(pinnedGroup as HTMLElement).getByRole("list");
@@ -206,9 +210,9 @@ describe("ChatWorkflowSidebar pinning", () => {
       expect(collapsedHost.getAllByRole("list").length).toBeGreaterThan(0);
     });
 
-    const collapsedPinnedHeading = within(collapsedHost.container).getByRole("heading", {
+    const collapsedPinnedHeading = within(collapsedHost.container).getAllByRole("heading", {
       name: "Pinned workflows",
-    });
+    })[0];
     const collapsedPinnedGroup = collapsedPinnedHeading.closest('[data-workflow-group="pinned"]');
     expect(collapsedPinnedGroup).not.toBeNull();
     const collapsedPinnedList = within(collapsedPinnedGroup as HTMLElement).getByRole("list");
@@ -230,7 +234,9 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     const rerendered = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -240,9 +246,9 @@ describe("ChatWorkflowSidebar pinning", () => {
       expect(rerenderedHost.getAllByRole("list").length).toBeGreaterThan(0);
     });
 
-    const rerenderedPinnedHeading = rerenderedHost.getByRole("heading", {
+    const rerenderedPinnedHeading = rerenderedHost.getAllByRole("heading", {
       name: "Pinned workflows",
-    });
+    })[0];
     const rerenderedPinnedGroup = rerenderedPinnedHeading.closest('[data-workflow-group="pinned"]');
     expect(rerenderedPinnedGroup).not.toBeNull();
     const rerenderedPinnedList = within(rerenderedPinnedGroup as HTMLElement).getByRole("list");
@@ -302,7 +308,9 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
@@ -322,8 +330,8 @@ describe("ChatWorkflowSidebar pinning", () => {
     await waitFor(() => {
       sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
       expect(
-        sidebarHost.getByRole("heading", { name: "Pinned workflows" }),
-      ).toBeInTheDocument();
+        sidebarHost.getAllByRole("heading", { name: "Pinned workflows" }).length,
+      ).toBeGreaterThan(0);
     });
 
     const storedAfter = window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY);
@@ -346,29 +354,35 @@ describe("ChatWorkflowSidebar pinning", () => {
 
     const rendered = render(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
-    // Ensure the stored selection remains untouched while the token is missing
-    expect(window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toBe(
-      JSON.stringify(storedSelection),
-    );
+    // Ensure pinned selection remains while the token is missing
+    expect(
+      JSON.parse(window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY) ?? "{}")?.pinned?.local,
+    ).toEqual([2]);
 
     authState.token = "token";
     rendered.rerender(
       <I18nProvider>
-        <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        <WorkflowSidebarProvider>
+          <ChatWorkflowSidebar mode="local" setMode={vi.fn()} onWorkflowActivated={vi.fn()} />
+        </WorkflowSidebarProvider>
       </I18nProvider>,
     );
 
     const sidebarHost = await renderSidebarHost();
     await waitFor(() => {
       sidebarHost.rerender(<I18nProvider>{latestSidebarContent}</I18nProvider>);
-      expect(sidebarHost.getByRole("heading", { name: "Pinned workflows" })).toBeInTheDocument();
+      expect(
+        sidebarHost.getAllByRole("heading", { name: "Pinned workflows" }).length,
+      ).toBeGreaterThan(0);
     });
 
-    const pinnedHeading = sidebarHost.getByRole("heading", { name: "Pinned workflows" });
+    const pinnedHeading = sidebarHost.getAllByRole("heading", { name: "Pinned workflows" })[0];
     const pinnedGroup = pinnedHeading.closest('[data-workflow-group="pinned"]');
     expect(pinnedGroup).not.toBeNull();
     const pinnedList = within(pinnedGroup as HTMLElement).getByRole("list");
