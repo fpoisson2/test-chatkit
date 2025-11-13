@@ -408,7 +408,9 @@ export function MyChat() {
           setMode(nextMode);
         }
 
-        if (reason === "user" && currentId !== nextId) {
+        // Reset chat state when workflow changes (for both user selection and initial LTI auto-selection)
+        // This ensures the correct thread is loaded for LTI users when they return
+        if ((reason === "user" || reason === "initial") && currentId !== nextId && nextId !== null) {
           resetChatState({
             selection,
             preserveStoredThread: true,
