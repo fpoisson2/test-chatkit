@@ -939,9 +939,9 @@
   border: none;
   background: transparent;
   color: inherit;
-  font: inherit;
+  font-family: inherit;
   font-size: var(--font-text-xl-size);
-  line-height: var(--leading-none);
+  line-height: 1;
   width: var(--control-size-xs);
   height: var(--control-size-xs);
   border-radius: var(--radius-md);
