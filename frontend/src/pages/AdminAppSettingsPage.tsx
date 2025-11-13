@@ -190,7 +190,7 @@ export const AdminAppSettingsPage = () => {
           title={t("admin.appSettings.threadTitle.cardTitle")}
           subtitle={t("admin.appSettings.threadTitle.cardDescription")}
         >
-          <form className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
+          <form className="flex flex-col gap-6" onSubmit={handleFormSubmit(handleSubmit)}>
             <FormField label={t("admin.appSettings.threadTitle.modelLabel")}>
               <select
                 id="thread-title-model-select"
@@ -246,27 +246,27 @@ export const AdminAppSettingsPage = () => {
             )}
 
             {modelOptionsError && (
-              <p className="admin-form__hint">{modelOptionsError}</p>
+              <p className="form-hint">{modelOptionsError}</p>
             )}
 
-            <p className="admin-form__hint">
+            <p className="form-hint">
               {t("admin.appSettings.threadTitle.modelHint")}
             </p>
 
-            <p className="admin-form__hint">
+            <p className="form-hint">
               {isCustomModel
                 ? t("admin.appSettings.threadTitle.modelStatus.custom")
                 : t("admin.appSettings.threadTitle.modelStatus.default")}
             </p>
 
-            <div className="admin-form__default-block" aria-live="polite">
-              <strong>
+            <div className="p-4 bg-surface-elevated rounded-lg border" aria-live="polite">
+              <strong className="block mb-2">
                 {t("admin.appSettings.threadTitle.modelDefaultLabel")}
               </strong>
-              <pre>{defaultModel}</pre>
+              <pre className="text-sm">{defaultModel}</pre>
             </div>
 
-            <div className="admin-form__divider" aria-hidden="true" />
+            <div className="divider" aria-hidden="true" />
 
             <FormField
               label={t("admin.appSettings.threadTitle.fieldLabel")}
