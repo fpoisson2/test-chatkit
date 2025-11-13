@@ -763,7 +763,7 @@ export function MyChat() {
     const timer = setTimeout(() => {
       console.log('[MyChat] LTI initialization complete');
       setLtiReady(true);
-    }, 700);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [ltiReady, isLtiContext, activeWorkflow, workflowsLoading]);
