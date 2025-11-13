@@ -38,12 +38,6 @@
     text-decoration: underline dotted;
   }
 
-  /* Use :where() for zero specificity - allows utility classes to easily override */
-  :where(h1, h2, h3, h4, h5, h6) {
-    font-size: inherit;
-    font-weight: inherit;
-  }
-
   a {
     color: inherit;
     text-decoration: inherit;
