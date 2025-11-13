@@ -774,7 +774,8 @@ export function MyChat() {
     <>
       <LoadingOverlay
         isVisible={shouldShowLoadingOverlay}
-        message="Chargement de votre espace de travail..."
+        message="Chargement..."
+        variant="fullscreen"
       />
       {/* Hide all content during LTI loading to prevent multiple spinners from showing */}
       <div style={{ display: shouldShowLoadingOverlay ? 'none' : 'contents' }}>

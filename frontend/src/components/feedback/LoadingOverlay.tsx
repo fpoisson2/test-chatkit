@@ -6,6 +6,7 @@ export interface LoadingOverlayProps {
   message?: string;
   cancelable?: boolean;
   onCancel?: () => void;
+  variant?: "overlay" | "fullscreen";
 }
 
 export const LoadingOverlay = ({
@@ -13,11 +14,16 @@ export const LoadingOverlay = ({
   message,
   cancelable = false,
   onCancel,
+  variant = "overlay",
 }: LoadingOverlayProps) => {
   if (!isVisible) return null;
 
+  const className = variant === "fullscreen"
+    ? "loading-overlay loading-overlay--fullscreen"
+    : "loading-overlay";
+
   return (
-    <div className="loading-overlay" role="dialog" aria-modal="true" aria-label="Chargement en cours">
+    <div className={className} role="dialog" aria-modal="true" aria-label="Chargement en cours">
       <div className="loading-overlay__content">
         <LoadingSpinner size="lg" text={message} />
         {cancelable && onCancel && (
