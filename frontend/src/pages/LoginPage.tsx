@@ -141,7 +141,7 @@ export const LoginPage = () => {
 
         {error && <ErrorAlert message={error} dismissible onDismiss={() => setError(null)} />}
 
-        <button className="button" type="submit" disabled={isSubmitting}>
+        <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? t("auth.login.submit.loading") : t("auth.login.submit.label")}
         </button>
       </form>

@@ -49,7 +49,7 @@ export const CreateWorkflowModal = ({
     <div className="create-workflow-modal__footer">
       <button
         type="button"
-        className="create-workflow-modal__button"
+        className="btn btn-ghost"
         onClick={onClose}
         disabled={isSubmitting}
       >
@@ -58,7 +58,7 @@ export const CreateWorkflowModal = ({
       <button
         type="submit"
         form={formId}
-        className="create-workflow-modal__button create-workflow-modal__button--primary"
+        className="btn btn-primary"
         disabled={isSubmitting}
       >
         {t("workflowBuilder.createWorkflow.modal.submit")}
