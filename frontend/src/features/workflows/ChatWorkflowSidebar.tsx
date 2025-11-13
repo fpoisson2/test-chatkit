@@ -197,13 +197,18 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   // Auto-select LTI workflow for LTI users
   const hasCheckedLtiWorkflow = useRef(false);
   useEffect(() => {
-    if (hasCheckedLtiWorkflow.current || !user) {
+    if (hasCheckedLtiWorkflow.current || !user || loading) {
       return;
     }
 
     // Check if user is LTI user
     if (!user.email.endsWith('@lti.local')) {
       hasCheckedLtiWorkflow.current = true;
+      return;
+    }
+
+    // Wait for workflows to be loaded before checking
+    if (workflows.length === 0) {
       return;
     }
 
@@ -231,26 +236,64 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (selectedWorkflowId !== workflowId) {
         console.log('Auto-selecting LTI workflow from Deep Link:', workflowId);
         setSelectedWorkflowId(workflowId);
+        updateStoredWorkflowSelection((previous) => ({
+          mode: "local",
+          localWorkflowId: workflowId,
+          hostedSlug: previous?.hostedSlug ?? null,
+          lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
+          pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
+        }));
         onWorkflowActivatedRef.current(
           { kind: "local", workflow: workflowInList },
           { reason: "initial" },
         );
       }
     } else {
-      console.warn('LTI workflow not found in available workflows:', workflowId);
+      console.warn('LTI workflow not found in available workflows:', workflowId, 'Available:', workflows.map(w => w.id));
     }
 
     hasCheckedLtiWorkflow.current = true;
-  }, [user, workflows, selectedWorkflowId, setSelectedWorkflowId]);
+  }, [user, workflows, selectedWorkflowId, setSelectedWorkflowId, loading]);
 
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
-      if (!token || !isAdmin || workflowId === selectedWorkflowId || isUpdating) {
+      if (!token || workflowId === selectedWorkflowId || isUpdating) {
         return;
       }
 
       const workflowToActivate = workflows.find((workflow) => workflow.id === workflowId);
       if (!workflowToActivate || workflowToActivate.active_version_id === null) {
+        return;
+      }
+
+      const isLtiUser = user?.email.endsWith('@lti.local');
+
+      // LTI users can select workflows locally without API call
+      if (isLtiUser) {
+        setSelectedWorkflowId(workflowId);
+        updateStoredWorkflowSelection((previous) => ({
+          mode: "local",
+          localWorkflowId: workflowId,
+          hostedSlug: previous?.hostedSlug ?? null,
+          lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
+          pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
+        }));
+        onWorkflowActivatedRef.current(
+          { kind: "local", workflow: workflowToActivate },
+          { reason: "user" },
+        );
+        if (!isDesktopLayout) {
+          closeSidebar();
+        }
+        recordWorkflowLastUsedAt({
+          kind: "local",
+          workflow: workflowToActivate,
+        });
+        return;
+      }
+
+      // Admin users can set the default workflow via API
+      if (!isAdmin) {
         return;
       }
 
@@ -309,6 +352,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       setSelectedWorkflowId,
       setWorkflows,
       token,
+      user,
       workflows,
     ],
   );
