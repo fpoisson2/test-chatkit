@@ -313,32 +313,64 @@ const applyBoxStyles = (box: BoxLike): React.CSSProperties => {
 };
 
 const renderText = (component: Widgets.TextComponent) => {
-  const classNames = ["widget-preview__text"];
-  if (component.weight === "semibold" || component.weight === "bold" || component.weight === "medium") {
-    classNames.push("widget-preview__text--bold");
+  const classNames = ["text-base"];
+
+  // Weight mapping
+  if (component.weight === "bold") {
+    classNames.push("font-bold");
+  } else if (component.weight === "semibold") {
+    classNames.push("font-semibold");
+  } else if (component.weight === "medium") {
+    classNames.push("font-medium");
   }
+
+  // Italic
   if (component.italic) {
-    classNames.push("widget-preview__text--italic");
+    classNames.push("italic");
   }
+
   const style: React.CSSProperties = {};
-  if (component.size) {
-    classNames.push(`widget-preview__text--${component.size}`);
+
+  // Size mapping
+  if (component.size === "xs") {
+    classNames.push("text-xs");
+  } else if (component.size === "sm") {
+    classNames.push("text-sm");
+  } else if (component.size === "lg") {
+    classNames.push("text-lg");
+  } else if (component.size === "xl") {
+    classNames.push("text-xl");
+  } else if (component.size === "2xl") {
+    classNames.push("text-2xl");
   }
+
+  // Line through
   if (component.lineThrough) {
-    style.textDecoration = "line-through";
+    classNames.push("line-through");
   }
-  if (component.textAlign) {
-    style.textAlign = component.textAlign as React.CSSProperties["textAlign"];
+
+  // Text alignment
+  if (component.textAlign === "center") {
+    classNames.push("text-center");
+  } else if (component.textAlign === "right") {
+    classNames.push("text-right");
+  } else if (component.textAlign === "left") {
+    classNames.push("text-left");
   }
+
+  // Custom color
   if (component.color) {
     const color = toThemeColor(component.color);
     if (color) {
       style.color = color;
     }
   }
+
+  // Width
   if (component.width) {
     style.width = typeof component.width === "number" ? `${component.width}px` : component.width;
   }
+
   return (
     <p className={classNames.join(" ")} style={style}>
       {component.value}
@@ -347,20 +379,42 @@ const renderText = (component: Widgets.TextComponent) => {
 };
 
 const renderTitle = (component: Widgets.Title) => {
-  const classNames = ["widget-preview__title"];
-  if (component.size) {
-    classNames.push(`widget-preview__title--${component.size}`);
+  const classNames = ["font-semibold"];
+
+  // Size mapping to headings
+  if (component.size === "xs") {
+    classNames.push("text-base");
+  } else if (component.size === "sm") {
+    classNames.push("text-lg");
+  } else if (component.size === "md") {
+    classNames.push("text-xl");
+  } else if (component.size === "lg") {
+    classNames.push("text-2xl");
+  } else if (component.size === "xl") {
+    classNames.push("text-3xl");
+  } else {
+    classNames.push("text-xl");
   }
+
   const style: React.CSSProperties = {};
-  if (component.textAlign) {
-    style.textAlign = component.textAlign as React.CSSProperties["textAlign"];
+
+  // Text alignment
+  if (component.textAlign === "center") {
+    classNames.push("text-center");
+  } else if (component.textAlign === "right") {
+    classNames.push("text-right");
+  } else if (component.textAlign === "left") {
+    classNames.push("text-left");
   }
+
+  // Custom color
   if (component.color) {
     const color = toThemeColor(component.color);
     if (color) {
       style.color = color;
     }
   }
+
   return (
     <h3 className={classNames.join(" ")} style={style}>
       {component.value}
@@ -369,17 +423,27 @@ const renderTitle = (component: Widgets.Title) => {
 };
 
 const renderCaption = (component: Widgets.Caption) => {
-  const classNames = ["widget-preview__caption"];
-  if (component.size) {
-    classNames.push(`widget-preview__caption--${component.size}`);
+  const classNames = ["text-secondary"];
+
+  // Size mapping
+  if (component.size === "xs") {
+    classNames.push("text-xs");
+  } else if (component.size === "sm") {
+    classNames.push("text-sm");
+  } else {
+    classNames.push("text-sm");
   }
+
   const style: React.CSSProperties = {};
+
+  // Custom color
   if (component.color) {
     const color = toThemeColor(component.color);
     if (color) {
       style.color = color;
     }
   }
+
   return (
     <p className={classNames.join(" ")} style={style}>
       {component.value}
@@ -426,25 +490,25 @@ const renderStatus = (status?: Widgets.WidgetStatus) => {
   if (!status) {
     return null;
   }
-  const classNames = ["widget-preview__status"];
+  const classNames = ["flex items-center gap-2 text-sm"];
   if ("frame" in status && status.frame) {
-    classNames.push("widget-preview__status--framed");
+    classNames.push("p-3 rounded-lg bg-surface-elevated border");
   }
   const iconName = "icon" in status ? status.icon : undefined;
   const favicon = "favicon" in status ? status.favicon : undefined;
   return (
     <div className={classNames.join(" ")} role="status">
       {favicon ? (
-        <span className="widget-preview__status-favicon" aria-hidden>
-          <img src={favicon} alt="" />
+        <span className="inline-flex w-4 h-4" aria-hidden>
+          <img src={favicon} alt="" className="w-full h-full object-contain" />
         </span>
       ) : null}
       {iconName ? (
-        <span className="widget-preview__status-icon" aria-hidden>
+        <span className="inline-flex w-4 h-4 text-secondary" aria-hidden>
           {renderWidgetIcon(iconName)}
         </span>
       ) : null}
-      <span className="widget-preview__status-text">{status.text}</span>
+      <span className="text-secondary">{status.text}</span>
     </div>
   );
 };
@@ -509,17 +573,38 @@ const renderButton = (component: Widgets.Button) => {
 };
 
 const renderImage = (component: Widgets.Image) => (
-  <figure className="widget-preview__image">
-    <img src={component.src} alt={component.alt ?? "Prévisualisation du widget"} />
-    {component.caption ? <figcaption>{component.caption}</figcaption> : null}
+  <figure className="my-4">
+    <img
+      src={component.src}
+      alt={component.alt ?? "Prévisualisation du widget"}
+      className="w-full h-auto rounded-lg"
+    />
+    {component.caption ? (
+      <figcaption className="text-sm text-secondary mt-2 text-center">
+        {component.caption}
+      </figcaption>
+    ) : null}
   </figure>
 );
 
 const renderIcon = (component: Widgets.Icon) => {
-  const classNames = ["widget-preview__icon"];
-  if (component.size) {
-    classNames.push(`widget-preview__icon--${component.size}`);
+  const classNames = ["inline-flex"];
+
+  // Size mapping
+  if (component.size === "xs") {
+    classNames.push("w-3 h-3");
+  } else if (component.size === "sm") {
+    classNames.push("w-4 h-4");
+  } else if (component.size === "md") {
+    classNames.push("w-5 h-5");
+  } else if (component.size === "lg") {
+    classNames.push("w-6 h-6");
+  } else if (component.size === "xl") {
+    classNames.push("w-8 h-8");
+  } else {
+    classNames.push("w-5 h-5");
   }
+
   const style: React.CSSProperties = {};
   if (component.color) {
     const color = toThemeColor(component.color);
@@ -527,10 +612,15 @@ const renderIcon = (component: Widgets.Icon) => {
       style.color = color;
     }
   }
+
   const iconElement = renderWidgetIcon(component.name);
   return (
     <span className={classNames.join(" ")} aria-hidden style={style}>
-      {iconElement ?? <span className="widget-preview__icon-fallback">{component.name}</span>}
+      {iconElement ?? (
+        <span className="inline-flex items-center justify-center text-xs bg-surface-elevated rounded px-1">
+          {component.name}
+        </span>
+      )}
     </span>
   );
 };
@@ -615,11 +705,13 @@ const renderRadioGroup = (component: Widgets.RadioGroup) => (
 );
 
 const renderMarkdown = (component: Widgets.Markdown) => (
-  <ReactMarkdown className="widget-preview__markdown">{component.value}</ReactMarkdown>
+  <div className="prose prose-sm max-w-none">
+    <ReactMarkdown>{component.value}</ReactMarkdown>
+  </div>
 );
 
 const renderUnsupported = (type: string) => (
-  <div className="widget-preview__unsupported">Composant non pris en charge : {type}</div>
+  <div className="alert alert-warning text-sm">Composant non pris en charge : {type}</div>
 );
 
 const renderChildren = (children: unknown[]): React.ReactNode =>
@@ -660,18 +752,14 @@ const renderListView = (listView: Widgets.ListView) => {
   return (
     <section className={wrapperClassNames.join(" ")} style={wrapperStyles} data-theme={listView.theme}>
       {renderStatus(listView.status)}
-      <div className="widget-preview__list-view">
+      <div className="flex flex-col gap-3">
         {limited.map((item, index) => {
           const entry = item as Widgets.ListViewItem;
-          const itemClassNames = ["widget-preview__list-item"];
+          const itemClassNames = ["flex flex-col gap-3 p-3"];
           if (entry.onClickAction) {
-            itemClassNames.push("widget-preview__list-item--actionable");
+            itemClassNames.push("cursor-pointer hover:bg-surface-elevated rounded-lg transition-colors");
           }
-          const itemStyles: React.CSSProperties = {
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.75rem",
-          };
+          const itemStyles: React.CSSProperties = {};
           if (entry.align) {
             itemStyles.alignItems =
               entry.align === "start"
@@ -745,7 +833,7 @@ const renderCard = (card: Widgets.Card) => {
 const renderBasicRoot = (root: Widgets.BasicRoot) => {
   const styles = applyBoxStyles(root);
   return (
-    <section className="widget-preview__basic" style={styles} data-theme={root.theme}>
+    <section className="p-4" style={styles} data-theme={root.theme}>
       {renderChildren(Array.isArray(root.children) ? root.children : [])}
     </section>
   );
