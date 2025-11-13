@@ -12,14 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from agents import Agent, RunConfig, Runner
-from openai.types.responses import (
-    ResponseInputContentParam,
-    ResponseInputFileParam,
-    ResponseInputImageParam,
-    ResponseInputTextParam,
-)
-from openai.types.responses.response_input_item_param import Message
-
 from chatkit.actions import Action
 from chatkit.agents import (
     AgentContext,
@@ -62,6 +54,13 @@ from chatkit.types import (
     WidgetRootUpdated,
     WorkflowItem,
 )
+from openai.types.responses import (
+    ResponseInputContentParam,
+    ResponseInputFileParam,
+    ResponseInputImageParam,
+    ResponseInputTextParam,
+)
+from openai.types.responses.response_input_item_param import Message
 
 from ..attachment_store import LocalAttachmentStore
 from ..chatkit_store import PostgresChatKitStore
@@ -112,6 +111,54 @@ except Exception:  # pragma: no cover - module non initialisé
 
 
 logger = logging.getLogger("chatkit.server")
+
+
+class _WorkflowStreamState:
+    """Gestionnaire de diffusion pour un workflow actif."""
+
+    def __init__(self, *, thread_id: str, run_key: str) -> None:
+        self.thread_id = thread_id
+        self.run_key = run_key
+        self._events: list[ThreadStreamEvent] = []
+        self._condition = asyncio.Condition()
+        self._next_index = 0
+        self._active_consumers = 0
+        self._finished = False
+        self.pump_task: asyncio.Task[None] | None = None
+
+    async def append(self, event: ThreadStreamEvent) -> None:
+        async with self._condition:
+            self._events.append(event)
+            self._condition.notify_all()
+
+    async def mark_finished(self) -> None:
+        async with self._condition:
+            self._finished = True
+            self._condition.notify_all()
+
+    async def acquire(self) -> int:
+        async with self._condition:
+            self._active_consumers += 1
+            return self._next_index
+
+    async def release(self, index: int) -> bool:
+        async with self._condition:
+            self._active_consumers = max(0, self._active_consumers - 1)
+            if index > self._next_index:
+                self._next_index = index
+            should_cleanup = self._finished and self._active_consumers == 0
+        return should_cleanup
+
+    async def wait_for_event(self, index: int) -> ThreadStreamEvent | None:
+        async with self._condition:
+            while index >= len(self._events):
+                if self._finished:
+                    return None
+                await self._condition.wait()
+            return self._events[index]
+
+    def is_drained(self) -> bool:
+        return self._finished and self._next_index >= len(self._events)
 
 
 def _log_async_exception(task: asyncio.Task[Any]) -> None:
@@ -379,6 +426,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             open_attachment=attachment_store.open_attachment,
         )
         self.attachment_store = attachment_store
+        self._active_workflow_streams: dict[
+            tuple[str, str], _WorkflowStreamState
+        ] = {}
+        self._active_workflow_lock = asyncio.Lock()
 
     async def _process_streaming_impl(
         self,
@@ -496,6 +547,59 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         input_user_message: UserMessageItem | None,
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        run_key = getattr(input_user_message, "id", "__no_input__")
+        state_key = (thread.id, run_key)
+
+        async with self._active_workflow_lock:
+            state = self._active_workflow_streams.get(state_key)
+
+            if state is None and input_user_message is None:
+                for candidate_key, candidate_state in list(
+                    self._active_workflow_streams.items()
+                ):
+                    if candidate_key[0] != thread.id:
+                        continue
+                    if candidate_state.is_drained():
+                        self._active_workflow_streams.pop(candidate_key, None)
+                        continue
+                    state = candidate_state
+                    state_key = candidate_key
+                    break
+
+            if state is not None and state.is_drained():
+                self._active_workflow_streams.pop(state_key, None)
+                state = None
+
+        async def _stream_from_state(
+            stream_state: _WorkflowStreamState,
+        ) -> AsyncIterator[ThreadStreamEvent]:
+            start_index = await stream_state.acquire()
+            index = start_index
+            try:
+                while True:
+                    event = await stream_state.wait_for_event(index)
+                    if event is None:
+                        break
+                    try:
+                        yield event
+                    except asyncio.CancelledError:
+                        index += 1
+                        raise
+                    else:
+                        index += 1
+            finally:
+                should_cleanup = await stream_state.release(index)
+                if should_cleanup:
+                    async with self._active_workflow_lock:
+                        mapped = self._active_workflow_streams.get(state_key)
+                        if mapped is stream_state:
+                            self._active_workflow_streams.pop(state_key, None)
+
+        if state is not None:
+            async for event in _stream_from_state(state):
+                yield event
+            return
+
         thread_item_converter = self._thread_item_converter.for_context(context)
         if input_user_message is not None:
             title_task = asyncio.create_task(
@@ -547,7 +651,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     await self.store.delete_thread_item(
                         thread.id, input_user_message.id, context=context
                     )
-                    yield ThreadItemRemovedEvent(item_id=input_user_message.id)
+                    pre_stream_events: list[ThreadStreamEvent] = [
+                        ThreadItemRemovedEvent(item_id=input_user_message.id)
+                    ]
                 except Exception as exc:  # pragma: no cover - suppression best effort
                     logger.warning(
                         "Impossible de retirer le message utilisateur initial pour le "
@@ -555,6 +661,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         thread.id,
                         exc_info=exc,
                     )
+                    pre_stream_events = []
+            else:
+                pre_stream_events = []
 
             logger.info("Démarrage automatique du workflow pour le fil %s", thread.id)
             user_text = _normalize_user_text(config.user_message)
@@ -587,12 +696,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     source_item_id=source_item_id,
                 )
 
-            pre_stream_events = await self._prepare_auto_start_thread_items(
+            auto_events = await self._prepare_auto_start_thread_items(
                 thread=thread,
                 context=context,
                 user_text=user_text,
                 assistant_text=assistant_stream_text,
             )
+            pre_stream_events.extend(auto_events)
         else:
             workflow_input = WorkflowInput(
                 input_as_text=user_text,
@@ -616,9 +726,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         event_queue: asyncio.Queue[Any] = asyncio.Queue()
 
-        for event in pre_stream_events:
-            yield event
-
         if workflow_input is None:
             return
 
@@ -635,16 +742,40 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             event_queue=event_queue,
         )
 
-        try:
+        state = _WorkflowStreamState(thread_id=thread.id, run_key=run_key)
+
+        async def _workflow_stream() -> AsyncIterator[ThreadStreamEvent]:
+            for event in pre_stream_events:
+                yield event
             async for event in workflow_result.stream_events():
                 yield event
-        except asyncio.CancelledError:  # pragma: no cover - déconnexion client
-            logger.info(
-                "Streaming interrompu pour le fil %s, poursuite du workflow en "
-                "tâche de fond",
-                thread.id,
-            )
-            return
+
+        async def _pump_events() -> None:
+            try:
+                async for event in self._process_events(
+                    thread,
+                    context,
+                    lambda: _workflow_stream(),
+                ):
+                    await state.append(event)
+            except Exception:  # pragma: no cover - robustesse best effort
+                logger.warning(
+                    "Échec lors de la consommation du flux du workflow %s",
+                    thread.id,
+                    exc_info=True,
+                )
+                raise
+            finally:
+                await state.mark_finished()
+
+        state.pump_task = asyncio.create_task(_pump_events())
+        state.pump_task.add_done_callback(_log_async_exception)
+
+        async with self._active_workflow_lock:
+            self._active_workflow_streams[state_key] = state
+
+        async for event in _stream_from_state(state):
+            yield event
 
     async def _maybe_update_thread_title(
         self,
