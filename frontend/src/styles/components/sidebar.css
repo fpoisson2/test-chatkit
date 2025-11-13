@@ -245,7 +245,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: max(env(safe-area-inset-top), 0px) var(--chatkit-sidebar-content-padding-x) 16px;
+  padding: max(env(safe-area-inset-top), var(--chatkit-sidebar-content-padding-x)) var(--chatkit-sidebar-content-padding-x) 16px;
   border-bottom: 1px solid var(--sidebar-border);
   position: sticky;
   top: 0;
