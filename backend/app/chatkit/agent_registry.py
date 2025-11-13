@@ -185,7 +185,9 @@ def create_litellm_model(
         provider_binding: Provider binding with credentials (no api_base)
 
     Returns:
-        LitellmModel instance with API key for auto-routing, or model_name string as fallback
+        LitellmModel instance with API key for auto-routing, or the
+        ``model_name`` string as fallback when a model instance cannot be
+        constructed.
     """
     logger.debug(
         "create_litellm_model appelée: model_name=%s, provider_binding=%s",
@@ -406,6 +408,9 @@ class _JsonSchemaOutputBuilder:
             for extra in unique_types[1:]:
                 union_type = union_type | extra
             return union_type, option_nullable
+
+        if schema_type == "null":
+            return type(None), True
 
         if schema_type == "array":
             items_schema = schema.get("items")
@@ -1098,8 +1103,10 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     mcp_server_allowlists = kwargs.pop("mcp_server_allowlists", None)
 
     # Model and provider logic:
-    # - If provider_binding.provider exists (api_base was provided) → use native OpenAI provider
-    # - If provider_binding.provider is None (no api_base) → use LiteLLM with auto-routing
+    # - provider_binding.provider exists (api_base provided) → use the native
+    #   OpenAI provider.
+    # - provider_binding.provider is None (no api_base) → rely on LiteLLM for
+    #   auto-routing.
     if "model" in kwargs and provider_binding is not None:
         model_name = kwargs["model"]
         if isinstance(model_name, str):
