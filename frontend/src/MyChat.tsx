@@ -316,7 +316,6 @@ export function MyChat() {
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
         : null;
       setInitialThreadId(nextInitialThreadId);
-      setChatInstanceKey((value) => value + 1);
 
       // Arrêter la session vocale si elle est en cours
       stopVoiceSessionRef.current?.();
