@@ -528,15 +528,12 @@
       var(--chatkit-sidebar-content-padding-x)
     )
   );
-  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
-  padding-inline-start: calc(
-    calc(var(--spacing) * 3) + var(--chatkit-sidebar-workflow-leading-width)
-  );
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
   padding-inline-end: calc(
-    calc(var(--spacing) * 3) + var(--chatkit-sidebar-workflow-actions-width)
+    calc(var(--spacing) * 4) + var(--chatkit-sidebar-workflow-actions-width)
   );
   --chatkit-sidebar-workflow-highlight-gutter: calc(
-    calc(var(--spacing) * 3) + var(--chatkit-sidebar-workflow-actions-width) + 0.25rem
+    calc(var(--spacing) * 4) + var(--chatkit-sidebar-workflow-actions-width) + 0.25rem
   );
 }
 
@@ -620,12 +617,9 @@
   justify-content: flex-start;
   border: none;
   background: transparent;
-  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
-  padding-inline-start: calc(
-    calc(var(--spacing) * 3) + var(--chatkit-sidebar-workflow-leading-width)
-  );
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
   padding-inline-end: calc(
-    calc(var(--spacing) * 3) + var(--chatkit-sidebar-workflow-actions-width)
+    calc(var(--spacing) * 4) + var(--chatkit-sidebar-workflow-actions-width)
   );
   border-radius: var(--radius-md);
   margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
@@ -644,7 +638,7 @@
   overflow: visible;
   gap: calc(var(--spacing) * 1.25);
   --chatkit-sidebar-workflow-highlight-gutter: calc(
-    calc(var(--spacing) * 3) + var(--chatkit-sidebar-workflow-actions-width) + calc(var(--spacing) * 0.625)
+    calc(var(--spacing) * 4) + var(--chatkit-sidebar-workflow-actions-width) + calc(var(--spacing) * 0.625)
   );
 }
 
@@ -905,25 +899,22 @@
 @media (max-width: 768px) {
   .chatkit-sidebar__workflow-button {
     margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
-    padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
-    padding-inline-start: calc(
-      calc(var(--spacing) * 3) + var(--chatkit-sidebar-workflow-leading-width)
-    );
+    padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
     padding-inline-end: calc(
       var(--chatkit-sidebar-mobile-actions-width) +
         max(env(safe-area-inset-right), 0px) +
-        calc(var(--spacing) * 3)
+        calc(var(--spacing) * 4)
     );
     --chatkit-sidebar-workflow-highlight-gutter: calc(
       max(env(safe-area-inset-right), 0px) +
-        calc(var(--spacing) * 3) +
+        calc(var(--spacing) * 4) +
         var(--chatkit-sidebar-mobile-actions-width)
     );
   }
 
   .chatkit-sidebar__workflow-actions {
     right: calc(
-      calc(var(--spacing) * 3) + max(env(safe-area-inset-right), 0px)
+      calc(var(--spacing) * 4) + max(env(safe-area-inset-right), 0px)
     );
     width: var(--chatkit-sidebar-mobile-actions-width);
   }
