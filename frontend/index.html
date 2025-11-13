@@ -8,9 +8,69 @@
       src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js"
       async
     ></script>
+    <style>
+      /* Initial loading spinner for LTI context - shown before React mounts */
+      #initial-lti-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10000;
+        background-color: #ffffff;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      #initial-lti-loader.visible {
+        display: flex;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        #initial-lti-loader {
+          background-color: #1f2937;
+          color: #e5e7eb;
+        }
+      }
+
+      .initial-spinner {
+        width: 60px;
+        height: 60px;
+        border: 4px solid transparent;
+        border-radius: 50%;
+        border-top-color: #3b82f6;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      .initial-spinner-text {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 16px;
+        color: inherit;
+      }
+    </style>
   </head>
   <body>
+    <!-- Initial LTI loading spinner - shown immediately if coming from LTI launch -->
+    <div id="initial-lti-loader">
+      <div class="initial-spinner"></div>
+      <div class="initial-spinner-text">Chargement...</div>
+    </div>
+
     <div id="root"></div>
+
+    <script>
+      // Show initial spinner immediately if in LTI context (before React loads)
+      if (localStorage.getItem('lti_launch_workflow_id') !== null) {
+        document.getElementById('initial-lti-loader').classList.add('visible');
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

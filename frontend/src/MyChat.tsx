@@ -718,6 +718,14 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
+  // Hide the initial HTML loader once React takes control
+  useEffect(() => {
+    const initialLoader = document.getElementById('initial-lti-loader');
+    if (initialLoader) {
+      initialLoader.style.display = 'none';
+    }
+  }, []);
+
   // Hide sidebar immediately for LTI users (before workflow loads)
   useEffect(() => {
     if (isLtiContext) {
