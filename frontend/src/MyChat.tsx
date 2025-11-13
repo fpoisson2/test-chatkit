@@ -727,10 +727,19 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
+  // Detect LTI user
+  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
+
+  // Hide sidebar immediately for LTI users on initial load
+  useEffect(() => {
+    if (isLtiUser && !activeWorkflow) {
+      setHideSidebar(true);
+    }
+  }, [isLtiUser, activeWorkflow, setHideSidebar]);
+
   // Apply LTI sidebar visibility setting
   useEffect(() => {
-    const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
-    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiUser;
     const shouldHideSidebar = shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar;
 
     setHideSidebar(shouldHideSidebar);
@@ -739,23 +748,25 @@ export function MyChat() {
     return () => {
       setHideSidebar(false);
     };
-  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, user?.email, setHideSidebar]);
+  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, isLtiUser, setHideSidebar]);
 
-  // Show loading overlay for LTI users while workflows are being loaded
-  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
-  const shouldShowLoadingOverlay = isLtiUser && workflowsLoading && !activeWorkflow;
+  // Show loading overlay for LTI users until workflow is ready and chat instance is created
+  const hasActiveInstance = activeInstances.has(currentWorkflowId);
+  const shouldShowLoadingOverlay = isLtiUser && (!activeWorkflow || workflowsLoading || !hasActiveInstance);
 
   return (
     <>
       <LoadingOverlay
         isVisible={shouldShowLoadingOverlay}
-        message="Chargement du workflow..."
+        message="Chargement de votre espace de travail..."
       />
-      <ChatSidebar
-        mode={mode}
-        setMode={setMode}
-        onWorkflowActivated={handleWorkflowActivated}
-      />
+      {!isLtiUser && (
+        <ChatSidebar
+          mode={mode}
+          setMode={setMode}
+          onWorkflowActivated={handleWorkflowActivated}
+        />
+      )}
       <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
         {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
           <WorkflowChatInstance
