@@ -21,26 +21,30 @@ export const WidgetTemplateGallery = ({
 }: WidgetTemplateGalleryProps) => {
   const content = useMemo(() => {
     if (isLoading) {
-      return <p className="widget-gallery__empty">Chargement des widgets…</p>;
+      return <p className="text-center text-secondary py-8">Chargement des widgets…</p>;
     }
 
     if (widgets.length === 0) {
       return (
-        <p className="widget-gallery__empty">
-          Aucun widget enregistré pour le moment. Créez une carte ou un tableau de bord pour vos agents.
-        </p>
+        <div className="empty-state">
+          <p className="empty-state-description">
+            Aucun widget enregistré pour le moment. Créez une carte ou un tableau de bord pour vos agents.
+          </p>
+        </div>
       );
     }
 
     return (
-      <div className="widget-gallery" role="list">
+      <div className="grid grid-cols-1 gap-6" role="list">
         {widgets.map((widget) => (
-          <article key={widget.slug} className="widget-gallery__item" role="listitem">
-            <WidgetPreview definition={widget.definition} />
+          <article key={widget.slug} className="card" role="listitem">
+            <div className="card-body">
+              <WidgetPreview definition={widget.definition} />
+            </div>
 
-            <div className="widget-gallery__actions">
+            <div className="card-footer flex items-center gap-2">
               <button
-                className="button button--ghost button--sm"
+                className="btn btn-sm btn-ghost"
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -50,7 +54,7 @@ export const WidgetTemplateGallery = ({
                 Voir en plein écran
               </button>
               <button
-                className="button button--subtle button--sm"
+                className="btn btn-sm btn-secondary"
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -60,7 +64,7 @@ export const WidgetTemplateGallery = ({
                 Modifier
               </button>
               <button
-                className="button button--danger button--sm"
+                className="btn btn-sm btn-danger"
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
