@@ -7,6 +7,7 @@ import { renderWidgetIcon } from "./widgetIcons";
 
 type WidgetPreviewProps = {
   definition: Record<string, unknown>;
+  density?: "default" | "condensed";
 };
 
 type BoxLike =
@@ -188,6 +189,48 @@ const applyBorderStyles = (styles: React.CSSProperties, border: unknown) => {
   apply("borderLeft", segments.left);
 };
 
+const clampSizeToContainer = (value: string | number | undefined): string | number | undefined => {
+  if (value === undefined) {
+    return value;
+  }
+  if (typeof value === "number") {
+    return `min(${value}px, 100%)`;
+  }
+  const trimmed = value.trim();
+  if (
+    trimmed === "" ||
+    trimmed === "auto" ||
+    trimmed === "none" ||
+    trimmed === "max-content" ||
+    trimmed === "min-content" ||
+    trimmed === "fit-content" ||
+    trimmed.includes("%") ||
+    trimmed.startsWith("min(") ||
+    trimmed.startsWith("max(") ||
+    trimmed.startsWith("clamp(") ||
+    trimmed.startsWith("var(")
+  ) {
+    return value;
+  }
+  if (/^[0-9.]+(px|rem|em|vw|vh|vmin|vmax|ch|ex|dvh|dvw|lvh|lvw|svh|svw)$/i.test(trimmed)) {
+    return `min(${trimmed}, 100%)`;
+  }
+  return value;
+};
+
+const enforceResponsiveWidth = (styles: React.CSSProperties) => {
+  const width = clampSizeToContainer(styles.width as string | number | undefined);
+  if (width !== undefined) {
+    styles.width = width as typeof styles.width;
+  }
+  const minWidth = clampSizeToContainer(styles.minWidth as string | number | undefined);
+  if (minWidth !== undefined) {
+    styles.minWidth = minWidth as typeof styles.minWidth;
+  }
+  const maxWidthCandidate = clampSizeToContainer(styles.maxWidth as string | number | undefined);
+  styles.maxWidth = (maxWidthCandidate ?? "100%") as typeof styles.maxWidth;
+};
+
 const applyBlockProps = (styles: React.CSSProperties, props: Record<string, unknown>) => {
   if (props.height !== undefined) {
     const formatted = formatDimension(props.height);
@@ -262,6 +305,7 @@ const applyBlockProps = (styles: React.CSSProperties, props: Record<string, unkn
   if (props.margin !== undefined) {
     applySpacing(styles, "margin", props.margin);
   }
+  enforceResponsiveWidth(styles);
 };
 
 const applyBoxStyles = (box: BoxLike): React.CSSProperties => {
@@ -336,9 +380,13 @@ const renderText = (component: Widgets.TextComponent) => {
       style.color = color;
     }
   }
-  if (component.width) {
-    style.width = typeof component.width === "number" ? `${component.width}px` : component.width;
+  if (component.width !== undefined) {
+    const formattedWidth = formatDimension(component.width);
+    if (formattedWidth) {
+      style.width = formattedWidth;
+    }
   }
+  enforceResponsiveWidth(style);
   return (
     <p className={classNames.join(" ")} style={style}>
       {component.value}
@@ -786,10 +834,14 @@ const normalizeDefinition = (
   return definition as Widgets.WidgetRoot;
 };
 
-export const WidgetPreview = ({ definition }: WidgetPreviewProps) => {
+export const WidgetPreview = ({ definition, density = "default" }: WidgetPreviewProps) => {
   const normalized = useMemo(() => normalizeDefinition(definition), [definition]);
   if (!normalized) {
     return <div className="widget-preview__unsupported">Définition du widget invalide.</div>;
   }
-  return <div className="widget-preview">{renderNode(normalized)}</div>;
+  const classNames = ["widget-preview"];
+  if (density === "condensed") {
+    classNames.push("widget-preview--condensed");
+  }
+  return <div className={classNames.join(" ")}>{renderNode(normalized)}</div>;
 };

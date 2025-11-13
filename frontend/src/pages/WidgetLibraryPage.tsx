@@ -162,6 +162,7 @@ export const WidgetLibraryPage = () => {
 
       <div className="admin-grid">
         <FormSection
+          className="widget-library__section"
           title="Bibliothèque de widgets"
           subtitle="Gérez vos widgets personnalisés pour enrichir vos workflows"
           headerAction={
