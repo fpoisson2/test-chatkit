@@ -26,6 +26,11 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
+  /* Font Tracking (letter-spacing) */
+  --font-tracking-wide: 0em;
+  --font-tracking-normal: -0.01em;
+  --font-tracking-tight: -0.02em;
+
   /* Spacing */
   --spacing: 4px;
 
@@ -142,25 +147,30 @@
   --font-heading-lg-tracking: 0em;
   --font-heading-lg-weight: 600;
 
-  --font-heading-xl-size: 1.25rem;
-  --font-heading-xl-line-height: 1.75rem;
-  --font-heading-xl-tracking: 0em;
+  --font-heading-xl-size: 2rem;
+  --font-heading-xl-line-height: 2.375rem;
+  --font-heading-xl-tracking: var(--font-tracking-tight);
+  --font-heading-xl-weight: var(--font-weight-semibold);
 
-  --font-heading-2xl-size: 1.5rem;
-  --font-heading-2xl-line-height: 2rem;
-  --font-heading-2xl-tracking: 0em;
+  --font-heading-2xl-size: 2.25rem;
+  --font-heading-2xl-line-height: 2.625rem;
+  --font-heading-2xl-tracking: var(--font-tracking-tight);
+  --font-heading-2xl-weight: var(--font-weight-semibold);
 
-  --font-heading-3xl-size: 1.875rem;
-  --font-heading-3xl-line-height: 2.25rem;
-  --font-heading-3xl-tracking: 0em;
+  --font-heading-3xl-size: 3rem;
+  --font-heading-3xl-line-height: 3rem;
+  --font-heading-3xl-tracking: var(--font-tracking-tight);
+  --font-heading-3xl-weight: var(--font-weight-semibold);
 
-  --font-heading-4xl-size: 2.25rem;
-  --font-heading-4xl-line-height: 2.5rem;
-  --font-heading-4xl-tracking: 0em;
+  --font-heading-4xl-size: 3.75rem;
+  --font-heading-4xl-line-height: 3.75rem;
+  --font-heading-4xl-tracking: var(--font-tracking-tight);
+  --font-heading-4xl-weight: var(--font-weight-semibold);
 
-  --font-heading-5xl-size: 3rem;
-  --font-heading-5xl-line-height: 1;
-  --font-heading-5xl-tracking: 0em;
+  --font-heading-5xl-size: 4.5rem;
+  --font-heading-5xl-line-height: 4.5rem;
+  --font-heading-5xl-tracking: var(--font-tracking-tight);
+  --font-heading-5xl-weight: var(--font-weight-semibold);
 
   /* Shadows */
   --shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
