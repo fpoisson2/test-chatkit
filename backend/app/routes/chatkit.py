@@ -1386,3 +1386,49 @@ async def chatkit_endpoint(
     if isinstance(result, StreamingResult):
         return StreamingResponse(result, media_type="text/event-stream")
     return Response(content=result.json, media_type="application/json")
+
+
+@router.get("/api/chatkit/threads/{thread_id}/resume")
+async def resume_chatkit_streaming(
+    thread_id: str,
+    after_item_id: str | None = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Reprend le streaming des événements bufferisés pour un thread.
+
+    Args:
+        thread_id: ID du thread
+        after_item_id: ID du dernier item reçu par le client (optionnel)
+        current_user: Utilisateur authentifié
+
+    Returns:
+        StreamingResponse avec les événements bufferisés
+    """
+    try:
+        server = get_chatkit_server()
+    except (ModuleNotFoundError, ImportError) as exc:
+        logger.error(
+            "SDK ChatKit introuvable pour reprise du streaming",
+            exc_info=exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "ChatKit SDK introuvable",
+                "hint": "Installez le paquet `chatkit` pour utiliser cette route.",
+            },
+        ) from exc
+
+    logger.info(
+        "Reprise du streaming ChatKit (user=%s, thread=%s, after_item=%s)",
+        current_user.id,
+        thread_id,
+        after_item_id or "<début>",
+    )
+
+    async def stream_buffered_events():
+        async for event in server.resume_streaming(thread_id, after_item_id):
+            yield event
+
+    return StreamingResponse(stream_buffered_events(), media_type="text/event-stream")

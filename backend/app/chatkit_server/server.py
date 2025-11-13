@@ -90,6 +90,7 @@ from .context import (
     _normalize_user_text,
     _resolve_user_input_text,
 )
+from .event_buffer import EventBuffer
 from .widget_waiters import WidgetWaiterRegistry
 from .workflow_runner import (
     _STREAM_DONE,
@@ -378,6 +379,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             open_attachment=attachment_store.open_attachment,
         )
         self.attachment_store = attachment_store
+        self._event_buffer = EventBuffer(ttl_seconds=300)
+        self._event_buffer.start_cleanup_task()
 
     async def _process_streaming_impl(
         self,
@@ -645,12 +648,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 logger.debug(
                     "Poursuite du flux du workflow %s après annulation", thread.id
                 )
-                async for _ in self._process_events(
+                async for event in self._process_events(
                     thread,
                     context,
                     lambda: _workflow_stream(),
                 ):
-                    pass
+                    # Bufferiser l'événement pour reprise ultérieure
+                    await self._event_buffer.add_event(thread.id, event)
                 try:
                     await self.store.save_thread(thread, context=context)
                 except Exception:  # pragma: no cover - best effort persistence
@@ -681,6 +685,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         stream_completed = False
         try:
             async for event in _workflow_stream():
+                # Bufferiser l'événement pour reprise ultérieure
+                await self._event_buffer.add_event(thread.id, event)
                 yield event
             stream_completed = True
         except asyncio.CancelledError:  # pragma: no cover - déconnexion client
@@ -694,6 +700,36 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         finally:
             if not stream_completed:
                 _schedule_background_drain()
+
+    async def resume_streaming(
+        self,
+        thread_id: str,
+        after_item_id: str | None = None,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        """
+        Reprend le streaming des événements bufferisés pour un thread.
+
+        Args:
+            thread_id: ID du thread dont reprendre le streaming
+            after_item_id: ID du dernier item reçu (None = tous les événements)
+
+        Yields:
+            Événements bufferisés depuis after_item_id
+        """
+        logger.info(
+            "Reprise du streaming pour le thread %s depuis l'item %s",
+            thread_id,
+            after_item_id or "<début>",
+        )
+
+        async for event in self._event_buffer.stream_events_since(
+            thread_id, after_item_id
+        ):
+            yield event
+
+        logger.debug(
+            "Streaming repris terminé pour le thread %s", thread_id
+        )
 
     async def _maybe_update_thread_title(
         self,
