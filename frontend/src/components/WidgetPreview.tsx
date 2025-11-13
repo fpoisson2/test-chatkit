@@ -470,7 +470,7 @@ const renderTitle = (component: Widgets.Title) => {
 };
 
 const renderCaption = (component: Widgets.Caption) => {
-  const classNames = ["text-secondary"];
+  const classNames: string[] = [];
 
   // Size mapping
   if (component.size === "xs") {
@@ -483,12 +483,42 @@ const renderCaption = (component: Widgets.Caption) => {
 
   const style: React.CSSProperties = {};
 
-  // Custom color
+  // Color handling - support semantic colors, primitive tokens, and alpha values (same as renderText)
   if (component.color) {
-    const color = toThemeColor(component.color);
-    if (color) {
-      style.color = color;
+    if (typeof component.color === "string") {
+      // Handle text color tokens (prose, primary, emphasis, secondary, tertiary, success, warning, danger)
+      const semanticColors = ["prose", "primary", "emphasis", "secondary", "tertiary", "success", "warning", "danger"];
+      if (semanticColors.includes(component.color)) {
+        classNames.push(`text-${component.color}`);
+      }
+      // Handle alpha colors like "alpha-70" using CSS variables
+      else if (component.color.startsWith("alpha-")) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle primitive color tokens like "red-100", "blue-900", "gray-500"
+      else if (/^(red|blue|green|yellow|purple|pink|gray|orange|teal|cyan|indigo)-\d{2,3}$/.test(component.color)) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle CSS color strings or custom theme colors
+      else {
+        const color = toThemeColor(component.color);
+        if (color) {
+          style.color = color;
+        } else {
+          // Use as direct CSS color value
+          style.color = component.color;
+        }
+      }
+    } else {
+      // Object color (with light/dark variants)
+      const color = toThemeColor(component.color);
+      if (color) {
+        style.color = color;
+      }
     }
+  } else {
+    // Default caption color
+    classNames.push("text-secondary");
   }
 
   return (
