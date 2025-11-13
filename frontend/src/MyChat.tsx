@@ -241,6 +241,11 @@ export function MyChat() {
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
 
+  // Detect LTI user early so we can use it in chatkitOptions
+  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
+  // Track ChatKit initialization state for LTI users
+  const chatkitInitializedRef = useRef(false);
+
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
@@ -627,6 +632,13 @@ export function MyChat() {
             dataKeys: entry.data ? Object.keys(entry.data) : [],
           });
 
+          // Track ChatKit initialization for LTI users
+          // thread.sync indicates ChatKit has fully loaded the thread
+          if (isLtiUser && entry.name === 'thread.sync' && !chatkitInitializedRef.current) {
+            chatkitInitializedRef.current = true;
+            console.log('[MyChat] ChatKit fully initialized (thread.sync received)');
+          }
+
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
@@ -727,9 +739,6 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
-  // Detect LTI user
-  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
-
   // Hide sidebar immediately for LTI users (before workflow loads)
   useEffect(() => {
     if (isLtiUser) {
@@ -756,13 +765,14 @@ export function MyChat() {
 
   // Show loading overlay for LTI users until workflow and chat are ready
   const hasActiveInstance = activeInstances.has(currentWorkflowId);
-  const isLtiReady = isLtiUser && activeWorkflow && !workflowsLoading && hasActiveInstance;
+  // Wait for ChatKit to be fully initialized (thread.sync event) before marking as ready
+  const isLtiReady = isLtiUser && activeWorkflow && !workflowsLoading && hasActiveInstance && chatkitInitializedRef.current;
 
   // Use a ref to track if we've ever been ready - once ready, never show loading again
   const hasBeenLtiReadyRef = useRef(false);
   if (isLtiReady && !hasBeenLtiReadyRef.current) {
     hasBeenLtiReadyRef.current = true;
-    console.log('[MyChat] LTI initialization complete');
+    console.log('[MyChat] LTI initialization complete - ready to show chat');
   }
 
   const shouldShowLoadingOverlay = isLtiUser && !hasBeenLtiReadyRef.current;
@@ -773,9 +783,11 @@ export function MyChat() {
       activeWorkflow: activeWorkflow?.id,
       workflowsLoading,
       hasActiveInstance,
+      chatkitInitialized: chatkitInitializedRef.current,
+      isLtiReady,
       shouldShowLoadingOverlay
     });
-  }, [isLtiUser, activeWorkflow, workflowsLoading, hasActiveInstance, shouldShowLoadingOverlay]);
+  }, [isLtiUser, activeWorkflow, workflowsLoading, hasActiveInstance, isLtiReady, shouldShowLoadingOverlay]);
 
   return (
     <>
