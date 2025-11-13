@@ -388,19 +388,37 @@ const renderCaption = (component: Widgets.Caption) => {
 };
 
 const renderBadge = (component: Widgets.Badge) => {
-  const classNames = ["widget-preview__badge"];
-  if (component.color) {
-    classNames.push(`widget-preview__badge--${component.color}`);
+  const classNames = ["badge"];
+
+  // Color variants
+  if (component.color === "primary" || component.color === "blue") {
+    classNames.push("badge-primary");
+  } else if (component.color === "secondary" || component.color === "gray") {
+    classNames.push("badge-secondary");
+  } else if (component.color === "danger" || component.color === "red") {
+    classNames.push("badge-danger");
+  } else if (component.color === "success" || component.color === "green") {
+    classNames.push("badge-success");
+  } else if (component.color === "warning" || component.color === "yellow") {
+    classNames.push("badge-warning");
+  } else if (component.color === "info" || component.color === "cyan") {
+    classNames.push("badge-info");
   }
-  if (component.variant) {
-    classNames.push(`widget-preview__badge--${component.variant}`);
+
+  // Variant (solid, outline, soft)
+  if (component.variant === "outline") {
+    classNames.push("badge-outline");
+  } else if (component.variant === "soft") {
+    classNames.push("badge-soft");
   }
-  if (component.size) {
-    classNames.push(`widget-preview__badge--${component.size}`);
+
+  // Size
+  if (component.size === "sm") {
+    classNames.push("badge-sm");
+  } else if (component.size === "lg") {
+    classNames.push("badge-lg");
   }
-  if (component.pill) {
-    classNames.push("widget-preview__badge--pill");
-  }
+
   return <span className={classNames.join(" ")}>{component.label}</span>;
 };
 
@@ -432,47 +450,57 @@ const renderStatus = (status?: Widgets.WidgetStatus) => {
 };
 
 const renderButton = (component: Widgets.Button) => {
-  const classNames = ["widget-preview__button"];
+  const classNames = ["btn"];
+
+  // Style mapping: primary (default) or secondary
   if (component.style === "secondary") {
-    classNames.push("widget-preview__button--secondary");
+    classNames.push("btn-secondary");
+  } else {
+    classNames.push("btn-primary");
   }
-  if (component.variant) {
-    classNames.push(`widget-preview__button--${component.variant}`);
+
+  // Variant mapping (solid, outline, ghost)
+  if (component.variant === "outline") {
+    classNames.push("btn-outline");
+  } else if (component.variant === "ghost") {
+    classNames.push("btn-ghost");
   }
-  if (component.color) {
-    classNames.push(`widget-preview__button--${component.color}`);
+
+  // Color variants
+  if (component.color === "danger" || component.color === "red") {
+    classNames.push("btn-danger");
+  } else if (component.color === "success" || component.color === "green") {
+    classNames.push("btn-success");
   }
-  if (component.block) {
-    classNames.push("widget-preview__button--block");
+
+  // Size variants
+  if (component.size === "sm") {
+    classNames.push("btn-sm");
+  } else if (component.size === "lg") {
+    classNames.push("btn-lg");
   }
-  if (component.pill) {
-    classNames.push("widget-preview__button--pill");
+
+  // Block button (full width)
+  if (component.block || component.uniform) {
+    classNames.push("w-full");
   }
-  if (component.uniform) {
-    classNames.push("widget-preview__button--uniform");
-  }
-  if (component.size) {
-    classNames.push(`widget-preview__button--size-${component.size}`);
-  }
-  if (component.disabled) {
-    classNames.push("widget-preview__button--disabled");
-  }
+
   const iconStyle = component.iconSize ? { fontSize: buttonIconSizeMap[component.iconSize] } : undefined;
   return (
     <button
       className={classNames.join(" ")}
       type={component.submit ? "submit" : "button"}
-      disabled
+      disabled={component.disabled}
       aria-disabled={component.disabled ?? false}
     >
       {component.iconStart ? (
-        <span className="widget-preview__button-icon widget-preview__button-icon--start" style={iconStyle} aria-hidden>
+        <span className="btn-icon" style={iconStyle} aria-hidden>
           {renderWidgetIcon(component.iconStart)}
         </span>
       ) : null}
-      <span className="widget-preview__button-label">{component.label ?? "Bouton"}</span>
+      <span>{component.label ?? "Bouton"}</span>
       {component.iconEnd ? (
-        <span className="widget-preview__button-icon widget-preview__button-icon--end" style={iconStyle} aria-hidden>
+        <span className="btn-icon" style={iconStyle} aria-hidden>
           {renderWidgetIcon(component.iconEnd)}
         </span>
       ) : null}
@@ -524,63 +552,65 @@ const renderDivider = (component: Widgets.Divider) => {
   if (component.spacing) {
     applySpacing(style, "margin", component.spacing);
   }
-  return <hr className="widget-preview__divider" style={style} />;
+  return <hr className="divider" style={style} />;
 };
 
 const renderCheckbox = (component: Widgets.Checkbox) => (
-  <label className="widget-preview__control">
+  <label className="checkbox">
     <input type="checkbox" checked={Boolean(component.defaultChecked)} disabled />
     <span>{component.label ?? component.name}</span>
   </label>
 );
 
 const renderInput = (component: Widgets.Input) => (
-  <label className="widget-preview__control">
-    <span className="widget-preview__control-label">{component.placeholder ?? component.name}</span>
-    <input type={component.inputType ?? "text"} defaultValue={component.defaultValue} disabled />
-  </label>
+  <div className="form-group">
+    <label className="form-label">{component.placeholder ?? component.name}</label>
+    <input className="input" type={component.inputType ?? "text"} defaultValue={component.defaultValue} disabled />
+  </div>
 );
 
 const renderTextarea = (component: Widgets.Textarea) => (
-  <label className="widget-preview__control">
-    <span className="widget-preview__control-label">{component.placeholder ?? component.name}</span>
-    <textarea rows={component.rows ?? 3} defaultValue={component.defaultValue} disabled />
-  </label>
+  <div className="form-group">
+    <label className="form-label">{component.placeholder ?? component.name}</label>
+    <textarea className="textarea" rows={component.rows ?? 3} defaultValue={component.defaultValue} disabled />
+  </div>
 );
 
 const renderSelect = (component: Widgets.Select) => (
-  <label className="widget-preview__control">
-    <span className="widget-preview__control-label">{component.placeholder ?? component.name}</span>
-    <select defaultValue={component.defaultValue} disabled>
+  <div className="form-group">
+    <label className="form-label">{component.placeholder ?? component.name}</label>
+    <select className="input" defaultValue={component.defaultValue} disabled>
       {component.options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
         </option>
       ))}
     </select>
-  </label>
+  </div>
 );
 
 const renderDatePicker = (component: Widgets.DatePicker) => (
-  <label className="widget-preview__control">
-    <span className="widget-preview__control-label">{component.placeholder ?? component.name}</span>
-    <input type="date" defaultValue={component.defaultValue} min={component.min} max={component.max} disabled />
-  </label>
+  <div className="form-group">
+    <label className="form-label">{component.placeholder ?? component.name}</label>
+    <input className="input" type="date" defaultValue={component.defaultValue} min={component.min} max={component.max} disabled />
+  </div>
 );
 
 const renderLabel = (component: Widgets.Label) => (
-  <span className="widget-preview__label">{component.text}</span>
+  <span className="form-label">{component.text}</span>
 );
 
 const renderRadioGroup = (component: Widgets.RadioGroup) => (
-  <fieldset className="widget-preview__control">
-    <legend className="widget-preview__control-label">{component.name}</legend>
-    {component.options.map((option) => (
-      <label key={option.value} className="widget-preview__radio-option">
-        <input type="radio" name={component.name} defaultChecked={option.defaultChecked} disabled />
-        <span>{option.label}</span>
-      </label>
-    ))}
+  <fieldset className="form-group">
+    <legend className="form-label">{component.name}</legend>
+    <div className="flex flex-col gap-2">
+      {component.options.map((option) => (
+        <label key={option.value} className="radio">
+          <input type="radio" name={component.name} defaultChecked={option.defaultChecked} disabled />
+          <span>{option.label}</span>
+        </label>
+      ))}
+    </div>
   </fieldset>
 );
 
@@ -600,9 +630,8 @@ const renderChildren = (children: unknown[]): React.ReactNode =>
 const renderBox = (box: BoxLike & { children?: unknown[] }) => {
   const styles = applyBoxStyles(box);
   const orientation = styles.flexDirection === "row" ? "row" : "column";
-  const classNames = ["widget-preview__box", `widget-preview__box--${orientation}`];
   return (
-    <div className={classNames.join(" ")} style={styles} data-orientation={orientation}>
+    <div className="flex" style={styles} data-orientation={orientation}>
       {renderChildren(Array.isArray(box.children) ? box.children : [])}
     </div>
   );
@@ -611,9 +640,9 @@ const renderBox = (box: BoxLike & { children?: unknown[] }) => {
 const renderForm = (box: Widgets.Form) => {
   const styles = applyBoxStyles(box);
   return (
-    <form className="widget-preview__box" style={styles}>
+    <form className="flex flex-col gap-4" style={styles}>
       {renderChildren(Array.isArray(box.children) ? box.children : [])}
-      <p className="widget-preview__hint">Actions de formulaire désactivées en prévisualisation.</p>
+      <p className="form-hint text-sm">Actions de formulaire désactivées en prévisualisation.</p>
     </form>
   );
 };
@@ -680,19 +709,23 @@ const renderCard = (card: Widgets.Card) => {
   if (card.padding !== undefined) {
     applySpacing(styles, "padding", card.padding);
   }
-  const classNames = ["widget-preview__card"];
-  if (card.size) {
-    classNames.push(`widget-preview__card--${card.size}`);
+  const classNames = ["card"];
+
+  // Size variants
+  if (card.size === "sm") {
+    classNames.push("card-sm");
+  } else if (card.size === "lg") {
+    classNames.push("card-lg");
   }
-  if (card.collapsed) {
-    classNames.push("widget-preview__card--collapsed");
-  }
+
   return (
     <section className={classNames.join(" ")} style={styles} data-theme={card.theme}>
       {renderStatus(card.status)}
-      {renderChildren(Array.isArray(card.children) ? card.children : [])}
+      <div className="card-body">
+        {renderChildren(Array.isArray(card.children) ? card.children : [])}
+      </div>
       {card.confirm || card.cancel ? (
-        <div className="widget-preview__card-actions">
+        <div className="card-footer flex items-center gap-3 justify-end">
           {card.confirm ? renderButton({
             type: "Button",
             label: card.confirm.label ?? "Confirmer",
