@@ -91,6 +91,7 @@
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-hidden .chatkit-layout__main {
+  grid-column: 1;
   border-left: none;
 }
 
