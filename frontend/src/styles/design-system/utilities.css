@@ -290,55 +290,45 @@
   .text-justify { text-align: justify !important; }
 
   /* Font Weight */
-  /* Extra high specificity with element+class to override base.css h1-h6 { font-weight: inherit } */
-  h1.font-normal, h2.font-normal, h3.font-normal, h4.font-normal, h5.font-normal, h6.font-normal, p.font-normal, .font-normal.font-normal {
-    font-weight: var(--font-weight-normal) !important;
-  }
-  h1.font-medium, h2.font-medium, h3.font-medium, h4.font-medium, h5.font-medium, h6.font-medium, p.font-medium, .font-medium.font-medium {
-    font-weight: var(--font-weight-medium) !important;
-  }
-  h1.font-semibold, h2.font-semibold, h3.font-semibold, h4.font-semibold, h5.font-semibold, h6.font-semibold, p.font-semibold, .font-semibold.font-semibold {
-    font-weight: var(--font-weight-semibold) !important;
-  }
-  h1.font-bold, h2.font-bold, h3.font-bold, h4.font-bold, h5.font-bold, h6.font-bold, p.font-bold, .font-bold.font-bold {
-    font-weight: var(--font-weight-bold) !important;
-  }
+  .font-normal { font-weight: var(--font-weight-normal) !important; }
+  .font-medium { font-weight: var(--font-weight-medium) !important; }
+  .font-semibold { font-weight: var(--font-weight-semibold) !important; }
+  .font-bold { font-weight: var(--font-weight-bold) !important; }
 
   /* Font Size (with corresponding line-heights) */
-  /* Extra high specificity with element+class to override base.css h1-h6 { font-size: inherit } */
-  h1.text-xs, h2.text-xs, h3.text-xs, h4.text-xs, h5.text-xs, h6.text-xs, p.text-xs, .text-xs.text-xs {
+  .text-xs {
     font-size: var(--text-xs) !important;
     line-height: var(--font-text-xs-line-height) !important;
   }
-  h1.text-sm, h2.text-sm, h3.text-sm, h4.text-sm, h5.text-sm, h6.text-sm, p.text-sm, .text-sm.text-sm {
+  .text-sm {
     font-size: var(--text-sm) !important;
     line-height: var(--font-text-sm-line-height) !important;
   }
-  h1.text-base, h2.text-base, h3.text-base, h4.text-base, h5.text-base, h6.text-base, p.text-base, .text-base.text-base {
+  .text-base {
     font-size: var(--text-base) !important;
     line-height: var(--font-text-md-line-height) !important;
   }
-  h1.text-lg, h2.text-lg, h3.text-lg, h4.text-lg, h5.text-lg, h6.text-lg, p.text-lg, .text-lg.text-lg {
+  .text-lg {
     font-size: var(--text-lg) !important;
     line-height: var(--font-text-lg-line-height) !important;
   }
-  h1.text-xl, h2.text-xl, h3.text-xl, h4.text-xl, h5.text-xl, h6.text-xl, p.text-xl, .text-xl.text-xl {
+  .text-xl {
     font-size: var(--text-xl) !important;
     line-height: var(--font-heading-xl-line-height) !important;
   }
-  h1.text-2xl, h2.text-2xl, h3.text-2xl, h4.text-2xl, h5.text-2xl, h6.text-2xl, p.text-2xl, .text-2xl.text-2xl {
+  .text-2xl {
     font-size: var(--text-2xl) !important;
     line-height: var(--font-heading-2xl-line-height) !important;
   }
-  h1.text-3xl, h2.text-3xl, h3.text-3xl, h4.text-3xl, h5.text-3xl, h6.text-3xl, p.text-3xl, .text-3xl.text-3xl {
+  .text-3xl {
     font-size: var(--text-3xl) !important;
     line-height: var(--font-heading-3xl-line-height) !important;
   }
-  h1.text-4xl, h2.text-4xl, h3.text-4xl, h4.text-4xl, h5.text-4xl, h6.text-4xl, p.text-4xl, .text-4xl.text-4xl {
+  .text-4xl {
     font-size: var(--text-4xl) !important;
     line-height: var(--font-heading-4xl-line-height) !important;
   }
-  h1.text-5xl, h2.text-5xl, h3.text-5xl, h4.text-5xl, h5.text-5xl, h6.text-5xl, p.text-5xl, .text-5xl.text-5xl {
+  .text-5xl {
     font-size: var(--text-5xl) !important;
     line-height: var(--font-heading-5xl-line-height) !important;
   }
@@ -352,16 +342,15 @@
   .leading-loose { line-height: var(--leading-loose) !important; }
 
   /* Text Color */
-  /* High specificity to ensure these override any other styles */
-  .text-prose.text-prose { color: var(--color-text) !important; }
-  .text-primary.text-primary { color: var(--color-text) !important; }
-  .text-emphasis.text-emphasis { color: var(--color-text) !important; }
-  .text-secondary.text-secondary { color: var(--color-text-secondary) !important; }
-  .text-tertiary.text-tertiary { color: var(--color-text-tertiary) !important; }
-  .text-accent.text-accent { color: var(--accent-color-primary) !important; }
-  .text-danger.text-danger { color: var(--status-danger) !important; }
-  .text-success.text-success { color: var(--status-success) !important; }
-  .text-warning.text-warning { color: var(--status-warning) !important; }
+  .text-prose { color: var(--color-text) !important; }
+  .text-primary { color: var(--color-text) !important; }
+  .text-emphasis { color: var(--color-text) !important; }
+  .text-secondary { color: var(--color-text-secondary) !important; }
+  .text-tertiary { color: var(--color-text-tertiary) !important; }
+  .text-accent { color: var(--accent-color-primary) !important; }
+  .text-danger { color: var(--status-danger) !important; }
+  .text-success { color: var(--status-success) !important; }
+  .text-warning { color: var(--status-warning) !important; }
 
   /* Text Decoration */
   .underline { text-decoration: underline !important; }
