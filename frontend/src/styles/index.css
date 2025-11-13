@@ -3,6 +3,9 @@
  * Imports all modular CSS files in the correct order
  */
 
+/* 0. Declare layer order explicitly - utilities NOT in layer to have highest priority */
+@layer base, components;
+
 /* 1. Design System - CSS Custom Properties and Variables */
 @import './tokens/design-system-vars.css';
 
