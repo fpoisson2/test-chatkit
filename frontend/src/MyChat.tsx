@@ -663,7 +663,7 @@ export function MyChat() {
         setMode={setMode}
         onWorkflowActivated={handleWorkflowActivated}
       />
-      <ChatKitHost control={control} />
+      <ChatKitHost key={persistenceSlug ?? "default"} control={control} />
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",
