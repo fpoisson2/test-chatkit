@@ -974,6 +974,31 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.voiceInspector.tool.functionCall": "Fonctions personnalisées",
   "workflowBuilder.voiceInspector.tool.functionCall.help":
     "Active les appels de fonction via le runtime Realtime.",
+  "workflowBuilder.endInspector.messageLabel": "Message de fin",
+  "workflowBuilder.endInspector.messageHelp":
+    "Affiché aux utilisateurs et enregistré comme raison de clôture lorsque ce bloc termine le workflow.",
+  "workflowBuilder.endInspector.messagePlaceholder":
+    "Texte affiché lorsque le workflow se termine sur ce bloc",
+  "workflowBuilder.endInspector.agsSectionAriaLabel": "Publication de notes LTI",
+  "workflowBuilder.endInspector.agsSectionTitle": "Publication LTI (AGS)",
+  "workflowBuilder.endInspector.agsSectionHint":
+    "Associez des variables du workflow pour envoyer une note via le service LTI Assignment and Grade Services. Laissez un champ vide pour ne pas le transmettre.",
+  "workflowBuilder.endInspector.agsVariableLabel": "Identifiant de la ligne de note",
+  "workflowBuilder.endInspector.agsVariableHelp":
+    "Saisissez l'identifiant configuré côté plateforme LTI.",
+  "workflowBuilder.endInspector.agsVariablePlaceholder": "Ex. quiz-final",
+  "workflowBuilder.endInspector.agsScoreLabel": "Expression de la note",
+  "workflowBuilder.endInspector.agsScoreHelp":
+    "Utilisez une expression du workflow (ex. state.grade.score) ou un nombre.",
+  "workflowBuilder.endInspector.agsScorePlaceholder": "Ex. state.grade.score",
+  "workflowBuilder.endInspector.agsMaximumLabel": "Expression du maximum",
+  "workflowBuilder.endInspector.agsMaximumHelp":
+    "Référencez une variable ou saisissez la valeur maximale de la note.",
+  "workflowBuilder.endInspector.agsMaximumPlaceholder": "Ex. 20 ou state.grade.maximum",
+  "workflowBuilder.endInspector.agsCommentLabel": "Expression du commentaire",
+  "workflowBuilder.endInspector.agsCommentHelp":
+    "Référencez une variable ou saisissez le commentaire transmis avec la note.",
+  "workflowBuilder.endInspector.agsCommentPlaceholder": "Ex. state.grade.comment",
   "workflowBuilder.node.kind.start": "Début",
   "workflowBuilder.node.kind.agent": "Agent",
   "workflowBuilder.node.kind.voice_agent": "Agent vocal",

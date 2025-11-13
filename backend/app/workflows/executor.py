@@ -222,6 +222,10 @@ class WorkflowEndState:
     status_type: str | None
     status_reason: str | None
     message: str | None
+    ags_variable_id: str | None = None
+    ags_score_value: float | None = None
+    ags_score_maximum: float | None = None
+    ags_comment: str | None = None
 
 
 @dataclass
@@ -527,11 +531,98 @@ async def run_workflow(
 
         message = _sanitize_end_value(params.get("message"))
 
+        def _coerce_score_value(value: Any) -> float | None:
+            if value is None:
+                return None
+            if isinstance(value, bool):
+                return 1.0 if value else 0.0
+            if isinstance(value, (int, float)):
+                try:
+                    numeric = float(value)
+                except (TypeError, ValueError):
+                    return None
+                if math.isnan(numeric) or math.isinf(numeric):
+                    return None
+                return numeric
+            if isinstance(value, str):
+                candidate = value.strip()
+                if not candidate:
+                    return None
+                normalized = candidate
+                if "," in candidate and "." not in candidate:
+                    normalized = candidate.replace(",", ".")
+                try:
+                    numeric = float(normalized)
+                except ValueError:
+                    return None
+                if math.isnan(numeric) or math.isinf(numeric):
+                    return None
+                return numeric
+            return None
+
+        ags_variable_id: str | None = None
+        ags_score_value: float | None = None
+        ags_maximum: float | None = None
+        ags_comment: str | None = None
+
+        ags_raw = params.get("ags")
+        ags_config = ags_raw if isinstance(ags_raw, Mapping) else None
+        if ags_config:
+            raw_identifier = ags_config.get("score_variable_id")
+            if not isinstance(raw_identifier, str):
+                raw_identifier = ags_config.get("variable_id")
+            ags_variable_id = (
+                _sanitize_end_value(raw_identifier)
+                if isinstance(raw_identifier, str)
+                else None
+            )
+
+            def _evaluate(expression_key: str) -> Any:
+                expression = ags_config.get(expression_key)
+                try:
+                    return evaluate_state_expression(
+                        expression,
+                        state=state,
+                        default_input_context=last_step_context,
+                    )
+                except Exception as exc:  # pragma: no cover - robustesse
+                    logger.warning(
+                        "Impossible de résoudre l'expression AGS %s sur le bloc %s",
+                        expression_key,
+                        step.slug,
+                        exc_info=exc,
+                    )
+                    return None
+
+            value_candidate = _evaluate("value")
+            if value_candidate is None and "score" in ags_config:
+                value_candidate = _evaluate("score")
+            if value_candidate is None and "score_value" in ags_config:
+                value_candidate = _evaluate("score_value")
+            ags_score_value = _coerce_score_value(value_candidate)
+
+            maximum_candidate = _evaluate("maximum")
+            if maximum_candidate is None and "max_score" in ags_config:
+                maximum_candidate = _evaluate("max_score")
+            ags_maximum = _coerce_score_value(maximum_candidate)
+
+            comment_candidate = _evaluate("comment")
+            if comment_candidate is None and "note" in ags_config:
+                comment_candidate = _evaluate("note")
+            if isinstance(comment_candidate, str):
+                ags_comment = comment_candidate.strip() or None
+            elif comment_candidate is not None:
+                ags_comment = str(comment_candidate)
+
         return WorkflowEndState(
             slug=step.slug,
             status_type=status_type,
             status_reason=status_reason,
             message=message,
+            ags_variable_id=ags_variable_id,
+            ags_score_value=ags_score_value,
+            ags_score_maximum=ags_maximum,
+            ags_comment=ags_comment,
         )
 
     def _resolve_assistant_message(step: WorkflowStep) -> str:
@@ -1630,6 +1721,56 @@ async def run_workflow(
 
         if current_node.kind == "end":
             final_end_state = _parse_end_state(current_node)
+
+            resolved_message = (
+                final_end_state.message
+                or final_end_state.status_reason
+                or "Workflow terminé"
+            )
+
+            end_payload: dict[str, Any] = {"message": resolved_message}
+            if final_end_state.status_reason:
+                end_payload["status_reason"] = final_end_state.status_reason
+            if final_end_state.status_type:
+                end_payload["status_type"] = final_end_state.status_type
+
+            ags_payload: dict[str, Any] | None = None
+            if final_end_state.ags_variable_id:
+                ags_payload = {"variable_id": final_end_state.ags_variable_id}
+                if final_end_state.ags_score_value is not None:
+                    ags_payload["score"] = final_end_state.ags_score_value
+                if final_end_state.ags_score_maximum is not None:
+                    ags_payload["maximum"] = final_end_state.ags_score_maximum
+                if final_end_state.ags_comment:
+                    ags_payload["comment"] = final_end_state.ags_comment
+                if ags_payload:
+                    end_payload["ags"] = ags_payload
+
+            await record_step(
+                current_node.slug,
+                _node_title(current_node),
+                end_payload,
+            )
+
+            end_state_payload: dict[str, Any] = {
+                "slug": final_end_state.slug,
+                "status_type": final_end_state.status_type,
+                "status_reason": final_end_state.status_reason,
+                "message": final_end_state.message,
+            }
+            if ags_payload:
+                end_state_payload["ags"] = ags_payload
+
+            last_step_context = {
+                "output": end_payload,
+                "output_structured": end_payload,
+                "output_parsed": end_payload,
+                "output_text": resolved_message,
+                "assistant_message": resolved_message,
+                "end_state": end_state_payload,
+            }
+
+            final_output = end_payload
             break
 
         if current_node.kind == "start":

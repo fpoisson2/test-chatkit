@@ -13,6 +13,7 @@ import {
   getAgentMcpServers,
   getAgentWorkflowTools,
   getWidgetNodeConfig,
+  getEndAgsConfig,
   resolveVoiceAgentParameters,
   resolveWidgetNodeParameters,
   setAgentNestedWorkflow,
@@ -21,6 +22,10 @@ import {
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
   setWidgetNodeSource,
+  setEndAgsVariableId,
+  setEndAgsScoreExpression,
+  setEndAgsMaximumExpression,
+  setEndAgsCommentExpression,
   getAgentWorkflowValidationToolEnabled,
   setAgentWorkflowValidationToolEnabled,
   getStartTelephonyRoutes,
@@ -242,6 +247,98 @@ describe("start telephony helpers", () => {
         },
       },
     });
+  });
+});
+
+describe("end AGS helpers", () => {
+  it("extracts the AGS configuration from parameters", () => {
+    const parameters: AgentParameters = {
+      ags: {
+        score_variable_id: "  quiz-final  ",
+        value: " state.grade.score ",
+        maximum: 20,
+        comment: " state.grade.comment ",
+      },
+    };
+
+    expect(getEndAgsConfig(parameters)).toEqual({
+      variableId: "quiz-final",
+      valueExpression: "state.grade.score",
+      maximumExpression: "20",
+      commentExpression: "state.grade.comment",
+    });
+  });
+
+  it("falls back to legacy AGS keys", () => {
+    const parameters: AgentParameters = {
+      ags: {
+        variable_id: "legacy-id",
+        score: " state.score ",
+        score_value: null,
+        max_score: " 40 ",
+        note: true,
+      },
+    };
+
+    expect(getEndAgsConfig(parameters)).toEqual({
+      variableId: "legacy-id",
+      valueExpression: "state.score",
+      maximumExpression: "40",
+      commentExpression: "true",
+    });
+  });
+
+  it("updates and clears AGS fields", () => {
+    const withVariable = setEndAgsVariableId({}, " quiz-final ");
+    expect(withVariable).toEqual({ ags: { score_variable_id: "quiz-final" } });
+
+    const withScore = setEndAgsScoreExpression(withVariable, " state.grade.score ");
+    expect(withScore).toEqual({
+      ags: {
+        score_variable_id: "quiz-final",
+        value: "state.grade.score",
+      },
+    });
+
+    const withMaximum = setEndAgsMaximumExpression(withScore, " 20 ");
+    expect(withMaximum).toEqual({
+      ags: {
+        score_variable_id: "quiz-final",
+        value: "state.grade.score",
+        maximum: "20",
+      },
+    });
+
+    const withComment = setEndAgsCommentExpression(withMaximum, " state.grade.comment ");
+    expect(withComment).toEqual({
+      ags: {
+        score_variable_id: "quiz-final",
+        value: "state.grade.score",
+        maximum: "20",
+        comment: "state.grade.comment",
+      },
+    });
+
+    const clearedScore = setEndAgsScoreExpression(withComment, "   ");
+    expect(clearedScore).toEqual({
+      ags: {
+        score_variable_id: "quiz-final",
+        maximum: "20",
+        comment: "state.grade.comment",
+      },
+    });
+
+    const clearedVariable = setEndAgsVariableId(clearedScore, "");
+    expect(clearedVariable).toEqual({
+      ags: {
+        maximum: "20",
+        comment: "state.grade.comment",
+      },
+    });
+
+    const clearedMaximum = setEndAgsMaximumExpression(clearedVariable, "");
+    const clearedComment = setEndAgsCommentExpression(clearedMaximum, "");
+    expect(clearedComment).toEqual({});
   });
 });
 
