@@ -37,9 +37,10 @@
 /* 7. Animations and Micro-interactions */
 @import './animations.css';
 
-/* 8. Design System Utilities - Utility classes with cascade layers */
-@import './design-system/utilities.css';
-
-/* 9. Legacy Styles - Remaining styles to be extracted in future phases */
+/* 8. Legacy Styles - Must come before utilities so utility classes can override */
 /* This includes sidebar, admin, and other component styles not yet modularized */
 @import './legacy.css';
+
+/* 9. Design System Utilities - Utility classes with cascade layers */
+/* MUST be imported after legacy.css to ensure utilities can override legacy styles */
+@import './design-system/utilities.css';

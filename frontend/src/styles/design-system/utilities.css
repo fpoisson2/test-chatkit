@@ -1,10 +1,12 @@
 /**
  * Design System Utilities
  * Utility classes for common styling needs
+ *
+ * NOTE: This file is NOT wrapped in @layer to ensure utilities have highest priority
+ * and can override legacy styles. This is important for widget preview rendering.
  */
 
-@layer utilities {
-  /* Display Utilities */
+/* Display Utilities */
   .hidden { display: none !important; }
   .block { display: block !important; }
   .inline-block { display: inline-block !important; }
@@ -466,4 +468,3 @@
     clip: auto !important;
     white-space: normal !important;
   }
-}
