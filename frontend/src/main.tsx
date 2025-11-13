@@ -1,3 +1,7 @@
+// ⚠️ Ce script DOIT être importé en premier pour forcer les shadow DOM en mode "open"
+// Cela permet d'inspecter le contenu des web components (ChatKit) dans les DevTools
+import "./open-shadow";
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
