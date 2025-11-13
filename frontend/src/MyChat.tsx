@@ -244,6 +244,10 @@ export function MyChat() {
   // Detect LTI user early so we can use it in chatkitOptions
   const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
 
+  // Detect LTI context even before user is loaded (for early loading overlay)
+  // This checks if we're coming from an LTI launch by looking for the workflow ID in localStorage
+  const isLtiContext = isLtiUser || (localStorage.getItem('lti_launch_workflow_id') !== null);
+
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
@@ -716,10 +720,10 @@ export function MyChat() {
 
   // Hide sidebar immediately for LTI users (before workflow loads)
   useEffect(() => {
-    if (isLtiUser) {
+    if (isLtiContext) {
       setHideSidebar(true);
     }
-  }, [isLtiUser, setHideSidebar]);
+  }, [isLtiContext, setHideSidebar]);
 
   // Apply LTI sidebar visibility setting based on workflow config
   useEffect(() => {
@@ -742,8 +746,14 @@ export function MyChat() {
   const [ltiReady, setLtiReady] = useState(false);
 
   useEffect(() => {
+    // If not in LTI context, mark as ready immediately
+    if (!isLtiContext) {
+      setLtiReady(true);
+      return;
+    }
+
     // Once ready, stay ready (don't reset)
-    if (ltiReady || !isLtiUser || !activeWorkflow || workflowsLoading) {
+    if (ltiReady || !activeWorkflow || workflowsLoading) {
       return;
     }
 
@@ -756,9 +766,9 @@ export function MyChat() {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [ltiReady, isLtiUser, activeWorkflow, workflowsLoading]);
+  }, [ltiReady, isLtiContext, activeWorkflow, workflowsLoading]);
 
-  const shouldShowLoadingOverlay = isLtiUser && !ltiReady;
+  const shouldShowLoadingOverlay = isLtiContext && !ltiReady;
 
   return (
     <>
