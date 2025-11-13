@@ -76,43 +76,9 @@ export const LTILaunchPage = () => {
     }
   }, [searchParams, login]);
 
-  // Don't show loading UI during immediate redirect - it causes unnecessary flicker
-  if (!error && !debugInfo) {
-    return null;
-  }
-
-  return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      height: "100vh",
-      fontFamily: "system-ui, sans-serif"
-    }}>
-      <div style={{ textAlign: "center", maxWidth: "500px", padding: "20px" }}>
-        <LoadingSpinner size="lg" />
-        <h2 style={{ marginTop: "20px" }}>Connexion LTI en cours...</h2>
-        <p>Vous allez être redirigé vers l'application.</p>
-        {debugInfo && (
-          <p style={{ fontSize: "0.9em", color: "#666", marginTop: "20px" }}>
-            {debugInfo}
-          </p>
-        )}
-        {error && (
-          <div style={{
-            marginTop: "20px",
-            padding: "10px",
-            backgroundColor: "#fee",
-            border: "1px solid #fcc",
-            borderRadius: "4px",
-            color: "#c00"
-          }}>
-            {error}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  // Don't show any UI during LTI launch - the redirect happens immediately
+  // and showing UI causes unnecessary spinner flicker
+  return null;
 };
 
 export default LTILaunchPage;
