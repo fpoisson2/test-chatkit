@@ -62,6 +62,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
+  const isLtiUser = Boolean(user?.email.endsWith('@lti.local'));
 
   // Use the shared workflow sidebar state
   const {
@@ -748,12 +749,19 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   }, [error, isSidebarCollapsed, loading, sidebarEntries, t, user]);
 
   useEffect(() => {
+    // Don't render sidebar content for LTI users - they have a global loading overlay instead
+    if (isLtiUser) {
+      clearSidebarContent();
+      return;
+    }
+
     setSidebarContent(sidebarContent);
     setCollapsedSidebarContent(collapsedSidebarContent);
     return () => clearSidebarContent();
   }, [
     clearSidebarContent,
     collapsedSidebarContent,
+    isLtiUser,
     setCollapsedSidebarContent,
     setSidebarContent,
     sidebarContent,

@@ -727,22 +727,34 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
-  // Apply LTI sidebar visibility setting
+  // Detect LTI user
+  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
+
+  // Hide sidebar immediately for LTI users (before workflow loads)
   useEffect(() => {
-    const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
-    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
+    if (isLtiUser) {
+      setHideSidebar(true);
+    }
+  }, [isLtiUser, setHideSidebar]);
+
+  // Apply LTI sidebar visibility setting based on workflow config
+  useEffect(() => {
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiUser;
     const shouldHideSidebar = shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar;
 
-    setHideSidebar(shouldHideSidebar);
+    if (shouldApplyLtiOptions) {
+      setHideSidebar(shouldHideSidebar);
+    }
 
     // Cleanup: restore sidebar when unmounting or when conditions change
     return () => {
-      setHideSidebar(false);
+      if (!isLtiUser) {
+        setHideSidebar(false);
+      }
     };
-  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, user?.email, setHideSidebar]);
+  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, isLtiUser, setHideSidebar]);
 
   // Show loading overlay for LTI users until workflow and chat are ready
-  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
   const hasActiveInstance = activeInstances.has(currentWorkflowId);
   const shouldShowLoadingOverlay = isLtiUser && (!activeWorkflow || workflowsLoading || !hasActiveInstance);
 
