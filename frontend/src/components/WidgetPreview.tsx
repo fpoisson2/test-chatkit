@@ -376,24 +376,30 @@ const renderText = (component: Widgets.TextComponent) => {
     classNames.push("text-left");
   }
 
-  // Color handling - support semantic colors and alpha values
+  // Color handling - support semantic colors, primitive tokens, and alpha values
   if (component.color) {
     if (typeof component.color === "string") {
-      // Handle semantic color names
-      if (component.color === "emphasis") {
-        classNames.push("text-emphasis");
-      } else if (component.color === "secondary") {
-        classNames.push("text-secondary");
-      } else if (component.color === "tertiary") {
-        classNames.push("text-tertiary");
-      } else if (component.color.startsWith("alpha-")) {
-        // Handle alpha colors like "alpha-70" using CSS variables
+      // Handle text color tokens (prose, primary, emphasis, secondary, tertiary, success, warning, danger)
+      const semanticColors = ["prose", "primary", "emphasis", "secondary", "tertiary", "success", "warning", "danger"];
+      if (semanticColors.includes(component.color)) {
+        classNames.push(`text-${component.color}`);
+      }
+      // Handle alpha colors like "alpha-70" using CSS variables
+      else if (component.color.startsWith("alpha-")) {
         style.color = `var(--${component.color})`;
-      } else {
-        // Try to use it as a theme color
+      }
+      // Handle primitive color tokens like "red-100", "blue-900", "gray-500"
+      else if (/^(red|blue|green|yellow|purple|pink|gray|orange|teal|cyan|indigo)-\d{2,3}$/.test(component.color)) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle CSS color strings or custom theme colors
+      else {
         const color = toThemeColor(component.color);
         if (color) {
           style.color = color;
+        } else {
+          // Use as direct CSS color value
+          style.color = component.color;
         }
       }
     } else {

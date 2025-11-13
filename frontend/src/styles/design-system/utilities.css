@@ -313,6 +313,7 @@
   .leading-loose { line-height: var(--leading-loose) !important; }
 
   /* Text Color */
+  .text-prose { color: var(--color-text) !important; }
   .text-primary { color: var(--color-text) !important; }
   .text-emphasis { color: var(--color-text) !important; }
   .text-secondary { color: var(--color-text-secondary) !important; }
