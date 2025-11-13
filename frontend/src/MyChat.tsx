@@ -243,8 +243,6 @@ export function MyChat() {
 
   // Detect LTI user early so we can use it in chatkitOptions
   const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
-  // Track ChatKit initialization state for LTI users
-  const chatkitInitializedRef = useRef(false);
 
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
@@ -626,19 +624,6 @@ export function MyChat() {
           console.debug("[ChatKit] thread load end", { threadId });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
-          // Debug: Log every onLog call
-          console.log('[MyChat] onLog called:', entry.name, {
-            hasData: !!entry.data,
-            dataKeys: entry.data ? Object.keys(entry.data) : [],
-          });
-
-          // Track ChatKit initialization for LTI users
-          // thread.sync indicates ChatKit has fully loaded the thread
-          if (isLtiUser && entry.name === 'thread.sync' && !chatkitInitializedRef.current) {
-            chatkitInitializedRef.current = true;
-            console.log('[MyChat] ChatKit fully initialized (thread.sync received)');
-          }
-
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
@@ -646,16 +631,6 @@ export function MyChat() {
               lastThreadSnapshotRef.current = thread;
               // Update state to trigger re-render and useOutboundCallDetector
               setCurrentThread(thread);
-
-              // Debug: Log thread structure
-              console.log('[MyChat] Thread updated:', {
-                keys: Object.keys(thread),
-                hasItems: 'items' in thread,
-                hasMessages: 'messages' in thread,
-                itemsLength: Array.isArray(thread.items) ? thread.items.length : 'N/A',
-                messagesLength: Array.isArray(thread.messages) ? thread.messages.length : 'N/A',
-                firstItem: Array.isArray(thread.items) && thread.items.length > 0 ? thread.items[0] : null,
-              });
             }
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
@@ -763,31 +738,27 @@ export function MyChat() {
     };
   }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, isLtiUser, setHideSidebar]);
 
-  // Show loading overlay for LTI users until workflow and chat are ready
-  const hasActiveInstance = activeInstances.has(currentWorkflowId);
-  // Wait for ChatKit to be fully initialized (thread.sync event) before marking as ready
-  const isLtiReady = isLtiUser && activeWorkflow && !workflowsLoading && hasActiveInstance && chatkitInitializedRef.current;
-
-  // Use a ref to track if we've ever been ready - once ready, never show loading again
-  const hasBeenLtiReadyRef = useRef(false);
-  if (isLtiReady && !hasBeenLtiReadyRef.current) {
-    hasBeenLtiReadyRef.current = true;
-    console.log('[MyChat] LTI initialization complete - ready to show chat');
-  }
-
-  const shouldShowLoadingOverlay = isLtiUser && !hasBeenLtiReadyRef.current;
+  // Show loading overlay for LTI users until workflow is loaded and ChatKit has rendered
+  const [ltiReady, setLtiReady] = useState(false);
 
   useEffect(() => {
-    console.log('[MyChat] LTI state:', {
-      isLtiUser,
-      activeWorkflow: activeWorkflow?.id,
-      workflowsLoading,
-      hasActiveInstance,
-      chatkitInitialized: chatkitInitializedRef.current,
-      isLtiReady,
-      shouldShowLoadingOverlay
-    });
-  }, [isLtiUser, activeWorkflow, workflowsLoading, hasActiveInstance, isLtiReady, shouldShowLoadingOverlay]);
+    // Once ready, stay ready (don't reset)
+    if (ltiReady || !isLtiUser || !activeWorkflow || workflowsLoading) {
+      return;
+    }
+
+    console.log('[MyChat] LTI workflow selected, waiting for ChatKit to render...');
+
+    // Give ChatKit time to initialize and render (covers all app.init phases)
+    const timer = setTimeout(() => {
+      console.log('[MyChat] LTI initialization complete');
+      setLtiReady(true);
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [ltiReady, isLtiUser, activeWorkflow, workflowsLoading]);
+
+  const shouldShowLoadingOverlay = isLtiUser && !ltiReady;
 
   return (
     <>
