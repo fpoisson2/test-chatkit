@@ -112,70 +112,72 @@ export const VectorStoreIngestionForm = ({
   };
 
   return (
-    <form className="admin-form" onSubmit={rhfHandleSubmit(handleSubmit)}>
-      {error && <div className="alert alert--danger">{error}</div>}
-      <label className="label">
-        Fichier JSON
+    <form className="flex flex-col gap-6" onSubmit={rhfHandleSubmit(handleSubmit)}>
+      {error && <div className="alert alert-danger">{error}</div>}
+      <div className="form-group">
+        <label className="form-label">Fichier JSON</label>
         <input className="input" type="file" accept="application/json,.json" onChange={handleFileChange} />
-      </label>
-      <label className="label">
-        Identifiant du document
+      </div>
+      <div className="form-group">
+        <label className="form-label">Identifiant du document</label>
         <input
           className="input"
           type="text"
           {...register("docId")}
           placeholder="paris-guide"
         />
-        {formErrors.docId && <span className="error">{formErrors.docId.message}</span>}
-      </label>
-      <label className="label">
-        Document JSON
+        {formErrors.docId && <span className="form-error">{formErrors.docId.message}</span>}
+      </div>
+      <div className="form-group">
+        <label className="form-label">Document JSON</label>
         <textarea
           className="textarea"
           rows={8}
           {...register("documentInput")}
           spellCheck={false}
         />
-        {formErrors.documentInput && <span className="error">{formErrors.documentInput.message}</span>}
-      </label>
-      <label className="label">
-        Métadonnées du document (JSON)
+        {formErrors.documentInput && <span className="form-error">{formErrors.documentInput.message}</span>}
+      </div>
+      <div className="form-group">
+        <label className="form-label">Métadonnées du document (JSON)</label>
         <textarea
           className="textarea"
           rows={4}
           {...register("metadataInput")}
           spellCheck={false}
         />
-        {formErrors.metadataInput && <span className="error">{formErrors.metadataInput.message}</span>}
-      </label>
-      <details className="accordion">
-        <summary>Mettre à jour les métadonnées du store (optionnel)</summary>
-        <label className="label">
-          Nouveau titre
-          <input
-            className="input"
-            type="text"
-            {...register("storeTitle")}
-            placeholder="Titre affiché côté ChatKit"
-          />
-          {formErrors.storeTitle && <span className="error">{formErrors.storeTitle.message}</span>}
-        </label>
-        <label className="label">
-          Métadonnées du store (JSON)
-          <textarea
-            className="textarea"
-            rows={3}
-            {...register("storeMetadataInput")}
-            spellCheck={false}
-          />
-          {formErrors.storeMetadataInput && <span className="error">{formErrors.storeMetadataInput.message}</span>}
-        </label>
+        {formErrors.metadataInput && <span className="form-error">{formErrors.metadataInput.message}</span>}
+      </div>
+      <details className="accordion-item">
+        <summary className="accordion-trigger cursor-pointer">Mettre à jour les métadonnées du store (optionnel)</summary>
+        <div className="accordion-content flex flex-col gap-6">
+          <div className="form-group">
+            <label className="form-label">Nouveau titre</label>
+            <input
+              className="input"
+              type="text"
+              {...register("storeTitle")}
+              placeholder="Titre affiché côté ChatKit"
+            />
+            {formErrors.storeTitle && <span className="form-error">{formErrors.storeTitle.message}</span>}
+          </div>
+          <div className="form-group">
+            <label className="form-label">Métadonnées du store (JSON)</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              {...register("storeMetadataInput")}
+              spellCheck={false}
+            />
+            {formErrors.storeMetadataInput && <span className="form-error">{formErrors.storeMetadataInput.message}</span>}
+          </div>
+        </div>
       </details>
-      <div className="admin-form__actions">
-        <button className="button button--subtle" type="button" onClick={onCancel} disabled={isSubmitting}>
+      <div className="flex items-center justify-end gap-3">
+        <button className="btn btn-secondary" type="button" onClick={onCancel} disabled={isSubmitting}>
           Annuler
         </button>
-        <button className="button" type="submit" disabled={isSubmitting}>
+        <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Ingestion…" : "Ingestion"}
         </button>
       </div>
