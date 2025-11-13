@@ -683,14 +683,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             async for event in _workflow_stream():
                 yield event
             stream_completed = True
-        except asyncio.CancelledError:  # pragma: no cover - déconnexion client
-            logger.info(
-                "Streaming interrompu pour le fil %s, poursuite du workflow en "
-                "tâche de fond",
-                thread.id,
-            )
-            _schedule_background_drain()
-            raise
         finally:
             if not stream_completed:
                 _schedule_background_drain()
