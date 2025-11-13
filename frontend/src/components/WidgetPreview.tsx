@@ -387,12 +387,8 @@ const renderText = (component: Widgets.TextComponent) => {
       } else if (component.color === "tertiary") {
         classNames.push("text-tertiary");
       } else if (component.color.startsWith("alpha-")) {
-        // Handle alpha colors like "alpha-70"
-        const alphaValue = component.color.replace("alpha-", "");
-        const alpha = parseInt(alphaValue, 10);
-        if (!isNaN(alpha)) {
-          style.opacity = alpha / 100;
-        }
+        // Handle alpha colors like "alpha-70" using CSS variables
+        style.color = `var(--${component.color})`;
       } else {
         // Try to use it as a theme color
         const color = toThemeColor(component.color);
