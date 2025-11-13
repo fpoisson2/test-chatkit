@@ -764,28 +764,31 @@ export function MyChat() {
         isVisible={shouldShowLoadingOverlay}
         message="Chargement de votre espace de travail..."
       />
-      <ChatSidebar
-        mode={mode}
-        setMode={setMode}
-        onWorkflowActivated={handleWorkflowActivated}
-      />
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-        {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
-          <WorkflowChatInstance
-            key={instanceId}
-            workflowId={instanceId}
-            chatkitOptions={instance.chatkitOptions}
-            token={token}
-            activeWorkflow={activeWorkflow}
-            initialThreadId={instance.initialThreadId}
-            reportError={reportError}
-            mode={instance.mode}
-            isActive={instanceId === currentWorkflowId}
-            onRequestRefreshReady={
-              instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
-            }
-          />
-        ))}
+      {/* Hide all content during LTI loading to prevent multiple spinners from showing */}
+      <div style={{ display: shouldShowLoadingOverlay ? 'none' : 'contents' }}>
+        <ChatSidebar
+          mode={mode}
+          setMode={setMode}
+          onWorkflowActivated={handleWorkflowActivated}
+        />
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+          {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
+            <WorkflowChatInstance
+              key={instanceId}
+              workflowId={instanceId}
+              chatkitOptions={instance.chatkitOptions}
+              token={token}
+              activeWorkflow={activeWorkflow}
+              initialThreadId={instance.initialThreadId}
+              reportError={reportError}
+              mode={instance.mode}
+              isActive={instanceId === currentWorkflowId}
+              onRequestRefreshReady={
+                instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
+              }
+            />
+          ))}
+        </div>
       </div>
       {voiceStatusMessage && (
         <div style={{
