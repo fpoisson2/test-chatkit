@@ -107,15 +107,18 @@
   --font-text-5xl-tracking: 0em;
 
   /* Text Size Aliases (for utility classes) */
+  /* Small sizes use text sizes */
   --text-xs: var(--font-text-xs-size);
   --text-sm: var(--font-text-sm-size);
   --text-base: var(--font-text-md-size);
   --text-lg: var(--font-text-lg-size);
-  --text-xl: var(--font-text-xl-size);
-  --text-2xl: var(--font-text-2xl-size);
-  --text-3xl: var(--font-text-3xl-size);
-  --text-4xl: var(--font-text-4xl-size);
-  --text-5xl: var(--font-text-5xl-size);
+
+  /* Large sizes use heading sizes for proper scale */
+  --text-xl: var(--font-heading-xl-size);    /* 2rem */
+  --text-2xl: var(--font-heading-2xl-size);  /* 2.25rem */
+  --text-3xl: var(--font-heading-3xl-size);  /* 3rem */
+  --text-4xl: var(--font-heading-4xl-size);  /* 3.75rem */
+  --text-5xl: var(--font-heading-5xl-size);  /* 4.5rem */
 
   /* Line Height Variables (for utility classes) */
   --leading-none: 1;
