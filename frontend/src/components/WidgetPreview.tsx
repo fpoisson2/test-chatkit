@@ -793,6 +793,9 @@ const renderCard = (card: Widgets.Card) => {
     styles.background = background;
   }
   if (card.padding !== undefined) {
+    // Disable card-body's default padding when widget has custom padding
+    (styles as any)['--card-body-padding'] = '0';
+    // Apply widget's padding to the section element
     applySpacing(styles, "padding", card.padding);
   }
   const classNames = ["card"];
