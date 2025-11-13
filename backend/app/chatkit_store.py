@@ -170,18 +170,11 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             payload = thread.model_dump(mode="json")
             metadata = dict(payload.get("metadata") or {})
             metadata.setdefault("owner_id", owner_id)
-            expected_workflow = self._current_workflow_metadata()
             workflow_metadata = metadata.get("workflow")
-            if self._has_complete_workflow_metadata(workflow_metadata):
-                if not self._workflow_matches(workflow_metadata, expected_workflow):
-                    # Thread appartient à un autre workflow (changement de workflow par l'utilisateur)
-                    # On ignore silencieusement pour permettre aux tâches en cours de se terminer
-                    logger.debug(
-                        "Thread %s appartient à un workflow différent, sauvegarde ignorée",
-                        thread.id
-                    )
-                    return
-            else:
+            # Si le workflow n'est pas défini, utiliser le workflow actuel
+            # Sinon, conserver le workflow du thread (pour supporter plusieurs workflows simultanés)
+            if not self._has_complete_workflow_metadata(workflow_metadata):
+                expected_workflow = self._current_workflow_metadata()
                 metadata["workflow"] = dict(expected_workflow)
             thread.metadata = metadata
             payload["metadata"] = metadata
