@@ -797,15 +797,13 @@ const renderCard = (card: Widgets.Card) => {
   }
   const classNames = ["card"];
 
-  // Size variants
+  // Size variants - only control width
   if (card.size === "sm") {
     classNames.push("card-sm");
   } else if (card.size === "md") {
     classNames.push("card-md");
   } else if (card.size === "lg") {
     classNames.push("card-lg");
-  } else if (card.size === "full") {
-    classNames.push("card-full");
   }
 
   return (

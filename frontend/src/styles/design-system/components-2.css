@@ -67,37 +67,17 @@
     transform: translateY(0);
   }
 
-  /* Card Size Variants */
+  /* Card Size Variants - only control width */
   .card-sm {
     max-width: 360px;
-    --card-header-padding: calc(var(--spacing) * 3);
-    --card-body-padding: calc(var(--spacing) * 3);
-    --card-footer-padding: calc(var(--spacing) * 3);
-    --card-title-font-size: var(--text-base);
-    --card-subtitle-font-size: var(--text-xs);
   }
 
   .card-md {
     max-width: 440px;
-    --card-header-padding: calc(var(--spacing) * 4);
-    --card-body-padding: calc(var(--spacing) * 4);
-    --card-footer-padding: calc(var(--spacing) * 4);
-    --card-title-font-size: var(--text-lg);
-    --card-subtitle-font-size: var(--text-sm);
   }
 
   .card-lg {
     max-width: 560px;
-    --card-header-padding: calc(var(--spacing) * 5);
-    --card-body-padding: calc(var(--spacing) * 5);
-    --card-footer-padding: calc(var(--spacing) * 5);
-    --card-title-font-size: var(--text-xl);
-    --card-subtitle-font-size: var(--text-base);
-  }
-
-  /* Card full width variant */
-  .card-full {
-    max-width: 100%;
   }
 
   /* Alert Styles */
