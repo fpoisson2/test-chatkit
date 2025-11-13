@@ -25,7 +25,14 @@ from typing_extensions import TypeVar
 from chatkit.errors import CustomStreamError, StreamError
 
 from .logger import logger
-from .store import AttachmentStore, NotFoundError, Store, StoreItemType, default_generate_id
+from .store import (
+    AttachmentStore,
+    NotFoundError,
+    Store,
+    StoreItemType,
+    default_generate_id,
+)
+from .thread_item_updates import apply_thread_item_update
 from .types import (
     Action,
     AttachmentsCreateReq,
@@ -626,50 +633,133 @@ class ChatKitServer(ABC, Generic[TContext]):
         await asyncio.sleep(0)  # allow the response to start streaming
 
         last_thread = thread.model_copy(deep=True)
+        id_map: dict[str, str] = {}
+
+        def resolve_store_item_type(item: ThreadItem) -> StoreItemType:
+            if item.type in ("user_message", "assistant_message"):
+                return "message"
+            if item.type == "client_tool_call":
+                return "tool_call"
+            if item.type == "workflow":
+                return "workflow"
+            if item.type == "task":
+                return "task"
+            return "message"
+
+        def ensure_item_id(item: ThreadItem) -> ThreadItem:
+            original_id = item.id
+            mapped_id = id_map.get(original_id)
+            if mapped_id:
+                if mapped_id == original_id:
+                    return item
+                return item.model_copy(update={"id": mapped_id})
+            if original_id.startswith("__"):
+                item_type = resolve_store_item_type(item)
+                new_id = self.store.generate_item_id(item_type, thread, context)
+                id_map[original_id] = new_id
+                logger.debug(
+                    "Replaced temporary ID %s with %s (type=%s)",
+                    original_id,
+                    new_id,
+                    item_type,
+                )
+                return item.model_copy(update={"id": new_id})
+            return item
+
+        def map_event_ids(event: ThreadStreamEvent) -> ThreadStreamEvent:
+            match event:
+                case ThreadItemAddedEvent():
+                    item = ensure_item_id(event.item)
+                    if item is not event.item:
+                        return event.model_copy(update={"item": item})
+                case ThreadItemDoneEvent():
+                    item = ensure_item_id(event.item)
+                    if item is not event.item:
+                        return event.model_copy(update={"item": item})
+                case ThreadItemReplacedEvent():
+                    item = ensure_item_id(event.item)
+                    if item is not event.item:
+                        return event.model_copy(update={"item": item})
+                case ThreadItemUpdated():
+                    mapped = id_map.get(event.item_id)
+                    if mapped and mapped != event.item_id:
+                        return event.model_copy(update={"item_id": mapped})
+                case ThreadItemRemovedEvent():
+                    mapped = id_map.get(event.item_id)
+                    if mapped and mapped != event.item_id:
+                        return event.model_copy(update={"item_id": mapped})
+            return event
 
         try:
             with agents_sdk_user_agent_override():
                 async for event in stream():
+                    event = map_event_ids(event)
                     match event:
-                        case ThreadItemDoneEvent():
-                            # Replace temporary IDs (e.g., __fake_id__) with real unique IDs
-                            # The agents SDK sometimes uses placeholder IDs that conflict across threads
+                        case ThreadItemAddedEvent():
                             item = event.item
-                            if item.id.startswith("__"):
-                                # Determine the store item type based on the item's type field
-                                item_type: StoreItemType
-                                if item.type in ("user_message", "assistant_message"):
-                                    item_type = "message"
-                                elif item.type == "client_tool_call":
-                                    item_type = "tool_call"
-                                elif item.type == "workflow":
-                                    item_type = "workflow"
-                                elif item.type == "task":
-                                    item_type = "task"
-                                else:
-                                    # Default to message for unknown types
-                                    item_type = "message"
-
-                                # Generate a real unique ID to avoid conflicts
-                                new_id = default_generate_id(item_type)
-                                item = item.model_copy(update={"id": new_id})
-                                logger.debug(
-                                    f"Replaced temporary ID {event.item.id} with {item.id} (type={item_type})"
-                                )
-
                             try:
                                 await self.store.add_thread_item(
                                     thread.id, item, context=context
                                 )
                             except NotFoundError as e:
-                                # Log but don't fail if item storage fails
-                                # This can happen with concurrent updates
-                                logger.error(f"Failed to store thread item: {e}")
+                                logger.error(
+                                    f"Failed to store thread item: {e}"
+                                )
+                        case ThreadItemDoneEvent():
+                            # Replace temporary IDs (e.g., __fake_id__) with real unique IDs
+                            # The agents SDK sometimes uses placeholder IDs that conflict across threads
+                            item = ensure_item_id(event.item)
+                            event = event.model_copy(update={"item": item})
+                            try:
+                                await self.store.save_item(
+                                    thread.id, item, context=context
+                                )
+                            except NotFoundError:
+                                try:
+                                    await self.store.add_thread_item(
+                                        thread.id, item, context=context
+                                    )
+                                except NotFoundError as e:
+                                    logger.error(
+                                        f"Failed to store thread item: {e}"
+                                    )
+                        case ThreadItemUpdated():
+                            item_id = event.item_id
+                            try:
+                                stored_item = await self.store.load_item(
+                                    thread.id, item_id, context=context
+                                )
+                            except NotFoundError:
+                                logger.warning(
+                                    "Received update for unknown item %s", item_id
+                                )
+                            else:
+                                try:
+                                    updated_item = apply_thread_item_update(
+                                        stored_item, event.update
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    logger.exception(
+                                        "Failed to apply update to %s", item_id
+                                    )
+                                else:
+                                    try:
+                                        await self.store.save_item(
+                                            thread.id,
+                                            updated_item,
+                                            context=context,
+                                        )
+                                    except NotFoundError as e:
+                                        logger.error(
+                                            f"Failed to store thread item: {e}"
+                                        )
                         case ThreadItemRemovedEvent():
                             await self.store.delete_thread_item(
                                 thread.id, event.item_id, context=context
                             )
                         case ThreadItemReplacedEvent():
+                            item = ensure_item_id(event.item)
+                            event = event.model_copy(update={"item": item})
                             await self.store.save_item(
                                 thread.id, event.item, context=context
                             )
