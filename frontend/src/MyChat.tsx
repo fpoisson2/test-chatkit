@@ -718,27 +718,6 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
-  // Hide the initial HTML loader when LoadingOverlay takes over or when not in LTI context
-  useEffect(() => {
-    const initialLoader = document.getElementById('initial-lti-loader');
-    if (!initialLoader) return;
-
-    // Hide HTML spinner if:
-    // 1. Not in LTI context (no loading overlay needed), OR
-    // 2. LoadingOverlay is now mounted and handling it
-    if (!isLtiContext) {
-      initialLoader.style.display = 'none';
-    } else {
-      // In LTI context: Keep HTML spinner until LoadingOverlay is mounted
-      // Small delay to ensure LoadingOverlay is rendered
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          initialLoader.style.display = 'none';
-        });
-      });
-    }
-  }, [isLtiContext]);
-
   // Hide sidebar immediately for LTI users (before workflow loads)
   useEffect(() => {
     if (isLtiContext) {
