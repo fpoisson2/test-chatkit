@@ -394,10 +394,13 @@
   border-radius: var(--radius-xl);
   border: 1px solid var(--surface-border);
   padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  font-size: var(--font-text-sm-size);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
+  color: var(--color-text-emphasis);
   background: var(--surface-strong);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: border-color, box-shadow, background-color;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__section-select:focus-visible {
@@ -415,12 +418,15 @@
   border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
   background: transparent;
   color: var(--primary-hover);
+  font-size: var(--font-text-sm-size);
   font-weight: var(--font-weight-semibold);
   padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
   border-radius: var(--radius-xl);
   cursor: pointer;
   text-align: center;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, color, border-color, box-shadow;
+  transition-timing-function: var(--transition-ease-basic);
   width: 100%;
 }
 
@@ -439,7 +445,7 @@
 .chatkit-sidebar__section-icon-button {
   border: none;
   background: var(--alpha-08);
-  color: var(--text-color);
+  color: var(--color-text-emphasis);
   width: var(--control-size-xs);
   height: var(--control-size-xs);
   border-radius: var(--radius-xl);
@@ -449,7 +455,9 @@
   font-size: var(--font-text-lg-size);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, color, transform, box-shadow;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__section-icon-button:hover,
@@ -573,15 +581,19 @@
 }
 
 .chatkit-sidebar__nav-link {
-  display: block;
+  display: inline-flex;
+  align-items: center;
   margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
   padding: calc(var(--spacing) * 3) var(--chatkit-sidebar-content-padding-x);
+  font-size: var(--font-text-sm-size);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
+  color: var(--color-text-emphasis);
   text-decoration: none;
   border-radius: 0;
   position: relative;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: opacity, color, background-color, box-shadow;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__nav-link::before {
@@ -594,7 +606,9 @@
   border-radius: 0 var(--radius-full) var(--radius-full) 0;
   background: transparent;
   opacity: 0;
-  transition: opacity 0.2s ease, background-color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: opacity, background-color;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__nav-link:hover,
@@ -646,10 +660,13 @@
   );
   border-radius: 0;
   font: inherit;
+  font-size: var(--font-text-sm-size);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
+  color: var(--color-text-emphasis);
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: opacity, color, box-shadow;
+  transition-timing-function: var(--transition-ease-basic);
   text-align: left;
   white-space: nowrap;
   line-height: var(--leading-tight);
@@ -669,7 +686,9 @@
   inset-inline-start: calc(-1 * var(--chatkit-sidebar-workflow-leading-width));
   inset-inline-end: calc(-1 * var(--chatkit-sidebar-workflow-highlight-gutter));
   background: transparent;
-  transition: background-color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, opacity;
+  transition-timing-function: var(--transition-ease-basic);
   pointer-events: none;
   border-radius: 0;
   z-index: -1;
@@ -863,14 +882,15 @@
   border-radius: var(--radius-full);
   border: 1px solid var(--sidebar-border);
   background: color-mix(in srgb, var(--sidebar-background) 88%, transparent);
-  color: var(--text-color);
+  color: var(--color-text-emphasis);
   font-weight: var(--font-weight-bold);
   font-size: var(--font-text-sm-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
-    transform 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, color, border-color, transform, opacity, box-shadow;
+  transition-timing-function: var(--transition-ease-basic);
   cursor: pointer;
 }
 
@@ -1003,7 +1023,9 @@
   justify-content: center;
   padding: 0;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, color, opacity, transform;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__workflow-pin-button--leading {
@@ -1265,7 +1287,9 @@
   gap: calc(var(--spacing) * 2);
   min-width: 0;
   flex: 0 1 160px;
-  transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: color, background-color, box-shadow, opacity;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__app-switcher--compact .chatkit-sidebar__app-switcher-button {
@@ -1333,7 +1357,7 @@
 .chatkit-sidebar__dismiss {
   background: var(--alpha-06);
   border: none;
-  color: var(--text-color);
+  color: var(--color-text-emphasis);
   width: var(--control-size-md);
   height: var(--control-size-md);
   padding: 0;
@@ -1342,7 +1366,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, color, opacity, transform;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__dismiss:hover,
@@ -1411,19 +1437,22 @@
 
 .chatkit-sidebar__item button {
   width: 100%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   gap: calc(var(--spacing) * 3);
   text-align: left;
   background: transparent;
   border: none;
-  color: var(--text-color);
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-emphasis);
   font-weight: var(--font-weight-semibold);
   padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 1);
   border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, color, opacity, box-shadow;
+  transition-timing-function: var(--transition-ease-basic);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1472,10 +1501,11 @@
 }
 
 .chatkit-sidebar__footer-link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: calc(var(--spacing) * 3);
   width: 100%;
+  font-size: var(--font-text-sm-size);
   padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 1);
   margin-bottom: calc(var(--spacing) * 3);
   border: none;
@@ -1483,7 +1513,9 @@
   color: inherit;
   cursor: pointer;
   border-radius: var(--radius-2xl);
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, box-shadow, opacity, color;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__footer-link:hover,
@@ -1508,7 +1540,7 @@
 }
 
 .chatkit-sidebar__profile-trigger {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: calc(var(--spacing) * 3);
   width: 100%;
@@ -1517,7 +1549,9 @@
   background: transparent;
   cursor: pointer;
   border-radius: var(--radius-2xl);
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, box-shadow, opacity;
+  transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__profile-trigger:hover,
@@ -1556,7 +1590,7 @@
 .chatkit-sidebar__profile-name {
   font-size: var(--font-text-sm-size);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-color);
+  color: var(--color-text-emphasis);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1639,17 +1673,20 @@
 
 .chatkit-sidebar__profile-action {
   width: 100%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: calc(var(--spacing) * 2.5);
   background: transparent;
   border: none;
-  color: var(--text-color);
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-emphasis);
   font-weight: var(--font-weight-semibold);
   padding: calc(var(--spacing) * 2) calc(var(--spacing) * 1.5);
   border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, color, opacity;
+  transition-timing-function: var(--transition-ease-basic);
   text-align: left;
 }
 
