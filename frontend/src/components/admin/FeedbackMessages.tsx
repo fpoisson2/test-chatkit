@@ -45,7 +45,7 @@ export const FeedbackMessages = ({
   }
 
   return (
-    <div className={`feedback-messages ${className}`.trim()} style={{ display: "grid", gap: "12px" }}>
+    <div className={`flex flex-col gap-3 ${className}`.trim()}>
       {error && (
         <ErrorAlert
           type="error"

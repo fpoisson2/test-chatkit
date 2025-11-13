@@ -49,15 +49,17 @@ export function ResponsiveTable<T = any>({
   // On mobile with card view enabled, render as cards
   if (!isDesktop && mobileCardView) {
     return (
-      <div className={`responsive-table-cards ${className}`}>
+      <div className={`flex flex-col gap-4 ${className}`}>
         {data.map((item) => (
-          <div key={keyExtractor(item)} className="responsive-table-card">
-            {columns.map((column) => (
-              <div key={column.key} className="responsive-table-card__row">
-                <dt className="responsive-table-card__label">{column.label}</dt>
-                <dd className="responsive-table-card__value">{column.render(item)}</dd>
-              </div>
-            ))}
+          <div key={keyExtractor(item)} className="card">
+            <div className="card-body flex flex-col gap-3">
+              {columns.map((column) => (
+                <div key={column.key} className="flex flex-col gap-1">
+                  <dt className="text-sm font-medium text-secondary">{column.label}</dt>
+                  <dd className="text-base">{column.render(item)}</dd>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
@@ -66,8 +68,8 @@ export function ResponsiveTable<T = any>({
 
   // On desktop or mobile without card view, render as table
   return (
-    <div className={`responsive-table-wrapper admin-table-wrapper ${className}`}>
-      <table className="responsive-table admin-table">
+    <div className={`overflow-x-auto ${className}`}>
+      <table className="table">
         <thead>
           <tr>
             {columns.map((column) => (
