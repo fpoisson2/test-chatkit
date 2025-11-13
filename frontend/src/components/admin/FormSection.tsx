@@ -35,36 +35,23 @@ export const FormSection = ({
   headerAction,
 }: FormSectionProps) => {
   return (
-    <section className={`admin-card ${className}`.trim()}>
+    <section className={`card ${className}`.trim()}>
       {(title || subtitle || headerAction) && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: "1rem",
-            flexWrap: "wrap",
-            marginBottom: title || subtitle ? "1.5rem" : "0",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {title && <h2 className="admin-card__title">{title}</h2>}
-            {subtitle && <p className="admin-card__subtitle">{subtitle}</p>}
+        <div className={`card-header flex justify-between items-start gap-4 flex-wrap ${title || subtitle ? "mb-6" : "mb-0"}`}>
+          <div className="flex-1 min-w-0">
+            {title && <h2 className="card-title">{title}</h2>}
+            {subtitle && <p className="card-subtitle">{subtitle}</p>}
           </div>
           {headerAction && (
-            <div
-              style={{
-                flexShrink: 0,
-                marginLeft: "auto",
-                display: "flex",
-              }}
-            >
+            <div className="flex-shrink-0 ml-auto flex">
               {headerAction}
             </div>
           )}
         </div>
       )}
-      {children}
+      <div className="card-body">
+        {children}
+      </div>
     </section>
   );
 };
