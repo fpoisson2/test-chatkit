@@ -323,7 +323,7 @@ export const AdminModelProvidersPage = () => {
                     </button>
                     <button
                       type="button"
-                      className="button button--sm button--danger"
+                      className="btn btn-sm btn-danger"
                       onClick={() => handleDelete(provider.id)}
                       disabled={providers.length === 1}
                       title={providers.length === 1 ? "Impossible de supprimer le dernier fournisseur" : "Supprimer ce fournisseur"}

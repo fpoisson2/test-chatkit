@@ -777,7 +777,7 @@ export const AdminMcpServersPage = () => {
               </button>
               <button
                 type="button"
-                className="button button--danger button--small"
+                className="btn btn-sm btn-danger"
                 disabled={isDeleting}
                 onClick={() => handleDelete(server)}
               >

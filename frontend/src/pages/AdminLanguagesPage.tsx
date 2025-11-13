@@ -364,7 +364,7 @@ export const AdminLanguagesPage = () => {
             <button
               type="button"
               onClick={() => handleDeleteStoredLanguage(lang.id)}
-              className="button button--sm button--danger"
+              className="btn btn-sm btn-danger"
             >
               Delete
             </button>

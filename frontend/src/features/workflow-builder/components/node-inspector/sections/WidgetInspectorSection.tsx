@@ -421,7 +421,7 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
               />
             </label>
             <div className={styles.nodeInspectorSectionFooter}>
-              <button type="button" className="btn danger" onClick={() => handleRemoveAssignment(index)}>
+              <button type="button" className="btn btn-danger" onClick={() => handleRemoveAssignment(index)}>
                 Supprimer la variable
               </button>
             </div>

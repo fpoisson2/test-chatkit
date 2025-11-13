@@ -204,7 +204,7 @@ export const AdminPage = () => {
               Réinitialiser le mot de passe
             </button>
             <button
-              className="button button--danger button--sm"
+              className="btn btn-sm btn-danger"
               type="button"
               onClick={() => handleDelete(user)}
             >

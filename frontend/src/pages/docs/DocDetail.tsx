@@ -181,7 +181,7 @@ export const DocDetail = () => {
             <button type="button" className="button button--ghost" onClick={handleOpenEditor} disabled={isLoading || Boolean(error)}>
               {t("docs.detail.edit")}
             </button>
-            <button type="button" className="button button--danger" onClick={handleDelete} disabled={isLoading || Boolean(error)}>
+            <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={isLoading || Boolean(error)}>
               {t("docs.detail.delete")}
             </button>
           </>

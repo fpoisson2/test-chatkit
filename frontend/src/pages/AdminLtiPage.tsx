@@ -313,7 +313,7 @@ export const AdminLtiPage = () => {
           </button>
           <button
             type="button"
-            className="button button--danger button--sm"
+            className="btn btn-sm btn-danger"
             onClick={() => handleDeleteRegistration(entry)}
           >
             {t("admin.lti.registrations.actions.delete")}
