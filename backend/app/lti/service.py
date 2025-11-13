@@ -270,7 +270,8 @@ class LTIService:
         user_json = quote(json.dumps(user_data))
         token_encoded = quote(token)  # URL-encode the JWT token
 
-        launch_url = f"{frontend_base}/lti/launch?token={token_encoded}&user={user_json}"
+        # Include workflow_id in launch URL - LTI users now have API access to their workflows
+        launch_url = f"{frontend_base}/lti/launch?token={token_encoded}&user={user_json}&workflow={workflow.id}"
 
         logger.info("LTI Launch: Redirecting to frontend %s (token length: %d)", launch_url[:100], len(token))
 

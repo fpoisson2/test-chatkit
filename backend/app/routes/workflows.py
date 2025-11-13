@@ -93,12 +93,40 @@ async def list_workflows(
         get_workflow_persistence_service
     ),
 ) -> list[WorkflowSummaryResponse]:
-    _ensure_admin(current_user)
-    workflows = service.list_workflows(session)
-    return [
-        WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
-        for w in workflows
-    ]
+    # Admin users can see all workflows
+    if current_user.is_admin:
+        workflows = service.list_workflows(session)
+        return [
+            WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
+            for w in workflows
+        ]
+
+    # LTI users can only see workflows from their LTI sessions
+    if current_user.email.endswith('@lti.local'):
+        from ..models import LTIUserSession, Workflow
+        from sqlalchemy import select, distinct
+
+        # Get all unique workflows this LTI user has accessed
+        stmt = (
+            select(Workflow)
+            .join(LTIUserSession.resource_link)
+            .where(
+                LTIUserSession.user_id == current_user.id,
+                Workflow.active_version_id.isnot(None)
+            )
+            .distinct()
+        )
+        workflows = list(session.scalars(stmt))
+
+        return [
+            WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
+            for w in workflows
+        ]
+
+    # Other non-admin users have no access
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis"
+    )
 
 
 @router.get(
