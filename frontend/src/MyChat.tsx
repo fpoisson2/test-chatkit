@@ -756,7 +756,26 @@ export function MyChat() {
 
   // Show loading overlay for LTI users until workflow and chat are ready
   const hasActiveInstance = activeInstances.has(currentWorkflowId);
-  const shouldShowLoadingOverlay = isLtiUser && (!activeWorkflow || workflowsLoading || !hasActiveInstance);
+  const isLtiReady = isLtiUser && activeWorkflow && !workflowsLoading && hasActiveInstance;
+
+  // Use a ref to track if we've ever been ready - once ready, never show loading again
+  const hasBeenLtiReadyRef = useRef(false);
+  if (isLtiReady && !hasBeenLtiReadyRef.current) {
+    hasBeenLtiReadyRef.current = true;
+    console.log('[MyChat] LTI initialization complete');
+  }
+
+  const shouldShowLoadingOverlay = isLtiUser && !hasBeenLtiReadyRef.current;
+
+  useEffect(() => {
+    console.log('[MyChat] LTI state:', {
+      isLtiUser,
+      activeWorkflow: activeWorkflow?.id,
+      workflowsLoading,
+      hasActiveInstance,
+      shouldShowLoadingOverlay
+    });
+  }, [isLtiUser, activeWorkflow, workflowsLoading, hasActiveInstance, shouldShowLoadingOverlay]);
 
   return (
     <>
