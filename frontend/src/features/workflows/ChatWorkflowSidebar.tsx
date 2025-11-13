@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
+import { LoadingSpinner } from "../../components/feedback/LoadingSpinner";
 import { workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
@@ -61,6 +62,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
+  const isLtiUser = Boolean(user?.email.endsWith('@lti.local'));
 
   // Use the shared workflow sidebar state
   const {
@@ -180,9 +182,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   }, [hostedWorkflows, mode, selectedHostedSlug, setSelectedHostedSlug]);
 
   // Announce initial local workflow selection (only on first load)
+  // Skip this for LTI users - they have their own auto-selection logic below
   const hasAnnouncedInitialLocal = useRef(false);
   useEffect(() => {
     if (hasAnnouncedInitialLocal.current || mode !== "local" || !workflows.length) {
+      return;
+    }
+
+    // Skip for LTI users - they have dedicated auto-selection logic
+    if (isLtiUser) {
       return;
     }
 
@@ -192,7 +200,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       { kind: "local", workflow },
       { reason: "initial" },
     );
-  }, [mode, selectedWorkflowId, workflows]);
+  }, [mode, selectedWorkflowId, workflows, isLtiUser]);
 
   // Auto-select LTI workflow for LTI users
   const hasCheckedLtiWorkflow = useRef(false);
@@ -209,21 +217,28 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     // Wait for workflows to be loaded before checking
     if (workflows.length === 0) {
+      console.log('[LTI Auto-select] Waiting for workflows to load...');
       return;
     }
+
+    console.log('[LTI Auto-select] Workflows loaded:', workflows.length, workflows.map(w => ({ id: w.id, name: w.display_name })));
 
     // Get the workflow ID from the LTI launch (stored in localStorage)
     const ltiWorkflowId = localStorage.getItem('lti_launch_workflow_id');
     if (!ltiWorkflowId) {
+      console.log('[LTI Auto-select] No workflow ID found in localStorage');
       hasCheckedLtiWorkflow.current = true;
       return;
     }
+
+    console.log('[LTI Auto-select] Found workflow ID in localStorage:', ltiWorkflowId);
 
     // Convert to number and clear from localStorage (one-time use)
     const workflowId = parseInt(ltiWorkflowId, 10);
     localStorage.removeItem('lti_launch_workflow_id');
 
     if (isNaN(workflowId)) {
+      console.error('[LTI Auto-select] Invalid workflow ID:', ltiWorkflowId);
       hasCheckedLtiWorkflow.current = true;
       return;
     }
@@ -232,9 +247,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     const workflowInList = workflows.find((w) => w.id === workflowId);
 
     if (workflowInList) {
-      // Auto-select the workflow from the Deep Link
+      console.log('[LTI Auto-select] Auto-selecting workflow:', workflowId, workflowInList.display_name);
+      console.log('[LTI Auto-select] Workflow options:', {
+        lti_enabled: workflowInList.lti_enabled,
+        lti_show_sidebar: workflowInList.lti_show_sidebar,
+        lti_show_header: workflowInList.lti_show_header
+      });
+
+      // Update selected workflow ID if different
       if (selectedWorkflowId !== workflowId) {
-        console.log('Auto-selecting LTI workflow from Deep Link:', workflowId);
         setSelectedWorkflowId(workflowId);
         updateStoredWorkflowSelection((previous) => ({
           mode: "local",
@@ -243,13 +264,17 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
           pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
         }));
-        onWorkflowActivatedRef.current(
-          { kind: "local", workflow: workflowInList },
-          { reason: "initial" },
-        );
       }
+
+      // ALWAYS activate the workflow for LTI users, even if already selected
+      // This ensures the workflow is properly initialized with LTI options
+      onWorkflowActivatedRef.current(
+        { kind: "local", workflow: workflowInList },
+        { reason: "initial" },
+      );
+      console.log('[LTI Auto-select] Workflow activated successfully');
     } else {
-      console.warn('LTI workflow not found in available workflows:', workflowId, 'Available:', workflows.map(w => w.id));
+      console.error('[LTI Auto-select] Workflow not found:', workflowId, 'Available:', workflows.map(w => w.id));
     }
 
     hasCheckedLtiWorkflow.current = true;
@@ -627,6 +652,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   const sidebarContent = useMemo(() => {
     const sectionId = "chat-sidebar-workflow";
+    const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
 
     if (!user) {
       return (
@@ -660,7 +686,10 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
           <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">Chargement des workflows…</p>
+          <LoadingSpinner
+            size="md"
+            text={isLtiUser ? 'Chargement du workflow…' : 'Chargement des workflows…'}
+          />
         </section>
       );
     }
@@ -743,12 +772,19 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   }, [error, isSidebarCollapsed, loading, sidebarEntries, t, user]);
 
   useEffect(() => {
+    // Don't render sidebar content for LTI users - they have a global loading overlay instead
+    if (isLtiUser) {
+      clearSidebarContent();
+      return;
+    }
+
     setSidebarContent(sidebarContent);
     setCollapsedSidebarContent(collapsedSidebarContent);
     return () => clearSidebarContent();
   }, [
     clearSidebarContent,
     collapsedSidebarContent,
+    isLtiUser,
     setCollapsedSidebarContent,
     setSidebarContent,
     sidebarContent,

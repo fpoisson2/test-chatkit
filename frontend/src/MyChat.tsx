@@ -3,6 +3,7 @@ import type { ChatKitOptions, StartScreenPrompt } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
+import { LoadingOverlay } from "./components/feedback/LoadingOverlay";
 import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
@@ -17,6 +18,7 @@ import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
+import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -194,6 +196,7 @@ export function MyChat() {
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
   const { openSidebar, setHideSidebar } = useAppLayout();
+  const { loading: workflowsLoading, workflows } = useWorkflowSidebar();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -237,6 +240,13 @@ export function MyChat() {
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
+
+  // Detect LTI user early so we can use it in chatkitOptions
+  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
+
+  // Detect LTI context even before user is loaded (for early loading overlay)
+  // This checks if we're coming from an LTI launch by looking for the workflow ID in localStorage
+  const isLtiContext = isLtiUser || (localStorage.getItem('lti_launch_workflow_id') !== null);
 
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
@@ -618,12 +628,6 @@ export function MyChat() {
           console.debug("[ChatKit] thread load end", { threadId });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
-          // Debug: Log every onLog call
-          console.log('[MyChat] onLog called:', entry.name, {
-            hasData: !!entry.data,
-            dataKeys: entry.data ? Object.keys(entry.data) : [],
-          });
-
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
@@ -631,16 +635,6 @@ export function MyChat() {
               lastThreadSnapshotRef.current = thread;
               // Update state to trigger re-render and useOutboundCallDetector
               setCurrentThread(thread);
-
-              // Debug: Log thread structure
-              console.log('[MyChat] Thread updated:', {
-                keys: Object.keys(thread),
-                hasItems: 'items' in thread,
-                hasMessages: 'messages' in thread,
-                itemsLength: Array.isArray(thread.items) ? thread.items.length : 'N/A',
-                messagesLength: Array.isArray(thread.messages) ? thread.messages.length : 'N/A',
-                firstItem: Array.isArray(thread.items) && thread.items.length > 0 ? thread.items[0] : null,
-              });
             }
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
@@ -724,44 +718,90 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
-  // Apply LTI sidebar visibility setting
+  // Hide sidebar immediately for LTI users (before workflow loads)
   useEffect(() => {
-    const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
-    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
+    if (isLtiContext) {
+      setHideSidebar(true);
+    }
+  }, [isLtiContext, setHideSidebar]);
+
+  // Apply LTI sidebar visibility setting based on workflow config
+  useEffect(() => {
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiUser;
     const shouldHideSidebar = shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar;
 
-    setHideSidebar(shouldHideSidebar);
+    if (shouldApplyLtiOptions) {
+      setHideSidebar(shouldHideSidebar);
+    }
 
     // Cleanup: restore sidebar when unmounting or when conditions change
     return () => {
-      setHideSidebar(false);
+      if (!isLtiUser) {
+        setHideSidebar(false);
+      }
     };
-  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, user?.email, setHideSidebar]);
+  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, isLtiUser, setHideSidebar]);
+
+  // Show loading overlay for LTI users until workflow is loaded and ChatKit has rendered
+  const [ltiReady, setLtiReady] = useState(false);
+
+  useEffect(() => {
+    // If not in LTI context, mark as ready immediately
+    if (!isLtiContext) {
+      setLtiReady(true);
+      return;
+    }
+
+    // Once ready, stay ready (don't reset)
+    if (ltiReady || !activeWorkflow || workflowsLoading) {
+      return;
+    }
+
+    console.log('[MyChat] LTI workflow selected, waiting for ChatKit to render...');
+
+    // Give ChatKit time to initialize and render (covers all app.init phases)
+    const timer = setTimeout(() => {
+      console.log('[MyChat] LTI initialization complete');
+      setLtiReady(true);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [ltiReady, isLtiContext, activeWorkflow, workflowsLoading]);
+
+  const shouldShowLoadingOverlay = isLtiContext && !ltiReady;
 
   return (
     <>
-      <ChatSidebar
-        mode={mode}
-        setMode={setMode}
-        onWorkflowActivated={handleWorkflowActivated}
+      <LoadingOverlay
+        isVisible={shouldShowLoadingOverlay}
+        message="Chargement..."
+        variant="fullscreen"
       />
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-        {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
-          <WorkflowChatInstance
-            key={instanceId}
-            workflowId={instanceId}
-            chatkitOptions={instance.chatkitOptions}
-            token={token}
-            activeWorkflow={activeWorkflow}
-            initialThreadId={instance.initialThreadId}
-            reportError={reportError}
-            mode={instance.mode}
-            isActive={instanceId === currentWorkflowId}
-            onRequestRefreshReady={
-              instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
-            }
-          />
-        ))}
+      {/* Hide all content during LTI loading to prevent multiple spinners from showing */}
+      <div style={{ display: shouldShowLoadingOverlay ? 'none' : 'contents' }}>
+        <ChatSidebar
+          mode={mode}
+          setMode={setMode}
+          onWorkflowActivated={handleWorkflowActivated}
+        />
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+          {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
+            <WorkflowChatInstance
+              key={instanceId}
+              workflowId={instanceId}
+              chatkitOptions={instance.chatkitOptions}
+              token={token}
+              activeWorkflow={activeWorkflow}
+              initialThreadId={instance.initialThreadId}
+              reportError={reportError}
+              mode={instance.mode}
+              isActive={instanceId === currentWorkflowId}
+              onRequestRefreshReady={
+                instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
+              }
+            />
+          ))}
+        </div>
       </div>
       {voiceStatusMessage && (
         <div style={{

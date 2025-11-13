@@ -106,7 +106,7 @@ export const App = () => (
       <Route
         path="/lti/launch"
         element={
-          <SuspenseRoute>
+          <SuspenseRoute fallback={null}>
             <LTILaunchPage />
           </SuspenseRoute>
         }

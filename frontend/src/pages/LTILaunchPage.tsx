@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth, type AuthUser } from "../auth";
+import { LoadingSpinner } from "../components/feedback/LoadingSpinner";
 
 /**
  * LTI Launch Handler Page
@@ -62,11 +63,9 @@ export const LTILaunchPage = () => {
       console.log("LTI Launch: Redirecting to /");
       hasProcessed.current = true;
 
-      // Use window.location.replace to force a hard reload and avoid infinite loop
-      setTimeout(() => {
-        console.log("LTI Launch: Performing hard redirect to /");
-        window.location.replace("/");
-      }, 100);
+      // Immediate redirect - no setTimeout needed
+      console.log("LTI Launch: Performing hard redirect to /");
+      window.location.replace("/");
     } catch (error) {
       console.error("LTI Launch: Failed to parse user data", error);
       setError(`Erreur: ${error instanceof Error ? error.message : String(error)}`);
@@ -77,37 +76,9 @@ export const LTILaunchPage = () => {
     }
   }, [searchParams, login]);
 
-  return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      height: "100vh",
-      fontFamily: "system-ui, sans-serif"
-    }}>
-      <div style={{ textAlign: "center", maxWidth: "500px", padding: "20px" }}>
-        <h2>Connexion LTI en cours...</h2>
-        <p>Vous allez être redirigé vers l'application.</p>
-        {debugInfo && (
-          <p style={{ fontSize: "0.9em", color: "#666", marginTop: "20px" }}>
-            {debugInfo}
-          </p>
-        )}
-        {error && (
-          <div style={{
-            marginTop: "20px",
-            padding: "10px",
-            backgroundColor: "#fee",
-            border: "1px solid #fcc",
-            borderRadius: "4px",
-            color: "#c00"
-          }}>
-            {error}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  // Don't show any UI during LTI launch - the redirect happens immediately
+  // and showing UI causes unnecessary spinner flicker
+  return null;
 };
 
 export default LTILaunchPage;
