@@ -15,13 +15,15 @@ export const WidgetPreviewModal = ({
   onClose,
 }: WidgetPreviewModalProps) => (
   <Modal title={title} onClose={onClose} size="lg">
-    {subtitle ? <p className="admin-card__subtitle">{subtitle}</p> : null}
+    {subtitle ? <p className="card-subtitle">{subtitle}</p> : null}
     <WidgetPreviewPlayground definition={definition} />
-    <details className="accordion">
-      <summary>Définition JSON normalisée</summary>
-      <pre className="code-block" aria-label="Définition JSON du widget">
-        {JSON.stringify(definition, null, 2)}
-      </pre>
+    <details className="accordion-item mt-6">
+      <summary className="accordion-trigger cursor-pointer">Définition JSON normalisée</summary>
+      <div className="accordion-content">
+        <pre className="code-block" aria-label="Définition JSON du widget">
+          {JSON.stringify(definition, null, 2)}
+        </pre>
+      </div>
     </details>
   </Modal>
 );
