@@ -742,10 +742,8 @@ const renderForm = (box: Widgets.Form) => {
 const renderListView = (listView: Widgets.ListView) => {
   const children = Array.isArray(listView.children) ? listView.children : [];
   const limited = typeof listView.limit === "number" ? children.slice(0, listView.limit) : children;
-  const wrapperClassNames = ["widget-preview__collection"];
-  if (listView.theme) {
-    wrapperClassNames.push(`widget-preview__collection--${listView.theme}`);
-  }
+  const wrapperClassNames = ["flex flex-col gap-3 p-4"];
+  // Theme is handled via data-theme attribute
   const wrapperStyles: React.CSSProperties = {};
   applyBlockProps(wrapperStyles, listView as unknown as Record<string, unknown>);
 
@@ -892,7 +890,7 @@ const renderNode = (node: unknown): React.ReactNode => {
     case "Transition":
       return renderNode((node as Widgets.Transition).children);
     case "Spacer":
-      return <div className="widget-preview__spacer" />;
+      return <div className="h-4" />;
     default:
       return renderUnsupported(type);
   }
@@ -910,7 +908,7 @@ const normalizeDefinition = (
 export const WidgetPreview = ({ definition }: WidgetPreviewProps) => {
   const normalized = useMemo(() => normalizeDefinition(definition), [definition]);
   if (!normalized) {
-    return <div className="widget-preview__unsupported">Définition du widget invalide.</div>;
+    return <div className="alert alert-danger text-sm">Définition du widget invalide.</div>;
   }
   return <div className="widget-preview">{renderNode(normalized)}</div>;
 };
