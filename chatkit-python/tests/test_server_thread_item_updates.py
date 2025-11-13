@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
@@ -440,3 +441,100 @@ async def test_process_events_replays_pending_events_after_disconnect() -> None:
         )
     ]
     assert replayed_again == []
+
+
+@pytest.mark.asyncio
+async def test_process_events_resumes_live_stream_after_reconnect() -> None:
+    store = _MemoryStore()
+    server = _TestServer(store)
+    thread = ThreadMetadata(id="thr_resume", created_at=datetime.now())
+    await store.save_thread(thread, None)
+
+    assistant_initial = AssistantMessageItem(
+        id="__assistant__",
+        thread_id=thread.id,
+        created_at=datetime.now(),
+        content=[AssistantMessageContent(text="", annotations=[])],
+    )
+
+    queue: asyncio.Queue[ThreadStreamEvent | None] = asyncio.Queue()
+
+    async def _queue_stream() -> AsyncIterator[ThreadStreamEvent]:
+        while True:
+            event = await queue.get()
+            if event is None:
+                break
+            yield event
+
+    async def _drain_capture_only() -> None:
+        async for _ in server._process_events(
+            thread, None, _queue_stream, capture_only=True
+        ):
+            pass
+
+    capture_task = asyncio.create_task(_drain_capture_only())
+
+    await queue.put(ThreadItemAddedEvent(item=assistant_initial))
+    await queue.put(
+        ThreadItemUpdated(
+            item_id="__assistant__",
+            update=AssistantMessageContentPartTextDelta(
+                content_index=0,
+                delta="Bon",
+            ),
+        )
+    )
+
+    async def _collect_events() -> list[ThreadStreamEvent]:
+        emitted: list[ThreadStreamEvent] = []
+        async for evt in server._process_events(
+            thread, None, _stream_from([])
+        ):
+            emitted.append(evt)
+        return emitted
+
+    collector_task = asyncio.create_task(_collect_events())
+
+    await asyncio.sleep(0)
+
+    await queue.put(
+        ThreadItemUpdated(
+            item_id="__assistant__",
+            update=AssistantMessageContentPartTextDelta(
+                content_index=0,
+                delta="jour",
+            ),
+        )
+    )
+    await queue.put(
+        ThreadItemDoneEvent(
+            item=AssistantMessageItem(
+                id="__assistant__",
+                thread_id=thread.id,
+                created_at=assistant_initial.created_at,
+                content=[
+                    AssistantMessageContent(
+                        text="Bonjour",
+                        annotations=[],
+                    )
+                ],
+            )
+        )
+    )
+    await queue.put(None)
+
+    emitted_events = await collector_task
+    await capture_task
+
+    assert [type(evt) for evt in emitted_events] == [
+        ThreadItemAddedEvent,
+        ThreadItemUpdated,
+        ThreadItemUpdated,
+        ThreadItemDoneEvent,
+    ]
+
+    stored_items = await store.load_thread_items(thread.id, None, 10, "asc", None)
+    assert len(stored_items.data) == 1
+    stored_assistant = stored_items.data[0]
+    assert isinstance(stored_assistant, AssistantMessageItem)
+    assert stored_assistant.content[0].text == "Bonjour"

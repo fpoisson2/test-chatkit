@@ -1,8 +1,9 @@
 import asyncio
 from abc import ABC, abstractmethod
-from collections import defaultdict
+from collections import deque
 from collections.abc import AsyncIterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import (
     Any,
@@ -117,16 +118,18 @@ def diff_widget(
                     return True
             return False
 
-        for field in before.model_fields_set.union(after.model_fields_set):
+        for model_field in before.model_fields_set.union(after.model_fields_set):
             if (
                 isinstance(before, (Markdown, Text))
                 and isinstance(after, (Markdown, Text))
-                and field == "value"
+                and model_field == "value"
                 and after.value.startswith(before.value)
             ):
                 # Appends to the value prop of Markdown or Text do not trigger a full replace
                 continue
-            if full_replace_value(getattr(before, field), getattr(after, field)):
+            if full_replace_value(
+                getattr(before, model_field), getattr(after, model_field)
+            ):
                 return True
 
         return False
@@ -262,6 +265,14 @@ class NonStreamingResult:
 TContext = TypeVar("TContext", default=Any)
 
 
+@dataclass
+class _PendingStreamState:
+    events: deque[ThreadStreamEvent] = field(default_factory=deque)
+    condition: asyncio.Condition = field(default_factory=asyncio.Condition)
+    done: bool = False
+    consumers: int = 0
+
+
 class ChatKitServer(ABC, Generic[TContext]):
     def __init__(
         self,
@@ -270,7 +281,7 @@ class ChatKitServer(ABC, Generic[TContext]):
     ):
         self.store = store
         self.attachment_store = attachment_store
-        self._pending_thread_events: dict[str, list[ThreadStreamEvent]] = defaultdict(list)
+        self._pending_streams: dict[str, _PendingStreamState] = {}
         self._pending_events_lock = asyncio.Lock()
 
     def _get_attachment_store(self) -> AttachmentStore[TContext]:
@@ -640,18 +651,64 @@ class ChatKitServer(ABC, Generic[TContext]):
         last_thread = thread.model_copy(deep=True)
         id_map: dict[str, str] = {}
 
-        async def _queue_pending_event(event: ThreadStreamEvent) -> None:
-            async with self._pending_events_lock:
-                self._pending_thread_events[thread.id].append(event)
+        pending_state: _PendingStreamState | None = None
 
-        async def _drain_pending_events() -> list[ThreadStreamEvent]:
+        async def _ensure_pending_state() -> _PendingStreamState:
+            nonlocal pending_state
+            if pending_state is not None:
+                return pending_state
             async with self._pending_events_lock:
-                pending = self._pending_thread_events.pop(thread.id, [])
-            return pending
+                state = self._pending_streams.get(thread.id)
+                if state is None:
+                    state = _PendingStreamState()
+                    self._pending_streams[thread.id] = state
+            pending_state = state
+            return state
+
+        async def _queue_pending_event(event: ThreadStreamEvent) -> None:
+            state = await _ensure_pending_state()
+            async with state.condition:
+                state.events.append(event)
+                state.condition.notify_all()
+
+        async def _stream_pending_events(state: _PendingStreamState) -> AsyncIterator[ThreadStreamEvent]:
+            async with state.condition:
+                state.consumers += 1
+            try:
+                while True:
+                    async with state.condition:
+                        while not state.events and not state.done:
+                            await state.condition.wait()
+                        if not state.events:
+                            break
+                        event = state.events.popleft()
+                    yield event
+            finally:
+                async with state.condition:
+                    state.consumers -= 1
+                    should_cleanup = (
+                        state.done
+                        and not state.events
+                        and state.consumers == 0
+                    )
+                if should_cleanup:
+                    async with self._pending_events_lock:
+                        current = self._pending_streams.get(thread.id)
+                        if current is state:
+                            self._pending_streams.pop(thread.id, None)
 
         if not capture_only:
-            for pending_event in await _drain_pending_events():
-                yield pending_event
+            async with self._pending_events_lock:
+                existing_state = self._pending_streams.get(thread.id)
+            if existing_state is not None:
+                async for pending_event in _stream_pending_events(existing_state):
+                    yield pending_event
+                return
+
+        if capture_only:
+            state = await _ensure_pending_state()
+            async with state.condition:
+                state.done = False
 
         def resolve_store_item_type(item: ThreadItem) -> StoreItemType:
             if item.type in ("user_message", "assistant_message"):
@@ -855,6 +912,19 @@ class ChatKitServer(ABC, Generic[TContext]):
                 await _queue_pending_event(thread_event)
             else:
                 yield thread_event
+
+        if capture_only and pending_state is not None:
+            async with pending_state.condition:
+                pending_state.done = True
+                pending_state.condition.notify_all()
+            async with self._pending_events_lock:
+                current = self._pending_streams.get(thread.id)
+                if (
+                    current is pending_state
+                    and not pending_state.events
+                    and pending_state.consumers == 0
+                ):
+                    self._pending_streams.pop(thread.id, None)
 
     async def _build_user_message_item(
         self, input: UserMessageInput, thread: ThreadMetadata, context: TContext
