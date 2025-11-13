@@ -802,6 +802,8 @@ const renderCard = (card: Widgets.Card) => {
     classNames.push("card-sm");
   } else if (card.size === "lg") {
     classNames.push("card-lg");
+  } else if (card.size === "full") {
+    classNames.push("card-full");
   }
 
   return (

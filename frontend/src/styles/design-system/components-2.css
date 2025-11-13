@@ -69,6 +69,7 @@
 
   /* Card Size Variants */
   .card-sm {
+    max-width: 320px;
     --card-header-padding: calc(var(--spacing) * 3);
     --card-body-padding: calc(var(--spacing) * 3);
     --card-footer-padding: calc(var(--spacing) * 3);
@@ -77,11 +78,17 @@
   }
 
   .card-lg {
+    max-width: 640px;
     --card-header-padding: calc(var(--spacing) * 6);
     --card-body-padding: calc(var(--spacing) * 6);
     --card-footer-padding: calc(var(--spacing) * 6);
     --card-title-font-size: var(--text-xl);
     --card-subtitle-font-size: var(--text-base);
+  }
+
+  /* Card full width variant */
+  .card-full {
+    max-width: 100%;
   }
 
   /* Alert Styles */
