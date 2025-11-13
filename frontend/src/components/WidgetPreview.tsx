@@ -426,21 +426,43 @@ const renderText = (component: Widgets.TextComponent) => {
 };
 
 const renderTitle = (component: Widgets.Title) => {
-  const classNames = ["font-semibold"];
+  const classNames: string[] = [];
 
-  // Size mapping to headings
-  if (component.size === "xs") {
-    classNames.push("text-base");
-  } else if (component.size === "sm") {
-    classNames.push("text-lg");
-  } else if (component.size === "md") {
-    classNames.push("text-xl");
-  } else if (component.size === "lg") {
-    classNames.push("text-2xl");
-  } else if (component.size === "xl") {
-    classNames.push("text-3xl");
+  // Weight mapping
+  if (component.weight === "bold") {
+    classNames.push("font-bold");
+  } else if (component.weight === "semibold") {
+    classNames.push("font-semibold");
+  } else if (component.weight === "medium") {
+    classNames.push("font-medium");
+  } else if (component.weight === "normal") {
+    classNames.push("font-normal");
   } else {
+    // Default for Title is semibold
+    classNames.push("font-semibold");
+  }
+
+  // Size mapping - 1:1 mapping with text utilities
+  if (component.size === "xs") {
+    classNames.push("text-xs");
+  } else if (component.size === "sm") {
+    classNames.push("text-sm");
+  } else if (component.size === "md") {
+    classNames.push("text-base");
+  } else if (component.size === "lg") {
+    classNames.push("text-lg");
+  } else if (component.size === "xl") {
     classNames.push("text-xl");
+  } else if (component.size === "2xl") {
+    classNames.push("text-2xl"); // 36px (2.25rem)
+  } else if (component.size === "3xl") {
+    classNames.push("text-3xl"); // 48px (3rem)
+  } else if (component.size === "4xl") {
+    classNames.push("text-4xl"); // 60px (3.75rem)
+  } else if (component.size === "5xl") {
+    classNames.push("text-5xl"); // 72px (4.5rem)
+  } else {
+    classNames.push("text-base");
   }
 
   const style: React.CSSProperties = {};
@@ -454,11 +476,38 @@ const renderTitle = (component: Widgets.Title) => {
     classNames.push("text-left");
   }
 
-  // Custom color
+  // Color handling - support semantic colors, primitive tokens, and alpha values (same as renderText)
   if (component.color) {
-    const color = toThemeColor(component.color);
-    if (color) {
-      style.color = color;
+    if (typeof component.color === "string") {
+      // Handle text color tokens (prose, primary, emphasis, secondary, tertiary, success, warning, danger)
+      const semanticColors = ["prose", "primary", "emphasis", "secondary", "tertiary", "success", "warning", "danger"];
+      if (semanticColors.includes(component.color)) {
+        classNames.push(`text-${component.color}`);
+      }
+      // Handle alpha colors like "alpha-70" using CSS variables
+      else if (component.color.startsWith("alpha-")) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle primitive color tokens like "red-100", "blue-900", "gray-500"
+      else if (/^(red|blue|green|yellow|purple|pink|gray|orange|teal|cyan|indigo)-\d{2,3}$/.test(component.color)) {
+        style.color = `var(--${component.color})`;
+      }
+      // Handle CSS color strings or custom theme colors
+      else {
+        const color = toThemeColor(component.color);
+        if (color) {
+          style.color = color;
+        } else {
+          // Use as direct CSS color value
+          style.color = component.color;
+        }
+      }
+    } else {
+      // Object color (with light/dark variants)
+      const color = toThemeColor(component.color);
+      if (color) {
+        style.color = color;
+      }
     }
   }
 
