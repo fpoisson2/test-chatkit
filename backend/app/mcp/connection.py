@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
@@ -8,12 +9,83 @@ from typing import Any
 
 import httpx
 from agents.mcp import MCPServerSse
+from httpx_sse import SSEError
 
 from ..database import SessionLocal
 from ..models import McpServer
 from ..tool_factory import build_mcp_tool, get_mcp_runtime_context
 
 logger = logging.getLogger("chatkit.mcp")
+
+
+async def _connect_mcp_with_retry(
+    server: MCPServerSse,
+    *,
+    max_retries: int = 3,
+    retry_delay: float = 0.5,
+) -> None:
+    """
+    Tente de connecter un serveur MCP avec retry en cas d'erreur SSE.
+
+    Certains serveurs MCP peuvent temporairement renvoyer un Content-Type incorrect
+    (text/html au lieu de text/event-stream). Cette fonction réessaie automatiquement
+    en cas de SSEError pour gérer ces erreurs temporaires.
+
+    Args:
+        server: Le serveur MCP à connecter
+        max_retries: Nombre maximum de tentatives (défaut: 3)
+        retry_delay: Délai en secondes entre chaque tentative (défaut: 0.5s)
+
+    Raises:
+        SSEError: Si toutes les tentatives échouent avec une erreur SSE
+        Exception: Pour toute autre erreur rencontrée
+    """
+    last_sse_error: SSEError | None = None
+
+    for attempt in range(max_retries):
+        try:
+            await server.connect()
+            if attempt > 0:
+                logger.info(
+                    "Connexion MCP réussie après %d tentative(s) pour %s",
+                    attempt + 1,
+                    _safe_url(server),
+                )
+            return
+        except SSEError as exc:
+            last_sse_error = exc
+            logger.warning(
+                "Tentative %d/%d de connexion MCP échouée (SSE Content-Type incorrect) "
+                "pour %s : %s",
+                attempt + 1,
+                max_retries,
+                _safe_url(server),
+                str(exc),
+            )
+
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                # Nettoyer l'état du serveur avant de réessayer
+                try:
+                    await server.cleanup()
+                except Exception:  # pragma: no cover
+                    pass
+            else:
+                # Dernière tentative échouée, lever l'exception
+                logger.error(
+                    "Échec de connexion MCP après %d tentatives pour %s : %s",
+                    max_retries,
+                    _safe_url(server),
+                    str(exc),
+                )
+                raise
+        except Exception:
+            # Pour toute autre exception, ne pas réessayer
+            raise
+
+    # Si on arrive ici, c'est qu'on a épuisé toutes les tentatives
+    if last_sse_error:
+        raise last_sse_error
 
 
 async def probe_mcp_connection(
@@ -55,7 +127,7 @@ async def probe_mcp_connection(
     tools: list[Any]
 
     try:
-        await server.connect()
+        await _connect_mcp_with_retry(server, max_retries=3, retry_delay=0.5)
         tools = await server.list_tools()
         logger.debug(
             "Connexion MCP réussie | url=%s outils=%d allowlist=%s",
@@ -63,6 +135,19 @@ async def probe_mcp_connection(
             len(tools),
             context.allowlist if context else None,
         )
+    except SSEError as exc:
+        logger.warning(
+            "Test de connexion MCP échoué (SSE Content-Type incorrect) pour %s : %s",
+            _safe_url(server),
+            str(exc),
+        )
+        return {
+            "status": "sse_error",
+            "detail": (
+                "Le serveur MCP a renvoyé un Content-Type incorrect "
+                "(attendu: text/event-stream). Vérifiez l'URL du serveur."
+            ),
+        }
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code
         if status_code == 401:

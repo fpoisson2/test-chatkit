@@ -1175,7 +1175,12 @@ async def run_workflow(
             for server in mcp_servers:
                 if isinstance(server, MCPServer):
                     try:
-                        await server.connect()
+                        # Utiliser la logique de retry pour gérer les erreurs SSE temporaires
+                        from ..mcp.connection import _connect_mcp_with_retry
+
+                        await _connect_mcp_with_retry(
+                            server, max_retries=3, retry_delay=0.5
+                        )
                         connected_mcp_servers.append(server)
                         logger.debug(
                             "Serveur MCP %s connecté pour l'agent %s",

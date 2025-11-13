@@ -376,7 +376,10 @@ async def _connect_mcp_servers(
         if isinstance(context, ResolvedMcpServerContext):
             attach_mcp_runtime_context(server, context)
         try:
-            await server.connect()
+            # Utiliser la logique de retry pour gérer les erreurs SSE temporaires
+            from .mcp.connection import _connect_mcp_with_retry
+
+            await _connect_mcp_with_retry(server, max_retries=3, retry_delay=0.5)
         except Exception as exc:  # pragma: no cover - dépendances externes
             await _cleanup_mcp_servers(servers)
             http_error = _extract_http_status_error(exc)
