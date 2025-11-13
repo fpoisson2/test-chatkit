@@ -12,14 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from agents import Agent, RunConfig, Runner
-from openai.types.responses import (
-    ResponseInputContentParam,
-    ResponseInputFileParam,
-    ResponseInputImageParam,
-    ResponseInputTextParam,
-)
-from openai.types.responses.response_input_item_param import Message
-
 from chatkit.actions import Action
 from chatkit.agents import (
     AgentContext,
@@ -62,6 +54,13 @@ from chatkit.types import (
     WidgetRootUpdated,
     WorkflowItem,
 )
+from openai.types.responses import (
+    ResponseInputContentParam,
+    ResponseInputFileParam,
+    ResponseInputImageParam,
+    ResponseInputTextParam,
+)
+from openai.types.responses.response_input_item_param import Message
 
 from ..attachment_store import LocalAttachmentStore
 from ..chatkit_store import PostgresChatKitStore
@@ -635,16 +634,66 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             event_queue=event_queue,
         )
 
-        try:
+        async def _workflow_stream() -> AsyncIterator[ThreadStreamEvent]:
             async for event in workflow_result.stream_events():
                 yield event
+
+        drain_started = False
+
+        async def _drain_remaining_events() -> None:
+            try:
+                logger.debug(
+                    "Poursuite du flux du workflow %s après annulation", thread.id
+                )
+                async for _ in self._process_events(
+                    thread,
+                    context,
+                    lambda: _workflow_stream(),
+                ):
+                    pass
+                try:
+                    await self.store.save_thread(thread, context=context)
+                except Exception:  # pragma: no cover - best effort persistence
+                    logger.warning(
+                        "Impossible d'enregistrer l'état final du fil %s (annulation)",
+                        thread.id,
+                        exc_info=True,
+                    )
+                logger.debug(
+                    "Flux du workflow %s terminé en arrière-plan (statut=%s)",
+                    thread.id,
+                    getattr(getattr(thread, "status", None), "type", None),
+                )
+            except Exception:  # pragma: no cover - robustesse best effort
+                logger.warning(
+                    "Échec lors de la poursuite du workflow en tâche de fond",
+                    exc_info=True,
+                )
+
+        def _schedule_background_drain() -> None:
+            nonlocal drain_started
+            if drain_started:
+                return
+            drain_started = True
+            background_task = asyncio.create_task(_drain_remaining_events())
+            background_task.add_done_callback(_log_async_exception)
+
+        stream_completed = False
+        try:
+            async for event in _workflow_stream():
+                yield event
+            stream_completed = True
         except asyncio.CancelledError:  # pragma: no cover - déconnexion client
             logger.info(
                 "Streaming interrompu pour le fil %s, poursuite du workflow en "
                 "tâche de fond",
                 thread.id,
             )
-            return
+            _schedule_background_drain()
+            raise
+        finally:
+            if not stream_completed:
+                _schedule_background_drain()
 
     async def _maybe_update_thread_title(
         self,
