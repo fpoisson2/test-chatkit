@@ -259,6 +259,7 @@ class _ResponseWidgetConfig:
     await_action: bool | None = None
     output_model: type[BaseModel] | None = None
     bindings: dict[str, _WidgetBinding] = field(default_factory=dict)
+    example: Any | None = None
 
 
 def _coerce_bool(value: Any) -> bool | None:
@@ -1171,6 +1172,7 @@ def _ensure_widget_output_model(
 
     variable_ids = list(config.variables.keys())
     definition = _load_widget_definition(config.slug, context="configuration")
+    example_definition: Any | None = config.example
     if definition is None:
         logger.warning(
             "Widget %s introuvable lors de la préparation du schéma de sortie",
@@ -1188,10 +1190,20 @@ def _ensure_widget_output_model(
             config.slug,
             list(bindings.keys()) if bindings else [],
         )
+        example_definition = definition
         for identifier in bindings:
             if identifier not in variable_ids:
                 variable_ids.append(identifier)
-        config = replace(config, bindings=bindings)
+    sanitized_example: Any | None = None
+    if example_definition is not None:
+        try:
+            sanitized_example = json.loads(
+                json.dumps(example_definition, ensure_ascii=False)
+            )
+        except Exception:  # pragma: no cover - sérialisation best effort
+            sanitized_example = None
+
+    config = replace(config, bindings=bindings, example=sanitized_example)
 
     if config.bindings and not variable_ids:
         variable_ids.extend(config.bindings.keys())
@@ -1227,6 +1239,8 @@ def _ensure_widget_output_model(
         config.slug,
         model.__name__,
     )
+    if config.example is not None:
+        model.__chatkit_examples__ = [config.example]
     return replace(config, output_model=model)
 
 
