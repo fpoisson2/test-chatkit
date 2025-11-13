@@ -284,6 +284,18 @@ class ChatKitServer(ABC, Generic[TContext]):
         self._pending_streams: dict[str, _PendingStreamState] = {}
         self._pending_events_lock = asyncio.Lock()
 
+    def _context_for_thread(
+        self, thread: ThreadMetadata, context: TContext
+    ) -> TContext:
+        """Return the context that should be used for store operations on a thread.
+
+        Sub-classes can override this hook to adjust the context with thread-specific
+        metadata (for example, to persist workflow identifiers even if the global
+        selection changes while streaming continues in the background).
+        """
+
+        return context
+
     def _get_attachment_store(self) -> AttachmentStore[TContext]:
         """Return the configured AttachmentStore or raise if missing."""
         if self.attachment_store is None:
@@ -451,13 +463,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                     context=context,
                 )
                 yield ThreadCreatedEvent(thread=self._to_thread_response(thread))
+                thread_context = self._context_for_thread(thread, context)
                 user_message = await self._build_user_message_item(
-                    request.params.input, thread, context
+                    request.params.input, thread, thread_context
                 )
                 async for event in self._process_new_thread_item_respond(
                     thread,
                     user_message,
-                    context,
+                    thread_context,
                 ):
                     yield event
 
@@ -465,6 +478,7 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                thread_context = self._context_for_thread(thread, context)
                 if isinstance(thread.status, (ClosedStatus, LockedStatus)):
                     status = thread.status
                     reason = (status.reason or "").strip()
@@ -484,12 +498,12 @@ class ChatKitServer(ABC, Generic[TContext]):
                     )
                     return
                 user_message = await self._build_user_message_item(
-                    request.params.input, thread, context
+                    request.params.input, thread, thread_context
                 )
                 async for event in self._process_new_thread_item_respond(
                     thread,
                     user_message,
-                    context,
+                    thread_context,
                 ):
                     yield event
 
@@ -497,8 +511,9 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                thread_context = self._context_for_thread(thread, context)
                 items = await self.store.load_thread_items(
-                    thread.id, None, 1, "desc", context
+                    thread.id, None, 1, "desc", thread_context
                 )
                 tool_call = next(
                     (
@@ -517,18 +532,22 @@ class ChatKitServer(ABC, Generic[TContext]):
                 tool_call.output = request.params.result
                 tool_call.status = "completed"
 
-                await self.store.save_item(thread.id, tool_call, context=context)
+                await self.store.save_item(
+                    thread.id, tool_call, context=thread_context
+                )
 
                 # Safety against dangling pending tool calls if there are
                 # multiple in a row, which should be impossible, and
                 # integrations should ultimately filter out pending tool calls
                 # when creating input response messages.
-                await self._cleanup_pending_client_tool_call(thread, context)
+                await self._cleanup_pending_client_tool_call(
+                    thread, thread_context
+                )
 
                 async for event in self._process_events(
                     thread,
-                    context,
-                    lambda: self.respond(thread, None, context),
+                    thread_context,
+                    lambda: self.respond(thread, None, thread_context),
                 ):
                     yield event
 
@@ -536,13 +555,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread_metadata = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                thread_context = self._context_for_thread(thread_metadata, context)
 
                 # Collect items to remove (all items after the user message)
                 items_to_remove: list[ThreadItem] = []
                 user_message_item = None
 
                 async for item in self._paginate_thread_items_reverse(
-                    request.params.thread_id, context
+                    request.params.thread_id, thread_context
                 ):
                     if item.id == request.params.item_id:
                         if not isinstance(item, UserMessageItem):
@@ -557,14 +577,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                     for item in items_to_remove:
                         await self.store.delete_thread_item(
                             request.params.thread_id, item.id, context=context
-                        )
+                    )
                     async for event in self._process_events(
                         thread_metadata,
-                        context,
+                        thread_context,
                         lambda: self.respond(
                             thread_metadata,
                             user_message_item,
-                            context,
+                            thread_context,
                         ),
                     ):
                         yield event
@@ -572,13 +592,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread_metadata = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                thread_context = self._context_for_thread(thread_metadata, context)
 
                 item: ThreadItem | None = None
                 if request.params.item_id:
                     item = await self.store.load_item(
                         request.params.thread_id,
                         request.params.item_id,
-                        context=context,
+                        context=thread_context,
                     )
 
                 if item and not isinstance(item, WidgetItem):
@@ -591,12 +612,12 @@ class ChatKitServer(ABC, Generic[TContext]):
 
                 async for event in self._process_events(
                     thread_metadata,
-                    context,
+                    thread_context,
                     lambda: self.action(
                         thread_metadata,
                         request.params.action,
                         item,
-                        context,
+                        thread_context,
                     ),
                 ):
                     yield event
@@ -607,6 +628,7 @@ class ChatKitServer(ABC, Generic[TContext]):
     async def _cleanup_pending_client_tool_call(
         self, thread: ThreadMetadata, context: TContext
     ) -> None:
+        context = self._context_for_thread(thread, context)
         items = await self.store.load_thread_items(
             thread.id, None, DEFAULT_PAGE_SIZE, "desc", context
         )
@@ -627,6 +649,7 @@ class ChatKitServer(ABC, Generic[TContext]):
         item: UserMessageItem,
         context: TContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        context = self._context_for_thread(thread, context)
         await self.store.add_thread_item(thread.id, item, context=context)
         await self._cleanup_pending_client_tool_call(thread, context)
         yield ThreadItemDoneEvent(item=item)
@@ -646,6 +669,7 @@ class ChatKitServer(ABC, Generic[TContext]):
         *,
         capture_only: bool = False,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        context = self._context_for_thread(thread, context)
         await asyncio.sleep(0)  # allow the response to start streaming
 
         last_thread = thread.model_copy(deep=True)

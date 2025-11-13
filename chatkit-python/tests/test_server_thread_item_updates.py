@@ -2,7 +2,8 @@ import asyncio
 import sys
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -42,6 +43,7 @@ from chatkit.types import (
     AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
     CustomTask,
+    InferenceOptions,
     Page,
     SearchTask,
     ThoughtTask,
@@ -52,6 +54,7 @@ from chatkit.types import (
     ThreadMetadata,
     ThreadStreamEvent,
     URLSource,
+    UserMessageItem,
     Workflow,
     WorkflowItem,
     WorkflowTaskAdded,
@@ -165,19 +168,45 @@ class _TestServer(ChatKitServer[None]):
         input_user_message: AssistantMessageItem | None,
         context: None,
     ) -> AsyncIterator[ThreadStreamEvent]:  # pragma: no cover - not used in tests
-        async def _empty() -> AsyncIterator[ThreadStreamEvent]:
-            if False:
-                yield ThreadItemAddedEvent(
-                    item=AssistantMessageItem(
-                        id="unused",
-                        thread_id=thread.id,
-                        created_at=datetime.now(),
-                        content=[],
-                    )
+        if False:
+            yield ThreadItemAddedEvent(
+                item=AssistantMessageItem(
+                    id="unused",
+                    thread_id=thread.id,
+                    created_at=datetime.now(),
+                    content=[],
                 )
-            return
+            )
+        return
 
-        return _empty()
+
+class _RecordingStore(_MemoryStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.contexts: list[Any] = []
+
+    async def add_thread_item(
+        self, thread_id: str, item: ThreadItem, context: Any
+    ) -> None:
+        self.contexts.append(context)
+        await super().add_thread_item(thread_id, item, context)
+
+    async def save_item(
+        self, thread_id: str, item: ThreadItem, context: Any
+    ) -> None:
+        self.contexts.append(context)
+        await super().save_item(thread_id, item, context)
+
+
+class _OverrideContextServer(_TestServer):
+    def __init__(self, store: Store[Any], override: dict[str, Any]):
+        super().__init__(store)
+        self._override = override
+
+    def _context_for_thread(self, thread: ThreadMetadata, context: Any) -> Any:
+        clone = SimpleNamespace(**getattr(context, "__dict__", {}))
+        clone.workflow_override = dict(self._override)
+        return clone
 
 
 def _stream_from(events: list[ThreadStreamEvent]) -> Callable[[], AsyncIterator[ThreadStreamEvent]]:
@@ -538,3 +567,36 @@ async def test_process_events_resumes_live_stream_after_reconnect() -> None:
     stored_assistant = stored_items.data[0]
     assert isinstance(stored_assistant, AssistantMessageItem)
     assert stored_assistant.content[0].text == "Bonjour"
+
+
+@pytest.mark.asyncio
+async def test_context_override_applied_to_store_operations() -> None:
+    store = _RecordingStore()
+    override = {"slug": "workflow-a", "definition_id": 42, "id": 7}
+    server = _OverrideContextServer(store, override)
+    thread = ThreadMetadata(
+        id="thr-override",
+        created_at=datetime.now(),
+        metadata={"workflow": {"slug": "workflow-a", "definition_id": 42, "id": 7}},
+    )
+    await store.save_thread(thread, None)
+
+    user_message = UserMessageItem(
+        id="user-override",
+        thread_id=thread.id,
+        created_at=datetime.now(),
+        content=[],
+        attachments=[],
+        inference_options=InferenceOptions(),
+    )
+
+    context = SimpleNamespace(user_id="user")
+
+    async for _ in server._process_new_thread_item_respond(
+        thread, user_message, context
+    ):
+        pass
+
+    assert store.contexts, "store should receive contexts during persistence"
+    for seen in store.contexts:
+        assert getattr(seen, "workflow_override", None) == override

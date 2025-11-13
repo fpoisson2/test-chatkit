@@ -293,3 +293,54 @@ def test_store_persists_streaming_state(tmp_path) -> None:
         assert loaded_workflow_final.workflow.tasks[2].sources[0].url == "https://openai.com"
 
     asyncio.run(_run())
+
+
+def test_store_allows_thread_workflow_override(tmp_path) -> None:
+    async def _run() -> None:
+        workflow_service = _StubWorkflowService(slug="workflow-a")
+        store, _factory = _build_store(
+            tmp_path / "store-override.db", workflow_service
+        )
+        base_context = SimpleNamespace(user_id="user-1")
+
+        thread = ThreadMetadata(
+            id="thread-override",
+            created_at=dt.datetime.now(dt.UTC),
+        )
+        await store.save_thread(thread, base_context)
+
+        stored = await store.load_thread(thread.id, base_context)
+        workflow_metadata = stored.metadata.get("workflow") or {}
+        assert workflow_metadata.get("slug") == "workflow-a"
+        assert workflow_metadata.get("definition_id") == workflow_service.definition_id
+
+        # switch the active workflow to simulate the user navigating elsewhere
+        workflow_service.slug = "workflow-b"
+
+        with pytest.raises(NotFoundError):
+            await store.load_thread(thread.id, base_context)
+
+        override_context = SimpleNamespace(
+            user_id="user-1",
+            workflow_override={
+                "id": workflow_metadata.get("id"),
+                "slug": workflow_metadata.get("slug"),
+                "definition_id": workflow_metadata.get("definition_id"),
+            },
+        )
+
+        loaded = await store.load_thread(thread.id, override_context)
+        assert loaded.id == thread.id
+
+        item = AssistantMessageItem(
+            id="assistant-override",
+            thread_id=thread.id,
+            created_at=dt.datetime.now(dt.UTC),
+            content=[AssistantMessageContent(text="Bonjour", annotations=[])],
+        )
+
+        await store.add_thread_item(thread.id, item, override_context)
+        saved = await store.load_item(thread.id, item.id, override_context)
+        assert isinstance(saved, AssistantMessageItem)
+
+    asyncio.run(_run())

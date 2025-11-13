@@ -5,12 +5,11 @@ import datetime as dt
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from chatkit.store import NotFoundError, Store
+from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
 from pydantic import TypeAdapter
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
-
-from chatkit.store import NotFoundError, Store
-from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
 
 from .models import ChatAttachment, ChatThread, ChatThreadItem
 from .workflows import WorkflowService
@@ -56,7 +55,23 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         with self._session_factory() as session:
             return func(session)
 
-    def _current_workflow_metadata(self) -> dict[str, Any]:
+    def _current_workflow_metadata(
+        self, context: ChatKitRequestContext | None = None
+    ) -> dict[str, Any]:
+        if context is not None:
+            override = getattr(context, "workflow_override", None)
+            if isinstance(override, Mapping):
+                slug = override.get("slug")
+                definition_id = override.get("definition_id")
+                if isinstance(slug, str):
+                    slug = slug.strip()
+                if slug and definition_id is not None:
+                    return {
+                        "id": override.get("id"),
+                        "slug": slug,
+                        "definition_id": definition_id,
+                    }
+
         definition = self._workflow_service.get_current()
         workflow = getattr(definition, "workflow", None)
         workflow_id = getattr(workflow, "id", getattr(definition, "workflow_id", None))
@@ -150,7 +165,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> ThreadMetadata:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(context)
             _record, payload = self._require_thread_record(
                 session,
                 thread_id,
@@ -170,7 +185,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             payload = thread.model_dump(mode="json")
             metadata = dict(payload.get("metadata") or {})
             metadata.setdefault("owner_id", owner_id)
-            expected_workflow = self._current_workflow_metadata()
+            expected_workflow = self._current_workflow_metadata(context)
             workflow_metadata = metadata.get("workflow")
             if self._has_complete_workflow_metadata(workflow_metadata):
                 if not self._workflow_matches(workflow_metadata, expected_workflow):
@@ -214,7 +229,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> Page[ThreadItem]:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(context)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -324,7 +339,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> Page[ThreadMetadata]:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(context)
 
             stmt = select(ChatThread).where(ChatThread.owner_id == owner_id)
             if order == "desc":
@@ -373,7 +388,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _add(session: Session) -> None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(context)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -410,7 +425,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _save(session: Session) -> None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(context)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -439,7 +454,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> ThreadItem:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(context)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -466,7 +481,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _delete(session: Session) -> None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(context)
             self._require_thread_record(
                 session,
                 thread_id,
@@ -488,7 +503,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _delete(session: Session) -> None:
-            expected = self._current_workflow_metadata()
+            expected = self._current_workflow_metadata(context)
             self._require_thread_record(
                 session,
                 thread_id,

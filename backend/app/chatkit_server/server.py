@@ -7,6 +7,7 @@ import base64
 import logging
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -378,6 +379,44 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             open_attachment=attachment_store.open_attachment,
         )
         self.attachment_store = attachment_store
+
+    def _context_for_thread(
+        self, thread: ThreadMetadata, context: ChatKitRequestContext
+    ) -> ChatKitRequestContext:
+        metadata = getattr(thread, "metadata", None)
+        override: Mapping[str, Any] | None = None
+        if isinstance(metadata, Mapping):
+            workflow_info = metadata.get("workflow")
+            if isinstance(workflow_info, Mapping):
+                slug = workflow_info.get("slug")
+                definition_id = workflow_info.get("definition_id")
+                if isinstance(slug, str):
+                    slug = slug.strip()
+                if slug and definition_id is not None:
+                    override = {
+                        "id": workflow_info.get("id"),
+                        "slug": slug,
+                        "definition_id": definition_id,
+                    }
+
+        if not override:
+            return context
+
+        existing = getattr(context, "workflow_override", None)
+        if isinstance(existing, Mapping):
+            existing_slug = existing.get("slug")
+            existing_definition = existing.get("definition_id")
+            if (
+                isinstance(existing_slug, str)
+                and existing_slug.strip() == override["slug"]
+                and existing_definition == override["definition_id"]
+            ):
+                return context
+
+        try:
+            return replace(context, workflow_override=override)
+        except Exception:  # pragma: no cover - fallback for unexpected contexts
+            return context
 
     async def _process_streaming_impl(
         self,
