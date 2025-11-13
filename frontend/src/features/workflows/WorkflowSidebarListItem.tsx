@@ -1,4 +1,3 @@
-import { Star } from "lucide-react";
 import { type MouseEvent, type ReactNode } from "react";
 
 import WorkflowActionMenu, {
@@ -32,8 +31,7 @@ const WorkflowSidebarListItem = ({
   children,
   trailingContent,
 }: WorkflowSidebarListItemProps) => {
-  const baseClassName =
-    "chatkit-sidebar__workflow-list-item chatkit-sidebar__workflow-list-item--with-pin";
+  const baseClassName = "chatkit-sidebar__workflow-list-item";
   const listItemClassName = className ? `${baseClassName} ${className}` : baseClassName;
   const showActions = hasActions ?? Boolean(menuProps);
   const mergedDataAttributes: Record<string, string | undefined> = {
@@ -52,22 +50,6 @@ const WorkflowSidebarListItem = ({
 
   return (
     <li className={listItemClassName} {...mergedDataAttributes}>
-      <button
-        type="button"
-        className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
-        aria-pressed={isPinned}
-        aria-label={pinLabel}
-        title={pinButtonTitle ?? pinLabel}
-        onClick={onTogglePin}
-      >
-        <Star
-          aria-hidden="true"
-          className="chatkit-sidebar__workflow-pin-icon"
-          size={18}
-          strokeWidth={isPinned ? 1.75 : 2}
-          fill={isPinned ? "currentColor" : "none"}
-        />
-      </button>
       {children}
       {menuProps ? <WorkflowActionMenu {...menuProps} /> : null}
       {trailingContent}
