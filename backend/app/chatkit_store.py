@@ -174,7 +174,13 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             workflow_metadata = metadata.get("workflow")
             if self._has_complete_workflow_metadata(workflow_metadata):
                 if not self._workflow_matches(workflow_metadata, expected_workflow):
-                    raise NotFoundError(f"Thread {thread.id} introuvable")
+                    # Thread appartient à un autre workflow (changement de workflow par l'utilisateur)
+                    # On ignore silencieusement pour permettre aux tâches en cours de se terminer
+                    logger.debug(
+                        "Thread %s appartient à un workflow différent, sauvegarde ignorée",
+                        thread.id
+                    )
+                    return
             else:
                 metadata["workflow"] = dict(expected_workflow)
             thread.metadata = metadata
