@@ -760,13 +760,13 @@ export function MyChat() {
         isVisible={shouldShowLoadingOverlay}
         message="Chargement de votre espace de travail..."
       />
-      {!isLtiUser && (
+      <div style={{ display: isLtiUser ? 'none' : 'contents' }}>
         <ChatSidebar
           mode={mode}
           setMode={setMode}
           onWorkflowActivated={handleWorkflowActivated}
         />
-      )}
+      </div>
       <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
         {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
           <WorkflowChatInstance
