@@ -3,7 +3,7 @@ import type { ChatKitOptions, StartScreenPrompt } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
-import { ChatKitHost } from "./components/my-chat/ChatKitHost";
+import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { OutboundCallAudioPlayer } from "./components/my-chat/OutboundCallAudioPlayer";
@@ -14,7 +14,6 @@ import {
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
-import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
@@ -217,6 +216,20 @@ export function MyChat() {
     workflowSelection.kind === "hosted" ? workflowSelection.slug : null;
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
+
+  // Keep track of active workflow instances to preserve state
+  type WorkflowInstanceData = {
+    workflowId: string;
+    mode: HostedFlowMode;
+    initialThreadId: string | null;
+    chatkitOptions: ChatKitOptions;
+    createdAt: number;
+  };
+  const [activeInstances, setActiveInstances] = useState<Map<string, WorkflowInstanceData>>(
+    new Map()
+  );
+  const MAX_CACHED_INSTANCES = 5;
+
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
@@ -655,21 +668,55 @@ export function MyChat() {
     ],
   );
 
-  const { control, requestRefresh } = useWorkflowChatSession({
-    chatkitOptions,
-    token,
-    activeWorkflow,
-    initialThreadId,
-    reportError,
-    mode,
-  });
+  // Generate unique ID for current workflow
+  const currentWorkflowId = useMemo(() => {
+    if (mode === "hosted") {
+      return `hosted::${hostedWorkflowSlug ?? "__default__"}`;
+    }
+    return `local::${activeWorkflowId ?? "__default__"}`;
+  }, [mode, hostedWorkflowSlug, activeWorkflowId]);
 
+  // Update or create instance for current workflow
   useEffect(() => {
+    setActiveInstances((prev) => {
+      const existing = prev.get(currentWorkflowId);
+
+      // If instance already exists, don't recreate it - this preserves its state
+      if (existing) {
+        return prev;
+      }
+
+      const next = new Map(prev);
+
+      // Add new instance only if it doesn't exist
+      next.set(currentWorkflowId, {
+        workflowId: currentWorkflowId,
+        mode,
+        initialThreadId,
+        chatkitOptions,
+        createdAt: Date.now(),
+      });
+
+      // Limit cache size - remove oldest instances
+      if (next.size > MAX_CACHED_INSTANCES) {
+        const entries = Array.from(next.entries());
+        entries.sort((a, b) => a[1].createdAt - b[1].createdAt);
+
+        // Keep current and most recent instances
+        const toKeep = entries
+          .filter(([id]) => id === currentWorkflowId)
+          .concat(entries.filter(([id]) => id !== currentWorkflowId).slice(-MAX_CACHED_INSTANCES + 1));
+
+        return new Map(toKeep);
+      }
+
+      return next;
+    });
+  }, [currentWorkflowId, mode, initialThreadId, chatkitOptions, MAX_CACHED_INSTANCES]);
+
+  const handleRequestRefreshReady = useCallback((requestRefresh: () => Promise<void>) => {
     requestRefreshRef.current = requestRefresh;
-    return () => {
-      requestRefreshRef.current = null;
-    };
-  }, [requestRefresh]);
+  }, []);
 
   const voiceStatusMessage = voiceStatus === "connected"
     ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`
@@ -698,10 +745,24 @@ export function MyChat() {
         setMode={setMode}
         onWorkflowActivated={handleWorkflowActivated}
       />
-      <ChatKitHost
-        control={control}
-        chatInstanceKey={chatInstanceKey}
-      />
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+        {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
+          <WorkflowChatInstance
+            key={instanceId}
+            workflowId={instanceId}
+            chatkitOptions={instance.chatkitOptions}
+            token={token}
+            activeWorkflow={activeWorkflow}
+            initialThreadId={instance.initialThreadId}
+            reportError={reportError}
+            mode={instance.mode}
+            isActive={instanceId === currentWorkflowId}
+            onRequestRefreshReady={
+              instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
+            }
+          />
+        ))}
+      </div>
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",
