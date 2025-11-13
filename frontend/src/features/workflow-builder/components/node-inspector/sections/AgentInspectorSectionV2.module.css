@@ -298,8 +298,7 @@
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
   background-color: rgba(15, 23, 42, 0.05);
-  font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', ui-monospace, SFMono-Regular,
-    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   line-height: 1.5;
   overflow-x: auto;
@@ -405,9 +404,7 @@
 }
 
 textarea[data-schema-editor="true"] {
-  font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', ui-monospace, SFMono-Regular,
-    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  min-height: 220px;
+  font-family: var(--font-mono);
 }
 
 @media (max-width: 768px) {

@@ -576,7 +576,7 @@ export const AdminLanguagesPage = () => {
                     placeholder={defaultPrompt || t("admin.languages.form.promptPlaceholder")}
                     disabled={generateLanguage.isPending}
                     rows={12}
-                    style={{ fontFamily: "monospace", fontSize: "0.875rem" }}
+                    style={{ fontSize: "0.875rem" }}
                   />
                 </FormField>
               )}
