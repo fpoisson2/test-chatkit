@@ -63,11 +63,9 @@ export const LTILaunchPage = () => {
       console.log("LTI Launch: Redirecting to /");
       hasProcessed.current = true;
 
-      // Use window.location.replace to force a hard reload and avoid infinite loop
-      setTimeout(() => {
-        console.log("LTI Launch: Performing hard redirect to /");
-        window.location.replace("/");
-      }, 100);
+      // Immediate redirect - no setTimeout needed
+      console.log("LTI Launch: Performing hard redirect to /");
+      window.location.replace("/");
     } catch (error) {
       console.error("LTI Launch: Failed to parse user data", error);
       setError(`Erreur: ${error instanceof Error ? error.message : String(error)}`);
@@ -77,6 +75,11 @@ export const LTILaunchPage = () => {
       }, 3000);
     }
   }, [searchParams, login]);
+
+  // Don't show loading UI during immediate redirect - it causes unnecessary flicker
+  if (!error && !debugInfo) {
+    return null;
+  }
 
   return (
     <div style={{
