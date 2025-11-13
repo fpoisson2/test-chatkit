@@ -572,20 +572,62 @@ const renderButton = (component: Widgets.Button) => {
   );
 };
 
-const renderImage = (component: Widgets.Image) => (
-  <figure className="my-4">
-    <img
-      src={component.src}
-      alt={component.alt ?? "Prévisualisation du widget"}
-      className="w-full h-auto rounded-lg"
-    />
-    {component.caption ? (
-      <figcaption className="text-sm text-secondary mt-2 text-center">
-        {component.caption}
-      </figcaption>
-    ) : null}
-  </figure>
-);
+const renderImage = (component: Widgets.Image) => {
+  const style: React.CSSProperties = {};
+  const props = component as unknown as Record<string, unknown>;
+
+  // Handle size, width, and height properties
+  if (props.size !== undefined) {
+    const formatted = formatDimension(props.size);
+    if (formatted) {
+      style.width = formatted;
+      style.height = formatted;
+    }
+  } else {
+    if (props.width !== undefined) {
+      const formatted = formatDimension(props.width);
+      if (formatted) {
+        style.width = formatted;
+      }
+    }
+    if (props.height !== undefined) {
+      const formatted = formatDimension(props.height);
+      if (formatted) {
+        style.height = formatted;
+      }
+    }
+  }
+
+  // Apply radius if specified
+  if (props.radius !== undefined) {
+    const formatted = formatRadius(props.radius);
+    if (formatted) {
+      style.borderRadius = formatted;
+    }
+  }
+
+  // Default classes - use object-cover when size is specified, otherwise responsive
+  const hasFixedSize = style.width !== undefined || style.height !== undefined;
+  const imgClasses = hasFixedSize
+    ? "rounded-lg object-cover"
+    : "w-full h-auto rounded-lg";
+
+  return (
+    <figure className="my-4">
+      <img
+        src={component.src}
+        alt={component.alt ?? "Prévisualisation du widget"}
+        className={imgClasses}
+        style={Object.keys(style).length > 0 ? style : undefined}
+      />
+      {component.caption ? (
+        <figcaption className="text-sm text-secondary mt-2 text-center">
+          {component.caption}
+        </figcaption>
+      ) : null}
+    </figure>
+  );
+};
 
 const renderIcon = (component: Widgets.Icon) => {
   const classNames = ["inline-flex"];
