@@ -312,6 +312,7 @@
 
   /* Text Color */
   .text-primary { color: var(--color-text) !important; }
+  .text-emphasis { color: var(--color-text) !important; }
   .text-secondary { color: var(--color-text-secondary) !important; }
   .text-tertiary { color: var(--color-text-tertiary) !important; }
   .text-accent { color: var(--accent-color-primary) !important; }

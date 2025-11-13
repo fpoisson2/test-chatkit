@@ -313,7 +313,9 @@ const applyBoxStyles = (box: BoxLike): React.CSSProperties => {
 };
 
 const renderText = (component: Widgets.TextComponent) => {
-  const classNames = ["text-base"];
+  const classNames: string[] = [];
+
+  const style: React.CSSProperties = {};
 
   // Weight mapping
   if (component.weight === "bold") {
@@ -322,6 +324,8 @@ const renderText = (component: Widgets.TextComponent) => {
     classNames.push("font-semibold");
   } else if (component.weight === "medium") {
     classNames.push("font-medium");
+  } else if (component.weight === "normal") {
+    classNames.push("font-normal");
   }
 
   // Italic
@@ -329,19 +333,33 @@ const renderText = (component: Widgets.TextComponent) => {
     classNames.push("italic");
   }
 
-  const style: React.CSSProperties = {};
-
-  // Size mapping
-  if (component.size === "xs") {
+  // Size mapping - extended range
+  if (component.size === "3xs") {
+    style.fontSize = "var(--font-text-3xs-size, 0.5rem)";
+    style.lineHeight = "var(--font-text-3xs-line-height, 0.75rem)";
+  } else if (component.size === "2xs") {
+    style.fontSize = "var(--font-text-2xs-size, 0.625rem)";
+    style.lineHeight = "var(--font-text-2xs-line-height, 0.875rem)";
+  } else if (component.size === "xs") {
     classNames.push("text-xs");
   } else if (component.size === "sm") {
     classNames.push("text-sm");
+  } else if (component.size === "md") {
+    classNames.push("text-base");
   } else if (component.size === "lg") {
     classNames.push("text-lg");
   } else if (component.size === "xl") {
     classNames.push("text-xl");
   } else if (component.size === "2xl") {
     classNames.push("text-2xl");
+  } else if (component.size === "3xl") {
+    classNames.push("text-3xl");
+  } else if (component.size === "4xl") {
+    classNames.push("text-4xl");
+  } else if (component.size === "5xl") {
+    classNames.push("text-5xl");
+  } else {
+    classNames.push("text-base");
   }
 
   // Line through
@@ -358,11 +376,36 @@ const renderText = (component: Widgets.TextComponent) => {
     classNames.push("text-left");
   }
 
-  // Custom color
+  // Color handling - support semantic colors and alpha values
   if (component.color) {
-    const color = toThemeColor(component.color);
-    if (color) {
-      style.color = color;
+    if (typeof component.color === "string") {
+      // Handle semantic color names
+      if (component.color === "emphasis") {
+        classNames.push("text-emphasis");
+      } else if (component.color === "secondary") {
+        classNames.push("text-secondary");
+      } else if (component.color === "tertiary") {
+        classNames.push("text-tertiary");
+      } else if (component.color.startsWith("alpha-")) {
+        // Handle alpha colors like "alpha-70"
+        const alphaValue = component.color.replace("alpha-", "");
+        const alpha = parseInt(alphaValue, 10);
+        if (!isNaN(alpha)) {
+          style.opacity = alpha / 100;
+        }
+      } else {
+        // Try to use it as a theme color
+        const color = toThemeColor(component.color);
+        if (color) {
+          style.color = color;
+        }
+      }
+    } else {
+      // Object color (with light/dark variants)
+      const color = toThemeColor(component.color);
+      if (color) {
+        style.color = color;
+      }
     }
   }
 
