@@ -95,10 +95,10 @@ export const DocEditor = ({
       onClose={onCancel}
       footer={
         <div className="admin-form__actions" style={{ gap: "12px" }}>
-          <button type="button" className="button button--ghost" onClick={onCancel} disabled={isSubmitting}>
+          <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={isSubmitting}>
             {t("docs.editor.actions.cancel")}
           </button>
-          <button type="submit" className="button" form="docs-editor-form" disabled={isSubmitting}>
+          <button type="submit" className="btn btn-primary" form="docs-editor-form" disabled={isSubmitting}>
             {actionLabel}
           </button>
         </div>

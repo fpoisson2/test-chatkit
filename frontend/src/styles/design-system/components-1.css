@@ -86,6 +86,13 @@
     --button-border-color: var(--danger-color);
   }
 
+  .btn-subtle {
+    --button-bg: var(--alpha-04);
+    --button-bg-hover: var(--alpha-08);
+    --button-color: var(--color-text);
+    --button-border-color: var(--color-border-subtle);
+  }
+
   /* Button Sizes */
   .btn-xs {
     --button-padding-y: calc(var(--spacing) * 1);

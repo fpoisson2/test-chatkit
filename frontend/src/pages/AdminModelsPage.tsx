@@ -430,7 +430,7 @@ export const AdminModelsPage = () => {
           <div className="admin-table__actions">
             <button
               type="button"
-              className="button button--ghost button--sm"
+              className="btn btn-sm btn-ghost"
               onClick={() => handleEdit(model)}
               disabled={isEditing && editingModelId === model.id}
             >
@@ -438,7 +438,7 @@ export const AdminModelsPage = () => {
             </button>
             <button
               type="button"
-              className="button button--ghost button--sm"
+              className="btn btn-sm btn-danger"
               onClick={() => handleDelete(model)}
             >
               {t("admin.models.table.deleteAction")}
@@ -541,14 +541,14 @@ export const AdminModelsPage = () => {
               {isEditing && (
                 <button
                   type="button"
-                  className="button button--ghost"
+                  className="btn btn-ghost"
                   onClick={handleCancelEdit}
                 >
                   {t("admin.models.form.cancelEdit")}
                 </button>
               )}
               <button
-                className="button"
+                className="btn btn-primary"
                 type="submit"
                 disabled={isBusy}
               >
@@ -610,13 +610,13 @@ export const AdminModelsPage = () => {
             <>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={() => setShowCreateModal(false)}
               >
                 Annuler
               </button>
               <button
-                className="button"
+                className="btn btn-primary"
                 type="submit"
                 form="create-model-form"
                 disabled={isBusy}

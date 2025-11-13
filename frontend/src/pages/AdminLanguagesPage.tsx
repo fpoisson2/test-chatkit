@@ -350,14 +350,14 @@ export const AdminLanguagesPage = () => {
             <button
               type="button"
               onClick={() => handleActivateStoredLanguage(lang.id, lang.code, lang.name)}
-              className="button button--sm button--primary"
+              className="btn btn-sm btn-primary"
             >
               Activate
             </button>
             <button
               type="button"
               onClick={() => handleDownloadStoredLanguage(lang.id)}
-              className="button button--sm button--ghost"
+              className="btn btn-sm btn-ghost"
             >
               Download
             </button>
@@ -454,7 +454,7 @@ export const AdminLanguagesPage = () => {
             <>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={() => {
                   setShowCreateModal(false);
                   setFormError(null);
@@ -467,7 +467,7 @@ export const AdminLanguagesPage = () => {
                 type="submit"
                 form="create-language-form"
                 disabled={generateLanguage.isPending || !!currentTaskId}
-                className="button"
+                className="btn btn-primary"
               >
                 {generateLanguage.isPending
                   ? t("admin.languages.form.creating")
@@ -562,7 +562,7 @@ export const AdminLanguagesPage = () => {
                       setValue("custom_prompt", defaultPrompt);
                     }
                   }}
-                  className="button button--sm button--secondary"
+                  className="btn btn-sm btn-secondary"
                   disabled={generateLanguage.isPending}
                 >
                   {showPromptEditor ? t("admin.languages.form.hidePrompt") : t("admin.languages.form.showPrompt")}
@@ -619,7 +619,7 @@ export const AdminLanguagesPage = () => {
                   <button
                     type="button"
                     onClick={() => handleDownloadTaskResult(taskStatus.task_id)}
-                    className="button button--sm button--secondary"
+                    className="btn btn-sm btn-secondary"
                     style={{ marginTop: "0.5rem" }}
                   >
                     Download Result

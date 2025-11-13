@@ -760,14 +760,14 @@ export const AdminMcpServersPage = () => {
             <div className="admin-table__actions">
               <button
                 type="button"
-                className="button button--small"
+                className="btn btn-sm btn-ghost"
                 onClick={() => handleEdit(server)}
               >
                 {t("admin.mcpServers.actions.edit")}
               </button>
               <button
                 type="button"
-                className="button button--secondary button--small"
+                className="btn btn-sm btn-secondary"
                 disabled={isRefreshing}
                 onClick={() => handleRefreshTools(server)}
               >
@@ -859,14 +859,14 @@ export const AdminMcpServersPage = () => {
             <>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={handleCloseModal}
               >
                 {cancelLabel}
               </button>
               <button
                 type="submit"
-                className="button"
+                className="btn btn-primary"
                 form={formId}
                 disabled={isSaving}
               >
@@ -1052,7 +1052,7 @@ export const AdminMcpServersPage = () => {
             <div className="admin-form__actions">
               <button
                 type="button"
-                className="button button--secondary"
+                className="btn btn-secondary"
                 onClick={handleStartOAuth}
                 disabled={
                   oauthFeedback.status === "starting" || oauthFeedback.status === "pending"
@@ -1064,7 +1064,7 @@ export const AdminMcpServersPage = () => {
               </button>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={handleTestConnection}
                 disabled={isTesting}
               >

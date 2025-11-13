@@ -182,7 +182,7 @@ export const DocsPage = () => {
                   <span>{t("docs.list.updatedAt", { value: formatDate(document.updated_at) })}</span>
                 </span>
                 <div className={styles.actions}>
-                  <Link className="button button--ghost" to={`/docs/${encodeURIComponent(document.slug)}`}>
+                  <Link className="btn btn-ghost" to={`/docs/${encodeURIComponent(document.slug)}`}>
                     {t("docs.list.open")}
                   </Link>
                 </div>

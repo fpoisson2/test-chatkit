@@ -83,7 +83,7 @@ export const VoiceChat = () => {
             {isRequestingMic ? "Demande de permission…" : "Démarrer l'écoute"}
           </button>
           <button
-            className="button button--ghost"
+            className="btn btn-ghost"
             type="button"
             disabled={!hasActiveSession && status !== "connecting"}
             onClick={handleStop}
@@ -116,7 +116,7 @@ export const VoiceChat = () => {
           <div className="voice-chat__errors-header">
             <h3>Journal des erreurs</h3>
             <button
-              className="button button--ghost"
+              className="btn btn-ghost"
               type="button"
               onClick={() => {
                 clearErrors();
