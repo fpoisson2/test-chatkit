@@ -247,14 +247,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     const workflowInList = workflows.find((w) => w.id === workflowId);
 
     if (workflowInList) {
-      // Auto-select the workflow from the Deep Link
+      console.log('[LTI Auto-select] Auto-selecting workflow:', workflowId, workflowInList.display_name);
+      console.log('[LTI Auto-select] Workflow options:', {
+        lti_enabled: workflowInList.lti_enabled,
+        lti_show_sidebar: workflowInList.lti_show_sidebar,
+        lti_show_header: workflowInList.lti_show_header
+      });
+
+      // Update selected workflow ID if different
       if (selectedWorkflowId !== workflowId) {
-        console.log('[LTI Auto-select] Auto-selecting workflow:', workflowId, workflowInList.display_name);
-        console.log('[LTI Auto-select] Workflow options:', {
-          lti_enabled: workflowInList.lti_enabled,
-          lti_show_sidebar: workflowInList.lti_show_sidebar,
-          lti_show_header: workflowInList.lti_show_header
-        });
         setSelectedWorkflowId(workflowId);
         updateStoredWorkflowSelection((previous) => ({
           mode: "local",
@@ -263,14 +264,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
           pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
         }));
-        onWorkflowActivatedRef.current(
-          { kind: "local", workflow: workflowInList },
-          { reason: "initial" },
-        );
-        console.log('[LTI Auto-select] Workflow activated successfully');
-      } else {
-        console.log('[LTI Auto-select] Workflow already selected:', workflowId);
       }
+
+      // ALWAYS activate the workflow for LTI users, even if already selected
+      // This ensures the workflow is properly initialized with LTI options
+      onWorkflowActivatedRef.current(
+        { kind: "local", workflow: workflowInList },
+        { reason: "initial" },
+      );
+      console.log('[LTI Auto-select] Workflow activated successfully');
     } else {
       console.error('[LTI Auto-select] Workflow not found:', workflowId, 'Available:', workflows.map(w => w.id));
     }
