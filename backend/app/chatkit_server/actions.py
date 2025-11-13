@@ -57,6 +57,13 @@ def _ensure_schema_type_information(schema: dict[str, Any]) -> None:
     if isinstance(items, dict):
         _ensure_schema_type_information(items)
 
+    # Traiter récursivement les définitions
+    defs = schema.get("definitions") or schema.get("$defs")
+    if isinstance(defs, dict):
+        for def_schema in defs.values():
+            if isinstance(def_schema, dict):
+                _ensure_schema_type_information(def_schema)
+
     for key in ("allOf", "anyOf", "oneOf"):
         options = schema.get(key)
         if isinstance(options, list):
