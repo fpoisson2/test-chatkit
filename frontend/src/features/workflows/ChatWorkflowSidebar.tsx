@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
+import { LoadingSpinner } from "../../components/feedback/LoadingSpinner";
 import { workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
@@ -627,6 +628,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   const sidebarContent = useMemo(() => {
     const sectionId = "chat-sidebar-workflow";
+    const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
 
     if (!user) {
       return (
@@ -660,7 +662,10 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
           <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">Chargement des workflows…</p>
+          <LoadingSpinner
+            size="md"
+            text={isLtiUser ? 'Chargement du workflow…' : 'Chargement des workflows…'}
+          />
         </section>
       );
     }

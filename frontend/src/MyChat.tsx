@@ -3,6 +3,7 @@ import type { ChatKitOptions, StartScreenPrompt } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
+import { LoadingOverlay } from "./components/feedback/LoadingOverlay";
 import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
@@ -17,6 +18,7 @@ import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
+import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -194,6 +196,7 @@ export function MyChat() {
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
   const { openSidebar, setHideSidebar } = useAppLayout();
+  const { loading: workflowsLoading, workflows } = useWorkflowSidebar();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -738,8 +741,16 @@ export function MyChat() {
     };
   }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, user?.email, setHideSidebar]);
 
+  // Show loading overlay for LTI users while workflows are being loaded
+  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
+  const shouldShowLoadingOverlay = isLtiUser && workflowsLoading && !activeWorkflow;
+
   return (
     <>
+      <LoadingOverlay
+        isVisible={shouldShowLoadingOverlay}
+        message="Chargement du workflow..."
+      />
       <ChatSidebar
         mode={mode}
         setMode={setMode}

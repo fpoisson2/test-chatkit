@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth, type AuthUser } from "../auth";
+import { LoadingSpinner } from "../components/feedback/LoadingSpinner";
 
 /**
  * LTI Launch Handler Page
@@ -86,7 +87,8 @@ export const LTILaunchPage = () => {
       fontFamily: "system-ui, sans-serif"
     }}>
       <div style={{ textAlign: "center", maxWidth: "500px", padding: "20px" }}>
-        <h2>Connexion LTI en cours...</h2>
+        <LoadingSpinner size="lg" />
+        <h2 style={{ marginTop: "20px" }}>Connexion LTI en cours...</h2>
         <p>Vous allez être redirigé vers l'application.</p>
         {debugInfo && (
           <p style={{ fontSize: "0.9em", color: "#666", marginTop: "20px" }}>

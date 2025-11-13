@@ -101,27 +101,37 @@ async def list_workflows(
             for w in workflows
         ]
 
-    # LTI users can only see workflows from their LTI sessions
+    # LTI users can only see workflows from their LTI resource links
+    # They should only access the specific workflow assigned via deeplink
     if current_user.email.endswith('@lti.local'):
         from ..models import LTIUserSession, Workflow
-        from sqlalchemy import select, distinct
+        from sqlalchemy import select, desc
 
-        # Get all unique workflows this LTI user has accessed
-        stmt = (
-            select(Workflow)
-            .join(LTIUserSession.resource_link)
+        # Get the most recent launched LTI session for this user
+        # This represents the current deeplink context
+        latest_session_stmt = (
+            select(LTIUserSession)
             .where(
                 LTIUserSession.user_id == current_user.id,
-                Workflow.active_version_id.isnot(None)
+                LTIUserSession.launched_at.isnot(None)
             )
-            .distinct()
+            .order_by(desc(LTIUserSession.launched_at))
+            .limit(1)
         )
-        workflows = list(session.scalars(stmt))
+        latest_session = session.scalar(latest_session_stmt)
 
-        return [
-            WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
-            for w in workflows
-        ]
+        if not latest_session or not latest_session.resource_link:
+            # No active LTI session found
+            return []
+
+        # Return only the workflow from the current resource link
+        workflow = latest_session.resource_link.workflow
+        if workflow and workflow.active_version_id is not None:
+            return [
+                WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
+            ]
+
+        return []
 
     # Other non-admin users have no access
     raise HTTPException(
