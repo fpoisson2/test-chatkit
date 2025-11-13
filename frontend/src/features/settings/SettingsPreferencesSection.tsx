@@ -17,36 +17,38 @@ export function SettingsPreferencesSection({
   return (
     <section
       key="preferences"
-      className="admin-card"
+      className="card"
       aria-labelledby={hideHeader ? undefined : sectionTitleId}
       aria-label={hideHeader ? activeSection.label : undefined}
       id={`settings-section-${activeSection.id}`}
     >
       {hideHeader ? null : (
-        <div>
-          <h2 id={sectionTitleId} className="admin-card__title">
+        <div className="card-header">
+          <h2 id={sectionTitleId} className="card-title">
             {activeSection.label}
           </h2>
-          <p className="admin-card__subtitle">{activeSection.description}</p>
+          <p className="card-subtitle">{activeSection.description}</p>
         </div>
       )}
-      <div className="admin-form">
+      <div className="card-body flex flex-col gap-6">
         <div>
-          <h3 className="admin-card__title">
+          <h3 className="card-title">
             {t("settings.preferences.language.title")}
           </h3>
-          <p className="admin-card__subtitle">
+          <p className="card-subtitle">
             {t("settings.preferences.language.description")}
           </p>
         </div>
-        <LanguageSwitcher
-          id="settings-language"
-          hideLabel={false}
-          label={t("settings.preferences.language.label")}
-          className="label settings-preferences__field"
-          selectClassName="input"
-        />
-        <p className="settings-preferences__hint">
+        <div className="form-group">
+          <LanguageSwitcher
+            id="settings-language"
+            hideLabel={false}
+            label={t("settings.preferences.language.label")}
+            className="form-label"
+            selectClassName="input"
+          />
+        </div>
+        <p className="form-hint">
           {t("settings.preferences.language.hint")}
         </p>
       </div>

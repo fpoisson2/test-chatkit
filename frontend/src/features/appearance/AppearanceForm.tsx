@@ -178,26 +178,26 @@ export const AppearanceForm = ({
 
   if (isLoading) {
     return (
-      <p className="admin-form__hint">{t("admin.appearance.loading")}</p>
+      <p className="form-hint">{t("admin.appearance.loading")}</p>
     );
   }
 
   return (
-    <form id={id} ref={formRef} className="admin-form" onSubmit={handleFormSubmit(handleSubmit)}>
-      <section className="admin-card" aria-labelledby="appearance-color-scheme">
-        <div>
-          <h2 id="appearance-color-scheme" className="admin-card__title">
+    <form id={id} ref={formRef} className="flex flex-col gap-6" onSubmit={handleFormSubmit(handleSubmit)}>
+      <section className="card" aria-labelledby="appearance-color-scheme">
+        <div className="card-header">
+          <h2 id="appearance-color-scheme" className="card-title">
             {t("admin.appearance.colorScheme.cardTitle")}
           </h2>
-          <p className="admin-card__subtitle">
+          <p className="card-subtitle">
             {t("admin.appearance.colorScheme.cardDescription")}
           </p>
         </div>
-        <div className="admin-form__row">
+        <div className="card-body flex flex-col gap-4">
           {["system", "light", "dark"].map((option) => {
             const typedOption = option as AppearanceFormState["colorScheme"];
             return (
-              <label key={option} className="radio-field">
+              <label key={option} className="radio">
                 <input
                   type="radio"
                   value={option}
@@ -213,23 +213,24 @@ export const AppearanceForm = ({
         </div>
       </section>
 
-      <section className="admin-card" aria-labelledby="appearance-colors">
-        <div>
-          <h2 id="appearance-colors" className="admin-card__title">
+      <section className="card" aria-labelledby="appearance-colors">
+        <div className="card-header">
+          <h2 id="appearance-colors" className="card-title">
             {t("admin.appearance.colors.cardTitle")}
           </h2>
-          <p className="admin-card__subtitle">
+          <p className="card-subtitle">
             {t("admin.appearance.colors.cardDescription")}
           </p>
         </div>
-        <div className="admin-form__row">
-          <label className="input-field">
-            <span className="input-label">
+        <div className="card-body flex flex-col gap-4">
+          <div className="form-group">
+            <label className="form-label">
               {t("admin.appearance.colors.accentLabel")}
-            </span>
-            <div className="admin-form__color-picker">
+            </label>
+            <div className="flex items-center gap-3">
               <input
                 type="color"
+                className="input w-20 h-10 p-1 cursor-pointer"
                 {...register("accentColor", {
                   onChange: (event) => {
                     setValue("accentColor", ensureColorValue(event.target.value));
@@ -239,187 +240,194 @@ export const AppearanceForm = ({
                 aria-label={t("admin.appearance.colors.accentAria")}
               />
               <div
-                className="admin-form__color-preview"
+                className="w-10 h-10 rounded border"
                 style={accentPreviewStyle}
                 aria-hidden="true"
               />
             </div>
-            <p className="admin-form__hint">
+            <p className="form-hint">
               {t("admin.appearance.colors.accentHint")}
             </p>
-          </label>
-        </div>
-        <label className="checkbox-field">
-          <input
-            type="checkbox"
-            {...register("useCustomSurfaceColors")}
-            disabled={isBusy}
-          />
-          {t("admin.appearance.colors.enableCustomSurfaces")}
-        </label>
-        <div className="admin-form__slider-group">
-          <label className="input-field">
-            <span className="input-label">
-              {t("admin.appearance.colors.hueLabel")}
-            </span>
+          </div>
+          <label className="checkbox">
             <input
-              type="range"
-              min={0}
-              max={360}
-              step={1}
-              {...register("surfaceHue", {
-                valueAsNumber: true,
-              })}
-              disabled={isBusy || !useCustomSurfaceColors}
+              type="checkbox"
+              {...register("useCustomSurfaceColors")}
+              disabled={isBusy}
             />
-            <span className="admin-form__slider-value">
-              {watch("surfaceHue")}°
-            </span>
+            {t("admin.appearance.colors.enableCustomSurfaces")}
           </label>
-          <label className="input-field">
-            <span className="input-label">
-              {t("admin.appearance.colors.tintLabel")}
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              {...register("surfaceTint", {
-                valueAsNumber: true,
-              })}
-              disabled={isBusy || !useCustomSurfaceColors}
-            />
-            <span className="admin-form__slider-value">
-              {watch("surfaceTint")}%
-            </span>
-          </label>
-          <label className="input-field">
-            <span className="input-label">
-              {t("admin.appearance.colors.shadeLabel")}
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              {...register("surfaceShade", {
-                valueAsNumber: true,
-              })}
-              disabled={isBusy || !useCustomSurfaceColors}
-            />
-            <span className="admin-form__slider-value">
-              {watch("surfaceShade")}%
-            </span>
-          </label>
+          <div className="flex flex-col gap-4">
+            <div className="form-group">
+              <label className="form-label">
+                {t("admin.appearance.colors.hueLabel")}
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  className="flex-1"
+                  min={0}
+                  max={360}
+                  step={1}
+                  {...register("surfaceHue", {
+                    valueAsNumber: true,
+                  })}
+                  disabled={isBusy || !useCustomSurfaceColors}
+                />
+                <span className="text-sm font-medium w-12 text-right">
+                  {watch("surfaceHue")}°
+                </span>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                {t("admin.appearance.colors.tintLabel")}
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  className="flex-1"
+                  min={0}
+                  max={100}
+                  step={1}
+                  {...register("surfaceTint", {
+                    valueAsNumber: true,
+                  })}
+                  disabled={isBusy || !useCustomSurfaceColors}
+                />
+                <span className="text-sm font-medium w-12 text-right">
+                  {watch("surfaceTint")}%
+                </span>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                {t("admin.appearance.colors.shadeLabel")}
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  className="flex-1"
+                  min={0}
+                  max={100}
+                  step={1}
+                  {...register("surfaceShade", {
+                    valueAsNumber: true,
+                  })}
+                  disabled={isBusy || !useCustomSurfaceColors}
+                />
+                <span className="text-sm font-medium w-12 text-right">
+                  {watch("surfaceShade")}%
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="admin-card" aria-labelledby="appearance-typography">
-        <div>
-          <h2 id="appearance-typography" className="admin-card__title">
+      <section className="card" aria-labelledby="appearance-typography">
+        <div className="card-header">
+          <h2 id="appearance-typography" className="card-title">
             {t("admin.appearance.typography.cardTitle")}
           </h2>
-          <p className="admin-card__subtitle">
+          <p className="card-subtitle">
             {t("admin.appearance.typography.cardDescription")}
           </p>
         </div>
-        <div className="admin-form__row">
-          <label className="input-field">
-            <span className="input-label">
+        <div className="card-body flex flex-col gap-4">
+          <div className="form-group">
+            <label className="form-label">
               {t("admin.appearance.typography.bodyLabel")}
-            </span>
+            </label>
             <input
               className="input"
               type="text"
               {...register("bodyFont")}
               disabled={isBusy}
             />
-          </label>
-          <label className="input-field">
-            <span className="input-label">
+          </div>
+          <div className="form-group">
+            <label className="form-label">
               {t("admin.appearance.typography.headingLabel")}
-            </span>
+            </label>
             <input
               className="input"
               type="text"
               {...register("headingFont")}
               disabled={isBusy}
             />
-          </label>
+          </div>
+          <p className="form-hint">
+            {t("admin.appearance.typography.hint")}
+          </p>
         </div>
-        <p className="admin-form__hint">
-          {t("admin.appearance.typography.hint")}
-        </p>
       </section>
 
-      <section className="admin-card" aria-labelledby="appearance-start-screen">
-        <div>
-          <h2 id="appearance-start-screen" className="admin-card__title">
+      <section className="card" aria-labelledby="appearance-start-screen">
+        <div className="card-header">
+          <h2 id="appearance-start-screen" className="card-title">
             {t("admin.appearance.start.cardTitle")}
           </h2>
-          <p className="admin-card__subtitle">
+          <p className="card-subtitle">
             {t("admin.appearance.start.cardDescription")}
           </p>
         </div>
-        <div className="admin-form__row">
-          <label className="input-field">
-            <span className="input-label">
+        <div className="card-body flex flex-col gap-4">
+          <div className="form-group">
+            <label className="form-label">
               {t("admin.appearance.start.greetingLabel")}
-            </span>
+            </label>
             <textarea
               className="textarea"
               rows={2}
               {...register("startGreeting")}
               disabled={isBusy}
             />
-          </label>
-          <label className="input-field">
-            <span className="input-label">
+          </div>
+          <div className="form-group">
+            <label className="form-label">
               {t("admin.appearance.start.promptLabel")}
-            </span>
+            </label>
             <textarea
               className="textarea"
               rows={4}
               {...register("startPrompt")}
               disabled={isBusy}
             />
-          </label>
-        </div>
-        <p className="admin-form__hint">
-          {t("admin.appearance.start.promptHint")}
-        </p>
-        <div className="admin-form__row">
-          <label className="input-field">
-            <span className="input-label">
+          </div>
+          <p className="form-hint">
+            {t("admin.appearance.start.promptHint")}
+          </p>
+          <div className="form-group">
+            <label className="form-label">
               {t("admin.appearance.start.placeholderLabel")}
-            </span>
+            </label>
             <input
               className="input"
               type="text"
               {...register("inputPlaceholder")}
               disabled={isBusy}
             />
-          </label>
-          <label className="input-field">
-            <span className="input-label">
+          </div>
+          <div className="form-group">
+            <label className="form-label">
               {t("admin.appearance.start.disclaimerLabel")}
-            </span>
+            </label>
             <input
               className="input"
               type="text"
               {...register("disclaimer")}
               disabled={isBusy}
             />
-          </label>
+          </div>
         </div>
       </section>
 
       {actions !== null ? (
-        <div className="admin-form__actions">{actions}</div>
+        <div className="flex items-center justify-end gap-3">{actions}</div>
       ) : (
-        <div className="admin-form__actions">
-          <button type="submit" className="button" disabled={isBusy}>
+        <div className="flex items-center justify-end gap-3">
+          <button type="submit" className="btn btn-primary" disabled={isBusy}>
             {t("admin.appearance.actions.save")}
           </button>
         </div>

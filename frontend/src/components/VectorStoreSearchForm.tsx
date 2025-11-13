@@ -47,51 +47,51 @@ export const VectorStoreSearchForm = ({ onSubmit }: VectorStoreSearchFormProps) 
   };
 
   return (
-    <form className="admin-form" onSubmit={handleSubmit(onSubmitHandler)}>
-      {errors.root && <div className="alert alert--danger">{errors.root.message}</div>}
-      <label className="label">
-        Requête
+    <form className="flex flex-col gap-6" onSubmit={handleSubmit(onSubmitHandler)}>
+      {errors.root && <div className="alert alert-danger">{errors.root.message}</div>}
+      <div className="form-group">
+        <label className="form-label">Requête</label>
         <input
           className="input"
           type="text"
           {...register("query")}
           placeholder="ex: monuments à visiter à Paris"
         />
-        {errors.query && <span className="error">{errors.query.message}</span>}
-      </label>
-      <div className="admin-form__row">
-        <label className="label">
-          Résultats
+        {errors.query && <span className="form-error">{errors.query.message}</span>}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="form-group">
+          <label className="form-label">Résultats</label>
           <input
             className="input"
             type="number"
             {...register("topK", { valueAsNumber: true })}
           />
-          {errors.topK && <span className="error">{errors.topK.message}</span>}
-        </label>
-        <label className="label">
-          Poids dense
+          {errors.topK && <span className="form-error">{errors.topK.message}</span>}
+        </div>
+        <div className="form-group">
+          <label className="form-label">Poids dense</label>
           <input
             className="input"
             type="number"
             step="0.1"
             {...register("denseWeight", { valueAsNumber: true })}
           />
-          {errors.denseWeight && <span className="error">{errors.denseWeight.message}</span>}
-        </label>
-        <label className="label">
-          Poids BM25
+          {errors.denseWeight && <span className="form-error">{errors.denseWeight.message}</span>}
+        </div>
+        <div className="form-group">
+          <label className="form-label">Poids BM25</label>
           <input
             className="input"
             type="number"
             step="0.1"
             {...register("sparseWeight", { valueAsNumber: true })}
           />
-          {errors.sparseWeight && <span className="error">{errors.sparseWeight.message}</span>}
-        </label>
+          {errors.sparseWeight && <span className="form-error">{errors.sparseWeight.message}</span>}
+        </div>
       </div>
-      <label className="label">
-        Filtres de métadonnées (JSON)
+      <div className="form-group">
+        <label className="form-label">Filtres de métadonnées (JSON)</label>
         <textarea
           className="textarea"
           rows={3}
@@ -99,10 +99,10 @@ export const VectorStoreSearchForm = ({ onSubmit }: VectorStoreSearchFormProps) 
           spellCheck={false}
           placeholder='{"category": "guide"}'
         />
-        {errors.metadataFiltersInput && <span className="error">{errors.metadataFiltersInput.message}</span>}
-      </label>
-      <div className="admin-form__actions">
-        <button className="button" type="submit" disabled={isSubmitting}>
+        {errors.metadataFiltersInput && <span className="form-error">{errors.metadataFiltersInput.message}</span>}
+      </div>
+      <div className="flex items-center justify-end gap-3">
+        <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Recherche…" : "Lancer la recherche"}
         </button>
       </div>

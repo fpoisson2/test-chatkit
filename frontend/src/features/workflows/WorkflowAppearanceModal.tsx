@@ -186,12 +186,12 @@ export const WorkflowAppearanceModal = ({
   const formFooter = useCallback(
     ({ isBusy: formBusy }: { isBusy: boolean }) => (
       <>
-        <button type="submit" className="button" disabled={formBusy}>
+        <button type="submit" className="btn btn-primary" disabled={formBusy}>
           {t("workflowAppearance.actions.save")}
         </button>
         <button
           type="button"
-          className="button button--secondary"
+          className="btn btn-secondary"
           onClick={onClose}
           disabled={formBusy}
         >
@@ -199,7 +199,7 @@ export const WorkflowAppearanceModal = ({
         </button>
         <button
           type="button"
-          className="button button--ghost"
+          className="btn btn-ghost"
           onClick={handleReset}
           disabled={formBusy || inherited}
         >
@@ -228,9 +228,9 @@ export const WorkflowAppearanceModal = ({
 
   return (
     <Modal title={title} onClose={onClose} size="lg">
-      {error ? <div className="alert alert--danger">{error}</div> : null}
-      {success ? <div className="alert alert--success">{success}</div> : null}
-      <p className="admin-form__hint" aria-live="polite">
+      {error ? <div className="alert alert-danger">{error}</div> : null}
+      {success ? <div className="alert alert-success">{success}</div> : null}
+      <p className="form-hint" aria-live="polite">
         {helpMessage}
       </p>
       <AppearanceForm
