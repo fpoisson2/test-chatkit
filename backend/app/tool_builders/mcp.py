@@ -179,6 +179,11 @@ def _resolve_mcp_configuration(
             resolved_server = session.get(McpServer, resolved_server_id)
         if resolved_server is None:
             raise ValueError("Serveur MCP introuvable pour server_id fourni.")
+        if not resolved_server.is_active:
+            raise ValueError(
+                f"Le serveur MCP {resolved_server.label} (ID: {resolved_server_id}) "
+                "est désactivé. Veuillez l'activer dans les paramètres."
+            )
 
     raw_type = merged_config.get("type") or merged_config.get("name")
     if isinstance(raw_type, str) and raw_type.strip():

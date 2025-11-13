@@ -996,7 +996,31 @@ def _build_agent_kwargs(
             ]
             if extracted_mcp_servers:
                 filtered_existing.extend(extracted_mcp_servers)
-            merged["mcp_servers"] = filtered_existing
+
+            # Dédupliquer les serveurs MCP par URL pour éviter les connexions en double
+            seen_urls: dict[str, MCPServer] = {}
+            deduplicated_servers: list[MCPServer] = []
+            for server in filtered_existing:
+                params = getattr(server, "params", None)
+                if isinstance(params, Mapping):
+                    url = params.get("url")
+                    if isinstance(url, str) and url.strip():
+                        normalized_url = url.strip()
+                        if normalized_url not in seen_urls:
+                            seen_urls[normalized_url] = server
+                            deduplicated_servers.append(server)
+                        else:
+                            logger.debug(
+                                "Serveur MCP en double ignoré (URL=%s)", normalized_url
+                            )
+                    else:
+                        # Serveur sans URL valide, on le garde quand même
+                        deduplicated_servers.append(server)
+                else:
+                    # Serveur sans params, on le garde quand même
+                    deduplicated_servers.append(server)
+
+            merged["mcp_servers"] = deduplicated_servers
 
         if resolved_mcp_contexts:
             merged["mcp_server_contexts"] = list(resolved_mcp_contexts)
