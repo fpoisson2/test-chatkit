@@ -130,6 +130,14 @@
   grid-template-columns: minmax(0, var(--chatkit-sidebar-width)) 1fr;
 }
 
+.chatkit-layout--desktop.chatkit-layout--sidebar-hidden {
+  grid-template-columns: 1fr;
+}
+
+.chatkit-layout--desktop.chatkit-layout--sidebar-hidden .chatkit-layout__main {
+  border-left: none;
+}
+
 .chatkit-layout--desktop .chatkit-sidebar {
   position: relative;
   inset: auto;
