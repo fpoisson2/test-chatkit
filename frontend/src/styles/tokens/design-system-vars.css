@@ -106,6 +106,17 @@
   --font-text-5xl-line-height: 1;
   --font-text-5xl-tracking: 0em;
 
+  /* Text Size Aliases (for utility classes) */
+  --text-xs: var(--font-text-xs-size);
+  --text-sm: var(--font-text-sm-size);
+  --text-base: var(--font-text-md-size);
+  --text-lg: var(--font-text-lg-size);
+  --text-xl: var(--font-text-xl-size);
+  --text-2xl: var(--font-text-2xl-size);
+  --text-3xl: var(--font-text-3xl-size);
+  --text-4xl: var(--font-text-4xl-size);
+  --text-5xl: var(--font-text-5xl-size);
+
   /* Heading Sizes */
   --font-heading-sm-size: 0.875rem;
   --font-heading-sm-line-height: 1.25rem;

@@ -301,6 +301,8 @@
   .text-xl { font-size: var(--text-xl) !important; }
   .text-2xl { font-size: var(--text-2xl) !important; }
   .text-3xl { font-size: var(--text-3xl) !important; }
+  .text-4xl { font-size: var(--text-4xl) !important; }
+  .text-5xl { font-size: var(--text-5xl) !important; }
 
   /* Line Height */
   .leading-none { line-height: 1 !important; }
