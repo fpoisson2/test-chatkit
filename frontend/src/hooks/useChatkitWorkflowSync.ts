@@ -11,7 +11,6 @@ type UseChatkitWorkflowSyncParams = {
   initialThreadId: string | null;
   reportError: (message: string, detail?: unknown) => void;
   enabled?: boolean;
-  control?: { threadId: string | null; setThreadId: (id: string) => void };
 };
 
 type UseChatkitWorkflowSyncResult = {
@@ -29,23 +28,19 @@ export const useChatkitWorkflowSync = ({
   initialThreadId,
   reportError,
   enabled = true,
-  control,
 }: UseChatkitWorkflowSyncParams): UseChatkitWorkflowSyncResult => {
   const [chatkitWorkflowInfo, setChatkitWorkflowInfo] = useState<ChatKitWorkflowInfo | null>(null);
   const autoStartAttemptRef = useRef(false);
   const fetchUpdatesRef = useRef<(() => Promise<void>) | null>(null);
-  const controlRef = useRef(control);
   const lastVisibilityRefreshRef = useRef(0);
   const previousThreadIdRef = useRef<string | null>(initialThreadId);
 
   useEffect(() => {
     fetchUpdatesRef.current = fetchUpdates;
-    controlRef.current = control;
     return () => {
       fetchUpdatesRef.current = null;
-      controlRef.current = undefined;
     };
-  }, [fetchUpdates, control]);
+  }, [fetchUpdates]);
 
   const requestRefresh = useCallback(
     (context?: string) => {
@@ -55,18 +50,6 @@ export const useChatkitWorkflowSync = ({
       const refresh = fetchUpdatesRef.current;
       if (!refresh) {
         return undefined;
-      }
-      // Force a full thread reload for voice or outbound call transcriptions
-      const ctrl = controlRef.current;
-      const shouldForceReload =
-        context?.includes('[Voice]') || context?.includes('[OutboundCall]');
-      if (ctrl?.threadId && shouldForceReload) {
-        if (import.meta.env.DEV) {
-          console.log('[WorkflowSync] Forçant rechargement du thread pour transcriptions vocales ou sortantes', {
-            threadId: ctrl.threadId,
-          });
-        }
-        ctrl.setThreadId(ctrl.threadId);
       }
       return refresh().catch((err) => {
         if (import.meta.env.DEV && context) {
