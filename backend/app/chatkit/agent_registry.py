@@ -319,6 +319,27 @@ def _create_response_format_from_pydantic(model: type[BaseModel]) -> dict[str, A
         raise ValueError(f"Cannot generate JSON schema from model {model}")
 
     schema = _remove_additional_properties_from_schema(schema)
+    examples_attr = getattr(model, "__chatkit_examples__", None)
+    sanitized_examples: list[Any] = []
+    if examples_attr:
+        if isinstance(examples_attr, (list, tuple)):
+            candidates = list(examples_attr)
+        else:
+            candidates = [examples_attr]
+        for entry in candidates:
+            try:
+                sanitized_examples.append(
+                    json.loads(json.dumps(entry, ensure_ascii=False))
+                )
+            except Exception as exc:  # pragma: no cover - sérialisation best effort
+                logger.debug(
+                    "Impossible de sérialiser l'exemple pour le modèle %s: %s",
+                    getattr(model, "__name__", model),
+                    exc,
+                )
+    if sanitized_examples:
+        schema = dict(schema)
+        schema["examples"] = sanitized_examples
 
     model_name = getattr(model, "__name__", "Response")
     sanitized_name = _sanitize_model_name(model_name)
