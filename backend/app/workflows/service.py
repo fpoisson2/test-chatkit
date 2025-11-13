@@ -1369,9 +1369,27 @@ class WorkflowAppearanceService:
         *,
         session: Session | None = None,
     ) -> dict[str, Any]:
-        return self._appearance_service.get_workflow_appearance(
-            reference, session=session
-        )
+        db, owns_session = self._get_session(session)
+        try:
+            target = self._resolve_workflow_appearance_target(reference, db)
+            override = self._get_workflow_appearance_entry(db, target)
+            admin_settings = get_thread_title_prompt_override(db)
+            effective = serialize_appearance_settings(admin_settings, override)
+            return {
+                "target_kind": target.kind,
+                "workflow_id": target.workflow_id,
+                "workflow_slug": target.slug,
+                "label": target.label,
+                "remote_workflow_id": target.remote_workflow_id
+                if target.kind == "hosted"
+                else None,
+                "override": self._serialize_workflow_appearance_override(override),
+                "effective": effective,
+                "inherited_from_global": override is None,
+            }
+        finally:
+            if owns_session:
+                db.close()
 
     def update_workflow_appearance(
         self,
@@ -1380,9 +1398,67 @@ class WorkflowAppearanceService:
         *,
         session: Session | None = None,
     ) -> dict[str, Any]:
-        return self._appearance_service.update_workflow_appearance(
-            reference, values, session=session
-        )
+        db, owns_session = self._get_session(session)
+        try:
+            target = self._resolve_workflow_appearance_target(reference, db)
+            override = self._get_workflow_appearance_entry(db, target)
+
+            inherit = bool(values.get("inherit_from_global"))
+            update_kwargs = {
+                key: values[key]
+                for key in (
+                    "color_scheme",
+                    "accent_color",
+                    "use_custom_surface_colors",
+                    "surface_hue",
+                    "surface_tint",
+                    "surface_shade",
+                    "heading_font",
+                    "body_font",
+                    "start_screen_greeting",
+                    "start_screen_prompt",
+                    "start_screen_placeholder",
+                    "start_screen_disclaimer",
+                )
+                if key in values
+            }
+
+            if inherit:
+                if override is not None:
+                    db.delete(override)
+                    db.commit()
+                return self.get_workflow_appearance(reference, session=db)
+
+            if not update_kwargs and override is None:
+                return self.get_workflow_appearance(reference, session=db)
+
+            if override is None:
+                override = WorkflowAppearance()
+                db.add(override)
+
+            if target.kind == "local":
+                override.workflow_id = target.workflow_id
+                override.hosted_workflow_slug = None
+            else:
+                override.workflow_id = None
+                override.hosted_workflow_slug = target.slug
+
+            if update_kwargs:
+                changed = apply_appearance_update(override, **update_kwargs)
+                if changed:
+                    override.updated_at = datetime.datetime.now(datetime.UTC)
+
+            if not self._has_appearance_override_values(override):
+                db.delete(override)
+                db.commit()
+                return self.get_workflow_appearance(reference, session=db)
+
+            db.commit()
+            db.refresh(override)
+            return self.get_workflow_appearance(reference, session=db)
+        finally:
+            if owns_session:
+                db.close()
 
     def _resolve_workflow_appearance_target(
         self, reference: int | str, session: Session
