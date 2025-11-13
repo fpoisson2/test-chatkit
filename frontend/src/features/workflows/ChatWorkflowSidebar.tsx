@@ -441,6 +441,16 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             : t("workflows.pinAction", { label: option.label });
           const hostedMenuItems: WorkflowActionMenuItem[] = [
             {
+              key: "pin",
+              label: pinLabel,
+              onSelect: (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleHostedPin(option.slug);
+                closeWorkflowMenu();
+              },
+            },
+            {
               key: "appearance",
               label: t("workflowBuilder.hostedSection.customizeAction"),
               disabled: true,
@@ -536,6 +546,16 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           ? t("workflows.unpinAction", { label: workflow.display_name })
           : t("workflows.pinAction", { label: workflow.display_name });
         const localMenuItems: WorkflowActionMenuItem[] = [
+          {
+            key: "pin",
+            label: pinLabel,
+            onSelect: (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              toggleLocalPin(workflow.id);
+              closeWorkflowMenu();
+            },
+          },
           {
             key: "duplicate",
             label: t("workflowBuilder.localSection.duplicateAction"),
