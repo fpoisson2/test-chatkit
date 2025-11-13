@@ -46,7 +46,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const formatSpacing = (value: unknown): string | undefined => {
   if (typeof value === "number") {
-    return `${value}px`;
+    // Use design system spacing: 1 unit = 4px (like Tailwind)
+    // padding={8} becomes calc(var(--spacing) * 8) = calc(4px * 8) = 32px
+    return `calc(var(--spacing, 4px) * ${value})`;
   }
   if (typeof value === "string") {
     return value;
