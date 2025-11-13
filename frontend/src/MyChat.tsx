@@ -727,19 +727,10 @@ export function MyChat() {
     ? "Connexion audio en cours..."
     : null;
 
-  // Detect LTI user
-  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
-
-  // Hide sidebar immediately for LTI users on initial load
-  useEffect(() => {
-    if (isLtiUser && !activeWorkflow) {
-      setHideSidebar(true);
-    }
-  }, [isLtiUser, activeWorkflow, setHideSidebar]);
-
   // Apply LTI sidebar visibility setting
   useEffect(() => {
-    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiUser;
+    const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
     const shouldHideSidebar = shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar;
 
     setHideSidebar(shouldHideSidebar);
@@ -748,9 +739,10 @@ export function MyChat() {
     return () => {
       setHideSidebar(false);
     };
-  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, isLtiUser, setHideSidebar]);
+  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, user?.email, setHideSidebar]);
 
-  // Show loading overlay for LTI users until workflow is ready and chat instance is created
+  // Show loading overlay for LTI users until workflow and chat are ready
+  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
   const hasActiveInstance = activeInstances.has(currentWorkflowId);
   const shouldShowLoadingOverlay = isLtiUser && (!activeWorkflow || workflowsLoading || !hasActiveInstance);
 
@@ -760,13 +752,11 @@ export function MyChat() {
         isVisible={shouldShowLoadingOverlay}
         message="Chargement de votre espace de travail..."
       />
-      <div style={{ display: isLtiUser ? 'none' : 'contents' }}>
-        <ChatSidebar
-          mode={mode}
-          setMode={setMode}
-          onWorkflowActivated={handleWorkflowActivated}
-        />
-      </div>
+      <ChatSidebar
+        mode={mode}
+        setMode={setMode}
+        onWorkflowActivated={handleWorkflowActivated}
+      />
       <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
         {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
           <WorkflowChatInstance
