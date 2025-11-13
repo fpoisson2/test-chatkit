@@ -1283,8 +1283,27 @@ async def stream_agent_response(
                 )
         return events
 
+    async def safe_stream_events():
+        """Wrapper to handle streaming errors gracefully, particularly from Groq API."""
+        try:
+            async for event in result.stream_events():
+                yield event
+        except Exception as e:
+            # Check if this is a litellm streaming error (e.g., missing 'id' field)
+            error_msg = str(e)
+            if "KeyError" in error_msg or "'id'" in error_msg or "GroqException" in error_msg:
+                LOGGER.warning(
+                    "Streaming error from provider (possibly malformed chunk): %s. "
+                    "Attempting to continue...",
+                    error_msg,
+                )
+                # Don't re-raise - allow the stream to end gracefully
+                return
+            # For other errors, re-raise
+            raise
+
     try:
-        async for event in _merge_generators(result.stream_events(), queue_iterator):
+        async for event in _merge_generators(safe_stream_events(), queue_iterator):
             # Events emitted from agent context helpers
             if isinstance(event, _EventWrapper):
                 event = event.event
