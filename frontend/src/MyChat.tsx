@@ -5,7 +5,6 @@ import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
 import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
-import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { OutboundCallAudioPlayer } from "./components/my-chat/OutboundCallAudioPlayer";
 import {
   useAppearanceSettings,
@@ -77,6 +76,67 @@ type ResolvedColorScheme = "light" | "dark";
 
 const clampToRange = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
+
+const TERMINAL_THREAD_STATUSES = new Set([
+  "completed",
+  "cancelled",
+  "failed",
+  "expired",
+  "archived",
+]);
+
+type ThreadStatus = string | null;
+
+type ChatInstanceEntry = {
+  selection: WorkflowActivation;
+  mode: HostedFlowMode;
+  chatInstanceKey: number;
+  initialThreadId: string | null;
+  threadStatus: ThreadStatus;
+  hasActiveThread: boolean;
+  persistenceSlug: string | null;
+};
+
+type ChatInstancesState = Record<string, ChatInstanceEntry>;
+
+const computeHasActiveThread = (
+  threadId: string | null,
+  status: ThreadStatus,
+) => threadId != null && !(status && TERMINAL_THREAD_STATUSES.has(status));
+
+type AttachmentsConfig = NonNullable<
+  NonNullable<ChatKitOptions["composer"]>["attachments"]
+>;
+
+const buildChatInstanceId = (
+  mode: HostedFlowMode,
+  selection: WorkflowActivation,
+) =>
+  normalizeWorkflowStorageKey(resolvePersistenceSlug(mode, selection));
+
+const createChatInstanceEntry = ({
+  selection,
+  mode,
+  persistenceSlug,
+  initialThreadId,
+  threadStatus = null,
+  chatInstanceKey = 0,
+}: {
+  selection: WorkflowActivation;
+  mode: HostedFlowMode;
+  persistenceSlug: string | null;
+  initialThreadId: string | null;
+  threadStatus?: ThreadStatus;
+  chatInstanceKey?: number;
+}): ChatInstanceEntry => ({
+  selection,
+  mode,
+  chatInstanceKey,
+  initialThreadId,
+  threadStatus,
+  hasActiveThread: computeHasActiveThread(initialThreadId, threadStatus ?? null),
+  persistenceSlug,
+});
 
 type SurfacePalette = {
   light: { background: string; foreground: string; border: string };
@@ -216,9 +276,8 @@ export function MyChat() {
   const hostedWorkflowSlug =
     workflowSelection.kind === "hosted" ? workflowSelection.slug : null;
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
-  const [chatInstanceKey, setChatInstanceKey] = useState(0);
-  const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
-  const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
+  const [chatInstances, setChatInstances] = useState<ChatInstancesState>({});
+  const chatInstancesRef = useRef<ChatInstancesState>({});
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
@@ -228,6 +287,10 @@ export function MyChat() {
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
+
+  useEffect(() => {
+    chatInstancesRef.current = chatInstances;
+  }, [chatInstances]);
 
   // Detect outbound calls via WebSocket events (like voice sessions)
   const handleOutboundTranscript = useCallback(() => {
@@ -289,10 +352,17 @@ export function MyChat() {
 
   const persistenceSlug = resolvePersistenceSlug(mode, workflowSelection);
   const sessionStorageKey = buildSessionStorageKey(sessionOwner, persistenceSlug);
+  const activeInstanceId = buildChatInstanceId(mode, workflowSelection);
+  const activeInstance = chatInstances[activeInstanceId];
+  const activeInstanceIdRef = useRef(activeInstanceId);
 
-  const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
-    loadStoredThreadId(sessionOwner, persistenceSlug),
-  );
+  useEffect(() => {
+    activeInstanceIdRef.current = activeInstanceId;
+  }, [activeInstanceId]);
+
+  useEffect(() => {
+    requestRefreshRef.current = null;
+  }, [activeInstanceId]);
 
   const resetChatState = useCallback(
     ({
@@ -302,27 +372,58 @@ export function MyChat() {
     }: ResetChatStateOptions = {}) => {
       const effectiveMode = targetMode ?? mode;
       const effectiveSelection = selection ?? workflowSelection;
-      const resolvedSlug = resolvePersistenceSlug(effectiveMode, effectiveSelection);
-      const storageKey = buildSessionStorageKey(sessionOwner, resolvedSlug);
+      const persistence = resolvePersistenceSlug(effectiveMode, effectiveSelection);
+      const instanceId = buildChatInstanceId(effectiveMode, effectiveSelection);
+      const storageKey = buildSessionStorageKey(sessionOwner, persistence);
 
       clearStoredChatKitSecret(storageKey);
 
       if (!preserveStoredThread) {
-        clearStoredThreadId(sessionOwner, resolvedSlug);
+        clearStoredThreadId(sessionOwner, persistence);
       }
 
-      lastThreadSnapshotRef.current = null;
-
       const nextInitialThreadId = preserveStoredThread
-        ? loadStoredThreadId(sessionOwner, resolvedSlug)
+        ? loadStoredThreadId(sessionOwner, persistence)
         : null;
-      setInitialThreadId(nextInitialThreadId);
-      setChatInstanceKey((value) => value + 1);
+
+      setChatInstances((current) => {
+        const existing = current[instanceId];
+        const baseEntry =
+          existing ??
+          createChatInstanceEntry({
+            selection: effectiveSelection,
+            mode: effectiveMode,
+            persistenceSlug: persistence,
+            initialThreadId: nextInitialThreadId,
+          });
+
+        const nextThreadStatus = nextInitialThreadId ? baseEntry.threadStatus : null;
+        const nextEntry: ChatInstanceEntry = {
+          ...baseEntry,
+          selection: effectiveSelection,
+          mode: effectiveMode,
+          persistenceSlug: persistence,
+          chatInstanceKey: baseEntry.chatInstanceKey + 1,
+          initialThreadId: nextInitialThreadId,
+          threadStatus: nextThreadStatus,
+          hasActiveThread: computeHasActiveThread(
+            nextInitialThreadId,
+            nextThreadStatus,
+          ),
+        };
+
+        if (instanceId !== activeInstanceIdRef.current && !nextEntry.hasActiveThread) {
+          const { [instanceId]: _removed, ...rest } = current;
+          return rest;
+        }
+
+        return { ...current, [instanceId]: nextEntry };
+      });
 
       // Arrêter la session vocale si elle est en cours
       stopVoiceSessionRef.current?.();
     },
-    [mode, sessionOwner, workflowSelection],
+    [mode, sessionOwner, stopVoiceSessionRef, workflowSelection],
   );
 
   useEffect(() => {
@@ -333,6 +434,117 @@ export function MyChat() {
       }
     };
   }, [resetChatState]);
+
+  const handleInstanceThreadChange = useCallback(
+    (instanceId: string, persistence: string | null, threadId: string | null) => {
+      persistStoredThreadId(sessionOwner, threadId, persistence);
+
+      setChatInstances((current) => {
+        const existing = current[instanceId];
+        if (!existing) {
+          return current;
+        }
+
+        const nextThreadStatus = threadId ? existing.threadStatus : null;
+        const nextHasActiveThread = computeHasActiveThread(
+          threadId,
+          nextThreadStatus,
+        );
+        const nextEntry: ChatInstanceEntry = {
+          ...existing,
+          initialThreadId: threadId,
+          threadStatus: nextThreadStatus,
+          hasActiveThread: nextHasActiveThread,
+        };
+
+        if (instanceId !== activeInstanceIdRef.current && !nextHasActiveThread) {
+          const { [instanceId]: _removed, ...rest } = current;
+          return rest;
+        }
+
+        if (
+          existing.initialThreadId === nextEntry.initialThreadId &&
+          existing.threadStatus === nextEntry.threadStatus &&
+          existing.hasActiveThread === nextEntry.hasActiveThread
+        ) {
+          return current;
+        }
+
+        return { ...current, [instanceId]: nextEntry };
+      });
+    },
+    [sessionOwner],
+  );
+
+  const handleInstanceThreadStatusUpdate = useCallback(
+    (
+      instanceId: string,
+      persistence: string | null,
+      status: string | null,
+      threadId?: string | null,
+    ) => {
+      if (threadId !== undefined) {
+        persistStoredThreadId(sessionOwner, threadId, persistence);
+      }
+
+      setChatInstances((current) => {
+        const existing = current[instanceId];
+        if (!existing) {
+          return current;
+        }
+
+        const nextThreadId = threadId ?? existing.initialThreadId;
+        const normalizedStatus = status ?? existing.threadStatus;
+        const nextHasActiveThread = computeHasActiveThread(
+          nextThreadId,
+          normalizedStatus,
+        );
+        const nextEntry: ChatInstanceEntry = {
+          ...existing,
+          initialThreadId: nextThreadId,
+          threadStatus: normalizedStatus,
+          hasActiveThread: nextHasActiveThread,
+        };
+
+        if (instanceId !== activeInstanceIdRef.current && !nextHasActiveThread) {
+          const { [instanceId]: _removed, ...rest } = current;
+          return rest;
+        }
+
+        if (
+          existing.initialThreadId === nextEntry.initialThreadId &&
+          existing.threadStatus === nextEntry.threadStatus &&
+          existing.hasActiveThread === nextEntry.hasActiveThread
+        ) {
+          return current;
+        }
+
+        return { ...current, [instanceId]: nextEntry };
+      });
+    },
+    [sessionOwner],
+  );
+
+  const handleRequestRefreshChange = useCallback(
+    (
+      instanceId: string,
+      requestRefresh: ((context?: string) => Promise<void> | undefined) | null,
+    ) => {
+      if (instanceId === activeInstanceIdRef.current) {
+        requestRefreshRef.current = requestRefresh;
+        return;
+      }
+
+      if (requestRefreshRef.current && requestRefreshRef.current === requestRefresh) {
+        requestRefreshRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const triggerRequestRefresh = useCallback((context?: string) => {
+    requestRefreshRef.current?.(context);
+  }, []);
 
   useEffect(() => {
     const key = normalizeWorkflowStorageKey(
@@ -346,6 +558,44 @@ export function MyChat() {
     });
   }, [mode, workflowSelection]);
 
+  useEffect(() => {
+    const instanceId = buildChatInstanceId(mode, workflowSelection);
+    const persistence = resolvePersistenceSlug(mode, workflowSelection);
+    setChatInstances((current) => {
+      const existing = current[instanceId];
+      const storedThreadId =
+        existing?.initialThreadId ?? loadStoredThreadId(sessionOwner, persistence);
+      const threadStatus = existing?.threadStatus ?? null;
+      const chatInstanceKey = existing?.chatInstanceKey ?? 0;
+      const hasActiveThread = computeHasActiveThread(storedThreadId, threadStatus);
+
+      const nextEntry: ChatInstanceEntry = {
+        selection: workflowSelection,
+        mode,
+        chatInstanceKey,
+        initialThreadId: storedThreadId,
+        threadStatus,
+        hasActiveThread,
+        persistenceSlug: persistence,
+      };
+
+      if (
+        existing &&
+        existing.selection === workflowSelection &&
+        existing.mode === mode &&
+        existing.chatInstanceKey === nextEntry.chatInstanceKey &&
+        existing.initialThreadId === nextEntry.initialThreadId &&
+        existing.threadStatus === nextEntry.threadStatus &&
+        existing.hasActiveThread === nextEntry.hasActiveThread &&
+        existing.persistenceSlug === persistence
+      ) {
+        return current;
+      }
+
+      return { ...current, [instanceId]: nextEntry };
+    });
+  }, [mode, sessionOwner, workflowSelection]);
+
   const { getClientSecret, isLoading, error, reportError, resetError } = useChatkitSession({
     sessionOwner,
     storageKey: sessionStorageKey,
@@ -356,7 +606,7 @@ export function MyChat() {
   });
 
   const { stopVoiceSession, status: voiceStatus, isListening: voiceIsListening } = useWorkflowVoiceSession({
-    threadId: initialThreadId,
+    threadId: activeInstance?.initialThreadId ?? null,
     onError: reportError,
     onTranscriptsUpdated: () => {
       requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
@@ -428,16 +678,44 @@ export function MyChat() {
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
     if (previousOwner && previousOwner !== sessionOwner) {
-      clearStoredChatKitSecret(buildSessionStorageKey(previousOwner, "hosted"));
-      clearStoredThreadId(previousOwner, "hosted");
-      clearStoredChatKitSecret(buildSessionStorageKey(previousOwner, persistenceSlug));
-      clearStoredThreadId(previousOwner, persistenceSlug);
+      Object.values(chatInstancesRef.current).forEach((entry) => {
+        clearStoredChatKitSecret(
+          buildSessionStorageKey(previousOwner, entry.persistenceSlug),
+        );
+        clearStoredThreadId(previousOwner, entry.persistenceSlug);
+      });
     }
     previousSessionOwnerRef.current = sessionOwner;
 
-    const storedThreadId = loadStoredThreadId(sessionOwner, persistenceSlug);
-    setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
-  }, [persistenceSlug, sessionOwner]);
+    setChatInstances((current) => {
+      let changed = false;
+      const nextEntries: ChatInstancesState = {};
+
+      for (const [instanceId, entry] of Object.entries(current)) {
+        const storedThreadId = loadStoredThreadId(sessionOwner, entry.persistenceSlug);
+        const nextHasActiveThread = computeHasActiveThread(
+          storedThreadId,
+          entry.threadStatus,
+        );
+        const nextEntry: ChatInstanceEntry = {
+          ...entry,
+          initialThreadId: storedThreadId,
+          hasActiveThread: nextHasActiveThread,
+        };
+
+        if (
+          nextEntry.initialThreadId !== entry.initialThreadId ||
+          nextEntry.hasActiveThread !== entry.hasActiveThread
+        ) {
+          changed = true;
+        }
+
+        nextEntries[instanceId] = nextEntry;
+      }
+
+      return changed ? nextEntries : current;
+    });
+  }, [sessionOwner]);
 
   const { apiConfig, attachmentsEnabled, debugSnapshot } = useChatApiConfig({
     token,
@@ -452,7 +730,7 @@ export function MyChat() {
     console.info("[ChatKit] Configuration résolue pour le widget", debugSnapshot);
   }, [debugSignature, debugSnapshot]);
 
-  const attachmentsConfig = useMemo(
+  const attachmentsConfig = useMemo<AttachmentsConfig>(
     () =>
       attachmentsEnabled
         ? {
@@ -476,200 +754,6 @@ export function MyChat() {
       : "Posez votre question...";
   }, [appearanceSettings.start_screen_placeholder]);
 
-  const chatkitOptions = useMemo(
-    () => {
-      const colorScheme = resolveThemeColorScheme(
-        appearanceSettings,
-        preferredColorScheme,
-      );
-      const surfacePalette = buildSurfacePalette(appearanceSettings);
-      const surface = resolveSurfaceColors(surfacePalette, colorScheme);
-      const greeting = normalizeText(appearanceSettings.start_screen_greeting);
-      const prompts = parseStartScreenPrompts(
-        appearanceSettings.start_screen_prompt,
-      );
-      const disclaimerText = normalizeText(
-        appearanceSettings.start_screen_disclaimer,
-      );
-
-      // Detect LTI context
-      const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
-      // Apply LTI options only in LTI context
-      const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
-
-      return {
-        api: apiConfig,
-        initialThread: initialThreadId,
-        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header ? {
-          header: { enabled: false },
-        } : {
-          header: {
-            leftAction: {
-              icon: "menu",
-              onClick: openSidebar,
-            },
-          },
-        }),
-        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history ? {
-          history: { enabled: false },
-        } : {}),
-        theme: {
-          colorScheme,
-          radius: "pill",
-          density: "normal",
-          color: {
-            accent: {
-              primary: appearanceSettings.accent_color,
-              level: 1,
-            },
-            surface: {
-              background: surface.background,
-              foreground: surface.foreground,
-            },
-          },
-          typography: {
-            baseSize: 16,
-            fontFamily: appearanceSettings.body_font,
-            fontFamilyMono:
-              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
-          },
-        },
-        startScreen:
-          greeting || prompts.length > 0
-            ? {
-                ...(greeting ? { greeting } : {}),
-                ...(prompts.length > 0 ? { prompts } : {}),
-              }
-            : undefined,
-        disclaimer: disclaimerText ? { text: disclaimerText } : undefined,
-        composer: {
-          placeholder: composerPlaceholder,
-          attachments: attachmentsConfig,
-        },
-        onClientTool: async (toolCall) => {
-          const { name, params } = toolCall as ClientToolCall;
-
-          switch (name) {
-            case "get_weather": {
-              const city = params?.city?.trim();
-              const country = params?.country?.trim();
-
-              if (!city) {
-                throw new Error("Le paramètre 'city' est requis pour l'outil météo.");
-              }
-
-              const searchParams = new URLSearchParams({ city });
-              if (country) {
-                searchParams.set("country", country);
-              }
-
-              const response = await fetch(`/api/tools/weather?${searchParams.toString()}`);
-              if (!response.ok) {
-                const details = await response.text();
-                throw new Error(
-                  `Échec de l'appel météo (${response.status}) : ${details || "réponse vide"}`,
-                );
-              }
-
-              return response.json();
-            }
-            default:
-              throw new Error(`Outil client non pris en charge : ${name}`);
-          }
-        },
-        onError: ({ error }: { error: Error }) => {
-          console.groupCollapsed("[ChatKit] onError");
-          console.error("error:", error);
-          if (lastThreadSnapshotRef.current) {
-            console.log("thread snapshot:", lastThreadSnapshotRef.current);
-          }
-          console.groupEnd();
-          reportError(error.message, error);
-        },
-        onResponseStart: () => {
-          resetError();
-        },
-        onResponseEnd: () => {
-          console.debug("[ChatKit] response end");
-          requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
-        },
-        onThreadChange: ({ threadId }: { threadId: string | null }) => {
-          console.debug("[ChatKit] thread change", { threadId });
-          persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
-          setInitialThreadId((current) => (current === threadId ? current : threadId));
-        },
-        onThreadLoadStart: ({ threadId }: { threadId: string }) => {
-          console.debug("[ChatKit] thread load start", { threadId });
-        },
-        onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
-          console.debug("[ChatKit] thread load end", { threadId });
-        },
-        onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
-          // Debug: Log every onLog call
-          console.log('[MyChat] onLog called:', entry.name, {
-            hasData: !!entry.data,
-            dataKeys: entry.data ? Object.keys(entry.data) : [],
-          });
-
-          if (entry?.data && typeof entry.data === "object") {
-            const data = entry.data as Record<string, unknown>;
-            if ("thread" in data && data.thread) {
-              const thread = data.thread as Record<string, unknown>;
-              lastThreadSnapshotRef.current = thread;
-              // Update state to trigger re-render and useOutboundCallDetector
-              setCurrentThread(thread);
-
-              // Debug: Log thread structure
-              console.log('[MyChat] Thread updated:', {
-                keys: Object.keys(thread),
-                hasItems: 'items' in thread,
-                hasMessages: 'messages' in thread,
-                itemsLength: Array.isArray(thread.items) ? thread.items.length : 'N/A',
-                messagesLength: Array.isArray(thread.messages) ? thread.messages.length : 'N/A',
-                firstItem: Array.isArray(thread.items) && thread.items.length > 0 ? thread.items[0] : null,
-              });
-            }
-          }
-          console.debug("[ChatKit] log", entry.name, entry.data ?? {});
-        },
-      } satisfies ChatKitOptions;
-    },
-    [
-      appearanceSettings,
-      apiConfig,
-      attachmentsConfig,
-      composerPlaceholder,
-      initialThreadId,
-      openSidebar,
-      preferredColorScheme,
-      sessionOwner,
-      activeWorkflow?.id,
-      activeWorkflow?.lti_enabled,
-      activeWorkflow?.lti_show_sidebar,
-      activeWorkflow?.lti_show_header,
-      activeWorkflow?.lti_enable_history,
-      activeWorkflowSlug,
-      persistenceSlug,
-      reportError,
-      user?.email,
-    ],
-  );
-
-  const { control, requestRefresh } = useWorkflowChatSession({
-    chatkitOptions,
-    token,
-    activeWorkflow,
-    initialThreadId,
-    reportError,
-    mode,
-  });
-
-  useEffect(() => {
-    requestRefreshRef.current = requestRefresh;
-    return () => {
-      requestRefreshRef.current = null;
-    };
-  }, [requestRefresh]);
 
   const voiceStatusMessage = voiceStatus === "connected"
     ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`
@@ -698,10 +782,28 @@ export function MyChat() {
         setMode={setMode}
         onWorkflowActivated={handleWorkflowActivated}
       />
-      <ChatKitHost
-        control={control}
-        chatInstanceKey={chatInstanceKey}
-      />
+      {Object.entries(chatInstances).map(([instanceId, entry]) => (
+        <WorkflowChatInstance
+          key={instanceId}
+          instanceId={instanceId}
+          entry={entry}
+          apiConfig={apiConfig}
+          attachmentsConfig={attachmentsConfig}
+          appearanceSettings={appearanceSettings}
+          composerPlaceholder={composerPlaceholder}
+          preferredColorScheme={preferredColorScheme}
+          token={token}
+          openSidebar={openSidebar}
+          userEmail={user?.email}
+          reportError={reportError}
+          resetError={resetError}
+          onThreadChange={handleInstanceThreadChange}
+          onThreadStatusUpdate={handleInstanceThreadStatusUpdate}
+          onRequestRefreshChange={handleRequestRefreshChange}
+          onTriggerRefresh={triggerRequestRefresh}
+          isActive={instanceId === activeInstanceId}
+        />
+      ))}
       {voiceStatusMessage && (
         <div style={{
           position: "fixed",
@@ -761,3 +863,281 @@ export function MyChat() {
     </>
   );
 }
+
+type WorkflowChatInstanceProps = {
+  instanceId: string;
+  entry: ChatInstanceEntry;
+  apiConfig: ChatKitOptions["api"];
+  attachmentsConfig: AttachmentsConfig;
+  appearanceSettings: AppearanceSettings;
+  composerPlaceholder: string;
+  preferredColorScheme: ResolvedColorScheme;
+  token: string | null;
+  openSidebar: () => void;
+  userEmail: string | undefined;
+  reportError: (message: string, detail?: unknown) => void;
+  resetError: () => void;
+  onThreadChange: (
+    instanceId: string,
+    persistenceSlug: string | null,
+    threadId: string | null,
+  ) => void;
+  onThreadStatusUpdate: (
+    instanceId: string,
+    persistenceSlug: string | null,
+    status: string | null,
+    threadId?: string | null,
+  ) => void;
+  onRequestRefreshChange: (
+    instanceId: string,
+    requestRefresh: ((context?: string) => Promise<void> | undefined) | null,
+  ) => void;
+  onTriggerRefresh: (context?: string) => void;
+  isActive: boolean;
+};
+
+const WorkflowChatInstance = ({
+  instanceId,
+  entry,
+  apiConfig,
+  attachmentsConfig,
+  appearanceSettings,
+  composerPlaceholder,
+  preferredColorScheme,
+  token,
+  openSidebar,
+  userEmail,
+  reportError,
+  resetError,
+  onThreadChange,
+  onThreadStatusUpdate,
+  onRequestRefreshChange,
+  onTriggerRefresh,
+  isActive,
+}: WorkflowChatInstanceProps) => {
+  const { selection, mode, chatInstanceKey, initialThreadId, persistenceSlug } = entry;
+  const activeWorkflow =
+    selection.kind === "local" ? selection.workflow : null;
+  const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+
+  const chatkitOptions = useMemo(() => {
+    const colorScheme = resolveThemeColorScheme(
+      appearanceSettings,
+      preferredColorScheme,
+    );
+    const surfacePalette = buildSurfacePalette(appearanceSettings);
+    const surface = resolveSurfaceColors(surfacePalette, colorScheme);
+    const greeting = normalizeText(appearanceSettings.start_screen_greeting);
+    const prompts = parseStartScreenPrompts(
+      appearanceSettings.start_screen_prompt,
+    );
+    const disclaimerText = normalizeText(
+      appearanceSettings.start_screen_disclaimer,
+    );
+
+    const isLtiContext = userEmail?.endsWith("@lti.local") ?? false;
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
+
+    return {
+      api: apiConfig,
+      initialThread: initialThreadId,
+      ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header
+        ? { header: { enabled: false } }
+        : {
+            header: {
+              leftAction: {
+                icon: "menu",
+                onClick: openSidebar,
+              },
+            },
+          }),
+      ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history
+        ? { history: { enabled: false } }
+        : {}),
+      theme: {
+        colorScheme,
+        radius: "pill",
+        density: "normal",
+        color: {
+          accent: {
+            primary: appearanceSettings.accent_color,
+            level: 1,
+          },
+          surface: {
+            background: surface.background,
+            foreground: surface.foreground,
+          },
+        },
+        typography: {
+          baseSize: 16,
+          fontFamily: appearanceSettings.body_font,
+          fontFamilyMono:
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
+        },
+      },
+      startScreen:
+        greeting || prompts.length > 0
+          ? {
+              ...(greeting ? { greeting } : {}),
+              ...(prompts.length > 0 ? { prompts } : {}),
+            }
+          : undefined,
+      disclaimer: disclaimerText ? { text: disclaimerText } : undefined,
+      composer: {
+        placeholder: composerPlaceholder,
+        attachments: attachmentsConfig,
+      },
+      onClientTool: async (toolCall) => {
+        const { name, params } = toolCall as ClientToolCall;
+
+        switch (name) {
+          case "get_weather": {
+            const city = params?.city?.trim();
+            const country = params?.country?.trim();
+
+            if (!city) {
+              throw new Error(
+                "Le paramètre 'city' est requis pour l'outil météo.",
+              );
+            }
+
+            const searchParams = new URLSearchParams({ city });
+            if (country) {
+              searchParams.set("country", country);
+            }
+
+            const response = await fetch(
+              `/api/tools/weather?${searchParams.toString()}`,
+            );
+            if (!response.ok) {
+              const details = await response.text();
+              throw new Error(
+                `Échec de l'appel météo (${response.status}) : ${
+                  details || "réponse vide"
+                }`,
+              );
+            }
+
+            return response.json();
+          }
+          default:
+            throw new Error(`Outil client non pris en charge : ${name}`);
+        }
+      },
+      onError: ({ error }: { error: Error }) => {
+        console.groupCollapsed("[ChatKit] onError");
+        console.error("error:", error);
+        if (lastThreadSnapshotRef.current) {
+          console.log("thread snapshot:", lastThreadSnapshotRef.current);
+        }
+        console.groupEnd();
+        reportError(error.message, error);
+      },
+      onResponseStart: () => {
+        resetError();
+      },
+      onResponseEnd: () => {
+        console.debug("[ChatKit] response end");
+        onTriggerRefresh("[ChatKit] Échec de la synchronisation après la réponse");
+      },
+      onThreadChange: ({ threadId }: { threadId: string | null }) => {
+        console.debug("[ChatKit] thread change", { threadId, instanceId });
+        onThreadChange(instanceId, persistenceSlug, threadId);
+      },
+      onThreadLoadStart: ({ threadId }: { threadId: string }) => {
+        console.debug("[ChatKit] thread load start", { threadId, instanceId });
+      },
+      onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
+        console.debug("[ChatKit] thread load end", { threadId, instanceId });
+      },
+      onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
+        console.log('[MyChat] onLog called:', entry.name, {
+          hasData: !!entry.data,
+          dataKeys: entry.data ? Object.keys(entry.data) : [],
+        });
+
+        if (entry?.data && typeof entry.data === "object") {
+          const data = entry.data as Record<string, unknown>;
+          if ("thread" in data && data.thread) {
+            const thread = data.thread as Record<string, unknown>;
+            lastThreadSnapshotRef.current = thread;
+
+            const status = typeof thread.status === "string" ? thread.status : null;
+            const threadId =
+              typeof (thread as { id?: unknown }).id === "string"
+                ? (thread as { id: string }).id
+                : typeof (thread as { thread_id?: unknown }).thread_id === "string"
+                ? (thread as { thread_id: string }).thread_id
+                : null;
+
+            console.log('[MyChat] Thread updated:', {
+              keys: Object.keys(thread),
+              hasItems: 'items' in thread,
+              hasMessages: 'messages' in thread,
+              itemsLength: Array.isArray((thread as { items?: unknown }).items)
+                ? ((thread as { items?: unknown[] }).items ?? []).length
+                : 'N/A',
+              messagesLength: Array.isArray((thread as { messages?: unknown }).messages)
+                ? ((thread as { messages?: unknown[] }).messages ?? []).length
+                : 'N/A',
+              firstItem:
+                Array.isArray((thread as { items?: unknown[] }).items) &&
+                ((thread as { items?: unknown[] }).items ?? []).length > 0
+                  ? ((thread as { items?: unknown[] }).items ?? [])[0]
+                  : null,
+            });
+
+            onThreadStatusUpdate(instanceId, persistenceSlug, status, threadId);
+          }
+        }
+
+        console.debug("[ChatKit] log", entry.name, entry.data ?? {});
+      },
+    } satisfies ChatKitOptions;
+  }, [
+    activeWorkflow?.lti_enable_history,
+    activeWorkflow?.lti_enabled,
+    activeWorkflow?.lti_show_header,
+    appearanceSettings,
+    apiConfig,
+    attachmentsConfig,
+    composerPlaceholder,
+    instanceId,
+    initialThreadId,
+    onThreadChange,
+    onThreadStatusUpdate,
+    onTriggerRefresh,
+    openSidebar,
+    persistenceSlug,
+    preferredColorScheme,
+    reportError,
+    resetError,
+    selection,
+    userEmail,
+  ]);
+
+  const { control, requestRefresh } = useWorkflowChatSession({
+    chatkitOptions,
+    token,
+    activeWorkflow,
+    initialThreadId,
+    reportError,
+    mode,
+  });
+
+  useEffect(() => {
+    onRequestRefreshChange(instanceId, isActive ? requestRefresh : null);
+    return () => {
+      onRequestRefreshChange(instanceId, null);
+    };
+  }, [instanceId, isActive, onRequestRefreshChange, requestRefresh]);
+
+  return (
+    <ChatKitHost
+      control={control}
+      chatInstanceKey={chatInstanceKey}
+      instanceId={instanceId}
+      style={isActive ? undefined : { display: "none" }}
+    />
+  );
+};
