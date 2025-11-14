@@ -164,10 +164,18 @@ def _normalize_conversation_history_for_provider(
         copied_item = copy.deepcopy(item)
         item_changed = False
 
+        role = copied_item.get("role")
+        item_type = copied_item.get("type")
+        expects_message_id = isinstance(role, str) or item_type == "message"
+
         response_id = copied_item.get("id")
-        if response_id is not None and (
-            not isinstance(response_id, str) or not response_id.startswith("msg")
-        ):
+        if expects_message_id:
+            if not (
+                isinstance(response_id, str) and response_id.startswith("msg_")
+            ):
+                copied_item["id"] = _generate_conversation_history_message_id()
+                item_changed = True
+        elif response_id is not None and not isinstance(response_id, str):
             copied_item.pop("id", None)
             item_changed = True
 
