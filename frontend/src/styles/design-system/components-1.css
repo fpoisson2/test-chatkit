@@ -57,6 +57,7 @@
     --button-border-color: var(--accent-color-primary);
   }
 
+  /* Secondary = bouton gris "fort" avec fond visible */
   .btn-secondary {
     --button-bg: var(--color-surface-elevated);
     --button-bg-hover: var(--color-surface-elevated-secondary);
@@ -65,20 +66,22 @@
     --button-border-color-hover: var(--color-border-strong);
   }
 
+  /* Outline = vrai bouton borduré, bordure plus marquée */
   .btn-outline {
     --button-bg: transparent;
-    --button-bg-hover: var(--alpha-04);
+    --button-bg-hover: var(--alpha-05);
     --button-color: var(--color-text);
-    --button-border-color: var(--color-border);
+    --button-border-color: var(--color-border-strong);
     --button-border-color-hover: var(--color-border-strong);
   }
 
+  /* Ghost = presque juste du texte, bordure invisible */
   .btn-ghost {
     --button-bg: transparent;
-    --button-bg-hover: var(--alpha-06);
+    --button-bg-hover: var(--alpha-05);
     --button-color: var(--color-text);
-    --button-border-color: var(--color-border-subtle);
-    --button-border-color-hover: var(--color-border);
+    --button-border-color: transparent;
+    --button-border-color-hover: transparent;
   }
 
   .btn-danger {
@@ -88,9 +91,10 @@
     --button-border-color: var(--danger-color);
   }
 
+  /* Subtle = bouton de fond discret mais clairement visible */
   .btn-subtle {
-    --button-bg: var(--alpha-04);
-    --button-bg-hover: var(--alpha-08);
+    --button-bg: var(--alpha-06);
+    --button-bg-hover: var(--alpha-10);
     --button-color: var(--color-text);
     --button-border-color: var(--color-border);
   }
