@@ -150,12 +150,20 @@ async def test_lti_ags_client_creates_line_item_and_publishes_score():
                 201,
                 json={"id": "https://platform.example/lineitems/score-1"},
             )
+        if request.method == "GET" and request.url.path == "/lineitems/score-1":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "https://platform.example/lineitems/score-1",
+                    "scoreMaximum": 25.0,
+                },
+            )
         if request.method == "POST" and request.url.path == "/lineitems/score-1/scores":
             payload = json.loads(request.content.decode())
             assert payload["userId"] == "platform-user"
             assert payload["scoreGiven"] == 18.0
-            assert payload["scoreMaximum"] == 20.0
-            assert payload["comment"] == "Bravo"
+            assert payload["scoreMaximum"] == 25.0
+            assert "comment" not in payload
             return httpx.Response(200)
         return httpx.Response(404)
 
@@ -211,6 +219,7 @@ async def test_lti_ags_client_creates_line_item_and_publishes_score():
         ("GET", "/lineitems"),
         ("POST", "/lineitems"),
         ("POST", "/token"),
+        ("GET", "/lineitems/score-1"),
         ("POST", "/lineitems/score-1/scores"),
     ]
 
@@ -234,6 +243,14 @@ async def test_publish_score_preserves_query_string_for_line_item():
                 200,
                 json={"access_token": "token", "token_type": "Bearer"},
             )
+        if request.method == "GET" and request.url.path == "/lineitems/score-99":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "https://platform.example/lineitems/score-99",
+                    "scoreMaximum": 30.0,
+                },
+            )
         if (
             request.method == "POST"
             and request.url.path == "/lineitems/score-99/scores"
@@ -246,6 +263,8 @@ async def test_publish_score_preserves_query_string_for_line_item():
             payload = json.loads(request.content.decode())
             assert payload["userId"] == "platform-user"
             assert payload["scoreGiven"] == 12.5
+            assert payload["scoreMaximum"] == 30.0
+            assert "comment" not in payload
             return httpx.Response(200)
         return httpx.Response(404)
 
@@ -288,6 +307,7 @@ async def test_publish_score_preserves_query_string_for_line_item():
 
     assert captured == [
         ("POST", "/token", ""),
+        ("GET", "/lineitems/score-99", ""),
         ("POST", "/lineitems/score-99/scores", "type_id=6"),
     ]
 

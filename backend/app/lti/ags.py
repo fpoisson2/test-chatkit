@@ -124,7 +124,7 @@ class LTIAGSClient(AGSClientProtocol):
         score: float,
         max_score: float | None,
         comment: str | None,
-    ) -> None:
+    ) -> None:  # noqa: ARG002 - Moodle rejects comments in score payloads
         if context is None:
             return
 
@@ -156,11 +156,22 @@ class LTIAGSClient(AGSClientProtocol):
             logger.debug("LTI AGS: aucun user_id plateforme, impossible de publier")
             return
 
+        fetched_score_maximum: float | None = None
+        if _LINEITEM_SCOPE in scopes or _LINEITEM_READONLY_SCOPE in scopes:
+            fetched = await self._get_line_item_details(target, token)
+            if fetched is not None:
+                fetched_score_maximum = self._coerce_score(
+                    fetched.get("scoreMaximum"),
+                    fallback=None,
+                )
+
         score_maximum = self._coerce_score(
             max_score,
             fallback=context.ags_default_score_maximum,
             secondary=score,
         )
+        if fetched_score_maximum is not None:
+            score_maximum = fetched_score_maximum
 
         payload: dict[str, Any] = {
             "userId": user_id,
@@ -171,8 +182,7 @@ class LTIAGSClient(AGSClientProtocol):
         }
         if score_maximum is not None:
             payload["scoreMaximum"] = score_maximum
-        if comment:
-            payload["comment"] = comment
+        # Comments are not accepted by some Moodle instances when publishing scores.
 
         scores_endpoint = self._build_scores_endpoint(target)
         headers = {
@@ -351,6 +361,33 @@ class LTIAGSClient(AGSClientProtocol):
             first = payload[0]
             if isinstance(first, Mapping):
                 return first
+        return None
+
+    async def _get_line_item_details(
+        self,
+        line_item_url: str,
+        token: str,
+    ) -> Mapping[str, Any] | None:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.ims.lis.v2.lineitem+json",
+        }
+
+        try:
+            async with self._http_client_factory() as client:
+                response = await client.get(line_item_url, headers=headers)
+                response.raise_for_status()
+                payload = response.json()
+        except httpx.HTTPError as exc:
+            logger.debug(
+                "LTI AGS: impossible de récupérer le line item %s",
+                line_item_url,
+                exc_info=exc,
+            )
+            return None
+
+        if isinstance(payload, Mapping):
+            return payload
         return None
 
     async def _update_line_item_if_needed(
