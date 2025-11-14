@@ -1055,6 +1055,19 @@
   margin-right: calc(var(--spacing) * 2);
 }
 
+/* Fix button text contrast on mobile dark mode */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-button {
+  color: var(--gray-25);
+  border-color: color-mix(in srgb, var(--gray-25) 35%, transparent);
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-button:hover,
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-button:focus-visible {
+  color: var(--gray-25);
+  background: color-mix(in srgb, var(--gray-25) 12%, transparent);
+  border-color: color-mix(in srgb, var(--gray-25) 50%, transparent);
+}
+
 /* Mobile sidebar footer styles */
 .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer {
   color: var(--gray-25);
