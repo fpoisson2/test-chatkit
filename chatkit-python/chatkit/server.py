@@ -1,7 +1,9 @@
 import asyncio
 from abc import ABC, abstractmethod
+from collections import deque
 from collections.abc import AsyncIterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import (
     Any,
@@ -25,7 +27,14 @@ from typing_extensions import TypeVar
 from chatkit.errors import CustomStreamError, StreamError
 
 from .logger import logger
-from .store import AttachmentStore, NotFoundError, Store, StoreItemType, default_generate_id
+from .store import (
+    AttachmentStore,
+    NotFoundError,
+    Store,
+    StoreItemType,
+    default_generate_id,
+)
+from .thread_item_updates import apply_thread_item_update
 from .types import (
     Action,
     AttachmentsCreateReq,
@@ -109,16 +118,18 @@ def diff_widget(
                     return True
             return False
 
-        for field in before.model_fields_set.union(after.model_fields_set):
+        for model_field in before.model_fields_set.union(after.model_fields_set):
             if (
                 isinstance(before, (Markdown, Text))
                 and isinstance(after, (Markdown, Text))
-                and field == "value"
+                and model_field == "value"
                 and after.value.startswith(before.value)
             ):
                 # Appends to the value prop of Markdown or Text do not trigger a full replace
                 continue
-            if full_replace_value(getattr(before, field), getattr(after, field)):
+            if full_replace_value(
+                getattr(before, model_field), getattr(after, model_field)
+            ):
                 return True
 
         return False
@@ -254,6 +265,14 @@ class NonStreamingResult:
 TContext = TypeVar("TContext", default=Any)
 
 
+@dataclass
+class _PendingStreamState:
+    events: deque[ThreadStreamEvent] = field(default_factory=deque)
+    condition: asyncio.Condition = field(default_factory=asyncio.Condition)
+    done: bool = False
+    consumers: int = 0
+
+
 class ChatKitServer(ABC, Generic[TContext]):
     def __init__(
         self,
@@ -262,6 +281,20 @@ class ChatKitServer(ABC, Generic[TContext]):
     ):
         self.store = store
         self.attachment_store = attachment_store
+        self._pending_streams: dict[str, _PendingStreamState] = {}
+        self._pending_events_lock = asyncio.Lock()
+
+    def _context_for_thread(
+        self, thread: ThreadMetadata, context: TContext
+    ) -> TContext:
+        """Return the context that should be used for store operations on a thread.
+
+        Sub-classes can override this hook to adjust the context with thread-specific
+        metadata (for example, to persist workflow identifiers even if the global
+        selection changes while streaming continues in the background).
+        """
+
+        return context
 
     def _get_attachment_store(self) -> AttachmentStore[TContext]:
         """Return the configured AttachmentStore or raise if missing."""
@@ -430,13 +463,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                     context=context,
                 )
                 yield ThreadCreatedEvent(thread=self._to_thread_response(thread))
+                thread_context = self._context_for_thread(thread, context)
                 user_message = await self._build_user_message_item(
-                    request.params.input, thread, context
+                    request.params.input, thread, thread_context
                 )
                 async for event in self._process_new_thread_item_respond(
                     thread,
                     user_message,
-                    context,
+                    thread_context,
                 ):
                     yield event
 
@@ -444,6 +478,7 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                thread_context = self._context_for_thread(thread, context)
                 if isinstance(thread.status, (ClosedStatus, LockedStatus)):
                     status = thread.status
                     reason = (status.reason or "").strip()
@@ -463,12 +498,12 @@ class ChatKitServer(ABC, Generic[TContext]):
                     )
                     return
                 user_message = await self._build_user_message_item(
-                    request.params.input, thread, context
+                    request.params.input, thread, thread_context
                 )
                 async for event in self._process_new_thread_item_respond(
                     thread,
                     user_message,
-                    context,
+                    thread_context,
                 ):
                     yield event
 
@@ -476,8 +511,9 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                thread_context = self._context_for_thread(thread, context)
                 items = await self.store.load_thread_items(
-                    thread.id, None, 1, "desc", context
+                    thread.id, None, 1, "desc", thread_context
                 )
                 tool_call = next(
                     (
@@ -496,18 +532,22 @@ class ChatKitServer(ABC, Generic[TContext]):
                 tool_call.output = request.params.result
                 tool_call.status = "completed"
 
-                await self.store.save_item(thread.id, tool_call, context=context)
+                await self.store.save_item(
+                    thread.id, tool_call, context=thread_context
+                )
 
                 # Safety against dangling pending tool calls if there are
                 # multiple in a row, which should be impossible, and
                 # integrations should ultimately filter out pending tool calls
                 # when creating input response messages.
-                await self._cleanup_pending_client_tool_call(thread, context)
+                await self._cleanup_pending_client_tool_call(
+                    thread, thread_context
+                )
 
                 async for event in self._process_events(
                     thread,
-                    context,
-                    lambda: self.respond(thread, None, context),
+                    thread_context,
+                    lambda: self.respond(thread, None, thread_context),
                 ):
                     yield event
 
@@ -515,13 +555,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread_metadata = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                thread_context = self._context_for_thread(thread_metadata, context)
 
                 # Collect items to remove (all items after the user message)
                 items_to_remove: list[ThreadItem] = []
                 user_message_item = None
 
                 async for item in self._paginate_thread_items_reverse(
-                    request.params.thread_id, context
+                    request.params.thread_id, thread_context
                 ):
                     if item.id == request.params.item_id:
                         if not isinstance(item, UserMessageItem):
@@ -536,14 +577,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                     for item in items_to_remove:
                         await self.store.delete_thread_item(
                             request.params.thread_id, item.id, context=context
-                        )
+                    )
                     async for event in self._process_events(
                         thread_metadata,
-                        context,
+                        thread_context,
                         lambda: self.respond(
                             thread_metadata,
                             user_message_item,
-                            context,
+                            thread_context,
                         ),
                     ):
                         yield event
@@ -551,13 +592,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread_metadata = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                thread_context = self._context_for_thread(thread_metadata, context)
 
                 item: ThreadItem | None = None
                 if request.params.item_id:
                     item = await self.store.load_item(
                         request.params.thread_id,
                         request.params.item_id,
-                        context=context,
+                        context=thread_context,
                     )
 
                 if item and not isinstance(item, WidgetItem):
@@ -570,12 +612,12 @@ class ChatKitServer(ABC, Generic[TContext]):
 
                 async for event in self._process_events(
                     thread_metadata,
-                    context,
+                    thread_context,
                     lambda: self.action(
                         thread_metadata,
                         request.params.action,
                         item,
-                        context,
+                        thread_context,
                     ),
                 ):
                     yield event
@@ -586,6 +628,7 @@ class ChatKitServer(ABC, Generic[TContext]):
     async def _cleanup_pending_client_tool_call(
         self, thread: ThreadMetadata, context: TContext
     ) -> None:
+        context = self._context_for_thread(thread, context)
         items = await self.store.load_thread_items(
             thread.id, None, DEFAULT_PAGE_SIZE, "desc", context
         )
@@ -606,6 +649,7 @@ class ChatKitServer(ABC, Generic[TContext]):
         item: UserMessageItem,
         context: TContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        context = self._context_for_thread(thread, context)
         await self.store.add_thread_item(thread.id, item, context=context)
         await self._cleanup_pending_client_tool_call(thread, context)
         yield ThreadItemDoneEvent(item=item)
@@ -622,54 +666,199 @@ class ChatKitServer(ABC, Generic[TContext]):
         thread: ThreadMetadata,
         context: TContext,
         stream: Callable[[], AsyncIterator[ThreadStreamEvent]],
+        *,
+        capture_only: bool = False,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        context = self._context_for_thread(thread, context)
         await asyncio.sleep(0)  # allow the response to start streaming
 
         last_thread = thread.model_copy(deep=True)
+        id_map: dict[str, str] = {}
+
+        pending_state: _PendingStreamState | None = None
+
+        async def _ensure_pending_state() -> _PendingStreamState:
+            nonlocal pending_state
+            if pending_state is not None:
+                return pending_state
+            async with self._pending_events_lock:
+                state = self._pending_streams.get(thread.id)
+                if state is None:
+                    state = _PendingStreamState()
+                    self._pending_streams[thread.id] = state
+            pending_state = state
+            return state
+
+        async def _queue_pending_event(event: ThreadStreamEvent) -> None:
+            state = await _ensure_pending_state()
+            async with state.condition:
+                state.events.append(event)
+                state.condition.notify_all()
+
+        async def _stream_pending_events(state: _PendingStreamState) -> AsyncIterator[ThreadStreamEvent]:
+            async with state.condition:
+                state.consumers += 1
+            try:
+                while True:
+                    async with state.condition:
+                        while not state.events and not state.done:
+                            await state.condition.wait()
+                        if not state.events:
+                            break
+                        event = state.events.popleft()
+                    yield event
+            finally:
+                async with state.condition:
+                    state.consumers -= 1
+                    should_cleanup = (
+                        state.done
+                        and not state.events
+                        and state.consumers == 0
+                    )
+                if should_cleanup:
+                    async with self._pending_events_lock:
+                        current = self._pending_streams.get(thread.id)
+                        if current is state:
+                            self._pending_streams.pop(thread.id, None)
+
+        if not capture_only:
+            async with self._pending_events_lock:
+                existing_state = self._pending_streams.get(thread.id)
+            if existing_state is not None:
+                async for pending_event in _stream_pending_events(existing_state):
+                    yield pending_event
+                return
+
+        if capture_only:
+            state = await _ensure_pending_state()
+            async with state.condition:
+                state.done = False
+
+        def resolve_store_item_type(item: ThreadItem) -> StoreItemType:
+            if item.type in ("user_message", "assistant_message"):
+                return "message"
+            if item.type == "client_tool_call":
+                return "tool_call"
+            if item.type == "workflow":
+                return "workflow"
+            if item.type == "task":
+                return "task"
+            return "message"
+
+        def ensure_item_id(item: ThreadItem) -> ThreadItem:
+            original_id = item.id
+            mapped_id = id_map.get(original_id)
+            if mapped_id:
+                if mapped_id == original_id:
+                    return item
+                return item.model_copy(update={"id": mapped_id})
+            if original_id.startswith("__"):
+                item_type = resolve_store_item_type(item)
+                new_id = self.store.generate_item_id(item_type, thread, context)
+                id_map[original_id] = new_id
+                logger.debug(
+                    "Replaced temporary ID %s with %s (type=%s)",
+                    original_id,
+                    new_id,
+                    item_type,
+                )
+                return item.model_copy(update={"id": new_id})
+            return item
+
+        def map_event_ids(event: ThreadStreamEvent) -> ThreadStreamEvent:
+            match event:
+                case ThreadItemAddedEvent():
+                    item = ensure_item_id(event.item)
+                    if item is not event.item:
+                        return event.model_copy(update={"item": item})
+                case ThreadItemDoneEvent():
+                    item = ensure_item_id(event.item)
+                    if item is not event.item:
+                        return event.model_copy(update={"item": item})
+                case ThreadItemReplacedEvent():
+                    item = ensure_item_id(event.item)
+                    if item is not event.item:
+                        return event.model_copy(update={"item": item})
+                case ThreadItemUpdated():
+                    mapped = id_map.get(event.item_id)
+                    if mapped and mapped != event.item_id:
+                        return event.model_copy(update={"item_id": mapped})
+                case ThreadItemRemovedEvent():
+                    mapped = id_map.get(event.item_id)
+                    if mapped and mapped != event.item_id:
+                        return event.model_copy(update={"item_id": mapped})
+            return event
 
         try:
             with agents_sdk_user_agent_override():
                 async for event in stream():
+                    event = map_event_ids(event)
                     match event:
-                        case ThreadItemDoneEvent():
-                            # Replace temporary IDs (e.g., __fake_id__) with real unique IDs
-                            # The agents SDK sometimes uses placeholder IDs that conflict across threads
+                        case ThreadItemAddedEvent():
                             item = event.item
-                            if item.id.startswith("__"):
-                                # Determine the store item type based on the item's type field
-                                item_type: StoreItemType
-                                if item.type in ("user_message", "assistant_message"):
-                                    item_type = "message"
-                                elif item.type == "client_tool_call":
-                                    item_type = "tool_call"
-                                elif item.type == "workflow":
-                                    item_type = "workflow"
-                                elif item.type == "task":
-                                    item_type = "task"
-                                else:
-                                    # Default to message for unknown types
-                                    item_type = "message"
-
-                                # Generate a real unique ID to avoid conflicts
-                                new_id = default_generate_id(item_type)
-                                item = item.model_copy(update={"id": new_id})
-                                logger.debug(
-                                    f"Replaced temporary ID {event.item.id} with {item.id} (type={item_type})"
-                                )
-
                             try:
                                 await self.store.add_thread_item(
                                     thread.id, item, context=context
                                 )
                             except NotFoundError as e:
-                                # Log but don't fail if item storage fails
-                                # This can happen with concurrent updates
-                                logger.error(f"Failed to store thread item: {e}")
+                                logger.error(
+                                    f"Failed to store thread item: {e}"
+                                )
+                        case ThreadItemDoneEvent():
+                            # Replace temporary IDs (e.g., __fake_id__) with real unique IDs
+                            # The agents SDK sometimes uses placeholder IDs that conflict across threads
+                            item = ensure_item_id(event.item)
+                            event = event.model_copy(update={"item": item})
+                            try:
+                                await self.store.save_item(
+                                    thread.id, item, context=context
+                                )
+                            except NotFoundError:
+                                try:
+                                    await self.store.add_thread_item(
+                                        thread.id, item, context=context
+                                    )
+                                except NotFoundError as e:
+                                    logger.error(
+                                        f"Failed to store thread item: {e}"
+                                    )
+                        case ThreadItemUpdated():
+                            item_id = event.item_id
+                            try:
+                                stored_item = await self.store.load_item(
+                                    thread.id, item_id, context=context
+                                )
+                            except NotFoundError:
+                                logger.warning(
+                                    "Received update for unknown item %s", item_id
+                                )
+                            else:
+                                try:
+                                    updated_item = apply_thread_item_update(
+                                        stored_item, event.update
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    logger.exception(
+                                        "Failed to apply update to %s", item_id
+                                    )
+                                else:
+                                    try:
+                                        await self.store.save_item(
+                                            thread.id,
+                                            updated_item,
+                                            context=context,
+                                        )
+                                    except NotFoundError as e:
+                                        logger.error(
+                                            f"Failed to store thread item: {e}"
+                                        )
                         case ThreadItemRemovedEvent():
                             await self.store.delete_thread_item(
                                 thread.id, event.item_id, context=context
                             )
                         case ThreadItemReplacedEvent():
+                            item = ensure_item_id(event.item)
+                            event = event.model_copy(update={"item": item})
                             await self.store.save_item(
                                 thread.id, event.item, context=context
                             )
@@ -680,42 +869,86 @@ class ChatKitServer(ABC, Generic[TContext]):
                     ) and isinstance(event.item, HiddenContextItem)
 
                     if not should_swallow_event:
-                        yield event
+                        if capture_only:
+                            await _queue_pending_event(event)
+                        else:
+                            yield event
 
                     # in case user updated the thread while streaming
                     if thread != last_thread:
                         last_thread = thread.model_copy(deep=True)
                         await self.store.save_thread(thread, context=context)
-                        yield ThreadUpdatedEvent(
+                        thread_event = ThreadUpdatedEvent(
                             thread=self._to_thread_response(thread)
                         )
+                        if capture_only:
+                            await _queue_pending_event(thread_event)
+                        else:
+                            yield thread_event
                 # in case user updated the thread while streaming
                 if thread != last_thread:
                     last_thread = thread.model_copy(deep=True)
                     await self.store.save_thread(thread, context=context)
-                    yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
+                    thread_event = ThreadUpdatedEvent(
+                        thread=self._to_thread_response(thread)
+                    )
+                    if capture_only:
+                        await _queue_pending_event(thread_event)
+                    else:
+                        yield thread_event
         except CustomStreamError as e:
-            yield ErrorEvent(
+            error_event = ErrorEvent(
                 code="custom",
                 message=e.message,
                 allow_retry=e.allow_retry,
             )
+            if capture_only:
+                await _queue_pending_event(error_event)
+            else:
+                yield error_event
         except StreamError as e:
-            yield ErrorEvent(
+            error_event = ErrorEvent(
                 code=e.code,
                 allow_retry=e.allow_retry,
             )
+            if capture_only:
+                await _queue_pending_event(error_event)
+            else:
+                yield error_event
         except Exception as e:
-            yield ErrorEvent(
+            error_event = ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
                 allow_retry=True,
             )
+            if capture_only:
+                await _queue_pending_event(error_event)
+            else:
+                yield error_event
             logger.exception(e)
 
         if thread != last_thread:
             # in case user updated the thread at the end of the stream
             await self.store.save_thread(thread, context=context)
-            yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
+            thread_event = ThreadUpdatedEvent(
+                thread=self._to_thread_response(thread)
+            )
+            if capture_only:
+                await _queue_pending_event(thread_event)
+            else:
+                yield thread_event
+
+        if capture_only and pending_state is not None:
+            async with pending_state.condition:
+                pending_state.done = True
+                pending_state.condition.notify_all()
+            async with self._pending_events_lock:
+                current = self._pending_streams.get(thread.id)
+                if (
+                    current is pending_state
+                    and not pending_state.events
+                    and pending_state.consumers == 0
+                ):
+                    self._pending_streams.pop(thread.id, None)
 
     async def _build_user_message_item(
         self, input: UserMessageInput, thread: ThreadMetadata, context: TContext
