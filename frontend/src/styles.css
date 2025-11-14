@@ -4324,3 +4324,27 @@ button {
     justify-content: flex-end;
   }
 }
+
+/* ================================================================
+   Widget Library Styles
+   ================================================================ */
+
+/* Widget library preview - scrollable area */
+.widget-library-preview {
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Widget library actions - stack buttons vertically on mobile */
+@media (max-width: 768px) {
+  .widget-library-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .widget-library-actions .btn {
+    width: 100%;
+  }
+}
