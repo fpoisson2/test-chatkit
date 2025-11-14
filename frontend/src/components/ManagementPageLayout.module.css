@@ -5,6 +5,16 @@
   flex-direction: column;
 }
 
+:global(:root[data-theme="dark" i]) .page {
+  --text-muted: color-mix(in srgb, var(--color-text) 82%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .page {
+    --text-muted: color-mix(in srgb, var(--color-text) 82%, transparent);
+  }
+}
+
 .header {
   display: flex;
   align-items: center;
