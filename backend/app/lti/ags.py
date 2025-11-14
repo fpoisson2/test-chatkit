@@ -165,10 +165,7 @@ class LTIAGSClient(AGSClientProtocol):
         payload: dict[str, Any] = {
             "userId": user_id,
             "scoreGiven": float(score),
-            "timestamp": datetime.datetime.now(datetime.UTC)
-            .replace(tzinfo=datetime.UTC)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "timestamp": self._format_score_timestamp(),
             "activityProgress": "Completed",
             "gradingProgress": "FullyGraded",
         }
@@ -200,6 +197,21 @@ class LTIAGSClient(AGSClientProtocol):
                 scores_endpoint,
                 exc_info=exc,
             )
+
+    @staticmethod
+    def _format_score_timestamp(
+        value: datetime.datetime | None = None,
+    ) -> str:
+        """Return an ISO8601 timestamp in UTC with millisecond precision."""
+
+        if value is None:
+            value = datetime.datetime.now(datetime.UTC)
+        elif value.tzinfo is None:
+            value = value.replace(tzinfo=datetime.UTC)
+        else:
+            value = value.astimezone(datetime.UTC)
+
+        return value.isoformat(timespec="milliseconds")
 
     def _resolve_registration(
         self, context: ChatKitRequestContext

@@ -306,3 +306,32 @@ def test_build_scores_endpoint_places_scores_segment_before_query_string():
         == "https://platform.example/lineitems/score-1/scores"
     )
     assert build("") == ""
+
+
+def test_format_score_timestamp_uses_milliseconds_and_utc_offset():
+    ags_module = importlib.import_module("backend.app.lti.ags")
+
+    sample = datetime.datetime(
+        2025,
+        11,
+        14,
+        20,
+        20,
+        24,
+        902_127,
+        tzinfo=datetime.timezone.utc,
+    )
+
+    formatted = ags_module.LTIAGSClient._format_score_timestamp(sample)
+
+    assert formatted == "2025-11-14T20:20:24.902+00:00"
+
+
+def test_format_score_timestamp_normalizes_naive_datetime_to_utc():
+    ags_module = importlib.import_module("backend.app.lti.ags")
+
+    naive = datetime.datetime(2025, 11, 14, 20, 20, 24, 123_456)
+
+    formatted = ags_module.LTIAGSClient._format_score_timestamp(naive)
+
+    assert formatted == "2025-11-14T20:20:24.123+00:00"
