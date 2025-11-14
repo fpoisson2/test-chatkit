@@ -190,7 +190,7 @@
 
   .chatkit-sidebar__main {
     padding-inline: 0;
-    padding-block: calc(var(--spacing) * 2);
+    padding-block: calc(var(--spacing) * 1);
   }
 
   .chatkit-sidebar__nav,
