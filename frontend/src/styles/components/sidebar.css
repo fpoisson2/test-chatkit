@@ -1397,7 +1397,8 @@
 
 .chatkit-sidebar__footer {
   margin-top: auto;
-  padding: calc(var(--spacing) * 4) var(--chatkit-sidebar-content-padding-x) 0;
+  padding: calc(var(--spacing) * 4) var(--chatkit-sidebar-content-padding-x)
+    calc(var(--spacing) * 4);
   border-top: 1px solid var(--sidebar-border);
   position: sticky;
   bottom: 0;

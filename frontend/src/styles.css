@@ -1766,7 +1766,7 @@ button {
 
 .chatkit-sidebar__footer {
   margin-top: auto;
-  padding: 16px var(--chatkit-sidebar-content-padding-x) 0;
+  padding: 16px var(--chatkit-sidebar-content-padding-x) 16px;
   border-top: 1px solid var(--sidebar-border);
   position: sticky;
   bottom: 0;
