@@ -1699,7 +1699,6 @@ button {
   gap: 24px;
   margin: 0;
   padding: 16px var(--chatkit-sidebar-content-padding-x);
-  margin-right: calc(var(--chatkit-sidebar-content-padding-x) * -1);
   overflow: visible;
 }
 
