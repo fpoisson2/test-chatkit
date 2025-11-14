@@ -19,6 +19,7 @@ from ..schemas import (
     WorkflowCreateRequest,
     WorkflowDefinitionResponse,
     WorkflowDefinitionUpdate,
+    WorkflowDuplicateRequest,
     WorkflowImportRequest,
     WorkflowProductionUpdate,
     WorkflowSummaryResponse,
@@ -294,6 +295,36 @@ async def delete_workflow(
             status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
         ) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/api/workflows/{workflow_id}/duplicate",
+    response_model=WorkflowSummaryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def duplicate_workflow(
+    workflow_id: int,
+    payload: WorkflowDuplicateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
+) -> WorkflowSummaryResponse:
+    _ensure_admin(current_user)
+    try:
+        workflow = service.duplicate_workflow(
+            workflow_id, payload.display_name, session=session
+        )
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+    return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
 
 
 @router.get(

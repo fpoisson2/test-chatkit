@@ -2492,6 +2492,74 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def duplicate_workflow(
+        self, workflow_id: int, new_name: str, *, session: Session | None = None
+    ) -> Workflow:
+        """Duplique un workflow existant avec un nouveau nom."""
+        db, owns_session = self._get_session(session)
+        try:
+            # Récupère le workflow original
+            original_workflow = db.get(Workflow, workflow_id)
+            if original_workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+
+            # Vérifie qu'il a une version active
+            if original_workflow.active_version_id is None:
+                raise WorkflowValidationError(
+                    "Impossible de dupliquer un workflow sans version active."
+                )
+
+            # Récupère la version active
+            active_version = db.get(
+                WorkflowDefinition, original_workflow.active_version_id
+            )
+            if active_version is None:
+                raise WorkflowVersionNotFoundError(
+                    workflow_id, original_workflow.active_version_id
+                )
+
+            # Extrait le graph de la version active
+            graph_payload = serialize_definition_graph(active_version)
+
+            # Génère un slug unique pour le nouveau workflow
+            base_slug = original_workflow.slug
+            new_slug = base_slug
+            counter = 1
+            while db.scalar(
+                select(Workflow.id).where(Workflow.slug == new_slug)
+            ) is not None:
+                new_slug = f"{base_slug}-{counter}"
+                counter += 1
+
+            # Crée le nouveau workflow
+            new_workflow = Workflow(
+                slug=new_slug,
+                display_name=new_name,
+                description=original_workflow.description,
+            )
+            db.add(new_workflow)
+            db.flush()
+
+            # Parse et valide le graph
+            nodes, edges = self._graph_validator.normalize_graph(graph_payload)
+
+            # Crée la version initiale pour le nouveau workflow
+            definition = self._create_definition_from_graph(
+                workflow=new_workflow,
+                nodes=nodes,
+                edges=edges,
+                session=db,
+                name="Version initiale",
+                mark_active=True,
+            )
+
+            db.commit()
+            db.refresh(new_workflow)
+            return new_workflow
+        finally:
+            if owns_session:
+                db.close()
+
     def list_managed_hosted_workflows(
         self, session: Session | None = None
     ) -> list[HostedWorkflow]:
