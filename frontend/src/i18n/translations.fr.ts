@@ -192,6 +192,7 @@ export const fr: TranslationDictionary = {
   "admin.appSettings.model.providerNamePlaceholder": "ex. gemini, claude, litellm",
   "admin.appSettings.model.defaultProviderLabel":
     "Définir comme fournisseur par défaut",
+  "admin.appSettings.model.defaultProviderBadge": "Par défaut",
   "admin.appSettings.model.removeProvider": "Supprimer ce fournisseur",
   "admin.appSettings.model.addProvider": "Ajouter un fournisseur",
   "admin.appSettings.model.apiBaseLabel": "URL de base de l'API (optionnel)",
