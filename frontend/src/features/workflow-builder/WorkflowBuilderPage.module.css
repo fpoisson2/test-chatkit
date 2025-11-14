@@ -157,6 +157,10 @@
   gap: 1rem;
 }
 
+:global(.react-flow__controls) {
+  z-index: 30;
+}
+
 .mobileActionStack {
   position: fixed;
   bottom: 1.25rem;
@@ -226,6 +230,20 @@
 @media (min-width: 769px) {
   .mobileActionStack {
     display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  :global(.react-flow__controls) {
+    right: auto;
+    left: 1.25rem;
+    bottom: 1.25rem;
+  }
+
+  @supports (bottom: calc(1.25rem + env(safe-area-inset-bottom))) {
+    :global(.react-flow__controls) {
+      bottom: calc(1.25rem + env(safe-area-inset-bottom));
+    }
   }
 }
 
@@ -411,6 +429,12 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overscroll-behavior: contain;
+}
+
+.flowViewport :global(.react-flow),
+.flowViewport :global(.react-flow__pane) {
+  touch-action: none;
 }
 .flowNode {
   transition: opacity 0.2s ease, filter 0.2s ease;
