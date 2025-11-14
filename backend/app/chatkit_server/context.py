@@ -96,6 +96,18 @@ class ChatKitRequestContext:
     voice_prompt_variables: Mapping[str, str] | None = None
     voice_model_provider_id: str | None = None
     voice_model_provider_slug: str | None = None
+    lti_session_id: int | None = None
+    lti_registration_id: int | None = None
+    lti_deployment_id: int | None = None
+    lti_resource_link_id: int | None = None
+    lti_resource_link_ref: str | None = None
+    lti_platform_user_id: str | None = None
+    lti_platform_context_id: str | None = None
+    ags_line_items_endpoint: str | None = None
+    ags_line_item_endpoint: str | None = None
+    ags_scopes: tuple[str, ...] | None = None
+    ags_default_score_maximum: float | None = None
+    ags_default_label: str | None = None
 
     def trace_metadata(self) -> dict[str, str]:
         """Retourne des métadonnées de trace compatibles avec l'Agents SDK."""
@@ -105,6 +117,10 @@ class ChatKitRequestContext:
             metadata["user_id"] = self.user_id
         if self.email:
             metadata["user_email"] = self.email
+        if self.lti_session_id is not None:
+            metadata["lti_session_id"] = str(self.lti_session_id)
+        if self.lti_registration_id is not None:
+            metadata["lti_registration_id"] = str(self.lti_registration_id)
         return metadata
 
 

@@ -233,7 +233,7 @@ def test_lti_launch_provisions_user_and_returns_token(client, monkeypatch):
     _patch_platform_keys(monkeypatch)
 
     with database.SessionLocal() as session:
-        registration, deployment, workflow = _setup_registration(session)
+        _, _, workflow = _setup_registration(session)
 
     response = client.post(
         "/api/lti/login",
@@ -270,6 +270,18 @@ def test_lti_launch_provisions_user_and_returns_token(client, monkeypatch):
             "https://purl.imsglobal.org/spec/lti/claim/custom": {
                 "workflow_slug": "demo-workflow"
             },
+            "https://purl.imsglobal.org/spec/lti-ags/claim/endpoint": {
+                "lineitems": "https://platform.example/contexts/123/lineitems",
+                "lineitem": "https://platform.example/contexts/123/lineitems/quiz",
+                "scope": [
+                    "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+                    "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+                ],
+            },
+            "https://purl.imsglobal.org/spec/lti-ags/claim/lineitem": {
+                "scoreMaximum": 20,
+                "label": "Quiz final",
+            },
         },
     )
 
@@ -298,11 +310,108 @@ def test_lti_launch_provisions_user_and_returns_token(client, monkeypatch):
         )
         assert resource_link is not None
         assert resource_link.workflow_id == workflow.id
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(
+                models.LTIUserSession.user_id == user.id
+            )
+        )
+        assert session_record is not None
+        assert (
+            session_record.ags_line_items_endpoint
+            == "https://platform.example/contexts/123/lineitems"
+        )
+        assert (
+            session_record.ags_line_item_endpoint
+            == "https://platform.example/contexts/123/lineitems/quiz"
+        )
+        assert session_record.ags_scopes == [
+            "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+            "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+        ]
+        assert session_record.ags_line_item_claim == {
+            "scoreMaximum": 20,
+            "label": "Quiz final",
+        }
         assert session.scalar(
             select(models.LTIUserSession).where(
                 models.LTIUserSession.user_id == user.id
             )
         ) is not None
+
+
+def test_lti_launch_parses_scope_string(client, monkeypatch):
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        _, _, workflow = _setup_registration(session)
+
+    response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-123",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+            "login_hint": "hint",
+            "lti_message_hint": "resource-789",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    parsed = urlparse(response.headers["location"])
+    state = parse_qs(parsed.query)["state"][0]
+
+    with database.SessionLocal() as session:
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(models.LTIUserSession.state == state)
+        )
+        assert session_record is not None
+        nonce = session_record.nonce
+
+    id_token = _build_id_token(
+        nonce,
+        "deployment-123",
+        "LtiResourceLinkRequest",
+        {
+            "email": "learner@example.com",
+            "https://purl.imsglobal.org/spec/lti/claim/resource_link": {
+                "id": "resource-789"
+            },
+            "https://purl.imsglobal.org/spec/lti-ags/claim/endpoint": {
+                "lineitems": "https://platform.example/contexts/123/lineitems",
+                "lineitem": "https://platform.example/contexts/123/lineitems/quiz",
+                "scope": "https://purl.imsglobal.org/spec/lti-ags/scope/score  https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly",
+            },
+        },
+    )
+
+    launch = client.post("/api/lti/launch", json={"state": state, "id_token": id_token})
+    assert launch.status_code == 200
+
+    with database.SessionLocal() as session:
+        user = session.scalar(
+            select(models.User).where(models.User.email == "learner@example.com")
+        )
+        assert user is not None
+        resource_link = session.scalar(
+            select(models.LTIResourceLink).where(
+                models.LTIResourceLink.resource_link_id == "resource-789"
+            )
+        )
+        assert resource_link is not None
+        assert resource_link.workflow_id == workflow.id
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(
+                models.LTIUserSession.user_id == user.id
+            )
+        )
+        assert session_record is not None
+        assert session_record.ags_scopes == [
+            "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+            "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly",
+        ]
 
 
 def test_lti_launch_without_deep_link_selection_returns_error(client, monkeypatch):
