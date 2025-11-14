@@ -1046,7 +1046,7 @@
 }
 
 /* Hide section title on mobile overlay mode to prevent duplicate with group title */
-.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-header {
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title {
   display: none;
 }
 
