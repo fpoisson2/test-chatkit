@@ -784,7 +784,7 @@
 
 .chatkit-sidebar__workflow-compact-group-title {
   margin: 0;
-  font-size: var(--font-text-xs-size);
+  font-size: 0.625rem;
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1787,6 +1787,8 @@
   text-align: center;
   line-height: var(--leading-tight);
   letter-spacing: 0.12em;
+  width: 100%;
+  display: block;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__switcher {
