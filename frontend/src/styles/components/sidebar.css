@@ -1045,6 +1045,18 @@
   content: none;
 }
 
+/* Improve visibility in dark mode for overlay variant (mobile) */
+[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
+  color: var(--gray-800);
+  border-color: var(--alpha-16);
+}
+
+[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: var(--gray-900);
+  border-color: color-mix(in srgb, var(--primary-color) 55%, transparent);
+}
+
 .chatkit-sidebar__badge {
   display: inline-flex;
   align-items: center;
