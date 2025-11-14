@@ -288,7 +288,15 @@ class LTIService:
         user = self._provision_user(payload)
         session_record.user = user
         session_record.resource_link = resource_link
-        session_record.platform_user_id = _extract_platform_subject(payload)
+        subject = _extract_platform_subject(payload)
+        session_record.platform_user_id = subject
+        if subject:
+            logger.info(
+                "LTI launch stored platform subject",
+                extra={"lti_sub": subject},
+            )
+        else:
+            logger.warning("LTI launch missing platform subject")
         context_claim = payload.get(
             "https://purl.imsglobal.org/spec/lti/claim/context", {}
         )
