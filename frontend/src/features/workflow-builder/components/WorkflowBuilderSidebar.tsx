@@ -246,7 +246,8 @@ const WorkflowBuilderSidebar = ({
         const menuId = `workflow-actions-${workflow.id}`;
         const isMenuOpen = openWorkflowMenuId === workflow.id;
         const canDelete = !workflow.is_chatkit_default && !loading;
-        const canDuplicate = Boolean(selectedWorkflowId === workflow.id && !loading);
+        const canDuplicate =
+          !loading && (workflow.id === selectedWorkflowId || workflow.active_version_id !== null);
         const pinLabel = isPinned
           ? t("workflows.unpinAction", { label: workflow.display_name })
           : t("workflows.pinAction", { label: workflow.display_name });
