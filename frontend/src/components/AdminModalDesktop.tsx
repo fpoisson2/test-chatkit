@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import * as Tabs from "@radix-ui/react-tabs";
 
 import { ADMIN_SECTIONS, type AdminSectionKey } from "../config/adminSections";
@@ -6,6 +7,7 @@ import { useI18n } from "../i18n";
 import { LoadingSpinner } from "./LoadingSpinner";
 
 type AdminModalDesktopProps = {
+  title: string;
   activeTab: AdminSectionKey;
   setActiveTab: (tab: AdminSectionKey) => void;
   saveScrollPosition: (tab: AdminSectionKey, position: number) => void;
@@ -13,6 +15,7 @@ type AdminModalDesktopProps = {
 };
 
 export const AdminModalDesktop = ({
+  title,
   activeTab,
   setActiveTab,
   saveScrollPosition,
@@ -53,6 +56,9 @@ export const AdminModalDesktop = ({
       orientation="vertical"
     >
       <div className="admin-modal__sidebar">
+        <div className="admin-modal__sidebar-header">
+          <Dialog.Title className="admin-modal__title">{title}</Dialog.Title>
+        </div>
         <Tabs.List className="admin-modal__tabs-list" aria-label={t("admin.tabs.navigationLabel")}>
           {ADMIN_SECTIONS.map((section) => (
             <Tabs.Trigger
@@ -66,31 +72,45 @@ export const AdminModalDesktop = ({
         </Tabs.List>
       </div>
 
-      <div className="admin-modal__content-wrapper">
-        {ADMIN_SECTIONS.map((section) => {
-          const SectionComponent = section.Component;
-
-          return (
-            <Tabs.Content
-              key={section.key}
-              value={section.key}
-              className="admin-modal__tab-content"
-              ref={(el) => {
-                contentRefs.current[section.key] = el;
-              }}
+      <div className="admin-modal__desktop-content">
+        <div className="admin-modal__desktop-header">
+          <Dialog.Close asChild>
+            <button
+              className="admin-modal__close"
+              type="button"
+              aria-label={t("common.close")}
             >
-              <Suspense
-                fallback={
-                  <div className="admin-modal__loading">
-                    <LoadingSpinner />
-                  </div>
-                }
+              ×
+            </button>
+          </Dialog.Close>
+        </div>
+
+        <div className="admin-modal__content-wrapper">
+          {ADMIN_SECTIONS.map((section) => {
+            const SectionComponent = section.Component;
+
+            return (
+              <Tabs.Content
+                key={section.key}
+                value={section.key}
+                className="admin-modal__tab-content"
+                ref={(el) => {
+                  contentRefs.current[section.key] = el;
+                }}
               >
-                <SectionComponent />
-              </Suspense>
-            </Tabs.Content>
-          );
-        })}
+                <Suspense
+                  fallback={
+                    <div className="admin-modal__loading">
+                      <LoadingSpinner />
+                    </div>
+                  }
+                >
+                  <SectionComponent />
+                </Suspense>
+              </Tabs.Content>
+            );
+          })}
+        </div>
       </div>
     </Tabs.Root>
   );

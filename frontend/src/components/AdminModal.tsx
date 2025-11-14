@@ -26,40 +26,42 @@ export const AdminModal = ({
   const { t } = useI18n();
   const isDesktop = useIsDesktopLayout();
 
+  const title = t("admin.tabs.sectionTitle");
+
   return (
     <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal__overlay" />
         <Dialog.Content className="modal__container modal__container--xl admin-modal">
-          <header className="admin-modal__header">
-            <Dialog.Title className="admin-modal__title">
-              {t("admin.tabs.sectionTitle")}
-            </Dialog.Title>
-            <Dialog.Close asChild>
-              <button
-                className="admin-modal__close"
-                type="button"
-                aria-label={t("common.close")}
-              >
-                ×
-              </button>
-            </Dialog.Close>
-          </header>
-
           {isDesktop ? (
             <AdminModalDesktop
+              title={title}
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               saveScrollPosition={saveScrollPosition}
               getScrollPosition={getScrollPosition}
             />
           ) : (
-            <AdminModalMobile
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              saveScrollPosition={saveScrollPosition}
-              getScrollPosition={getScrollPosition}
-            />
+            <>
+              <header className="admin-modal__header">
+                <Dialog.Title className="admin-modal__title">{title}</Dialog.Title>
+                <Dialog.Close asChild>
+                  <button
+                    className="admin-modal__close"
+                    type="button"
+                    aria-label={t("common.close")}
+                  >
+                    ×
+                  </button>
+                </Dialog.Close>
+              </header>
+              <AdminModalMobile
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                saveScrollPosition={saveScrollPosition}
+                getScrollPosition={getScrollPosition}
+              />
+            </>
           )}
         </Dialog.Content>
       </Dialog.Portal>
