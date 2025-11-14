@@ -1050,6 +1050,11 @@
   display: none;
 }
 
+/* Add spacing to the right of the floating action button on mobile */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-floating-action {
+  margin-right: calc(var(--spacing) * 2);
+}
+
 /* Mobile sidebar footer styles */
 .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer {
   color: var(--gray-25);
