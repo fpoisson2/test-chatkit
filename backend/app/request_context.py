@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi import Request
@@ -101,9 +101,8 @@ def _resolve_lti_context(
 
         scopes: tuple[str, ...] | None = None
         if record.ags_scopes:
-            scopes = tuple(
-                scope for scope in record.ags_scopes if isinstance(scope, str) and scope
-            )
+            normalized = _normalize_scope_entries(record.ags_scopes)
+            scopes = tuple(normalized) if normalized else None
 
         default_score_maximum: float | None = None
         default_label: str | None = None
@@ -136,6 +135,23 @@ def _resolve_lti_context(
     finally:
         if owns_session:
             db_session.close()
+
+
+def _normalize_scope_entries(raw_scopes: Sequence[Any]) -> list[str]:
+    """Transforme les scopes stockés en liste normalisée et dédoublonnée."""
+
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for entry in raw_scopes:
+        if not isinstance(entry, str):
+            continue
+        for token in entry.replace(",", " ").split():
+            scope = token.strip()
+            if not scope or scope in seen:
+                continue
+            seen.add(scope)
+            normalized.append(scope)
+    return normalized
 
 
 def resolve_public_base_url_from_request(request: Request) -> str | None:

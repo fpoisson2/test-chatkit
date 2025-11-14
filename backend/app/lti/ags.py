@@ -220,7 +220,13 @@ class LTIAGSClient(AGSClientProtocol):
     def _collect_scopes(self, context: ChatKitRequestContext) -> set[str]:
         scopes = set()
         if context.ags_scopes:
-            scopes.update(scope for scope in context.ags_scopes if scope)
+            for entry in context.ags_scopes:
+                if not entry:
+                    continue
+                for token in entry.replace(",", " ").split():
+                    scope = token.strip()
+                    if scope:
+                        scopes.add(scope)
         return scopes
 
     async def _obtain_access_token(

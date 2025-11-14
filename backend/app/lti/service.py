@@ -76,6 +76,34 @@ def _build_redirect_url(base_url: str, params: Mapping[str, Any]) -> str:
     )
 
 
+def _parse_scope_values(raw_scopes: object) -> list[str] | None:
+    """Normalise les scopes AGS sous forme de liste triée par insertion."""
+
+    if raw_scopes is None:
+        return None
+
+    if isinstance(raw_scopes, str):
+        entries = [raw_scopes]
+    elif isinstance(raw_scopes, Sequence):
+        entries = list(raw_scopes)
+    else:
+        return None
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, str):
+            continue
+        for token in entry.replace(",", " ").split():
+            scope = token.strip()
+            if not scope or scope in seen:
+                continue
+            seen.add(scope)
+            result.append(scope)
+
+    return result or None
+
+
 class LTIService:
     """Encapsule la logique de vérification et de lancement LTI."""
 
@@ -267,16 +295,8 @@ class LTIService:
                 else None
             )
             raw_scopes = ags_endpoint_claim.get("scope")
-            if isinstance(raw_scopes, str):
-                session_record.ags_scopes = [raw_scopes]
-            elif isinstance(raw_scopes, Sequence):
-                session_record.ags_scopes = [
-                    str(scope).strip()
-                    for scope in raw_scopes
-                    if isinstance(scope, str) and scope.strip()
-                ]
-            else:
-                session_record.ags_scopes = None
+            parsed_scopes = _parse_scope_values(raw_scopes)
+            session_record.ags_scopes = parsed_scopes
         else:
             session_record.ags_line_items_endpoint = None
             session_record.ags_line_item_endpoint = None

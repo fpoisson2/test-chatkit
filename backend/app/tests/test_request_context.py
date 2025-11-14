@@ -2,6 +2,7 @@ import datetime
 import importlib
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,7 @@ def _reset_settings(monkeypatch: pytest.MonkeyPatch):
     config.get_settings.cache_clear()
 
 
-def _setup_lti_session():
+def _setup_lti_session(*, raw_scopes: Sequence[str] | None = None):
     database = importlib.import_module("backend.app.database")
     models = importlib.import_module("backend.app.models")
 
@@ -85,10 +86,14 @@ def _setup_lti_session():
             launched_at=datetime.datetime.now(datetime.UTC),
             ags_line_items_endpoint="https://platform.example/lineitems",
             ags_line_item_endpoint="https://platform.example/lineitems/quiz",
-            ags_scopes=[
-                "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
-                "https://purl.imsglobal.org/spec/lti-ags/scope/score",
-            ],
+            ags_scopes=(
+                raw_scopes
+                if raw_scopes is not None
+                else [
+                    "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+                    "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+                ]
+            ),
             ags_line_item_claim={"scoreMaximum": 30, "label": "Quiz"},
         )
         session.add(session_record)
@@ -132,3 +137,33 @@ def test_build_chatkit_request_context_includes_lti_data():
     assert chatkit_context.ags_default_label == "Quiz"
     trace = chatkit_context.trace_metadata()
     assert trace["lti_session_id"] == str(session_id)
+
+
+def test_build_chatkit_request_context_splits_scope_strings():
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    context_module = importlib.import_module("backend.app.request_context")
+
+    raw_scopes = [
+        "https://purl.imsglobal.org/spec/lti-ags/scope/score  https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+        " https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly ",
+    ]
+    user_id, _session_id = _setup_lti_session(raw_scopes=raw_scopes)
+
+    with database.SessionLocal() as db_session:
+        current_user = db_session.scalar(
+            select(models.User).where(models.User.id == user_id)
+        )
+        assert current_user is not None
+
+        chatkit_context = context_module.build_chatkit_request_context(
+            current_user,
+            request=None,
+            session=db_session,
+        )
+
+    assert chatkit_context.ags_scopes == (
+        "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+        "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+        "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly",
+    )
