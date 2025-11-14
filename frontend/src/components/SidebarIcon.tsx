@@ -196,7 +196,7 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth="2.2"
+        strokeWidth="1.8"
       />
     </>
   ),
