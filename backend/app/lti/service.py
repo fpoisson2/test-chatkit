@@ -76,6 +76,34 @@ def _build_redirect_url(base_url: str, params: Mapping[str, Any]) -> str:
     )
 
 
+def _parse_scope_values(raw_scopes: object) -> list[str] | None:
+    """Normalise les scopes AGS sous forme de liste triée par insertion."""
+
+    if raw_scopes is None:
+        return None
+
+    if isinstance(raw_scopes, str):
+        entries = [raw_scopes]
+    elif isinstance(raw_scopes, Sequence):
+        entries = list(raw_scopes)
+    else:
+        return None
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, str):
+            continue
+        for token in entry.replace(",", " ").split():
+            scope = token.strip()
+            if not scope or scope in seen:
+                continue
+            seen.add(scope)
+            result.append(scope)
+
+    return result or None
+
+
 class LTIService:
     """Encapsule la logique de vérification et de lancement LTI."""
 
@@ -249,6 +277,38 @@ class LTIService:
         )
         session_record.platform_context_id = context_claim.get("id")
         session_record.launched_at = _now_utc()
+
+        ags_endpoint_claim = payload.get(
+            "https://purl.imsglobal.org/spec/lti-ags/claim/endpoint", {}
+        )
+        if isinstance(ags_endpoint_claim, Mapping):
+            line_items_endpoint = ags_endpoint_claim.get("lineitems")
+            session_record.ags_line_items_endpoint = (
+                str(line_items_endpoint).strip() or None
+                if line_items_endpoint is not None
+                else None
+            )
+            line_item_endpoint = ags_endpoint_claim.get("lineitem")
+            session_record.ags_line_item_endpoint = (
+                str(line_item_endpoint).strip() or None
+                if line_item_endpoint is not None
+                else None
+            )
+            raw_scopes = ags_endpoint_claim.get("scope")
+            parsed_scopes = _parse_scope_values(raw_scopes)
+            session_record.ags_scopes = parsed_scopes
+        else:
+            session_record.ags_line_items_endpoint = None
+            session_record.ags_line_item_endpoint = None
+            session_record.ags_scopes = None
+
+        line_item_claim = payload.get(
+            "https://purl.imsglobal.org/spec/lti-ags/claim/lineitem"
+        )
+        if isinstance(line_item_claim, Mapping):
+            session_record.ags_line_item_claim = dict(line_item_claim)
+        else:
+            session_record.ags_line_item_claim = None
 
         self.session.commit()
 

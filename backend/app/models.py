@@ -1101,6 +1101,18 @@ class LTIUserSession(Base):
     launched_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    ags_line_items_endpoint: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    ags_line_item_endpoint: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    ags_scopes: Mapped[list[str] | None] = mapped_column(
+        PortableJSONB(), nullable=True
+    )
+    ags_line_item_claim: Mapped[dict[str, Any] | None] = mapped_column(
+        PortableJSONB(), nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
