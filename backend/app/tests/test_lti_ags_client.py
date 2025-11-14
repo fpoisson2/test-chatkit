@@ -286,3 +286,19 @@ async def test_publish_score_preserves_query_string_for_line_item():
         ("POST", "/token", ""),
         ("POST", "/lineitems/score-99/scores", "type_id=6"),
     ]
+
+
+def test_build_scores_endpoint_places_scores_segment_before_query_string():
+    ags_module = importlib.import_module("backend.app.lti.ags")
+
+    build = ags_module.LTIAGSClient._build_scores_endpoint
+
+    assert (
+        build("https://platform.example/lineitems/score-1?type_id=6")
+        == "https://platform.example/lineitems/score-1/scores?type_id=6"
+    )
+    assert (
+        build(" https://platform.example/lineitems/score-1  ")
+        == "https://platform.example/lineitems/score-1/scores"
+    )
+    assert build("") == ""
