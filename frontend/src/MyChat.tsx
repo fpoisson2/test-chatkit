@@ -235,6 +235,7 @@ export function MyChat() {
 
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
@@ -624,9 +625,11 @@ export function MyChat() {
         },
         onResponseStart: () => {
           resetError();
+          setIsGenerating(true);
         },
         onResponseEnd: () => {
           console.debug("[ChatKit] response end");
+          setIsGenerating(false);
           requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
@@ -685,7 +688,8 @@ export function MyChat() {
 
   // Extract generating workflow ID from current thread
   const generatingWorkflowId = useMemo(() => {
-    if (!currentThread) {
+    // Only show spinner if actively generating
+    if (!isGenerating || !currentThread) {
       return null;
     }
 
@@ -705,7 +709,7 @@ export function MyChat() {
     }
 
     return null;
-  }, [currentThread]);
+  }, [isGenerating, currentThread]);
 
   // Update or create instance for current workflow
   useEffect(() => {
