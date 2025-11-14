@@ -305,6 +305,58 @@ def test_lti_launch_provisions_user_and_returns_token(client, monkeypatch):
         ) is not None
 
 
+def test_lti_launch_without_deep_link_selection_returns_error(client, monkeypatch):
+    database = importlib.import_module("backend.app.database")
+    models = importlib.import_module("backend.app.models")
+    _patch_platform_keys(monkeypatch)
+
+    with database.SessionLocal() as session:
+        registration, deployment, _workflow = _setup_registration(session)
+
+    response = client.post(
+        "/api/lti/login",
+        data={
+            "iss": "https://platform.example",
+            "client_id": "platform-client",
+            "lti_deployment_id": "deployment-123",
+            "target_link_uri": "https://tool.example/api/lti/launch",
+            "login_hint": "hint",
+            "lti_message_hint": "resource-789",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    parsed = urlparse(response.headers["location"])
+    state = parse_qs(parsed.query)["state"][0]
+
+    with database.SessionLocal() as session:
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(models.LTIUserSession.state == state)
+        )
+        assert session_record is not None
+        nonce = session_record.nonce
+        resource_link = session_record.resource_link
+        assert resource_link is not None
+        # Ensure no workflow has been selected for this resource link yet
+        assert resource_link.workflow_id is None
+
+    id_token = _build_id_token(
+        nonce,
+        "deployment-123",
+        "LtiResourceLinkRequest",
+        {
+            "https://purl.imsglobal.org/spec/lti/claim/resource_link": {
+                "id": "resource-789",
+                "title": "Course activity",
+            },
+        },
+    )
+
+    launch = client.post("/api/lti/launch", json={"state": state, "id_token": id_token})
+    assert launch.status_code == 400
+    assert launch.json()["detail"] == "Aucun workflow associé au lancement LTI"
+
+
 def test_lti_deep_link_returns_content_items(client, monkeypatch):
     database = importlib.import_module("backend.app.database")
     models = importlib.import_module("backend.app.models")
