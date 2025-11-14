@@ -18,6 +18,9 @@ from ..secret_utils import (
 )
 from .connection import probe_mcp_connection
 
+MCP_SECRET_HINT_MAX_LENGTH = 32
+"""Maximum length for displayed secret hints in the MCP admin views."""
+
 logger = logging.getLogger("chatkit.mcp.server_service")
 
 
@@ -272,7 +275,7 @@ class McpServerService:
                 detail=str(exc),
             ) from exc
 
-        hint = mask_secret(candidate)
+        hint = mask_secret(candidate, max_length=MCP_SECRET_HINT_MAX_LENGTH)
         setattr(server, f"{field}_encrypted", encrypted)
         setattr(server, f"{field}_hint", hint)
         logger.debug(
