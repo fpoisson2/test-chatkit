@@ -429,6 +429,12 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overscroll-behavior: contain;
+}
+
+.flowViewport :global(.react-flow),
+.flowViewport :global(.react-flow__pane) {
+  touch-action: none;
 }
 .flowNode {
   transition: opacity 0.2s ease, filter 0.2s ease;
