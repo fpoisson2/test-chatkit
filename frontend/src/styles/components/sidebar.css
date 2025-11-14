@@ -1045,6 +1045,11 @@
   border-color: color-mix(in srgb, var(--gray-25) 50%, transparent);
 }
 
+/* Hide section title on mobile overlay mode to prevent duplicate with group title */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-header {
+  display: none;
+}
+
 /* Mobile sidebar footer styles */
 .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer {
   color: var(--gray-25);
@@ -1056,6 +1061,23 @@
 
 .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:hover,
 .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:focus-visible {
+  background: color-mix(in srgb, var(--gray-25) 15%, transparent);
+}
+
+/* Mobile sidebar profile name/email styles */
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
+  color: var(--gray-25);
+}
+
+/* Mobile sidebar dismiss button (close X) */
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss {
+  color: var(--gray-25);
+}
+
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
+  color: var(--gray-25);
   background: color-mix(in srgb, var(--gray-25) 15%, transparent);
 }
 
