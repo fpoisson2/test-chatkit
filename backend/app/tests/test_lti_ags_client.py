@@ -161,8 +161,8 @@ async def test_lti_ags_client_creates_line_item_and_publishes_score():
         if request.method == "POST" and request.url.path == "/lineitems/score-1/scores":
             payload = json.loads(request.content.decode())
             assert payload["userId"] == "platform-user"
-            assert payload["scoreGiven"] == pytest.approx(0.72)
-            assert payload["scoreMaximum"] == pytest.approx(1.0)
+            assert payload["scoreGiven"] == pytest.approx(18.0)
+            assert payload["scoreMaximum"] == pytest.approx(25.0)
             assert "comment" not in payload
             return httpx.Response(200)
         return httpx.Response(404)
@@ -262,8 +262,8 @@ async def test_publish_score_preserves_query_string_for_line_item():
             )
             payload = json.loads(request.content.decode())
             assert payload["userId"] == "platform-user"
-            assert payload["scoreGiven"] == pytest.approx(0.4166666667)
-            assert payload["scoreMaximum"] == pytest.approx(1.0)
+            assert payload["scoreGiven"] == pytest.approx(12.5)
+            assert payload["scoreMaximum"] == pytest.approx(30.0)
             assert "comment" not in payload
             return httpx.Response(200)
         return httpx.Response(404)

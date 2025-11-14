@@ -173,10 +173,18 @@ class LTIAGSClient(AGSClientProtocol):
         if fetched_score_maximum is not None:
             score_maximum = fetched_score_maximum
 
+        if score_maximum is None or score_maximum <= 0:
+            logger.debug(
+                "LTI AGS: scoreMaximum absent pour %s, publication ignorée",
+                variable_id,
+            )
+            return
+
+        ratio = self._normalize_score(score, score_maximum)
         payload: dict[str, Any] = {
             "userId": user_id,
-            "scoreGiven": self._normalize_score(score, score_maximum),
-            "scoreMaximum": 1.0,
+            "scoreGiven": ratio * score_maximum,
+            "scoreMaximum": score_maximum,
             "timestamp": self._format_score_timestamp(),
             "activityProgress": "Completed",
             "gradingProgress": "FullyGraded",
