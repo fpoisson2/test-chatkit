@@ -116,6 +116,12 @@ AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 
+def _generate_conversation_history_message_id() -> str:
+    """Return a unique Responses-compatible identifier for history entries."""
+
+    return f"msg_{uuid.uuid4().hex}"
+
+
 def _sanitize_previous_response_id(value: Any) -> str | None:
     """Return a valid previous_response_id or ``None`` when invalid."""
 
@@ -2883,6 +2889,8 @@ async def run_workflow(
                 if should_append_output_text:
                     conversation_history.append(
                         {
+                            "id": _generate_conversation_history_message_id(),
+                            "type": "message",
                             "role": "assistant",
                             "content": [
                                 {"type": "output_text", "text": output_text.strip()},
