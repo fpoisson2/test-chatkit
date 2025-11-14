@@ -75,18 +75,17 @@
     --button-border-color-hover: var(--color-border-strong);
   }
 
-  /* Ghost = presque juste du texte, bordure invisible */
+  /* Ghost = bouton discret mais contrasté avec le fond */
   .btn-ghost {
-    --button-bg: transparent;
-    --button-bg-hover: var(--alpha-05);
+    --button-bg: color-mix(in srgb, var(--color-surface) 88%, var(--color-text) 12%);
+    --button-bg-hover: color-mix(in srgb, var(--color-surface) 78%, var(--color-text) 22%);
     --button-color: var(--color-text);
-    --button-border-color: transparent;
-    --button-border-color-hover: transparent;
-    opacity: 0.8;
+    --button-border-color: color-mix(in srgb, var(--color-text) 18%, transparent);
+    --button-border-color-hover: color-mix(in srgb, var(--color-text) 28%, transparent);
   }
 
   .btn-ghost:hover:not(:disabled) {
-    opacity: 1;
+    --button-border-color: color-mix(in srgb, var(--color-text) 28%, transparent);
   }
 
   .btn-danger {
