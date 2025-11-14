@@ -917,11 +917,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     async (workflow: WorkflowSummary) => {
       if (!token || loading) return;
 
-      if (workflow.is_chatkit_default) {
-        alert("Sélectionnez un autre workflow pour ChatKit avant de supprimer celui-ci.");
-        return;
-      }
-
       const confirmed = window.confirm(
         `Supprimer le workflow "${workflow.display_name}" ? Cette action est irréversible.`,
       );
@@ -1000,7 +995,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         ? t("workflows.unpinAction")
         : t("workflows.pinAction");
 
-      const canDelete = !workflow.is_chatkit_default && !loading;
+      const canDelete = !loading;
       const canExport = workflow.active_version_id !== null;
 
       return [
@@ -1423,7 +1418,7 @@ export const WorkflowBuilderSidebar = ({
       workflow: WorkflowSummary;
       t: ReturnType<typeof useI18n>["t"];
     }): WorkflowActionMenuItem[] => {
-      const canDelete = !workflow.is_chatkit_default && !loading;
+      const canDelete = !loading;
       const canDuplicate =
         !loading && (workflow.id === selectedWorkflowId || workflow.active_version_id !== null);
 
@@ -1484,7 +1479,7 @@ export const WorkflowBuilderSidebar = ({
   const localTrailingContent = useCallback(
     (workflow: WorkflowSummary) => (
       <>
-        {!workflow.is_chatkit_default && !workflow.active_version_id ? (
+        {!workflow.active_version_id ? (
           <p className="chatkit-sidebar__workflow-meta" aria-live="polite" style={warningStyle}>
             {t("workflowBuilder.localSection.missingProduction")}
           </p>
