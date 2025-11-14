@@ -270,6 +270,18 @@ def test_lti_launch_provisions_user_and_returns_token(client, monkeypatch):
             "https://purl.imsglobal.org/spec/lti/claim/custom": {
                 "workflow_slug": "demo-workflow"
             },
+            "https://purl.imsglobal.org/spec/lti-ags/claim/endpoint": {
+                "lineitems": "https://platform.example/contexts/123/lineitems",
+                "lineitem": "https://platform.example/contexts/123/lineitems/quiz",
+                "scope": [
+                    "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+                    "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+                ],
+            },
+            "https://purl.imsglobal.org/spec/lti-ags/claim/lineitem": {
+                "scoreMaximum": 20,
+                "label": "Quiz final",
+            },
         },
     )
 
@@ -298,6 +310,28 @@ def test_lti_launch_provisions_user_and_returns_token(client, monkeypatch):
         )
         assert resource_link is not None
         assert resource_link.workflow_id == workflow.id
+        session_record = session.scalar(
+            select(models.LTIUserSession).where(
+                models.LTIUserSession.user_id == user.id
+            )
+        )
+        assert session_record is not None
+        assert (
+            session_record.ags_line_items_endpoint
+            == "https://platform.example/contexts/123/lineitems"
+        )
+        assert (
+            session_record.ags_line_item_endpoint
+            == "https://platform.example/contexts/123/lineitems/quiz"
+        )
+        assert session_record.ags_scopes == [
+            "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+            "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+        ]
+        assert session_record.ags_line_item_claim == {
+            "scoreMaximum": 20,
+            "label": "Quiz final",
+        }
         assert session.scalar(
             select(models.LTIUserSession).where(
                 models.LTIUserSession.user_id == user.id
