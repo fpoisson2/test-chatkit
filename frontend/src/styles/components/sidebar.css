@@ -1036,7 +1036,8 @@
   background: color-mix(in srgb, var(--primary-color) 45%, transparent);
 }
 
-.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-pin-button {
+.chatkit-sidebar__section[data-variant="overlay"][data-hide-pin-buttons="true"]
+  .chatkit-sidebar__workflow-pin-button {
   display: none;
 }
 

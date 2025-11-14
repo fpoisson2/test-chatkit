@@ -1233,6 +1233,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         }
         footerContent={footerContent}
         variant={sectionVariant}
+        hidePinButtons={isMobileLayout}
       />
     );
   }, [
@@ -1603,6 +1604,7 @@ export const WorkflowBuilderSidebar = ({
         emptyState={emptyContent}
         footerContent={footerContent}
         variant={sectionVariant}
+        hidePinButtons={isMobileLayout}
       />
     );
   }, [

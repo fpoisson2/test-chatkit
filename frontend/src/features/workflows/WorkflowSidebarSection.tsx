@@ -51,6 +51,7 @@ export type WorkflowSidebarSectionProps = {
   footerContent?: ReactNode;
   className?: string;
   variant?: "default" | "overlay";
+  hidePinButtons?: boolean;
 };
 
 export type WorkflowSidebarCompactProps = {
@@ -89,6 +90,7 @@ const WorkflowSidebarSection = ({
   footerContent,
   className,
   variant = "default",
+  hidePinButtons = false,
 }: WorkflowSidebarSectionProps) => {
   const { pinned, regular } = splitEntriesByPin(entries);
   const hasEntries = pinned.length > 0 || regular.length > 0;
@@ -108,6 +110,7 @@ const WorkflowSidebarSection = ({
       className={sectionClassName}
       aria-labelledby={titleId}
       data-variant={variant === "overlay" ? "overlay" : undefined}
+      data-hide-pin-buttons={hidePinButtons ? "true" : undefined}
     >
       <div className="chatkit-sidebar__section-header">
         <h2 id={titleId} className="chatkit-sidebar__section-title">

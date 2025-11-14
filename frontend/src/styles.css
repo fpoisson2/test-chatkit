@@ -1404,7 +1404,8 @@ button {
   background: rgba(59, 130, 246, 0.45);
 }
 
-.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-pin-button {
+.chatkit-sidebar__section[data-variant="overlay"][data-hide-pin-buttons="true"]
+  .chatkit-sidebar__workflow-pin-button {
   display: none;
 }
 
