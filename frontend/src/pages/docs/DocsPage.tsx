@@ -11,6 +11,7 @@ import {
   type DocumentationMetadata,
 } from "../../utils/backend";
 import { DocEditor, type DocEditorValues } from "./DocEditor";
+import { DocDetail } from "./DocDetail";
 
 import styles from "./DocsPage.module.css";
 
@@ -33,7 +34,13 @@ const DEFAULT_EDITOR_VALUES: DocEditorValues = {
   content: "",
 };
 
-export const DocsPage = () => {
+type DocsPageMode = "admin" | "standalone";
+
+type DocsPageProps = {
+  mode?: DocsPageMode;
+};
+
+export const DocsPage = ({ mode = "admin" }: DocsPageProps = {}) => {
   const { token, user, logout } = useAuth();
   const { t, language } = useI18n();
   const isAdmin = Boolean(user?.is_admin);
@@ -45,6 +52,7 @@ export const DocsPage = () => {
   const [editorValues, setEditorValues] = useState<DocEditorValues>(DEFAULT_EDITOR_VALUES);
   const [isSubmitting, setSubmitting] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -133,7 +141,11 @@ export const DocsPage = () => {
       });
 
       setEditorOpen(false);
-      navigate(`/docs/${created.slug}`);
+      if (mode === "admin") {
+        setSelectedSlug(created.slug);
+      } else {
+        navigate(`/docs/${encodeURIComponent(created.slug)}`);
+      }
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -145,6 +157,34 @@ export const DocsPage = () => {
       setSubmitting(false);
     }
   };
+
+  const handleSelectDocument = useCallback(
+    (slug: string) => {
+      if (mode === "admin") {
+        setSelectedSlug(slug);
+        return;
+      }
+
+      navigate(`/docs/${encodeURIComponent(slug)}`);
+    },
+    [mode, navigate],
+  );
+
+  const handleDocumentUpdated = useCallback(
+    (entry: DocumentationEntry) => {
+      setDocuments((previous) => {
+        const metadata = toMetadata(entry);
+        const withoutDuplicate = previous.filter((item) => item.slug !== metadata.slug);
+        return sortDocuments([...withoutDuplicate, metadata]);
+      });
+    },
+    [],
+  );
+
+  const handleDocumentDeleted = useCallback((slug: string) => {
+    setDocuments((previous) => previous.filter((item) => item.slug !== slug));
+    setSelectedSlug(null);
+  }, []);
 
   const renderContent = useMemo(() => {
     if (isLoading) {
@@ -182,9 +222,19 @@ export const DocsPage = () => {
                   <span>{t("docs.list.updatedAt", { value: formatDate(document.updated_at) })}</span>
                 </span>
                 <div className={styles.actions}>
-                  <Link className="btn btn-ghost" to={`/docs/${encodeURIComponent(document.slug)}`}>
-                    {t("docs.list.open")}
-                  </Link>
+                  {mode === "admin" ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => handleSelectDocument(document.slug)}
+                    >
+                      {t("docs.list.open")}
+                    </button>
+                  ) : (
+                    <Link className="btn btn-ghost" to={`/docs/${encodeURIComponent(document.slug)}`}>
+                      {t("docs.list.open")}
+                    </Link>
+                  )}
                 </div>
               </footer>
             </article>
@@ -192,7 +242,30 @@ export const DocsPage = () => {
         ))}
       </ul>
     );
-  }, [documents, error, formatDate, isLoading, t]);
+  }, [documents, error, formatDate, handleSelectDocument, isLoading, mode, t]);
+
+  if (mode === "admin" && selectedSlug) {
+    return (
+      <>
+        <DocDetail
+          slug={selectedSlug}
+          variant="admin"
+          onClose={() => setSelectedSlug(null)}
+          onUpdate={handleDocumentUpdated}
+          onDelete={handleDocumentDeleted}
+        />
+        <DocEditor
+          mode="create"
+          isOpen={isEditorOpen}
+          initialValues={editorValues}
+          isSubmitting={isSubmitting}
+          error={editorError}
+          onSubmit={handleCreateDocument}
+          onCancel={handleCloseEditor}
+        />
+      </>
+    );
+  }
 
   return (
     <>
