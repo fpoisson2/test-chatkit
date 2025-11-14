@@ -1045,8 +1045,8 @@
   border-color: color-mix(in srgb, var(--gray-25) 50%, transparent);
 }
 
-/* Hide section title on mobile overlay mode to prevent duplicate with group title */
-.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title {
+/* Hide group titles on mobile overlay mode to prevent duplicate with main title */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-group-title {
   display: none;
 }
 
