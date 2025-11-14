@@ -82,6 +82,11 @@
     --button-color: var(--color-text);
     --button-border-color: transparent;
     --button-border-color-hover: transparent;
+    opacity: 0.8;
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    opacity: 1;
   }
 
   .btn-danger {
