@@ -98,25 +98,29 @@ const WorkflowSidebarSection = ({
     ? `${floatingActionClass} ${className}`
     : floatingActionClass;
 
+  const titleId = `${sectionId}-title`;
+
   return (
-    <section className={sectionClassName} aria-labelledby={`${sectionId}-title`}>
-      <h2 id={`${sectionId}-title`} className="visually-hidden">
-        {title}
-      </h2>
-      {floatingAction ? (
-        <div className="chatkit-sidebar__section-floating-action">
-          <button
-            type="button"
-            className="chatkit-sidebar__section-icon-button"
-            onClick={floatingAction.onClick}
-            aria-label={floatingAction.label}
-            title={floatingAction.title ?? floatingAction.label}
-            disabled={floatingAction.disabled}
-          >
-            {floatingAction.icon ?? <span aria-hidden="true">+</span>}
-          </button>
-        </div>
-      ) : null}
+    <section className={sectionClassName} aria-labelledby={titleId}>
+      <div className="chatkit-sidebar__section-header">
+        <h2 id={titleId} className="chatkit-sidebar__section-title">
+          {title}
+        </h2>
+        {floatingAction ? (
+          <div className="chatkit-sidebar__section-floating-action">
+            <button
+              type="button"
+              className="chatkit-sidebar__section-icon-button"
+              onClick={floatingAction.onClick}
+              aria-label={floatingAction.label}
+              title={floatingAction.title ?? floatingAction.label}
+              disabled={floatingAction.disabled}
+            >
+              {floatingAction.icon ?? <span aria-hidden="true">+</span>}
+            </button>
+          </div>
+        ) : null}
+      </div>
       {beforeGroups}
       {hasEntries ? (
         <>
