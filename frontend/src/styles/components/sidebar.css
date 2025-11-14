@@ -1140,7 +1140,7 @@
 /* Dark mode - use light text */
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
-  color: var(--gray-25);
+  color: #ffffff !important;
 }
 
 /* Desktop sidebar profile name/email styles for dark mode */
