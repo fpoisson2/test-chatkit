@@ -1068,6 +1068,17 @@
   border-color: color-mix(in srgb, var(--gray-25) 50%, transparent);
 }
 
+/* Fix workflow menu button text contrast on mobile */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button {
+  color: var(--gray-25) !important;
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:hover:not([disabled]),
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:focus-visible:not([disabled]) {
+  color: var(--gray-25) !important;
+  background: color-mix(in srgb, var(--gray-25) 12%, transparent) !important;
+}
+
 /* Mobile sidebar footer styles */
 .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer {
   color: var(--gray-25);
