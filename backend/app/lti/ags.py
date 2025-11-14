@@ -156,22 +156,24 @@ class LTIAGSClient(AGSClientProtocol):
             logger.debug("LTI AGS: aucun user_id plateforme, impossible de publier")
             return
 
-        fetched_score_maximum: float | None = None
-        if _LINEITEM_SCOPE in scopes or _LINEITEM_READONLY_SCOPE in scopes:
-            fetched = await self._get_line_item_details(target, token)
-            if fetched is not None:
-                fetched_score_maximum = self._coerce_score(
-                    fetched.get("scoreMaximum"),
-                    fallback=None,
-                )
+        if _LINEITEM_SCOPE not in scopes and _LINEITEM_READONLY_SCOPE not in scopes:
+            logger.debug(
+                "LTI AGS: scope lineitem absent, scoreMaximum inconnu pour %s",
+                variable_id,
+            )
+            return
+
+        fetched = await self._get_line_item_details(target, token)
+        if fetched is None:
+            logger.debug(
+                "LTI AGS: impossible de récupérer le line item %s", target
+            )
+            return
 
         score_maximum = self._coerce_score(
-            max_score,
-            fallback=context.ags_default_score_maximum,
-            secondary=score,
+            fetched.get("scoreMaximum"),
+            fallback=None,
         )
-        if fetched_score_maximum is not None:
-            score_maximum = fetched_score_maximum
 
         if score_maximum is None or score_maximum <= 0:
             logger.debug(

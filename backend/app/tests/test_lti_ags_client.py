@@ -292,6 +292,7 @@ async def test_publish_score_preserves_query_string_for_line_item():
         ags_line_items_endpoint="https://platform.example/lineitems",
         ags_scopes=(
             "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+            "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly",
         ),
         ags_default_score_maximum=20.0,
     )
