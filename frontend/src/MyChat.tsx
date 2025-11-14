@@ -347,8 +347,6 @@ export function MyChat() {
       }
 
       lastThreadSnapshotRef.current = null;
-      setActiveGeneration(null);
-
       const nextInitialThreadId = preserveStoredThread
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
         : null;
@@ -358,7 +356,7 @@ export function MyChat() {
       // Arrêter la session vocale si elle est en cours
       stopVoiceSessionRef.current?.();
     },
-    [mode, sessionOwner, setActiveGeneration, workflowSelection],
+    [mode, sessionOwner, workflowSelection],
   );
 
   const markGenerationStart = useCallback(() => {
@@ -395,6 +393,10 @@ export function MyChat() {
       setActiveGeneration(null);
     };
   }, [setActiveGeneration]);
+
+  useEffect(() => {
+    setActiveGeneration(null);
+  }, [chatInstanceKey, setActiveGeneration]);
 
   useEffect(() => {
     resetChatStateRef.current = resetChatState;
