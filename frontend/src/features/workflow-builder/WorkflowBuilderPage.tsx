@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { type EdgeChange, type NodeChange, type ReactFlowInstance, type Viewport } from "reactflow";
 
@@ -228,6 +229,7 @@ import {
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
   const { t } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
   const autoSaveSuccessMessage = t("workflowBuilder.save.autoSaveSuccess");
   const draftDisplayName = t("workflowBuilder.save.draftDisplayName");
   const saveFailureMessage = t("workflowBuilder.save.failure");
@@ -1103,6 +1105,18 @@ const WorkflowBuilderPage = () => {
     setCreateWorkflowError(null);
     handleOpenCreateModal();
   }, [handleOpenCreateModal]);
+
+  // Auto-open create modal if navigated from chat with ?create=true
+  useEffect(() => {
+    if (searchParams.get("create") === "true" && !isCreateModalOpen) {
+      handleOpenCreateModalWithReset();
+      // Remove the param from URL after opening the modal
+      setSearchParams((params) => {
+        params.delete("create");
+        return params;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams, isCreateModalOpen, handleOpenCreateModalWithReset]);
 
   // handleCloseCreateModal is provided by useWorkflowBuilderModals hook
   // handleSubmitCreateWorkflow, handleDeleteWorkflow, handleDeleteHostedWorkflow
