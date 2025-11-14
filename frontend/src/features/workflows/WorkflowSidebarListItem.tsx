@@ -79,6 +79,8 @@ const WorkflowSidebarListItem = ({
       {children}
       {menuProps ? (
         <WorkflowActionMenu {...menuProps} leadingContent={actionIndicator} />
+      ) : actionIndicator && showActions ? (
+        <div className="chatkit-sidebar__workflow-actions">{actionIndicator}</div>
       ) : null}
       {trailingContent}
     </li>
