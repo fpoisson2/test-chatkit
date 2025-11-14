@@ -556,6 +556,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                   triggerRef: workflowMenuTriggerRef,
                   menuRef: workflowMenuRef,
                   items: hostedMenuItems,
+                  variant: isMobileLayout ? "overlay" : "default",
                 }
               : null,
             hasActions: isAdmin,
@@ -589,6 +590,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                 </span>
               </button>
             ),
+            showPinButton: !isMobileLayout,
             compact: {
               label: option.label,
               initials: getWorkflowInitials(option.label),
@@ -683,6 +685,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                 triggerRef: workflowMenuTriggerRef,
                 menuRef: workflowMenuRef,
                 items: localMenuItems,
+                variant: isMobileLayout ? "overlay" : "default",
               }
             : null,
           hasActions: isAdmin,
@@ -699,6 +702,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
               <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
             </button>
           ),
+          showPinButton: !isMobileLayout,
           compact: {
             label: workflow.display_name,
             initials: getWorkflowInitials(workflow.display_name),
@@ -747,9 +751,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     const sectionId = "chat-sidebar-workflow";
     const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
 
+    const sectionVariant = isMobileLayout ? "overlay" : "default";
+
     if (!user) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
+        <section
+          className="chatkit-sidebar__section"
+          aria-live="polite"
+          data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
+        >
           <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-text">
             Connectez-vous pour choisir le workflow utilisé par ChatKit.
@@ -760,7 +770,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (error) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
+        <section
+          className="chatkit-sidebar__section"
+          aria-live="polite"
+          data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
+        >
           <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-error">{error}</p>
           <button
@@ -777,7 +791,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (loading) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
+        <section
+          className="chatkit-sidebar__section"
+          aria-live="polite"
+          data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
+        >
           <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <LoadingSpinner
             size="md"
@@ -792,7 +810,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     if (!hasHostedWorkflow && !hasLocalWorkflows) {
       return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
+        <section
+          className="chatkit-sidebar__section"
+          aria-live="polite"
+          data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
+        >
           <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-text">
             Publiez un workflow pour qu'il soit disponible dans le chat.
@@ -834,6 +856,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             : undefined
         }
         footerContent={footerContent}
+        variant={sectionVariant}
       />
     );
   }, [
@@ -841,6 +864,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     handleOpenBuilder,
     hostedWorkflows,
     isAdmin,
+    isMobileLayout,
     loadWorkflows,
     loading,
     sidebarEntries,
