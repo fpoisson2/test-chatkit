@@ -128,6 +128,50 @@ def _add_workflows_lti_chatkit_options(connection) -> None:
         )
 
 
+def _lti_user_sessions_has_ags_columns(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("lti_user_sessions"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("lti_user_sessions")}
+    required = {
+        "ags_line_items_endpoint",
+        "ags_line_item_endpoint",
+        "ags_scopes",
+        "ags_line_item_claim",
+    }
+    return required.issubset(columns)
+
+
+def _add_lti_user_sessions_ags_columns(connection) -> None:
+    inspector = inspect(connection)
+
+    if not inspector.has_table("lti_user_sessions"):
+        logger.warning(
+            "Cannot add AGS columns to lti_user_sessions because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("lti_user_sessions")
+    }
+
+    statements: tuple[tuple[str, str], ...] = (
+        ("ags_line_items_endpoint", "TEXT"),
+        ("ags_line_item_endpoint", "TEXT"),
+        ("ags_scopes", "JSONB"),
+        ("ags_line_item_claim", "JSONB"),
+    )
+
+    for column_name, column_type in statements:
+        if column_name in existing_columns:
+            continue
+        connection.execute(
+            text(
+                f"ALTER TABLE lti_user_sessions ADD COLUMN {column_name} {column_type}"
+            )
+        )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -171,6 +215,12 @@ def check_and_apply_migrations():
             "description": "Add LTI ChatKit options to workflows table",
             "check_fn": _workflows_has_lti_chatkit_options,
             "apply_fn": _add_workflows_lti_chatkit_options,
+        },
+        {
+            "id": "005_add_lti_user_session_ags",
+            "description": "Add AGS support columns to LTI user sessions",
+            "check_fn": _lti_user_sessions_has_ags_columns,
+            "apply_fn": _add_lti_user_sessions_ags_columns,
         },
     ]
 

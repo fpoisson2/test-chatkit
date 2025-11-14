@@ -15,6 +15,8 @@ except ImportError:  # pragma: no cover - compatibilité avec les anciennes vers
 
 from .chatkit_server.context import ChatKitRequestContext
 from .config import get_settings
+from .database import SessionLocal
+from .lti.ags import LTIAGSClient
 from .workflows.executor import (
     WorkflowExecutionError,
     WorkflowInput,
@@ -44,7 +46,9 @@ def get_chatkit_server() -> DemoChatKitServer:
     from .chatkit_server.server import DemoChatKitServer
 
     if _server is None:
-        _server = DemoChatKitServer(get_settings())
+        settings = get_settings()
+        ags_client = LTIAGSClient(settings=settings, session_factory=SessionLocal)
+        _server = DemoChatKitServer(settings, ags_client=ags_client)
     return _server
 
 
