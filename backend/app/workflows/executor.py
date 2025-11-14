@@ -197,6 +197,44 @@ def _normalize_conversation_history_for_provider(
 
     return items if not changed else normalized
 
+
+def _deduplicate_conversation_history_items(
+    items: Sequence[TResponseInputItem],
+) -> Sequence[TResponseInputItem]:
+    """Remove duplicated response items sharing the same identifier.
+
+    When the Responses API detects two entries referencing the same resource
+    identifier (for example ``rs_*`` attachments), it rejects the entire
+    payload. This helper keeps the first occurrence and skips subsequent ones
+    while preserving the original order.
+    """
+
+    if not items:
+        return items
+
+    seen_ids: set[str] = set()
+    deduplicated: list[TResponseInputItem] = []
+    changed = False
+
+    for item in items:
+        candidate: Any | None
+        if isinstance(item, Mapping):
+            candidate = item.get("id")  # type: ignore[assignment]
+        else:
+            candidate = getattr(item, "id", None)
+
+        item_id = candidate if isinstance(candidate, str) else None
+
+        if item_id is not None:
+            if item_id in seen_ids:
+                changed = True
+                continue
+            seen_ids.add(item_id)
+
+        deduplicated.append(item)
+
+    return items if not changed else deduplicated
+
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer
 # ---------------------------------------------------------------------------
@@ -1316,6 +1354,9 @@ async def run_workflow(
             getattr(provider_binding, "provider_slug", None)
             if provider_binding
             else None,
+        )
+        conversation_history_input = _deduplicate_conversation_history_items(
+            conversation_history_input
         )
 
         sanitized_previous_response_id = _sanitize_previous_response_id(
