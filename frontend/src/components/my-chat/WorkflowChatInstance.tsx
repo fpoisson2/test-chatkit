@@ -5,6 +5,7 @@ import { ChatKitHost } from "./ChatKitHost";
 import { useWorkflowChatSession } from "../../hooks/useWorkflowChatSession";
 import type { WorkflowSummary } from "../../types/workflows";
 import { useGenerationStatus } from "../../features/workflows/GenerationStatusContext";
+import { chatkitApi } from "../../utils/backend";
 
 type WorkflowChatInstanceProps = {
   workflowId: string;
@@ -54,29 +55,43 @@ export const WorkflowChatInstance = ({
     }
   }, [isActive, onRequestRefreshReady]);
 
-  // Monitor isGenerating status and update context
+  // Monitor generation status from backend
   useEffect(() => {
-    if (!isActive || !control) {
+    if (!isActive || !control || !token) {
+      // Clean up when component becomes inactive
+      setWorkflowGenerating(workflowId, false);
       return;
     }
 
-    const checkGeneratingStatus = () => {
-      const isGenerating = control.isGenerating ?? false;
-      setWorkflowGenerating(workflowId, isGenerating);
+    const threadId = control.threadId;
+    if (!threadId) {
+      setWorkflowGenerating(workflowId, false);
+      return;
+    }
+
+    const checkGenerationStatus = async () => {
+      try {
+        const response = await chatkitApi.getGenerationStatus(token, threadId);
+        setWorkflowGenerating(workflowId, response.is_generating);
+      } catch (error) {
+        // En cas d'erreur, ne pas afficher le spinner
+        setWorkflowGenerating(workflowId, false);
+      }
     };
 
-    // Check initial status
-    checkGeneratingStatus();
+    // Vérifier immédiatement
+    void checkGenerationStatus();
 
-    // Poll for changes (ChatKit control doesn't expose an event-based API)
-    const intervalId = setInterval(checkGeneratingStatus, 100);
+    // Poll toutes les 500ms
+    const intervalId = setInterval(() => {
+      void checkGenerationStatus();
+    }, 500);
 
     return () => {
       clearInterval(intervalId);
-      // Clean up when component unmounts or becomes inactive
       setWorkflowGenerating(workflowId, false);
     };
-  }, [isActive, control, workflowId, setWorkflowGenerating]);
+  }, [isActive, control, control?.threadId, workflowId, setWorkflowGenerating, token]);
 
   return (
     <div

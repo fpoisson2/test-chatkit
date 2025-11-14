@@ -74,6 +74,7 @@ from ..admin_settings import resolve_appearance_settings
 from ..config import Settings, get_settings
 from ..database import SessionLocal, get_session
 from ..dependencies import get_current_user, get_optional_user
+from ..generation_tracker import get_generation_tracker
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
 from ..realtime_runner import open_voice_session
@@ -1300,6 +1301,21 @@ async def proxy_chatkit(
     return await proxy_chatkit_request(path, request)
 
 
+@router.get("/api/chatkit/generation-status/{thread_id}")
+async def get_generation_status(
+    thread_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Vérifie si un thread est actuellement en train de générer du contenu."""
+    tracker = get_generation_tracker()
+    is_generating = tracker.is_generating(thread_id)
+
+    return {
+        "thread_id": thread_id,
+        "is_generating": is_generating,
+    }
+
+
 @router.post("/api/chatkit")
 async def chatkit_endpoint(
     request: Request,
@@ -1366,6 +1382,17 @@ async def chatkit_endpoint(
         public_base_url=base_url,
     )
 
+    # Extraire le thread_id du payload pour le tracking
+    thread_id = None
+    try:
+        import json
+        payload_dict = json.loads(payload)
+        thread_id = payload_dict.get("thread_id")
+    except Exception:
+        pass  # Si on ne peut pas extraire le thread_id, on continue quand même
+
+    tracker = get_generation_tracker()
+
     try:
         result = await server.process(payload, context)
     except Exception as exc:
@@ -1384,5 +1411,21 @@ async def chatkit_endpoint(
     )
 
     if isinstance(result, StreamingResult):
-        return StreamingResponse(result, media_type="text/event-stream")
+        # Marquer le thread comme étant en génération si on a un thread_id
+        if thread_id:
+            tracker.start_generating(thread_id)
+            logger.info(f"Thread {thread_id} marqué comme en génération")
+
+        # Wrapper pour nettoyer le tracker quand le streaming se termine
+        async def streaming_wrapper():
+            try:
+                async for chunk in result:
+                    yield chunk
+            finally:
+                if thread_id:
+                    tracker.stop_generating(thread_id)
+                    logger.info(f"Thread {thread_id} n'est plus en génération")
+
+        return StreamingResponse(streaming_wrapper(), media_type="text/event-stream")
+
     return Response(content=result.json, media_type="application/json")

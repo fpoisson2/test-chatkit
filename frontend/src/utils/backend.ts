@@ -1209,6 +1209,19 @@ export const chatkitApi = {
     hostedWorkflowCache = undefined;
   },
 
+  async getGenerationStatus(
+    token: string | null,
+    threadId: string,
+  ): Promise<{ thread_id: string; is_generating: boolean }> {
+    const response = await requestWithFallback(
+      `/api/chatkit/generation-status/${encodeURIComponent(threadId)}`,
+      {
+        headers: withAuthHeaders(token),
+      },
+    );
+    return response.json();
+  },
+
   invalidateHostedWorkflowCache(): void {
     hostedWorkflowCache = undefined;
     hostedWorkflowPromise = null;
