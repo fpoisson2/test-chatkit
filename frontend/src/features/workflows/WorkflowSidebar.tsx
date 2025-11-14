@@ -980,7 +980,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           aria-live="polite"
           data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
         >
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-text">
             Connectez-vous pour choisir le workflow utilisé par ChatKit.
           </p>
@@ -995,7 +994,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           aria-live="polite"
           data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
         >
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-error">{error}</p>
           <button
             type="button"
@@ -1016,7 +1014,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           aria-live="polite"
           data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
         >
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <LoadingSpinner
             size="md"
             text={isLtiUser ? 'Chargement du workflow…' : 'Chargement des workflows…'}
@@ -1035,7 +1032,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           aria-live="polite"
           data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
         >
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-text">
             Publiez un workflow pour qu'il soit disponible dans le chat.
           </p>
