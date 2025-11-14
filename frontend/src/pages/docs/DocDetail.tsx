@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 
 import { useAuth } from "../../auth";
-import { ManagementPageLayout } from "../../components/ManagementPageLayout";
+import { FormSection } from "../../components";
 import { useI18n } from "../../i18n";
 import {
   ApiError,
@@ -170,7 +170,7 @@ export const DocDetail = () => {
     }
   };
 
-  const actions = useMemo(
+  const headerActions = useMemo(
     () => (
       <div className={styles.actions}>
         <Link className="btn btn-ghost" to="/docs">
@@ -225,14 +225,15 @@ export const DocDetail = () => {
 
   return (
     <>
-      <ManagementPageLayout
-        title={document?.title ?? slug ?? t("docs.detail.fallbackTitle")}
-        subtitle={document?.summary ?? undefined}
-        maxWidth="lg"
-        actions={actions}
-      >
-        {body}
-      </ManagementPageLayout>
+      <div className="admin-grid">
+        <FormSection
+          title={document?.title ?? slug ?? t("docs.detail.fallbackTitle")}
+          subtitle={document?.summary ?? undefined}
+          headerAction={headerActions}
+        >
+          {body}
+        </FormSection>
+      </div>
       <DocEditor
         mode="edit"
         isOpen={isEditorOpen}
