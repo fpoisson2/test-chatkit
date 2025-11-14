@@ -36,6 +36,7 @@ export type WorkflowSidebarSectionEntry = {
   content: ReactNode;
   trailingContent?: ReactNode;
   compact?: WorkflowSidebarCompactEntry | null;
+  showPinButton?: boolean;
 };
 
 export type WorkflowSidebarSectionProps = {
@@ -148,6 +149,7 @@ const WorkflowSidebarSection = ({
                     dataAttributes={entry.dataAttributes}
                     pinButtonTitle={entry.pinButtonTitle}
                     trailingContent={entry.trailingContent}
+                    showPinButton={entry.showPinButton}
                   >
                     {entry.content}
                   </WorkflowSidebarListItem>
@@ -170,6 +172,7 @@ const WorkflowSidebarSection = ({
                     dataAttributes={entry.dataAttributes}
                     pinButtonTitle={entry.pinButtonTitle}
                     trailingContent={entry.trailingContent}
+                    showPinButton={entry.showPinButton}
                   >
                     {entry.content}
                   </WorkflowSidebarListItem>

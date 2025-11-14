@@ -590,6 +590,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                 </span>
               </button>
             ),
+            showPinButton: !isMobileLayout,
             compact: {
               label: option.label,
               initials: getWorkflowInitials(option.label),
@@ -701,6 +702,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
               <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
             </button>
           ),
+          showPinButton: !isMobileLayout,
           compact: {
             label: workflow.display_name,
             initials: getWorkflowInitials(workflow.display_name),

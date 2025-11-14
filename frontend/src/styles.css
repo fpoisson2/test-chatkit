@@ -1381,6 +1381,10 @@ button {
   color: #f8fafc;
 }
 
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button::after {
+  background: transparent;
+}
+
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover,
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible {
   color: #f8fafc;
@@ -1388,15 +1392,25 @@ button {
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover::after,
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible::after {
-  background: rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.22);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button[aria-current="true"] {
   color: #f8fafc;
+  font-weight: 600;
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button[aria-current="true"]::after {
-  background: rgba(148, 163, 184, 0.45);
+  background: rgba(59, 130, 246, 0.45);
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-pin-button {
+  display: none;
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-group-title::before,
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-compact-group-title::before {
+  content: none;
 }
 
 .chatkit-sidebar__badge {

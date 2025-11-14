@@ -18,6 +18,7 @@ export type WorkflowSidebarListItemProps = {
   pinButtonTitle?: string;
   children: ReactNode;
   trailingContent?: ReactNode;
+  showPinButton?: boolean;
 };
 
 const WorkflowSidebarListItem = ({
@@ -31,11 +32,12 @@ const WorkflowSidebarListItem = ({
   pinButtonTitle,
   children,
   trailingContent,
+  showPinButton = true,
 }: WorkflowSidebarListItemProps) => {
   const baseClassName = "chatkit-sidebar__workflow-list-item";
   const listItemClassName = [
     baseClassName,
-    "chatkit-sidebar__workflow-list-item--with-pin",
+    showPinButton ? "chatkit-sidebar__workflow-list-item--with-pin" : null,
     className,
   ]
     .filter(Boolean)
@@ -57,16 +59,18 @@ const WorkflowSidebarListItem = ({
 
   return (
     <li className={listItemClassName} {...mergedDataAttributes}>
-      <button
-        type="button"
-        className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
-        aria-label={pinLabel}
-        title={pinButtonTitle ?? pinLabel}
-        aria-pressed={isPinned}
-        onClick={onTogglePin}
-      >
-        <Star aria-hidden="true" className="chatkit-sidebar__workflow-pin-icon" />
-      </button>
+      {showPinButton ? (
+        <button
+          type="button"
+          className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
+          aria-label={pinLabel}
+          title={pinButtonTitle ?? pinLabel}
+          aria-pressed={isPinned}
+          onClick={onTogglePin}
+        >
+          <Star aria-hidden="true" className="chatkit-sidebar__workflow-pin-icon" />
+        </button>
+      ) : null}
       {children}
       {menuProps ? <WorkflowActionMenu {...menuProps} /> : null}
       {trailingContent}
