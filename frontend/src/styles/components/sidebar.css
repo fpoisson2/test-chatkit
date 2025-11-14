@@ -1351,6 +1351,20 @@ html[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible,
   color: #ffffff !important;
 }
 
+/* Force white color on ALL dismiss icon children */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss *,
+html[data-theme="dark"] .chatkit-sidebar__dismiss *,
+[data-theme="dark"] .chatkit-sidebar__dismiss *,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss-icon,
+html[data-theme="dark"] .chatkit-sidebar__dismiss-icon,
+[data-theme="dark"] .chatkit-sidebar__dismiss-icon,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss-icon *,
+html[data-theme="dark"] .chatkit-sidebar__dismiss-icon *,
+[data-theme="dark"] .chatkit-sidebar__dismiss-icon * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
 :root[data-theme="dark"] .chatkit-sidebar__dismiss svg,
 html[data-theme="dark"] .chatkit-sidebar__dismiss svg,
 [data-theme="dark"] .chatkit-sidebar__dismiss svg,
