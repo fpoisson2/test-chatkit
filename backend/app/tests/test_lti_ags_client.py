@@ -213,3 +213,76 @@ async def test_lti_ags_client_creates_line_item_and_publishes_score():
         ("POST", "/token"),
         ("POST", "/lineitems/score-1/scores"),
     ]
+
+
+@pytest.mark.anyio
+async def test_publish_score_preserves_query_string_for_line_item():
+    database = importlib.import_module("backend.app.database")
+    context_module = importlib.import_module("backend.app.chatkit_server.context")
+    config = importlib.import_module("backend.app.config")
+    ags_module = importlib.import_module("backend.app.lti.ags")
+
+    ids = _setup_lti_entities()
+    settings = config.get_settings()
+
+    captured: list[tuple[str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append((request.method, request.url.path, request.url.query))
+        if request.url.path == "/token":
+            return httpx.Response(
+                200,
+                json={"access_token": "token", "token_type": "Bearer"},
+            )
+        if (
+            request.method == "POST"
+            and request.url.path == "/lineitems/score-99/scores"
+            and request.url.query == "type_id=6"
+        ):
+            payload = json.loads(request.content.decode())
+            assert payload["userId"] == "platform-user"
+            assert payload["scoreGiven"] == 12.5
+            return httpx.Response(200)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+
+    @asynccontextmanager
+    async def client_factory() -> AsyncIterator[httpx.AsyncClient]:
+        async with httpx.AsyncClient(transport=transport, timeout=5.0) as client:
+            yield client
+
+    ags_client = ags_module.LTIAGSClient(
+        session_factory=database.SessionLocal,
+        settings=settings,
+        http_client_factory=client_factory,
+    )
+
+    chatkit_context = context_module.ChatKitRequestContext(
+        user_id=str(ids["user_id"]),
+        email="student@lti.local",
+        lti_session_id=ids["session_id"],
+        lti_registration_id=ids["registration_id"],
+        lti_resource_link_id=ids["resource_link_id"],
+        lti_resource_link_ref=ids["resource_link_ref"],
+        lti_platform_user_id="platform-user",
+        ags_line_items_endpoint="https://platform.example/lineitems",
+        ags_scopes=(
+            "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+        ),
+        ags_default_score_maximum=20.0,
+    )
+
+    await ags_client.publish_score(
+        context=chatkit_context,
+        line_item_id="https://platform.example/lineitems/score-99?type_id=6",
+        variable_id="score-99",
+        score=12.5,
+        max_score=None,
+        comment=None,
+    )
+
+    assert captured == [
+        ("POST", "/token", ""),
+        ("POST", "/lineitems/score-99/scores", "type_id=6"),
+    ]

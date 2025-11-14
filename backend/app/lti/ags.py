@@ -6,7 +6,7 @@ import secrets
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import httpx
 import jwt
@@ -176,7 +176,7 @@ class LTIAGSClient(AGSClientProtocol):
         if comment:
             payload["comment"] = comment
 
-        scores_endpoint = target.rstrip("/") + "/scores"
+        scores_endpoint = self._build_scores_endpoint(target)
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/vnd.ims.lis.v1.score+json",
@@ -435,6 +435,20 @@ class LTIAGSClient(AGSClientProtocol):
             return url
         separator = "&" if "?" in url else "?"
         return f"{url}{separator}{urlencode(params)}"
+
+    @staticmethod
+    def _build_scores_endpoint(line_item_url: str) -> str:
+        parsed = urlsplit(line_item_url)
+        path = parsed.path.rstrip("/") + "/scores"
+        return urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                path,
+                parsed.query,
+                parsed.fragment,
+            )
+        )
 
     @staticmethod
     def _coerce_score(
