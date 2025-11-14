@@ -1,0 +1,106 @@
+/**
+ * CRITICAL FIX - Dark Mode Sidebar Icons Visibility
+ *
+ * This file MUST be imported LAST in index.css to ensure these styles
+ * override everything else.
+ *
+ * Problem: Icons X and + in sidebar are invisible in dark mode
+ * Solution: Force white color with !important on all possible selectors
+ */
+
+/* ============================================
+   ICON X (Dismiss Button) - Close Sidebar
+   ============================================ */
+
+/* Target the button itself */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss,
+html[data-theme="dark"] .chatkit-sidebar__dismiss {
+  color: #ffffff !important;
+}
+
+/* Target the icon container span */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss-icon,
+html[data-theme="dark"] .chatkit-sidebar__dismiss-icon {
+  color: #ffffff !important;
+}
+
+/* Target ALL children with universal selector */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss *,
+html[data-theme="dark"] .chatkit-sidebar__dismiss *,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss-icon *,
+html[data-theme="dark"] .chatkit-sidebar__dismiss-icon * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Target SVG elements specifically */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss svg,
+html[data-theme="dark"] .chatkit-sidebar__dismiss svg,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss svg *,
+html[data-theme="dark"] .chatkit-sidebar__dismiss svg * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Target paths specifically */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss path,
+html[data-theme="dark"] .chatkit-sidebar__dismiss path,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss svg path,
+html[data-theme="dark"] .chatkit-sidebar__dismiss svg path {
+  stroke: #ffffff !important;
+  fill: none !important;
+}
+
+/* Hover and focus states */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
+html[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible {
+  color: #ffffff !important;
+}
+
+/* ============================================
+   ICON + (Add Button) - Section Icon Button
+   ============================================ */
+
+/* Desktop version */
+:root[data-theme="dark"] .chatkit-sidebar__section-icon-button,
+html[data-theme="dark"] .chatkit-sidebar__section-icon-button {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  font-weight: 700 !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+:root[data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
+html[data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
+:root[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Mobile version with overlay variant */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  font-weight: 700 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.6) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Target all children of icon buttons */
+:root[data-theme="dark"] .chatkit-sidebar__section-icon-button *,
+html[data-theme="dark"] .chatkit-sidebar__section-icon-button * {
+  color: #ffffff !important;
+}
