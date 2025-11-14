@@ -1982,3 +1982,23 @@ html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] * {
   /* Override any gray-25 usage with white in dark mode */
   --gray-25: #ffffff !important;
 }
+
+/* ============================================
+   FIX: Workflow label contrast in light mode
+   ============================================ */
+
+/* Fix workflow label text contrast on active item in light mode */
+:root[data-theme="light"] .chatkit-sidebar__workflow-button[aria-current="true"],
+html[data-theme="light"] .chatkit-sidebar__workflow-button[aria-current="true"],
+:root:not([data-theme]) .chatkit-sidebar__workflow-button[aria-current="true"],
+html:not([data-theme]) .chatkit-sidebar__workflow-button[aria-current="true"] {
+  color: var(--primary-hover) !important;
+}
+
+/* Ensure the label inherits the darker color */
+:root[data-theme="light"] .chatkit-sidebar__workflow-button[aria-current="true"] .chatkit-sidebar__workflow-label,
+html[data-theme="light"] .chatkit-sidebar__workflow-button[aria-current="true"] .chatkit-sidebar__workflow-label,
+:root:not([data-theme]) .chatkit-sidebar__workflow-button[aria-current="true"] .chatkit-sidebar__workflow-label,
+html:not([data-theme]) .chatkit-sidebar__workflow-button[aria-current="true"] .chatkit-sidebar__workflow-label {
+  color: inherit !important;
+}
