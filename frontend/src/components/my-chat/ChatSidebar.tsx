@@ -1,7 +1,7 @@
 import {
   ChatWorkflowSidebar,
   type WorkflowActivation,
-} from "../../features/workflows/ChatWorkflowSidebar";
+} from "../../features/workflows/WorkflowSidebar";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
 
 type ChatSidebarProps = {

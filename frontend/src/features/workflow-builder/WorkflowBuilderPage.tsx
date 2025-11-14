@@ -114,7 +114,7 @@ import EdgeInspector from "./components/EdgeInspector";
 import CreateWorkflowModal from "./components/CreateWorkflowModal";
 import DeployWorkflowModal from "./components/DeployWorkflowModal";
 import NodeInspector from "./components/NodeInspector";
-import WorkflowBuilderSidebar from "./components/WorkflowBuilderSidebar";
+import { WorkflowBuilderSidebar } from "../workflows/WorkflowSidebar";
 import BlockLibrary, { type BlockLibraryItem } from "./components/BlockLibrary";
 import WorkflowBuilderCanvas, {
   type MobileActionLabels,

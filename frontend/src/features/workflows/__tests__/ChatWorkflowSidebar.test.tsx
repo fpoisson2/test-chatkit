@@ -45,10 +45,10 @@ vi.mock("../../../components/AppLayout", () => ({
   }),
 }));
 
-let ChatWorkflowSidebar: typeof import("../ChatWorkflowSidebar").ChatWorkflowSidebar;
+let ChatWorkflowSidebar: typeof import("../WorkflowSidebar").ChatWorkflowSidebar;
 
 beforeAll(async () => {
-  ({ ChatWorkflowSidebar } = await import("../ChatWorkflowSidebar"));
+  ({ ChatWorkflowSidebar } = await import("../WorkflowSidebar"));
 });
 
 const authState: { token: string | null; user: { is_admin: boolean; email: string } } = {
