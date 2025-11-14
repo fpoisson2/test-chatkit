@@ -9,6 +9,7 @@ import { workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
+import { useDuplicateWorkflow } from "../../hooks/useWorkflows";
 import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
 import type {
@@ -90,6 +91,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const [workflowMenuPlacement, setWorkflowMenuPlacement] = useState<ActionMenuPlacement>("down");
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
+  const duplicateWorkflowMutation = useDuplicateWorkflow();
 
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
@@ -382,6 +384,69 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     ],
   );
 
+  const handleDuplicateWorkflow = useCallback(
+    async (workflow: WorkflowSummary) => {
+      if (!token || !isAdmin) {
+        return;
+      }
+
+      if (workflow.active_version_id === null) {
+        return;
+      }
+
+      const baseName = workflow.display_name?.trim() || "Workflow sans nom";
+      const proposed = window.prompt("Nom du duplicata ?", `${baseName} (copie)`);
+      if (!proposed) {
+        return;
+      }
+
+      const displayName = proposed.trim();
+      if (!displayName) {
+        return;
+      }
+
+      setUpdatingWorkflowId(workflow.id);
+      try {
+        const duplicated = await duplicateWorkflowMutation.mutateAsync({
+          token,
+          id: workflow.id,
+          newName: displayName,
+        });
+
+        await loadWorkflows();
+        setSelectedWorkflowId(duplicated.id);
+        updateStoredWorkflowSelection((previous) => ({
+          mode: "local",
+          localWorkflowId: duplicated.id,
+          hostedSlug: previous?.hostedSlug ?? null,
+          lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
+          pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
+        }));
+        recordWorkflowLastUsedAt({
+          kind: "local",
+          workflow: duplicated,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Impossible de dupliquer le workflow.";
+        window.alert(message);
+      } finally {
+        setUpdatingWorkflowId(null);
+        closeWorkflowMenu();
+      }
+    },
+    [
+      closeWorkflowMenu,
+      duplicateWorkflowMutation,
+      loadWorkflows,
+      recordWorkflowLastUsedAt,
+      setSelectedWorkflowId,
+      token,
+      isAdmin,
+      updateStoredWorkflowSelection,
+    ],
+  );
+
   const handleHostedWorkflowClick = useCallback(
     (slug: string) => {
       const option = hostedWorkflows.find((entry) => entry.slug === slug);
@@ -559,7 +624,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           {
             key: "duplicate",
             label: t("workflowBuilder.localSection.duplicateAction"),
-            disabled: true,
+            onSelect: () => void handleDuplicateWorkflow(workflow),
+            disabled:
+              !isAdmin ||
+              loading ||
+              updatingWorkflowId === workflow.id ||
+              workflow.active_version_id === null ||
+              !token,
           },
           {
             key: "rename",
@@ -640,6 +711,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       }),
     [
       closeWorkflowMenu,
+      handleDuplicateWorkflow,
       handleHostedWorkflowClick,
       handleWorkflowClick,
       isAdmin,
@@ -657,6 +729,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       t,
       toggleHostedPin,
       toggleLocalPin,
+      token,
       workflowMenuPlacement,
       workflowMenuRef,
       workflowMenuTriggerRef,

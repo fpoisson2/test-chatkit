@@ -400,18 +400,16 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
   const handleDuplicateWorkflow = useCallback(
     async (workflowId?: number) => {
       const targetId = workflowId ?? selectedWorkflowId;
-      const selectedWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
-      if (!targetId || !selectedWorkflow || targetId !== selectedWorkflowId) {
+      const targetWorkflow = targetId
+        ? workflows.find((workflow) => workflow.id === targetId)
+        : undefined;
+
+      if (!targetId || !targetWorkflow) {
         closeWorkflowMenu();
-        if (targetId && targetId !== selectedWorkflowId) {
-          setSaveState("error");
-          setSaveMessage("Sélectionnez le workflow avant de le dupliquer.");
-          setTimeout(() => setSaveState("idle"), 1500);
-        }
         return;
       }
 
-      const baseName = selectedWorkflow.display_name?.trim() || "Workflow sans nom";
+      const baseName = targetWorkflow.display_name?.trim() || "Workflow sans nom";
       const proposed = window.prompt("Nom du duplicata ?", `${baseName} (copie)`);
       if (!proposed) {
         return;
@@ -426,20 +424,35 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       setSaveMessage("Duplication en cours…");
 
       try {
-        const data = await createWorkflowWithGraphMutation.mutateAsync({
-          token,
-          payload: {
-            slug: slugifyWorkflowName(displayName),
-            display_name: displayName,
-            description: selectedWorkflow.description,
-            graph: buildGraphPayload(),
-          },
-        });
+        if (targetId === selectedWorkflowId) {
+          const data = await createWorkflowWithGraphMutation.mutateAsync({
+            token,
+            payload: {
+              slug: slugifyWorkflowName(displayName),
+              display_name: displayName,
+              description: targetWorkflow.description,
+              graph: buildGraphPayload(),
+            },
+          });
 
-        closeWorkflowMenu();
+          closeWorkflowMenu();
 
-        // React Query handles cache invalidation, load the duplicated workflow
-        await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
+          await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
+        } else {
+          const duplicated = await duplicateWorkflowMutation.mutateAsync({
+            token,
+            id: targetId,
+            newName: displayName,
+          });
+
+          closeWorkflowMenu();
+
+          await loadWorkflows({
+            selectWorkflowId: duplicated.id,
+            selectVersionId: duplicated.active_version_id ?? null,
+            suppressLoadingState: true,
+          });
+        }
 
         setSaveState("saved");
         setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
@@ -455,6 +468,7 @@ export function useWorkflowCRUD(params: UseWorkflowCRUDParams): UseWorkflowCRUDR
       buildGraphPayload,
       closeWorkflowMenu,
       createWorkflowWithGraphMutation,
+      duplicateWorkflowMutation,
       loadWorkflows,
       selectedWorkflowId,
       setSaveMessage,
