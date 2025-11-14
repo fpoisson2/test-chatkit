@@ -190,21 +190,21 @@ export const AdminPage = () => {
         render: (user) => (
           <div className="admin-table__actions">
             <button
-              className="button button--subtle button--sm"
+              className="btn btn-sm btn-subtle"
               type="button"
               onClick={() => handleToggleAdmin(user)}
             >
               {user.is_admin ? "Retirer admin" : "Promouvoir"}
             </button>
             <button
-              className="button button--ghost button--sm"
+              className="btn btn-sm btn-ghost"
               type="button"
               onClick={() => handleResetPassword(user)}
             >
               Réinitialiser le mot de passe
             </button>
             <button
-              className="button button--danger button--sm"
+              className="btn btn-sm btn-danger"
               type="button"
               onClick={() => handleDelete(user)}
             >
@@ -273,13 +273,13 @@ export const AdminPage = () => {
             <>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={() => setShowCreateModal(false)}
               >
                 Annuler
               </button>
               <button
-                className="button"
+                className="btn btn-primary"
                 type="submit"
                 form="create-user-form"
               >

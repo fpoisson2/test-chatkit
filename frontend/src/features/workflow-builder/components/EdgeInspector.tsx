@@ -47,7 +47,7 @@ const EdgeInspector = ({ edge, onConditionChange, onLabelChange, onRemove }: Edg
           placeholder={t("Laisser vide pour la branche par défaut")}
         />
       </label>
-      <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+      <p style={{ color: "var(--color-text-muted)", margin: "0.35rem 0 0" }}>
         {t(
           "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.",
         )}

@@ -173,15 +173,15 @@ export const DocDetail = () => {
   const actions = useMemo(
     () => (
       <div className={styles.actions}>
-        <Link className="button button--ghost" to="/docs">
+        <Link className="btn btn-ghost" to="/docs">
           {t("docs.detail.back")}
         </Link>
         {isAdmin ? (
           <>
-            <button type="button" className="button button--ghost" onClick={handleOpenEditor} disabled={isLoading || Boolean(error)}>
+            <button type="button" className="btn btn-ghost" onClick={handleOpenEditor} disabled={isLoading || Boolean(error)}>
               {t("docs.detail.edit")}
             </button>
-            <button type="button" className="button button--danger" onClick={handleDelete} disabled={isLoading || Boolean(error)}>
+            <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={isLoading || Boolean(error)}>
               {t("docs.detail.delete")}
             </button>
           </>

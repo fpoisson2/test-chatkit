@@ -38,7 +38,7 @@
   --primary-hover: var(--appearance-accent-hover);
 
   /* Sidebar Colors */
-  --sidebar-background: var(--color-surface);
+  --sidebar-background: var(--color-surface-subtle);
   --sidebar-border: var(--color-border-subtle);
   --sidebar-scrollbar-thumb: rgba(24, 24, 27, 0.24);
   --sidebar-scrollbar-thumb-hover: rgba(24, 24, 27, 0.32);
@@ -56,6 +56,9 @@
   /* Status Colors */
   --danger-color: #dc2626;
   --danger-hover: #b91c1c;
+  --status-danger: var(--danger-color);
+  --status-success: #16a34a;
+  --status-warning: #f59e0b;
 }
 
 :root[data-theme="light" i] {
@@ -90,7 +93,7 @@
   --primary-hover: var(--appearance-accent-hover);
 
   /* Sidebar Colors - Dark Theme */
-  --sidebar-background: var(--appearance-dark-surface-subtle);
+  --sidebar-background: var(--color-surface-subtle);
   --sidebar-border: rgba(228, 228, 231, 0.08);
   --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
   --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
@@ -108,6 +111,9 @@
   /* Status Colors - Dark Theme */
   --danger-color: #ef4444;
   --danger-hover: #dc2626;
+  --status-danger: var(--danger-color);
+  --status-success: #22c55e;
+  --status-warning: #fbbf24;
 }
 
 /* System Dark Mode Preference */
@@ -139,7 +145,7 @@
     --primary-hover: #0ea5e9;
 
     /* Sidebar Colors */
-    --sidebar-background: #09090b;
+    --sidebar-background: var(--color-surface-subtle);
     --sidebar-border: rgba(228, 228, 231, 0.08);
     --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
     --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
@@ -157,5 +163,8 @@
     /* Status Colors */
     --danger-color: #ef4444;
     --danger-hover: #dc2626;
+    --status-danger: var(--danger-color);
+    --status-success: #22c55e;
+    --status-warning: #fbbf24;
   }
 }

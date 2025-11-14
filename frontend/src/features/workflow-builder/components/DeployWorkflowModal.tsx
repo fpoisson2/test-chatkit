@@ -98,11 +98,11 @@ export const DeployWorkflowModal = ({
                 color: "var(--text-color)",
               }}
             >
-              <span style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}>
+              <span className="badge badge-secondary">
                 {sourceLabel}
               </span>
               <span aria-hidden="true">→</span>
-              <span style={{ padding: "0.25rem 0.5rem", background: "#dcfce7", borderRadius: "999px" }}>
+              <span className="badge badge-success">
                 {targetLabel}
               </span>
             </div>
@@ -152,7 +152,7 @@ export const DeployWorkflowModal = ({
               padding: "0.6rem 1.2rem",
               borderRadius: "0.75rem",
               border: "none",
-              background: "#2563eb",
+              background: "var(--accent-color-primary)",
               color: "#fff",
               fontWeight: 700,
               cursor: isPrimaryActionDisabled ? "not-allowed" : "pointer",

@@ -257,7 +257,7 @@ export const AdminTelephonyPage = () => {
             )}
 
             <div className="admin-form__actions">
-              <button className="button" onClick={handleCreateAccount}>
+              <button className="btn btn-primary" onClick={handleCreateAccount}>
                 + Ajouter un compte SIP
               </button>
             </div>
@@ -272,13 +272,13 @@ export const AdminTelephonyPage = () => {
             <>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={handleCancelAccount}
               >
                 Annuler
               </button>
               <button
-                className="button"
+                className="btn btn-primary"
                 type="submit"
                 form="create-sip-account-form"
                 disabled={isSaving}

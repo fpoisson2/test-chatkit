@@ -306,14 +306,14 @@ export const AdminLtiPage = () => {
         <div className="admin-table__actions">
           <button
             type="button"
-            className="button button--subtle button--sm"
+            className="btn btn-sm btn-subtle"
             onClick={() => handleEditRegistration(entry)}
           >
             {t("admin.lti.registrations.actions.edit")}
           </button>
           <button
             type="button"
-            className="button button--danger button--sm"
+            className="btn btn-sm btn-danger"
             onClick={() => handleDeleteRegistration(entry)}
           >
             {t("admin.lti.registrations.actions.delete")}
@@ -528,7 +528,7 @@ export const AdminLtiPage = () => {
               </button>
               {editingRegistrationId && (
                 <button
-                  className="button button--ghost"
+                  className="btn btn-ghost"
                   type="button"
                   onClick={resetRegistrationForm}
                 >
@@ -549,13 +549,13 @@ export const AdminLtiPage = () => {
             <>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={() => setShowCreateRegistrationModal(false)}
               >
                 Annuler
               </button>
               <button
-                className="button"
+                className="btn btn-primary"
                 type="submit"
                 form="create-lti-registration-form"
                 disabled={isSavingRegistration}

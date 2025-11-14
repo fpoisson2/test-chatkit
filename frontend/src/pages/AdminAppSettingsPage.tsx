@@ -301,7 +301,7 @@ export const AdminAppSettingsPage = () => {
             <div className="admin-form__actions" style={{ gap: "12px" }}>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={handleReset}
                 disabled={isBusy || (!isCustomPrompt && !isCustomModel)}
               >
@@ -309,7 +309,7 @@ export const AdminAppSettingsPage = () => {
               </button>
               <button
                 type="submit"
-                className="button"
+                className="btn btn-primary"
                 disabled={isBusy}
               >
                 {t("admin.appSettings.actions.save")}

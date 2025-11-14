@@ -928,6 +928,24 @@
   z-index: 40;
 }
 
+.chatkit-sidebar__workflow-menu button {
+  transition-duration: var(--transition-duration-basic);
+  transition-property: background-color, color, opacity;
+  transition-timing-function: var(--transition-ease-basic);
+}
+
+.chatkit-sidebar__workflow-menu button:hover:not([disabled]),
+.chatkit-sidebar__workflow-menu button:focus-visible:not([disabled]) {
+  background: var(--alpha-06) !important;
+  color: var(--color-text-strong) !important;
+  outline: none;
+}
+
+.chatkit-sidebar__workflow-menu button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   .chatkit-sidebar__workflow-menu {
     transform: translateX(0);
@@ -1503,9 +1521,9 @@
   display: flex;
   flex-direction: column;
   gap: calc(var(--spacing) * 1.5);
-  background: var(--surface-strong);
+  background: var(--color-surface-elevated);
   border-radius: var(--radius-2xl);
-  border: 1px solid var(--alpha-08);
+  border: 1px solid var(--color-border);
   box-shadow: var(--shadow-soft);
   padding: calc(var(--spacing) * 3);
   z-index: 50;

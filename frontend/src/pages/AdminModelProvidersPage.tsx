@@ -316,14 +316,14 @@ export const AdminModelProvidersPage = () => {
                   <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
                     <button
                       type="button"
-                      className="button button--sm button--ghost"
+                      className="btn btn-sm btn-ghost"
                       onClick={() => handleOpenEdit(provider)}
                     >
                       Modifier
                     </button>
                     <button
                       type="button"
-                      className="button button--sm button--danger"
+                      className="btn btn-sm btn-danger"
                       onClick={() => handleDelete(provider.id)}
                       disabled={providers.length === 1}
                       title={providers.length === 1 ? "Impossible de supprimer le dernier fournisseur" : "Supprimer ce fournisseur"}
@@ -346,7 +346,7 @@ export const AdminModelProvidersPage = () => {
             <>
               <button
                 type="button"
-                className="button button--ghost"
+                className="btn btn-ghost"
                 onClick={() => setEditingProvider(null)}
               >
                 Annuler
@@ -354,7 +354,7 @@ export const AdminModelProvidersPage = () => {
               <button
                 type="submit"
                 form="provider-form"
-                className="button"
+                className="btn btn-primary"
                 disabled={updateSettings.isPending}
               >
                 {editingProvider === 'new' ? "Créer" : "Enregistrer"}

@@ -90,7 +90,7 @@ export function SettingsPage() {
           footer={
             <button
               type="button"
-              className="button button--ghost"
+              className="btn btn-ghost"
               onClick={handleCloseModal}
             >
               {t("settings.modal.close")}

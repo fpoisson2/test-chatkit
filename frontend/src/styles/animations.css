@@ -38,8 +38,7 @@ button:not(:disabled):active {
 }
 
 /* Primary button glow effect */
-button.button--primary:not(:disabled):hover,
-button.create-workflow-modal__button--primary:not(:disabled):hover {
+button.btn-primary:not(:disabled):hover {
   box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
 }
 

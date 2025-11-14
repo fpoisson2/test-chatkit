@@ -217,7 +217,7 @@ export const StartInspectorSection = ({
                 placeholder="0"
                 style={{ width: "120px" }}
               />
-              <span style={{ fontSize: "14px", color: "#666" }}>secondes</span>
+              <span style={{ fontSize: "14px", color: "var(--color-text-muted)" }}>secondes</span>
             </div>
             <p className={styles.nodeInspectorHintTextTight}>
               {t("workflowBuilder.startInspector.telephonyRingTimeoutHelp")}

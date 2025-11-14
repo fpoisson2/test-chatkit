@@ -28,7 +28,7 @@ export const LoadingOverlay = ({
         <LoadingSpinner size="lg" text={message} />
         {cancelable && onCancel && (
           <button
-            className="loading-overlay__cancel button button--subtle"
+            className="loading-overlay__cancel btn btn-subtle"
             onClick={onCancel}
             type="button"
           >
