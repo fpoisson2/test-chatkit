@@ -104,6 +104,7 @@ export type WorkflowActionMenuProps = {
   items: WorkflowActionMenuItem[];
   containerClassName?: string;
   variant?: "default" | "overlay";
+  leadingContent?: ReactNode;
 };
 
 const ESTIMATED_MENU_HEIGHT = 180;
@@ -145,6 +146,7 @@ export const WorkflowActionMenu = ({
   items,
   containerClassName = "chatkit-sidebar__workflow-actions",
   variant = "default",
+  leadingContent,
 }: WorkflowActionMenuProps) => {
   const visibleItems = items.filter((item) => !item.hidden);
 
@@ -169,6 +171,7 @@ export const WorkflowActionMenu = ({
       data-workflow-menu-container=""
       data-variant={variant === "overlay" ? "overlay" : undefined}
     >
+      {leadingContent}
       <button
         type="button"
         className="chatkit-sidebar__workflow-action-button"

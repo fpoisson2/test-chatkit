@@ -51,6 +51,7 @@ import {
   type StoredWorkflowPinnedLookup,
 } from "./utils";
 import { useWorkflowSidebar } from "./WorkflowSidebarProvider";
+import type { WorkflowGenerationTarget } from "./WorkflowSidebarProvider";
 import { useWorkflowContext } from "../workflow-builder/contexts/WorkflowContext";
 import { useModalContext } from "../workflow-builder/contexts/ModalContext";
 import { useUIContext } from "../workflow-builder/contexts/UIContext";
@@ -109,6 +110,7 @@ export type WorkflowEntryConfig = {
   localMenuItems?: LocalWorkflowMenuItems;
   hostedTrailingContent?: (hosted: HostedWorkflowMetadata) => ReactNode;
   localTrailingContent?: (workflow: WorkflowSummary) => ReactNode;
+  activeGeneration?: WorkflowGenerationTarget | null;
 };
 
 export type WorkflowSidebarSectionEntry = {
@@ -157,7 +159,10 @@ export const useWorkflowSidebarEntries = (
     localMenuItems,
     hostedTrailingContent,
     localTrailingContent,
+    activeGeneration = null,
   } = config;
+
+  const generatingLabel = t("app.sidebar.workflows.generating");
 
   const sortedWorkflowEntries = useMemo(() => {
     const collator =
@@ -195,8 +200,20 @@ export const useWorkflowSidebarEntries = (
               onCloseMenu: () => menuConfig?.onCloseMenu(),
             }) ?? [];
 
-          return {
-            key: menuKey,
+        const isGenerating =
+          activeGeneration?.kind === "hosted" && activeGeneration.slug === hosted.slug;
+        const actionIndicator = isGenerating ? (
+          <span
+            className="chatkit-sidebar__workflow-spinner"
+            role="status"
+            aria-label={generatingLabel}
+          >
+            <span className="sr-only">{generatingLabel}</span>
+          </span>
+        ) : null;
+
+        return {
+          key: menuKey,
             kind: "hosted" as const,
             isPinned,
             pinLabel,
@@ -226,9 +243,13 @@ export const useWorkflowSidebarEntries = (
                 }
               : null,
             hasActions: menuConfig && items.length > 0,
-            dataAttributes: { "data-hosted-workflow": "" },
+            dataAttributes: {
+              "data-hosted-workflow": "",
+              "data-generating": isGenerating ? "" : undefined,
+            },
             showPinButton: !isMobileLayout,
             trailingContent: hostedTrailingContent?.(hosted),
+            actionIndicator,
             content: (
               <button
                 type="button"
@@ -254,8 +275,12 @@ export const useWorkflowSidebarEntries = (
               onClick: callbacks.onHostedClick ? () => callbacks.onHostedClick!(hosted.slug) : undefined,
               disabled: !hosted.available || !callbacks.onHostedClick,
               isActive: isSelected,
-              ariaLabel: t("workflows.hostedCompactLabel", { label: hosted.label }),
-              hiddenLabelSuffix: t("workflows.hostedBadge"),
+              ariaLabel: isGenerating
+                ? `${t("workflows.hostedCompactLabel", { label: hosted.label })} (${generatingLabel})`
+                : t("workflows.hostedCompactLabel", { label: hosted.label }),
+              hiddenLabelSuffix: isGenerating
+                ? `${t("workflows.hostedBadge")} · ${generatingLabel}`
+                : t("workflows.hostedBadge"),
             },
           } satisfies WorkflowSidebarSectionEntry;
         }
@@ -279,6 +304,18 @@ export const useWorkflowSidebarEntries = (
             onTogglePin: () => callbacks.onToggleLocalPin(workflow.id),
             onCloseMenu: () => menuConfig?.onCloseMenu(),
           }) ?? [];
+
+        const isGenerating =
+          activeGeneration?.kind === "local" && activeGeneration.workflowId === workflow.id;
+        const actionIndicator = isGenerating ? (
+          <span
+            className="chatkit-sidebar__workflow-spinner"
+            role="status"
+            aria-label={generatingLabel}
+          >
+            <span className="sr-only">{generatingLabel}</span>
+          </span>
+        ) : null;
 
         return {
           key: `local:${workflow.id}`,
@@ -314,9 +351,11 @@ export const useWorkflowSidebarEntries = (
           dataAttributes: {
             "data-local-workflow": "",
             "data-selected": isActive ? "" : undefined,
+            "data-generating": isGenerating ? "" : undefined,
           },
           showPinButton: !isMobileLayout,
           trailingContent: localTrailingContent?.(workflow),
+          actionIndicator,
           content: (
             <button
               type="button"
@@ -337,7 +376,10 @@ export const useWorkflowSidebarEntries = (
             onClick: callbacks.onLocalClick ? () => callbacks.onLocalClick!(workflow.id) : undefined,
             disabled: !hasProduction || loading,
             isActive,
-            ariaLabel: workflow.display_name,
+            ariaLabel: isGenerating
+              ? `${workflow.display_name} (${generatingLabel})`
+              : workflow.display_name,
+            hiddenLabelSuffix: isGenerating ? generatingLabel : undefined,
           },
         } satisfies WorkflowSidebarSectionEntry;
       }),
@@ -356,6 +398,8 @@ export const useWorkflowSidebarEntries = (
       localTrailingContent,
       isMobileLayout,
       loading,
+      activeGeneration,
+      generatingLabel,
     ],
   );
 };
@@ -409,6 +453,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     lastUsedAt,
     pinnedLookup,
     workflowCollator,
+    activeGeneration,
     toggleLocalPin,
     toggleHostedPin,
     loadWorkflows,
@@ -1118,6 +1163,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     hostedMenuItems,
     localMenuItems,
     hostedTrailingContent,
+    activeGeneration,
   });
 
   const handleOpenBuilder = useCallback(() => {

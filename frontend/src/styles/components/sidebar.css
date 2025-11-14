@@ -880,6 +880,41 @@
   z-index: 1;
 }
 
+.chatkit-sidebar__workflow-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-right-color: currentColor;
+  border-bottom-color: color-mix(in srgb, currentColor 30%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: chatkit-sidebar-spinner 0.65s linear infinite;
+  flex-shrink: 0;
+  color: var(--primary-color);
+}
+
+.chatkit-sidebar__workflow-actions .chatkit-sidebar__workflow-spinner {
+  margin-inline-end: calc(var(--spacing) * 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatkit-sidebar__workflow-spinner {
+    animation-duration: 1.3s;
+  }
+}
+
+@keyframes chatkit-sidebar-spinner {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-actions {
   right: var(
     --chatkit-sidebar-open-workflow-padding-x,
