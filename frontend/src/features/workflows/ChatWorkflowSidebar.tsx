@@ -18,18 +18,15 @@ import type {
 } from "./WorkflowActionMenu";
 import WorkflowSidebarSection, {
   WorkflowSidebarCompact,
-  type WorkflowSidebarSectionEntry,
 } from "./WorkflowSidebarSection";
 import {
-  getWorkflowInitials,
-  isWorkflowPinned,
-  orderWorkflowEntries,
   recordWorkflowLastUsedAt,
   readStoredWorkflowLastUsedMap,
   createEmptyStoredWorkflowPinned,
   updateStoredWorkflowSelection,
 } from "./utils";
 import { useWorkflowSidebar } from "./WorkflowSidebarProvider";
+import { useWorkflowSidebarEntries } from "./hooks/useWorkflowSidebarEntries";
 
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
@@ -478,267 +475,156 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     [closeSidebar, hostedWorkflows, isDesktopLayout, selectedWorkflowId, setSelectedHostedSlug],
   );
 
-  const sortedWorkflowEntries = useMemo(() => {
-    const collator =
-      workflowCollator ?? new Intl.Collator(undefined, { sensitivity: "base" });
-    return orderWorkflowEntries(
-      [
-        ...hostedWorkflows.map((workflow) => ({ kind: "hosted" as const, workflow })),
-        ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
-      ],
-      lastUsedAt,
-      { collator, pinnedLookup },
-    );
-  }, [hostedWorkflows, lastUsedAt, pinnedLookup, workflowCollator, workflows]);
+  const hostedMenuItems = useCallback(
+    ({ hosted, isPinned, t, onTogglePin, onCloseMenu }: {
+      hosted: HostedWorkflowMetadata;
+      isPinned: boolean;
+      t: ReturnType<typeof useI18n>["t"];
+      onTogglePin: () => void;
+      onCloseMenu: () => void;
+    }): WorkflowActionMenuItem[] => {
+      if (!isAdmin) return [];
 
-  const sidebarEntries = useMemo<WorkflowSidebarSectionEntry[]>(
-    () =>
-      sortedWorkflowEntries.map((entry) => {
-        if (entry.kind === "hosted") {
-          const option = entry.workflow;
-          const isPinned = isWorkflowPinned(entry, pinnedLookup);
-          const isSelected = mode === "hosted" && selectedHostedSlug === option.slug;
-          const menuKey = `hosted:${option.slug}`;
-          const isMenuOpen = openWorkflowMenuId === menuKey;
-          const menuId = `workflow-actions-${option.slug}`;
-          const pinLabel = isPinned
-            ? t("workflows.unpinAction", { label: option.label })
-            : t("workflows.pinAction", { label: option.label });
-          const hostedMenuItems: WorkflowActionMenuItem[] = [
-            {
-              key: "pin",
-              label: pinLabel,
-              onSelect: (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                toggleHostedPin(option.slug);
-                closeWorkflowMenu();
-              },
-            },
-            {
-              key: "appearance",
-              label: t("workflowBuilder.hostedSection.customizeAction"),
-              disabled: true,
-            },
-            {
-              key: "delete",
-              label: t("workflowBuilder.hostedSection.deleteAction"),
-              disabled: true,
-              danger: true,
-            },
-          ];
+      const pinLabel = isPinned
+        ? t("workflows.unpinAction", { label: hosted.label })
+        : t("workflows.pinAction", { label: hosted.label });
 
-          return {
-            key: `hosted:${option.slug}`,
-            kind: "hosted" as const,
-            isPinned,
-            pinLabel,
-            onTogglePin: (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              toggleHostedPin(option.slug);
-            },
-            menuProps: isAdmin
-              ? {
-                  menuId,
-                  isOpen: isMenuOpen,
-                  isMobileLayout,
-                  placement: isMenuOpen ? workflowMenuPlacement : "down",
-                  triggerDisabled: loading,
-                  triggerLabel: t("workflowBuilder.hostedSection.openActions", {
-                    label: option.label,
-                  }),
-                  onOpen: (placement) => {
-                    setWorkflowMenuPlacement(placement);
-                    setOpenWorkflowMenuId(menuKey);
-                  },
-                  onClose: closeWorkflowMenu,
-                  triggerRef: workflowMenuTriggerRef,
-                  menuRef: workflowMenuRef,
-                  items: hostedMenuItems,
-                  variant: isMobileLayout ? "overlay" : "default",
-                }
-              : null,
-            hasActions: isAdmin,
-            dataAttributes: { "data-hosted-workflow": "" },
-            trailingContent: (
-              <>
-                {!option.available ? (
-                  <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
-                    {t("workflows.hostedUnavailable")}
-                  </p>
-                ) : null}
-                {option.description ? (
-                  <p className="chatkit-sidebar__workflow-meta">{option.description}</p>
-                ) : null}
-              </>
-            ),
-            content: (
-              <button
-                type="button"
-                className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
-                  isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
-                }`}
-                onClick={() => void handleHostedWorkflowClick(option.slug)}
-                disabled={!option.available}
-                aria-current={isSelected ? "true" : undefined}
-                title={option.description ?? t("workflows.hostedBadge")}
-              >
-                <span className="chatkit-sidebar__workflow-label">{option.label}</span>
-                <span className="chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--hosted">
-                  {t("workflows.hostedBadge")}
-                </span>
-              </button>
-            ),
-            showPinButton: !isMobileLayout,
-            compact: {
-              label: option.label,
-              initials: getWorkflowInitials(option.label),
-              onClick: () => void handleHostedWorkflowClick(option.slug),
-              disabled: !option.available,
-              isActive: isSelected,
-              ariaLabel: t("workflows.hostedCompactLabel", { label: option.label }),
-              hiddenLabelSuffix: t("workflows.hostedBadge"),
-            },
-          } satisfies WorkflowSidebarSectionEntry;
-        }
-
-        const workflow = entry.workflow;
-        const isPinned = isWorkflowPinned(entry, pinnedLookup);
-        const isActive = mode === "local" && workflow.id === selectedWorkflowId;
-        const hasProduction = workflow.active_version_id !== null;
-        const menuId = `workflow-actions-${workflow.id}`;
-        const isMenuOpen = openWorkflowMenuId === workflow.id;
-        const pinLabel = isPinned
-          ? t("workflows.unpinAction", { label: workflow.display_name })
-          : t("workflows.pinAction", { label: workflow.display_name });
-        const localMenuItems: WorkflowActionMenuItem[] = [
-          {
-            key: "pin",
-            label: pinLabel,
-            onSelect: (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              toggleLocalPin(workflow.id);
-              closeWorkflowMenu();
-            },
-          },
-          {
-            key: "duplicate",
-            label: t("workflowBuilder.localSection.duplicateAction"),
-            onSelect: () => void handleDuplicateWorkflow(workflow),
-            disabled:
-              !isAdmin ||
-              loading ||
-              updatingWorkflowId === workflow.id ||
-              workflow.active_version_id === null ||
-              !token,
-          },
-          {
-            key: "rename",
-            label: t("workflowBuilder.localSection.renameAction"),
-            disabled: true,
-          },
-          {
-            key: "export",
-            label: t("workflowBuilder.localSection.exportAction"),
-            disabled: true,
-          },
-          {
-            key: "appearance",
-            label: t("workflowBuilder.localSection.customizeAction"),
-            disabled: true,
-          },
-          {
-            key: "delete",
-            label: t("workflowBuilder.localSection.deleteAction"),
-            disabled: true,
-            danger: true,
-          },
-        ];
-
-        return {
-          key: `local:${workflow.id}`,
-          kind: "local" as const,
-          isPinned,
-          pinLabel,
-          onTogglePin: (event) => {
+      return [
+        {
+          key: "pin",
+          label: pinLabel,
+          onSelect: (event) => {
             event.preventDefault();
             event.stopPropagation();
-            toggleLocalPin(workflow.id);
+            onTogglePin();
+            onCloseMenu();
           },
-          menuProps: isAdmin
-            ? {
-                menuId,
-                isOpen: isMenuOpen,
-                isMobileLayout,
-                placement: isMenuOpen ? workflowMenuPlacement : "down",
-                triggerDisabled: loading || updatingWorkflowId === workflow.id,
-                triggerLabel: t("workflowBuilder.localSection.openActions", {
-                  label: workflow.display_name,
-                }),
-                onOpen: (placement) => {
-                  setWorkflowMenuPlacement(placement);
-                  setOpenWorkflowMenuId(workflow.id);
-                },
-                onClose: closeWorkflowMenu,
-                triggerRef: workflowMenuTriggerRef,
-                menuRef: workflowMenuRef,
-                items: localMenuItems,
-                variant: isMobileLayout ? "overlay" : "default",
-              }
-            : null,
-          hasActions: isAdmin,
-          content: (
-            <button
-              type="button"
-              className={`chatkit-sidebar__workflow-button${
-                isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
-              }`}
-              onClick={() => void handleWorkflowClick(workflow.id)}
-              disabled={!hasProduction}
-              aria-current={isActive ? "true" : undefined}
-            >
-              <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
-            </button>
-          ),
-          showPinButton: !isMobileLayout,
-          compact: {
-            label: workflow.display_name,
-            initials: getWorkflowInitials(workflow.display_name),
-            onClick: () => void handleWorkflowClick(workflow.id),
-            disabled: !hasProduction,
-            isActive,
-            ariaLabel: workflow.display_name,
-          },
-        } satisfies WorkflowSidebarSectionEntry;
-      }),
-    [
-      closeWorkflowMenu,
-      handleDuplicateWorkflow,
-      handleHostedWorkflowClick,
-      handleWorkflowClick,
-      isAdmin,
-      isMobileLayout,
-      updatingWorkflowId,
-      loading,
-      mode,
-      openWorkflowMenuId,
-      pinnedLookup,
-      selectedHostedSlug,
-      selectedWorkflowId,
-      setOpenWorkflowMenuId,
-      setWorkflowMenuPlacement,
-      sortedWorkflowEntries,
-      t,
-      toggleHostedPin,
-      toggleLocalPin,
-      token,
-      workflowMenuPlacement,
-      workflowMenuRef,
-      workflowMenuTriggerRef,
-    ],
+        },
+        {
+          key: "appearance",
+          label: t("workflowBuilder.hostedSection.customizeAction"),
+          disabled: true,
+        },
+        {
+          key: "delete",
+          label: t("workflowBuilder.hostedSection.deleteAction"),
+          disabled: true,
+          danger: true,
+        },
+      ];
+    },
+    [isAdmin],
   );
+
+  const localMenuItems = useCallback(
+    ({ workflow, isPinned, t, onTogglePin, onCloseMenu }: {
+      workflow: WorkflowSummary;
+      isPinned: boolean;
+      t: ReturnType<typeof useI18n>["t"];
+      onTogglePin: () => void;
+      onCloseMenu: () => void;
+    }): WorkflowActionMenuItem[] => {
+      if (!isAdmin) return [];
+
+      const pinLabel = isPinned
+        ? t("workflows.unpinAction", { label: workflow.display_name })
+        : t("workflows.pinAction", { label: workflow.display_name });
+
+      return [
+        {
+          key: "pin",
+          label: pinLabel,
+          onSelect: (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onTogglePin();
+            onCloseMenu();
+          },
+        },
+        {
+          key: "duplicate",
+          label: t("workflowBuilder.localSection.duplicateAction"),
+          onSelect: () => void handleDuplicateWorkflow(workflow),
+          disabled:
+            !isAdmin ||
+            loading ||
+            updatingWorkflowId === workflow.id ||
+            workflow.active_version_id === null ||
+            !token,
+        },
+        {
+          key: "rename",
+          label: t("workflowBuilder.localSection.renameAction"),
+          disabled: true,
+        },
+        {
+          key: "export",
+          label: t("workflowBuilder.localSection.exportAction"),
+          disabled: true,
+        },
+        {
+          key: "appearance",
+          label: t("workflowBuilder.localSection.customizeAction"),
+          disabled: true,
+        },
+        {
+          key: "delete",
+          label: t("workflowBuilder.localSection.deleteAction"),
+          disabled: true,
+          danger: true,
+        },
+      ];
+    },
+    [handleDuplicateWorkflow, isAdmin, loading, token, updatingWorkflowId],
+  );
+
+  const hostedTrailingContent = useCallback(
+    (hosted: HostedWorkflowMetadata) => (
+      <>
+        {!hosted.available ? (
+          <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
+            {t("workflows.hostedUnavailable")}
+          </p>
+        ) : null}
+        {hosted.description ? (
+          <p className="chatkit-sidebar__workflow-meta">{hosted.description}</p>
+        ) : null}
+      </>
+    ),
+    [t],
+  );
+
+  const sidebarEntries = useWorkflowSidebarEntries({
+    workflows,
+    hostedWorkflows,
+    lastUsedAt,
+    pinnedLookup,
+    workflowCollator,
+    isMobileLayout,
+    selectedWorkflowId: mode === "local" ? selectedWorkflowId : null,
+    selectedHostedSlug: mode === "hosted" ? selectedHostedSlug : null,
+    loading,
+    callbacks: {
+      onHostedClick: handleHostedWorkflowClick,
+      onLocalClick: handleWorkflowClick,
+      onToggleHostedPin: toggleHostedPin,
+      onToggleLocalPin: toggleLocalPin,
+    },
+    menuConfig: {
+      openWorkflowMenuId,
+      workflowMenuPlacement,
+      workflowMenuTriggerRef,
+      workflowMenuRef,
+      onOpenMenu: (id, placement) => {
+        setWorkflowMenuPlacement(placement);
+        setOpenWorkflowMenuId(id);
+      },
+      onCloseMenu: closeWorkflowMenu,
+    },
+    hostedMenuItems,
+    localMenuItems,
+    hostedTrailingContent,
+  });
 
   const handleOpenBuilder = useCallback(() => {
     navigate("/workflows");
