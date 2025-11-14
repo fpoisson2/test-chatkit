@@ -155,6 +155,28 @@
   gap: clamp(24px, 5vh, 36px);
 }
 
+:root[data-theme="dark" i] .admin-shell {
+  --text-muted: color-mix(in srgb, var(--color-text-strong) 88%, transparent);
+}
+
+:root[data-theme="dark" i] .admin-grid .card,
+:root[data-theme="dark" i] .admin-shell .card,
+:root[data-theme="dark" i] .admin-card {
+  --card-subtitle-color: color-mix(in srgb, var(--color-text-strong) 88%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .admin-shell {
+    --text-muted: color-mix(in srgb, var(--color-text-strong) 88%, transparent);
+  }
+
+  :root:not([data-theme]) .admin-grid .card,
+  :root:not([data-theme]) .admin-shell .card,
+  :root:not([data-theme]) .admin-card {
+    --card-subtitle-color: color-mix(in srgb, var(--color-text-strong) 88%, transparent);
+  }
+}
+
 @media (max-width: 768px) {
   .admin-layout {
     align-items: flex-start;
