@@ -1101,8 +1101,18 @@
 }
 
 /* Mobile sidebar profile name/email styles */
-.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
-.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
+/* Light mode - use dark/black text */
+:root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name {
+  color: #000000;
+}
+
+:root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
+  color: #000000;
+}
+
+/* Dark mode - use light text */
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
   color: var(--gray-25);
 }
 
