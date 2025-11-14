@@ -1261,7 +1261,7 @@
 }
 
 .chatkit-sidebar__dismiss {
-  background: var(--alpha-06);
+  background: transparent;
   border: none;
   color: var(--color-text-emphasis);
   width: var(--control-size-md);
@@ -1273,13 +1273,14 @@
   align-items: center;
   justify-content: center;
   transition-duration: var(--transition-duration-basic);
-  transition-property: background-color, color, opacity, transform;
+  transition-property: color, opacity, transform;
   transition-timing-function: var(--transition-ease-basic);
 }
 
 .chatkit-sidebar__dismiss:hover,
 .chatkit-sidebar__dismiss:focus-visible {
-  background: var(--alpha-10);
+  background: transparent;
+  color: var(--color-text-strong);
 }
 
 .chatkit-sidebar__dismiss:focus-visible {
