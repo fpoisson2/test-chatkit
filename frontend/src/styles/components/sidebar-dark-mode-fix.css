@@ -104,3 +104,53 @@ html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatk
 html[data-theme="dark"] .chatkit-sidebar__section-icon-button * {
   color: #ffffff !important;
 }
+
+/* ============================================
+   FIX: Overlay variant uses var(--gray-25) which is #18181b (almost black!) in dark mode
+   This makes EVERYTHING invisible on dark backgrounds
+   ============================================ */
+
+/* Fix workflow action buttons (... menu) */
+:root[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button,
+html[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:hover,
+html[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:hover,
+:root[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:focus-visible {
+  color: #ffffff !important;
+}
+
+/* Fix section titles */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title {
+  color: #ffffff !important;
+}
+
+/* Fix section text */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-text,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-text {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Fix workflow buttons */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover,
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible {
+  color: #ffffff !important;
+}
+
+/* Fix ALL elements in overlay variant that might use gray-25 */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] *,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] * {
+  /* Override any gray-25 usage with white in dark mode */
+  --gray-25: #ffffff !important;
+}
