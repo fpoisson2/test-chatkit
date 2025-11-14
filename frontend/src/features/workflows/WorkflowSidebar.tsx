@@ -109,6 +109,7 @@ export type WorkflowEntryConfig = {
   localMenuItems?: LocalWorkflowMenuItems;
   hostedTrailingContent?: (hosted: HostedWorkflowMetadata) => ReactNode;
   localTrailingContent?: (workflow: WorkflowSummary) => ReactNode;
+  generatingWorkflowId?: number | null;
 };
 
 export type WorkflowSidebarSectionEntry = {
@@ -157,6 +158,7 @@ export const useWorkflowSidebarEntries = (
     localMenuItems,
     hostedTrailingContent,
     localTrailingContent,
+    generatingWorkflowId = null,
   } = config;
 
   const sortedWorkflowEntries = useMemo(() => {
@@ -308,6 +310,7 @@ export const useWorkflowSidebarEntries = (
                 menuRef: menuConfig.workflowMenuRef,
                 items,
                 variant: isMobileLayout ? "overlay" : "default",
+                isGenerating: generatingWorkflowId === workflow.id,
               }
             : null,
           hasActions: menuConfig && items.length > 0,
@@ -356,6 +359,7 @@ export const useWorkflowSidebarEntries = (
       localTrailingContent,
       isMobileLayout,
       loading,
+      generatingWorkflowId,
     ],
   );
 };
@@ -386,9 +390,10 @@ type ChatWorkflowSidebarProps = {
   mode: HostedFlowMode;
   setMode: (mode: HostedFlowMode) => void;
   onWorkflowActivated: (selection: WorkflowActivation, context: ActivationContext) => void;
+  generatingWorkflowId?: number | null;
 };
 
-export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
+export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated, generatingWorkflowId }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
@@ -958,6 +963,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     hostedMenuItems,
     localMenuItems,
     hostedTrailingContent,
+    generatingWorkflowId,
   });
 
   const handleOpenBuilder = useCallback(() => {

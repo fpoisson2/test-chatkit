@@ -990,6 +990,37 @@
   opacity: 0.6;
 }
 
+.chatkit-sidebar__workflow-generating-spinner {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+  color: var(--primary-color);
+}
+
+.chatkit-sidebar__workflow-generating-spinner-icon {
+  width: 100%;
+  height: 100%;
+  animation: chatkit-sidebar-spinner-rotate 1s linear infinite;
+}
+
+@keyframes chatkit-sidebar-spinner-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatkit-sidebar__workflow-generating-spinner-icon {
+    animation-duration: 2s;
+  }
+}
+
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button {
   color: var(--color-text);
 }

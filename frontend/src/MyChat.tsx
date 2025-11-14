@@ -683,6 +683,30 @@ export function MyChat() {
     return `local::${activeWorkflowId ?? "__default__"}`;
   }, [mode, hostedWorkflowSlug, activeWorkflowId]);
 
+  // Extract generating workflow ID from current thread
+  const generatingWorkflowId = useMemo(() => {
+    if (!currentThread) {
+      return null;
+    }
+
+    const metadata = currentThread.metadata as Record<string, unknown> | undefined;
+    if (!metadata || typeof metadata !== "object") {
+      return null;
+    }
+
+    const workflow = metadata.workflow as Record<string, unknown> | undefined;
+    if (!workflow || typeof workflow !== "object") {
+      return null;
+    }
+
+    const workflowId = workflow.id;
+    if (typeof workflowId === "number") {
+      return workflowId;
+    }
+
+    return null;
+  }, [currentThread]);
+
   // Update or create instance for current workflow
   useEffect(() => {
     setActiveInstances((prev) => {
@@ -796,6 +820,7 @@ export function MyChat() {
           mode={mode}
           setMode={setMode}
           onWorkflowActivated={handleWorkflowActivated}
+          generatingWorkflowId={generatingWorkflowId}
         />
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (

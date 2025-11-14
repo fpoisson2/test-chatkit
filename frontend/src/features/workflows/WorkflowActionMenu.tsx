@@ -104,6 +104,7 @@ export type WorkflowActionMenuProps = {
   items: WorkflowActionMenuItem[];
   containerClassName?: string;
   variant?: "default" | "overlay";
+  isGenerating?: boolean;
 };
 
 const ESTIMATED_MENU_HEIGHT = 180;
@@ -145,6 +146,7 @@ export const WorkflowActionMenu = ({
   items,
   containerClassName = "chatkit-sidebar__workflow-actions",
   variant = "default",
+  isGenerating = false,
 }: WorkflowActionMenuProps) => {
   const visibleItems = items.filter((item) => !item.hidden);
 
@@ -169,6 +171,30 @@ export const WorkflowActionMenu = ({
       data-workflow-menu-container=""
       data-variant={variant === "overlay" ? "overlay" : undefined}
     >
+      {isGenerating && (
+        <div
+          className="chatkit-sidebar__workflow-generating-spinner"
+          aria-label="Génération en cours"
+          role="status"
+        >
+          <svg
+            className="chatkit-sidebar__workflow-generating-spinner-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray="32 32"
+            />
+          </svg>
+        </div>
+      )}
       <button
         type="button"
         className="chatkit-sidebar__workflow-action-button"
