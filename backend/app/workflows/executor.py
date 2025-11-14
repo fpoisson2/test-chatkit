@@ -175,7 +175,7 @@ def _normalize_conversation_history_for_provider(
             ):
                 copied_item["id"] = _generate_conversation_history_message_id()
                 item_changed = True
-        elif response_id is not None and not isinstance(response_id, str):
+        elif response_id is not None:
             copied_item.pop("id", None)
             item_changed = True
 

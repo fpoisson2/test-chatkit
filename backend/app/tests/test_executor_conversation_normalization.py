@@ -586,6 +586,24 @@ def test_normalize_injects_missing_ids_for_message_entries() -> None:
     assert "id" not in items[0]
 
 
+def test_normalize_strips_ids_from_non_message_entries() -> None:
+    items = [
+        {"type": "response", "id": "rs_123", "status": "in_progress"},
+        {"type": "response", "id": "rs_123", "status": "completed"},
+    ]
+
+    normalized = executor_module._normalize_conversation_history_for_provider(
+        items,
+        "openai",
+    )
+
+    assert normalized is not items
+    assert "id" not in normalized[0]
+    assert "id" not in normalized[1]
+    assert items[0]["id"] == "rs_123"
+    assert items[1]["id"] == "rs_123"
+
+
 def test_normalize_conversation_history_unchanged_for_other_providers() -> None:
     items = [
         {
