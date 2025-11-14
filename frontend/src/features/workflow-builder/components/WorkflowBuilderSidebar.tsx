@@ -211,8 +211,10 @@ const WorkflowBuilderSidebar = ({
               triggerRef: workflowMenuTriggerRef,
               menuRef: workflowMenuRef,
               items: hostedMenuItems,
+              variant: isMobileLayout ? "overlay" : "default",
             },
             dataAttributes: { "data-hosted-workflow": "" },
+            showPinButton: !isMobileLayout,
             content: (
               <button
                 type="button"
@@ -320,11 +322,13 @@ const WorkflowBuilderSidebar = ({
             triggerRef: workflowMenuTriggerRef,
             menuRef: workflowMenuRef,
             items: localMenuItems,
+            variant: isMobileLayout ? "overlay" : "default",
           },
           dataAttributes: {
             "data-local-workflow": "",
             "data-selected": isActive ? "" : undefined,
           },
+          showPinButton: !isMobileLayout,
           trailingContent: (
             <>
               {!workflow.is_chatkit_default && !workflow.active_version_id ? (
@@ -391,6 +395,7 @@ const WorkflowBuilderSidebar = ({
 
   const workflowSidebarContent = useMemo(() => {
     const sectionId = "workflow-builder-sidebar";
+    const sectionVariant = isMobileLayout ? "overlay" : "default";
 
     const beforeGroupsContent =
       hostedError || (hostedLoading && managedHosted.length === 0)
@@ -467,12 +472,14 @@ const WorkflowBuilderSidebar = ({
         beforeGroups={beforeGroupsContent}
         emptyState={emptyContent}
         footerContent={footerContent}
+        variant={sectionVariant}
       />
     );
   }, [
     hostedError,
     hostedLoading,
     isCreatingWorkflow,
+    isMobileLayout,
     loadError,
     loading,
     managedHosted,

@@ -980,25 +980,25 @@
 }
 
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button {
-  color: var(--gray-25);
+  color: var(--color-text);
 }
 
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:hover,
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:focus-visible {
-  background: var(--alpha-12);
-  color: var(--gray-25);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--primary-hover);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title {
-  color: var(--gray-25);
+  color: var(--color-text-strong);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-text {
-  color: color-mix(in srgb, var(--gray-25) 85%, transparent);
+  color: var(--color-text-muted);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button {
-  color: var(--gray-25);
+  color: var(--color-text);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button::after {
@@ -1007,16 +1007,17 @@
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover,
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible {
-  color: var(--gray-25);
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover::after,
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible::after {
-  background: color-mix(in srgb, var(--gray-25) 22%, transparent);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button[aria-current="true"] {
-  color: color-mix(in srgb, var(--gray-25) 92%, transparent);
+  color: var(--color-text-emphasis);
   font-weight: var(--font-weight-semibold);
 }
 
