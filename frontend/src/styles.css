@@ -1633,8 +1633,9 @@ button {
   border: 0;
 }
 
+
 .chatkit-sidebar__dismiss {
-  background: rgba(15, 23, 42, 0.06);
+  background: transparent;
   border: none;
   color: var(--text-color);
   width: 40px;
@@ -1645,12 +1646,13 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: color 0.2s ease;
 }
 
 .chatkit-sidebar__dismiss:hover,
 .chatkit-sidebar__dismiss:focus-visible {
-  background: rgba(15, 23, 42, 0.1);
+  background: transparent;
+  color: var(--color-text-strong);
 }
 
 .chatkit-sidebar__dismiss:focus-visible {
