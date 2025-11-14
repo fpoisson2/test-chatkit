@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+import types
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -11,7 +12,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from agents import Agent
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 CHATKIT_SDK_ROOT = ROOT_DIR / "chatkit-python"
@@ -24,6 +24,249 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
+try:  # pragma: no cover - dépendance optionnelle
+    import pgvector.sqlalchemy  # noqa: F401
+except ModuleNotFoundError:  # pragma: no cover - dépendance optionnelle
+    pgvector_module = types.ModuleType("pgvector")
+    sql_module = types.ModuleType("pgvector.sqlalchemy")
+
+    class _FallbackVector:  # pragma: no cover - simple stub
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+    sql_module.Vector = _FallbackVector
+    sys.modules["pgvector"] = pgvector_module
+    sys.modules["pgvector.sqlalchemy"] = sql_module
+if "agents" not in sys.modules:  # pragma: no cover - dépendance optionnelle
+    agents_module = types.ModuleType("agents")
+
+    class _FallbackAgent:
+        def __init__(self, name: str, model: str | None = None, **kwargs: Any) -> None:
+            self.name = name
+            self.model = model
+            self.kwargs = kwargs
+
+    class _FallbackRunConfig(dict):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            self.__dict__.update(kwargs)
+
+    class _FallbackRunner:
+        @staticmethod
+        async def run_streamed(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+            raise RuntimeError("Runner non disponible dans les tests")
+
+    class _FallbackModelSettings(dict):
+        def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # pragma: no cover
+            return dict(self)
+
+    class _FallbackWebSearchTool:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+    agents_module.Agent = _FallbackAgent
+    agents_module.RunConfig = _FallbackRunConfig
+    agents_module.Runner = _FallbackRunner
+    agents_module.TResponseInputItem = Any
+    def _fallback_set_default_openai_client(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    agents_module.ModelSettings = _FallbackModelSettings
+    agents_module.WebSearchTool = _FallbackWebSearchTool
+    agents_module.set_default_openai_client = _fallback_set_default_openai_client
+
+    mcp_module = types.ModuleType("agents.mcp")
+
+    class _FallbackMCPServer:
+        async def connect(self) -> None:  # pragma: no cover - simple stub
+            return None
+
+        async def cleanup(self) -> None:  # pragma: no cover - simple stub
+            return None
+
+    mcp_module.MCPServer = _FallbackMCPServer
+    mcp_module.MCPServerSse = _FallbackMCPServer
+    mcp_module.MCPServerStreamableHttp = _FallbackMCPServer
+    sys.modules["agents"] = agents_module
+    sys.modules["agents.mcp"] = mcp_module
+    handoffs_module = types.ModuleType("agents.handoffs")
+
+    class _FallbackHandoff:
+        pass
+
+    handoffs_module.Handoff = _FallbackHandoff
+    sys.modules["agents.handoffs"] = handoffs_module
+
+    realtime_package = types.ModuleType("agents.realtime")
+    realtime_agent_module = types.ModuleType("agents.realtime.agent")
+
+    class _FallbackRealtimeAgent:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+    realtime_agent_module.RealtimeAgent = _FallbackRealtimeAgent
+    sys.modules["agents.realtime"] = realtime_package
+    sys.modules["agents.realtime.agent"] = realtime_agent_module
+    realtime_config_module = types.ModuleType("agents.realtime.config")
+
+    class _FallbackRealtimeRunConfig(dict):
+        pass
+
+    realtime_config_module.RealtimeRunConfig = _FallbackRealtimeRunConfig
+    sys.modules["agents.realtime.config"] = realtime_config_module
+    realtime_runner_module = types.ModuleType("agents.realtime.runner")
+
+    class _FallbackRealtimeRunner:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+    realtime_runner_module.RealtimeRunner = _FallbackRealtimeRunner
+    sys.modules["agents.realtime.runner"] = realtime_runner_module
+    sys.modules.setdefault("agents.extensions", types.ModuleType("agents.extensions"))
+    sys.modules.setdefault(
+        "agents.extensions.models", types.ModuleType("agents.extensions.models")
+    )
+    litellm_module = types.ModuleType("agents.extensions.models.litellm_model")
+
+    class _FallbackLitellmModel:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+    litellm_module.LitellmModel = _FallbackLitellmModel
+    sys.modules["agents.extensions.models.litellm_model"] = litellm_module
+
+    models_package = types.ModuleType("agents.models")
+    sys.modules.setdefault("agents.models", models_package)
+    interface_module = types.ModuleType("agents.models.interface")
+
+    class _FallbackModelProvider:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+    interface_module.ModelProvider = _FallbackModelProvider
+    sys.modules["agents.models.interface"] = interface_module
+
+    openai_module = types.ModuleType("agents.models.openai_provider")
+
+    class _FallbackOpenAIProvider(_FallbackModelProvider):
+        pass
+
+    openai_module.OpenAIProvider = _FallbackOpenAIProvider
+    sys.modules["agents.models.openai_provider"] = openai_module
+
+    tool_module = types.ModuleType("agents.tool")
+
+    class _FallbackComputerTool:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+    class _FallbackTool(_FallbackComputerTool):
+        pass
+
+    tool_module.ComputerTool = _FallbackComputerTool
+    tool_module.Tool = _FallbackTool
+    tool_module.CodeInterpreterTool = _FallbackTool
+    tool_module.FileSearchTool = _FallbackTool
+    tool_module.FunctionTool = _FallbackTool
+    tool_module.HostedMCPTool = _FallbackTool
+    tool_module.ImageGenerationTool = _FallbackTool
+    tool_module.LocalShellTool = _FallbackTool
+    tool_module.WebSearchTool = _FallbackWebSearchTool
+    sys.modules["agents.tool"] = tool_module
+
+@dataclass
+class _FallbackThreadMetadata:
+    id: str
+    created_at: datetime
+    status: Any | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class _FallbackActiveStatus:
+    type = "active"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # pragma: no cover - trivial
+        del args, kwargs
+
+
+@dataclass
+class _FallbackAgentContext:
+    thread: Any
+    store: Any
+    request_context: Any
+
+    @classmethod
+    def __class_getitem__(
+        cls, _: Any
+    ) -> type["_FallbackAgentContext"]:  # pragma: no cover
+        return cls
+
+
+if "chatkit.agents" not in sys.modules:  # pragma: no cover - dépendance optionnelle
+    chatkit_agents_module = types.ModuleType("chatkit.agents")
+
+    class _FallbackThreadItemConverter:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+        def to_input_items(self, items: list[Any]) -> list[Any]:
+            return list(items or [])
+
+        def for_context(self, context: Any) -> "_FallbackThreadItemConverter":
+            return self
+
+    async def _fallback_stream_agent_response(*args: Any, **kwargs: Any):
+        if False:
+            yield None  # pragma: no cover - generator requirement
+
+    def _fallback_simple_to_agent_input(*args: Any, **kwargs: Any) -> list[Any]:
+        return []
+
+    chatkit_agents_module.AgentContext = _FallbackAgentContext
+    chatkit_agents_module.ThreadItemConverter = _FallbackThreadItemConverter
+    chatkit_agents_module.TResponseInputItem = Any
+    chatkit_agents_module.stream_agent_response = _fallback_stream_agent_response
+    chatkit_agents_module.simple_to_agent_input = _fallback_simple_to_agent_input
+
+    sys.modules["chatkit.agents"] = chatkit_agents_module
+
+if (
+    "backend.app.tool_factory" not in sys.modules
+):  # pragma: no cover - dépendance optionnelle
+    tool_factory_module = types.ModuleType("backend.app.tool_factory")
+
+    @dataclass
+    class _FallbackResolvedMcpServerContext:
+        server_id: str | None = None
+
+    def _noop_tool(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    tool_factory_module.ResolvedMcpServerContext = _FallbackResolvedMcpServerContext
+    tool_factory_module.build_computer_use_tool = _noop_tool
+    tool_factory_module.build_file_search_tool = _noop_tool
+    tool_factory_module.build_image_generation_tool = _noop_tool
+    tool_factory_module.build_mcp_tool = _noop_tool
+    tool_factory_module.build_weather_tool = _noop_tool
+    tool_factory_module.build_web_search_tool = _noop_tool
+    tool_factory_module.build_widget_validation_tool = _noop_tool
+    tool_factory_module.build_workflow_tool = _noop_tool
+    tool_factory_module.get_mcp_runtime_context = _noop_tool
+    tool_factory_module._MODULE_PATHS = {}
+
+    def _fallback_getattr(name: str) -> Any:  # pragma: no cover - robustness
+        return _noop_tool
+
+    tool_factory_module.__getattr__ = _fallback_getattr  # type: ignore[assignment]
+    sys.modules["backend.app.tool_factory"] = tool_factory_module
+
+try:
+    from agents import Agent  # noqa: E402
+except ModuleNotFoundError:  # pragma: no cover - dépendance optionnelle
+    @dataclass
+    class Agent:  # type: ignore[override]
+        name: str
+        model: str | None = None
 from backend.app.model_capabilities import (  # noqa: E402
     ModelCapabilities,
     NormalizedModelKey,
@@ -32,10 +275,53 @@ from backend.app.model_capabilities import (  # noqa: E402
 
 
 def _load_dependencies():
-    agents_module = import_module("chatkit.agents")
-    types_module = import_module("chatkit.types")
-    chatkit_module = import_module("backend.app.chatkit")
-    service_module = import_module("backend.app.workflows.service")
+    try:
+        agents_module = import_module("chatkit.agents")
+    except Exception:  # pragma: no cover - dépendances externes manquantes
+        agents_module = SimpleNamespace(
+            AgentContext=_FallbackAgentContext,
+        )
+
+    try:
+        types_module = import_module("chatkit.types")
+    except Exception:  # pragma: no cover - dépendances externes manquantes
+        types_module = SimpleNamespace(
+            ActiveStatus=_FallbackActiveStatus,
+            ThreadMetadata=_FallbackThreadMetadata,
+        )
+    try:
+        chatkit_module = import_module("backend.app.chatkit")
+    except Exception:  # pragma: no cover - dépendances externes manquantes
+        from backend.app.workflows.executor import (  # noqa: E402
+            WorkflowExecutionError as _WorkflowExecutionError,
+        )
+        from backend.app.workflows.executor import (
+            WorkflowInput as _WorkflowInput,
+        )
+        from backend.app.workflows.executor import (
+            run_workflow as _run_workflow,
+        )
+
+        chatkit_module = SimpleNamespace(
+            WorkflowExecutionError=_WorkflowExecutionError,
+            WorkflowInput=_WorkflowInput,
+            run_workflow=_run_workflow,
+        )
+
+    try:
+        service_module = import_module("backend.app.workflows.service")
+    except Exception:  # pragma: no cover - dépendances externes manquantes
+        from backend.app.workflows.service import (  # noqa: E402
+            WorkflowNotFoundError as _WorkflowNotFoundError,
+        )
+        from backend.app.workflows.service import (
+            WorkflowVersionNotFoundError as _WorkflowVersionNotFoundError,
+        )
+
+        service_module = SimpleNamespace(
+            WorkflowNotFoundError=_WorkflowNotFoundError,
+            WorkflowVersionNotFoundError=_WorkflowVersionNotFoundError,
+        )
 
     return (
         agents_module.AgentContext,
@@ -283,6 +569,133 @@ async def test_nested_workflow_propagates_context() -> None:
     assert "Nested response" in summary.state.get("last_agent_output_text", "")
     step_keys = [step.key for step in summary.steps]
     assert "assistant" in step_keys  # nested workflow step recorded
+
+
+@pytest.mark.anyio
+async def test_end_block_populates_final_output() -> None:
+    start = _Step(slug="start", kind="start", position=1)
+    end_message = "À bientôt"
+    end_reason = "Conversation terminée"
+    end = _Step(
+        slug="end",
+        kind="end",
+        position=2,
+        parameters={
+            "message": end_message,
+            "status": {"type": "closed", "reason": end_reason},
+        },
+    )
+
+    definition = _build_definition(
+        workflow_id=42,
+        slug="simple-end",
+        steps=[start, end],
+        transitions=[_Transition(source_step=start, target_step=end)],
+        version_id=420,
+    )
+
+    service = _FakeWorkflowService([definition])
+
+    summary = await run_workflow(
+        WorkflowInput(
+            input_as_text="Bonjour",
+            auto_start_was_triggered=False,
+            auto_start_assistant_message=None,
+            source_item_id=None,
+        ),
+        agent_context=_build_agent_context(),
+        workflow_service=service,
+    )
+
+    assert summary.final_output is not None
+    assert summary.final_output.get("message") == end_message
+    assert summary.final_output.get("status_reason") == end_reason
+
+    assert summary.steps, "Le bloc de fin doit être enregistré dans l'historique"
+    final_step = summary.steps[-1]
+    assert final_step.key == "end"
+    assert end_message in final_step.output
+
+    assert summary.last_context is not None
+    assert summary.last_context.get("output_text") == end_message
+
+
+@pytest.mark.anyio
+async def test_end_block_with_ags_configuration() -> None:
+    start = _Step(slug="start", kind="start", position=1)
+    set_state = _Step(
+        slug="set-grade",
+        kind="state",
+        position=2,
+        parameters={
+            "state": [
+                {"target": "state.grade.score", "expression": 17.5},
+                {
+                    "target": "state.grade.comment",
+                    "expression": '"Très bon travail"',
+                },
+            ]
+        },
+    )
+    end = _Step(
+        slug="end",
+        kind="end",
+        position=3,
+        parameters={
+            "message": "Félicitations",
+            "status": {"type": "closed", "reason": "Évaluation terminée"},
+            "ags": {
+                "score_variable_id": "quiz-final",
+                "maximum": 20,
+                "value": "state.grade.score",
+                "comment": "state.grade.comment",
+            },
+        },
+    )
+
+    definition = _build_definition(
+        workflow_id=99,
+        slug="ags-end",
+        steps=[start, set_state, end],
+        transitions=[
+            _Transition(source_step=start, target_step=set_state),
+            _Transition(source_step=set_state, target_step=end),
+        ],
+        version_id=990,
+    )
+
+    service = _FakeWorkflowService([definition])
+
+    summary = await run_workflow(
+        WorkflowInput(
+            input_as_text="Bonjour",
+            auto_start_was_triggered=False,
+            auto_start_assistant_message=None,
+            source_item_id=None,
+        ),
+        agent_context=_build_agent_context(),
+        workflow_service=service,
+    )
+
+    assert summary.end_state is not None
+    assert summary.end_state.ags_variable_id == "quiz-final"
+    assert summary.end_state.ags_score_value == pytest.approx(17.5)
+    assert summary.end_state.ags_score_maximum == pytest.approx(20.0)
+    assert summary.end_state.ags_comment == "Très bon travail"
+
+    assert summary.final_output is not None
+    ags_payload = summary.final_output.get("ags")
+    assert ags_payload == {
+        "variable_id": "quiz-final",
+        "score": pytest.approx(17.5),
+        "maximum": pytest.approx(20.0),
+        "comment": "Très bon travail",
+    }
+
+    assert summary.last_context is not None
+    end_state_payload = summary.last_context.get("end_state")
+    assert end_state_payload is not None
+    assert end_state_payload.get("ags") == ags_payload
 
 
 @pytest.mark.anyio
@@ -575,7 +988,7 @@ async def test_run_workflow_skips_previous_response_when_unsupported(
 
 @pytest.mark.anyio
 async def test_workflow_tool_emits_ui_events(monkeypatch: pytest.MonkeyPatch) -> None:
-    from agents.tool_context import ToolContext
+    from agents.tool_context import ToolContext  # noqa: I001
     from backend.app import tool_factory
     from backend.app.workflows import executor as executor_module
     from backend.app.workflows.executor import (

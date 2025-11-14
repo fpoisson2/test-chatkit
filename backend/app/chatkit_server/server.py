@@ -84,6 +84,11 @@ from .actions import (
     _resolve_widget_action_payload,
     _ResponseWidgetConfig,
 )
+from .ags import (
+    AGSClientProtocol,
+    NullAGSClient,
+    process_workflow_end_state_ags,
+)
 from .context import (
     AutoStartConfiguration,
     ChatKitRequestContext,
@@ -361,7 +366,12 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        ags_client: AGSClientProtocol | None = None,
+    ) -> None:
         workflow_service = WorkflowService(settings=settings)
         store = PostgresChatKitStore(SessionLocal, workflow_service=workflow_service)
         attachment_store = LocalAttachmentStore(
@@ -378,6 +388,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             open_attachment=attachment_store.open_attachment,
         )
         self.attachment_store = attachment_store
+        self._ags_client: AGSClientProtocol = ags_client or NullAGSClient()
 
     async def _process_streaming_impl(
         self,
@@ -1054,6 +1065,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             cleaned_reason: str | None = None
             waiting_state = False
             if end_state is not None:
+                await process_workflow_end_state_ags(
+                    client=self._ags_client,
+                    end_state=end_state,
+                    context=getattr(agent_context, "request_context", None),
+                )
                 end_message = self._settings.workflow_defaults.default_end_message
                 status_type_raw = (end_state.status_type or "closed").strip().lower()
                 cleaned_reason = (

@@ -147,6 +147,154 @@ export const getEndMessage = (parameters: AgentParameters | null | undefined): s
   return typeof fallback === "string" ? fallback : "";
 };
 
+export type EndAgsConfig = {
+  variableId: string;
+  valueExpression: string;
+  maximumExpression: string;
+  commentExpression: string;
+};
+
+const EMPTY_END_AGS_CONFIG: EndAgsConfig = {
+  variableId: "",
+  valueExpression: "",
+  maximumExpression: "",
+  commentExpression: "",
+};
+
+const normalizeEndAgsExpression = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+};
+
+export const getEndAgsConfig = (
+  parameters: AgentParameters | null | undefined,
+): EndAgsConfig => {
+  if (!parameters) {
+    return EMPTY_END_AGS_CONFIG;
+  }
+
+  const ags = (parameters as Record<string, unknown>).ags;
+  if (!isPlainRecord(ags)) {
+    return EMPTY_END_AGS_CONFIG;
+  }
+
+  const config = ags as Record<string, unknown>;
+  const variableId =
+    normalizeEndAgsExpression(config["score_variable_id"]) ||
+    normalizeEndAgsExpression(config["variable_id"]);
+
+  const valueExpression =
+    normalizeEndAgsExpression(config["value"]) ||
+    normalizeEndAgsExpression(config["score"]) ||
+    normalizeEndAgsExpression(config["score_value"]);
+
+  const maximumExpression =
+    normalizeEndAgsExpression(config["maximum"]) ||
+    normalizeEndAgsExpression(config["max_score"]);
+
+  const commentExpression =
+    normalizeEndAgsExpression(config["comment"]) ||
+    normalizeEndAgsExpression(config["note"]);
+
+  return {
+    variableId,
+    valueExpression,
+    maximumExpression,
+    commentExpression,
+  } satisfies EndAgsConfig;
+};
+
+const updateEndAgsParameters = (
+  parameters: AgentParameters,
+  mutator: (ags: Record<string, unknown>) => void,
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+  const currentAgs = isPlainRecord(next.ags)
+    ? { ...(next.ags as Record<string, unknown>) }
+    : {};
+
+  mutator(currentAgs);
+
+  if (Object.keys(currentAgs).length === 0) {
+    delete next.ags;
+  } else {
+    next.ags = currentAgs;
+  }
+
+  return stripEmpty(next);
+};
+
+export const setEndAgsVariableId = (
+  parameters: AgentParameters,
+  identifier: string,
+): AgentParameters =>
+  updateEndAgsParameters(parameters, (ags) => {
+    delete ags.variable_id;
+
+    const trimmed = identifier.trim();
+    if (!trimmed) {
+      delete ags.score_variable_id;
+      return;
+    }
+
+    ags.score_variable_id = trimmed;
+  });
+
+const setEndAgsExpressionField = (
+  parameters: AgentParameters,
+  field: "value" | "maximum" | "comment",
+  value: string,
+): AgentParameters =>
+  updateEndAgsParameters(parameters, (ags) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      delete ags[field];
+      if (field === "value") {
+        delete ags.score;
+        delete ags.score_value;
+      }
+      if (field === "maximum") {
+        delete ags.max_score;
+      }
+      if (field === "comment") {
+        delete ags.note;
+      }
+      return;
+    }
+
+    ags[field] = trimmed;
+    if (field === "value") {
+      delete ags.score;
+      delete ags.score_value;
+    }
+    if (field === "maximum") {
+      delete ags.max_score;
+    }
+    if (field === "comment") {
+      delete ags.note;
+    }
+  });
+
+export const setEndAgsScoreExpression = (
+  parameters: AgentParameters,
+  expression: string,
+): AgentParameters => setEndAgsExpressionField(parameters, "value", expression);
+
+export const setEndAgsMaximumExpression = (
+  parameters: AgentParameters,
+  expression: string,
+): AgentParameters => setEndAgsExpressionField(parameters, "maximum", expression);
+
+export const setEndAgsCommentExpression = (
+  parameters: AgentParameters,
+  expression: string,
+): AgentParameters => setEndAgsExpressionField(parameters, "comment", expression);
+
 export const getAssistantMessage = (
   parameters: AgentParameters | null | undefined,
 ): string => {

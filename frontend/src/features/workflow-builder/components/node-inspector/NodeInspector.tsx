@@ -20,6 +20,7 @@ import {
   getConditionMode,
   getConditionPath,
   getConditionValue,
+  getEndAgsConfig,
   getEndMessage,
   getStartAutoRun,
   getStartAutoRunAssistantMessage,
@@ -172,6 +173,10 @@ const NodeInspector = ({
     handleAgentWorkflowToolToggle: onAgentWorkflowToolToggle,
     handleStateAssignmentsChange: onStateAssignmentsChange,
     handleEndMessageChange: onEndMessageChange,
+    handleEndAgsVariableIdChange: onEndAgsVariableIdChange,
+    handleEndAgsScoreExpressionChange: onEndAgsScoreExpressionChange,
+    handleEndAgsMaximumExpressionChange: onEndAgsMaximumExpressionChange,
+    handleEndAgsCommentExpressionChange: onEndAgsCommentExpressionChange,
     handleAssistantMessageChange: onAssistantMessageChange,
     handleAssistantMessageStreamEnabledChange: onAssistantMessageStreamEnabledChange,
     handleAssistantMessageStreamDelayChange: onAssistantMessageStreamDelayChange,
@@ -285,6 +290,11 @@ const NodeInspector = ({
   const isFixed = kind === "start";
 
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
+  const endAgsConfig = useMemo(() => getEndAgsConfig(parameters), [parameters]);
+  const endAgsVariableId = kind === "end" ? endAgsConfig.variableId : "";
+  const endAgsScoreExpression = kind === "end" ? endAgsConfig.valueExpression : "";
+  const endAgsMaximumExpression = kind === "end" ? endAgsConfig.maximumExpression : "";
+  const endAgsCommentExpression = kind === "end" ? endAgsConfig.commentExpression : "";
   const assistantMessage = kind === "assistant_message" ? getAssistantMessage(parameters) : "";
   const assistantMessageStreamEnabled =
     kind === "assistant_message" ? getAssistantMessageStreamEnabled(parameters) : false;
@@ -486,7 +496,15 @@ const NodeInspector = ({
         <EndInspectorSection
           nodeId={node.id}
           endMessage={endMessage}
+          agsVariableId={endAgsVariableId}
+          agsScoreExpression={endAgsScoreExpression}
+          agsMaximumExpression={endAgsMaximumExpression}
+          agsCommentExpression={endAgsCommentExpression}
           onEndMessageChange={onEndMessageChange}
+          onAgsVariableIdChange={onEndAgsVariableIdChange}
+          onAgsScoreExpressionChange={onEndAgsScoreExpressionChange}
+          onAgsMaximumExpressionChange={onEndAgsMaximumExpressionChange}
+          onAgsCommentExpressionChange={onEndAgsCommentExpressionChange}
         />
       ) : null}
 

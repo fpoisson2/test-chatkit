@@ -11,6 +11,10 @@ import {
   setAssistantMessage,
   setAssistantMessageStreamDelay,
   setAssistantMessageStreamEnabled,
+  setEndAgsCommentExpression,
+  setEndAgsMaximumExpression,
+  setEndAgsScoreExpression,
+  setEndAgsVariableId,
   setEndMessage,
   setTranscriptionLanguage,
   setTranscriptionModel,
@@ -133,6 +137,58 @@ const useDataNodeHandlers = ({
           return data;
         }
         const nextParameters = setEndMessage(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleEndAgsVariableIdChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "end") {
+          return data;
+        }
+        const nextParameters = setEndAgsVariableId(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleEndAgsScoreExpressionChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "end") {
+          return data;
+        }
+        const nextParameters = setEndAgsScoreExpression(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleEndAgsMaximumExpressionChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "end") {
+          return data;
+        }
+        const nextParameters = setEndAgsMaximumExpression(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleEndAgsCommentExpressionChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "end") {
+          return data;
+        }
+        const nextParameters = setEndAgsCommentExpression(data.parameters, value);
         return updateNodeParameters(data, nextParameters);
       });
     },
@@ -338,6 +394,10 @@ const useDataNodeHandlers = ({
     handleVectorStoreNodeConfigChange,
     // Message handlers
     handleEndMessageChange,
+    handleEndAgsVariableIdChange,
+    handleEndAgsScoreExpressionChange,
+    handleEndAgsMaximumExpressionChange,
+    handleEndAgsCommentExpressionChange,
     handleAssistantMessageChange,
     handleAssistantMessageStreamEnabledChange,
     handleAssistantMessageStreamDelayChange,
