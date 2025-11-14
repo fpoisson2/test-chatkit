@@ -463,25 +463,6 @@
   transform: none;
 }
 
-/* Improve visibility in dark mode */
-:root[data-theme="dark"] .chatkit-sidebar__section-icon-button,
-html[data-theme="dark"] .chatkit-sidebar__section-icon-button,
-[data-theme="dark"] .chatkit-sidebar__section-icon-button {
-  color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  font-weight: var(--font-weight-bold) !important;
-}
-
-:root[data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
-html[data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
-[data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
-:root[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible,
-html[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible,
-[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible {
-  color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.4) !important;
-}
-
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__section-button {
   display: block;
   margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
@@ -1052,25 +1033,6 @@ html[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible,
   content: none;
 }
 
-/* Improve visibility in dark mode for overlay variant (mobile) */
-:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button,
-html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button,
-[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
-  color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
-  font-weight: var(--font-weight-bold) !important;
-}
-
-:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
-html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
-[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
-:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible,
-html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible,
-[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
-  color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.5) !important;
-}
-
 .chatkit-sidebar__badge {
   display: inline-flex;
   align-items: center;
@@ -1333,45 +1295,6 @@ html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatk
 
 .chatkit-sidebar__dismiss:focus-visible {
   outline: none;
-}
-
-/* Improve visibility in dark mode */
-:root[data-theme="dark"] .chatkit-sidebar__dismiss,
-html[data-theme="dark"] .chatkit-sidebar__dismiss,
-[data-theme="dark"] .chatkit-sidebar__dismiss {
-  color: #ffffff !important;
-}
-
-:root[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
-html[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
-[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
-:root[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible,
-html[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible,
-[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible {
-  color: #ffffff !important;
-}
-
-/* Force white color on ALL dismiss icon children */
-:root[data-theme="dark"] .chatkit-sidebar__dismiss *,
-html[data-theme="dark"] .chatkit-sidebar__dismiss *,
-[data-theme="dark"] .chatkit-sidebar__dismiss *,
-:root[data-theme="dark"] .chatkit-sidebar__dismiss-icon,
-html[data-theme="dark"] .chatkit-sidebar__dismiss-icon,
-[data-theme="dark"] .chatkit-sidebar__dismiss-icon,
-:root[data-theme="dark"] .chatkit-sidebar__dismiss-icon *,
-html[data-theme="dark"] .chatkit-sidebar__dismiss-icon *,
-[data-theme="dark"] .chatkit-sidebar__dismiss-icon * {
-  color: #ffffff !important;
-  stroke: #ffffff !important;
-}
-
-:root[data-theme="dark"] .chatkit-sidebar__dismiss svg,
-html[data-theme="dark"] .chatkit-sidebar__dismiss svg,
-[data-theme="dark"] .chatkit-sidebar__dismiss svg,
-:root[data-theme="dark"] .chatkit-sidebar__dismiss svg path,
-html[data-theme="dark"] .chatkit-sidebar__dismiss svg path,
-[data-theme="dark"] .chatkit-sidebar__dismiss svg path {
-  stroke: #ffffff !important;
 }
 
 .chatkit-sidebar__dismiss-icon {
@@ -1825,4 +1748,160 @@ html[data-theme="dark"] .chatkit-sidebar__dismiss svg path,
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__profile--open .chatkit-sidebar__profile-menu {
   transform: translateY(0);
+}
+/**
+ * CRITICAL FIX - Dark Mode Sidebar Icons Visibility
+ *
+ * This file MUST be imported LAST in index.css to ensure these styles
+ * override everything else.
+ *
+ * Problem: Icons X and + in sidebar are invisible in dark mode
+ * Solution: Force white color with !important on all possible selectors
+ */
+
+/* ============================================
+   ICON X (Dismiss Button) - Close Sidebar
+   ============================================ */
+
+/* Target the button itself */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss,
+html[data-theme="dark"] .chatkit-sidebar__dismiss {
+  color: #ffffff !important;
+}
+
+/* Target the icon container span */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss-icon,
+html[data-theme="dark"] .chatkit-sidebar__dismiss-icon {
+  color: #ffffff !important;
+}
+
+/* Target ALL children with universal selector */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss *,
+html[data-theme="dark"] .chatkit-sidebar__dismiss *,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss-icon *,
+html[data-theme="dark"] .chatkit-sidebar__dismiss-icon * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Target SVG elements specifically */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss svg,
+html[data-theme="dark"] .chatkit-sidebar__dismiss svg,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss svg *,
+html[data-theme="dark"] .chatkit-sidebar__dismiss svg * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Target paths specifically */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss path,
+html[data-theme="dark"] .chatkit-sidebar__dismiss path,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss svg path,
+html[data-theme="dark"] .chatkit-sidebar__dismiss svg path {
+  stroke: #ffffff !important;
+  fill: none !important;
+}
+
+/* Hover and focus states */
+:root[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
+html[data-theme="dark"] .chatkit-sidebar__dismiss:hover,
+:root[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible {
+  color: #ffffff !important;
+}
+
+/* ============================================
+   ICON + (Add Button) - Section Icon Button
+   ============================================ */
+
+/* Desktop version */
+:root[data-theme="dark"] .chatkit-sidebar__section-icon-button,
+html[data-theme="dark"] .chatkit-sidebar__section-icon-button {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  font-weight: 700 !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+:root[data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
+html[data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
+:root[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Mobile version with overlay variant */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  font-weight: 700 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.6) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Target all children of icon buttons */
+:root[data-theme="dark"] .chatkit-sidebar__section-icon-button *,
+html[data-theme="dark"] .chatkit-sidebar__section-icon-button * {
+  color: #ffffff !important;
+}
+
+/* ============================================
+   FIX: Overlay variant uses var(--gray-25) which is #18181b (almost black!) in dark mode
+   This makes EVERYTHING invisible on dark backgrounds
+   ============================================ */
+
+/* Fix workflow action buttons (... menu) */
+:root[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button,
+html[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:hover,
+html[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:hover,
+:root[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:focus-visible {
+  color: #ffffff !important;
+}
+
+/* Fix section titles */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title {
+  color: #ffffff !important;
+}
+
+/* Fix section text */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-text,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-text {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Fix workflow buttons */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover,
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible {
+  color: #ffffff !important;
+}
+
+/* Fix ALL elements in overlay variant that might use gray-25 */
+:root[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] *,
+html[data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] * {
+  /* Override any gray-25 usage with white in dark mode */
+  --gray-25: #ffffff !important;
 }

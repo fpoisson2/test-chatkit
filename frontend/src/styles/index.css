@@ -47,7 +47,3 @@
 /* 9. Design System Utilities - Utility classes with cascade layers */
 /* MUST be imported after legacy.css to ensure utilities can override legacy styles */
 @import './design-system/utilities.css';
-
-/* 10. CRITICAL FIXES - Must be imported LAST to ensure maximum priority */
-/* Dark mode sidebar icons fix - MUST override all other styles */
-@import './components/sidebar-dark-mode-fix.css';
