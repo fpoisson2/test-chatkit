@@ -1,7 +1,6 @@
 import type { ChangeEvent, MutableRefObject, ReactNode } from "react";
 
 import {
-  controlLabelStyle,
   getActionMenuStyle,
   getActionMenuWrapperStyle,
   getDeployButtonStyle,
@@ -86,14 +85,9 @@ const WorkflowBuilderHeaderControls = ({
   const versionSelect = (
     <div style={getHeaderLayoutStyle(isMobileLayout)}>
       <div style={getHeaderGroupStyle(isMobileLayout)}>
-        {!isMobileLayout ? (
-          <label htmlFor="version-select" style={controlLabelStyle}>
-            Révision
-          </label>
-        ) : null}
         <select
           id="version-select"
-          aria-label={isMobileLayout ? "Sélectionner une révision" : undefined}
+          aria-label="Sélectionner une révision"
           value={selectedVersionId ? String(selectedVersionId) : ""}
           onChange={onVersionChange}
           disabled={loading || versions.length === 0}
