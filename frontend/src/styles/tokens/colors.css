@@ -38,7 +38,7 @@
   --primary-hover: var(--appearance-accent-hover);
 
   /* Sidebar Colors */
-  --sidebar-background: var(--color-surface);
+  --sidebar-background: var(--color-surface-subtle);
   --sidebar-border: var(--color-border-subtle);
   --sidebar-scrollbar-thumb: rgba(24, 24, 27, 0.24);
   --sidebar-scrollbar-thumb-hover: rgba(24, 24, 27, 0.32);
@@ -93,7 +93,7 @@
   --primary-hover: var(--appearance-accent-hover);
 
   /* Sidebar Colors - Dark Theme */
-  --sidebar-background: var(--appearance-dark-surface-subtle);
+  --sidebar-background: var(--color-surface-subtle);
   --sidebar-border: rgba(228, 228, 231, 0.08);
   --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
   --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
@@ -145,7 +145,7 @@
     --primary-hover: #0ea5e9;
 
     /* Sidebar Colors */
-    --sidebar-background: #09090b;
+    --sidebar-background: var(--color-surface-subtle);
     --sidebar-border: rgba(228, 228, 231, 0.08);
     --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
     --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
