@@ -924,6 +924,16 @@ button {
   --chatkit-sidebar-workflow-leading-width: 1.45rem;
 }
 
+.chatkit-layout:not(.chatkit-layout--desktop)
+  .chatkit-sidebar__workflow-list-item--with-pin {
+  --chatkit-sidebar-workflow-leading-width: 0px;
+}
+
+.chatkit-layout:not(.chatkit-layout--desktop)
+  .chatkit-sidebar__workflow-pin-button--leading {
+  display: none;
+}
+
 .chatkit-sidebar__workflow-list-item[data-has-actions] {
   --chatkit-sidebar-workflow-actions-width: 2.15rem;
 }
