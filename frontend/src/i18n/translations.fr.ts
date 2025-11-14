@@ -1201,7 +1201,7 @@ export const fr: TranslationDictionary = {
   "admin.languages.feedback.created":
     "Langue « {{name}} » ajoutée avec succès.",
   "admin.languages.feedback.deleted":
-    "Langue « {{name}} » supprimée.",
+    "Langue « {{name}} » supprimée avec succès.",
   "admin.languages.feedback.translationStarted":
     "Traduction automatique lancée pour « {{name}} ».",
   "admin.languages.feedback.translationComplete":
