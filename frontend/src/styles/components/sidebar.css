@@ -980,25 +980,25 @@
 }
 
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button {
-  color: var(--gray-25);
+  color: var(--color-text);
 }
 
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:hover,
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button:focus-visible {
-  background: var(--alpha-12);
-  color: var(--gray-25);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--primary-hover);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title {
-  color: var(--gray-25);
+  color: var(--color-text-strong);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-text {
-  color: color-mix(in srgb, var(--gray-25) 85%, transparent);
+  color: var(--color-text-muted);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button {
-  color: var(--gray-25);
+  color: var(--color-text);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button::after {
@@ -1007,16 +1007,17 @@
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover,
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible {
-  color: var(--gray-25);
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover::after,
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible::after {
-  background: color-mix(in srgb, var(--gray-25) 22%, transparent);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button[aria-current="true"] {
-  color: color-mix(in srgb, var(--gray-25) 92%, transparent);
+  color: var(--gray-25);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -1031,6 +1032,82 @@
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-group-title::before,
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-compact-group-title::before {
   content: none;
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
+  color: var(--gray-25);
+  border-color: color-mix(in srgb, var(--gray-25) 25%, transparent);
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: var(--gray-25);
+  border-color: color-mix(in srgb, var(--gray-25) 50%, transparent);
+}
+
+/* Hide group titles on mobile overlay mode to prevent duplicate with main title */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-group-title {
+  display: none;
+}
+
+/* Add spacing to the right of the floating action button on mobile */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-floating-action {
+  margin-right: calc(var(--spacing) * 2);
+}
+
+/* Fix button text contrast on mobile dark mode */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-button {
+  color: var(--gray-25);
+  border-color: color-mix(in srgb, var(--gray-25) 35%, transparent);
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-button:hover,
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-button:focus-visible {
+  color: var(--gray-25);
+  background: color-mix(in srgb, var(--gray-25) 12%, transparent);
+  border-color: color-mix(in srgb, var(--gray-25) 50%, transparent);
+}
+
+/* Fix workflow menu button text contrast on mobile */
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button {
+  color: var(--gray-25) !important;
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:hover:not([disabled]),
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:focus-visible:not([disabled]) {
+  color: var(--gray-25) !important;
+  background: color-mix(in srgb, var(--gray-25) 12%, transparent) !important;
+}
+
+/* Mobile sidebar footer styles */
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer {
+  color: var(--gray-25);
+}
+
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link {
+  color: var(--gray-25);
+}
+
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:hover,
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:focus-visible {
+  background: color-mix(in srgb, var(--gray-25) 15%, transparent);
+}
+
+/* Mobile sidebar profile name/email styles */
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
+  color: var(--gray-25);
+}
+
+/* Mobile sidebar dismiss button (close X) */
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss {
+  color: var(--gray-25);
+}
+
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
+.chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
+  color: var(--gray-25);
+  background: color-mix(in srgb, var(--gray-25) 15%, transparent);
 }
 
 .chatkit-sidebar__badge {
