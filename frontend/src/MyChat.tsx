@@ -5,7 +5,7 @@ import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { LoadingOverlay } from "./components/feedback/LoadingOverlay";
 import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
-import { ChatSidebar, type WorkflowActivation } from "./components/my-chat/ChatSidebar";
+import { ChatWorkflowSidebar, type WorkflowActivation } from "./features/workflows/WorkflowSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { OutboundCallAudioPlayer } from "./components/my-chat/OutboundCallAudioPlayer";
 import {
@@ -792,7 +792,7 @@ export function MyChat() {
       />
       {/* Hide all content during LTI loading to prevent multiple spinners from showing */}
       <div style={{ display: shouldShowLoadingOverlay ? 'none' : 'contents' }}>
-        <ChatSidebar
+        <ChatWorkflowSidebar
           mode={mode}
           setMode={setMode}
           onWorkflowActivated={handleWorkflowActivated}
