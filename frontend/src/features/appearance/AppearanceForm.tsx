@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
 } from "react";
@@ -166,6 +167,7 @@ export const AppearanceForm = ({
 
   const accentColor = watch("accentColor");
   const useCustomSurfaceColors = watch("useCustomSurfaceColors");
+  const customSurfaceToggleId = useId();
 
   const accentPreviewStyle = useMemo(
     () => ({
@@ -249,14 +251,20 @@ export const AppearanceForm = ({
               {t("admin.appearance.colors.accentHint")}
             </p>
           </div>
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              {...register("useCustomSurfaceColors")}
-              disabled={isBusy}
-            />
-            {t("admin.appearance.colors.enableCustomSurfaces")}
-          </label>
+          <div className="flex items-center justify-between gap-4">
+            <label className="form-label mb-0" htmlFor={customSurfaceToggleId}>
+              {t("admin.appearance.colors.enableCustomSurfaces")}
+            </label>
+            <label className="toggle" htmlFor={customSurfaceToggleId}>
+              <input
+                id={customSurfaceToggleId}
+                type="checkbox"
+                {...register("useCustomSurfaceColors")}
+                disabled={isBusy}
+              />
+              <span className="toggle-slider" aria-hidden="true" />
+            </label>
+          </div>
           <div className="flex flex-col gap-4">
             <div className="form-group">
               <label className="form-label">
