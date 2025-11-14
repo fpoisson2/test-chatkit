@@ -1143,6 +1143,15 @@
   color: var(--gray-25);
 }
 
+/* Desktop sidebar profile name/email styles for dark mode */
+:root[data-theme="dark"] .chatkit-layout--desktop .chatkit-sidebar__profile-name {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .chatkit-layout--desktop .chatkit-sidebar__profile-role {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
 /* Mobile sidebar dismiss button (close X) */
 .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss {
   color: var(--gray-25);
