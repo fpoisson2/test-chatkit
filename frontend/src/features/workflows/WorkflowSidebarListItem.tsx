@@ -66,7 +66,10 @@ const WorkflowSidebarListItem = ({
           aria-label={pinLabel}
           title={pinButtonTitle ?? pinLabel}
           aria-pressed={isPinned}
-          onClick={onTogglePin}
+          onClick={(event) => {
+            console.log('[WorkflowSidebarListItem] Pin button clicked! isPinned:', isPinned);
+            onTogglePin(event);
+          }}
         >
           <Star aria-hidden="true" className="chatkit-sidebar__workflow-pin-icon" />
         </button>

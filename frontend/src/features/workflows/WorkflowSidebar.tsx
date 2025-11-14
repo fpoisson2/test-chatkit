@@ -201,8 +201,10 @@ export const useWorkflowSidebarEntries = (
             isPinned,
             pinLabel,
             onTogglePin: (event) => {
+              console.log('[onTogglePin hosted] Event:', event.type, 'Slug:', hosted.slug);
               event.preventDefault();
               event.stopPropagation();
+              console.log('[onTogglePin hosted] Calling callbacks.onToggleHostedPin');
               callbacks.onToggleHostedPin(hosted.slug);
             },
             menuProps: menuConfig && items.length > 0
@@ -286,8 +288,10 @@ export const useWorkflowSidebarEntries = (
           isPinned,
           pinLabel,
           onTogglePin: (event) => {
+            console.log('[onTogglePin local] Event:', event.type, 'Workflow ID:', workflow.id);
             event.preventDefault();
             event.stopPropagation();
+            console.log('[onTogglePin local] Calling callbacks.onToggleLocalPin');
             callbacks.onToggleLocalPin(workflow.id);
           },
           menuProps: menuConfig && items.length > 0

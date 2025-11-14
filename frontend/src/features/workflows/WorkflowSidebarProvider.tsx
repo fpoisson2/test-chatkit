@@ -180,17 +180,22 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
   // Toggle pin actions
   const toggleLocalPin = useCallback(
     (workflowId: number) => {
+      console.log('[toggleLocalPin] Called with workflowId:', workflowId);
       setPinnedLookup((current) => {
+        console.log('[toggleLocalPin] Current pinned lookup:', { local: Array.from(current.local), hosted: Array.from(current.hosted) });
         const next: StoredWorkflowPinnedLookup = {
           local: new Set(current.local),
           hosted: new Set(current.hosted),
         };
         if (next.local.has(workflowId)) {
+          console.log('[toggleLocalPin] Unpinning workflow:', workflowId);
           next.local.delete(workflowId);
         } else {
+          console.log('[toggleLocalPin] Pinning workflow:', workflowId);
           next.local.add(workflowId);
         }
         persistPinnedLookup(next);
+        console.log('[toggleLocalPin] New pinned lookup:', { local: Array.from(next.local), hosted: Array.from(next.hosted) });
         return next;
       });
     },
@@ -199,17 +204,22 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
 
   const toggleHostedPin = useCallback(
     (slug: string) => {
+      console.log('[toggleHostedPin] Called with slug:', slug);
       setPinnedLookup((current) => {
+        console.log('[toggleHostedPin] Current pinned lookup:', { local: Array.from(current.local), hosted: Array.from(current.hosted) });
         const next: StoredWorkflowPinnedLookup = {
           local: new Set(current.local),
           hosted: new Set(current.hosted),
         };
         if (next.hosted.has(slug)) {
+          console.log('[toggleHostedPin] Unpinning workflow:', slug);
           next.hosted.delete(slug);
         } else {
+          console.log('[toggleHostedPin] Pinning workflow:', slug);
           next.hosted.add(slug);
         }
         persistPinnedLookup(next);
+        console.log('[toggleHostedPin] New pinned lookup:', { local: Array.from(next.local), hosted: Array.from(next.hosted) });
         return next;
       });
     },

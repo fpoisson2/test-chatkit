@@ -593,6 +593,10 @@
   --chatkit-sidebar-mobile-actions-width: 0rem;
 }
 
+.chatkit-sidebar__workflow-list-item--with-pin {
+  --chatkit-sidebar-workflow-leading-width: calc(var(--spacing) * 3.625);
+}
+
 .chatkit-sidebar__workflow-list-item[data-has-actions] {
   --chatkit-sidebar-workflow-actions-width: calc(var(--spacing) * 5.375);
 }
@@ -988,6 +992,45 @@
 .chatkit-sidebar__workflow-action-button[disabled] {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.chatkit-sidebar__workflow-pin-button--leading {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: max(
+    calc(var(--chatkit-sidebar-content-padding-x) - 0.9rem),
+    0px
+  );
+  width: calc(var(--chatkit-sidebar-workflow-leading-width) - 0.15rem);
+  min-width: calc(var(--chatkit-sidebar-workflow-leading-width) - 0.15rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  z-index: 1;
+}
+
+.chatkit-sidebar__workflow-pin-button {
+  font-size: var(--font-text-lg-size);
+}
+
+.chatkit-sidebar__workflow-pin-button svg {
+  width: var(--icon-size-lg);
+  height: var(--icon-size-lg);
+}
+
+.chatkit-sidebar__workflow-pin-button[aria-pressed="true"] {
+  color: var(--orange-500);
+}
+
+.chatkit-sidebar__workflow-pin-button[aria-pressed="true"] .chatkit-sidebar__workflow-pin-icon {
+  fill: currentColor;
+}
+
+.chatkit-sidebar__workflow-pin-button[aria-pressed="true"]:hover,
+.chatkit-sidebar__workflow-pin-button[aria-pressed="true"]:focus-visible {
+  background: var(--orange-a50);
+  color: var(--orange-500);
 }
 
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button {
