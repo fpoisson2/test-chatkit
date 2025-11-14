@@ -450,8 +450,9 @@
 }
 
 [data-theme="dark"] .chatkit-sidebar__section-icon-button {
-  color: color-mix(in srgb, var(--color-text-strong) 86%, var(--color-text) 14%);
-  border-color: color-mix(in srgb, var(--color-text-strong) 18%, transparent);
+  color: var(--color-text-emphasis);
+  border-color: color-mix(in srgb, var(--color-text-emphasis) 36%, transparent);
+  background: color-mix(in srgb, var(--color-text-emphasis) 14%, transparent);
 }
 
 [data-theme="dark"] .chatkit-sidebar__section-icon-button span[aria-hidden="true"] {
@@ -468,7 +469,8 @@
 
 [data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
 [data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible {
-  border-color: color-mix(in srgb, var(--primary-hover) 45%, transparent);
+  border-color: color-mix(in srgb, var(--primary-hover) 55%, transparent);
+  background: color-mix(in srgb, var(--color-text-emphasis) 20%, transparent);
 }
 
 .chatkit-sidebar__section-icon-button:disabled {
@@ -1282,13 +1284,13 @@
 }
 
 [data-theme="dark"] .chatkit-sidebar__dismiss {
-  color: color-mix(in srgb, var(--color-text-strong) 86%, var(--color-text) 14%);
+  color: var(--color-text-emphasis);
 }
 
 .chatkit-sidebar__dismiss:hover,
 .chatkit-sidebar__dismiss:focus-visible {
   background: transparent;
-  color: color-mix(in srgb, var(--color-text-strong) 86%, var(--color-text) 14%);
+  color: var(--color-text-emphasis);
 }
 
 .chatkit-sidebar__dismiss:focus-visible {
