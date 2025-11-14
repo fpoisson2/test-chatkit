@@ -197,10 +197,10 @@ export const AppearanceForm = ({
           {["system", "light", "dark"].map((option) => {
             const typedOption = option as AppearanceFormState["colorScheme"];
             return (
-              <label key={option} className="radio">
+              <label key={option} className="radio-field">
                 <input
                   type="radio"
-                  value={option}
+                  value={typedOption}
                   {...register("colorScheme")}
                   disabled={isBusy}
                 />
