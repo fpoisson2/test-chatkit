@@ -37,12 +37,12 @@ export const WidgetTemplateGallery = ({
     return (
       <div className="grid grid-cols-1 gap-6" role="list">
         {widgets.map((widget) => (
-          <article key={widget.slug} className="card" role="listitem">
-            <div className="card-body">
+          <article key={widget.slug} className="card widget-library-card" role="listitem">
+            <div className="card-body widget-library-preview">
               <WidgetPreview definition={widget.definition} />
             </div>
 
-            <div className="card-footer flex items-center gap-2">
+            <div className="card-footer widget-library-actions flex items-center gap-2">
               <button
                 className="btn btn-sm btn-ghost"
                 type="button"

@@ -1083,5 +1083,5 @@ export const WidgetPreview = ({ definition }: WidgetPreviewProps) => {
   if (!normalized) {
     return <div className="alert alert-danger text-sm">Définition du widget invalide.</div>;
   }
-  return <div className="widget-preview">{renderNode(normalized)}</div>;
+  return <>{renderNode(normalized)}</>;
 };
