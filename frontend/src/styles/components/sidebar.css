@@ -942,6 +942,19 @@
   outline: none;
 }
 
+/* Ensure proper text color in light mode for workflow menu buttons */
+:root:not([data-theme="dark"]) .chatkit-sidebar__workflow-menu button,
+:root[data-theme="light"] .chatkit-sidebar__workflow-menu button {
+  color: var(--color-text-emphasis) !important;
+}
+
+:root:not([data-theme="dark"]) .chatkit-sidebar__workflow-menu button:hover:not([disabled]),
+:root[data-theme="light"] .chatkit-sidebar__workflow-menu button:hover:not([disabled]),
+:root:not([data-theme="dark"]) .chatkit-sidebar__workflow-menu button:focus-visible:not([disabled]),
+:root[data-theme="light"] .chatkit-sidebar__workflow-menu button:focus-visible:not([disabled]) {
+  color: var(--color-text-strong) !important;
+}
+
 .chatkit-sidebar__workflow-menu button[disabled] {
   opacity: 0.5;
   cursor: not-allowed;
@@ -1084,6 +1097,20 @@
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:focus-visible:not([disabled]) {
   color: var(--gray-25) !important;
   background: color-mix(in srgb, var(--gray-25) 12%, transparent) !important;
+}
+
+/* Fix workflow menu button text contrast in LIGHT mode - gray-25 is almost white! */
+:root:not([data-theme="dark"]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button,
+:root[data-theme="light"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button {
+  color: var(--gray-900) !important;
+}
+
+:root:not([data-theme="dark"]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:hover:not([disabled]),
+:root[data-theme="light"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:hover:not([disabled]),
+:root:not([data-theme="dark"]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:focus-visible:not([disabled]),
+:root[data-theme="light"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-menu button:focus-visible:not([disabled]) {
+  color: var(--gray-900) !important;
+  background: color-mix(in srgb, var(--gray-900) 8%, transparent) !important;
 }
 
 /* Mobile sidebar footer styles */
