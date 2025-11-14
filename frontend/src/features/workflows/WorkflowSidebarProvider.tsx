@@ -34,6 +34,10 @@ import {
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
 
+export type WorkflowGenerationTarget =
+  | { kind: "local"; workflowId: number }
+  | { kind: "hosted"; slug: string };
+
 type WorkflowSidebarContextValue = {
   // Data
   workflows: WorkflowSummary[];
@@ -46,6 +50,7 @@ type WorkflowSidebarContextValue = {
   lastUsedAt: StoredWorkflowLastUsedAt;
   pinnedLookup: StoredWorkflowPinnedLookup;
   workflowCollator: Intl.Collator | null;
+  activeGeneration: WorkflowGenerationTarget | null;
 
   // Actions
   setMode: (mode: HostedFlowMode) => void;
@@ -56,6 +61,7 @@ type WorkflowSidebarContextValue = {
   toggleLocalPin: (workflowId: number) => void;
   toggleHostedPin: (slug: string) => void;
   loadWorkflows: () => Promise<void>;
+  setActiveGeneration: React.Dispatch<React.SetStateAction<WorkflowGenerationTarget | null>>;
 
   // Refs (for advanced use cases)
   workflowsRef: React.MutableRefObject<WorkflowSummary[]>;
@@ -110,6 +116,7 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
   const [pinnedLookup, setPinnedLookup] = useState<StoredWorkflowPinnedLookup>(() =>
     readStoredWorkflowPinnedLookup(),
   );
+  const [activeGeneration, setActiveGeneration] = useState<WorkflowGenerationTarget | null>(null);
 
   // Refs
   const workflowsRef = useRef(workflows);
@@ -145,6 +152,23 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
   const previousTokenRef = useRef<string | null>(token ?? null);
   const hasLoadedWorkflowsRef = useRef(false);
   const hostedInitialAnnouncedRef = useRef(false);
+
+  // Ensure the active generation still references an available workflow entry
+  useEffect(() => {
+    setActiveGeneration((current) => {
+      if (!current) {
+        return current;
+      }
+
+      if (current.kind === "local") {
+        const exists = workflows.some((workflow) => workflow.id === current.workflowId);
+        return exists ? current : null;
+      }
+
+      const exists = hostedWorkflows.some((workflow) => workflow.slug === current.slug);
+      return exists ? current : null;
+    });
+  }, [hostedWorkflows, workflows]);
 
   // Initialize collator
   useEffect(() => {
@@ -530,6 +554,7 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
       lastUsedAt,
       pinnedLookup,
       workflowCollator: workflowCollatorRef.current,
+      activeGeneration,
       setMode,
       setWorkflows: setWorkflowsStable,
       setHostedWorkflows: setHostedWorkflowsStable,
@@ -538,6 +563,7 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
       toggleLocalPin,
       toggleHostedPin,
       loadWorkflows,
+      setActiveGeneration,
       workflowsRef,
       hostedWorkflowsRef,
       hasLoadedWorkflowsRef,
@@ -552,6 +578,7 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
       error,
       lastUsedAt,
       pinnedLookup,
+      activeGeneration,
       setWorkflowsStable,
       setHostedWorkflowsStable,
       toggleLocalPin,

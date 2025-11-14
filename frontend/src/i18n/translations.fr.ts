@@ -16,6 +16,7 @@ export const fr: TranslationDictionary = {
   "app.sidebar.switcherLabel": "Applications",
   "app.sidebar.close": "Fermer la barre latérale",
   "app.sidebar.menu": "Menu principal",
+  "app.sidebar.workflows.generating": "Réponse en cours…",
   "app.sidebar.profile.role.admin": "Administrateur",
   "app.sidebar.profile.role.user": "Utilisateur",
   "app.sidebar.profile.admin": "Administration",

@@ -5,7 +5,10 @@ import WorkflowActionMenu, {
   type WorkflowActionMenuProps,
 } from "./WorkflowActionMenu";
 
-export type WorkflowSidebarListItemMenuProps = Omit<WorkflowActionMenuProps, "containerClassName">;
+export type WorkflowSidebarListItemMenuProps = Omit<
+  WorkflowActionMenuProps,
+  "containerClassName" | "leadingContent"
+>;
 
 export type WorkflowSidebarListItemProps = {
   isPinned: boolean;
@@ -19,6 +22,7 @@ export type WorkflowSidebarListItemProps = {
   children: ReactNode;
   trailingContent?: ReactNode;
   showPinButton?: boolean;
+  actionIndicator?: ReactNode;
 };
 
 const WorkflowSidebarListItem = ({
@@ -33,6 +37,7 @@ const WorkflowSidebarListItem = ({
   children,
   trailingContent,
   showPinButton = true,
+  actionIndicator,
 }: WorkflowSidebarListItemProps) => {
   const baseClassName = "chatkit-sidebar__workflow-list-item";
   const listItemClassName = [
@@ -42,7 +47,7 @@ const WorkflowSidebarListItem = ({
   ]
     .filter(Boolean)
     .join(" ");
-  const showActions = hasActions ?? Boolean(menuProps);
+  const showActions = hasActions ?? Boolean(menuProps || actionIndicator);
   const mergedDataAttributes: Record<string, string | undefined> = {
     "data-pinned": isPinned ? "" : undefined,
     "data-has-actions": showActions && menuProps ? "" : undefined,
@@ -72,7 +77,9 @@ const WorkflowSidebarListItem = ({
         </button>
       ) : null}
       {children}
-      {menuProps ? <WorkflowActionMenu {...menuProps} /> : null}
+      {menuProps ? (
+        <WorkflowActionMenu {...menuProps} leadingContent={actionIndicator} />
+      ) : null}
       {trailingContent}
     </li>
   );

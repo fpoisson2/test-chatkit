@@ -19,6 +19,7 @@ import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
+import type { WorkflowGenerationTarget } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -196,7 +197,7 @@ export function MyChat() {
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
   const { openSidebar, setHideSidebar } = useAppLayout();
-  const { loading: workflowsLoading, workflows } = useWorkflowSidebar();
+  const { loading: workflowsLoading, workflows, setActiveGeneration } = useWorkflowSidebar();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -217,6 +218,17 @@ export function MyChat() {
       : null;
   const hostedWorkflowSlug =
     workflowSelection.kind === "hosted" ? workflowSelection.slug : null;
+  const workflowGenerationTarget = useMemo<WorkflowGenerationTarget | null>(() => {
+    if (workflowSelection.kind === "local") {
+      const id = workflowSelection.workflow?.id;
+      return typeof id === "number" ? { kind: "local", workflowId: id } : null;
+    }
+    if (workflowSelection.kind === "hosted") {
+      const slug = workflowSelection.slug;
+      return slug ? { kind: "hosted", slug } : null;
+    }
+    return null;
+  }, [workflowSelection]);
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
 
@@ -335,6 +347,7 @@ export function MyChat() {
       }
 
       lastThreadSnapshotRef.current = null;
+      setActiveGeneration(null);
 
       const nextInitialThreadId = preserveStoredThread
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
@@ -345,8 +358,43 @@ export function MyChat() {
       // Arrêter la session vocale si elle est en cours
       stopVoiceSessionRef.current?.();
     },
-    [mode, sessionOwner, workflowSelection],
+    [mode, sessionOwner, setActiveGeneration, workflowSelection],
   );
+
+  const markGenerationStart = useCallback(() => {
+    if (!workflowGenerationTarget) {
+      return;
+    }
+    setActiveGeneration(workflowGenerationTarget);
+  }, [setActiveGeneration, workflowGenerationTarget]);
+
+  const markGenerationEnd = useCallback(() => {
+    setActiveGeneration((current) => {
+      if (!current) {
+        return null;
+      }
+
+      if (!workflowGenerationTarget) {
+        return null;
+      }
+
+      if (current.kind === "local" && workflowGenerationTarget.kind === "local") {
+        return current.workflowId === workflowGenerationTarget.workflowId ? null : current;
+      }
+
+      if (current.kind === "hosted" && workflowGenerationTarget.kind === "hosted") {
+        return current.slug === workflowGenerationTarget.slug ? null : current;
+      }
+
+      return current;
+    });
+  }, [setActiveGeneration, workflowGenerationTarget]);
+
+  useEffect(() => {
+    return () => {
+      setActiveGeneration(null);
+    };
+  }, [setActiveGeneration]);
 
   useEffect(() => {
     resetChatStateRef.current = resetChatState;
@@ -621,13 +669,16 @@ export function MyChat() {
           }
           console.groupEnd();
           reportError(error.message, error);
+          markGenerationEnd();
         },
         onResponseStart: () => {
           resetError();
+          markGenerationStart();
         },
         onResponseEnd: () => {
           console.debug("[ChatKit] response end");
           requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
+          markGenerationEnd();
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
@@ -671,6 +722,9 @@ export function MyChat() {
       activeWorkflowSlug,
       persistenceSlug,
       reportError,
+      resetError,
+      markGenerationEnd,
+      markGenerationStart,
       user?.email,
     ],
   );
