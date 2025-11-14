@@ -256,11 +256,6 @@ export const AdminTelephonyPage = () => {
               />
             )}
 
-            <div className="admin-form__actions">
-              <button className="btn btn-primary" onClick={handleCreateAccount}>
-                + Ajouter un compte SIP
-              </button>
-            </div>
           </FormSection>
       </div>
 
