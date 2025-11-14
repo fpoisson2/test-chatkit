@@ -330,6 +330,31 @@
     outline-offset: var(--focus-ring-offset, 2px);
   }
 
+  /* Label styles for checkbox and radio */
+  label.checkbox,
+  label.radio {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2.5);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text);
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 0;
+  }
+
+  label.checkbox input[type="checkbox"],
+  label.radio input[type="radio"] {
+    flex-shrink: 0;
+  }
+
+  label.checkbox:has(input:disabled),
+  label.radio:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   /* Form Group */
   .form-group {
     display: flex;
