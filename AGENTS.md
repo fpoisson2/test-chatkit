@@ -23,6 +23,16 @@ Avant de soumettre une modification Python, exécute `ruff check` (dans les doss
 
 Chaque fois que tu ajoutes ou modifies un texte côté UI, pense à l'exposer via le système i18n du dossier `frontend/src/i18n` et à fournir les traductions en anglais **et** en français.
 
+## Design System
+
+Le frontend s'appuie sur un design system maison (couleurs, typographies, composants). Lorsque tu ajoutes ou modifies une UI :
+
+1. **Privilégie les composants existants** du dossier `frontend/src/components/design-system` (ou `frontend/src/features/**/components/design-system`) avant d'en créer de nouveaux.
+2. **Respecte les tokens de design** définis dans `frontend/src/styles/tokens/design-system-vars.css` (espacements, couleurs, rayons...).
+3. Si un nouveau composant est vraiment nécessaire, **factorise-le dans le design system** avec sa documentation et ses stories, puis réutilise-le dans l'application.
+4. Ne surcharge pas les styles en ligne : préfère les classes utilitaires fournies par `frontend/src/styles/design-system/base.css`.
+5. Pense à vérifier le rendu dans les thèmes clair et sombre si disponibles et à maintenir l'accessibilité (contraste, focus visibles).
+
 ## Gestion des données avec React Query
 
 **TOUJOURS** utiliser React Query (@tanstack/react-query) pour toutes les opérations de gestion de données dans le frontend :
