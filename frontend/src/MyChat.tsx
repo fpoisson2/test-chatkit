@@ -395,8 +395,21 @@ export function MyChat() {
     if (typeof document === "undefined") {
       return;
     }
-    document.documentElement.dataset.theme = preferredColorScheme;
-  }, [preferredColorScheme]);
+
+    const root = document.documentElement;
+    const colorSchemePreference = appearanceSettings.color_scheme;
+    const resolvedScheme =
+      colorSchemePreference === "light" || colorSchemePreference === "dark"
+        ? colorSchemePreference
+        : preferredColorScheme;
+
+    if (colorSchemePreference === "system") {
+      delete root.dataset.theme;
+      return;
+    }
+
+    root.dataset.theme = resolvedScheme;
+  }, [appearanceSettings.color_scheme, preferredColorScheme]);
 
   const handleWorkflowActivated = useCallback(
     (selection: WorkflowActivation, { reason }: { reason: "initial" | "user" }) => {
