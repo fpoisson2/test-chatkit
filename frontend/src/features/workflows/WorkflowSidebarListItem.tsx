@@ -1,4 +1,4 @@
-import { Star } from "lucide-react";
+import { Star, Loader2 } from "lucide-react";
 import { type MouseEvent, type ReactNode } from "react";
 
 import WorkflowActionMenu, {
@@ -19,6 +19,7 @@ export type WorkflowSidebarListItemProps = {
   children: ReactNode;
   trailingContent?: ReactNode;
   showPinButton?: boolean;
+  isGenerating?: boolean;
 };
 
 const WorkflowSidebarListItem = ({
@@ -33,6 +34,7 @@ const WorkflowSidebarListItem = ({
   children,
   trailingContent,
   showPinButton = true,
+  isGenerating = false,
 }: WorkflowSidebarListItemProps) => {
   const baseClassName = "chatkit-sidebar__workflow-list-item";
   const listItemClassName = [
@@ -46,6 +48,7 @@ const WorkflowSidebarListItem = ({
   const mergedDataAttributes: Record<string, string | undefined> = {
     "data-pinned": isPinned ? "" : undefined,
     "data-has-actions": showActions && menuProps ? "" : undefined,
+    "data-generating": isGenerating ? "" : undefined,
   };
 
   if (dataAttributes) {
@@ -72,6 +75,17 @@ const WorkflowSidebarListItem = ({
         </button>
       ) : null}
       {children}
+      {isGenerating ? (
+        <div className="chatkit-sidebar__workflow-generating-indicator" aria-label="Génération en cours">
+          <Loader2
+            aria-hidden="true"
+            className="chatkit-sidebar__workflow-generating-spinner"
+            style={{
+              animation: "spin 1s linear infinite",
+            }}
+          />
+        </div>
+      ) : null}
       {menuProps ? <WorkflowActionMenu {...menuProps} /> : null}
       {trailingContent}
     </li>

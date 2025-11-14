@@ -4,6 +4,7 @@ import type { ChatKitOptions } from "@openai/chatkit";
 import { ChatKitHost } from "./ChatKitHost";
 import { useWorkflowChatSession } from "../../hooks/useWorkflowChatSession";
 import type { WorkflowSummary } from "../../types/workflows";
+import { useGenerationStatus } from "../../features/workflows/GenerationStatusContext";
 
 type WorkflowChatInstanceProps = {
   workflowId: string;
@@ -41,6 +42,7 @@ export const WorkflowChatInstance = ({
   });
 
   const requestRefreshRef = useRef(requestRefresh);
+  const { setWorkflowGenerating } = useGenerationStatus();
 
   useEffect(() => {
     requestRefreshRef.current = requestRefresh;
@@ -51,6 +53,30 @@ export const WorkflowChatInstance = ({
       onRequestRefreshReady(() => requestRefreshRef.current());
     }
   }, [isActive, onRequestRefreshReady]);
+
+  // Monitor isGenerating status and update context
+  useEffect(() => {
+    if (!isActive || !control) {
+      return;
+    }
+
+    const checkGeneratingStatus = () => {
+      const isGenerating = control.isGenerating ?? false;
+      setWorkflowGenerating(workflowId, isGenerating);
+    };
+
+    // Check initial status
+    checkGeneratingStatus();
+
+    // Poll for changes (ChatKit control doesn't expose an event-based API)
+    const intervalId = setInterval(checkGeneratingStatus, 100);
+
+    return () => {
+      clearInterval(intervalId);
+      // Clean up when component unmounts or becomes inactive
+      setWorkflowGenerating(workflowId, false);
+    };
+  }, [isActive, control, workflowId, setWorkflowGenerating]);
 
   return (
     <div

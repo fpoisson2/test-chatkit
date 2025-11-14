@@ -54,6 +54,7 @@ import { useWorkflowSidebar } from "./WorkflowSidebarProvider";
 import { useWorkflowContext } from "../workflow-builder/contexts/WorkflowContext";
 import { useModalContext } from "../workflow-builder/contexts/ModalContext";
 import { useUIContext } from "../workflow-builder/contexts/UIContext";
+import { useGenerationStatus } from "./GenerationStatusContext";
 
 // ============================================================================
 // Shared Hook: useWorkflowSidebarEntries
@@ -134,12 +135,14 @@ export type WorkflowSidebarSectionEntry = {
     hiddenLabelSuffix?: string;
   } | null;
   showPinButton?: boolean;
+  isGenerating?: boolean;
 };
 
 export const useWorkflowSidebarEntries = (
   config: WorkflowEntryConfig,
 ): WorkflowSidebarSectionEntry[] => {
   const { t } = useI18n();
+  const { isWorkflowGenerating } = useGenerationStatus();
   const {
     workflows,
     hostedWorkflows,
@@ -229,6 +232,7 @@ export const useWorkflowSidebarEntries = (
             dataAttributes: { "data-hosted-workflow": "" },
             showPinButton: !isMobileLayout,
             trailingContent: hostedTrailingContent?.(hosted),
+            isGenerating: isWorkflowGenerating(`hosted::${hosted.slug}`),
             content: (
               <button
                 type="button"
@@ -317,6 +321,7 @@ export const useWorkflowSidebarEntries = (
           },
           showPinButton: !isMobileLayout,
           trailingContent: localTrailingContent?.(workflow),
+          isGenerating: isWorkflowGenerating(`local::${workflow.id}`),
           content: (
             <button
               type="button"

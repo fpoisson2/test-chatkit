@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { AppLayout } from "./components/AppLayout";
 import { WorkflowSidebarProvider } from "./features/workflows/WorkflowSidebarProvider";
+import { GenerationStatusProvider } from "./features/workflows/GenerationStatusContext";
 import { SuspenseRoute } from "./components/SuspenseRoute";
 import { useAuth } from "./auth";
 import { MyChat } from "./MyChat";
@@ -79,9 +80,11 @@ const RequireUser = ({ children }: { children: ReactElement }) => {
 const HomePage = () => <MyChat />;
 
 const AuthenticatedAppLayout = () => (
-  <WorkflowSidebarProvider>
-    <AppLayout />
-  </WorkflowSidebarProvider>
+  <GenerationStatusProvider>
+    <WorkflowSidebarProvider>
+      <AppLayout />
+    </WorkflowSidebarProvider>
+  </GenerationStatusProvider>
 );
 
 export const App = () => (

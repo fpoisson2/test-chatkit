@@ -37,6 +37,7 @@ export type WorkflowSidebarSectionEntry = {
   trailingContent?: ReactNode;
   compact?: WorkflowSidebarCompactEntry | null;
   showPinButton?: boolean;
+  isGenerating?: boolean;
 };
 
 export type WorkflowSidebarSectionProps = {
@@ -150,6 +151,7 @@ const WorkflowSidebarSection = ({
                     pinButtonTitle={entry.pinButtonTitle}
                     trailingContent={entry.trailingContent}
                     showPinButton={entry.showPinButton}
+                    isGenerating={entry.isGenerating}
                   >
                     {entry.content}
                   </WorkflowSidebarListItem>
@@ -173,6 +175,7 @@ const WorkflowSidebarSection = ({
                     pinButtonTitle={entry.pinButtonTitle}
                     trailingContent={entry.trailingContent}
                     showPinButton={entry.showPinButton}
+                    isGenerating={entry.isGenerating}
                   >
                     {entry.content}
                   </WorkflowSidebarListItem>

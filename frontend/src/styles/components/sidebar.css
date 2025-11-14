@@ -2086,3 +2086,31 @@ html[data-theme="light"] .chatkit-sidebar__workflow-button[aria-current="true"] 
 html:not([data-theme]) .chatkit-sidebar__workflow-button[aria-current="true"] .chatkit-sidebar__workflow-label {
   color: inherit !important;
 }
+
+/* ============================================
+   Workflow Generation Indicator (Spinner)
+   ============================================ */
+
+.chatkit-sidebar__workflow-generating-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 5);
+  height: calc(var(--spacing) * 5);
+  flex-shrink: 0;
+}
+
+.chatkit-sidebar__workflow-generating-spinner {
+  width: calc(var(--spacing) * 4);
+  height: calc(var(--spacing) * 4);
+  color: var(--primary);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
