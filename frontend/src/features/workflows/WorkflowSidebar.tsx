@@ -971,7 +971,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     const sectionId = "chat-sidebar-workflow";
     const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
 
-    const sectionVariant = isMobileLayout ? "overlay" : "default";
+    const sectionVariant = "overlay";
 
     if (!user) {
       return (
@@ -1365,7 +1365,7 @@ export const WorkflowBuilderSidebar = ({
 
   const workflowSidebarContent = useMemo(() => {
     const sectionId = "workflow-builder-sidebar";
-    const sectionVariant = isMobileLayout ? "overlay" : "default";
+    const sectionVariant = "overlay";
 
     const beforeGroupsContent =
       hostedError || (hostedLoading && managedHosted.length === 0)
