@@ -387,6 +387,12 @@
     --badge-border-color: color-mix(in oklab, var(--status-danger) 25%, transparent);
   }
 
+  .badge-secondary {
+    --badge-bg: var(--color-surface-elevated);
+    --badge-color: var(--color-text);
+    --badge-border-color: var(--color-border-subtle);
+  }
+
   .badge-sm {
     --badge-padding-y: calc(var(--spacing) * 0.25);
     --badge-padding-x: calc(var(--spacing) * 1.5);

@@ -117,7 +117,7 @@ export const LoginPage = () => {
               placeholder={t("auth.login.email.placeholder")}
             />
             {formErrors.email && (
-              <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+              <span className="error-message" style={{ color: 'var(--danger-color)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
                 {formErrors.email.message}
               </span>
             )}
@@ -132,7 +132,7 @@ export const LoginPage = () => {
               placeholder={t("auth.login.password.placeholder")}
             />
             {formErrors.password && (
-              <span className="error-message" style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
+              <span className="error-message" style={{ color: 'var(--danger-color)', fontSize: '0.875rem', marginTop: '0.25rem', display: 'block' }}>
                 {formErrors.password.message}
               </span>
             )}
