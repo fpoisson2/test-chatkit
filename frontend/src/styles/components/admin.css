@@ -156,12 +156,12 @@
 }
 
 :root[data-theme="dark" i] .admin-shell {
-  --text-muted: color-mix(in srgb, var(--color-text) 82%, transparent);
+  --text-muted: color-mix(in srgb, var(--color-text) 92%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .admin-shell {
-    --text-muted: color-mix(in srgb, var(--color-text) 82%, transparent);
+    --text-muted: color-mix(in srgb, var(--color-text) 92%, transparent);
   }
 }
 
