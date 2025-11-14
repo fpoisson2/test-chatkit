@@ -1245,6 +1245,10 @@ class WorkflowChatKitUpdate(BaseModel):
     workflow_id: int
 
 
+class WorkflowDuplicateRequest(BaseModel):
+    display_name: str
+
+
 class WorkflowViewportEntry(BaseModel):
     workflow_id: int
     version_id: int | None = None
