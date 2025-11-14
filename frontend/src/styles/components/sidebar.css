@@ -465,14 +465,15 @@
 
 /* Improve visibility in dark mode */
 [data-theme="dark"] .chatkit-sidebar__section-icon-button {
-  color: var(--gray-800);
-  border-color: var(--alpha-12);
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  font-weight: var(--font-weight-bold) !important;
 }
 
 [data-theme="dark"] .chatkit-sidebar__section-icon-button:hover,
 [data-theme="dark"] .chatkit-sidebar__section-icon-button:focus-visible {
-  color: var(--gray-900);
-  border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__section-button {
@@ -1047,14 +1048,15 @@
 
 /* Improve visibility in dark mode for overlay variant (mobile) */
 [data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
-  color: var(--gray-800);
-  border-color: var(--alpha-16);
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  font-weight: var(--font-weight-bold) !important;
 }
 
 [data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
 [data-theme="dark"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
-  color: var(--gray-900);
-  border-color: color-mix(in srgb, var(--primary-color) 55%, transparent);
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
 }
 
 .chatkit-sidebar__badge {
@@ -1323,12 +1325,17 @@
 
 /* Improve visibility in dark mode */
 [data-theme="dark"] .chatkit-sidebar__dismiss {
-  color: var(--gray-800);
+  color: #ffffff !important;
 }
 
 [data-theme="dark"] .chatkit-sidebar__dismiss:hover,
 [data-theme="dark"] .chatkit-sidebar__dismiss:focus-visible {
-  color: var(--gray-900);
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .chatkit-sidebar__dismiss svg,
+[data-theme="dark"] .chatkit-sidebar__dismiss svg path {
+  stroke: #ffffff !important;
 }
 
 .chatkit-sidebar__dismiss-icon {
