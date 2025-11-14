@@ -961,7 +961,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   });
 
   const handleOpenBuilder = useCallback(() => {
-    navigate("/workflows");
+    navigate("/workflows?create=true");
     if (!isDesktopLayout) {
       closeSidebar();
     }
