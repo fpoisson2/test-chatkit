@@ -29,7 +29,9 @@ AsyncClientFactory = Callable[[], AbstractAsyncContextManager[httpx.AsyncClient]
 
 
 @asynccontextmanager
-def _default_http_client_factory() -> AbstractAsyncContextManager[httpx.AsyncClient]:
+async def _default_http_client_factory() -> (
+    AbstractAsyncContextManager[httpx.AsyncClient]
+):
     async with httpx.AsyncClient(timeout=10.0) as client:
         yield client
 
