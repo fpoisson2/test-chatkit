@@ -18,6 +18,8 @@ import {
   type SingleModelProviderFormData,
 } from "../schemas/admin";
 
+import styles from "./AdminModelProvidersPage.module.css";
+
 export const AdminModelProvidersPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
@@ -267,53 +269,31 @@ export const AdminModelProvidersPage = () => {
               Aucun fournisseur configuré. Utilisez le bouton + pour en ajouter un.
             </p>
           ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            <ul className={styles.providerList}>
               {providers.map((provider) => (
                 <li
                   key={provider.id}
-                  style={{
-                    padding: "0.75rem",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "0.375rem",
-                    marginBottom: "0.5rem",
-                    backgroundColor: provider.is_default ? "#f0fdf4" : "transparent"
-                  }}
+                  className={`${styles.providerItem} ${provider.is_default ? styles.providerItemDefault : ""}`}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-                    <strong>{provider.provider}</strong>
+                  <div className={styles.providerHeader}>
+                    <strong className={styles.providerName}>{provider.provider}</strong>
                     {provider.is_default && (
-                      <span style={{
-                        fontSize: "0.75rem",
-                        padding: "0.125rem 0.5rem",
-                        backgroundColor: "#22c55e",
-                        color: "white",
-                        borderRadius: "9999px"
-                      }}>
-                        Par défaut
+                      <span className={styles.defaultBadge}>
+                        {t("admin.appSettings.model.defaultProviderBadge", "Par défaut")}
                       </span>
                     )}
                   </div>
                   {provider.api_base && (
-                    <div style={{
-                      fontSize: "0.875rem",
-                      color: "#6b7280",
-                      marginBottom: "0.25rem",
-                      wordBreak: "break-all"
-                    }}>
+                    <div className={styles.providerMeta}>
                       Base URL: {provider.api_base}
                     </div>
                   )}
                   {provider.has_api_key && (
-                    <div style={{
-                      fontSize: "0.875rem",
-                      color: "#6b7280",
-                      marginBottom: "0.75rem",
-                      wordBreak: "break-all"
-                    }}>
+                    <div className={styles.providerMeta}>
                       ✓ Clé API configurée {provider.api_key_hint && `(${provider.api_key_hint})`}
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+                  <div className={styles.providerActions}>
                     <button
                       type="button"
                       className="btn btn-sm btn-ghost"

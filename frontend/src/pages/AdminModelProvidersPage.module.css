@@ -1,0 +1,62 @@
+.providerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+}
+
+.providerItem {
+  padding: calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-elevated);
+  transition: background-color var(--transition-duration-basic) var(--transition-ease-basic),
+    border-color var(--transition-duration-basic) var(--transition-ease-basic);
+}
+
+.providerItemDefault {
+  background-color: var(--color-background-success-soft-alpha);
+  border-color: color-mix(in oklab, var(--status-success) 35%, var(--color-border));
+}
+
+.providerHeader {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  flex-wrap: wrap;
+  margin-bottom: calc(var(--spacing) * 2);
+}
+
+.providerName {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.defaultBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing));
+  padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 2);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  border-radius: var(--radius-full);
+  background-color: var(--color-background-success-soft);
+  color: var(--color-text-success-soft);
+}
+
+.providerMeta {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: calc(var(--spacing) * 2);
+  word-break: break-word;
+}
+
+.providerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 2);
+  margin-top: calc(var(--spacing) * 3);
+}
