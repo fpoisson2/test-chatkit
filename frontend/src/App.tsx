@@ -132,7 +132,7 @@ export const App = () => (
           path="docs"
           element={
             <SuspenseRoute>
-              <DocsPage />
+              <DocsPage mode="standalone" />
             </SuspenseRoute>
           }
         />

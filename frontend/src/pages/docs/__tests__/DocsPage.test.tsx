@@ -80,7 +80,7 @@ describe("docs pages", () => {
     expect(screen.getByText("Loading documentation…")).toBeInTheDocument();
   });
 
-  it("navigates from the list to the document detail page", async () => {
+  it("opens a document in the admin modal context", async () => {
     docsApiMock.list.mockResolvedValue([
       {
         slug: "getting-started",
@@ -107,6 +107,48 @@ describe("docs pages", () => {
     renderWithProviders(
       <Routes>
         <Route path="/docs" element={<DocsPage />} />
+      </Routes>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Getting started" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open" }));
+
+    await waitFor(() => {
+      expect(docsApiMock.get).toHaveBeenCalledWith("token", "getting-started");
+    });
+
+    expect(await screen.findByText("← Back to docs")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hello world" })).toBeInTheDocument();
+  });
+
+  it("navigates from the list to the document detail page in standalone mode", async () => {
+    docsApiMock.list.mockResolvedValue([
+      {
+        slug: "getting-started",
+        title: "Getting started",
+        summary: "Welcome",
+        language: "en",
+        created_at: "2024-05-01T10:00:00Z",
+        updated_at: "2024-05-02T10:00:00Z",
+      },
+    ]);
+    docsApiMock.get.mockResolvedValue({
+      slug: "getting-started",
+      title: "Getting started",
+      summary: "Welcome",
+      language: "en",
+      created_at: "2024-05-01T10:00:00Z",
+      updated_at: "2024-05-02T10:00:00Z",
+      content_markdown: "# Hello world",
+      metadata: {},
+    });
+
+    const user = userEvent.setup();
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/docs" element={<DocsPage mode="standalone" />} />
         <Route path="/docs/:slug" element={<DocDetail />} />
       </Routes>,
     );

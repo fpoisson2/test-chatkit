@@ -15,8 +15,25 @@ import { DocEditor, type DocEditorValues } from "./DocEditor";
 
 import styles from "./DocDetail.module.css";
 
-export const DocDetail = () => {
-  const { slug } = useParams<{ slug: string }>();
+type DocDetailVariant = "page" | "admin";
+
+type DocDetailProps = {
+  slug?: string;
+  variant?: DocDetailVariant;
+  onClose?: () => void;
+  onUpdate?: (entry: DocumentationEntry) => void;
+  onDelete?: (slug: string) => void;
+};
+
+export const DocDetail = ({
+  slug: slugProp,
+  variant = "page",
+  onClose,
+  onUpdate,
+  onDelete,
+}: DocDetailProps = {}) => {
+  const { slug: slugFromParams } = useParams<{ slug: string }>();
+  const slug = slugProp ?? slugFromParams;
   const navigate = useNavigate();
   const { token, user, logout } = useAuth();
   const { t, language } = useI18n();
@@ -136,6 +153,7 @@ export const DocDetail = () => {
         content: updated.content_markdown ?? "",
       });
       setEditorOpen(false);
+      onUpdate?.(updated);
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -160,7 +178,12 @@ export const DocDetail = () => {
     }
     try {
       await docsApi.delete(token, slug);
-      navigate("/docs");
+      onDelete?.(slug);
+      if (variant === "page") {
+        navigate("/docs");
+      } else {
+        onClose?.();
+      }
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -173,22 +196,38 @@ export const DocDetail = () => {
   const headerActions = useMemo(
     () => (
       <div className={styles.actions}>
-        <Link className="btn btn-ghost" to="/docs">
-          {t("docs.detail.back")}
-        </Link>
+        {variant === "page" ? (
+          <Link className="btn btn-ghost" to="/docs">
+            {t("docs.detail.back")}
+          </Link>
+        ) : (
+          <button type="button" className="btn btn-ghost" onClick={() => onClose?.()}>
+            {t("docs.detail.back")}
+          </button>
+        )}
         {isAdmin ? (
           <>
-            <button type="button" className="btn btn-ghost" onClick={handleOpenEditor} disabled={isLoading || Boolean(error)}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={handleOpenEditor}
+              disabled={isLoading || Boolean(error)}
+            >
               {t("docs.detail.edit")}
             </button>
-            <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={isLoading || Boolean(error)}>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={handleDelete}
+              disabled={isLoading || Boolean(error)}
+            >
               {t("docs.detail.delete")}
             </button>
           </>
         ) : null}
       </div>
     ),
-    [error, handleDelete, handleOpenEditor, isAdmin, isLoading, t],
+    [error, handleDelete, handleOpenEditor, isAdmin, isLoading, onClose, t, variant],
   );
 
   const body = useMemo(() => {
