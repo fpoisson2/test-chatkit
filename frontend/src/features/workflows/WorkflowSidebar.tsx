@@ -809,6 +809,38 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     [closeSidebar, hostedWorkflows, isDesktopLayout, selectedWorkflowId, setSelectedHostedSlug],
   );
 
+  const handleDeleteHostedWorkflow = useCallback(
+    async (slug: string) => {
+      if (!token || loading) return;
+
+      const hosted = hostedWorkflows.find((w) => w.slug === slug);
+      if (!hosted) return;
+
+      const confirmed = window.confirm(
+        `Supprimer le workflow hébergé "${hosted.label}" ? Cette action est irréversible.`,
+      );
+      if (!confirmed) return;
+
+      try {
+        await workflowsApi.deleteHostedWorkflow(token, slug);
+        // Refresh hosted workflows list
+        void loadWorkflows();
+      } catch (error) {
+        console.error("Failed to delete hosted workflow:", error);
+        alert("Impossible de supprimer le workflow hébergé.");
+      }
+    },
+    [token, loading, hostedWorkflows, loadWorkflows],
+  );
+
+  const handleOpenHostedAppearance = useCallback(
+    (slug: string) => {
+      // Navigate to workflow builder with appearance modal for hosted workflow
+      navigate(`/workflow-builder?hosted=${slug}&modal=appearance`);
+    },
+    [navigate],
+  );
+
   const hostedMenuItems = useCallback(
     ({ hosted, isPinned, t, onTogglePin, onCloseMenu }: {
       hosted: HostedWorkflowMetadata;
@@ -837,17 +869,116 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         {
           key: "appearance",
           label: t("workflowBuilder.hostedSection.customizeAction"),
-          disabled: true,
+          onSelect: () => {
+            onCloseMenu();
+            handleOpenHostedAppearance(hosted.slug);
+          },
+          disabled: loading,
         },
         {
           key: "delete",
           label: t("workflowBuilder.hostedSection.deleteAction"),
-          disabled: true,
+          onSelect: () => {
+            onCloseMenu();
+            void handleDeleteHostedWorkflow(hosted.slug);
+          },
+          disabled: loading,
           danger: true,
         },
       ];
     },
-    [isAdmin],
+    [isAdmin, loading, handleDeleteHostedWorkflow, handleOpenHostedAppearance],
+  );
+
+  const handleRenameWorkflow = useCallback(
+    async (workflow: WorkflowSummary) => {
+      if (!token || loading) return;
+
+      const baseName = workflow.display_name?.trim() || "Workflow sans nom";
+      const proposed = window.prompt("Nouveau nom du workflow ?", baseName);
+      if (!proposed || proposed.trim() === baseName) return;
+
+      const displayName = proposed.trim();
+      if (!displayName) return;
+
+      try {
+        await workflowsApi.updateWorkflow(token, workflow.id, { display_name: displayName });
+        // Refresh workflows list
+        void loadWorkflows();
+      } catch (error) {
+        console.error("Failed to rename workflow:", error);
+        alert("Impossible de renommer le workflow.");
+      }
+    },
+    [token, loading, loadWorkflows],
+  );
+
+  const handleDeleteWorkflow = useCallback(
+    async (workflow: WorkflowSummary) => {
+      if (!token || loading) return;
+
+      const confirmed = window.confirm(
+        `Supprimer le workflow "${workflow.display_name}" ? Cette action est irréversible.`,
+      );
+      if (!confirmed) return;
+
+      try {
+        await workflowsApi.deleteWorkflow(token, workflow.id);
+        // Refresh workflows list
+        void loadWorkflows();
+      } catch (error) {
+        console.error("Failed to delete workflow:", error);
+        alert("Impossible de supprimer le workflow.");
+      }
+    },
+    [token, loading, loadWorkflows],
+  );
+
+  const handleExportWorkflow = useCallback(
+    async (workflow: WorkflowSummary) => {
+      if (!token || !workflow.active_version_id) return;
+
+      try {
+        const response = await fetch(
+          `/api/workflows/${workflow.id}/versions/${workflow.active_version_id}/export`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error("Export failed");
+        }
+
+        const data = await response.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${workflow.slug || "workflow"}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error("Failed to export workflow:", error);
+        alert("Impossible d'exporter le workflow.");
+      }
+    },
+    [token],
+  );
+
+  const handleOpenAppearance = useCallback(
+    (workflow: WorkflowSummary) => {
+      // Navigate to workflow builder with appearance modal
+      navigate(`/workflow-builder?workflow=${workflow.id}&modal=appearance`);
+    },
+    [navigate],
   );
 
   const localMenuItems = useCallback(
@@ -863,6 +994,9 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       const pinLabel = isPinned
         ? t("workflows.unpinAction")
         : t("workflows.pinAction");
+
+      const canDelete = !loading;
+      const canExport = workflow.active_version_id !== null;
 
       return [
         {
@@ -889,27 +1023,53 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         {
           key: "rename",
           label: t("workflowBuilder.localSection.renameAction"),
-          disabled: true,
+          onSelect: () => {
+            onCloseMenu();
+            void handleRenameWorkflow(workflow);
+          },
+          disabled: loading,
         },
         {
           key: "export",
           label: t("workflowBuilder.localSection.exportAction"),
-          disabled: true,
+          onSelect: () => {
+            onCloseMenu();
+            void handleExportWorkflow(workflow);
+          },
+          disabled: !canExport || loading,
         },
         {
           key: "appearance",
           label: t("workflowBuilder.localSection.customizeAction"),
-          disabled: true,
+          onSelect: () => {
+            onCloseMenu();
+            handleOpenAppearance(workflow);
+          },
+          disabled: loading,
         },
         {
           key: "delete",
           label: t("workflowBuilder.localSection.deleteAction"),
-          disabled: true,
+          onSelect: () => {
+            onCloseMenu();
+            void handleDeleteWorkflow(workflow);
+          },
+          disabled: !canDelete,
           danger: true,
         },
       ];
     },
-    [handleDuplicateWorkflow, isAdmin, loading, token, updatingWorkflowId],
+    [
+      handleDuplicateWorkflow,
+      handleRenameWorkflow,
+      handleDeleteWorkflow,
+      handleExportWorkflow,
+      handleOpenAppearance,
+      isAdmin,
+      loading,
+      token,
+      updatingWorkflowId,
+    ],
   );
 
   const hostedTrailingContent = useCallback(
@@ -1258,7 +1418,7 @@ export const WorkflowBuilderSidebar = ({
       workflow: WorkflowSummary;
       t: ReturnType<typeof useI18n>["t"];
     }): WorkflowActionMenuItem[] => {
-      const canDelete = !workflow.is_chatkit_default && !loading;
+      const canDelete = !loading;
       const canDuplicate =
         !loading && (workflow.id === selectedWorkflowId || workflow.active_version_id !== null);
 
@@ -1319,7 +1479,7 @@ export const WorkflowBuilderSidebar = ({
   const localTrailingContent = useCallback(
     (workflow: WorkflowSummary) => (
       <>
-        {!workflow.is_chatkit_default && !workflow.active_version_id ? (
+        {!workflow.active_version_id ? (
           <p className="chatkit-sidebar__workflow-meta" aria-live="polite" style={warningStyle}>
             {t("workflowBuilder.localSection.missingProduction")}
           </p>

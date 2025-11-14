@@ -61,7 +61,7 @@ export const getActionMenuStyle = (
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 1.5)",
-  zIndex: 40,
+  zIndex: 1050,
   pointerEvents: "auto",
 });
 

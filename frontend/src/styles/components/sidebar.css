@@ -917,7 +917,7 @@
 }
 
 .chatkit-sidebar__workflow-menu {
-  z-index: 40;
+  z-index: 1050;
 }
 
 .chatkit-sidebar__workflow-menu button {
