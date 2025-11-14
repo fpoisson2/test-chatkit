@@ -136,15 +136,19 @@ def _normalize_conversation_history_for_provider(
     Responses-specific content blocks such as `input_text` and `output_text`.
     When we detect such providers we collapse textual content blocks into the
     plain-string representation accepted by the Chat Completions API.
+
+    Additionally, this function always removes non-message IDs (like reasoning IDs)
+    to prevent duplicate item errors from the Responses API.
     """
 
-    if not provider_slug or not isinstance(provider_slug, str):
-        return items
+    normalized_slug = None
+    requires_normalization = False
 
-    normalized_slug = provider_slug.strip().lower()
-    requires_normalization = normalized_slug in {"groq"} or normalized_slug.startswith(
-        "litellm"
-    )
+    if provider_slug and isinstance(provider_slug, str):
+        normalized_slug = provider_slug.strip().lower()
+        requires_normalization = normalized_slug in {"groq"} or normalized_slug.startswith(
+            "litellm"
+        )
 
     changed = False
     normalized: list[TResponseInputItem] = []
@@ -158,6 +162,7 @@ def _normalize_conversation_history_for_provider(
         copied_item = copy.deepcopy(item)
         item_changed = False
 
+        # Always remove non-message IDs to prevent duplicates
         response_id = copied_item.get("id")
         if response_id is not None and (
             not isinstance(response_id, str) or not response_id.startswith("msg")
