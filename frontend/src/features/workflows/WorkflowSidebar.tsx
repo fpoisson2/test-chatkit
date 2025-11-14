@@ -183,8 +183,8 @@ export const useWorkflowSidebarEntries = (
           const isMenuOpen = menuConfig?.openWorkflowMenuId === menuKey;
           const menuId = `workflow-actions-${hosted.slug}`;
           const pinLabel = isPinned
-            ? t("workflows.unpinAction", { label: hosted.label })
-            : t("workflows.pinAction", { label: hosted.label });
+            ? t("workflows.unpinAction")
+            : t("workflows.pinAction");
 
           const items =
             hostedMenuItems?.({
@@ -267,8 +267,8 @@ export const useWorkflowSidebarEntries = (
         const menuId = `workflow-actions-${workflow.id}`;
         const isMenuOpen = menuConfig?.openWorkflowMenuId === workflow.id;
         const pinLabel = isPinned
-          ? t("workflows.unpinAction", { label: workflow.display_name })
-          : t("workflows.pinAction", { label: workflow.display_name });
+          ? t("workflows.unpinAction")
+          : t("workflows.pinAction");
 
         const items =
           localMenuItems?.({
@@ -820,8 +820,8 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (!isAdmin) return [];
 
       const pinLabel = isPinned
-        ? t("workflows.unpinAction", { label: hosted.label })
-        : t("workflows.pinAction", { label: hosted.label });
+        ? t("workflows.unpinAction")
+        : t("workflows.pinAction");
 
       return [
         {
@@ -861,8 +861,8 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (!isAdmin) return [];
 
       const pinLabel = isPinned
-        ? t("workflows.unpinAction", { label: workflow.display_name })
-        : t("workflows.pinAction", { label: workflow.display_name });
+        ? t("workflows.unpinAction")
+        : t("workflows.pinAction");
 
       return [
         {
