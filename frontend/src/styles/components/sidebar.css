@@ -1055,6 +1055,22 @@
   border-color: color-mix(in srgb, var(--gray-25) 50%, transparent);
 }
 
+/* Fix section icon button (+) visibility in LIGHT mode on mobile overlay - gray-25 is almost white! */
+:root:not([data-theme="dark"]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button,
+:root[data-theme="light"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
+  color: var(--gray-900) !important;
+  border-color: color-mix(in srgb, var(--gray-900) 35%, transparent) !important;
+}
+
+:root:not([data-theme="dark"]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+:root[data-theme="light"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+:root:not([data-theme="dark"]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible,
+:root[data-theme="light"] .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: var(--gray-900) !important;
+  border-color: color-mix(in srgb, var(--gray-900) 50%, transparent) !important;
+  background: color-mix(in srgb, var(--gray-900) 8%, transparent) !important;
+}
+
 /* Hide group titles on mobile overlay mode to prevent duplicate with main title */
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-group-title {
   display: none;
@@ -1151,6 +1167,29 @@
 .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
   color: var(--gray-25);
   background: color-mix(in srgb, var(--gray-25) 15%, transparent);
+}
+
+/* Fix dismiss button visibility in LIGHT mode on mobile - gray-25 is almost white! */
+:root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss,
+:root[data-theme="light"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss {
+  color: var(--gray-900) !important;
+}
+
+:root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
+:root[data-theme="light"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
+:root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible,
+:root[data-theme="light"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
+  color: var(--gray-900) !important;
+  background: color-mix(in srgb, var(--gray-900) 8%, transparent) !important;
+}
+
+/* Ensure SVG and paths inherit the correct color */
+:root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg,
+:root[data-theme="light"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg,
+:root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg *,
+:root[data-theme="light"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg * {
+  color: var(--gray-900) !important;
+  stroke: var(--gray-900) !important;
 }
 
 .chatkit-sidebar__badge {
