@@ -182,6 +182,29 @@ def test_normalize_conversation_history_unchanged_for_other_providers() -> None:
     assert normalized is items
 
 
+def test_deduplicate_conversation_history_items_removes_duplicate_ids() -> None:
+    first = {"id": "rs_123", "role": "assistant"}
+    duplicate = {"id": "rs_123", "role": "assistant", "content": []}
+    items = [first, duplicate, {"id": "rs_456", "role": "user"}]
+
+    deduplicated = executor_module._deduplicate_conversation_history_items(items)
+
+    assert len(deduplicated) == 2
+    assert first in deduplicated
+    assert {"id": "rs_456", "role": "user"} in deduplicated
+
+
+def test_deduplicate_conversation_history_items_returns_original_when_unique() -> None:
+    items = [
+        {"id": "rs_a", "role": "assistant"},
+        {"id": "rs_b", "role": "user"},
+    ]
+
+    deduplicated = executor_module._deduplicate_conversation_history_items(items)
+
+    assert deduplicated is items
+
+
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
     assert (
         executor_module._sanitize_previous_response_id("  resp-123 ")
