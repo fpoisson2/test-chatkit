@@ -1,4 +1,3 @@
-import { Star } from "lucide-react";
 import { type MouseEvent, type ReactNode } from "react";
 
 import WorkflowActionMenu, {
@@ -35,13 +34,7 @@ const WorkflowSidebarListItem = ({
   showPinButton = true,
 }: WorkflowSidebarListItemProps) => {
   const baseClassName = "chatkit-sidebar__workflow-list-item";
-  const listItemClassName = [
-    baseClassName,
-    showPinButton ? "chatkit-sidebar__workflow-list-item--with-pin" : null,
-    className,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const listItemClassName = className ? `${baseClassName} ${className}` : baseClassName;
   const showActions = hasActions ?? Boolean(menuProps);
   const mergedDataAttributes: Record<string, string | undefined> = {
     "data-pinned": isPinned ? "" : undefined,
@@ -59,21 +52,6 @@ const WorkflowSidebarListItem = ({
 
   return (
     <li className={listItemClassName} {...mergedDataAttributes}>
-      {showPinButton ? (
-        <button
-          type="button"
-          className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button chatkit-sidebar__workflow-pin-button--leading"
-          aria-label={pinLabel}
-          title={pinButtonTitle ?? pinLabel}
-          aria-pressed={isPinned}
-          onClick={(event) => {
-            console.log('[WorkflowSidebarListItem] Pin button clicked! isPinned:', isPinned);
-            onTogglePin(event);
-          }}
-        >
-          <Star aria-hidden="true" className="chatkit-sidebar__workflow-pin-icon" />
-        </button>
-      ) : null}
       {children}
       {menuProps ? <WorkflowActionMenu {...menuProps} /> : null}
       {trailingContent}

@@ -832,9 +832,12 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           key: "pin",
           label: pinLabel,
           onSelect: (event) => {
+            console.log('[hostedMenuItems pin] onSelect called, slug:', hosted.slug, 'isPinned:', isPinned);
             event.preventDefault();
             event.stopPropagation();
+            console.log('[hostedMenuItems pin] Calling onTogglePin');
             onTogglePin();
+            console.log('[hostedMenuItems pin] Calling onCloseMenu');
             onCloseMenu();
           },
         },
@@ -873,9 +876,12 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           key: "pin",
           label: pinLabel,
           onSelect: (event) => {
+            console.log('[localMenuItems pin] onSelect called, workflowId:', workflow.id, 'isPinned:', isPinned);
             event.preventDefault();
             event.stopPropagation();
+            console.log('[localMenuItems pin] Calling onTogglePin');
             onTogglePin();
+            console.log('[localMenuItems pin] Calling onCloseMenu');
             onCloseMenu();
           },
         },
