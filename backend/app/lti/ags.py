@@ -202,7 +202,7 @@ class LTIAGSClient(AGSClientProtocol):
     def _format_score_timestamp(
         value: datetime.datetime | None = None,
     ) -> str:
-        """Return an ISO8601 timestamp in UTC with millisecond precision."""
+        """Return an ISO8601 timestamp in UTC with second precision and Z suffix."""
 
         if value is None:
             value = datetime.datetime.now(datetime.UTC)
@@ -211,7 +211,8 @@ class LTIAGSClient(AGSClientProtocol):
         else:
             value = value.astimezone(datetime.UTC)
 
-        return value.isoformat(timespec="milliseconds")
+        value = value.replace(microsecond=0)
+        return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def _resolve_registration(
         self, context: ChatKitRequestContext

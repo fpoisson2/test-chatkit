@@ -308,7 +308,7 @@ def test_build_scores_endpoint_places_scores_segment_before_query_string():
     assert build("") == ""
 
 
-def test_format_score_timestamp_uses_milliseconds_and_utc_offset():
+def test_format_score_timestamp_uses_z_suffix_with_second_precision():
     ags_module = importlib.import_module("backend.app.lti.ags")
 
     sample = datetime.datetime(
@@ -324,7 +324,7 @@ def test_format_score_timestamp_uses_milliseconds_and_utc_offset():
 
     formatted = ags_module.LTIAGSClient._format_score_timestamp(sample)
 
-    assert formatted == "2025-11-14T20:20:24.902+00:00"
+    assert formatted == "2025-11-14T20:20:24Z"
 
 
 def test_format_score_timestamp_normalizes_naive_datetime_to_utc():
@@ -334,4 +334,4 @@ def test_format_score_timestamp_normalizes_naive_datetime_to_utc():
 
     formatted = ags_module.LTIAGSClient._format_score_timestamp(naive)
 
-    assert formatted == "2025-11-14T20:20:24.123+00:00"
+    assert formatted == "2025-11-14T20:20:24Z"
