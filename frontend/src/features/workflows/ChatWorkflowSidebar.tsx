@@ -83,7 +83,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     setSelectedHostedSlug,
   } = useWorkflowSidebar();
 
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [updatingWorkflowId, setUpdatingWorkflowId] = useState<number | null>(null);
   const hostedInitialAnnouncedRef = useRef(false);
   const onWorkflowActivatedRef = useRef(onWorkflowActivated);
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
@@ -282,7 +282,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
-      if (!token || workflowId === selectedWorkflowId || isUpdating) {
+      if (!token || workflowId === selectedWorkflowId || updatingWorkflowId !== null) {
         return;
       }
 
@@ -322,7 +322,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         return;
       }
 
-      setIsUpdating(true);
+      setUpdatingWorkflowId(workflowId);
       try {
         const updated = await workflowsApi.setChatkitWorkflow(token, workflowId);
         setWorkflows((current) => {
@@ -365,14 +365,14 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           console.error("Failed to set workflow:", err);
         }
       } finally {
-        setIsUpdating(false);
+        setUpdatingWorkflowId(null);
       }
     },
     [
       closeSidebar,
       isAdmin,
       isDesktopLayout,
-      isUpdating,
+      updatingWorkflowId,
       selectedWorkflowId,
       setSelectedWorkflowId,
       setWorkflows,
@@ -479,7 +479,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                   isOpen: isMenuOpen,
                   isMobileLayout,
                   placement: isMenuOpen ? workflowMenuPlacement : "down",
-                  triggerDisabled: loading || isUpdating,
+                  triggerDisabled: loading,
                   triggerLabel: t("workflowBuilder.hostedSection.openActions", {
                     label: option.label,
                   }),
@@ -600,7 +600,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                 isOpen: isMenuOpen,
                 isMobileLayout,
                 placement: isMenuOpen ? workflowMenuPlacement : "down",
-                triggerDisabled: loading || isUpdating,
+                triggerDisabled: loading || updatingWorkflowId === workflow.id,
                 triggerLabel: t("workflowBuilder.localSection.openActions", {
                   label: workflow.display_name,
                 }),
@@ -644,7 +644,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       handleWorkflowClick,
       isAdmin,
       isMobileLayout,
-      isUpdating,
+      updatingWorkflowId,
       loading,
       mode,
       openWorkflowMenuId,

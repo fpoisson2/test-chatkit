@@ -1239,6 +1239,7 @@ button {
   align-items: center;
   justify-content: flex-end;
   gap: 0.25rem;
+  z-index: 1;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-actions {
