@@ -186,7 +186,7 @@ async def get_current_lti_workflow(
     except Exception:
         return None
 
-    if not user or not user.email.endswith('@lti.local'):
+    if not user or not user.is_lti:
         return None
 
     # Find the most recent LTI session for this user

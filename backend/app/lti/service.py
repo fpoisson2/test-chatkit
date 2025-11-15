@@ -850,6 +850,7 @@ class LTIService:
             email=normalized_email,
             password_hash=hash_password(random_password),
             is_admin=False,
+            is_lti=True,
         )
         self.session.add(user)
         self.session.flush()

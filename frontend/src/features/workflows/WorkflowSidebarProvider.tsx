@@ -368,7 +368,7 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
     try {
       // Admin and LTI users can now access workflows via the API
       // Admin users see all workflows, LTI users see only their accessible workflows
-      const workflowsPromise = isAdmin || user?.email.endsWith('@lti.local')
+      const workflowsPromise = isAdmin || user?.is_lti
         ? workflowsApi.list(token)
         : Promise.resolve<WorkflowSummary[]>([]);
       const hostedPromise = chatkitApi

@@ -396,7 +396,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
-  const isLtiUser = Boolean(user?.email.endsWith('@lti.local'));
+  const isLtiUser = Boolean(user?.is_lti);
 
   // Use the shared workflow sidebar state
   const {
@@ -545,7 +545,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     }
 
     // Check if user is LTI user
-    if (!user.email.endsWith('@lti.local')) {
+    if (!user.is_lti) {
       hasCheckedLtiWorkflow.current = true;
       return;
     }
@@ -626,7 +626,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         return;
       }
 
-      const isLtiUser = user?.email.endsWith('@lti.local');
+      const isLtiUser = user?.is_lti;
 
       // LTI users can select workflows locally without API call
       if (isLtiUser) {
@@ -1129,7 +1129,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   const sidebarContent = useMemo(() => {
     const sectionId = "chat-sidebar-workflow";
-    const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
+    const isLtiUser = user?.is_lti ?? false;
 
     const sectionVariant = "overlay";
 
