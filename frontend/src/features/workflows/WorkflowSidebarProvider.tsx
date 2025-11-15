@@ -159,6 +159,8 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
     }
   }, []);
 
+  const isPersistingPinnedRef = useRef(false);
+
   // Persist pinned lookup helper
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {
@@ -166,6 +168,8 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
         local: Array.from(next.local),
         hosted: Array.from(next.hosted),
       };
+
+      isPersistingPinnedRef.current = true;
       updateStoredWorkflowSelection((previous) => ({
         mode: previous?.mode ?? mode,
         localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
@@ -173,6 +177,18 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
         lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
         pinned: pinnedForStorage,
       }));
+
+      const clearPersistingFlag = () => {
+        if (isPersistingPinnedRef.current) {
+          isPersistingPinnedRef.current = false;
+        }
+      };
+
+      if (typeof queueMicrotask === "function") {
+        queueMicrotask(clearPersistingFlag);
+      } else {
+        Promise.resolve().then(clearPersistingFlag).catch(clearPersistingFlag);
+      }
     },
     [mode, selectedHostedSlug, selectedWorkflowId],
   );
@@ -232,6 +248,11 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
     }
 
     const handleSelectionChange = () => {
+      if (isPersistingPinnedRef.current) {
+        isPersistingPinnedRef.current = false;
+        return;
+      }
+
       setLastUsedAt(
         buildWorkflowOrderingTimestamps(
           workflowsRef.current,

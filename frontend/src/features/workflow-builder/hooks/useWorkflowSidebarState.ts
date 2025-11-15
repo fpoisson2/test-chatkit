@@ -113,9 +113,13 @@ const useWorkflowSidebarState = ({ token }: WorkflowSidebarStateArgs): WorkflowS
     return initialStoredSelection?.localWorkflowId ?? null;
   });
 
+  const isPersistingPinnedRef = useRef(false);
+
   const persistPinnedLookup = useCallback(
     (next: StoredWorkflowPinnedLookup) => {
       const pinnedForStorage = buildPinnedForStorage(next);
+
+      isPersistingPinnedRef.current = true;
       updateStoredWorkflowSelection((previous) => ({
         mode: previous?.mode ?? (selectedWorkflowId != null ? "local" : "hosted"),
         localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
@@ -123,6 +127,18 @@ const useWorkflowSidebarState = ({ token }: WorkflowSidebarStateArgs): WorkflowS
         lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
         pinned: pinnedForStorage,
       }));
+
+      const clearPersistingFlag = () => {
+        if (isPersistingPinnedRef.current) {
+          isPersistingPinnedRef.current = false;
+        }
+      };
+
+      if (typeof queueMicrotask === "function") {
+        queueMicrotask(clearPersistingFlag);
+      } else {
+        Promise.resolve().then(clearPersistingFlag).catch(clearPersistingFlag);
+      }
     },
     [selectedWorkflowId],
   );
@@ -175,6 +191,11 @@ const useWorkflowSidebarState = ({ token }: WorkflowSidebarStateArgs): WorkflowS
     }
 
     const handleSelectionChange = () => {
+      if (isPersistingPinnedRef.current) {
+        isPersistingPinnedRef.current = false;
+        return;
+      }
+
       setLastUsedAt(
         buildWorkflowOrderingTimestamps(
           workflowsRef.current,

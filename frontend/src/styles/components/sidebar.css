@@ -1036,10 +1036,6 @@
   background: color-mix(in srgb, var(--primary-color) 45%, transparent);
 }
 
-.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-pin-button {
-  display: none;
-}
-
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-group-title::before,
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-compact-group-title::before {
   content: none;

@@ -14,7 +14,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent,
   type MutableRefObject,
   type ReactNode,
 } from "react";
@@ -39,6 +38,7 @@ import type {
 import WorkflowSidebarSection, {
   WorkflowSidebarCompact,
 } from "./WorkflowSidebarSection";
+import type { WorkflowSidebarListItemMenuProps } from "./WorkflowSidebarListItem";
 import {
   getWorkflowInitials,
   isWorkflowPinned,
@@ -115,12 +115,9 @@ export type WorkflowSidebarSectionEntry = {
   key: string;
   kind: "local" | "hosted";
   isPinned: boolean;
-  pinLabel: string;
-  onTogglePin: (event: MouseEvent<HTMLButtonElement>) => void;
-  menuProps?: WorkflowActionMenuItem[] | null;
+  menuProps?: WorkflowSidebarListItemMenuProps | null;
   hasActions?: boolean;
   dataAttributes?: Record<string, boolean | string | null | undefined>;
-  pinButtonTitle?: string;
   content: ReactNode;
   trailingContent?: ReactNode;
   compact?: {
@@ -133,7 +130,6 @@ export type WorkflowSidebarSectionEntry = {
     ariaLabel?: string;
     hiddenLabelSuffix?: string;
   } | null;
-  showPinButton?: boolean;
 };
 
 export const useWorkflowSidebarEntries = (
@@ -182,10 +178,6 @@ export const useWorkflowSidebarEntries = (
           const menuKey = `hosted:${hosted.slug}`;
           const isMenuOpen = menuConfig?.openWorkflowMenuId === menuKey;
           const menuId = `workflow-actions-${hosted.slug}`;
-          const pinLabel = isPinned
-            ? t("workflows.unpinAction")
-            : t("workflows.pinAction");
-
           const items =
             hostedMenuItems?.({
               hosted,
@@ -199,12 +191,6 @@ export const useWorkflowSidebarEntries = (
             key: menuKey,
             kind: "hosted" as const,
             isPinned,
-            pinLabel,
-            onTogglePin: (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              callbacks.onToggleHostedPin(hosted.slug);
-            },
             menuProps: menuConfig && items.length > 0
               ? {
                   menuId,
@@ -227,7 +213,6 @@ export const useWorkflowSidebarEntries = (
               : null,
             hasActions: menuConfig && items.length > 0,
             dataAttributes: { "data-hosted-workflow": "" },
-            showPinButton: !isMobileLayout,
             trailingContent: hostedTrailingContent?.(hosted),
             content: (
               <button
@@ -266,10 +251,6 @@ export const useWorkflowSidebarEntries = (
         const hasProduction = workflow.active_version_id !== null;
         const menuId = `workflow-actions-${workflow.id}`;
         const isMenuOpen = menuConfig?.openWorkflowMenuId === workflow.id;
-        const pinLabel = isPinned
-          ? t("workflows.unpinAction")
-          : t("workflows.pinAction");
-
         const items =
           localMenuItems?.({
             workflow,
@@ -284,12 +265,6 @@ export const useWorkflowSidebarEntries = (
           key: `local:${workflow.id}`,
           kind: "local" as const,
           isPinned,
-          pinLabel,
-          onTogglePin: (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            callbacks.onToggleLocalPin(workflow.id);
-          },
           menuProps: menuConfig && items.length > 0
             ? {
                 menuId,
@@ -315,7 +290,6 @@ export const useWorkflowSidebarEntries = (
             "data-local-workflow": "",
             "data-selected": isActive ? "" : undefined,
           },
-          showPinButton: !isMobileLayout,
           trailingContent: localTrailingContent?.(workflow),
           content: (
             <button
@@ -1386,43 +1360,94 @@ export const WorkflowBuilderSidebar = ({
   );
 
   const hostedMenuItems = useCallback(
-    ({ hosted, t }: {
+    ({
+      hosted,
+      isPinned,
+      t,
+      onTogglePin,
+      onCloseMenu,
+    }: {
       hosted: HostedWorkflowMetadata;
+      isPinned: boolean;
       t: ReturnType<typeof useI18n>["t"];
-    }): WorkflowActionMenuItem[] => [
-      {
-        key: "appearance",
-        label: t("workflowBuilder.hostedSection.customizeAction"),
-        onSelect: (event) =>
-          onOpenAppearanceModal(
-            {
-              kind: "hosted",
-              slug: hosted.slug,
-              label: hosted.label,
-            },
-            event.currentTarget,
-          ),
-      },
-      {
-        key: "delete",
-        label: t("workflowBuilder.hostedSection.deleteAction"),
-        onSelect: () => void onDeleteHostedWorkflow(hosted.slug),
-        danger: true,
-      },
-    ],
+      onTogglePin: () => void;
+      onCloseMenu: () => void;
+    }): WorkflowActionMenuItem[] => {
+      const pinLabel = isPinned
+        ? t("workflows.unpinAction")
+        : t("workflows.pinAction");
+
+      return [
+        {
+          key: "pin",
+          label: pinLabel,
+          onSelect: (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onTogglePin();
+            onCloseMenu();
+          },
+        },
+        {
+          key: "appearance",
+          label: t("workflowBuilder.hostedSection.customizeAction"),
+          onSelect: (event) =>
+            onOpenAppearanceModal(
+              {
+                kind: "hosted",
+                slug: hosted.slug,
+                label: hosted.label,
+              },
+              event.currentTarget,
+            ),
+        },
+        {
+          key: "delete",
+          label: t("workflowBuilder.hostedSection.deleteAction"),
+          onSelect: () => {
+            onCloseMenu();
+            void onDeleteHostedWorkflow(hosted.slug);
+          },
+          danger: true,
+        },
+      ];
+    },
     [onDeleteHostedWorkflow, onOpenAppearanceModal],
   );
 
   const localMenuItems = useCallback(
-    ({ workflow, t }: {
+    ({
+      workflow,
+      isPinned,
+      t,
+      onTogglePin,
+      onCloseMenu,
+    }: {
       workflow: WorkflowSummary;
+      isPinned: boolean;
       t: ReturnType<typeof useI18n>["t"];
+      onTogglePin: () => void;
+      onCloseMenu: () => void;
     }): WorkflowActionMenuItem[] => {
       const canDelete = !loading;
       const canDuplicate =
         !loading && (workflow.id === selectedWorkflowId || workflow.active_version_id !== null);
 
+      const pinLabel = isPinned
+        ? t("workflows.unpinAction")
+        : t("workflows.pinAction");
+
       return [
+        {
+          key: "pin",
+          label: pinLabel,
+          onSelect: (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onTogglePin();
+            onCloseMenu();
+          },
+        },
         {
           key: "duplicate",
           label: t("workflowBuilder.localSection.duplicateAction"),
@@ -1459,7 +1484,10 @@ export const WorkflowBuilderSidebar = ({
         {
           key: "delete",
           label: t("workflowBuilder.localSection.deleteAction"),
-          onSelect: () => void onDeleteWorkflow(workflow.id),
+          onSelect: () => {
+            onCloseMenu();
+            void onDeleteWorkflow(workflow.id);
+          },
           disabled: !canDelete,
           danger: true,
         },
