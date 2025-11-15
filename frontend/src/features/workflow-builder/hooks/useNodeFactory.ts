@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { AgentParameters, FlowNode, VectorStoreSummary } from "../types";
-import { DEFAULT_WHILE_NODE_SIZE } from "../utils";
+import { DEFAULT_WHILE_NODE_SIZE, WHILE_NODE_LAYER_INDEX } from "../utils";
 import {
   DEFAULT_END_MESSAGE,
   createParallelJoinParameters,
@@ -156,10 +156,11 @@ const useNodeFactory = ({
       style: {
         width: DEFAULT_WHILE_NODE_SIZE.width,
         height: DEFAULT_WHILE_NODE_SIZE.height,
+        zIndex: WHILE_NODE_LAYER_INDEX,
       },
       draggable: true,
       resizable: true,
-      zIndex: -1,
+      zIndex: WHILE_NODE_LAYER_INDEX,
       selectable: true,
       connectable: true,
     };

@@ -38,6 +38,7 @@ import {
   extractPosition,
   humanizeSlug,
   DEFAULT_WHILE_NODE_SIZE,
+  WHILE_NODE_LAYER_INDEX,
   extractWhileNodeSize,
 } from "../utils";
 import type {
@@ -281,7 +282,9 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
                     style: {
                       width: whileNodeSize?.width ?? DEFAULT_WHILE_NODE_SIZE.width,
                       height: whileNodeSize?.height ?? DEFAULT_WHILE_NODE_SIZE.height,
+                      zIndex: WHILE_NODE_LAYER_INDEX,
                     },
+                    zIndex: WHILE_NODE_LAYER_INDEX,
                     resizable: true,
                   }
                 : {}),

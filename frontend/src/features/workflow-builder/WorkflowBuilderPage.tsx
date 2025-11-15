@@ -186,6 +186,7 @@ import {
   defaultEdgeOptions,
   resolveSelectionAfterLoad,
   DEFAULT_WHILE_NODE_SIZE,
+  WHILE_NODE_LAYER_INDEX,
 } from "./utils";
 import {
   getHeaderContainerStyle,
@@ -399,11 +400,13 @@ const WorkflowBuilderPage = () => {
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
       if (node.data.kind === "while") {
-        const nextStyle =
-          node.style ?? {
-            width: DEFAULT_WHILE_NODE_SIZE.width,
-            height: DEFAULT_WHILE_NODE_SIZE.height,
-          };
+        const baseStyle = node.style ?? {};
+        const nextStyle = {
+          ...baseStyle,
+          width: baseStyle.width ?? DEFAULT_WHILE_NODE_SIZE.width,
+          height: baseStyle.height ?? DEFAULT_WHILE_NODE_SIZE.height,
+          zIndex: baseStyle.zIndex ?? WHILE_NODE_LAYER_INDEX,
+        } as CSSProperties;
         return {
           ...node,
           type: "while",
@@ -411,6 +414,7 @@ const WorkflowBuilderPage = () => {
           className: styles.flowNode,
           style: nextStyle,
           selected: node.selected ?? false,
+          zIndex: node.zIndex ?? WHILE_NODE_LAYER_INDEX,
         } satisfies FlowNode;
       }
 

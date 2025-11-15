@@ -8,6 +8,7 @@ import type { FlowEdge, FlowNode, NodeKind } from "./types";
 export { stringifyAgentParametersUtil as stringifyAgentParameters };
 
 export const DEFAULT_WHILE_NODE_SIZE = { width: 400, height: 300 } as const;
+export const WHILE_NODE_LAYER_INDEX = -10;
 
 export const toFiniteDimension = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) {
