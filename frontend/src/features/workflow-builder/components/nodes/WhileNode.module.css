@@ -45,23 +45,38 @@
 
 .resizerLine {
   border-color: rgba(168, 85, 247, 0.35);
+  border-width: 3px;
 }
 
 .resizerHandle {
-  width: 16px;
-  height: 16px;
+  width: 44px;
+  height: 44px;
+  margin: -22px;
+  touch-action: none;
+  position: relative;
+}
+
+.resizerHandle::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 8px;
   background: #a855f7;
   border: 2px solid white;
-  border-radius: 6px;
-  touch-action: none;
+  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.15);
 }
 
 @media (hover: none) and (pointer: coarse) {
   .resizerHandle {
-    width: 28px;
-    height: 28px;
-    border-radius: 10px;
-    box-shadow: 0 0 0 6px rgba(168, 85, 247, 0.2);
+    width: 64px;
+    height: 64px;
+    margin: -32px;
+  }
+
+  .resizerHandle::after {
+    inset: 18px;
+    border-radius: 12px;
+    box-shadow: 0 0 0 8px rgba(168, 85, 247, 0.2);
   }
 }
 
