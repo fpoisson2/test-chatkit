@@ -1849,62 +1849,59 @@ async def run_workflow(
             max_iterations = int(params.get("max_iterations", 100))
             iteration_var = str(params.get("iteration_var", "")).strip()
 
-            # Initialize iteration counter
-            iteration_count = 0
+            # Initialize or get iteration counter from state
+            loop_counter_key = f"__while_{current_slug}_counter"
+            if "state" not in state:
+                state["state"] = {}
 
-            # Evaluate condition
-            while iteration_count < max_iterations:
-                try:
-                    # Update iteration variable if specified
-                    if iteration_var:
-                        if "state" not in state:
-                            state["state"] = {}
-                        state["state"][iteration_var] = iteration_count
+            iteration_count = state["state"].get(loop_counter_key, 0)
 
-                    # Evaluate the while condition
-                    if not condition_expr:
-                        # No condition means loop once
-                        condition_result = iteration_count == 0
-                    else:
-                        # Create a safe context for eval
-                        eval_context = {
-                            "state": state.get("state", {}),
-                            "globals": state.get("globals", {}),
-                        }
-                        condition_result = bool(eval(condition_expr, {"__builtins__": {}}, eval_context))
+            # Check max iterations safety limit
+            if iteration_count >= max_iterations:
+                # Max iterations reached, exit loop
+                state["state"].pop(loop_counter_key, None)  # Clean up counter
+                transition = _next_edge(current_slug, "exit")
+                if transition is None:
+                    transition = _next_edge(current_slug)  # Try default edge
+                if transition is None:
+                    if _fallback_to_start("while", current_node.slug):
+                        continue
+                    break
+                current_slug = transition.target_step.slug
+                continue
 
-                    if not condition_result:
-                        # Condition is false, exit the loop
-                        transition = _next_edge(current_slug, None)  # Default edge
-                        break
+            # Update iteration variable if specified
+            if iteration_var:
+                state["state"][iteration_var] = iteration_count
 
-                    # Condition is true, execute loop body
-                    transition = _next_edge(current_slug, "loop")
-                    if transition is None:
-                        raise WorkflowExecutionError(
-                            "configuration",
-                            "Configuration du workflow invalide",
-                            RuntimeError(
-                                f"Transition 'loop' manquante pour le nœud while {current_slug}"
-                            ),
-                            list(steps),
-                        )
+            # Evaluate the while condition
+            try:
+                if not condition_expr:
+                    # No condition means always true (but limited by max_iterations)
+                    condition_result = True
+                else:
+                    # Create a safe context for eval
+                    eval_context = {
+                        "state": state.get("state", {}),
+                        "globals": state.get("globals", {}),
+                    }
+                    condition_result = bool(eval(condition_expr, {"__builtins__": {}}, eval_context))
+            except Exception as exc:
+                raise_step_error(current_node.slug, _node_title(current_node), exc)
 
-                    # Execute the loop body by continuing to the next node
-                    current_slug = transition.target_step.slug
-                    iteration_count += 1
+            if not condition_result:
+                # Condition is false, exit the loop
+                state["state"].pop(loop_counter_key, None)  # Clean up counter
+                transition = _next_edge(current_slug, "exit")
+                if transition is None:
+                    transition = _next_edge(current_slug)  # Try default edge
+            else:
+                # Condition is true, continue loop
+                state["state"][loop_counter_key] = iteration_count + 1
+                transition = _next_edge(current_slug, "loop")
+                if transition is None:
+                    transition = _next_edge(current_slug)  # Try default edge
 
-                    # Note: We need to implement a way to return to the while node
-                    # For now, this is a simplified implementation
-                    # In a full implementation, we would need to track the loop and return to it
-                    break  # Exit after one iteration for now
-
-                except Exception as exc:
-                    raise_step_error(current_node.slug, _node_title(current_node), exc)
-
-            # Max iterations reached or condition false
-            if transition is None:
-                transition = _next_edge(current_slug, None)
             if transition is None:
                 if _fallback_to_start("while", current_node.slug):
                     continue

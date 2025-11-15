@@ -50,6 +50,7 @@ import {
 } from "../contexts";
 import { DESKTOP_WORKSPACE_HORIZONTAL_PADDING } from "../WorkflowBuilderUtils";
 import { useI18n } from "../../../i18n";
+import { nodeTypes } from "./nodes/nodeTypes";
 
 export interface MobileActionLabels {
   redo: string;
@@ -352,6 +353,7 @@ const WorkflowBuilderCanvas = ({
                   <ReactFlow<FlowNode, FlowEdge>
                     nodes={nodes}
                     edges={edges}
+                    nodeTypes={nodeTypes}
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     onNodeDragStart={handleNodeDragStart}

@@ -138,6 +138,7 @@ const useNodeFactory = ({
     };
     const newNode: FlowNode = {
       id: slug,
+      type: "while",
       position: { x: 420, y: 280 },
       data: {
         slug,
@@ -151,7 +152,12 @@ const useNodeFactory = ({
         parametersError: null,
         metadata: {},
       },
+      style: {
+        width: 400,
+        height: 300,
+      },
       draggable: true,
+      zIndex: -1,
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
