@@ -13,8 +13,8 @@ export const WhileNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
         isVisible={selected}
         minWidth={320}
         minHeight={200}
-        lineClassName={styles.resizerLine}
-        handleClassName={styles.resizerHandle}
+        lineClassName={`${styles.resizerLine} nopan`}
+        handleClassName={`${styles.resizerHandle} nopan`}
       />
       <div className={styles.whileHeader}>
         <span className={styles.whileLabel}>⟲ {data.label}</span>
