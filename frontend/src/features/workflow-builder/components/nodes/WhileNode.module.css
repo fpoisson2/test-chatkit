@@ -53,39 +53,26 @@
 }
 
 .resizerLine {
-  border-color: rgba(168, 85, 247, 0.35);
-  border-width: 3px;
+  display: none;
 }
 
 .resizerHandle {
-  width: 40px;
-  height: 40px;
-  margin: -20px;
+  width: 28px;
+  height: 28px;
+  margin: -14px;
   touch-action: none;
-  position: relative;
-}
-
-.resizerHandle::after {
-  content: "";
-  position: absolute;
-  inset: 10px;
-  border-radius: 8px;
+  border-radius: 9999px;
   background: #a855f7;
-  border: 2px solid white;
-  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.15);
+  border: 3px solid white;
+  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.2);
 }
 
 @media (hover: none) and (pointer: coarse) {
   .resizerHandle {
-    width: 56px;
-    height: 56px;
-    margin: -28px;
-  }
-
-  .resizerHandle::after {
-    inset: 16px;
-    border-radius: 12px;
-    box-shadow: 0 0 0 8px rgba(168, 85, 247, 0.2);
+    width: 40px;
+    height: 40px;
+    margin: -20px;
+    box-shadow: 0 0 0 6px rgba(168, 85, 247, 0.25);
   }
 }
 

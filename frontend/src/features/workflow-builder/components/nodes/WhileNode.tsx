@@ -15,6 +15,7 @@ export const WhileNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
         minHeight={200}
         lineClassName={`${styles.resizerLine} nopan`}
         handleClassName={`${styles.resizerHandle} nopan`}
+        handlePositions={["top-left", "top-right", "bottom-left", "bottom-right"]}
       />
       <div className={styles.surface}>
         <div className={styles.whileHeader}>
