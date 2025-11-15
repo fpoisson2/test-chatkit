@@ -62,6 +62,10 @@ async def lti_login(
 async def lti_launch(
     request: Request, service: LTIService = Depends(_get_service)
 ):
+    import jwt
+    from urllib.parse import urlencode
+    from fastapi.responses import RedirectResponse
+
     payload = await _extract_request_data(request)
     state = payload.get("state")
     id_token = payload.get("id_token")
@@ -72,6 +76,27 @@ async def lti_launch(
             detail="Les champs state et id_token sont requis",
         )
 
+    # Decode id_token without verification to check message type
+    # Full verification will be done by the service methods
+    try:
+        unverified_payload = jwt.decode(id_token, options={"verify_signature": False})
+        message_type = unverified_payload.get(
+            "https://purl.imsglobal.org/spec/lti/claim/message_type"
+        )
+    except Exception:
+        # If we can't decode, fall back to normal launch
+        message_type = None
+
+    # Route to Deep Linking if that's the message type
+    if message_type == "LtiDeepLinkingRequest":
+        # Redirect to deep linking selection page with state and id_token
+        params = urlencode({"state": state, "id_token": id_token})
+        return RedirectResponse(
+            url=f"/lti/deep-link?{params}",
+            status_code=status.HTTP_302_FOUND
+        )
+
+    # Otherwise, proceed with normal resource link launch
     return service.complete_launch(state=state, id_token=id_token)
 
 
