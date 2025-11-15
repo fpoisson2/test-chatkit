@@ -540,6 +540,80 @@ async def run_workflow(
 
     edges_by_source = build_edges_by_source(transitions)
 
+    def _get_nodes_inside_while(while_node: WorkflowStep) -> set[str]:
+        """
+        Detect which nodes are visually inside a while block based on their positions.
+        Returns a set of node slugs that are inside the while block.
+        """
+        while_metadata = while_node.ui_metadata or {}
+        while_pos = while_metadata.get("position", {})
+        while_x = while_pos.get("x", 0)
+        while_y = while_pos.get("y", 0)
+
+        # Get while dimensions (default to 400x300 as per WhileNode.tsx)
+        while_width = while_metadata.get("width", 400)
+        while_height = while_metadata.get("height", 300)
+
+        inside_nodes = set()
+
+        for node in nodes_by_slug.values():
+            if node.slug == while_node.slug or node.kind == "while":
+                continue
+
+            node_metadata = node.ui_metadata or {}
+            node_pos = node_metadata.get("position", {})
+            node_x = node_pos.get("x", 0)
+            node_y = node_pos.get("y", 0)
+
+            # Check if node is inside the while rectangle
+            if (while_x <= node_x <= while_x + while_width and
+                while_y <= node_y <= while_y + while_height):
+                inside_nodes.add(node.slug)
+
+        return inside_nodes
+
+    def _find_parent_while(node_slug: str) -> str | None:
+        """
+        Find the while block that contains a given node, if any.
+        Returns the slug of the parent while block, or None if the node is not inside any while.
+        """
+        for while_node in nodes_by_slug.values():
+            if while_node.kind != "while":
+                continue
+
+            inside_nodes = _get_nodes_inside_while(while_node)
+            if node_slug in inside_nodes:
+                return while_node.slug
+
+        return None
+
+    def _handle_no_transition(node_kind: str, node_slug: str) -> bool:
+        """
+        Handle the case when a node has no outgoing transition.
+        Returns True if we should continue execution (e.g., by returning to a parent while),
+        False if we should break execution.
+        """
+        nonlocal current_slug
+
+        # Check if this node is inside a while block
+        parent_while_slug = _find_parent_while(node_slug)
+        if parent_while_slug is not None:
+            # Node is inside a while block, return to the while to re-evaluate condition
+            logger.debug(
+                "Bloc %s %s dans une boucle while %s, retour au while pour réévaluation",
+                node_kind,
+                node_slug,
+                parent_while_slug,
+            )
+            current_slug = parent_while_slug
+            return True
+
+        # Try fallback to start as before
+        if _fallback_to_start(node_kind, node_slug):
+            return True
+
+        return False
+
     def _sanitize_end_value(value: Any) -> str | None:
         if isinstance(value, str):
             cleaned = value.strip()
@@ -1567,6 +1641,39 @@ async def run_workflow(
                 return edge
         return candidates[0]
 
+    def _next_edge_with_while_support(
+        source_slug: str, branch: str | None = None
+    ) -> WorkflowTransition | None:
+        """
+        Get the next edge, with automatic while loop support.
+        If the source node is inside a while block and has no explicit transition,
+        automatically return to the parent while block to re-evaluate the loop condition.
+        """
+        # First, try to get a normal transition
+        transition = _next_edge(source_slug, branch)
+
+        # If a transition exists, use it
+        if transition is not None:
+            return transition
+
+        # If no transition exists, check if this node is inside a while block
+        parent_while_slug = _find_parent_while(source_slug)
+        if parent_while_slug is not None:
+            # Create a virtual transition back to the parent while
+            # We'll search for an existing edge to the while, or indicate we should jump back
+            parent_while = nodes_by_slug.get(parent_while_slug)
+            if parent_while is not None:
+                # Look for an existing edge back to the while
+                for edge in edges_by_source.get(source_slug, []):
+                    if edge.target_step.slug == parent_while_slug:
+                        return edge
+
+                # No explicit edge back to while, but we'll handle this by setting
+                # current_slug to the parent while directly (handled in the caller)
+                # For now, return None and let the caller check _find_parent_while
+
+        return None
+
     async def _run_parallel_split(step: WorkflowStep) -> str:
         nonlocal last_step_context
         params = step.parameters or {}
@@ -1885,9 +1992,13 @@ async def run_workflow(
             else:
                 # Condition is true, continue loop
                 state["state"][loop_counter_key] = iteration_count + 1
+
+                # Try to find a transition with "loop" condition first
                 transition = _next_edge(current_slug, "loop")
                 if transition is None:
-                    transition = _next_edge(current_slug)  # Try default edge
+                    # If no "loop" transition, try any outgoing transition
+                    # This allows blocks to be repeated without requiring explicit "loop" edges
+                    transition = _next_edge(current_slug)
 
             if transition is None:
                 if _fallback_to_start("while", current_node.slug):
@@ -1904,7 +2015,7 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
-                if _fallback_to_start("state", current_node.slug):
+                if _handle_no_transition("state", current_node.slug):
                     continue
                 break
             current_slug = transition.target_step.slug
@@ -1946,7 +2057,7 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
-                if _fallback_to_start("watch", current_node.slug):
+                if _handle_no_transition("watch", current_node.slug):
                     continue
                 break
             current_slug = transition.target_step.slug
@@ -3025,6 +3136,8 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
+                if _handle_no_transition(current_node.kind, current_node.slug):
+                    continue
                 break
             current_slug = transition.target_step.slug
             continue
@@ -3070,6 +3183,8 @@ async def run_workflow(
         last_step_context = agent_step_execution.last_step_context
         transition = agent_step_execution.transition
         if transition is None:
+            if _handle_no_transition(current_node.kind, current_node.slug):
+                continue
             break
         current_slug = transition.target_step.slug
         continue
