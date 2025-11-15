@@ -196,10 +196,11 @@ class LTIService:
 
         # Debug logging for LTI registration lookup
         logger.info(
-            "LTI login attempt - issuer: %r, client_id: %r, deployment: %r",
+            "LTI login attempt - issuer: %r, client_id: %r, deployment: %r, target_link_uri: %r",
             issuer,
             client_id,
             deployment_ref,
+            target_link_uri,
         )
 
         registration = self._get_registration(issuer, client_id)
