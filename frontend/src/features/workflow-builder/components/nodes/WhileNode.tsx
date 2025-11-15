@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Handle, NodeResizer, Position, type NodeProps } from "reactflow";
+import { NodeResizer, type NodeProps } from "reactflow";
 import type { FlowNodeData } from "../../types";
 import styles from "./WhileNode.module.css";
 
@@ -26,9 +26,6 @@ export const WhileNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
           {/* Cette zone contiendra les blocs enfants */}
         </div>
       </div>
-      {/* Handles pour les connexions */}
-      <Handle type="target" position={Position.Top} className={styles.handle} />
-      <Handle type="source" position={Position.Bottom} className={styles.handle} />
     </div>
   );
 });
