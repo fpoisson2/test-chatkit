@@ -63,8 +63,11 @@ async def lti_launch(
     request: Request, service: LTIService = Depends(_get_service)
 ):
     import jwt
+    import logging
     from urllib.parse import urlencode
     from fastapi.responses import RedirectResponse
+
+    logger = logging.getLogger(__name__)
 
     payload = await _extract_request_data(request)
     state = payload.get("state")
@@ -78,17 +81,38 @@ async def lti_launch(
 
     # Decode id_token without verification to check message type
     # Full verification will be done by the service methods
+    message_type = None
     try:
-        unverified_payload = jwt.decode(id_token, options={"verify_signature": False})
+        unverified_payload = jwt.decode(
+            id_token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_iat": False,
+                "verify_exp": False,
+                "verify_nbf": False,
+                "verify_iss": False,
+                "verify_at_hash": False
+            }
+        )
         message_type = unverified_payload.get(
             "https://purl.imsglobal.org/spec/lti/claim/message_type"
         )
-    except Exception:
+        logger.info(
+            "LTI launch received with message_type: %r",
+            message_type
+        )
+    except Exception as e:
         # If we can't decode, fall back to normal launch
-        message_type = None
+        logger.warning(
+            "Could not decode id_token to check message type: %s. "
+            "Falling back to normal resource launch.",
+            str(e)
+        )
 
     # Route to Deep Linking if that's the message type
     if message_type == "LtiDeepLinkingRequest":
+        logger.info("Routing to deep linking selection page")
         # Redirect to deep linking selection page with state and id_token
         params = urlencode({"state": state, "id_token": id_token})
         return RedirectResponse(
@@ -97,6 +121,7 @@ async def lti_launch(
         )
 
     # Otherwise, proceed with normal resource link launch
+    logger.info("Processing as normal resource link launch")
     return service.complete_launch(state=state, id_token=id_token)
 
 
