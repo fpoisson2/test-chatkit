@@ -172,6 +172,46 @@ def _add_lti_user_sessions_ags_columns(connection) -> None:
         )
 
 
+def _users_has_is_lti_column(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("users"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("users")}
+    return "is_lti" in columns
+
+
+def _add_users_is_lti_column(connection) -> None:
+    inspector = inspect(connection)
+
+    if not inspector.has_table("users"):
+        logger.warning(
+            "Cannot add is_lti column to users because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("users")
+    }
+
+    if "is_lti" in existing_columns:
+        return
+
+    # Add is_lti column with default value FALSE
+    connection.execute(
+        text("ALTER TABLE users ADD COLUMN is_lti BOOLEAN NOT NULL DEFAULT FALSE")
+    )
+
+    # Update existing users with @lti.local emails to be marked as LTI users
+    connection.execute(
+        text("UPDATE users SET is_lti = TRUE WHERE email LIKE '%@lti.local'")
+    )
+
+    # Create index for faster queries on is_lti
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_users_is_lti ON users(is_lti)")
+    )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -221,6 +261,12 @@ def check_and_apply_migrations():
             "description": "Add AGS support columns to LTI user sessions",
             "check_fn": _lti_user_sessions_has_ags_columns,
             "apply_fn": _add_lti_user_sessions_ags_columns,
+        },
+        {
+            "id": "006_add_users_is_lti",
+            "description": "Add is_lti column to users for proper LTI user identification",
+            "check_fn": _users_has_is_lti_column,
+            "apply_fn": _add_users_is_lti_column,
         },
     ]
 
