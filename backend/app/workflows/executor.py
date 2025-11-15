@@ -547,12 +547,24 @@ async def run_workflow(
         """
         while_metadata = while_node.ui_metadata or {}
         while_pos = while_metadata.get("position", {})
+
+        # Check if while has position data
+        if not while_pos or "x" not in while_pos or "y" not in while_pos:
+            logger.warning(
+                "Bloc while %s n'a pas de position définie dans metadata. "
+                "Les blocs ne pourront pas être détectés automatiquement. "
+                "Assurez-vous que le workflow a été sauvegardé avec les positions.",
+                while_node.slug
+            )
+            return set()
+
         while_x = while_pos.get("x", 0)
         while_y = while_pos.get("y", 0)
 
-        # Get while dimensions (default to 400x300 as per WhileNode.tsx)
-        while_width = while_metadata.get("width", 400)
-        while_height = while_metadata.get("height", 300)
+        # Get while dimensions from size metadata or style
+        size_metadata = while_metadata.get("size", {})
+        while_width = size_metadata.get("width", 400)
+        while_height = size_metadata.get("height", 300)
 
         inside_nodes = set()
 
@@ -562,6 +574,11 @@ async def run_workflow(
 
             node_metadata = node.ui_metadata or {}
             node_pos = node_metadata.get("position", {})
+
+            # Skip nodes without position
+            if not node_pos or "x" not in node_pos or "y" not in node_pos:
+                continue
+
             node_x = node_pos.get("x", 0)
             node_y = node_pos.get("y", 0)
 
@@ -569,6 +586,22 @@ async def run_workflow(
             if (while_x <= node_x <= while_x + while_width and
                 while_y <= node_y <= while_y + while_height):
                 inside_nodes.add(node.slug)
+                logger.debug(
+                    "Bloc %s détecté à l'intérieur du while %s (pos: %d,%d)",
+                    node.slug, while_node.slug, node_x, node_y
+                )
+
+        if inside_nodes:
+            logger.info(
+                "While %s contient %d bloc(s): %s",
+                while_node.slug, len(inside_nodes), ", ".join(inside_nodes)
+            )
+        else:
+            logger.warning(
+                "While %s ne contient aucun bloc détecté. "
+                "Vérifiez que les blocs ont des positions définies et sont visuellement dans le while.",
+                while_node.slug
+            )
 
         return inside_nodes
 
