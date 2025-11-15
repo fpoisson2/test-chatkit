@@ -16,11 +16,13 @@ export const WhileNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
         lineClassName={`${styles.resizerLine} nopan`}
         handleClassName={`${styles.resizerHandle} nopan`}
       />
-      <div className={styles.whileHeader}>
-        <span className={styles.whileLabel}>⟲ {data.label}</span>
-      </div>
-      <div className={styles.whileBody}>
-        {/* Cette zone contiendra les blocs enfants */}
+      <div className={styles.surface}>
+        <div className={styles.whileHeader}>
+          <span className={styles.whileLabel}>⟲ {data.label}</span>
+        </div>
+        <div className={styles.whileBody}>
+          {/* Cette zone contiendra les blocs enfants */}
+        </div>
       </div>
       {/* Handles pour les connexions */}
       <Handle type="target" position={Position.Top} className={styles.handle} />

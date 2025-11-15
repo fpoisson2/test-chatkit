@@ -1,17 +1,26 @@
+
 .whileContainer {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+  overflow: visible;
+}
+
+.surface {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   border-radius: 12px;
   border: 2px dashed rgba(168, 85, 247, 0.6);
   background: rgba(168, 85, 247, 0.08);
-  overflow: visible;
+  overflow: hidden;
   transition: all 0.2s ease;
-  position: relative;
 }
 
-.whileContainer:hover {
+.whileContainer:hover .surface {
   border-color: rgba(168, 85, 247, 0.9);
   background: rgba(168, 85, 247, 0.12);
 }
@@ -49,9 +58,9 @@
 }
 
 .resizerHandle {
-  width: 44px;
-  height: 44px;
-  margin: -22px;
+  width: 40px;
+  height: 40px;
+  margin: -20px;
   touch-action: none;
   position: relative;
 }
@@ -59,7 +68,7 @@
 .resizerHandle::after {
   content: "";
   position: absolute;
-  inset: 12px;
+  inset: 10px;
   border-radius: 8px;
   background: #a855f7;
   border: 2px solid white;
@@ -68,20 +77,20 @@
 
 @media (hover: none) and (pointer: coarse) {
   .resizerHandle {
-    width: 64px;
-    height: 64px;
-    margin: -32px;
+    width: 56px;
+    height: 56px;
+    margin: -28px;
   }
 
   .resizerHandle::after {
-    inset: 18px;
+    inset: 16px;
     border-radius: 12px;
     box-shadow: 0 0 0 8px rgba(168, 85, 247, 0.2);
   }
 }
 
 /* Selected state */
-.whileContainer[data-selected="true"] {
+.whileContainer[data-selected="true"] .surface {
   border-color: #a855f7;
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.3);
 }
