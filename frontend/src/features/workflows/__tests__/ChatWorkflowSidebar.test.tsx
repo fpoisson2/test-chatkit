@@ -185,6 +185,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     expect(within(items[0]).getByText("Alpha")).toBeInTheDocument();
     expect(sidebarHost.queryAllByRole("heading", { name: "Pinned workflows" })).toHaveLength(0);
 
+    await user.click(within(items[1]).getByRole("button", { name: "Actions for Beta" }));
     await user.click(screen.getByRole("button", { name: "Pin Beta" }));
 
     await waitFor(() => {
@@ -199,10 +200,10 @@ describe("ChatWorkflowSidebar pinning", () => {
     const pinnedList = within(pinnedGroup as HTMLElement).getByRole("list");
     let pinnedItems = within(pinnedList).getAllByRole("listitem");
     expect(within(pinnedItems[0]).getByText("Beta")).toBeInTheDocument();
-    expect(sidebarHost.getByRole("button", { name: "Unpin Beta" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    await user.click(
+      within(pinnedList).getByRole("button", { name: "Actions for Beta" }),
     );
+    expect(screen.getByRole("button", { name: "Unpin Beta" })).toBeInTheDocument();
 
     const collapsedHost = await renderCollapsedSidebarHost();
     await waitFor(() => {
@@ -254,10 +255,10 @@ describe("ChatWorkflowSidebar pinning", () => {
     const rerenderedPinnedList = within(rerenderedPinnedGroup as HTMLElement).getByRole("list");
     pinnedItems = within(rerenderedPinnedList).getAllByRole("listitem");
     expect(within(pinnedItems[0]).getByText("Beta")).toBeInTheDocument();
-    expect(rerenderedHost.getByRole("button", { name: "Unpin Beta" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    await user.click(
+      within(rerenderedPinnedList).getByRole("button", { name: "Actions for Beta" }),
     );
+    expect(screen.getByRole("button", { name: "Unpin Beta" })).toBeInTheDocument();
 
     const rerenderedCollapsedHost = await renderCollapsedSidebarHost();
     await waitFor(() => {
@@ -388,10 +389,10 @@ describe("ChatWorkflowSidebar pinning", () => {
     const pinnedList = within(pinnedGroup as HTMLElement).getByRole("list");
     const pinnedItems = within(pinnedList).getAllByRole("listitem");
     expect(within(pinnedItems[0]).getByText("Beta")).toBeInTheDocument();
-    expect(sidebarHost.getByRole("button", { name: "Unpin Beta" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    await user.click(
+      within(pinnedList).getByRole("button", { name: "Actions for Beta" }),
     );
+    expect(screen.getByRole("button", { name: "Unpin Beta" })).toBeInTheDocument();
 
     expect(window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toContain("\"local\":[2]");
 

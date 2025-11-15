@@ -1,4 +1,4 @@
-import { type MouseEvent, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import WorkflowSidebarListItem, {
   type WorkflowSidebarListItemMenuProps,
@@ -27,16 +27,12 @@ export type WorkflowSidebarSectionEntry = {
   key: string;
   kind: "local" | "hosted";
   isPinned: boolean;
-  pinLabel: string;
-  onTogglePin: (event: MouseEvent<HTMLButtonElement>) => void;
   menuProps?: WorkflowSidebarListItemMenuProps | null;
   hasActions?: boolean;
   dataAttributes?: Record<string, boolean | string | null | undefined>;
-  pinButtonTitle?: string;
   content: ReactNode;
   trailingContent?: ReactNode;
   compact?: WorkflowSidebarCompactEntry | null;
-  showPinButton?: boolean;
 };
 
 export type WorkflowSidebarSectionProps = {
@@ -142,14 +138,10 @@ const WorkflowSidebarSection = ({
                   <WorkflowSidebarListItem
                     key={entry.key}
                     isPinned={entry.isPinned}
-                    pinLabel={entry.pinLabel}
-                    onTogglePin={entry.onTogglePin}
                     menuProps={entry.menuProps}
                     hasActions={entry.hasActions}
                     dataAttributes={entry.dataAttributes}
-                    pinButtonTitle={entry.pinButtonTitle}
                     trailingContent={entry.trailingContent}
-                    showPinButton={entry.showPinButton}
                   >
                     {entry.content}
                   </WorkflowSidebarListItem>
@@ -165,14 +157,10 @@ const WorkflowSidebarSection = ({
                   <WorkflowSidebarListItem
                     key={entry.key}
                     isPinned={entry.isPinned}
-                    pinLabel={entry.pinLabel}
-                    onTogglePin={entry.onTogglePin}
                     menuProps={entry.menuProps}
                     hasActions={entry.hasActions}
                     dataAttributes={entry.dataAttributes}
-                    pinButtonTitle={entry.pinButtonTitle}
                     trailingContent={entry.trailingContent}
-                    showPinButton={entry.showPinButton}
                   >
                     {entry.content}
                   </WorkflowSidebarListItem>

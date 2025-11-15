@@ -1,6 +1,5 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import WorkflowSidebarSection, {
@@ -10,15 +9,11 @@ import WorkflowSidebarSection, {
 
 describe("WorkflowSidebarSection", () => {
   it("renders pinned and default groups with floating action and footer", async () => {
-    const onPinHosted = vi.fn();
-    const onPinLocal = vi.fn();
     const entries: WorkflowSidebarSectionEntry[] = [
       {
         key: "hosted:alpha",
         kind: "hosted",
         isPinned: true,
-        pinLabel: "Unpin Alpha",
-        onTogglePin: onPinHosted,
         content: <div>Hosted Alpha</div>,
         compact: {
           label: "Alpha",
@@ -32,8 +27,6 @@ describe("WorkflowSidebarSection", () => {
         key: "local:1",
         kind: "local",
         isPinned: false,
-        pinLabel: "Pin Beta",
-        onTogglePin: onPinLocal,
         content: <div>Local Beta</div>,
         compact: {
           label: "Beta",
@@ -71,12 +64,6 @@ describe("WorkflowSidebarSection", () => {
     expect(defaultGroup).not.toBeNull();
     expect(within(defaultGroup as HTMLElement).getByText("Local Beta")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Unpin Alpha" }));
-    expect(onPinHosted).toHaveBeenCalledTimes(1);
-
-    await userEvent.click(screen.getByRole("button", { name: "Pin Beta" }));
-    expect(onPinLocal).toHaveBeenCalledTimes(1);
-
     const actionButton = screen.getByRole("button", { name: "Create" });
     expect(actionButton).toBeInTheDocument();
     expect(screen.getByTestId("add-icon")).toBeInTheDocument();
@@ -107,8 +94,6 @@ describe("WorkflowSidebarCompact", () => {
         key: "hosted:alpha",
         kind: "hosted",
         isPinned: true,
-        pinLabel: "",
-        onTogglePin: vi.fn(),
         content: <div />, // not rendered in compact
         compact: {
           label: "Alpha",
@@ -123,8 +108,6 @@ describe("WorkflowSidebarCompact", () => {
         key: "local:1",
         kind: "local",
         isPinned: false,
-        pinLabel: "",
-        onTogglePin: vi.fn(),
         content: <div />, // not rendered in compact
         compact: {
           label: "Beta",
