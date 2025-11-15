@@ -10,6 +10,7 @@ export const WhileNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
       data-selected={selected}
     >
       <NodeResizer
+        className={styles.resizer}
         isVisible={selected}
         minWidth={320}
         minHeight={200}

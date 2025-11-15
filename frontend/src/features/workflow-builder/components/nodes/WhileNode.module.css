@@ -52,27 +52,34 @@
   padding: 16px;
 }
 
+.resizer {
+  pointer-events: none;
+}
+
 .resizerLine {
   display: none;
 }
 
 .resizerHandle {
-  width: 28px;
-  height: 28px;
-  margin: -14px;
+  box-sizing: content-box;
+  width: 18px;
+  height: 18px;
+  padding: 8px;
   touch-action: none;
+  pointer-events: auto;
   border-radius: 9999px;
   background: #a855f7;
   border: 3px solid white;
   box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.2);
+  transform: translate(-50%, -50%);
 }
 
 @media (hover: none) and (pointer: coarse) {
   .resizerHandle {
-    width: 40px;
-    height: 40px;
-    margin: -20px;
-    box-shadow: 0 0 0 6px rgba(168, 85, 247, 0.25);
+    width: 22px;
+    height: 22px;
+    padding: 12px;
+    box-shadow: 0 0 0 8px rgba(168, 85, 247, 0.25);
   }
 }
 
