@@ -123,8 +123,7 @@ class LTIAGSClient(AGSClientProtocol):
         variable_id: str,
         score: float,
         max_score: float | None,
-        comment: str | None,
-    ) -> None:  # noqa: ARG002 - Moodle rejects comments in score payloads
+    ) -> None:
         if context is None:
             return
 

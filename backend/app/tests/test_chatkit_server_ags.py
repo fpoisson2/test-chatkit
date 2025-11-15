@@ -60,7 +60,6 @@ class _StubAGSClient(NullAGSClient):
         variable_id: str,
         score: float,
         max_score: float | None,
-        comment: str | None,
     ) -> None:
         self.publish_calls.append(
             {
@@ -69,7 +68,6 @@ class _StubAGSClient(NullAGSClient):
                 "variable_id": variable_id,
                 "score": score,
                 "max_score": max_score,
-                "comment": comment,
             }
         )
 
@@ -129,7 +127,6 @@ async def test_process_workflow_end_state_posts_grade() -> None:
             "variable_id": "score-1",
             "score": 18.0,
             "max_score": 20.0,
-            "comment": "Excellent travail",
         }
     ]
 
@@ -163,7 +160,6 @@ async def test_process_workflow_end_state_without_line_item_uses_variable_id() -
             "variable_id": "score-2",
             "score": 12.5,
             "max_score": None,
-            "comment": None,
         }
     ]
 

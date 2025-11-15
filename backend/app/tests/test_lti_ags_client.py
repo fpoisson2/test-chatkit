@@ -211,7 +211,6 @@ async def test_lti_ags_client_creates_line_item_and_publishes_score():
         variable_id="score-1",
         score=18.0,
         max_score=20.0,
-        comment="Bravo",
     )
 
     assert requests == [
@@ -303,7 +302,6 @@ async def test_publish_score_preserves_query_string_for_line_item():
         variable_id="score-99",
         score=12.5,
         max_score=None,
-        comment=None,
     )
 
     assert captured == [
