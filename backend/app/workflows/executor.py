@@ -587,15 +587,69 @@ async def run_workflow(
 
         return None
 
-    def _handle_no_transition(node_kind: str, node_slug: str) -> bool:
+    def _should_intercept_transition_for_while(
+        source_slug: str, transition: WorkflowTransition | None
+    ) -> tuple[bool, str | None]:
         """
-        Handle the case when a node has no outgoing transition.
-        Returns True if we should continue execution (e.g., by returning to a parent while),
-        False if we should break execution.
+        Check if a transition should be intercepted because it exits a while loop.
+        Returns (should_intercept, parent_while_slug).
+
+        If the source node is inside a while block and the transition target is outside,
+        we should intercept it and return to the while instead (to re-evaluate the condition).
+        """
+        if transition is None:
+            return (False, None)
+
+        # Check if source is inside a while block
+        parent_while_slug = _find_parent_while(source_slug)
+        if parent_while_slug is None:
+            return (False, None)
+
+        # Check if target is also inside the same while block
+        target_slug = transition.target_step.slug
+        target_parent_while = _find_parent_while(target_slug)
+
+        # If target is in the same while, don't intercept
+        if target_parent_while == parent_while_slug:
+            return (False, None)
+
+        # Target is outside the while (or in a different while)
+        # Intercept this transition and return to the parent while
+        return (True, parent_while_slug)
+
+    def _handle_transition_with_while_support(
+        node_kind: str, node_slug: str, transition: WorkflowTransition | None
+    ) -> tuple[WorkflowTransition | None, bool]:
+        """
+        Handle transition with while loop support.
+        Returns (transition_to_use, should_continue).
+
+        If the node is inside a while and the transition exits the while,
+        redirects to the parent while instead.
         """
         nonlocal current_slug
 
-        # Check if this node is inside a while block
+        # Check if we should intercept this transition
+        should_intercept, parent_while_slug = _should_intercept_transition_for_while(
+            node_slug, transition
+        )
+
+        if should_intercept and parent_while_slug is not None:
+            # Intercept: return to while instead of following the transition
+            logger.debug(
+                "Bloc %s %s dans une boucle while %s avec transition sortante, retour au while pour réévaluation",
+                node_kind,
+                node_slug,
+                parent_while_slug,
+            )
+            current_slug = parent_while_slug
+            return (None, True)
+
+        # No interception needed
+        if transition is not None:
+            return (transition, False)
+
+        # No transition exists
         parent_while_slug = _find_parent_while(node_slug)
         if parent_while_slug is not None:
             # Node is inside a while block, return to the while to re-evaluate condition
@@ -606,13 +660,13 @@ async def run_workflow(
                 parent_while_slug,
             )
             current_slug = parent_while_slug
-            return True
+            return (None, True)
 
         # Try fallback to start as before
         if _fallback_to_start(node_kind, node_slug):
-            return True
+            return (None, True)
 
-        return False
+        return (None, False)
 
     def _sanitize_end_value(value: Any) -> str | None:
         if isinstance(value, str):
@@ -2014,9 +2068,12 @@ async def run_workflow(
                 raise_step_error(current_node.slug, _node_title(current_node), exc)
 
             transition = _next_edge(current_slug)
+            transition, should_continue = _handle_transition_with_while_support(
+                "state", current_node.slug, transition
+            )
+            if should_continue:
+                continue
             if transition is None:
-                if _handle_no_transition("state", current_node.slug):
-                    continue
                 break
             current_slug = transition.target_step.slug
             continue
@@ -2056,9 +2113,12 @@ async def run_workflow(
                 )
 
             transition = _next_edge(current_slug)
+            transition, should_continue = _handle_transition_with_while_support(
+                "watch", current_node.slug, transition
+            )
+            if should_continue:
+                continue
             if transition is None:
-                if _handle_no_transition("watch", current_node.slug):
-                    continue
                 break
             current_slug = transition.target_step.slug
             continue
@@ -2105,15 +2165,22 @@ async def run_workflow(
             }
 
             transition = _next_edge(current_slug)
+            transition, should_continue = _handle_transition_with_while_support(
+                "transform", current_node.slug, transition
+            )
+            if should_continue:
+                continue
             if transition is None:
-                if _fallback_to_start("transform", current_node.slug):
-                    continue
                 break
             current_slug = transition.target_step.slug
             continue
 
         if current_node.kind == "wait_for_user_input":
             transition = _next_edge(current_slug)
+            transition, should_continue_early = _handle_transition_with_while_support(
+                "wait_for_user_input", current_node.slug, transition
+            )
+
             pending_wait_state = (
                 _get_wait_state_metadata(thread) if thread is not None else None
             )
@@ -2131,6 +2198,10 @@ async def run_workflow(
             )
 
             if resumed:
+                if should_continue_early:
+                    # We intercepted the transition for while loop, continue to while
+                    continue
+
                 next_slug = pending_wait_state.get("next_step_slug")
                 if next_slug is None and transition is not None:
                     next_slug = transition.target_step.slug
@@ -3135,9 +3206,12 @@ async def run_workflow(
                     break
 
             transition = _next_edge(current_slug)
+            transition, should_continue = _handle_transition_with_while_support(
+                current_node.kind, current_node.slug, transition
+            )
+            if should_continue:
+                continue
             if transition is None:
-                if _handle_no_transition(current_node.kind, current_node.slug):
-                    continue
                 break
             current_slug = transition.target_step.slug
             continue
@@ -3182,9 +3256,12 @@ async def run_workflow(
 
         last_step_context = agent_step_execution.last_step_context
         transition = agent_step_execution.transition
+        transition, should_continue = _handle_transition_with_while_support(
+            current_node.kind, current_node.slug, transition
+        )
+        if should_continue:
+            continue
         if transition is None:
-            if _handle_no_transition(current_node.kind, current_node.slug):
-                continue
             break
         current_slug = transition.target_step.slug
         continue
