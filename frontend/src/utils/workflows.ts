@@ -290,11 +290,6 @@ export const setEndAgsMaximumExpression = (
   expression: string,
 ): AgentParameters => setEndAgsExpressionField(parameters, "maximum", expression);
 
-export const setEndAgsCommentExpression = (
-  parameters: AgentParameters,
-  expression: string,
-): AgentParameters => setEndAgsExpressionField(parameters, "comment", expression);
-
 export const getAssistantMessage = (
   parameters: AgentParameters | null | undefined,
 ): string => {

@@ -30,7 +30,6 @@ class AGSClientProtocol(Protocol):
         variable_id: str,
         score: float,
         max_score: float | None,
-        comment: str | None,
     ) -> None:
         """Publie la note associée au line item fourni."""
 
@@ -56,7 +55,6 @@ class NullAGSClient:
         variable_id: str,
         score: float,
         max_score: float | None,
-        comment: str | None,
     ) -> None:  # pragma: no cover - comportement trivial
         return None
 
@@ -78,14 +76,13 @@ async def process_workflow_end_state_ags(
         return
 
     max_score = end_state.ags_score_maximum
-    comment = end_state.ags_comment
 
     try:
         line_item_id = await client.ensure_line_item(
             context=context,
             variable_id=variable_id,
             max_score=max_score,
-            comment=comment,
+            comment=None,
         )
     except Exception as exc:  # pragma: no cover - robustesse réseau
         logger.warning(
@@ -102,7 +99,6 @@ async def process_workflow_end_state_ags(
             variable_id=variable_id,
             score=score_value,
             max_score=max_score,
-            comment=comment,
         )
     except Exception as exc:  # pragma: no cover - robustesse réseau
         logger.warning(

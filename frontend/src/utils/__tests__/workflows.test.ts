@@ -25,7 +25,6 @@ import {
   setEndAgsVariableId,
   setEndAgsScoreExpression,
   setEndAgsMaximumExpression,
-  setEndAgsCommentExpression,
   getAgentWorkflowValidationToolEnabled,
   setAgentWorkflowValidationToolEnabled,
   getStartTelephonyRoutes,
@@ -309,22 +308,11 @@ describe("end AGS helpers", () => {
       },
     });
 
-    const withComment = setEndAgsCommentExpression(withMaximum, " state.grade.comment ");
-    expect(withComment).toEqual({
-      ags: {
-        score_variable_id: "quiz-final",
-        value: "state.grade.score",
-        maximum: "20",
-        comment: "state.grade.comment",
-      },
-    });
-
-    const clearedScore = setEndAgsScoreExpression(withComment, "   ");
+    const clearedScore = setEndAgsScoreExpression(withMaximum, "   ");
     expect(clearedScore).toEqual({
       ags: {
         score_variable_id: "quiz-final",
         maximum: "20",
-        comment: "state.grade.comment",
       },
     });
 
@@ -332,13 +320,11 @@ describe("end AGS helpers", () => {
     expect(clearedVariable).toEqual({
       ags: {
         maximum: "20",
-        comment: "state.grade.comment",
       },
     });
 
     const clearedMaximum = setEndAgsMaximumExpression(clearedVariable, "");
-    const clearedComment = setEndAgsCommentExpression(clearedMaximum, "");
-    expect(clearedComment).toEqual({});
+    expect(clearedMaximum).toEqual({});
   });
 });
 

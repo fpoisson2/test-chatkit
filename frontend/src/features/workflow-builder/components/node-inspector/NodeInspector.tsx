@@ -183,7 +183,6 @@ const NodeInspector = ({
     handleEndAgsVariableIdChange: onEndAgsVariableIdChange,
     handleEndAgsScoreExpressionChange: onEndAgsScoreExpressionChange,
     handleEndAgsMaximumExpressionChange: onEndAgsMaximumExpressionChange,
-    handleEndAgsCommentExpressionChange: onEndAgsCommentExpressionChange,
     handleAssistantMessageChange: onAssistantMessageChange,
     handleAssistantMessageStreamEnabledChange: onAssistantMessageStreamEnabledChange,
     handleAssistantMessageStreamDelayChange: onAssistantMessageStreamDelayChange,
@@ -301,7 +300,6 @@ const NodeInspector = ({
   const endAgsVariableId = kind === "end" ? endAgsConfig.variableId : "";
   const endAgsScoreExpression = kind === "end" ? endAgsConfig.valueExpression : "";
   const endAgsMaximumExpression = kind === "end" ? endAgsConfig.maximumExpression : "";
-  const endAgsCommentExpression = kind === "end" ? endAgsConfig.commentExpression : "";
   const assistantMessage = kind === "assistant_message" ? getAssistantMessage(parameters) : "";
   const assistantMessageStreamEnabled =
     kind === "assistant_message" ? getAssistantMessageStreamEnabled(parameters) : false;
@@ -522,12 +520,10 @@ const NodeInspector = ({
           agsVariableId={endAgsVariableId}
           agsScoreExpression={endAgsScoreExpression}
           agsMaximumExpression={endAgsMaximumExpression}
-          agsCommentExpression={endAgsCommentExpression}
           onEndMessageChange={onEndMessageChange}
           onAgsVariableIdChange={onEndAgsVariableIdChange}
           onAgsScoreExpressionChange={onEndAgsScoreExpressionChange}
           onAgsMaximumExpressionChange={onEndAgsMaximumExpressionChange}
-          onAgsCommentExpressionChange={onEndAgsCommentExpressionChange}
         />
       ) : null}
 

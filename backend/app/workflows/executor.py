@@ -263,7 +263,6 @@ class WorkflowEndState:
     ags_variable_id: str | None = None
     ags_score_value: float | None = None
     ags_score_maximum: float | None = None
-    ags_comment: str | None = None
 
 
 @dataclass
@@ -601,7 +600,6 @@ async def run_workflow(
         ags_variable_id: str | None = None
         ags_score_value: float | None = None
         ags_maximum: float | None = None
-        ags_comment: str | None = None
 
         ags_raw = params.get("ags")
         ags_config = ags_raw if isinstance(ags_raw, Mapping) else None
@@ -644,14 +642,6 @@ async def run_workflow(
                 maximum_candidate = _evaluate("max_score")
             ags_maximum = _coerce_score_value(maximum_candidate)
 
-            comment_candidate = _evaluate("comment")
-            if comment_candidate is None and "note" in ags_config:
-                comment_candidate = _evaluate("note")
-            if isinstance(comment_candidate, str):
-                ags_comment = comment_candidate.strip() or None
-            elif comment_candidate is not None:
-                ags_comment = str(comment_candidate)
-
         return WorkflowEndState(
             slug=step.slug,
             status_type=status_type,
@@ -660,7 +650,6 @@ async def run_workflow(
             ags_variable_id=ags_variable_id,
             ags_score_value=ags_score_value,
             ags_score_maximum=ags_maximum,
-            ags_comment=ags_comment,
         )
 
     def _resolve_assistant_message(step: WorkflowStep) -> str:
@@ -1782,8 +1771,6 @@ async def run_workflow(
                     ags_payload["score"] = final_end_state.ags_score_value
                 if final_end_state.ags_score_maximum is not None:
                     ags_payload["maximum"] = final_end_state.ags_score_maximum
-                if final_end_state.ags_comment:
-                    ags_payload["comment"] = final_end_state.ags_comment
                 if ags_payload:
                     end_payload["ags"] = ags_payload
 
