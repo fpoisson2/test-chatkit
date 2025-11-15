@@ -12,6 +12,7 @@ import { useSearchParams } from "react-router-dom";
 import { type EdgeChange, type NodeChange, type ReactFlowInstance, type Viewport } from "reactflow";
 
 import "reactflow/dist/style.css";
+import "@reactflow/node-resizer/dist/style.css";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -184,6 +185,8 @@ import {
   supportsReasoningModel,
   defaultEdgeOptions,
   resolveSelectionAfterLoad,
+  DEFAULT_WHILE_NODE_SIZE,
+  WHILE_NODE_LAYER_INDEX,
 } from "./utils";
 import {
   getHeaderContainerStyle,
@@ -396,6 +399,25 @@ const WorkflowBuilderPage = () => {
 
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
+      if (node.data.kind === "while") {
+        const baseStyle = node.style ?? {};
+        const nextStyle = {
+          ...baseStyle,
+          width: baseStyle.width ?? DEFAULT_WHILE_NODE_SIZE.width,
+          height: baseStyle.height ?? DEFAULT_WHILE_NODE_SIZE.height,
+          zIndex: baseStyle.zIndex ?? WHILE_NODE_LAYER_INDEX,
+        } as CSSProperties;
+        return {
+          ...node,
+          type: "while",
+          resizable: true,
+          className: styles.flowNode,
+          style: nextStyle,
+          selected: node.selected ?? false,
+          zIndex: node.zIndex ?? WHILE_NODE_LAYER_INDEX,
+        } satisfies FlowNode;
+      }
+
       return {
         ...node,
         className: styles.flowNode,

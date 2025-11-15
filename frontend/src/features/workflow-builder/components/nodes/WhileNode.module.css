@@ -1,6 +1,17 @@
+
 .whileContainer {
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.surface {
+  width: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -8,10 +19,10 @@
   background: rgba(168, 85, 247, 0.08);
   overflow: hidden;
   transition: all 0.2s ease;
-  position: relative;
+  pointer-events: none;
 }
 
-.whileContainer:hover {
+.whileContainer:hover .surface {
   border-color: rgba(168, 85, 247, 0.9);
   background: rgba(168, 85, 247, 0.12);
 }
@@ -28,6 +39,12 @@
   gap: 8px;
   user-select: none;
   z-index: 1;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.whileHeader:active {
+  cursor: grabbing;
 }
 
 .whileLabel {
@@ -43,17 +60,40 @@
   padding: 16px;
 }
 
+.resizer {
+  pointer-events: none;
+}
+
+.resizerLine {
+  display: none;
+}
+
+.resizerHandle {
+  box-sizing: content-box;
+  width: 18px;
+  height: 18px;
+  padding: 8px;
+  touch-action: none;
+  pointer-events: auto;
+  border-radius: 9999px;
+  background: #a855f7;
+  border: 3px solid white;
+  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.2);
+  transform: translate(-50%, -50%);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .resizerHandle {
+    width: 22px;
+    height: 22px;
+    padding: 12px;
+    box-shadow: 0 0 0 8px rgba(168, 85, 247, 0.25);
+  }
+}
+
 /* Selected state */
-.whileContainer[data-selected="true"] {
+.whileContainer[data-selected="true"] .surface {
   border-color: #a855f7;
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.3);
 }
 
-/* Handles */
-.handle {
-  width: 12px;
-  height: 12px;
-  background: #a855f7;
-  border: 2px solid white;
-  border-radius: 50%;
-}

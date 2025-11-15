@@ -124,6 +124,19 @@ const useGraphEditor = ({
       setNodes((currentNodes) =>
         currentNodes.map((node) => {
           const isSelected = nodeIdSet.has(node.id);
+          if (node.data.kind === "while") {
+            const hasSameSelection = (node.selected ?? false) === isSelected;
+            const hasSameClassName = node.className === nodeClassName;
+            if (hasSameSelection && hasSameClassName) {
+              return node;
+            }
+
+            return {
+              ...node,
+              selected: isSelected,
+              className: nodeClassName,
+            } satisfies FlowNode;
+          }
           const nextStyle = buildNodeStyle(node.data.kind, {
             isSelected,
           });
