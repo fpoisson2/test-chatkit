@@ -104,7 +104,7 @@ async def list_workflows(
 
     # LTI users can only see workflows from their LTI resource links
     # They should only access the specific workflow assigned via deeplink
-    if current_user.email.endswith('@lti.local'):
+    if current_user.is_lti:
         from ..models import LTIUserSession, Workflow
         from sqlalchemy import select, desc
 

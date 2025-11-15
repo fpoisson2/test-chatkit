@@ -4,6 +4,7 @@ export type AuthUser = {
   id: number;
   email: string;
   is_admin: boolean;
+  is_lti: boolean;
   created_at: string;
   updated_at: string;
 };

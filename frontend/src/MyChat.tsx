@@ -242,7 +242,7 @@ export function MyChat() {
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
 
   // Detect LTI user early so we can use it in chatkitOptions
-  const isLtiUser = user?.email.endsWith('@lti.local') ?? false;
+  const isLtiUser = user?.is_lti ?? false;
 
   // Detect LTI context even before user is loaded (for early loading overlay)
   // This checks if we're coming from an LTI launch by looking for the workflow ID in localStorage
@@ -529,7 +529,7 @@ export function MyChat() {
       );
 
       // Detect LTI context
-      const isLtiContext = user?.email.endsWith('@lti.local') ?? false;
+      const isLtiContext = user?.is_lti ?? false;
       // Apply LTI options only in LTI context
       const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
 

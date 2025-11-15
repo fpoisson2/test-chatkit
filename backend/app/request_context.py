@@ -62,8 +62,8 @@ def _resolve_lti_context(
     *,
     session: Session | None = None,
 ) -> dict[str, object] | None:
-    email = getattr(current_user, "email", None)
-    if not isinstance(email, str) or not email.endswith("@lti.local"):
+    is_lti = getattr(current_user, "is_lti", False)
+    if not is_lti:
         return None
 
     user_id = getattr(current_user, "id", None)
