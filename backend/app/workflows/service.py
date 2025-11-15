@@ -2250,7 +2250,9 @@ class WorkflowService:
                 graph_payload, allow_empty=True
             )
 
-            mark_active = bool(graph_payload and (graph_payload.get("nodes") or []))
+            # Always mark the initial version as active so the workflow can be selected
+            # in the builder, even if it's empty. Users can edit it later.
+            mark_active = True
 
             definition = self._create_definition_from_graph(
                 workflow=workflow,
