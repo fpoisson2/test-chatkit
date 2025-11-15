@@ -62,6 +62,13 @@ async def lti_login(
 async def lti_launch(
     request: Request, service: LTIService = Depends(_get_service)
 ):
+    import jwt
+    import logging
+    from urllib.parse import urlencode
+    from fastapi.responses import RedirectResponse
+
+    logger = logging.getLogger(__name__)
+
     payload = await _extract_request_data(request)
     state = payload.get("state")
     id_token = payload.get("id_token")
@@ -72,6 +79,49 @@ async def lti_launch(
             detail="Les champs state et id_token sont requis",
         )
 
+    # Decode id_token without verification to check message type
+    # Full verification will be done by the service methods
+    message_type = None
+    try:
+        unverified_payload = jwt.decode(
+            id_token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_iat": False,
+                "verify_exp": False,
+                "verify_nbf": False,
+                "verify_iss": False,
+                "verify_at_hash": False
+            }
+        )
+        message_type = unverified_payload.get(
+            "https://purl.imsglobal.org/spec/lti/claim/message_type"
+        )
+        logger.info(
+            "LTI launch received with message_type: %r",
+            message_type
+        )
+    except Exception as e:
+        # If we can't decode, fall back to normal launch
+        logger.warning(
+            "Could not decode id_token to check message type: %s. "
+            "Falling back to normal resource launch.",
+            str(e)
+        )
+
+    # Route to Deep Linking if that's the message type
+    if message_type == "LtiDeepLinkingRequest":
+        logger.info("Routing to deep linking selection page")
+        # Redirect to deep linking selection page with state and id_token
+        params = urlencode({"state": state, "id_token": id_token})
+        return RedirectResponse(
+            url=f"/lti/deep-link?{params}",
+            status_code=status.HTTP_302_FOUND
+        )
+
+    # Otherwise, proceed with normal resource link launch
+    logger.info("Processing as normal resource link launch")
     return service.complete_launch(state=state, id_token=id_token)
 
 
@@ -220,12 +270,19 @@ async def get_current_lti_workflow(
 async def lti_deep_link(
     request: Request, service: LTIService = Depends(_get_service)
 ) -> dict[str, Any]:
+    import logging
     from fastapi.responses import RedirectResponse
     from urllib.parse import urlencode
+
+    logger = logging.getLogger(__name__)
+    logger.info("Deep link endpoint called")
 
     payload = await _extract_request_data(request)
     state = payload.get("state")
     id_token = payload.get("id_token")
+
+    logger.info("Deep link parameters: state=%s, id_token present=%s",
+                bool(state), bool(id_token))
     if not isinstance(state, str) or not isinstance(id_token, str):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
