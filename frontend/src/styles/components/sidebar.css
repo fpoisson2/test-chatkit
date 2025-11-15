@@ -1131,28 +1131,32 @@
 }
 
 /* Mobile sidebar profile name/email styles */
-/* Light mode - use dark/black text */
+/* Light mode - use dark/black text for better contrast */
 :root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name {
-  color: #000000;
+  color: #000000 !important;
 }
 
 :root:not([data-theme="dark"]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
-  color: #000000;
+  color: #000000 !important;
+  opacity: 0.85;
 }
 
-/* Dark mode - use light text */
+/* Dark mode - use very light text for maximum contrast */
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
   color: #ffffff !important;
+  opacity: 1 !important;
 }
 
 /* Desktop sidebar profile name/email styles for dark mode */
 :root[data-theme="dark"] .chatkit-layout--desktop .chatkit-sidebar__profile-name {
   color: #ffffff !important;
+  opacity: 1 !important;
 }
 
 :root[data-theme="dark"] .chatkit-layout--desktop .chatkit-sidebar__profile-role {
-  color: rgba(255, 255, 255, 0.85) !important;
+  color: #ffffff !important;
+  opacity: 0.85 !important;
 }
 
 /* Mobile sidebar dismiss button (close X) */
@@ -1669,6 +1673,12 @@
   max-width: 100%;
 }
 
+/* Ensure profile name is always visible in dark mode */
+:root[data-theme="dark"] .chatkit-sidebar__profile-name,
+html[data-theme="dark"] .chatkit-sidebar__profile-name {
+  color: #fafafa;
+}
+
 .chatkit-sidebar__profile-role {
   font-size: var(--font-text-xs-size);
   color: var(--text-muted);
@@ -1676,14 +1686,27 @@
   letter-spacing: 0.08em;
 }
 
+/* Ensure profile role is always visible in dark mode */
+:root[data-theme="dark"] .chatkit-sidebar__profile-role,
+html[data-theme="dark"] .chatkit-sidebar__profile-role {
+  color: #d4d4d8;
+}
+
 .chatkit-sidebar__profile-caret {
   width: calc(var(--spacing) * 3.5);
   height: calc(var(--spacing) * 3.5);
-  border-right: 2px solid var(--alpha-15);
-  border-bottom: 2px solid var(--alpha-15);
+  border-right: 2px solid var(--alpha-30);
+  border-bottom: 2px solid var(--alpha-30);
   transform: rotate(45deg);
   transition: transform 0.2s ease;
   flex: 0 0 auto;
+}
+
+/* Fix caret contrast in dark mode - needs to be lighter/more opaque */
+:root[data-theme="dark"] .chatkit-sidebar__profile-caret,
+html[data-theme="dark"] .chatkit-sidebar__profile-caret {
+  border-right-color: var(--alpha-40);
+  border-bottom-color: var(--alpha-40);
 }
 
 .chatkit-sidebar__profile--open .chatkit-sidebar__profile-caret {
