@@ -647,31 +647,32 @@ class LTIService:
             .where(LTIDeployment.deployment_id == deployment_id)
         )
         if deployment is None:
-            # Log available deployments for this registration
-            all_deployments = self.session.scalars(
-                select(LTIDeployment).where(
-                    LTIDeployment.registration_id == registration.id
-                )
-            ).all()
-            logger.warning(
+            # Auto-create deployment on first use
+            logger.info(
                 "LTI deployment not found for deployment_id=%r (registration_id=%s). "
-                "Available deployments for this registration: %s",
+                "Auto-creating new deployment.",
                 deployment_id,
                 registration.id,
-                [
-                    f"(id={d.id}, deployment_id={d.deployment_id!r})"
-                    for d in all_deployments
-                ],
             )
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND, detail="Déploiement LTI introuvable"
+            deployment = LTIDeployment(
+                registration_id=registration.id,
+                deployment_id=deployment_id,
             )
-        logger.info(
-            "LTI deployment found: id=%s, deployment_id=%r, registration_id=%s",
-            deployment.id,
-            deployment.deployment_id,
-            deployment.registration_id,
-        )
+            self.session.add(deployment)
+            self.session.flush()
+            logger.info(
+                "LTI deployment auto-created: id=%s, deployment_id=%r, registration_id=%s",
+                deployment.id,
+                deployment.deployment_id,
+                deployment.registration_id,
+            )
+        else:
+            logger.info(
+                "LTI deployment found: id=%s, deployment_id=%r, registration_id=%s",
+                deployment.id,
+                deployment.deployment_id,
+                deployment.registration_id,
+            )
         return deployment
 
     def _get_session_from_state(self, state: str) -> LTIUserSession:
