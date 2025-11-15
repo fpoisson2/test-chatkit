@@ -270,12 +270,19 @@ async def get_current_lti_workflow(
 async def lti_deep_link(
     request: Request, service: LTIService = Depends(_get_service)
 ) -> dict[str, Any]:
+    import logging
     from fastapi.responses import RedirectResponse
     from urllib.parse import urlencode
+
+    logger = logging.getLogger(__name__)
+    logger.info("Deep link endpoint called")
 
     payload = await _extract_request_data(request)
     state = payload.get("state")
     id_token = payload.get("id_token")
+
+    logger.info("Deep link parameters: state=%s, id_token present=%s",
+                bool(state), bool(id_token))
     if not isinstance(state, str) or not isinstance(id_token, str):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
