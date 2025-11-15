@@ -184,6 +184,7 @@ import {
   supportsReasoningModel,
   defaultEdgeOptions,
   resolveSelectionAfterLoad,
+  DEFAULT_WHILE_NODE_SIZE,
 } from "./utils";
 import {
   getHeaderContainerStyle,
@@ -396,6 +397,22 @@ const WorkflowBuilderPage = () => {
 
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
+      if (node.data.kind === "while") {
+        const nextStyle =
+          node.style ?? {
+            width: DEFAULT_WHILE_NODE_SIZE.width,
+            height: DEFAULT_WHILE_NODE_SIZE.height,
+          };
+        return {
+          ...node,
+          type: "while",
+          resizable: true,
+          className: styles.flowNode,
+          style: nextStyle,
+          selected: node.selected ?? false,
+        } satisfies FlowNode;
+      }
+
       return {
         ...node,
         className: styles.flowNode,

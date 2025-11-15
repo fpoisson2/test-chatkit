@@ -37,6 +37,8 @@ import {
   defaultEdgeOptions,
   extractPosition,
   humanizeSlug,
+  DEFAULT_WHILE_NODE_SIZE,
+  extractWhileNodeSize,
 } from "../utils";
 import type {
   FlowNode,
@@ -251,6 +253,11 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
               node.parameters
             );
 
+            const whileNodeSize =
+              node.kind === "while"
+                ? extractWhileNodeSize(node.metadata) ?? DEFAULT_WHILE_NODE_SIZE
+                : null;
+
             const baseNode: FlowNode = {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
@@ -268,6 +275,16 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
               },
               draggable: true,
               selected: false,
+              ...(node.kind === "while"
+                ? {
+                    type: "while",
+                    style: {
+                      width: whileNodeSize?.width ?? DEFAULT_WHILE_NODE_SIZE.width,
+                      height: whileNodeSize?.height ?? DEFAULT_WHILE_NODE_SIZE.height,
+                    },
+                    resizable: true,
+                  }
+                : {}),
             } satisfies FlowNode;
 
             return decorateNode(baseNode);

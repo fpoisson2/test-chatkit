@@ -42,6 +42,58 @@ describe("resolveSelectionAfterLoad", () => {
   });
 });
 
+describe("while node serialization", () => {
+  const baseNode = (overrides: Partial<FlowNode> = {}): FlowNode => {
+    const { data: dataOverrides, ...rest } = overrides;
+    return {
+      id: "node",
+      position: { x: 0, y: 0 },
+      data: {
+        slug: "node",
+        kind: "assistant_message",
+        displayName: "Node",
+        label: "Node",
+        isEnabled: true,
+        agentKey: null,
+        parameters: {},
+        parametersText: "{}",
+        parametersError: null,
+        metadata: {},
+        ...(dataOverrides ?? {}),
+      },
+      draggable: true,
+      ...rest,
+    };
+  };
+
+  test("persist size metadata when exporting", () => {
+    const whileNode = baseNode({
+      id: "while-node",
+      data: {
+        slug: "while-node",
+        kind: "while",
+        displayName: "While",
+        label: "While",
+        isEnabled: true,
+        agentKey: null,
+        parameters: {},
+        parametersText: "{}",
+        parametersError: null,
+        metadata: { foo: "bar" },
+      },
+      style: { width: 480, height: 320 },
+    });
+
+    const payload = buildGraphPayloadFrom([whileNode], []);
+    const nodePayload = payload.nodes[0];
+
+    expect(nodePayload.metadata).toMatchObject({
+      foo: "bar",
+      size: { width: 480, height: 320 },
+    });
+  });
+});
+
 describe("parallel split serialization", () => {
   const baseNode = (overrides: Partial<FlowNode> = {}): FlowNode => {
     const { data: dataOverrides, ...rest } = overrides;

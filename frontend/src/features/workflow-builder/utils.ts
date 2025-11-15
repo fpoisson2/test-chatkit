@@ -7,6 +7,62 @@ import type { FlowEdge, FlowNode, NodeKind } from "./types";
 
 export { stringifyAgentParametersUtil as stringifyAgentParameters };
 
+export const DEFAULT_WHILE_NODE_SIZE = { width: 400, height: 300 } as const;
+
+export const toFiniteDimension = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+export const extractWhileNodeSize = (
+  metadata: Record<string, unknown> | null | undefined,
+): { width: number; height: number } | null => {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  const rawSize = (metadata as Record<string, unknown>).size;
+  if (!rawSize || typeof rawSize !== "object") {
+    return null;
+  }
+
+  const width = toFiniteDimension((rawSize as Record<string, unknown>).width);
+  const height = toFiniteDimension((rawSize as Record<string, unknown>).height);
+
+  if (width == null || height == null) {
+    return null;
+  }
+
+  return { width, height };
+};
+
+export const getWhileNodeSizeFromStyle = (
+  style: CSSProperties | undefined,
+): { width: number; height: number } | null => {
+  if (!style) {
+    return null;
+  }
+
+  const width = toFiniteDimension(style.width);
+  const height = toFiniteDimension(style.height);
+
+  if (width == null || height == null) {
+    return null;
+  }
+
+  return { width, height };
+};
+
 export const NODE_COLORS: Record<NodeKind, string> = {
   start: "#2563eb",
   agent: "#16a34a",
@@ -113,6 +169,12 @@ export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge
       ...node.data.metadata,
       position: { x: node.position.x, y: node.position.y },
       order: index + 1,
+      ...(node.data.kind === "while"
+        ? (() => {
+            const size = getWhileNodeSizeFromStyle(node.style);
+            return size ? { size } : {};
+          })()
+        : {}),
     },
   })),
   edges: flowEdges.map((edge, index) => ({
