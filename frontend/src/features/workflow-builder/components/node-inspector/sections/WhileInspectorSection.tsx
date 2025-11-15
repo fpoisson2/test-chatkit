@@ -1,0 +1,69 @@
+import { useI18n } from "../../../../../i18n";
+import { HelpTooltip } from "../components/HelpTooltip";
+import styles from "../NodeInspector.module.css";
+
+type WhileInspectorSectionProps = {
+  nodeId: string;
+  condition: string;
+  maxIterations: number;
+  iterationVar: string;
+  onConditionChange: (nodeId: string, value: string) => void;
+  onMaxIterationsChange: (nodeId: string, value: number) => void;
+  onIterationVarChange: (nodeId: string, value: string) => void;
+};
+
+export const WhileInspectorSection = ({
+  nodeId,
+  condition,
+  maxIterations,
+  iterationVar,
+  onConditionChange,
+  onMaxIterationsChange,
+  onIterationVarChange,
+}: WhileInspectorSectionProps) => {
+  const { t } = useI18n();
+
+  return (
+    <div className={styles.nodeInspectorPanelInnerAccent}>
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
+          {t("workflowBuilder.while.conditionLabel")}
+          <HelpTooltip label={t("workflowBuilder.while.conditionHelp")} />
+        </span>
+        <input
+          type="text"
+          value={condition}
+          onChange={(event) => onConditionChange(nodeId, event.target.value)}
+          placeholder={t("workflowBuilder.while.conditionPlaceholder")}
+        />
+      </label>
+
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
+          {t("workflowBuilder.while.maxIterationsLabel")}
+          <HelpTooltip label={t("workflowBuilder.while.maxIterationsHelp")} />
+        </span>
+        <input
+          type="number"
+          value={maxIterations}
+          onChange={(event) => onMaxIterationsChange(nodeId, parseInt(event.target.value, 10) || 100)}
+          placeholder={t("workflowBuilder.while.maxIterationsPlaceholder")}
+          min={1}
+        />
+      </label>
+
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
+          {t("workflowBuilder.while.iterationVarLabel")}
+          <HelpTooltip label={t("workflowBuilder.while.iterationVarHelp")} />
+        </span>
+        <input
+          type="text"
+          value={iterationVar}
+          onChange={(event) => onIterationVarChange(nodeId, event.target.value)}
+          placeholder={t("workflowBuilder.while.iterationVarPlaceholder")}
+        />
+      </label>
+    </div>
+  );
+};

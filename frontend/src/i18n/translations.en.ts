@@ -961,6 +961,7 @@ export const en: TranslationDictionary = {
   "workflowBuilder.node.kind.json_vector_store": "JSON vector store",
   "workflowBuilder.node.kind.parallel_split": "Parallel split",
   "workflowBuilder.node.kind.parallel_join": "Parallel join",
+  "workflowBuilder.node.kind.while": "While loop",
   "workflowBuilder.node.kind.widget": "Widget block",
   "workflowBuilder.node.kind.end": "End",
   "workflowBuilder.parallel.joinSlugLabel": "Associated join block",
@@ -976,6 +977,15 @@ export const en: TranslationDictionary = {
     "Create as many branches as outgoing connections from this block.",
   "workflowBuilder.parallel.branchMinimum":
     "At least two branches are required for a parallel split.",
+  "workflowBuilder.while.conditionLabel": "Loop condition",
+  "workflowBuilder.while.conditionHelp": "Expression evaluated on each iteration. Loop continues while this is truthy.",
+  "workflowBuilder.while.conditionPlaceholder": "e.g. state.counter < 10",
+  "workflowBuilder.while.maxIterationsLabel": "Maximum iterations",
+  "workflowBuilder.while.maxIterationsHelp": "Safety limit to prevent infinite loops.",
+  "workflowBuilder.while.maxIterationsPlaceholder": "e.g. 100",
+  "workflowBuilder.while.iterationVarLabel": "Iteration variable (optional)",
+  "workflowBuilder.while.iterationVarHelp": "Variable to store the current iteration count (starts at 0).",
+  "workflowBuilder.while.iterationVarPlaceholder": "e.g. loop_index",
   "admin.mcpServers.page.title": "MCP servers",
   "admin.mcpServers.page.subtitle":
     "Register and secure the MCP servers used by ChatKit.",

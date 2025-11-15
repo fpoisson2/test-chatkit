@@ -1014,6 +1014,7 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.node.kind.json_vector_store": "Stockage JSON",
   "workflowBuilder.node.kind.parallel_split": "Scission parallèle",
   "workflowBuilder.node.kind.parallel_join": "Jointure parallèle",
+  "workflowBuilder.node.kind.while": "Boucle while",
   "workflowBuilder.node.kind.widget": "Bloc widget",
   "workflowBuilder.node.kind.end": "Fin",
   "workflowBuilder.parallel.joinSlugLabel": "Jointure associée",
@@ -1029,6 +1030,15 @@ export const fr: TranslationDictionary = {
     "Créez autant de branches que de connexions sortantes depuis ce bloc.",
   "workflowBuilder.parallel.branchMinimum":
     "Au moins deux branches sont nécessaires pour une scission parallèle.",
+  "workflowBuilder.while.conditionLabel": "Condition de boucle",
+  "workflowBuilder.while.conditionHelp": "Expression évaluée à chaque itération. La boucle continue tant que cette expression est vraie.",
+  "workflowBuilder.while.conditionPlaceholder": "Ex. state.compteur < 10",
+  "workflowBuilder.while.maxIterationsLabel": "Nombre maximum d'itérations",
+  "workflowBuilder.while.maxIterationsHelp": "Limite de sécurité pour éviter les boucles infinies.",
+  "workflowBuilder.while.maxIterationsPlaceholder": "Ex. 100",
+  "workflowBuilder.while.iterationVarLabel": "Variable d'itération (optionnel)",
+  "workflowBuilder.while.iterationVarHelp": "Variable pour stocker le compteur d'itération (commence à 0).",
+  "workflowBuilder.while.iterationVarPlaceholder": "Ex. index_boucle",
   "admin.mcpServers.page.title": "Serveurs MCP",
   "admin.mcpServers.page.subtitle":
     "Déclarez et sécurisez les serveurs MCP utilisés par ChatKit.",

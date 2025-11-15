@@ -20,6 +20,9 @@ import {
   getConditionMode,
   getConditionPath,
   getConditionValue,
+  getWhileCondition,
+  getWhileMaxIterations,
+  getWhileIterationVar,
   getEndAgsConfig,
   getEndMessage,
   getStartAutoRun,
@@ -54,6 +57,7 @@ import { useTransformInspectorState } from "./hooks/useTransformInspectorState";
 import { AgentInspectorSectionV2 as AgentInspectorSection } from "./sections/AgentInspectorSectionV2";
 import { AssistantMessageInspectorSection } from "./sections/AssistantMessageInspectorSection";
 import { ConditionInspectorSection } from "./sections/ConditionInspectorSection";
+import { WhileInspectorSection } from "./sections/WhileInspectorSection";
 import { EndInspectorSection } from "./sections/EndInspectorSection";
 import { JsonVectorStoreInspectorSection } from "./sections/JsonVectorStoreInspectorSection";
 import { VoiceAgentInspectorSection } from "./sections/VoiceAgentInspectorSection";
@@ -165,6 +169,9 @@ const NodeInspector = ({
     handleConditionPathChange: onConditionPathChange,
     handleConditionModeChange: onConditionModeChange,
     handleConditionValueChange: onConditionValueChange,
+    handleWhileConditionChange: onWhileConditionChange,
+    handleWhileMaxIterationsChange: onWhileMaxIterationsChange,
+    handleWhileIterationVarChange: onWhileIterationVarChange,
     handleParallelJoinSlugChange: onParallelJoinSlugChange,
     handleParallelBranchesChange: onParallelBranchesChange,
     handleAgentWeatherToolChange: onAgentWeatherToolChange,
@@ -331,6 +338,10 @@ const NodeInspector = ({
   const conditionMode = kind === "condition" ? getConditionMode(parameters) : "truthy";
   const conditionValue = kind === "condition" ? getConditionValue(parameters) : "";
 
+  const whileCondition = kind === "while" ? getWhileCondition(parameters) : "";
+  const whileMaxIterations = kind === "while" ? getWhileMaxIterations(parameters) : 100;
+  const whileIterationVar = kind === "while" ? getWhileIterationVar(parameters) : "";
+
   const vectorStoreNodeConfig = useMemo(() => getVectorStoreNodeConfig(parameters), [parameters]);
   const vectorStoreNodeSlug = vectorStoreNodeConfig.vector_store_slug.trim();
   const vectorStoreNodeDocIdExpression = vectorStoreNodeConfig.doc_id_expression.trim();
@@ -432,6 +443,18 @@ const NodeInspector = ({
           onConditionPathChange={onConditionPathChange}
           onConditionModeChange={onConditionModeChange}
           onConditionValueChange={onConditionValueChange}
+        />
+      ) : null}
+
+      {kind === "while" ? (
+        <WhileInspectorSection
+          nodeId={node.id}
+          condition={whileCondition}
+          maxIterations={whileMaxIterations}
+          iterationVar={whileIterationVar}
+          onConditionChange={onWhileConditionChange}
+          onMaxIterationsChange={onWhileMaxIterationsChange}
+          onIterationVarChange={onWhileIterationVarChange}
         />
       ) : null}
 

@@ -493,6 +493,30 @@ export const getConditionValue = (parameters: AgentParameters | null | undefined
   return "";
 };
 
+export const getWhileCondition = (parameters: AgentParameters | null | undefined): string => {
+  if (!parameters) {
+    return "";
+  }
+  const condition = (parameters as Record<string, unknown>).condition;
+  return typeof condition === "string" ? condition : "";
+};
+
+export const getWhileMaxIterations = (parameters: AgentParameters | null | undefined): number => {
+  if (!parameters) {
+    return 100;
+  }
+  const maxIterations = (parameters as Record<string, unknown>).max_iterations;
+  return typeof maxIterations === "number" ? maxIterations : 100;
+};
+
+export const getWhileIterationVar = (parameters: AgentParameters | null | undefined): string => {
+  if (!parameters) {
+    return "";
+  }
+  const iterationVar = (parameters as Record<string, unknown>).iteration_var;
+  return typeof iterationVar === "string" ? iterationVar : "";
+};
+
 const generateParallelBranchSlug = (preferred: string | null | undefined, seen: Set<string>): string => {
   const base = typeof preferred === "string" ? preferred.trim() : "";
   if (base && !seen.has(base)) {
@@ -854,6 +878,43 @@ export const setConditionValue = (
     return stripEmpty(next as Record<string, unknown>);
   }
   (next as Record<string, unknown>).value = trimmed;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setWhileCondition = (
+  parameters: AgentParameters,
+  condition: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = condition.trim();
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).condition;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  (next as Record<string, unknown>).condition = trimmed;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setWhileMaxIterations = (
+  parameters: AgentParameters,
+  maxIterations: number,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  (next as Record<string, unknown>).max_iterations = maxIterations;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setWhileIterationVar = (
+  parameters: AgentParameters,
+  iterationVar: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = iterationVar.trim();
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).iteration_var;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  (next as Record<string, unknown>).iteration_var = trimmed;
   return stripEmpty(next as Record<string, unknown>);
 };
 

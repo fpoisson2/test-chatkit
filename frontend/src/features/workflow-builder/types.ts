@@ -24,6 +24,7 @@ export type NodeKind =
   | "json_vector_store"
   | "parallel_split"
   | "parallel_join"
+  | "while"
   | "widget"
   | "end";
 

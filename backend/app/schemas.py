@@ -997,6 +997,7 @@ KNOWN_WORKFLOW_NODE_KINDS = (
     "agent",
     "voice_agent",
     "condition",
+    "while",
     "state",
     "watch",
     "assistant_message",
