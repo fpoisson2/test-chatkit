@@ -8,6 +8,7 @@ export interface NodeHandlers {
   handleAddVoiceAgentNode: () => void;
   handleAddOutboundCallNode: () => void;
   handleAddConditionNode: () => void;
+  handleAddWhileNode: () => void;
   handleAddParallelSplitNode: () => void;
   handleAddParallelJoinNode: () => void;
   handleAddStateNode: () => void;
@@ -58,6 +59,12 @@ export const useBlockLibraryItems = ({
         kind: "condition",
         shortLabel: "C",
         onClick: nodeHandlers.handleAddConditionNode,
+      },
+      {
+        key: "while",
+        kind: "while",
+        shortLabel: "W",
+        onClick: nodeHandlers.handleAddWhileNode,
       },
       {
         key: "parallel-split",
@@ -118,6 +125,7 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddVoiceAgentNode,
     nodeHandlers.handleAddOutboundCallNode,
     nodeHandlers.handleAddConditionNode,
+    nodeHandlers.handleAddWhileNode,
     nodeHandlers.handleAddParallelSplitNode,
     nodeHandlers.handleAddParallelJoinNode,
     nodeHandlers.handleAddStateNode,

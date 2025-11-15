@@ -9,6 +9,9 @@ import {
   setConditionMode,
   setConditionPath,
   setConditionValue,
+  setWhileCondition,
+  setWhileMaxIterations,
+  setWhileIterationVar,
   setParallelSplitBranches,
   setParallelSplitJoinSlug,
   setStateAssignments,
@@ -64,6 +67,47 @@ const useLogicNodeHandlers = ({
           return data;
         }
         const nextParameters = setConditionValue(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  // ========== While Node Handlers ==========
+
+  const handleWhileConditionChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "while") {
+          return data;
+        }
+        const nextParameters = setWhileCondition(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleWhileMaxIterationsChange = useCallback(
+    (nodeId: string, value: number) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "while") {
+          return data;
+        }
+        const nextParameters = setWhileMaxIterations(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleWhileIterationVarChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "while") {
+          return data;
+        }
+        const nextParameters = setWhileIterationVar(data.parameters, value);
         return updateNodeParameters(data, nextParameters);
       });
     },
@@ -137,6 +181,9 @@ const useLogicNodeHandlers = ({
     handleConditionPathChange,
     handleConditionModeChange,
     handleConditionValueChange,
+    handleWhileConditionChange,
+    handleWhileMaxIterationsChange,
+    handleWhileIterationVarChange,
     handleParallelJoinSlugChange,
     handleParallelBranchesChange,
     handleStateAssignmentsChange,

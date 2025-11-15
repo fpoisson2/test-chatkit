@@ -704,6 +704,7 @@ class WorkflowGraphValidator:
                 "voice_agent",
                 "outbound_call",
                 "condition",
+                "while",
                 "state",
                 "transform",
                 "watch",

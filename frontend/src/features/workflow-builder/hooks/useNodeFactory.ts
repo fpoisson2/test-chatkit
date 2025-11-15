@@ -129,6 +129,41 @@ const useNodeFactory = ({
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
 
+  const handleAddWhileNode = useCallback(() => {
+    const slug = `while-${Date.now()}`;
+    const parameters: AgentParameters = {
+      condition: "",
+      max_iterations: 100,
+      iteration_var: "",
+    };
+    const newNode: FlowNode = {
+      id: slug,
+      type: "while",
+      position: { x: 420, y: 280 },
+      data: {
+        slug,
+        kind: "while",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      style: {
+        width: 400,
+        height: 300,
+      },
+      draggable: true,
+      zIndex: -1,
+      selectable: true,
+      connectable: true,
+    };
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, humanizeSlug]);
+
   const handleAddParallelSplitNode = useCallback(() => {
     const slug = `parallel-split-${Date.now()}`;
     const joinSlug = `parallel-join-${Date.now()}`;
@@ -394,6 +429,7 @@ const useNodeFactory = ({
     handleAddVoiceAgentNode,
     handleAddOutboundCallNode,
     handleAddConditionNode,
+    handleAddWhileNode,
     handleAddParallelSplitNode,
     handleAddParallelJoinNode,
     handleAddStateNode,
