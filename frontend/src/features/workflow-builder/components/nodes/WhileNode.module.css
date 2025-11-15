@@ -6,7 +6,7 @@
   border-radius: 12px;
   border: 2px dashed rgba(168, 85, 247, 0.6);
   background: rgba(168, 85, 247, 0.08);
-  overflow: hidden;
+  overflow: visible;
   transition: all 0.2s ease;
   position: relative;
 }
