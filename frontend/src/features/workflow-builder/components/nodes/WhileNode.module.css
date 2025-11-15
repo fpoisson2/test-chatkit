@@ -8,6 +8,7 @@
   background: rgba(168, 85, 247, 0.08);
   overflow: hidden;
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .whileContainer:hover {
@@ -26,6 +27,7 @@
   align-items: center;
   gap: 8px;
   user-select: none;
+  z-index: 1;
 }
 
 .whileLabel {
@@ -45,4 +47,13 @@
 .whileContainer[data-selected="true"] {
   border-color: #a855f7;
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.3);
+}
+
+/* Handles */
+.handle {
+  width: 12px;
+  height: 12px;
+  background: #a855f7;
+  border: 2px solid white;
+  border-radius: 50%;
 }

@@ -158,6 +158,8 @@ const useNodeFactory = ({
       },
       draggable: true,
       zIndex: -1,
+      selectable: true,
+      connectable: true,
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
