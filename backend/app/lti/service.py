@@ -354,6 +354,7 @@ class LTIService:
             "id": user.id,
             "email": user.email,
             "is_admin": user.is_admin,
+            "is_lti": user.is_lti,
             "created_at": user.created_at.isoformat(),
             "updated_at": user.updated_at.isoformat(),
         }
