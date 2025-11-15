@@ -101,7 +101,6 @@ async def test_process_workflow_end_state_posts_grade() -> None:
         ags_variable_id="score-1",
         ags_score_value=18.0,
         ags_score_maximum=20.0,
-        ags_comment="Excellent travail",
     )
 
     context = SimpleNamespace(user_id="user-42")
@@ -117,7 +116,7 @@ async def test_process_workflow_end_state_posts_grade() -> None:
             "context": context,
             "variable_id": "score-1",
             "max_score": 20.0,
-            "comment": "Excellent travail",
+            "comment": None,
         }
     ]
     assert client.publish_calls == [
@@ -142,7 +141,6 @@ async def test_process_workflow_end_state_without_line_item_uses_variable_id() -
         ags_variable_id="score-2",
         ags_score_value=12.5,
         ags_score_maximum=None,
-        ags_comment=None,
     )
 
     context = SimpleNamespace(user_id="user-24")
@@ -175,7 +173,6 @@ async def test_process_workflow_end_state_missing_data_skips_calls() -> None:
         ags_variable_id=None,
         ags_score_value=None,
         ags_score_maximum=None,
-        ags_comment=None,
     )
 
     await process_workflow_end_state_ags(

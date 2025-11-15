@@ -76,14 +76,13 @@ async def process_workflow_end_state_ags(
         return
 
     max_score = end_state.ags_score_maximum
-    comment = end_state.ags_comment
 
     try:
         line_item_id = await client.ensure_line_item(
             context=context,
             variable_id=variable_id,
             max_score=max_score,
-            comment=comment,
+            comment=None,
         )
     except Exception as exc:  # pragma: no cover - robustesse réseau
         logger.warning(

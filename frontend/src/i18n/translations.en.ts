@@ -943,10 +943,6 @@ export const en: TranslationDictionary = {
   "workflowBuilder.endInspector.agsMaximumHelp":
     "Reference a variable or enter the constant representing the maximum score.",
   "workflowBuilder.endInspector.agsMaximumPlaceholder": "e.g. 20 or state.grade.maximum",
-  "workflowBuilder.endInspector.agsCommentLabel": "Comment expression",
-  "workflowBuilder.endInspector.agsCommentHelp":
-    "Reference a variable or type the comment that should accompany the grade.",
-  "workflowBuilder.endInspector.agsCommentPlaceholder": "e.g. state.grade.comment",
   "workflowBuilder.node.kind.start": "Start",
   "workflowBuilder.node.kind.agent": "Agent",
   "workflowBuilder.node.kind.voice_agent": "Voice agent",

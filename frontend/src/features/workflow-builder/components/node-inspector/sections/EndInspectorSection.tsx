@@ -8,12 +8,10 @@ type EndInspectorSectionProps = {
   agsVariableId: string;
   agsScoreExpression: string;
   agsMaximumExpression: string;
-  agsCommentExpression: string;
   onEndMessageChange: (nodeId: string, value: string) => void;
   onAgsVariableIdChange: (nodeId: string, value: string) => void;
   onAgsScoreExpressionChange: (nodeId: string, value: string) => void;
   onAgsMaximumExpressionChange: (nodeId: string, value: string) => void;
-  onAgsCommentExpressionChange: (nodeId: string, value: string) => void;
 };
 
 export const EndInspectorSection = ({
@@ -22,12 +20,10 @@ export const EndInspectorSection = ({
   agsVariableId,
   agsScoreExpression,
   agsMaximumExpression,
-  agsCommentExpression,
   onEndMessageChange,
   onAgsVariableIdChange,
   onAgsScoreExpressionChange,
   onAgsMaximumExpressionChange,
-  onAgsCommentExpressionChange,
 }: EndInspectorSectionProps) => {
   const { t } = useI18n();
 
@@ -91,19 +87,6 @@ export const EndInspectorSection = ({
             value={agsMaximumExpression}
             onChange={(event) => onAgsMaximumExpressionChange(nodeId, event.target.value)}
             placeholder={t("workflowBuilder.endInspector.agsMaximumPlaceholder")}
-          />
-        </label>
-
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
-            {t("workflowBuilder.endInspector.agsCommentLabel")}
-            <HelpTooltip label={t("workflowBuilder.endInspector.agsCommentHelp")} />
-          </span>
-          <input
-            type="text"
-            value={agsCommentExpression}
-            onChange={(event) => onAgsCommentExpressionChange(nodeId, event.target.value)}
-            placeholder={t("workflowBuilder.endInspector.agsCommentPlaceholder")}
           />
         </label>
       </section>

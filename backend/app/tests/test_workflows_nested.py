@@ -681,7 +681,6 @@ async def test_end_block_with_ags_configuration() -> None:
     assert summary.end_state.ags_variable_id == "quiz-final"
     assert summary.end_state.ags_score_value == pytest.approx(17.5)
     assert summary.end_state.ags_score_maximum == pytest.approx(20.0)
-    assert summary.end_state.ags_comment == "Très bon travail"
 
     assert summary.final_output is not None
     ags_payload = summary.final_output.get("ags")
@@ -689,7 +688,6 @@ async def test_end_block_with_ags_configuration() -> None:
         "variable_id": "quiz-final",
         "score": pytest.approx(17.5),
         "maximum": pytest.approx(20.0),
-        "comment": "Très bon travail",
     }
 
     assert summary.last_context is not None

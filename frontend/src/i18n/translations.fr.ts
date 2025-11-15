@@ -996,10 +996,6 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.endInspector.agsMaximumHelp":
     "Référencez une variable ou saisissez la valeur maximale de la note.",
   "workflowBuilder.endInspector.agsMaximumPlaceholder": "Ex. 20 ou state.grade.maximum",
-  "workflowBuilder.endInspector.agsCommentLabel": "Expression du commentaire",
-  "workflowBuilder.endInspector.agsCommentHelp":
-    "Référencez une variable ou saisissez le commentaire transmis avec la note.",
-  "workflowBuilder.endInspector.agsCommentPlaceholder": "Ex. state.grade.comment",
   "workflowBuilder.node.kind.start": "Début",
   "workflowBuilder.node.kind.agent": "Agent",
   "workflowBuilder.node.kind.voice_agent": "Agent vocal",
