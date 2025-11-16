@@ -1,10 +1,11 @@
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { WidgetPreview } from "../../../../../components/WidgetPreview";
 import {
   applyWidgetInputValues,
   buildWidgetInputSample,
   collectWidgetBindings,
+  type WidgetBinding,
 } from "../../../../../utils/widgetPreview";
 import type {
   FlowNode,
@@ -233,6 +234,11 @@ type WidgetNodeContentEditorProps = {
   onChange: (assignments: WidgetVariableAssignment[]) => void;
 };
 
+type MediaUploadPreview = {
+  fileName: string;
+  previewUrl: string;
+};
+
 const WidgetNodeContentEditor = ({
   slug,
   definition,
@@ -248,6 +254,8 @@ const WidgetNodeContentEditor = ({
     () => Object.entries(bindings).sort(([a], [b]) => a.localeCompare(b)),
     [bindings],
   );
+
+  const [mediaUploads, setMediaUploads] = useState<Record<string, MediaUploadPreview>>({});
 
   const assignmentMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -284,9 +292,26 @@ const WidgetNodeContentEditor = ({
     return applyWidgetInputValues(definition, previewValues, bindings);
   }, [bindings, definition, previewValues]);
 
-  const handleBindingChange = (identifier: string, value: string) => {
+  const handleBindingChange = (
+    identifier: string,
+    value: string,
+    options?: { mediaPreview?: MediaUploadPreview | null },
+  ) => {
     const existingIndex = assignments.findIndex((assignment) => assignment.identifier === identifier);
     const normalizedValue = value.trim();
+
+    setMediaUploads((previous) => {
+      const next = { ...previous };
+      if (options?.mediaPreview) {
+        next[identifier] = options.mediaPreview;
+      } else if (options && options.mediaPreview === null) {
+        delete next[identifier];
+      } else if (!normalizedValue) {
+        delete next[identifier];
+      }
+      return next;
+    });
+
     if (!normalizedValue) {
       if (existingIndex === -1) {
         return;
@@ -303,6 +328,22 @@ const WidgetNodeContentEditor = ({
       index === existingIndex ? { ...assignment, expression: normalizedValue } : assignment,
     );
     onChange(next);
+  };
+
+  const handleMediaFileChange = async (identifier: string, fileList: FileList | null) => {
+    const file = fileList?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const previewUrl = await readFileAsDataUrl(file);
+      const serializedValue = JSON.stringify(previewUrl);
+      handleBindingChange(identifier, serializedValue, {
+        mediaPreview: { fileName: file.name, previewUrl },
+      });
+    } catch (uploadError) {
+      console.error(uploadError);
+    }
   };
 
   if (!trimmedSlug) {
@@ -332,15 +373,67 @@ const WidgetNodeContentEditor = ({
                 ? `${identifier} (${binding.componentType})`
                 : identifier;
               const placeholder = formatSampleValue(binding.sample);
+              const currentExpression = assignmentMap.get(identifier) ?? "";
+              const mediaPreview = resolveMediaPreview(
+                currentExpression,
+                mediaUploads[identifier],
+              );
+              const isMedia = isMediaBinding(binding);
               return (
                 <label key={identifier} className={styles.nodeInspectorField}>
                   <span className={styles.nodeInspectorLabel}>{label}</span>
-                  <input
-                    type="text"
-                    value={assignmentMap.get(identifier) ?? ""}
-                    onChange={(event) => handleBindingChange(identifier, event.target.value)}
-                    placeholder={placeholder ? `Ex. ${placeholder}` : undefined}
-                  />
+                  {isMedia ? (
+                    <div className={styles.nodeInspectorInputGroup}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          void handleMediaFileChange(identifier, event.target.files);
+                          event.target.value = "";
+                        }}
+                      />
+                      {mediaPreview.previewUrl || mediaPreview.fileName ? (
+                        <div className={styles.nodeInspectorMediaPreview}>
+                          {mediaPreview.previewUrl && isLikelyImageSource(mediaPreview.previewUrl) ? (
+                            <img
+                              src={mediaPreview.previewUrl}
+                              alt={`Prévisualisation pour ${identifier}`}
+                              className={styles.nodeInspectorMediaThumbnail}
+                            />
+                          ) : null}
+                          <div className={styles.nodeInspectorMediaDetails}>
+                            <strong>
+                              {mediaPreview.fileName ?? "Image sélectionnée"}
+                            </strong>
+                            {mediaPreview.previewUrl ? (
+                              <p className={styles.nodeInspectorMutedText}>
+                                Aperçu mis à jour pour la prévisualisation du widget
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                      <input
+                        type="text"
+                        value={currentExpression}
+                        onChange={(event) =>
+                          handleBindingChange(identifier, event.target.value, { mediaPreview: null })
+                        }
+                        placeholder={placeholder ? `Ex. ${placeholder}` : undefined}
+                      />
+                      <p className={styles.nodeInspectorHintTextTight}>
+                        Importez une image ou saisissez une URL/expression existante. En l'absence de
+                        fichier, le texte est utilisé tel quel.
+                      </p>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={currentExpression}
+                      onChange={(event) => handleBindingChange(identifier, event.target.value)}
+                      placeholder={placeholder ? `Ex. ${placeholder}` : undefined}
+                    />
+                  )}
                 </label>
               );
             })
@@ -437,6 +530,59 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
     </section>
   );
 };
+
+const mediaComponentKeywords = ["image", "img", "avatar", "icon", "picture", "photo", "logo", "thumbnail"];
+const mediaValueKeywords = [
+  "src",
+  "icon",
+  "iconstart",
+  "iconend",
+  "image",
+  "avatar",
+  "url",
+  "picture",
+  "photo",
+  "logo",
+  "thumbnail",
+];
+
+const isMediaBinding = (binding: WidgetBinding): boolean => {
+  const componentType = binding.componentType?.toLowerCase() ?? "";
+  const valueKey = binding.valueKey?.toLowerCase() ?? "";
+  return (
+    mediaComponentKeywords.some((keyword) => componentType.includes(keyword)) ||
+    mediaValueKeywords.some((keyword) => valueKey.includes(keyword))
+  );
+};
+
+const isLikelyImageSource = (value: string): boolean => {
+  const lower = value.toLowerCase();
+  return (
+    lower.startsWith("data:image/") ||
+    lower.startsWith("http://") ||
+    lower.startsWith("https://") ||
+    /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(lower)
+  );
+};
+
+const resolveMediaPreview = (
+  expression: string,
+  uploadPreview?: MediaUploadPreview,
+): { previewUrl: string | null; fileName: string | null } => {
+  const parsed = parsePreviewValue(expression);
+  const normalized = Array.isArray(parsed) ? parsed[0] : parsed;
+  const previewUrl = uploadPreview?.previewUrl ?? (typeof normalized === "string" ? normalized : null);
+  const fileName = uploadPreview?.fileName ?? null;
+  return { previewUrl, fileName };
+};
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 
 const parsePreviewValue = (expression: string): string | string[] | null => {
   const trimmed = expression.trim();
