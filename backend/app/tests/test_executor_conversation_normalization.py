@@ -205,6 +205,29 @@ def test_deduplicate_conversation_history_items_returns_original_when_unique() -
     assert deduplicated is items
 
 
+def test_filter_conversation_history_for_previous_response_keeps_only_user_and_system() -> None:
+    items = [
+        {"id": "msg_a", "role": "assistant", "content": "hello"},
+        {"id": "msg_b", "role": "user", "content": "hi"},
+        {
+            "id": "ig_123",
+            "type": "image_generation_call",
+            "reasoning": "rs_789",
+            "role": "assistant",
+        },
+        {"id": "rs_789", "type": "reasoning", "role": "assistant"},
+        {"id": "sys_1", "role": "system", "content": "instructions"},
+    ]
+
+    filtered = executor_module._filter_conversation_history_for_previous_response(items)
+
+    assert filtered is not items
+    assert filtered == [
+        {"id": "msg_b", "role": "user", "content": "hi"},
+        {"id": "sys_1", "role": "system", "content": "instructions"},
+    ]
+
+
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
     assert (
         executor_module._sanitize_previous_response_id("  resp-123 ")
