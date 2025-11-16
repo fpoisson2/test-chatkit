@@ -24,12 +24,17 @@ export const WhileInspectorSection = ({
 }: WhileInspectorSectionProps) => {
   const { t } = useI18n();
   const [conditionDraft, setConditionDraft] = useState(condition);
+  const [maxIterationsDraft, setMaxIterationsDraft] = useState(String(maxIterations));
   const [iterationVarDraft, setIterationVarDraft] = useState(iterationVar);
 
   // Sync drafts when props change (e.g., when switching nodes)
   useEffect(() => {
     setConditionDraft(condition);
   }, [nodeId, condition]);
+
+  useEffect(() => {
+    setMaxIterationsDraft(String(maxIterations));
+  }, [nodeId, maxIterations]);
 
   useEffect(() => {
     setIterationVarDraft(iterationVar);
@@ -60,8 +65,22 @@ export const WhileInspectorSection = ({
         </span>
         <input
           type="number"
-          value={maxIterations}
-          onChange={(event) => onMaxIterationsChange(nodeId, parseInt(event.target.value, 10) || 100)}
+          value={maxIterationsDraft}
+          onChange={(event) => {
+            const value = event.target.value;
+            setMaxIterationsDraft(value);
+            const numValue = parseInt(value, 10);
+            if (!isNaN(numValue) && numValue >= 1) {
+              onMaxIterationsChange(nodeId, numValue);
+            }
+          }}
+          onBlur={() => {
+            const numValue = parseInt(maxIterationsDraft, 10);
+            if (isNaN(numValue) || numValue < 1) {
+              setMaxIterationsDraft("100");
+              onMaxIterationsChange(nodeId, 100);
+            }
+          }}
           placeholder={t("workflowBuilder.while.maxIterationsPlaceholder")}
           min={1}
         />

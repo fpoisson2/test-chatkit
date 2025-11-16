@@ -2063,11 +2063,8 @@ async def run_workflow(
 
             iteration_count = state["state"].get(loop_counter_key, 0)
 
-            # Increment counter before checking to ensure correct iteration count
-            iteration_count = iteration_count + 1
-
             # Check max iterations safety limit
-            if iteration_count > max_iterations:
+            if iteration_count >= max_iterations:
                 # Max iterations reached, exit loop
                 state["state"].pop(loop_counter_key, None)  # Clean up counter
                 state["state"].pop(loop_entry_key, None)  # Clean up entry point
@@ -2098,9 +2095,9 @@ async def run_workflow(
                 current_slug = transition.target_step.slug
                 continue
 
-            # Update iteration variable if specified (now 1-based)
+            # Update iteration variable if specified (1-based: 1, 2, 3, ..., max_iterations)
             if iteration_var:
-                state["state"][iteration_var] = iteration_count
+                state["state"][iteration_var] = iteration_count + 1
 
             # Evaluate the while condition
             try:
@@ -2141,7 +2138,7 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
             else:
                 # Condition is true, continue loop
-                state["state"][loop_counter_key] = iteration_count
+                state["state"][loop_counter_key] = iteration_count + 1
 
                 # Find the entry point to the while loop
                 # This is the first block inside the while that we should execute
