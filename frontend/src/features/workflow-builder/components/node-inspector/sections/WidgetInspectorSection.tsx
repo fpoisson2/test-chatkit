@@ -16,6 +16,7 @@ import { isTestEnvironment } from "../constants";
 import { useWidgetInspectorState } from "../hooks/useWidgetInspectorState";
 import { HelpTooltip } from "../components/HelpTooltip";
 import styles from "../NodeInspector.module.css";
+import { useI18n } from "../../../../../i18n";
 
 type WidgetInspectorSectionProps = {
   nodeId: string;
@@ -248,6 +249,7 @@ const WidgetNodeContentEditor = ({
   onChange,
 }: WidgetNodeContentEditorProps) => {
   const trimmedSlug = slug.trim();
+  const { t } = useI18n();
 
   const bindings = useMemo(() => (definition ? collectWidgetBindings(definition) : {}), [definition]);
   const bindingEntries = useMemo(
@@ -397,22 +399,33 @@ const WidgetNodeContentEditor = ({
                           {mediaPreview.previewUrl && isLikelyImageSource(mediaPreview.previewUrl) ? (
                             <img
                               src={mediaPreview.previewUrl}
-                              alt={`Prévisualisation pour ${identifier}`}
+                              alt={t("workflowBuilder.widgetInspector.media.previewAlt", {
+                                identifier,
+                              })}
                               className={styles.nodeInspectorMediaThumbnail}
                             />
                           ) : null}
                           <div className={styles.nodeInspectorMediaDetails}>
                             <strong>
-                              {mediaPreview.fileName ?? "Image sélectionnée"}
+                              {mediaPreview.fileName ??
+                                t("workflowBuilder.widgetInspector.media.selectedImage")}
                             </strong>
                             {mediaPreview.previewUrl ? (
                               <p className={styles.nodeInspectorMutedText}>
-                                Aperçu mis à jour pour la prévisualisation du widget
+                                {t("workflowBuilder.widgetInspector.media.previewUpdated")}
                               </p>
                             ) : null}
                           </div>
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className={styles.nodeInspectorMediaPreview}>
+                          <div className={styles.nodeInspectorMediaDetails}>
+                            <strong>
+                              {t("workflowBuilder.widgetInspector.media.noFile")}
+                            </strong>
+                          </div>
+                        </div>
+                      )}
                       <input
                         type="text"
                         value={currentExpression}
@@ -422,8 +435,7 @@ const WidgetNodeContentEditor = ({
                         placeholder={placeholder ? `Ex. ${placeholder}` : undefined}
                       />
                       <p className={styles.nodeInspectorHintTextTight}>
-                        Importez une image ou saisissez une URL/expression existante. En l'absence de
-                        fichier, le texte est utilisé tel quel.
+                        {t("workflowBuilder.widgetInspector.media.hint")}
                       </p>
                     </div>
                   ) : (
@@ -545,14 +557,18 @@ const mediaValueKeywords = [
   "logo",
   "thumbnail",
 ];
+const textValueKeywords = ["alt", "title", "label", "caption", "description", "text"];
 
 const isMediaBinding = (binding: WidgetBinding): boolean => {
   const componentType = binding.componentType?.toLowerCase() ?? "";
   const valueKey = binding.valueKey?.toLowerCase() ?? "";
-  return (
-    mediaComponentKeywords.some((keyword) => componentType.includes(keyword)) ||
-    mediaValueKeywords.some((keyword) => valueKey.includes(keyword))
-  );
+  if (textValueKeywords.some((keyword) => valueKey.includes(keyword))) {
+    return false;
+  }
+  if (mediaValueKeywords.some((keyword) => valueKey.includes(keyword))) {
+    return true;
+  }
+  return mediaComponentKeywords.some((keyword) => componentType.includes(keyword));
 };
 
 const isLikelyImageSource = (value: string): boolean => {

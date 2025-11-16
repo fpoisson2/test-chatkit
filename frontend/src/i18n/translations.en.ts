@@ -1182,5 +1182,11 @@ export const en: TranslationDictionary = {
     "Session expired, please sign in again.",
   "vectorStore.ingestion.success.document":
     "Document \"{{docId}}\" ingested ({{chunkCount}} segment{{pluralSuffix}}).",
+  "workflowBuilder.widgetInspector.media.previewAlt": "Preview for {{identifier}}",
+  "workflowBuilder.widgetInspector.media.selectedImage": "Selected image",
+  "workflowBuilder.widgetInspector.media.previewUpdated": "Preview updated for the widget rendering.",
+  "workflowBuilder.widgetInspector.media.noFile": "No file selected",
+  "workflowBuilder.widgetInspector.media.hint":
+    "Upload an image or enter an existing URL/expression. If no file is provided, the text is used as-is.",
 };
   
