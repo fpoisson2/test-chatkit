@@ -293,6 +293,48 @@ def _deduplicate_conversation_history_items(
                         normalized_item = dict(item)
                     normalized_item["reasoning"] = deduped_reasoning
 
+            content_blocks = normalized_item.get("content")
+            if isinstance(content_blocks, Sequence) and not isinstance(
+                content_blocks, (str, bytes, bytearray)
+            ):
+                seen_content_ids: set[str] = set()
+                deduped_content: list[Any] = []
+
+                for block in content_blocks:
+                    block_id_raw = _extract_id(block)
+
+                    normalized_block_id: str | None
+                    if isinstance(block_id_raw, str):
+                        normalized_block_id = block_id_raw.strip() or None
+                    else:
+                        normalized_block_id = None
+
+                    if normalized_block_id is not None:
+                        if normalized_block_id in seen_ids or normalized_block_id in (
+                            seen_content_ids
+                        ):
+                            item_changed = True
+                            changed = True
+                            continue
+                        seen_ids.add(normalized_block_id)
+                        seen_content_ids.add(normalized_block_id)
+
+                    if (
+                        isinstance(block, Mapping)
+                        and normalized_block_id is not None
+                        and normalized_block_id != block_id_raw
+                    ):
+                        block = dict(block)
+                        block["id"] = normalized_block_id
+                        item_changed = True
+
+                    deduped_content.append(block)
+
+                if len(deduped_content) != len(content_blocks) or item_changed:
+                    if normalized_item is item:
+                        normalized_item = dict(item)
+                    normalized_item["content"] = deduped_content
+
         if item_changed:
             deduplicated.append(normalized_item)
             changed = True

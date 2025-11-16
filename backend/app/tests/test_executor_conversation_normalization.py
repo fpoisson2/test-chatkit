@@ -291,6 +291,29 @@ def test_deduplicate_conversation_history_items_handles_reasoning_objects() -> N
     ]
 
 
+def test_deduplicate_conversation_history_items_removes_duplicate_content_ids() -> None:
+    first = {"id": "cont_a", "type": "output_text", "text": "Hello"}
+    duplicate = {"id": " cont_a ", "type": "output_text", "text": "Hello again"}
+
+    items = [
+        {
+            "role": "assistant",
+            "content": [first, duplicate, {"id": "cont_b", "type": "output_text"}],
+        },
+        {"id": "cont_b", "role": "user"},
+    ]
+
+    deduplicated = executor_module._deduplicate_conversation_history_items(items)
+
+    assert deduplicated == [
+        {
+            "role": "assistant",
+            "content": [first, {"id": "cont_b", "type": "output_text"}],
+        },
+        {"id": "cont_b", "role": "user"},
+    ]
+
+
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
     assert (
         executor_module._sanitize_previous_response_id("  resp-123 ")
