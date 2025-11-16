@@ -145,7 +145,7 @@ def test_normalize_strips_invalid_ids_for_legacy_providers() -> None:
     assert normalized[2]["id"] == "msg_real_id"
 
 
-def test_normalize_strips_invalid_ids_for_other_providers() -> None:
+def test_normalize_retains_ids_for_responses_providers() -> None:
     items = [
         {"role": "assistant", "content": "Bonjour", "id": "__fake_id__"},
         {
@@ -160,8 +160,8 @@ def test_normalize_strips_invalid_ids_for_other_providers() -> None:
         "openai",
     )
 
-    assert normalized is not items
-    assert "id" not in normalized[0]
+    assert normalized is items
+    assert normalized[0]["id"] == "__fake_id__"
     assert normalized[1]["id"] == "msg_real_id"
     assert normalized[1]["content"] == [{"type": "output_text", "text": "Salut"}]
 
@@ -203,6 +203,29 @@ def test_deduplicate_conversation_history_items_returns_original_when_unique() -
     deduplicated = executor_module._deduplicate_conversation_history_items(items)
 
     assert deduplicated is items
+
+
+def test_filter_conversation_history_for_previous_response_keeps_only_user_and_system() -> None:
+    items = [
+        {"id": "msg_a", "role": "assistant", "content": "hello"},
+        {"id": "msg_b", "role": "user", "content": "hi"},
+        {
+            "id": "ig_123",
+            "type": "image_generation_call",
+            "reasoning": "rs_789",
+            "role": "assistant",
+        },
+        {"id": "rs_789", "type": "reasoning", "role": "assistant"},
+        {"id": "sys_1", "role": "system", "content": "instructions"},
+    ]
+
+    filtered = executor_module._filter_conversation_history_for_previous_response(items)
+
+    assert filtered is not items
+    assert filtered == [
+        {"id": "msg_b", "role": "user", "content": "hi"},
+        {"id": "sys_1", "role": "system", "content": "instructions"},
+    ]
 
 
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:

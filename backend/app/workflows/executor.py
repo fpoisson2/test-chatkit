@@ -158,14 +158,14 @@ def _normalize_conversation_history_for_provider(
         copied_item = copy.deepcopy(item)
         item_changed = False
 
-        response_id = copied_item.get("id")
-        if response_id is not None and (
-            not isinstance(response_id, str) or not response_id.startswith("msg")
-        ):
-            copied_item.pop("id", None)
-            item_changed = True
-
         if requires_normalization:
+            response_id = copied_item.get("id")
+            if response_id is not None and (
+                not isinstance(response_id, str) or not response_id.startswith("msg")
+            ):
+                copied_item.pop("id", None)
+                item_changed = True
+
             item_type = copied_item.get("type")
 
             # Items already using the full Responses schema (with a string type)
@@ -234,6 +234,40 @@ def _deduplicate_conversation_history_items(
         deduplicated.append(item)
 
     return items if not changed else deduplicated
+
+
+def _filter_conversation_history_for_previous_response(
+    items: Sequence[TResponseInputItem],
+) -> Sequence[TResponseInputItem]:
+    """Keep only user/system items when a previous response is referenced.
+
+    The Responses API automatically restores the prior context from
+    ``previous_response_id``. Sending assistant outputs or tool calls again can
+    lead to mismatched references (for instance image generation calls requiring
+    their associated reasoning block). This helper strips everything except
+    user/system authored items so only fresh input is forwarded.
+    """
+
+    if not items:
+        return items
+
+    filtered: list[TResponseInputItem] = []
+    changed = False
+
+    for item in items:
+        if isinstance(item, Mapping):
+            role_candidate = item.get("role")
+        else:
+            role_candidate = getattr(item, "role", None)
+
+        role = role_candidate if isinstance(role_candidate, str) else None
+
+        if role in {"user", "system"}:
+            filtered.append(item)
+        else:
+            changed = True
+
+    return items if not changed else filtered
 
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer
@@ -1539,24 +1573,12 @@ async def run_workflow(
         # from the previous response. We should only send new user messages,
         # not assistant messages or reasoning items from history (which would conflict).
         if sanitized_previous_response_id:
-            # Filter out assistant messages and reasoning items when using
-            # previous_response_id
-            filtered_input = [
-                item for item in conversation_history_input
-                if not (
-                    # Filter dict-based items
-                    (isinstance(item, dict) and (
-                        item.get("role") == "assistant" or
-                        item.get("type") == "reasoning"
-                    ))
-                    # Filter object-based items
-                    or getattr(item, "role", None) == "assistant"
-                    or getattr(item, "type", None) == "reasoning"
-                )
-            ]
+            filtered_input = _filter_conversation_history_for_previous_response(
+                conversation_history_input
+            )
             logger.debug(
                 "Utilisation de previous_response_id=%s, filtrage de %d items de "
-                "l'historique (assistant/reasoning)",
+                "l'historique (assistant/tool outputs)",
                 sanitized_previous_response_id,
                 len(conversation_history_input) - len(filtered_input),
             )
