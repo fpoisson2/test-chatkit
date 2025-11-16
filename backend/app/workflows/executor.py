@@ -499,6 +499,30 @@ async def run_workflow(
             [],
         )
 
+    current_workflow_id = getattr(definition, "workflow_id", None)
+
+    def _belongs_to_current_workflow(step: WorkflowStep) -> bool:
+        if current_workflow_id is None:
+            return True
+
+        step_workflow_id = getattr(step, "workflow_id", None)
+        if (
+            isinstance(step_workflow_id, int)
+            and step_workflow_id != current_workflow_id
+        ):
+            return False
+
+        step_definition_id = getattr(step, "definition_id", None)
+        definition_id = getattr(definition, "id", None)
+        if (
+            isinstance(step_definition_id, int)
+            and isinstance(definition_id, int)
+            and step_definition_id != definition_id
+        ):
+            return False
+
+        return True
+
     if pending_wait_state:
         waiting_slug = pending_wait_state.get("slug")
         waiting_input_id = pending_wait_state.get("input_item_id")
@@ -579,6 +603,14 @@ async def run_workflow(
         Detect which nodes are visually inside a while block based on their positions.
         Returns a set of node slugs that are inside the while block.
         """
+        if not _belongs_to_current_workflow(while_node):
+            logger.debug(
+                "Bloc while %s ignoré car il appartient à un autre workflow (%s)",
+                while_node.slug,
+                getattr(while_node, "workflow_id", None),
+            )
+            return set()
+
         while_metadata = while_node.ui_metadata or {}
         while_pos = while_metadata.get("position", {})
 
@@ -603,6 +635,9 @@ async def run_workflow(
         inside_nodes = set()
 
         for node in nodes_by_slug.values():
+            if not _belongs_to_current_workflow(node):
+                continue
+
             if node.slug == while_node.slug or node.kind == "while":
                 continue
 
@@ -648,7 +683,9 @@ async def run_workflow(
         any while.
         """
         for while_node in nodes_by_slug.values():
-            if while_node.kind != "while":
+            if while_node.kind != "while" or not _belongs_to_current_workflow(
+                while_node
+            ):
                 continue
 
             inside_nodes = _get_nodes_inside_while(while_node)
