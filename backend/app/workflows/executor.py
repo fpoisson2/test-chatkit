@@ -158,14 +158,14 @@ def _normalize_conversation_history_for_provider(
         copied_item = copy.deepcopy(item)
         item_changed = False
 
-        response_id = copied_item.get("id")
-        if response_id is not None and (
-            not isinstance(response_id, str) or not response_id.startswith("msg")
-        ):
-            copied_item.pop("id", None)
-            item_changed = True
-
         if requires_normalization:
+            response_id = copied_item.get("id")
+            if response_id is not None and (
+                not isinstance(response_id, str) or not response_id.startswith("msg")
+            ):
+                copied_item.pop("id", None)
+                item_changed = True
+
             item_type = copied_item.get("type")
 
             # Items already using the full Responses schema (with a string type)

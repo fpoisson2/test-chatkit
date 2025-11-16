@@ -145,7 +145,7 @@ def test_normalize_strips_invalid_ids_for_legacy_providers() -> None:
     assert normalized[2]["id"] == "msg_real_id"
 
 
-def test_normalize_strips_invalid_ids_for_other_providers() -> None:
+def test_normalize_retains_ids_for_responses_providers() -> None:
     items = [
         {"role": "assistant", "content": "Bonjour", "id": "__fake_id__"},
         {
@@ -160,8 +160,8 @@ def test_normalize_strips_invalid_ids_for_other_providers() -> None:
         "openai",
     )
 
-    assert normalized is not items
-    assert "id" not in normalized[0]
+    assert normalized is items
+    assert normalized[0]["id"] == "__fake_id__"
     assert normalized[1]["id"] == "msg_real_id"
     assert normalized[1]["content"] == [{"type": "output_text", "text": "Salut"}]
 
