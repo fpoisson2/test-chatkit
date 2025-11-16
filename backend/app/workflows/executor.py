@@ -1524,6 +1524,31 @@ async def run_workflow(
                     exc_info=True,
                 )
 
+        # When using previous_response_id, the API automatically includes all context
+        # from the previous response. We should only send new user messages,
+        # not assistant messages or reasoning items from history (which would conflict).
+        if sanitized_previous_response_id:
+            # Filter out assistant messages and reasoning items when using previous_response_id
+            filtered_input = [
+                item for item in conversation_history_input
+                if not (
+                    # Filter dict-based items
+                    (isinstance(item, dict) and (
+                        item.get("role") == "assistant" or
+                        item.get("type") == "reasoning"
+                    ))
+                    # Filter object-based items
+                    or getattr(item, "role", None) == "assistant"
+                    or getattr(item, "type", None) == "reasoning"
+                )
+            ]
+            logger.debug(
+                "Utilisation de previous_response_id=%s, filtrage de %d items de l'historique (assistant/reasoning)",
+                sanitized_previous_response_id,
+                len(conversation_history_input) - len(filtered_input),
+            )
+            conversation_history_input = filtered_input
+
         try:
             result = Runner.run_streamed(
                 agent,

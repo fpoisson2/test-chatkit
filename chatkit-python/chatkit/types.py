@@ -529,6 +529,7 @@ class AssistantMessageItem(ThreadItemBase):
 
     type: Literal["assistant_message"] = "assistant_message"
     content: list[AssistantMessageContent]
+    reasoning_id: str | None = None
 
 
 class ClientToolCallItem(ThreadItemBase):
