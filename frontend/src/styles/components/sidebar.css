@@ -2105,3 +2105,151 @@ html[data-theme="light"] .chatkit-sidebar__workflow-button[aria-current="true"] 
 html:not([data-theme]) .chatkit-sidebar__workflow-button[aria-current="true"] .chatkit-sidebar__workflow-label {
   color: inherit !important;
 }
+
+/* ============================================
+   FIX: Dark mode for "Follow System" preference
+   Applies when data-theme is NOT set and system prefers dark mode
+   ============================================ */
+@media (prefers-color-scheme: dark) {
+  /* ICON X (Dismiss Button) - Close Sidebar */
+  :root:not([data-theme]) .chatkit-sidebar__dismiss,
+  html:not([data-theme]) .chatkit-sidebar__dismiss {
+    color: #ffffff !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__dismiss-icon,
+  html:not([data-theme]) .chatkit-sidebar__dismiss-icon {
+    color: #ffffff !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__dismiss *,
+  html:not([data-theme]) .chatkit-sidebar__dismiss *,
+  :root:not([data-theme]) .chatkit-sidebar__dismiss-icon *,
+  html:not([data-theme]) .chatkit-sidebar__dismiss-icon * {
+    color: #ffffff !important;
+    stroke: #ffffff !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__dismiss svg,
+  html:not([data-theme]) .chatkit-sidebar__dismiss svg,
+  :root:not([data-theme]) .chatkit-sidebar__dismiss svg *,
+  html:not([data-theme]) .chatkit-sidebar__dismiss svg * {
+    color: #ffffff !important;
+    stroke: #ffffff !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__dismiss path,
+  html:not([data-theme]) .chatkit-sidebar__dismiss path,
+  :root:not([data-theme]) .chatkit-sidebar__dismiss svg path,
+  html:not([data-theme]) .chatkit-sidebar__dismiss svg path {
+    stroke: #ffffff !important;
+    fill: none !important;
+  }
+
+  /* ICON + (Add Button) - Section Icon Button */
+  :root:not([data-theme]) .chatkit-sidebar__section-icon-button,
+  html:not([data-theme]) .chatkit-sidebar__section-icon-button {
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    font-weight: 700 !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__section-icon-button:hover,
+  html:not([data-theme]) .chatkit-sidebar__section-icon-button:hover,
+  :root:not([data-theme]) .chatkit-sidebar__section-icon-button:focus-visible,
+  html:not([data-theme]) .chatkit-sidebar__section-icon-button:focus-visible {
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button,
+  html:not([data-theme]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.35) !important;
+    font-weight: 700 !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+  html:not([data-theme]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+  :root:not([data-theme]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible,
+  html:not([data-theme]) .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.6) !important;
+    background: rgba(255, 255, 255, 0.15) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__section-icon-button *,
+  html:not([data-theme]) .chatkit-sidebar__section-icon-button * {
+    color: #ffffff !important;
+  }
+
+  /* Profile Name and Email */
+  :root:not([data-theme]) .chatkit-sidebar__profile-name,
+  html:not([data-theme]) .chatkit-sidebar__profile-name {
+    color: #ffffff !important;
+    opacity: 1 !important;
+  }
+
+  :root:not([data-theme]) .chatkit-sidebar__profile-role,
+  html:not([data-theme]) .chatkit-sidebar__profile-role {
+    color: #ffffff !important;
+    opacity: 0.85 !important;
+  }
+
+  /* Profile Caret (Arrow) */
+  :root:not([data-theme]) .chatkit-sidebar__profile-caret,
+  html:not([data-theme]) .chatkit-sidebar__profile-caret {
+    border-right-color: var(--alpha-40);
+    border-bottom-color: var(--alpha-40);
+  }
+
+  /* Mobile sidebar profile (on mobile layout) */
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
+  html:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name {
+    color: #ffffff !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role,
+  html:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
+    color: #ffffff !important;
+    opacity: 1 !important;
+  }
+
+  /* Desktop sidebar profile */
+  :root:not([data-theme]) .chatkit-layout--desktop .chatkit-sidebar__profile-name,
+  html:not([data-theme]) .chatkit-layout--desktop .chatkit-sidebar__profile-name {
+    color: #ffffff !important;
+    opacity: 1 !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout--desktop .chatkit-sidebar__profile-role,
+  html:not([data-theme]) .chatkit-layout--desktop .chatkit-sidebar__profile-role {
+    color: #ffffff !important;
+    opacity: 0.85 !important;
+  }
+
+  /* Mobile dismiss button */
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss,
+  html:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss {
+    color: #ffffff !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
+  html:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible,
+  html:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
+    color: #ffffff !important;
+    background: color-mix(in srgb, #ffffff 15%, transparent) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg,
+  html:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg *,
+  html:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg * {
+    color: #ffffff !important;
+    stroke: #ffffff !important;
+  }
+}
