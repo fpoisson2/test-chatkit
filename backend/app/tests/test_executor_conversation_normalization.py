@@ -213,3 +213,15 @@ def test_sanitize_previous_response_id_rejects_invalid_values() -> None:
     assert executor_module._sanitize_previous_response_id("__fake_id__") is None
     assert executor_module._sanitize_previous_response_id(123) is None
     assert executor_module._sanitize_previous_response_id(None) is None
+
+
+def test_filter_conversation_history_for_previous_response_keeps_user_only() -> None:
+    items = [
+        {"id": "msg_user", "role": "user", "content": "Bonjour"},
+        {"id": "rs_reasoning", "role": "assistant", "type": "reasoning"},
+        {"id": "ig_call", "type": "image_generation_call", "role": "assistant"},
+    ]
+
+    filtered = executor_module._filter_conversation_history_for_previous_response(items)
+
+    assert filtered == [{"id": "msg_user", "role": "user", "content": "Bonjour"}]
