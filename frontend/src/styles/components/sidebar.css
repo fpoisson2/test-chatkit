@@ -1148,38 +1148,74 @@
   opacity: 1 !important;
 }
 
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:hover,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:focus-visible {
+  color: var(--color-text-emphasis) !important;
+}
+
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-caret {
+  border-right-color: var(--color-text-emphasis) !important;
+  border-bottom-color: var(--color-text-emphasis) !important;
+}
+
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
+  color: var(--color-text-emphasis) !important;
+}
+
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:hover,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:focus-visible,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button * {
+  color: var(--color-text-emphasis) !important;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer,
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link,
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:hover,
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:focus-visible {
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__footer,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__footer-link,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__footer-link:hover,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__footer-link:focus-visible {
     color: var(--color-text-emphasis) !important;
   }
 
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__profile-name,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__profile-role {
     color: var(--color-text-emphasis) !important;
     opacity: 1 !important;
   }
 
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-caret {
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__profile-caret {
     border-right-color: var(--color-text-emphasis) !important;
     border-bottom-color: var(--color-text-emphasis) !important;
   }
 
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss,
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__dismiss,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__dismiss:hover,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__dismiss:focus-visible {
     color: var(--color-text-emphasis) !important;
   }
 
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button,
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:hover,
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:focus-visible {
-    color: var(--color-text-emphasis) !important;
-  }
-
-  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button * {
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__section-icon-button,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__section-icon-button:hover,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__section-icon-button:focus-visible,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__section-icon-button * {
     color: var(--color-text-emphasis) !important;
   }
 }
