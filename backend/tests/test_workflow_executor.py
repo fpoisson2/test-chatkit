@@ -856,6 +856,63 @@ def test_while_nodes_are_limited_to_current_workflow():
     asyncio.run(_run())
 
 
+def test_workflow_scope_filtering():
+    """Test that start nodes and transitions from foreign workflows are filtered out."""
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+
+        definition = _build_basic_workflow()
+
+        # Add a foreign start node that should be ignored
+        foreign_start = SimpleNamespace(
+            slug="foreign-start",
+            kind="start",
+            position=98,
+            is_enabled=True,
+            parameters={},
+            ui_metadata={"position": {"x": -200, "y": 0}},
+            workflow_id=888,
+            definition_id=888,
+        )
+
+        # Add a foreign node with transitions
+        foreign_node = SimpleNamespace(
+            slug="foreign-node",
+            kind="agent",
+            position=99,
+            is_enabled=True,
+            parameters={},
+            ui_metadata={"position": {"x": -100, "y": 0}},
+            workflow_id=888,
+            definition_id=888,
+        )
+
+        definition.steps.extend([foreign_start, foreign_node])
+
+        # Add a transition from foreign_start to foreign_node
+        foreign_transition = SimpleNamespace(
+            source_step=foreign_start,
+            target_step=foreign_node,
+            id=99,
+            condition=None
+        )
+        definition.transitions.append(foreign_transition)
+
+        summary = await executor.run_workflow(
+            WorkflowInput(input_as_text=""),
+            agent_context=_FakeAgentContext(),
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        # Should still start from the correct "start" node, not the foreign one
+        assert summary.end_state is not None
+        assert summary.final_node_slug == "end"
+        assert summary.state.get("state", {}).get("value") == 1
+
+    asyncio.run(_run())
+
+
 def test_run_workflow_multi_step_with_widget(monkeypatch):
     async def _run() -> None:
         WorkflowInput = executor.WorkflowInput

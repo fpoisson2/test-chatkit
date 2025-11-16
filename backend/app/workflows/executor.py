@@ -554,10 +554,16 @@ async def run_workflow(
         for transition in definition.transitions
         if transition.source_step.slug in nodes_by_slug
         and transition.target_step.slug in nodes_by_slug
+        and _belongs_to_current_workflow(transition.source_step)
+        and _belongs_to_current_workflow(transition.target_step)
     ]
 
     start_step = next(
-        (step for step in nodes_by_slug.values() if step.kind == "start"),
+        (
+            step
+            for step in nodes_by_slug.values()
+            if step.kind == "start" and _belongs_to_current_workflow(step)
+        ),
         None,
     )
     if start_step is None:
@@ -2214,6 +2220,9 @@ async def run_workflow(
 
                         # Look for a transition from outside into the while
                         for node_slug in nodes_by_slug:
+                            node = nodes_by_slug[node_slug]
+                            if not _belongs_to_current_workflow(node):
+                                continue
                             if node_slug in inside_nodes or node_slug == current_slug:
                                 continue
                             for edge in edges_by_source.get(node_slug, []):
