@@ -116,6 +116,12 @@ AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 
+def _generate_conversation_history_message_id() -> str:
+    """Return a unique Responses-compatible identifier for history entries."""
+
+    return f"msg_{uuid.uuid4().hex}"
+
+
 def _sanitize_previous_response_id(value: Any) -> str | None:
     """Return a valid previous_response_id or ``None`` when invalid."""
 
@@ -158,10 +164,18 @@ def _normalize_conversation_history_for_provider(
         copied_item = copy.deepcopy(item)
         item_changed = False
 
+        role = copied_item.get("role")
+        item_type = copied_item.get("type")
+        expects_message_id = isinstance(role, str) or item_type == "message"
+
         response_id = copied_item.get("id")
-        if response_id is not None and (
-            not isinstance(response_id, str) or not response_id.startswith("msg")
-        ):
+        if expects_message_id:
+            if not (
+                isinstance(response_id, str) and response_id.startswith("msg_")
+            ):
+                copied_item["id"] = _generate_conversation_history_message_id()
+                item_changed = True
+        elif response_id is not None:
             copied_item.pop("id", None)
             item_changed = True
 
@@ -3251,6 +3265,8 @@ async def run_workflow(
                 if should_append_output_text:
                     conversation_history.append(
                         {
+                            "id": _generate_conversation_history_message_id(),
+                            "type": "message",
                             "role": "assistant",
                             "content": [
                                 {"type": "output_text", "text": output_text.strip()},
