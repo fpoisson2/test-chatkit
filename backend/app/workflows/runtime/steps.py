@@ -194,6 +194,9 @@ async def process_agent_step(
         "output_text": append_generated_image_links(text, image_urls),
     }
 
+    if image_urls:
+        last_step_context["generated_image_urls"] = list(image_urls)
+
     state["last_agent_key"] = agent_key
     state["last_agent_output"] = last_step_context.get("output")
     state["last_agent_output_text"] = last_step_context.get("output_text")
