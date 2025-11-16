@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useI18n } from "../../../../../i18n";
 import { HelpTooltip } from "../components/HelpTooltip";
 import styles from "../NodeInspector.module.css";
@@ -22,6 +23,17 @@ export const WhileInspectorSection = ({
   onIterationVarChange,
 }: WhileInspectorSectionProps) => {
   const { t } = useI18n();
+  const [conditionDraft, setConditionDraft] = useState(condition);
+  const [iterationVarDraft, setIterationVarDraft] = useState(iterationVar);
+
+  // Sync drafts when props change (e.g., when switching nodes)
+  useEffect(() => {
+    setConditionDraft(condition);
+  }, [nodeId, condition]);
+
+  useEffect(() => {
+    setIterationVarDraft(iterationVar);
+  }, [nodeId, iterationVar]);
 
   return (
     <div className={styles.nodeInspectorPanelInnerAccent}>
@@ -32,8 +44,11 @@ export const WhileInspectorSection = ({
         </span>
         <input
           type="text"
-          value={condition}
-          onChange={(event) => onConditionChange(nodeId, event.target.value)}
+          value={conditionDraft}
+          onChange={(event) => {
+            setConditionDraft(event.target.value);
+            onConditionChange(nodeId, event.target.value);
+          }}
           placeholder={t("workflowBuilder.while.conditionPlaceholder")}
         />
       </label>
@@ -59,8 +74,11 @@ export const WhileInspectorSection = ({
         </span>
         <input
           type="text"
-          value={iterationVar}
-          onChange={(event) => onIterationVarChange(nodeId, event.target.value)}
+          value={iterationVarDraft}
+          onChange={(event) => {
+            setIterationVarDraft(event.target.value);
+            onIterationVarChange(nodeId, event.target.value);
+          }}
           placeholder={t("workflowBuilder.while.iterationVarPlaceholder")}
         />
       </label>
