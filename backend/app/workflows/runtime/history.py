@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
 from agents import TResponseInputItem
 from chatkit.agents import ThreadItemConverter
@@ -53,10 +54,14 @@ async def _build_user_message_history_items(
                     items.append(converted)
 
     if normalized_fallback:
+        # Generate a unique ID for fallback messages
+        fallback_id = f"{message.id}-fallback" if message is not None else f"msg-{uuid.uuid4()}"
+
         if items:
             if attachments_present and not typed_text:
                 items.append(
                     {
+                        "id": fallback_id,
                         "role": "user",
                         "content": [
                             {
@@ -69,6 +74,7 @@ async def _build_user_message_history_items(
         else:
             items.append(
                 {
+                    "id": fallback_id,
                     "role": "user",
                     "content": [
                         {

@@ -2246,6 +2246,7 @@ class ThreadItemConverter:
                 assert_never(part)
 
         user_text_item = Message(
+            id=item.id,
             role="user",
             type="message",
             content=[
@@ -2265,6 +2266,7 @@ class ThreadItemConverter:
         if item.quoted_text and is_last_message:
             context_items.append(
                 Message(
+                    id=f"{item.id}-quoted",
                     role="user",
                     type="message",
                     content=[
@@ -2293,6 +2295,7 @@ class ThreadItemConverter:
             if tag_content:
                 context_items.append(
                     Message(
+                        id=f"{item.id}-tags",
                         role="user",
                         type="message",
                         content=[
