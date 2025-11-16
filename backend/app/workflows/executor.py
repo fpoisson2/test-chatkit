@@ -3247,6 +3247,7 @@ async def run_workflow(
                 if should_append_output_text:
                     conversation_history.append(
                         {
+                            "id": agent_context.generate_id("message"),
                             "role": "assistant",
                             "content": [
                                 {"type": "output_text", "text": output_text.strip()},
