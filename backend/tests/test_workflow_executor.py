@@ -706,6 +706,72 @@ def _build_while_workflow(
     return definition
 
 
+def _build_basic_workflow():
+    def _step(slug: str, kind: str, position: int, **kwargs):
+        defaults = {
+            "slug": slug,
+            "kind": kind,
+            "position": position,
+            "is_enabled": True,
+            "parameters": kwargs.get("parameters", {}),
+            "agent_key": kwargs.get("agent_key"),
+            "display_name": kwargs.get("display_name"),
+            "ui_metadata": kwargs.get("ui_metadata", {}),
+            "workflow_id": kwargs.get("workflow_id"),
+            "definition_id": kwargs.get("definition_id"),
+        }
+        return SimpleNamespace(**defaults)
+
+    start_step = _step(
+        "start",
+        "start",
+        0,
+        ui_metadata={"position": {"x": 0, "y": 0}},
+    )
+    state_step = _step(
+        "update",
+        "state",
+        1,
+        parameters={
+            "state": [
+                {
+                    "target": "state.value",
+                    "expression": "1",
+                }
+            ]
+        },
+        ui_metadata={"position": {"x": 100, "y": 0}},
+    )
+    end_step = _step(
+        "end",
+        "end",
+        2,
+        parameters={
+            "status": {"type": "success", "reason": "done"},
+            "message": "done",
+        },
+        ui_metadata={"position": {"x": 200, "y": 0}},
+    )
+
+    transitions = [
+        SimpleNamespace(
+            source_step=start_step, target_step=state_step, id=1, condition=None
+        ),
+        SimpleNamespace(
+            source_step=state_step, target_step=end_step, id=2, condition=None
+        ),
+    ]
+
+    definition = SimpleNamespace(
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="base-workflow", display_name="Base"),
+        steps=[start_step, state_step, end_step],
+        transitions=transitions,
+    )
+
+    return definition
+
+
 def _get_workflow_input_cls():
     WorkflowInput = executor.WorkflowInput
     if not hasattr(WorkflowInput, "model_dump"):
@@ -751,6 +817,41 @@ def test_while_respects_max_iterations():
         assert state_values.get("executions") == 2
         assert state_values.get("loop_iteration") == 2
         assert "__while_loop_counter" not in state_values
+
+    asyncio.run(_run())
+
+
+def test_while_nodes_are_limited_to_current_workflow():
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+
+        definition = _build_basic_workflow()
+
+        foreign_while = SimpleNamespace(
+            slug="foreign-loop",
+            kind="while",
+            position=99,
+            is_enabled=True,
+            parameters={"condition": "True", "max_iterations": 2},
+            ui_metadata={
+                "position": {"x": -100, "y": -100},
+                "size": {"width": 800, "height": 600},
+            },
+            workflow_id=999,
+            definition_id=999,
+        )
+        definition.steps.append(foreign_while)
+
+        summary = await executor.run_workflow(
+            WorkflowInput(input_as_text=""),
+            agent_context=_FakeAgentContext(),
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        assert summary.end_state is not None
+        assert summary.final_node_slug == "end"
+        assert summary.state.get("state", {}).get("value") == 1
 
     asyncio.run(_run())
 
