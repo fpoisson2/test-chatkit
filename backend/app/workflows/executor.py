@@ -599,7 +599,8 @@ async def run_workflow(
         else:
             logger.warning(
                 "While %s ne contient aucun bloc détecté. "
-                "Vérifiez que les blocs ont des positions définies et sont visuellement dans le while.",
+                "Vérifiez que les blocs ont des positions définies et "
+                "sont visuellement dans le while.",
                 while_node.slug
             )
 
@@ -608,7 +609,9 @@ async def run_workflow(
     def _find_parent_while(node_slug: str) -> str | None:
         """
         Find the while block that contains a given node, if any.
-        Returns the slug of the parent while block, or None if the node is not inside any while.
+
+        Returns the slug of the parent while block, or None if the node is not inside
+        any while.
         """
         for while_node in nodes_by_slug.values():
             if while_node.kind != "while":
@@ -627,8 +630,9 @@ async def run_workflow(
         Check if a transition should be intercepted because it exits a while loop.
         Returns (should_intercept, parent_while_slug).
 
-        If the source node is inside a while block and the transition target is outside,
-        we should intercept it and return to the while instead (to re-evaluate the condition).
+        If the source node is inside a while block and the transition target is
+        outside, we should intercept it and return to the while instead (to
+        re-evaluate the condition).
         """
         if transition is None:
             return (False, None)
@@ -670,7 +674,8 @@ async def run_workflow(
         if should_intercept and parent_while_slug is not None:
             # Intercept: return to while instead of following the transition
             logger.debug(
-                "Bloc %s %s dans une boucle while %s avec transition sortante, retour au while pour réévaluation",
+                "Bloc %s %s dans une boucle while %s avec transition sortante, "
+                "retour au while pour réévaluation",
                 node_kind,
                 node_slug,
                 parent_while_slug,
@@ -687,7 +692,8 @@ async def run_workflow(
         if parent_while_slug is not None:
             # Node is inside a while block, return to the while to re-evaluate condition
             logger.debug(
-                "Bloc %s %s dans une boucle while %s, retour au while pour réévaluation",
+                "Bloc %s %s dans une boucle while %s, retour au while pour "
+                "réévaluation",
                 node_kind,
                 node_slug,
                 parent_while_slug,
@@ -1033,7 +1039,13 @@ async def run_workflow(
         if path_parts[0] != "state":
             raise ValueError("Les mises à jour doivent commencer par 'state.'")
         cursor: Any = state
-        for part in path_parts[1:-1]:
+        for index, part in enumerate(path_parts):
+            is_last = index == len(path_parts) - 1
+
+            if is_last:
+                cursor[part] = value
+                break
+
             next_value = cursor.get(part)
             if next_value is None:
                 next_value = {}
@@ -1044,7 +1056,6 @@ async def run_workflow(
                     "incompatible."
                 )
             cursor = next_value
-        cursor[path_parts[-1]] = value
 
     def _apply_state_node(step: WorkflowStep) -> None:
         params = step.parameters or {}
@@ -1528,7 +1539,8 @@ async def run_workflow(
         # from the previous response. We should only send new user messages,
         # not assistant messages or reasoning items from history (which would conflict).
         if sanitized_previous_response_id:
-            # Filter out assistant messages and reasoning items when using previous_response_id
+            # Filter out assistant messages and reasoning items when using
+            # previous_response_id
             filtered_input = [
                 item for item in conversation_history_input
                 if not (
@@ -1543,7 +1555,8 @@ async def run_workflow(
                 )
             ]
             logger.debug(
-                "Utilisation de previous_response_id=%s, filtrage de %d items de l'historique (assistant/reasoning)",
+                "Utilisation de previous_response_id=%s, filtrage de %d items de "
+                "l'historique (assistant/reasoning)",
                 sanitized_previous_response_id,
                 len(conversation_history_input) - len(filtered_input),
             )
@@ -1758,8 +1771,10 @@ async def run_workflow(
     ) -> WorkflowTransition | None:
         """
         Get the next edge, with automatic while loop support.
+
         If the source node is inside a while block and has no explicit transition,
-        automatically return to the parent while block to re-evaluate the loop condition.
+        automatically return to the parent while block to re-evaluate the loop
+        condition.
         """
         # First, try to get a normal transition
         transition = _next_edge(source_slug, branch)
@@ -1772,7 +1787,8 @@ async def run_workflow(
         parent_while_slug = _find_parent_while(source_slug)
         if parent_while_slug is not None:
             # Create a virtual transition back to the parent while
-            # We'll search for an existing edge to the while, or indicate we should jump back
+            # We'll search for an existing edge to the while, or indicate we
+            # should jump back
             parent_while = nodes_by_slug.get(parent_while_slug)
             if parent_while is not None:
                 # Look for an existing edge back to the while
@@ -2053,27 +2069,14 @@ async def run_workflow(
             params = current_node.parameters or {}
             condition_expr = str(params.get("condition", "")).strip()
             max_iterations = int(params.get("max_iterations", 100))
+            max_iterations = max(max_iterations - 1, 0)
             iteration_var = str(params.get("iteration_var", "")).strip()
 
-            # Initialize or get iteration counter from state
-            loop_counter_key = f"__while_{current_slug}_counter"
-            loop_entry_key = f"__while_{current_slug}_entry"
-            if "state" not in state:
-                state["state"] = {}
-
-            iteration_count = state["state"].get(loop_counter_key, 0)
-
-            # Increment counter BEFORE checking (so we count 1, 2, 3, ... instead of 0, 1, 2, ...)
-            iteration_count = iteration_count + 1
-
-            # Check max iterations safety limit
-            if iteration_count > max_iterations:
-                # Max iterations reached, exit loop
-                state["state"].pop(loop_counter_key, None)  # Clean up counter
-                state["state"].pop(loop_entry_key, None)  # Clean up entry point
-
-                # Find transition to a node outside the while
-                inside_nodes = _get_nodes_inside_while(current_node)
+            def _find_while_exit_transition(
+                while_node: WorkflowStep = current_node,
+                while_slug: str = current_slug,
+            ) -> WorkflowTransition | None:
+                inside_nodes = _get_nodes_inside_while(while_node)
                 transition = None
 
                 # Look for any transition from nodes inside to nodes outside
@@ -2087,20 +2090,20 @@ async def run_workflow(
 
                 if transition is None:
                     # No exit found, look for any outgoing transition
-                    transition = _next_edge(current_slug, "exit")
+                    transition = _next_edge(while_slug, "exit")
                     if transition is None:
-                        transition = _next_edge(current_slug)
+                        transition = _next_edge(while_slug)
 
-                if transition is None:
-                    if _fallback_to_start("while", current_node.slug):
-                        continue
-                    break
-                current_slug = transition.target_step.slug
-                continue
+                return transition
 
-            # Update iteration variable if specified (1-based: 1, 2, 3, ..., max_iterations)
-            if iteration_var:
-                state["state"][iteration_var] = iteration_count
+            # Initialize or get iteration counter from state
+            loop_counter_key = f"__while_{current_slug}_counter"
+            loop_entry_key = f"__while_{current_slug}_entry"
+            if "state" not in state:
+                state["state"] = {}
+
+            iteration_count = state["state"].get(loop_counter_key, 0)
+            transition: WorkflowTransition | None = None
 
             # Evaluate the while condition
             try:
@@ -2113,7 +2116,9 @@ async def run_workflow(
                         "state": state.get("state", {}),
                         "globals": state.get("globals", {}),
                     }
-                    condition_result = bool(eval(condition_expr, {"__builtins__": {}}, eval_context))
+                    condition_result = bool(
+                        eval(condition_expr, {"__builtins__": {}}, eval_context)
+                    )
             except Exception as exc:
                 raise_step_error(current_node.slug, _node_title(current_node), exc)
 
@@ -2122,66 +2127,65 @@ async def run_workflow(
                 state["state"].pop(loop_counter_key, None)  # Clean up counter
                 state["state"].pop(loop_entry_key, None)  # Clean up entry point
 
-                # Find transition to a node outside the while
-                inside_nodes = _get_nodes_inside_while(current_node)
-                transition = None
+                transition = _find_while_exit_transition()
+            else:
+                # Condition is true, continue loop after counting the iteration
+                iteration_count = iteration_count + 1
 
-                # Look for any transition from nodes inside to nodes outside
-                for inside_slug in inside_nodes:
-                    for edge in edges_by_source.get(inside_slug, []):
-                        if edge.target_step.slug not in inside_nodes:
-                            transition = edge
-                            break
-                    if transition:
-                        break
+                # Check max iterations safety limit after incrementing
+                if iteration_count > max_iterations:
+                    state["state"].pop(loop_counter_key, None)  # Clean up counter
+                    state["state"].pop(loop_entry_key, None)  # Clean up entry point
 
-                if transition is None:
-                    transition = _next_edge(current_slug, "exit")
+                    transition = _find_while_exit_transition()
+                else:
+                    state["state"][loop_counter_key] = iteration_count
+
+                    # Update iteration variable if specified (1-based: 1, 2, 3, ...,)
+                    if iteration_var:
+                        state["state"][iteration_var] = iteration_count
+
+                    # Find the entry point to the while loop
+                    # This is the first block inside the while that we should execute
+                    entry_slug = state["state"].get(loop_entry_key)
+
+                    if entry_slug is None:
+                        # First time entering the loop, find the entry point
+                        inside_nodes = _get_nodes_inside_while(current_node)
+
+                        # Look for a transition from outside into the while
+                        for node_slug in nodes_by_slug:
+                            if node_slug in inside_nodes or node_slug == current_slug:
+                                continue
+                            for edge in edges_by_source.get(node_slug, []):
+                                if edge.target_step.slug in inside_nodes:
+                                    entry_slug = edge.target_step.slug
+                                    state["state"][loop_entry_key] = entry_slug
+                                    break
+                            if entry_slug:
+                                break
+
+                        # If still no entry point, take the first node by position
+                        if entry_slug is None and inside_nodes:
+                            # Sort by Y position (top to bottom)
+                            sorted_nodes = sorted(
+                                [nodes_by_slug[slug] for slug in inside_nodes],
+                                key=lambda n: (n.ui_metadata or {})
+                                .get("position", {})
+                                .get("y", 0),
+                            )
+                            if sorted_nodes:
+                                entry_slug = sorted_nodes[0].slug
+                                state["state"][loop_entry_key] = entry_slug
+
+                    if entry_slug is not None:
+                        current_slug = entry_slug
+                        continue
+
+                    # No entry point found, try normal transitions
+                    transition = _next_edge(current_slug, "loop")
                     if transition is None:
                         transition = _next_edge(current_slug)
-            else:
-                # Condition is true, continue loop
-                state["state"][loop_counter_key] = iteration_count
-
-                # Find the entry point to the while loop
-                # This is the first block inside the while that we should execute
-                entry_slug = state["state"].get(loop_entry_key)
-
-                if entry_slug is None:
-                    # First time entering the loop, find the entry point
-                    inside_nodes = _get_nodes_inside_while(current_node)
-
-                    # Look for a transition from outside into the while
-                    for node_slug in nodes_by_slug:
-                        if node_slug in inside_nodes or node_slug == current_slug:
-                            continue
-                        for edge in edges_by_source.get(node_slug, []):
-                            if edge.target_step.slug in inside_nodes:
-                                entry_slug = edge.target_step.slug
-                                state["state"][loop_entry_key] = entry_slug
-                                break
-                        if entry_slug:
-                            break
-
-                    # If still no entry point, take the first node by position
-                    if entry_slug is None and inside_nodes:
-                        # Sort by Y position (top to bottom)
-                        sorted_nodes = sorted(
-                            [nodes_by_slug[slug] for slug in inside_nodes],
-                            key=lambda n: (n.ui_metadata or {}).get("position", {}).get("y", 0)
-                        )
-                        if sorted_nodes:
-                            entry_slug = sorted_nodes[0].slug
-                            state["state"][loop_entry_key] = entry_slug
-
-                if entry_slug is not None:
-                    current_slug = entry_slug
-                    continue
-
-                # No entry point found, try normal transitions
-                transition = _next_edge(current_slug, "loop")
-                if transition is None:
-                    transition = _next_edge(current_slug)
 
             if transition is None:
                 if _fallback_to_start("while", current_node.slug):
