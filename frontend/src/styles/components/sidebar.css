@@ -1144,8 +1144,44 @@
 /* Dark mode - use very light text for maximum contrast */
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
-  color: #ffffff !important;
+  color: var(--color-text-emphasis) !important;
   opacity: 1 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:hover,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:focus-visible {
+    color: var(--color-text-emphasis) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
+    color: var(--color-text-emphasis) !important;
+    opacity: 1 !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-caret {
+    border-right-color: var(--color-text-emphasis) !important;
+    border-bottom-color: var(--color-text-emphasis) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
+    color: var(--color-text-emphasis) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:hover,
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:focus-visible {
+    color: var(--color-text-emphasis) !important;
+  }
+
+  :root:not([data-theme]) .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button * {
+    color: var(--color-text-emphasis) !important;
+  }
 }
 
 /* Desktop sidebar profile name/email styles for dark mode */
