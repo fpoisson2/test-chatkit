@@ -512,26 +512,75 @@ def _load_workflow_modules():
         sys.modules["fastapi"] = fastapi_module
 
     if "cryptography" not in sys.modules:
-        crypto_module = types.ModuleType("cryptography")
-        fernet_module = types.ModuleType("cryptography.fernet")
+        try:  # pragma: no cover - prefer real dependency when available
+            import cryptography  # type: ignore  # noqa: F401
+            from cryptography.hazmat.primitives import serialization  # noqa: F401
+            from cryptography.hazmat.primitives.asymmetric import rsa  # noqa: F401
+        except Exception:  # pragma: no cover - fallback stubs when dependency missing
+            crypto_module = types.ModuleType("cryptography")
+            hazmat_module = types.ModuleType("cryptography.hazmat")
+            primitives_module = types.ModuleType("cryptography.hazmat.primitives")
+            serialization_module = types.ModuleType(
+                "cryptography.hazmat.primitives.serialization"
+            )
+            asymmetric_module = types.ModuleType(
+                "cryptography.hazmat.primitives.asymmetric"
+            )
+            rsa_module = types.ModuleType(
+                "cryptography.hazmat.primitives.asymmetric.rsa"
+            )
+            fernet_module = types.ModuleType("cryptography.fernet")
 
-        class InvalidToken(Exception):  # pragma: no cover - stub
-            pass
+            class InvalidToken(Exception):  # pragma: no cover - stub
+                pass
 
-        class Fernet:  # pragma: no cover - stub
-            def __init__(self, key: bytes) -> None:
-                self.key = key
+            class _DummyKey:  # pragma: no cover - stub
+                def private_bytes(self, *args, **kwargs):
+                    return b""
 
-            def encrypt(self, data: bytes) -> bytes:
-                return data
+            class Fernet:  # pragma: no cover - stub
+                def __init__(self, key: bytes) -> None:
+                    self.key = key
 
-            def decrypt(self, token: bytes) -> bytes:
-                return token
+                def encrypt(self, data: bytes) -> bytes:
+                    return data
 
-        fernet_module.Fernet = Fernet  # type: ignore[attr-defined]
-        fernet_module.InvalidToken = InvalidToken  # type: ignore[attr-defined]
-        sys.modules["cryptography"] = crypto_module
-        sys.modules["cryptography.fernet"] = fernet_module
+                def decrypt(self, token: bytes) -> bytes:
+                    return token
+
+            def _generate_private_key(*args, **kwargs):  # pragma: no cover - stub
+                return _DummyKey()
+
+            def _load_pem_private_key(*args, **kwargs):  # pragma: no cover - stub
+                return _DummyKey()
+
+            class _EnumValue(str):  # pragma: no cover - stub
+                def __new__(cls, value: str):
+                    return str.__new__(cls, value)
+
+            serialization_module.Encoding = SimpleNamespace(PEM=_EnumValue("PEM"))
+            serialization_module.PrivateFormat = SimpleNamespace(
+                PKCS8=_EnumValue("PKCS8")
+            )
+            serialization_module.NoEncryption = lambda: None
+            serialization_module.load_pem_private_key = _load_pem_private_key
+
+            rsa_module.generate_private_key = _generate_private_key
+
+            fernet_module.Fernet = Fernet  # type: ignore[attr-defined]
+            fernet_module.InvalidToken = InvalidToken  # type: ignore[attr-defined]
+
+            sys.modules["cryptography"] = crypto_module
+            sys.modules["cryptography.hazmat"] = hazmat_module
+            sys.modules["cryptography.hazmat.primitives"] = primitives_module
+            sys.modules[
+                "cryptography.hazmat.primitives.serialization"
+            ] = serialization_module
+            sys.modules["cryptography.hazmat.primitives.asymmetric"] = (
+                asymmetric_module
+            )
+            sys.modules["cryptography.hazmat.primitives.asymmetric.rsa"] = rsa_module
+            sys.modules["cryptography.fernet"] = fernet_module
 
     executor_module = importlib.import_module("app.workflows.executor")
     agents_module = importlib.import_module("app.workflows.runtime.agents")

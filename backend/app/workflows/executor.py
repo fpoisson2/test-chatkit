@@ -1039,7 +1039,13 @@ async def run_workflow(
         if path_parts[0] != "state":
             raise ValueError("Les mises à jour doivent commencer par 'state.'")
         cursor: Any = state
-        for part in path_parts[1:-1]:
+        for index, part in enumerate(path_parts):
+            is_last = index == len(path_parts) - 1
+
+            if is_last:
+                cursor[part] = value
+                break
+
             next_value = cursor.get(part)
             if next_value is None:
                 next_value = {}
@@ -1050,7 +1056,6 @@ async def run_workflow(
                     "incompatible."
                 )
             cursor = next_value
-        cursor[path_parts[-1]] = value
 
     def _apply_state_node(step: WorkflowStep) -> None:
         params = step.parameters or {}

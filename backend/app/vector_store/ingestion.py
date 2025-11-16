@@ -104,18 +104,29 @@ def evaluate_state_expression(
                 )
             return context
         if expr.startswith("state."):
-            return resolve_from_container(state, expr[len("state.") :])
+            state_path = expr[len("state.") :]
+            if re.fullmatch(r"[A-Za-z0-9_.]+", state_path):
+                return resolve_from_container(state, state_path)
         if expr.startswith("input."):
-            if context is None:
-                raise RuntimeError(
-                    "Aucun résultat précédent disponible pour les expressions "
-                    "basées sur 'input'."
-                )
-            return resolve_from_container(context, expr[len("input.") :])
+            input_path = expr[len("input.") :]
+            if re.fullmatch(r"[A-Za-z0-9_.]+", input_path):
+                if context is None:
+                    raise RuntimeError(
+                        "Aucun résultat précédent disponible pour les expressions "
+                        "basées sur 'input'."
+                    )
+                return resolve_from_container(context, input_path)
         try:
             return json.loads(expr)
         except json.JSONDecodeError:
-            return expr
+            eval_context: dict[str, Any] = {"state": state}
+            if context is not None:
+                eval_context["input"] = context
+
+            try:
+                return eval(expr, {"__builtins__": {}}, eval_context)
+            except Exception:
+                return expr
     return expression
 
 
