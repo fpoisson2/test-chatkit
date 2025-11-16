@@ -554,10 +554,16 @@ async def run_workflow(
         for transition in definition.transitions
         if transition.source_step.slug in nodes_by_slug
         and transition.target_step.slug in nodes_by_slug
+        and _belongs_to_current_workflow(transition.source_step)
+        and _belongs_to_current_workflow(transition.target_step)
     ]
 
     start_step = next(
-        (step for step in nodes_by_slug.values() if step.kind == "start"),
+        (
+            step
+            for step in nodes_by_slug.values()
+            if step.kind == "start" and _belongs_to_current_workflow(step)
+        ),
         None,
     )
     if start_step is None:
@@ -2008,17 +2014,46 @@ async def run_workflow(
         return join_slug
 
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
-        nonlocal current_slug
+        nonlocal current_slug, final_end_state, thread, conversation_history, state, current_input_item_id
+        # When a node has no outgoing transition and agent_steps_ordered exists,
+        # we create a wait state to get new user input before restarting
         if not agent_steps_ordered:
             return False
+
         logger.debug(
-            "Absence de transition apres le bloc %s %s, retour au debut %s",
+            "Absence de transition après le bloc %s %s, attente d'input utilisateur",
             node_kind,
             node_slug,
-            start_step.slug,
         )
-        current_slug = start_step.slug
-        return True
+
+        # Create a wait state that will resume at START on next user input
+        wait_state_payload: dict[str, Any] = {
+            "slug": node_slug,
+            "input_item_id": current_input_item_id,
+            "next_step_slug": start_step.slug,
+        }
+
+        conversation_snapshot = _clone_conversation_history_snapshot(
+            conversation_history
+        )
+        if conversation_snapshot:
+            wait_state_payload["conversation_history"] = conversation_snapshot
+        if state:
+            wait_state_payload["state"] = _json_safe_copy(state)
+
+        if thread is not None:
+            _set_wait_state_metadata(thread, wait_state_payload)
+
+        # Set final_end_state to waiting
+        final_end_state = WorkflowEndState(
+            slug=node_slug,
+            status_type="waiting",
+            status_reason="En attente d'une nouvelle question.",
+            message="En attente d'une nouvelle question.",
+        )
+
+        # Return False to break out of the loop (don't continue)
+        return False
 
     if runtime_snapshot is not None:
         current_slug = runtime_snapshot.current_slug
@@ -2214,6 +2249,9 @@ async def run_workflow(
 
                         # Look for a transition from outside into the while
                         for node_slug in nodes_by_slug:
+                            node = nodes_by_slug[node_slug]
+                            if not _belongs_to_current_workflow(node):
+                                continue
                             if node_slug in inside_nodes or node_slug == current_slug:
                                 continue
                             for edge in edges_by_source.get(node_slug, []):
