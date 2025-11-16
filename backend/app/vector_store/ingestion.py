@@ -103,6 +103,12 @@ def evaluate_state_expression(
                     "Aucun résultat précédent disponible pour l'expression 'input'."
                 )
             return context
+        identifier_match = re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", expr)
+        if identifier_match:
+            if expr in state:
+                return state[expr]
+            if context is not None and expr in context:
+                return context[expr]
         if expr.startswith("state."):
             state_path = expr[len("state.") :]
             if re.fullmatch(r"[A-Za-z0-9_.]+", state_path):
@@ -119,9 +125,11 @@ def evaluate_state_expression(
         try:
             return json.loads(expr)
         except json.JSONDecodeError:
-            eval_context: dict[str, Any] = {"state": state}
+            eval_context: dict[str, Any] = {"state": state, **dict(state)}
             if context is not None:
                 eval_context["input"] = context
+                if isinstance(context, Mapping):
+                    eval_context.update(dict(context))
 
             try:
                 return eval(expr, {"__builtins__": {}}, eval_context)

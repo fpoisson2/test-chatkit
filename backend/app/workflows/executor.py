@@ -109,6 +109,7 @@ from .runtime import (
 from .service import (
     WorkflowService,
 )
+from .template_utils import render_agent_instructions
 
 logger = logging.getLogger("chatkit.server")
 
@@ -1533,6 +1534,31 @@ async def run_workflow(
                 step_context=run_context if isinstance(run_context, Mapping) else None,
             )
 
+        raw_instructions = getattr(agent, "instructions", None)
+        overridden_instructions: Any = None
+        instructions_overridden = False
+        if isinstance(raw_instructions, str):
+            rendered_instructions = render_agent_instructions(
+                raw_instructions,
+                state=state,
+                last_step_context=last_step_context,
+                run_context=run_context if isinstance(run_context, Mapping) else None,
+            )
+            if (
+                rendered_instructions is not None
+                and rendered_instructions != raw_instructions
+            ):
+                overridden_instructions = raw_instructions
+                try:
+                    agent.instructions = rendered_instructions
+                    instructions_overridden = True
+                except Exception:
+                    logger.debug(
+                        "Impossible de surcharger les instructions de l'agent %s",
+                        getattr(agent, "name", "<inconnu>"),
+                        exc_info=True,
+                    )
+
         provider_binding = agent_provider_bindings.get(current_slug)
 
         # Connecter les serveurs MCP si présents AVANT de démarrer l'agent
@@ -1754,6 +1780,16 @@ async def run_workflow(
                         "Erreur lors du nettoyage du serveur MCP %s : %s",
                         getattr(server, "name", "<inconnu>"),
                         exc,
+                    )
+
+            if instructions_overridden:
+                try:
+                    agent.instructions = overridden_instructions
+                except Exception:
+                    logger.debug(
+                        "Impossible de restaurer les instructions de l'agent %s",
+                        getattr(agent, "name", "<inconnu>"),
+                        exc_info=True,
                     )
 
     def _node_title(step: WorkflowStep) -> str:
