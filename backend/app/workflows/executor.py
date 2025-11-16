@@ -2063,9 +2063,16 @@ async def run_workflow(
 
             iteration_count = state["state"].get(loop_counter_key, 0)
 
-            # Check max iterations safety limit BEFORE incrementing
-            # This ensures we stop exactly at max_iterations, not after
-            if iteration_count >= max_iterations:
+            # Increment iteration count immediately on each visit to the while node
+            # This way we count: 1, 2, 3, ... (number of times we entered the while)
+            iteration_count = iteration_count + 1
+
+            # Save immediately to ensure persistence
+            state["state"][loop_counter_key] = iteration_count
+
+            # Check max iterations safety limit AFTER incrementing
+            # We use > because iteration_count now represents "which iteration we're about to do"
+            if iteration_count > max_iterations:
                 # Max iterations reached, exit loop
                 state["state"].pop(loop_counter_key, None)  # Clean up counter
                 state["state"].pop(loop_entry_key, None)  # Clean up entry point
@@ -2136,17 +2143,12 @@ async def run_workflow(
             else:
                 # Condition is true, continue loop
                 # Update iteration variable if specified (0-based: 0, 1, 2, ...)
-                # This must be done BEFORE incrementing the counter
+                # iteration_count is 1-based (1, 2, 3...), so subtract 1 for 0-based index
                 if iteration_var:
-                    state["state"][iteration_var] = iteration_count
+                    state["state"][iteration_var] = iteration_count - 1
 
-                # Increment counter now that we're committing to this iteration
-                iteration_count = iteration_count + 1
-
-                # Save incremented counter for next iteration
-                state["state"][loop_counter_key] = iteration_count
-
-                # Find the entry point to the while loop
+                # Counter was already incremented and saved at the beginning
+                # Now find the entry point to the while loop
                 # This is the first block inside the while that we should execute
                 entry_slug = state["state"].get(loop_entry_key)
 
