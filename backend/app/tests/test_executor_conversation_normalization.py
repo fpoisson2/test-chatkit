@@ -229,6 +229,17 @@ def test_deduplicate_conversation_history_items_returns_original_when_unique() -
     assert deduplicated is items
 
 
+def test_deduplicate_conversation_history_items_handles_whitespace_ids() -> None:
+    first = {"id": " rs_abc ", "role": "assistant"}
+    duplicate = {"id": "rs_abc", "role": "assistant", "content": []}
+
+    deduplicated = executor_module._deduplicate_conversation_history_items(
+        [first, duplicate]
+    )
+
+    assert deduplicated == [first]
+
+
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
     assert (
         executor_module._sanitize_previous_response_id("  resp-123 ")

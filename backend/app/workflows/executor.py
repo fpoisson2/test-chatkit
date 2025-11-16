@@ -226,7 +226,12 @@ def _deduplicate_conversation_history_items(
         else:
             candidate = getattr(item, "id", None)
 
-        item_id = candidate if isinstance(candidate, str) else None
+        item_id: str | None
+        if isinstance(candidate, str):
+            stripped = candidate.strip()
+            item_id = stripped or None
+        else:
+            item_id = None
 
         if item_id is not None:
             if item_id in seen_ids:
