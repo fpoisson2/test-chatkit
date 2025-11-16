@@ -194,6 +194,9 @@ async def process_agent_step(
         "output_text": append_generated_image_links(text, image_urls),
     }
 
+    if image_urls:
+        last_step_context["generated_image_urls"] = list(image_urls)
+
     state["last_agent_key"] = agent_key
     state["last_agent_output"] = last_step_context.get("output")
     state["last_agent_output_text"] = last_step_context.get("output_text")
@@ -227,8 +230,6 @@ async def process_agent_step(
         json.dumps(state, ensure_ascii=False, default=str),
     )
 
-    if image_urls:
-        last_step_context["generated_image_urls"] = list(image_urls)
     if links_text and on_stream_event is not None and emit_stream_event is not None:
         links_message = AssistantMessageItem(
             id=agent_context.generate_id("message"),
