@@ -266,6 +266,31 @@ def test_deduplicate_conversation_history_items_removes_reasoning_duplicates() -
     ]
 
 
+def test_deduplicate_conversation_history_items_handles_reasoning_objects() -> None:
+    class ReasoningBlock:
+        def __init__(self, identifier: str) -> None:
+            self.id = identifier
+
+    kept = ReasoningBlock(" rs_obj ")
+    duplicate = ReasoningBlock("rs_obj")
+
+    items = [
+        {
+            "role": "assistant",
+            "reasoning": [kept, duplicate],
+        }
+    ]
+
+    deduplicated = executor_module._deduplicate_conversation_history_items(items)
+
+    assert deduplicated == [
+        {
+            "role": "assistant",
+            "reasoning": [kept],
+        }
+    ]
+
+
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
     assert (
         executor_module._sanitize_previous_response_id("  resp-123 ")

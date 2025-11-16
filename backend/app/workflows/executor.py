@@ -219,22 +219,28 @@ def _deduplicate_conversation_history_items(
     deduplicated: list[TResponseInputItem] = []
     changed = False
 
+    def _extract_id(value: Any) -> str | None:
+        if isinstance(value, Mapping):
+            candidate = value.get("id")  # type: ignore[assignment]
+        else:
+            candidate = getattr(value, "id", None)
+
+        return candidate if isinstance(candidate, str) else None
+
     for item in items:
-        candidate: Any | None
         item_changed = False
         normalized_item = item
 
-        if isinstance(item, Mapping):
-            candidate = item.get("id")  # type: ignore[assignment]
-        else:
-            candidate = getattr(item, "id", None)
+        candidate = _extract_id(item)
 
         item_id: str | None
         if isinstance(candidate, str):
             stripped = candidate.strip()
             item_id = stripped or None
             if item_id is not None and stripped != candidate:
-                normalized_item = dict(item) if isinstance(item, Mapping) else copy.copy(item)
+                normalized_item = (
+                    dict(item) if isinstance(item, Mapping) else copy.copy(item)
+                )
                 normalized_item["id"] = item_id
                 item_changed = True
         else:
@@ -253,7 +259,7 @@ def _deduplicate_conversation_history_items(
                 deduped_reasoning: list[Any] = []
 
                 for block in reasoning_blocks:
-                    block_id_raw = block.get("id") if isinstance(block, Mapping) else None
+                    block_id_raw = _extract_id(block)
 
                     normalized_block_id: str | None
                     if isinstance(block_id_raw, str):
@@ -262,7 +268,9 @@ def _deduplicate_conversation_history_items(
                         normalized_block_id = None
 
                     if normalized_block_id is not None:
-                        if normalized_block_id in seen_ids or normalized_block_id in seen_reasoning_ids:
+                        if normalized_block_id in seen_ids or normalized_block_id in (
+                            seen_reasoning_ids
+                        ):
                             item_changed = True
                             changed = True
                             continue
@@ -657,7 +665,8 @@ async def run_workflow(
         else:
             logger.warning(
                 "While %s ne contient aucun bloc détecté. "
-                "Vérifiez que les blocs ont des positions définies et sont visuellement dans le while.",
+                "Vérifiez que les blocs ont des positions définies "
+                "et sont visuellement dans le while.",
                 while_node.slug
             )
 
@@ -666,7 +675,8 @@ async def run_workflow(
     def _find_parent_while(node_slug: str) -> str | None:
         """
         Find the while block that contains a given node, if any.
-        Returns the slug of the parent while block, or None if the node is not inside any while.
+        Returns the slug of the parent while block, or None if the node is not
+        inside any while.
         """
         for while_node in nodes_by_slug.values():
             if while_node.kind != "while":
@@ -685,8 +695,9 @@ async def run_workflow(
         Check if a transition should be intercepted because it exits a while loop.
         Returns (should_intercept, parent_while_slug).
 
-        If the source node is inside a while block and the transition target is outside,
-        we should intercept it and return to the while instead (to re-evaluate the condition).
+        If the source node is inside a while block and the transition target is
+        outside, we should intercept it and return to the while instead (to
+        re-evaluate the condition).
         """
         if transition is None:
             return (False, None)
@@ -728,7 +739,8 @@ async def run_workflow(
         if should_intercept and parent_while_slug is not None:
             # Intercept: return to while instead of following the transition
             logger.debug(
-                "Bloc %s %s dans une boucle while %s avec transition sortante, retour au while pour réévaluation",
+                "Bloc %s %s dans une boucle while %s avec transition sortante, "
+                "retour au while pour réévaluation",
                 node_kind,
                 node_slug,
                 parent_while_slug,
@@ -745,7 +757,8 @@ async def run_workflow(
         if parent_while_slug is not None:
             # Node is inside a while block, return to the while to re-evaluate condition
             logger.debug(
-                "Bloc %s %s dans une boucle while %s, retour au while pour réévaluation",
+                "Bloc %s %s dans une boucle while %s, retour au while pour "
+                "réévaluation",
                 node_kind,
                 node_slug,
                 parent_while_slug,
@@ -1791,8 +1804,9 @@ async def run_workflow(
     ) -> WorkflowTransition | None:
         """
         Get the next edge, with automatic while loop support.
-        If the source node is inside a while block and has no explicit transition,
-        automatically return to the parent while block to re-evaluate the loop condition.
+        If the source node is inside a while block and has no explicit
+        transition, automatically return to the parent while block to
+        re-evaluate the loop condition.
         """
         # First, try to get a normal transition
         transition = _next_edge(source_slug, branch)
@@ -1805,7 +1819,8 @@ async def run_workflow(
         parent_while_slug = _find_parent_while(source_slug)
         if parent_while_slug is not None:
             # Create a virtual transition back to the parent while
-            # We'll search for an existing edge to the while, or indicate we should jump back
+            # We'll search for an existing edge to the while, or indicate we
+            # should jump back
             parent_while = nodes_by_slug.get(parent_while_slug)
             if parent_while is not None:
                 # Look for an existing edge back to the while
@@ -2143,7 +2158,13 @@ async def run_workflow(
                         "state": state.get("state", {}),
                         "globals": state.get("globals", {}),
                     }
-                    condition_result = bool(eval(condition_expr, {"__builtins__": {}}, eval_context))
+                    condition_result = bool(
+                        eval(
+                            condition_expr,
+                            {"__builtins__": {}},
+                            eval_context,
+                        )
+                    )
             except Exception as exc:
                 raise_step_error(current_node.slug, _node_title(current_node), exc)
 
@@ -2198,7 +2219,11 @@ async def run_workflow(
                         # Sort by Y position (top to bottom)
                         sorted_nodes = sorted(
                             [nodes_by_slug[slug] for slug in inside_nodes],
-                            key=lambda n: (n.ui_metadata or {}).get("position", {}).get("y", 0)
+                            key=lambda n: (
+                                (n.ui_metadata or {})
+                                .get("position", {})
+                                .get("y", 0)
+                            ),
                         )
                         if sorted_nodes:
                             entry_slug = sorted_nodes[0].slug
