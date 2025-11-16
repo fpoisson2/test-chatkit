@@ -293,6 +293,28 @@ def _deduplicate_conversation_history_items(
                         normalized_item = dict(item)
                     normalized_item["reasoning"] = deduped_reasoning
 
+            elif isinstance(reasoning_blocks, Mapping):
+                block_id_raw = _extract_id(reasoning_blocks)
+                normalized_block_id = (
+                    block_id_raw.strip() if isinstance(block_id_raw, str) else None
+                )
+
+                if normalized_block_id is not None:
+                    if normalized_block_id in seen_ids:
+                        if normalized_item is item:
+                            normalized_item = dict(item)
+                        normalized_item.pop("reasoning", None)
+                        item_changed = True
+                        changed = True
+                    else:
+                        seen_ids.add(normalized_block_id)
+                        if normalized_block_id != block_id_raw:
+                            if normalized_item is item:
+                                normalized_item = dict(item)
+                            normalized_item["reasoning"] = dict(reasoning_blocks)
+                            normalized_item["reasoning"]["id"] = normalized_block_id
+                            item_changed = True
+
             content_blocks = normalized_item.get("content")
             if isinstance(content_blocks, Sequence) and not isinstance(
                 content_blocks, (str, bytes, bytearray)
@@ -334,6 +356,28 @@ def _deduplicate_conversation_history_items(
                     if normalized_item is item:
                         normalized_item = dict(item)
                     normalized_item["content"] = deduped_content
+
+            elif isinstance(content_blocks, Mapping):
+                block_id_raw = _extract_id(content_blocks)
+                normalized_block_id = (
+                    block_id_raw.strip() if isinstance(block_id_raw, str) else None
+                )
+
+                if normalized_block_id is not None:
+                    if normalized_block_id in seen_ids:
+                        if normalized_item is item:
+                            normalized_item = dict(item)
+                        normalized_item.pop("content", None)
+                        item_changed = True
+                        changed = True
+                    else:
+                        seen_ids.add(normalized_block_id)
+                        if normalized_block_id != block_id_raw:
+                            if normalized_item is item:
+                                normalized_item = dict(item)
+                            normalized_item["content"] = dict(content_blocks)
+                            normalized_item["content"]["id"] = normalized_block_id
+                            item_changed = True
 
         if item_changed:
             deduplicated.append(normalized_item)

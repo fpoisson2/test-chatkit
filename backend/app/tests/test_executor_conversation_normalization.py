@@ -314,6 +314,51 @@ def test_deduplicate_conversation_history_items_removes_duplicate_content_ids() 
     ]
 
 
+def test_deduplicate_handles_reasoning_mapping_duplicates() -> None:
+    shared_reasoning = {"id": " rs_map ", "type": "chain_of_thought"}
+
+    deduplicated = executor_module._deduplicate_conversation_history_items(
+        [
+            shared_reasoning,
+            {
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "hello"}],
+                "reasoning": {"id": "rs_map", "type": "chain_of_thought"},
+            },
+        ]
+    )
+
+    assert deduplicated == [
+        {"id": "rs_map", "type": "chain_of_thought"},
+        {"role": "assistant", "content": [{"type": "output_text", "text": "hello"}]},
+    ]
+
+
+def test_deduplicate_normalizes_reasoning_mapping_id() -> None:
+    item = {"role": "assistant", "reasoning": {"id": " rs_map_only "}}
+
+    deduplicated = executor_module._deduplicate_conversation_history_items([item])
+
+    assert deduplicated == [{"role": "assistant", "reasoning": {"id": "rs_map_only"}}]
+
+
+def test_deduplicate_removes_duplicate_content_mapping() -> None:
+    deduplicated = executor_module._deduplicate_conversation_history_items(
+        [
+            {
+                "role": "assistant",
+                "content": {"id": " cont_map ", "type": "output_text"},
+            },
+            {"role": "assistant", "content": {"id": "cont_map", "type": "output_text"}},
+        ]
+    )
+
+    assert deduplicated == [
+        {"role": "assistant", "content": {"id": "cont_map", "type": "output_text"}},
+        {"role": "assistant"},
+    ]
+
+
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
     assert (
         executor_module._sanitize_previous_response_id("  resp-123 ")
