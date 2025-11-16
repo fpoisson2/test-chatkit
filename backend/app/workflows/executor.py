@@ -221,6 +221,9 @@ def _deduplicate_conversation_history_items(
 
     for item in items:
         candidate: Any | None
+        item_changed = False
+        normalized_item = item
+
         if isinstance(item, Mapping):
             candidate = item.get("id")  # type: ignore[assignment]
         else:
@@ -230,6 +233,10 @@ def _deduplicate_conversation_history_items(
         if isinstance(candidate, str):
             stripped = candidate.strip()
             item_id = stripped or None
+            if item_id is not None and stripped != candidate:
+                normalized_item = dict(item) if isinstance(item, Mapping) else copy.copy(item)
+                normalized_item["id"] = item_id
+                item_changed = True
         else:
             item_id = None
 
@@ -239,7 +246,50 @@ def _deduplicate_conversation_history_items(
                 continue
             seen_ids.add(item_id)
 
-        deduplicated.append(item)
+        if isinstance(normalized_item, Mapping):
+            reasoning_blocks = normalized_item.get("reasoning")
+            if isinstance(reasoning_blocks, Sequence):
+                seen_reasoning_ids: set[str] = set()
+                deduped_reasoning: list[Any] = []
+
+                for block in reasoning_blocks:
+                    block_id_raw = block.get("id") if isinstance(block, Mapping) else None
+
+                    normalized_block_id: str | None
+                    if isinstance(block_id_raw, str):
+                        normalized_block_id = block_id_raw.strip() or None
+                    else:
+                        normalized_block_id = None
+
+                    if normalized_block_id is not None:
+                        if normalized_block_id in seen_ids or normalized_block_id in seen_reasoning_ids:
+                            item_changed = True
+                            changed = True
+                            continue
+                        seen_ids.add(normalized_block_id)
+                        seen_reasoning_ids.add(normalized_block_id)
+
+                    if (
+                        isinstance(block, Mapping)
+                        and normalized_block_id is not None
+                        and normalized_block_id != block_id_raw
+                    ):
+                        block = dict(block)
+                        block["id"] = normalized_block_id
+                        item_changed = True
+
+                    deduped_reasoning.append(block)
+
+                if len(deduped_reasoning) != len(reasoning_blocks) or item_changed:
+                    if normalized_item is item:
+                        normalized_item = dict(item)
+                    normalized_item["reasoning"] = deduped_reasoning
+
+        if item_changed:
+            deduplicated.append(normalized_item)
+            changed = True
+        else:
+            deduplicated.append(item)
 
     return items if not changed else deduplicated
 

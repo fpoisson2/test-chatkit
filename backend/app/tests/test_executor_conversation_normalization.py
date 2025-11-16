@@ -240,6 +240,32 @@ def test_deduplicate_conversation_history_items_handles_whitespace_ids() -> None
     assert deduplicated == [first]
 
 
+def test_deduplicate_conversation_history_items_removes_reasoning_duplicates() -> None:
+    items = [
+        {
+            "role": "assistant",
+            "reasoning": [
+                {"id": "  rs_a  ", "type": "chain_of_thought"},
+                {"id": "rs_a", "type": "chain_of_thought"},
+                {"id": "rs_b", "type": "chain_of_thought"},
+            ],
+        },
+        {"id": "rs_b", "role": "assistant"},
+    ]
+
+    deduplicated = executor_module._deduplicate_conversation_history_items(items)
+
+    assert deduplicated == [
+        {
+            "role": "assistant",
+            "reasoning": [
+                {"id": "rs_a", "type": "chain_of_thought"},
+                {"id": "rs_b", "type": "chain_of_thought"},
+            ],
+        }
+    ]
+
+
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
     assert (
         executor_module._sanitize_previous_response_id("  resp-123 ")
