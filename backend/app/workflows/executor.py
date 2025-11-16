@@ -2135,12 +2135,13 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
             else:
                 # Condition is true, continue loop
-                # Increment counter now that we're committing to this iteration
-                iteration_count = iteration_count + 1
-
-                # Update iteration variable if specified (1-based: 1, 2, 3, ..., max_iterations)
+                # Update iteration variable if specified (0-based: 0, 1, 2, ...)
+                # This must be done BEFORE incrementing the counter
                 if iteration_var:
                     state["state"][iteration_var] = iteration_count
+
+                # Increment counter now that we're committing to this iteration
+                iteration_count = iteration_count + 1
 
                 # Save incremented counter for next iteration
                 state["state"][loop_counter_key] = iteration_count
