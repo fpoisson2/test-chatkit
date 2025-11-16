@@ -2069,6 +2069,7 @@ async def run_workflow(
             params = current_node.parameters or {}
             condition_expr = str(params.get("condition", "")).strip()
             max_iterations = int(params.get("max_iterations", 100))
+            max_iterations = max(max_iterations - 1, 0)
             iteration_var = str(params.get("iteration_var", "")).strip()
 
             def _find_while_exit_transition(

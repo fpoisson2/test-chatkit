@@ -742,7 +742,7 @@ def test_while_respects_max_iterations():
             WorkflowInput(input_as_text="Loop"),
             agent_context=_FakeAgentContext(),
             workflow_definition=_build_while_workflow(
-                "True", max_iterations=2, iteration_var="loop_iteration"
+                "True", max_iterations=3, iteration_var="loop_iteration"
             ),
             workflow_service=_FakeWorkflowService(),
         )
