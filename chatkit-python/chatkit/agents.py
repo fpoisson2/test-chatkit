@@ -36,6 +36,7 @@ from openai.types.responses import (
     ResponseInputMessageContentListParam,
     ResponseInputTextParam,
     ResponseOutputText,
+    ResponseReasoningItem,
 )
 from openai.types.responses.response_input_item_param import (
     FunctionCallOutput,
@@ -803,6 +804,7 @@ async def stream_agent_response(
     computer_tasks_by_call_id: dict[str, ComputerTaskTracker] = {}
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
+    current_reasoning_id: str | None = None
 
     def _get_value(raw: Any, key: str) -> Any:
         if isinstance(raw, dict):
@@ -1505,6 +1507,8 @@ async def stream_agent_response(
                 if item.type == "reasoning" and not ctx.workflow_item:
                     for workflow_event in ensure_workflow():
                         yield workflow_event
+                    # Store the reasoning ID to associate with the next message
+                    current_reasoning_id = item.id
                 if item.type == "message":
                     if ctx.workflow_item:
                         yield end_workflow(ctx.workflow_item)
@@ -1516,8 +1520,11 @@ async def stream_agent_response(
                             thread_id=thread.id,
                             content=[_convert_content(c) for c in item.content],
                             created_at=datetime.now(),
+                            reasoning_id=current_reasoning_id,
                         ),
                     )
+                    # Reset the reasoning_id after associating it with the message
+                    current_reasoning_id = None
                 elif item.type == "function_call":
                     tracker, task_added, workflow_events = ensure_function_task(
                         item.id,
@@ -2307,7 +2314,7 @@ class ThreadItemConverter:
     async def assistant_message_to_input(
         self, item: AssistantMessageItem
     ) -> TResponseInputItem | list[TResponseInputItem] | None:
-        return EasyInputMessageParam(
+        message_param = EasyInputMessageParam(
             type="message",
             content=[
                 # content param doesn't support the assistant message content types
@@ -2323,6 +2330,17 @@ class ThreadItemConverter:
             ],
             role="assistant",
         )
+
+        # If this message has an associated reasoning item, include it before the message
+        if item.reasoning_id:
+            reasoning_item = ResponseReasoningItem(
+                id=item.reasoning_id,
+                type="reasoning",
+                summary=[],  # Empty summary as we're just maintaining the relationship
+            )
+            return [reasoning_item, message_param]
+
+        return message_param
 
     async def client_tool_call_to_input(
         self, item: ClientToolCallItem
