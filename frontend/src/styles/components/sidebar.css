@@ -1142,17 +1142,15 @@
 }
 
 /* Dark mode - use very light text for maximum contrast */
-:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
-:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role {
-  color: var(--color-text-emphasis) !important;
-  opacity: 1 !important;
-}
-
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-name,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-role,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:hover,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__footer-link:focus-visible {
   color: var(--color-text-emphasis) !important;
+  opacity: 1 !important;
 }
 
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__profile-caret {
@@ -1162,17 +1160,9 @@
 
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:hover,
-:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible {
-  color: var(--color-text-emphasis) !important;
-}
-
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss:focus-visible,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg,
-:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg * {
-  color: var(--color-text-emphasis) !important;
-  fill: currentColor !important;
-  stroke: currentColor !important;
-}
-
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg *,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:hover,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:focus-visible,
@@ -1184,20 +1174,19 @@
 
 @media (prefers-color-scheme: dark) {
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__profile,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__footer,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__profile-name,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__profile-role,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__footer-link,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__footer-link:hover,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__footer-link:focus-visible {
-    color: var(--color-text-emphasis) !important;
-  }
-
-  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
-    .chatkit-sidebar__profile-name,
-  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
-    .chatkit-sidebar__profile-role {
     color: var(--color-text-emphasis) !important;
     opacity: 1 !important;
   }
@@ -1213,19 +1202,11 @@
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__dismiss:hover,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
-    .chatkit-sidebar__dismiss:focus-visible {
-    color: var(--color-text-emphasis) !important;
-  }
-
+    .chatkit-sidebar__dismiss:focus-visible,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__dismiss svg,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
-    .chatkit-sidebar__dismiss svg * {
-    color: var(--color-text-emphasis) !important;
-    fill: currentColor !important;
-    stroke: currentColor !important;
-  }
-
+    .chatkit-sidebar__dismiss svg *,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__section-icon-button,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
