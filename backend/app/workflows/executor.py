@@ -1549,6 +1549,33 @@ async def run_workflow(
             )
             conversation_history_input = filtered_input
 
+        # Log pour diagnostiquer le problème de missing ID
+        logger.warning(
+            "DEBUG: conversation_history_input avant appel API (step=%s, count=%d):",
+            step_key,
+            len(conversation_history_input),
+        )
+        for idx, item in enumerate(conversation_history_input):
+            item_id = None
+            item_role = None
+            item_type = None
+            if isinstance(item, dict):
+                item_id = item.get("id")
+                item_role = item.get("role")
+                item_type = item.get("type")
+            else:
+                item_id = getattr(item, "id", None)
+                item_role = getattr(item, "role", None)
+                item_type = getattr(item, "type", None)
+            logger.warning(
+                "  [%d] id=%s, role=%s, type=%s, item=%s",
+                idx,
+                item_id,
+                item_role,
+                item_type,
+                str(item)[:200] if item else None,
+            )
+
         try:
             result = Runner.run_streamed(
                 agent,
