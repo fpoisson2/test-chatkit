@@ -359,6 +359,58 @@ def test_deduplicate_removes_duplicate_content_mapping() -> None:
     ]
 
 
+def test_deduplicate_nested_agent_items_reasoning() -> None:
+    deduplicated = executor_module._deduplicate_conversation_history_items(
+        [
+            {
+                "type": "agent",
+                "items": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "reasoning": [
+                            {"id": " rs_nested ", "type": "chain_of_thought"},
+                        ],
+                    }
+                ],
+            },
+            {
+                "type": "agent",
+                "items": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "reasoning": [
+                            {"id": "rs_nested", "type": "chain_of_thought"},
+                        ],
+                    }
+                ],
+            },
+        ]
+    )
+
+    assert deduplicated == [
+        {
+            "type": "agent",
+            "items": [
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "reasoning": [
+                        {"id": "rs_nested", "type": "chain_of_thought"},
+                    ],
+                }
+            ],
+        },
+        {
+            "type": "agent",
+            "items": [
+                {"type": "message", "role": "assistant", "reasoning": []},
+            ],
+        },
+    ]
+
+
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
     assert (
         executor_module._sanitize_previous_response_id("  resp-123 ")

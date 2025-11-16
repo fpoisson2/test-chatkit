@@ -216,8 +216,6 @@ def _deduplicate_conversation_history_items(
         return items
 
     seen_ids: set[str] = set()
-    deduplicated: list[TResponseInputItem] = []
-    changed = False
 
     def _extract_id(value: Any) -> str | None:
         if isinstance(value, Mapping):
@@ -227,164 +225,184 @@ def _deduplicate_conversation_history_items(
 
         return candidate if isinstance(candidate, str) else None
 
-    for item in items:
-        item_changed = False
-        normalized_item = item
+    def _deduplicate_sequence(
+        sequence: Sequence[Any],
+    ) -> tuple[list[TResponseInputItem], bool]:
+        deduplicated: list[TResponseInputItem] = []
+        changed = False
 
-        candidate = _extract_id(item)
+        for item in sequence:
+            item_changed = False
+            normalized_item = item
 
-        item_id: str | None
-        if isinstance(candidate, str):
-            stripped = candidate.strip()
-            item_id = stripped or None
-            if item_id is not None and stripped != candidate:
-                normalized_item = (
-                    dict(item) if isinstance(item, Mapping) else copy.copy(item)
-                )
-                normalized_item["id"] = item_id
-                item_changed = True
-        else:
-            item_id = None
+            candidate = _extract_id(item)
 
-        if item_id is not None:
-            if item_id in seen_ids:
+            item_id: str | None
+            if isinstance(candidate, str):
+                stripped = candidate.strip()
+                item_id = stripped or None
+                if item_id is not None and stripped != candidate:
+                    normalized_item = (
+                        dict(item) if isinstance(item, Mapping) else copy.copy(item)
+                    )
+                    normalized_item["id"] = item_id
+                    item_changed = True
+            else:
+                item_id = None
+
+            if item_id is not None:
+                if item_id in seen_ids:
+                    changed = True
+                    continue
+                seen_ids.add(item_id)
+
+            if isinstance(normalized_item, Mapping):
+                reasoning_blocks = normalized_item.get("reasoning")
+                if isinstance(reasoning_blocks, Sequence):
+                    seen_reasoning_ids: set[str] = set()
+                    deduped_reasoning: list[Any] = []
+
+                    for block in reasoning_blocks:
+                        block_id_raw = _extract_id(block)
+
+                        normalized_block_id: str | None
+                        if isinstance(block_id_raw, str):
+                            normalized_block_id = block_id_raw.strip() or None
+                        else:
+                            normalized_block_id = None
+
+                        if normalized_block_id is not None:
+                            if normalized_block_id in seen_ids or (
+                                normalized_block_id in seen_reasoning_ids
+                            ):
+                                item_changed = True
+                                changed = True
+                                continue
+                            seen_ids.add(normalized_block_id)
+                            seen_reasoning_ids.add(normalized_block_id)
+
+                        if (
+                            isinstance(block, Mapping)
+                            and normalized_block_id is not None
+                            and normalized_block_id != block_id_raw
+                        ):
+                            block = dict(block)
+                            block["id"] = normalized_block_id
+                            item_changed = True
+
+                        deduped_reasoning.append(block)
+
+                    if len(deduped_reasoning) != len(reasoning_blocks) or item_changed:
+                        if normalized_item is item:
+                            normalized_item = dict(item)
+                        normalized_item["reasoning"] = deduped_reasoning
+
+                elif isinstance(reasoning_blocks, Mapping):
+                    block_id_raw = _extract_id(reasoning_blocks)
+                    normalized_block_id = (
+                        block_id_raw.strip() if isinstance(block_id_raw, str) else None
+                    )
+
+                    if normalized_block_id is not None:
+                        if normalized_block_id in seen_ids:
+                            if normalized_item is item:
+                                normalized_item = dict(item)
+                            normalized_item.pop("reasoning", None)
+                            item_changed = True
+                            changed = True
+                        else:
+                            seen_ids.add(normalized_block_id)
+                            if normalized_block_id != block_id_raw:
+                                if normalized_item is item:
+                                    normalized_item = dict(item)
+                                normalized_item["reasoning"] = dict(reasoning_blocks)
+                                normalized_item["reasoning"]["id"] = normalized_block_id
+                                item_changed = True
+
+                content_blocks = normalized_item.get("content")
+                if isinstance(content_blocks, Sequence) and not isinstance(
+                    content_blocks, (str, bytes, bytearray)
+                ):
+                    seen_content_ids: set[str] = set()
+                    deduped_content: list[Any] = []
+
+                    for block in content_blocks:
+                        block_id_raw = _extract_id(block)
+
+                        normalized_block_id: str | None
+                        if isinstance(block_id_raw, str):
+                            normalized_block_id = block_id_raw.strip() or None
+                        else:
+                            normalized_block_id = None
+
+                        if normalized_block_id is not None:
+                            if normalized_block_id in seen_ids or (
+                                normalized_block_id in seen_content_ids
+                            ):
+                                item_changed = True
+                                changed = True
+                                continue
+                            seen_ids.add(normalized_block_id)
+                            seen_content_ids.add(normalized_block_id)
+
+                        if (
+                            isinstance(block, Mapping)
+                            and normalized_block_id is not None
+                            and normalized_block_id != block_id_raw
+                        ):
+                            block = dict(block)
+                            block["id"] = normalized_block_id
+                            item_changed = True
+
+                        deduped_content.append(block)
+
+                    if len(deduped_content) != len(content_blocks) or item_changed:
+                        if normalized_item is item:
+                            normalized_item = dict(item)
+                        normalized_item["content"] = deduped_content
+
+                elif isinstance(content_blocks, Mapping):
+                    block_id_raw = _extract_id(content_blocks)
+                    normalized_block_id = (
+                        block_id_raw.strip() if isinstance(block_id_raw, str) else None
+                    )
+
+                    if normalized_block_id is not None:
+                        if normalized_block_id in seen_ids:
+                            if normalized_item is item:
+                                normalized_item = dict(item)
+                            normalized_item.pop("content", None)
+                            item_changed = True
+                            changed = True
+                        else:
+                            seen_ids.add(normalized_block_id)
+                            if normalized_block_id != block_id_raw:
+                                if normalized_item is item:
+                                    normalized_item = dict(item)
+                                normalized_item["content"] = dict(content_blocks)
+                                normalized_item["content"]["id"] = normalized_block_id
+                                item_changed = True
+
+                nested_items = normalized_item.get("items")
+                if isinstance(nested_items, Sequence) and not isinstance(
+                    nested_items, (str, bytes, bytearray)
+                ):
+                    deduped_nested, nested_changed = _deduplicate_sequence(nested_items)
+                    if nested_changed:
+                        if normalized_item is item:
+                            normalized_item = dict(item)
+                        normalized_item["items"] = deduped_nested
+                        item_changed = True
+
+            if item_changed:
+                deduplicated.append(normalized_item)
                 changed = True
-                continue
-            seen_ids.add(item_id)
+            else:
+                deduplicated.append(item)
 
-        if isinstance(normalized_item, Mapping):
-            reasoning_blocks = normalized_item.get("reasoning")
-            if isinstance(reasoning_blocks, Sequence):
-                seen_reasoning_ids: set[str] = set()
-                deduped_reasoning: list[Any] = []
+        return deduplicated, changed
 
-                for block in reasoning_blocks:
-                    block_id_raw = _extract_id(block)
-
-                    normalized_block_id: str | None
-                    if isinstance(block_id_raw, str):
-                        normalized_block_id = block_id_raw.strip() or None
-                    else:
-                        normalized_block_id = None
-
-                    if normalized_block_id is not None:
-                        if normalized_block_id in seen_ids or normalized_block_id in (
-                            seen_reasoning_ids
-                        ):
-                            item_changed = True
-                            changed = True
-                            continue
-                        seen_ids.add(normalized_block_id)
-                        seen_reasoning_ids.add(normalized_block_id)
-
-                    if (
-                        isinstance(block, Mapping)
-                        and normalized_block_id is not None
-                        and normalized_block_id != block_id_raw
-                    ):
-                        block = dict(block)
-                        block["id"] = normalized_block_id
-                        item_changed = True
-
-                    deduped_reasoning.append(block)
-
-                if len(deduped_reasoning) != len(reasoning_blocks) or item_changed:
-                    if normalized_item is item:
-                        normalized_item = dict(item)
-                    normalized_item["reasoning"] = deduped_reasoning
-
-            elif isinstance(reasoning_blocks, Mapping):
-                block_id_raw = _extract_id(reasoning_blocks)
-                normalized_block_id = (
-                    block_id_raw.strip() if isinstance(block_id_raw, str) else None
-                )
-
-                if normalized_block_id is not None:
-                    if normalized_block_id in seen_ids:
-                        if normalized_item is item:
-                            normalized_item = dict(item)
-                        normalized_item.pop("reasoning", None)
-                        item_changed = True
-                        changed = True
-                    else:
-                        seen_ids.add(normalized_block_id)
-                        if normalized_block_id != block_id_raw:
-                            if normalized_item is item:
-                                normalized_item = dict(item)
-                            normalized_item["reasoning"] = dict(reasoning_blocks)
-                            normalized_item["reasoning"]["id"] = normalized_block_id
-                            item_changed = True
-
-            content_blocks = normalized_item.get("content")
-            if isinstance(content_blocks, Sequence) and not isinstance(
-                content_blocks, (str, bytes, bytearray)
-            ):
-                seen_content_ids: set[str] = set()
-                deduped_content: list[Any] = []
-
-                for block in content_blocks:
-                    block_id_raw = _extract_id(block)
-
-                    normalized_block_id: str | None
-                    if isinstance(block_id_raw, str):
-                        normalized_block_id = block_id_raw.strip() or None
-                    else:
-                        normalized_block_id = None
-
-                    if normalized_block_id is not None:
-                        if normalized_block_id in seen_ids or normalized_block_id in (
-                            seen_content_ids
-                        ):
-                            item_changed = True
-                            changed = True
-                            continue
-                        seen_ids.add(normalized_block_id)
-                        seen_content_ids.add(normalized_block_id)
-
-                    if (
-                        isinstance(block, Mapping)
-                        and normalized_block_id is not None
-                        and normalized_block_id != block_id_raw
-                    ):
-                        block = dict(block)
-                        block["id"] = normalized_block_id
-                        item_changed = True
-
-                    deduped_content.append(block)
-
-                if len(deduped_content) != len(content_blocks) or item_changed:
-                    if normalized_item is item:
-                        normalized_item = dict(item)
-                    normalized_item["content"] = deduped_content
-
-            elif isinstance(content_blocks, Mapping):
-                block_id_raw = _extract_id(content_blocks)
-                normalized_block_id = (
-                    block_id_raw.strip() if isinstance(block_id_raw, str) else None
-                )
-
-                if normalized_block_id is not None:
-                    if normalized_block_id in seen_ids:
-                        if normalized_item is item:
-                            normalized_item = dict(item)
-                        normalized_item.pop("content", None)
-                        item_changed = True
-                        changed = True
-                    else:
-                        seen_ids.add(normalized_block_id)
-                        if normalized_block_id != block_id_raw:
-                            if normalized_item is item:
-                                normalized_item = dict(item)
-                            normalized_item["content"] = dict(content_blocks)
-                            normalized_item["content"]["id"] = normalized_block_id
-                            item_changed = True
-
-        if item_changed:
-            deduplicated.append(normalized_item)
-            changed = True
-        else:
-            deduplicated.append(item)
-
+    deduplicated, changed = _deduplicate_sequence(items)
     return items if not changed else deduplicated
 
 # ---------------------------------------------------------------------------
