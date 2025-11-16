@@ -1166,11 +1166,20 @@
   color: var(--color-text-emphasis) !important;
 }
 
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg,
+:root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__dismiss svg * {
+  color: var(--color-text-emphasis) !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:hover,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button:focus-visible,
 :root[data-theme="dark"] .chatkit-layout:not(.chatkit-layout--desktop) .chatkit-sidebar__section-icon-button * {
   color: var(--color-text-emphasis) !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1209,6 +1218,15 @@
   }
 
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__dismiss svg,
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
+    .chatkit-sidebar__dismiss svg * {
+    color: var(--color-text-emphasis) !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+
+  :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__section-icon-button,
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__section-icon-button:hover,
@@ -1217,6 +1235,8 @@
   :is(:root:not([data-theme]), :root[data-theme="system"]) .chatkit-layout:not(.chatkit-layout--desktop)
     .chatkit-sidebar__section-icon-button * {
     color: var(--color-text-emphasis) !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
   }
 }
 
