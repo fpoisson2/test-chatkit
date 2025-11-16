@@ -2063,11 +2063,9 @@ async def run_workflow(
 
             iteration_count = state["state"].get(loop_counter_key, 0)
 
-            # Increment counter BEFORE checking (so we count 1, 2, 3, ... instead of 0, 1, 2, ...)
-            iteration_count = iteration_count + 1
-
-            # Check max iterations safety limit
-            if iteration_count > max_iterations:
+            # Check max iterations safety limit BEFORE incrementing
+            # This ensures we stop exactly at max_iterations, not after
+            if iteration_count >= max_iterations:
                 # Max iterations reached, exit loop
                 state["state"].pop(loop_counter_key, None)  # Clean up counter
                 state["state"].pop(loop_entry_key, None)  # Clean up entry point
@@ -2098,11 +2096,7 @@ async def run_workflow(
                 current_slug = transition.target_step.slug
                 continue
 
-            # Update iteration variable if specified (1-based: 1, 2, 3, ..., max_iterations)
-            if iteration_var:
-                state["state"][iteration_var] = iteration_count
-
-            # Evaluate the while condition
+            # Evaluate the while condition first (before updating counters)
             try:
                 if not condition_expr:
                     # No condition means always true (but limited by max_iterations)
@@ -2141,6 +2135,14 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
             else:
                 # Condition is true, continue loop
+                # Increment counter now that we're committing to this iteration
+                iteration_count = iteration_count + 1
+
+                # Update iteration variable if specified (1-based: 1, 2, 3, ..., max_iterations)
+                if iteration_var:
+                    state["state"][iteration_var] = iteration_count
+
+                # Save incremented counter for next iteration
                 state["state"][loop_counter_key] = iteration_count
 
                 # Find the entry point to the while loop
