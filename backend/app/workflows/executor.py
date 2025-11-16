@@ -2014,15 +2014,45 @@ async def run_workflow(
         return join_slug
 
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
-        nonlocal current_slug
-        # Disabled fallback to start to prevent infinite loops
-        # When a node has no outgoing transition, the workflow should terminate
-        # gracefully instead of looping back to start indefinitely
+        nonlocal current_slug, final_end_state, thread, conversation_history, state, current_input_item_id
+        # When a node has no outgoing transition and agent_steps_ordered exists,
+        # we create a wait state to get new user input before restarting
+        if not agent_steps_ordered:
+            return False
+
         logger.debug(
-            "Absence de transition après le bloc %s %s, fin du workflow",
+            "Absence de transition après le bloc %s %s, attente d'input utilisateur",
             node_kind,
             node_slug,
         )
+
+        # Create a wait state that will resume at START on next user input
+        wait_state_payload: dict[str, Any] = {
+            "slug": node_slug,
+            "input_item_id": current_input_item_id,
+            "next_step_slug": start_step.slug,
+        }
+
+        conversation_snapshot = _clone_conversation_history_snapshot(
+            conversation_history
+        )
+        if conversation_snapshot:
+            wait_state_payload["conversation_history"] = conversation_snapshot
+        if state:
+            wait_state_payload["state"] = _json_safe_copy(state)
+
+        if thread is not None:
+            _set_wait_state_metadata(thread, wait_state_payload)
+
+        # Set final_end_state to waiting
+        final_end_state = WorkflowEndState(
+            slug=node_slug,
+            status_type="waiting",
+            status_reason="En attente d'une nouvelle question.",
+            message="En attente d'une nouvelle question.",
+        )
+
+        # Return False to break out of the loop (don't continue)
         return False
 
     if runtime_snapshot is not None:
@@ -2255,11 +2285,8 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
 
             if transition is None:
-                # Don't fallback to start for while blocks - just exit gracefully
-                logger.debug(
-                    "Bloc while %s sans transition de sortie, fin du workflow",
-                    current_node.slug,
-                )
+                if _fallback_to_start("while", current_node.slug):
+                    continue
                 break
             current_slug = transition.target_step.slug
             continue

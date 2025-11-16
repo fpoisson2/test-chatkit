@@ -914,7 +914,7 @@ def test_workflow_scope_filtering():
 
 
 def test_workflow_without_end_node():
-    """Test workflow behavior when there is no END node."""
+    """Test workflow behavior when there is no END node - should wait for user input."""
     async def _run() -> None:
         WorkflowInput = _get_workflow_input_cls()
 
@@ -970,9 +970,12 @@ def test_workflow_without_end_node():
             workflow_service=_FakeWorkflowService(),
         )
 
-        # Should terminate gracefully at the last node
+        # Should wait for user input (status_type="waiting") instead of terminating
         assert summary.final_node_slug == "update"
         assert summary.state.get("state", {}).get("value") == 42
+        assert summary.end_state is not None
+        assert summary.end_state.get("status_type") == "waiting"
+        assert "attente" in summary.end_state.get("message", "").lower()
 
     asyncio.run(_run())
 
@@ -1063,8 +1066,8 @@ def test_workflow_with_circular_transitions():
     asyncio.run(_run())
 
 
-def test_while_without_end_node_exits_gracefully():
-    """Test that a while block without an END node exits gracefully instead of looping."""
+def test_while_without_end_node_waits_for_input():
+    """Test that a while block without an END node waits for user input after max iterations."""
     async def _run() -> None:
         WorkflowInput = _get_workflow_input_cls()
 
@@ -1135,10 +1138,13 @@ def test_while_without_end_node_exits_gracefully():
             workflow_service=_FakeWorkflowService(),
         )
 
-        # Should exit gracefully after max_iterations (2)
+        # Should wait for user input after max_iterations (2)
         # The counter should be 2 (incremented twice)
         assert summary.final_node_slug == "loop"
         assert summary.state.get("state", {}).get("counter") == 2
+        assert summary.end_state is not None
+        assert summary.end_state.get("status_type") == "waiting"
+        assert "attente" in summary.end_state.get("message", "").lower()
 
     asyncio.run(_run())
 
