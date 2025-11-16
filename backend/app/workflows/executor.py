@@ -2015,16 +2015,15 @@ async def run_workflow(
 
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
         nonlocal current_slug
-        if not agent_steps_ordered:
-            return False
+        # Disabled fallback to start to prevent infinite loops
+        # When a node has no outgoing transition, the workflow should terminate
+        # gracefully instead of looping back to start indefinitely
         logger.debug(
-            "Absence de transition apres le bloc %s %s, retour au debut %s",
+            "Absence de transition après le bloc %s %s, fin du workflow",
             node_kind,
             node_slug,
-            start_step.slug,
         )
-        current_slug = start_step.slug
-        return True
+        return False
 
     if runtime_snapshot is not None:
         current_slug = runtime_snapshot.current_slug
