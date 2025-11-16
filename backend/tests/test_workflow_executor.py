@@ -555,6 +555,157 @@ class _FakeStreamResult:
         self.last_response_id: str | None = None
 
 
+class _FakeStore:
+    async def save_thread(self, thread, context):  # pragma: no cover - stub
+        return None
+
+
+class _FakeAgentContext:
+    def __init__(self) -> None:
+        self.thread = SimpleNamespace(id="thread-1", metadata={})
+        self.request_context = SimpleNamespace(
+            user_id="user-1", public_base_url="https://example.test"
+        )
+        self.previous_response_id = None
+        self.store = _FakeStore()
+        self._counter = 0
+
+    def generate_id(self, prefix: str) -> str:
+        self._counter += 1
+        return f"{prefix}-{self._counter}"
+
+
+class _FakeWorkflowService:
+    def get_available_model_capabilities(self):  # pragma: no cover - stub
+        return {}
+
+
+def _build_while_workflow(
+    condition_expr: str,
+    *,
+    max_iterations: int = 3,
+    iteration_var: str | None = None,
+):
+    def _step(slug: str, kind: str, position: int, **kwargs):
+        defaults = {
+            "slug": slug,
+            "kind": kind,
+            "position": position,
+            "is_enabled": True,
+            "parameters": kwargs.get("parameters", {}),
+            "agent_key": kwargs.get("agent_key"),
+            "display_name": kwargs.get("display_name"),
+            "ui_metadata": kwargs.get("ui_metadata", {}),
+        }
+        return SimpleNamespace(**defaults)
+
+    while_params = {"condition": condition_expr, "max_iterations": max_iterations}
+    if iteration_var is not None:
+        while_params["iteration_var"] = iteration_var
+
+    start_step = _step(
+        "start", "start", 0, ui_metadata={"position": {"x": -200, "y": 0}}
+    )
+    while_step = _step(
+        "loop",
+        "while",
+        1,
+        parameters=while_params,
+        ui_metadata={
+            "position": {"x": 0, "y": 0},
+            "size": {"width": 400, "height": 300},
+        },
+    )
+    body_step = _step(
+        "body",
+        "state",
+        2,
+        parameters={
+            "state": [
+                {
+                    "target": "state.executions",
+                    "expression": "state.get('state', {}).get('executions', 0) + 1",
+                }
+            ]
+        },
+        ui_metadata={"position": {"x": 50, "y": 50}},
+    )
+    end_step = _step("end", "end", 3, ui_metadata={"position": {"x": 500, "y": 0}})
+
+    transitions = [
+        SimpleNamespace(
+            source_step=start_step, target_step=while_step, id=1, condition=None
+        ),
+        SimpleNamespace(
+            source_step=start_step, target_step=body_step, id=2, condition="loop-entry"
+        ),
+        SimpleNamespace(
+            source_step=while_step, target_step=end_step, id=3, condition="exit"
+        ),
+        SimpleNamespace(
+            source_step=body_step, target_step=end_step, id=4, condition=None
+        ),
+    ]
+
+    definition = SimpleNamespace(
+        workflow_id=99,
+        workflow=SimpleNamespace(slug="while-workflow", display_name="While"),
+        steps=[start_step, while_step, body_step, end_step],
+        transitions=transitions,
+    )
+
+    return definition
+
+
+def _get_workflow_input_cls():
+    WorkflowInput = executor.WorkflowInput
+    if not hasattr(WorkflowInput, "model_dump"):
+        WorkflowInput.model_dump = WorkflowInput.dict  # type: ignore[assignment]
+    return WorkflowInput
+
+
+def test_while_condition_false_is_not_counted():
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+
+        summary = await executor.run_workflow(
+            WorkflowInput(input_as_text="No loop"),
+            agent_context=_FakeAgentContext(),
+            workflow_definition=_build_while_workflow(
+                "False", iteration_var="loop_iteration"
+            ),
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        state_values = summary.state.get("state", {}) if summary.state else {}
+        assert "__while_loop_counter" not in state_values
+        assert state_values.get("loop_iteration") is None
+        assert state_values.get("executions") is None
+
+    asyncio.run(_run())
+
+
+def test_while_respects_max_iterations():
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+
+        summary = await executor.run_workflow(
+            WorkflowInput(input_as_text="Loop"),
+            agent_context=_FakeAgentContext(),
+            workflow_definition=_build_while_workflow(
+                "True", max_iterations=2, iteration_var="loop_iteration"
+            ),
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        state_values = summary.state.get("state", {}) if summary.state else {}
+        assert state_values.get("executions") == 2
+        assert state_values.get("loop_iteration") == 2
+        assert "__while_loop_counter" not in state_values
+
+    asyncio.run(_run())
+
+
 def test_run_workflow_multi_step_with_widget(monkeypatch):
     async def _run() -> None:
         WorkflowInput = executor.WorkflowInput
