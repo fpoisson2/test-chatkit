@@ -162,6 +162,14 @@ async def process_agent_step(
         json.dumps(state, ensure_ascii=False, default=str),
     )
 
+    model_settings = current_node.parameters.get("model_settings", {})
+    display_response_in_chat = True
+    if isinstance(model_settings, Mapping):
+        raw_display_response = model_settings.get("response_in_chat")
+        display_response_in_chat = (
+            raw_display_response if isinstance(raw_display_response, bool) else True
+        )
+
     result_stream = await run_agent_step(
         step_identifier,
         title,
@@ -230,7 +238,12 @@ async def process_agent_step(
         json.dumps(state, ensure_ascii=False, default=str),
     )
 
-    if links_text and on_stream_event is not None and emit_stream_event is not None:
+    if (
+        display_response_in_chat
+        and links_text
+        and on_stream_event is not None
+        and emit_stream_event is not None
+    ):
         links_message = AssistantMessageItem(
             id=agent_context.generate_id("message"),
             thread_id=agent_context.thread.id,
