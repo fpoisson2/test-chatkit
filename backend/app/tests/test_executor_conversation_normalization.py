@@ -76,6 +76,30 @@ def test_normalize_does_not_touch_responses_messages() -> None:
     assert normalized is items
 
 
+def test_normalize_preserves_reasoning_item_ids() -> None:
+    items = [
+        {"type": "reasoning", "id": "rs_123", "summary": []},
+        {
+            "type": "message",
+            "id": "msg_456",
+            "role": "assistant",
+            "content": [
+                {"type": "output_text", "text": "Bonjour"},
+            ],
+            "reasoning": {"id": "rs_123"},
+        },
+    ]
+
+    normalized = executor_module._normalize_conversation_history_for_provider(
+        items,
+        "groq",
+    )
+
+    assert normalized is items
+    assert items[0]["id"] == "rs_123"
+    assert items[1]["reasoning"]["id"] == "rs_123"
+
+
 def test_normalize_conversation_history_for_litellm_with_multiple_text_parts() -> None:
     items = [
         {
