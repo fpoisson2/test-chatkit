@@ -913,6 +913,236 @@ def test_workflow_scope_filtering():
     asyncio.run(_run())
 
 
+def test_workflow_without_end_node():
+    """Test workflow behavior when there is no END node."""
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+
+        def _step(slug: str, kind: str, position: int, **kwargs):
+            defaults = {
+                "slug": slug,
+                "kind": kind,
+                "position": position,
+                "is_enabled": True,
+                "parameters": kwargs.get("parameters", {}),
+                "agent_key": kwargs.get("agent_key"),
+                "display_name": kwargs.get("display_name"),
+                "ui_metadata": kwargs.get("ui_metadata", {}),
+            }
+            return SimpleNamespace(**defaults)
+
+        start_step = _step(
+            "start", "start", 0, ui_metadata={"position": {"x": 0, "y": 0}}
+        )
+        state_step = _step(
+            "update",
+            "state",
+            1,
+            parameters={
+                "state": [
+                    {
+                        "target": "state.value",
+                        "expression": "42",
+                    }
+                ]
+            },
+            ui_metadata={"position": {"x": 100, "y": 0}},
+        )
+
+        # No END node - state_step has no outgoing transitions
+        transitions = [
+            SimpleNamespace(
+                source_step=start_step, target_step=state_step, id=1, condition=None
+            ),
+        ]
+
+        definition = SimpleNamespace(
+            workflow_id=1,
+            workflow=SimpleNamespace(slug="no-end-workflow", display_name="No End"),
+            steps=[start_step, state_step],
+            transitions=transitions,
+        )
+
+        summary = await executor.run_workflow(
+            WorkflowInput(input_as_text=""),
+            agent_context=_FakeAgentContext(),
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        # Should terminate gracefully at the last node
+        assert summary.final_node_slug == "update"
+        assert summary.state.get("state", {}).get("value") == 42
+
+    asyncio.run(_run())
+
+
+def test_workflow_with_circular_transitions():
+    """Test workflow behavior with circular transitions (infinite loop protection)."""
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+
+        def _step(slug: str, kind: str, position: int, **kwargs):
+            defaults = {
+                "slug": slug,
+                "kind": kind,
+                "position": position,
+                "is_enabled": True,
+                "parameters": kwargs.get("parameters", {}),
+                "agent_key": kwargs.get("agent_key"),
+                "display_name": kwargs.get("display_name"),
+                "ui_metadata": kwargs.get("ui_metadata", {}),
+            }
+            return SimpleNamespace(**defaults)
+
+        start_step = _step(
+            "start", "start", 0, ui_metadata={"position": {"x": 0, "y": 0}}
+        )
+        state_a = _step(
+            "state-a",
+            "state",
+            1,
+            parameters={
+                "state": [
+                    {
+                        "target": "state.counter",
+                        "expression": "(state.get('counter', 0) or 0) + 1",
+                    }
+                ]
+            },
+            ui_metadata={"position": {"x": 100, "y": 0}},
+        )
+        state_b = _step(
+            "state-b",
+            "state",
+            2,
+            parameters={
+                "state": [
+                    {
+                        "target": "state.visited_b",
+                        "expression": "True",
+                    }
+                ]
+            },
+            ui_metadata={"position": {"x": 200, "y": 0}},
+        )
+
+        # Circular transitions: start -> state-a -> state-b -> state-a (loop)
+        transitions = [
+            SimpleNamespace(
+                source_step=start_step, target_step=state_a, id=1, condition=None
+            ),
+            SimpleNamespace(
+                source_step=state_a, target_step=state_b, id=2, condition=None
+            ),
+            SimpleNamespace(
+                source_step=state_b, target_step=state_a, id=3, condition=None
+            ),
+        ]
+
+        definition = SimpleNamespace(
+            workflow_id=1,
+            workflow=SimpleNamespace(slug="circular-workflow", display_name="Circular"),
+            steps=[start_step, state_a, state_b],
+            transitions=transitions,
+        )
+
+        # This should hit the 1000 iteration limit
+        try:
+            summary = await executor.run_workflow(
+                WorkflowInput(input_as_text=""),
+                agent_context=_FakeAgentContext(),
+                workflow_definition=definition,
+                workflow_service=_FakeWorkflowService(),
+            )
+            # Should not reach here - expect an error
+            assert False, "Expected WorkflowExecutionError for infinite loop"
+        except executor.WorkflowExecutionError as e:
+            assert "Nombre maximal d'étapes dépassé" in str(e)
+
+    asyncio.run(_run())
+
+
+def test_while_without_end_node_exits_gracefully():
+    """Test that a while block without an END node exits gracefully instead of looping."""
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+
+        def _step(slug: str, kind: str, position: int, **kwargs):
+            defaults = {
+                "slug": slug,
+                "kind": kind,
+                "position": position,
+                "is_enabled": True,
+                "parameters": kwargs.get("parameters", {}),
+                "agent_key": kwargs.get("agent_key"),
+                "display_name": kwargs.get("display_name"),
+                "ui_metadata": kwargs.get("ui_metadata", {}),
+            }
+            return SimpleNamespace(**defaults)
+
+        start_step = _step(
+            "start", "start", 0, ui_metadata={"position": {"x": 0, "y": 0}}
+        )
+
+        # While block with only 2 iterations
+        while_step = _step(
+            "loop",
+            "while",
+            1,
+            parameters={"condition": "True", "max_iterations": 2},
+            ui_metadata={
+                "position": {"x": 100, "y": 0},
+                "size": {"width": 400, "height": 300},
+            },
+        )
+
+        # State node inside the while
+        state_step = _step(
+            "increment",
+            "state",
+            2,
+            parameters={
+                "state": [
+                    {
+                        "target": "state.counter",
+                        "expression": "(state.get('counter', 0) or 0) + 1",
+                    }
+                ]
+            },
+            ui_metadata={"position": {"x": 200, "y": 100}},
+        )
+
+        # Only transitions: start -> while, increment -> (nowhere, stays in while)
+        # No END node, no exit from while
+        transitions = [
+            SimpleNamespace(
+                source_step=start_step, target_step=while_step, id=1, condition=None
+            ),
+        ]
+
+        definition = SimpleNamespace(
+            workflow_id=1,
+            workflow=SimpleNamespace(slug="while-no-end", display_name="While No End"),
+            steps=[start_step, while_step, state_step],
+            transitions=transitions,
+        )
+
+        summary = await executor.run_workflow(
+            WorkflowInput(input_as_text=""),
+            agent_context=_FakeAgentContext(),
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        # Should exit gracefully after max_iterations (2)
+        # The counter should be 2 (incremented twice)
+        assert summary.final_node_slug == "loop"
+        assert summary.state.get("state", {}).get("counter") == 2
+
+    asyncio.run(_run())
+
+
 def test_run_workflow_multi_step_with_widget(monkeypatch):
     async def _run() -> None:
         WorkflowInput = executor.WorkflowInput

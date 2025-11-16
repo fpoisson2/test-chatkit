@@ -2256,8 +2256,11 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
 
             if transition is None:
-                if _fallback_to_start("while", current_node.slug):
-                    continue
+                # Don't fallback to start for while blocks - just exit gracefully
+                logger.debug(
+                    "Bloc while %s sans transition de sortie, fin du workflow",
+                    current_node.slug,
+                )
                 break
             current_slug = transition.target_step.slug
             continue
