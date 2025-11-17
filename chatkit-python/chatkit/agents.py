@@ -1632,7 +1632,6 @@ async def stream_agent_response(
                     tracker, task_added, workflow_events = ensure_image_task(
                         item.id, event.output_index
                     )
-                    tracker.task.title = tracker.task.title or "Image générée"
                     tracker.task.call_id = item.id
                     tracker.task.output_index = event.output_index
                     status = "complete" if item.status == "completed" else "loading"
