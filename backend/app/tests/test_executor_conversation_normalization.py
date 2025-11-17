@@ -205,6 +205,29 @@ def test_deduplicate_conversation_history_items_returns_original_when_unique() -
     assert deduplicated is items
 
 
+def test_filter_duplicate_user_history_items_skips_repeated_input() -> None:
+    history = [
+        {
+            "role": "user",
+            "content": [{"type": "input_text", "text": "test"}],
+        }
+    ]
+    duplicate_user = {
+        "role": "user",
+        "content": [{"type": "input_text", "text": "test"}],
+    }
+    assistant_reply = {
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": "ok"}],
+    }
+
+    filtered = executor_module._filter_duplicate_user_history_items(
+        history, [duplicate_user, assistant_reply]
+    )
+
+    assert filtered == [assistant_reply]
+
+
 def test_filter_conversation_history_for_previous_response_keeps_only_user_and_system() -> None:
     items = [
         {"id": "msg_a", "role": "assistant", "content": "hello"},
