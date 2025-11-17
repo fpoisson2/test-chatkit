@@ -1665,11 +1665,6 @@ async def run_workflow(
             )
             try:
                 async for event in stream_agent_response(agent_context, result):
-                    logger.debug(
-                        "Évènement %s reçu pour l'étape %s",
-                        getattr(event, "type", type(event).__name__),
-                        metadata_for_images.get("step_slug"),
-                    )
                     if _should_forward_agent_event(
                         event, suppress=suppress_stream_events
                     ):
@@ -2050,7 +2045,8 @@ async def run_workflow(
         return join_slug
 
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
-        nonlocal current_slug, final_end_state, thread, conversation_history, state, current_input_item_id
+        nonlocal current_slug, final_end_state, thread, conversation_history, \
+            state, current_input_item_id
         # When a node has no outgoing transition and agent_steps_ordered exists,
         # we create a wait state to get new user input before restarting
         if not agent_steps_ordered:
