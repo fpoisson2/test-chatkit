@@ -33,10 +33,15 @@ def configure_litellm_client(settings: Settings) -> None:
         litellm_logger = logging.getLogger("litellm")
         litellm_logger.setLevel(settings.litellm_log_level)
 
-        # Configure aussi tous les loggers enfants existants
+        # Empêche la propagation pour éviter les logs dupliqués
+        litellm_logger.propagate = True
+
+        # Configure aussi tous les loggers enfants existants et futurs
         for name in list(logging.Logger.manager.loggerDict.keys()):
-            if name.startswith("litellm"):
-                logging.getLogger(name).setLevel(settings.litellm_log_level)
+            if name.startswith("litellm") or name.startswith("LiteLLM"):
+                child_logger = logging.getLogger(name)
+                child_logger.setLevel(settings.litellm_log_level)
+                child_logger.propagate = True
 
         logger.info(
             "Niveau de log LiteLLM configuré sur %s",
