@@ -2050,7 +2050,8 @@ async def run_workflow(
         return join_slug
 
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
-        nonlocal current_slug, final_end_state, thread, conversation_history, state, current_input_item_id
+        nonlocal current_slug, final_end_state, thread, conversation_history, state, \
+            current_input_item_id
         # When a node has no outgoing transition and agent_steps_ordered exists,
         # we create a wait state to get new user input before restarting
         if not agent_steps_ordered:
@@ -2321,6 +2322,9 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
 
             if transition is None:
+                state["state"].pop(loop_counter_key, None)
+                state["state"].pop(loop_entry_key, None)
+
                 if _fallback_to_start("while", current_node.slug):
                     continue
                 break
@@ -2473,7 +2477,20 @@ async def run_workflow(
                     next_slug = transition.target_step.slug
                 if thread is not None:
                     _set_wait_state_metadata(thread, None)
-                last_step_context = {"user_message": initial_user_text}
+                parent_while_slug = _find_parent_while(current_node.slug)
+                should_include_user_message = True
+
+                if parent_while_slug is not None:
+                    parent_while = nodes_by_slug.get(parent_while_slug)
+                    should_include_user_message = False
+
+                    if parent_while is not None:
+                        nodes_inside = _get_nodes_inside_while(parent_while)
+                        should_include_user_message = start_step.slug in nodes_inside
+
+                last_step_context = {}
+                if should_include_user_message and initial_user_text is not None:
+                    last_step_context = {"user_message": initial_user_text}
                 if not next_slug:
                     final_end_state = WorkflowEndState(
                         slug=current_node.slug,
