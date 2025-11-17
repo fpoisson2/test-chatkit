@@ -28,4 +28,11 @@ def configure_litellm_client(settings: Settings) -> None:
     base_url = normalize_api_base(settings.model_api_base)
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     set_default_openai_client(client)
+    if settings.litellm_log_level is not None:
+        litellm_logger = logging.getLogger("litellm")
+        litellm_logger.setLevel(settings.litellm_log_level)
+        logger.info(
+            "Niveau de log LiteLLM configuré sur %s",
+            logging.getLevelName(settings.litellm_log_level),
+        )
     logger.debug("Client LiteLLM configuré sur %s", base_url)

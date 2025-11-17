@@ -258,6 +258,7 @@ class Settings:
         model_api_base: URL de base utilisée pour contacter l'API du fournisseur.
         model_api_key_env: Nom de la variable d'environnement contenant la clé API.
         model_api_key: Valeur de la clé API active pour le fournisseur choisi.
+        litellm_log_level: Niveau de log personnalisé appliqué au client LiteLLM.
         openai_api_key: Jeton API OpenAI (présent uniquement si défini dans l'env).
         model_providers: Profils de connexion disponibles (incluant les clés chiffrées
             côté administration) permettant d'activer plusieurs fournisseurs.
@@ -316,6 +317,7 @@ class Settings:
     model_api_base: str
     model_api_key_env: str
     model_api_key: str
+    litellm_log_level: int | None
     openai_api_key: str | None
     model_providers: tuple[ModelProviderConfig, ...]
     chatkit_workflow_id: str | None
@@ -481,6 +483,35 @@ class Settings:
             stripped = value.strip()
             return stripped or None
 
+        def parse_log_level(name: str, raw_value: str | None) -> int | None:
+            if raw_value is None:
+                return None
+
+            normalized = raw_value.strip()
+            if not normalized:
+                return None
+
+            upper = normalized.upper()
+            level_from_name = logging._nameToLevel.get(upper)
+            if level_from_name is not None:
+                return level_from_name
+
+            try:
+                numeric_level = int(normalized)
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"Invalid log level for {name}: {raw_value!r}. Use standard "
+                    "names like DEBUG/INFO/WARNING or a numeric value."
+                ) from exc
+
+            if numeric_level < 0:
+                raise RuntimeError(
+                    f"Invalid log level for {name}: {raw_value!r}. Value must be "
+                    "zero or positive."
+                )
+
+            return numeric_level
+
         model_provider = (get_stripped("MODEL_PROVIDER") or "openai").lower()
 
         explicit_model_api_base = get_stripped("MODEL_API_BASE")
@@ -616,6 +647,9 @@ class Settings:
             model_api_base=model_api_base,
             model_api_key_env=model_api_key_env,
             model_api_key=model_api_key,
+            litellm_log_level=parse_log_level(
+                "LITELLM_LOG_LEVEL", get_stripped("LITELLM_LOG_LEVEL")
+            ),
             openai_api_key=openai_api_key_value,
             model_providers=(
                 ModelProviderConfig(
