@@ -100,15 +100,13 @@ class StateInitializer:
                     conversation_history.extend(restored_history)
                     restored_from_wait_state = True
                     logger.debug(
-                        "Historique restauré depuis wait state (%d items), "
-                        "ignorant thread_items_history pour éviter duplication",
+                        "Historique restauré depuis wait state (%d items)",
                         len(restored_history)
                     )
 
-            # Only process thread_items_history if we didn't restore from wait state
-            # to avoid re-adding old user messages that were intentionally filtered out
-            if not restored_from_wait_state and thread_items_history and thread_item_converter:
+            if thread_items_history and thread_item_converter:
                 try:
+                    # Filter out the current input message to avoid duplication
                     filtered_history = [
                         item
                         for item in thread_items_history
@@ -117,6 +115,26 @@ class StateInitializer:
                             and item.id == current_input_item_id
                         )
                     ]
+
+                    # If we restored from wait state, also filter out ALL user messages
+                    # because they're already in the restored conversation history
+                    # (or were intentionally excluded). This prevents old user messages
+                    # from being re-added when the workflow restarts.
+                    if restored_from_wait_state:
+                        from chatkit.types import UserMessageItem
+                        original_count = len(filtered_history)
+                        filtered_history = [
+                            item
+                            for item in filtered_history
+                            if not isinstance(item, UserMessageItem)
+                        ]
+                        if original_count > len(filtered_history):
+                            logger.debug(
+                                "Filtré %d message(s) user de thread_items_history "
+                                "pour éviter duplication après restore wait state",
+                                original_count - len(filtered_history)
+                            )
+
                     if filtered_history:
                         converted_history = await thread_item_converter.to_agent_input(
                             filtered_history
