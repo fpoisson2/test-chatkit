@@ -15,6 +15,29 @@ logging.basicConfig(
 logging.getLogger("httpcore").setLevel(logging.INFO)
 logging.getLogger("httpx").setLevel(logging.INFO)
 
+# Configurer spécifiquement LiteLLM si défini
+litellm_log_level_str = os.getenv("LITELLM_LOG_LEVEL")
+if litellm_log_level_str:
+    litellm_log_level = getattr(logging, litellm_log_level_str.upper(), logging.INFO)
+
+    # Configure tous les loggers LiteLLM
+    logging.getLogger("litellm").setLevel(litellm_log_level)
+    logging.getLogger("LiteLLM").setLevel(litellm_log_level)
+
+    # Configure l'API native de LiteLLM pour supprimer les logs debug
+    try:
+        import litellm
+        if litellm_log_level >= logging.INFO:
+            litellm.suppress_debug_info = True
+            if hasattr(litellm, 'set_verbose'):
+                litellm.set_verbose = False
+        else:
+            litellm.suppress_debug_info = False
+            if hasattr(litellm, 'set_verbose'):
+                litellm.set_verbose = True
+    except ImportError:
+        pass  # LiteLLM n'est pas installé
+
 
 # Filtre pour supprimer les erreurs de cancel scope du SDK OpenAI
 # Ces erreurs sont internes au SDK et n'affectent pas le fonctionnement
