@@ -43,6 +43,7 @@ from chatkit.types import (
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
     ThreadItemRemovedEvent,
+    ThreadItemReplacedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadsCreateReq,
@@ -919,9 +920,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 payload=action_context,
             )
 
-            yield ThreadItemUpdated(
-                item_id=updated_item.id,
-                update=WidgetRootUpdated(widget=widget_root),
+            yield ThreadItemReplacedEvent(
+                item=updated_item,
             )
             return
 
