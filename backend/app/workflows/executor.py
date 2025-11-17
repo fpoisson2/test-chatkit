@@ -2111,7 +2111,25 @@ async def run_workflow(
         if conversation_snapshot:
             wait_state_payload["conversation_history"] = conversation_snapshot
         if state:
-            wait_state_payload["state"] = _json_safe_copy(state)
+            # Clean up while loop counters since we're restarting at the beginning
+            # This prevents the old counters from incorrectly filtering the new user message
+            cleaned_state = _json_safe_copy(state)
+            if isinstance(cleaned_state, dict) and "state" in cleaned_state:
+                nested_state = cleaned_state.get("state")
+                if isinstance(nested_state, dict):
+                    keys_to_remove = [
+                        k for k in nested_state.keys()
+                        if isinstance(k, str) and k.startswith("__while_")
+                    ]
+                    for key in keys_to_remove:
+                        nested_state.pop(key, None)
+                    if keys_to_remove:
+                        logger.debug(
+                            "Nettoyage de %d compteur(s) de while avant redémarrage: %s",
+                            len(keys_to_remove),
+                            keys_to_remove
+                        )
+            wait_state_payload["state"] = cleaned_state
 
         if thread is not None:
             _set_wait_state_metadata(thread, wait_state_payload)
