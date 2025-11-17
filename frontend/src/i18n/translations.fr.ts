@@ -1234,5 +1234,12 @@ export const fr: TranslationDictionary = {
     "Impossible de supprimer les langues de base (en, fr).",
   "admin.languages.errors.sessionExpired":
     "Session expirée, veuillez vous reconnecter.",
+  "workflowBuilder.widgetInspector.media.previewAlt": "Prévisualisation pour {{identifier}}",
+  "workflowBuilder.widgetInspector.media.selectedImage": "Image sélectionnée",
+  "workflowBuilder.widgetInspector.media.previewUpdated":
+    "Aperçu mis à jour pour la prévisualisation du widget.",
+  "workflowBuilder.widgetInspector.media.noFile": "Aucun fichier sélectionné",
+  "workflowBuilder.widgetInspector.media.hint":
+    "Importez une image ou saisissez une URL/expression existante. En l'absence de fichier, le texte est utilisé tel quel.",
 };
   

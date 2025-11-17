@@ -195,6 +195,33 @@
   gap: 0.75rem;
 }
 
+.nodeInspectorMediaPreview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px dashed var(--surface-border);
+  border-radius: 0.6rem;
+  background-color: var(--main-background-alt, #f8fafc);
+}
+
+.nodeInspectorMediaThumbnail {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 0.45rem;
+  object-fit: cover;
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-color);
+}
+
+.nodeInspectorMediaDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--color-text-strong);
+  font-size: 0.9rem;
+}
+
 .nodeInspectorInputGroup {
   display: grid;
   gap: 0.5rem;
