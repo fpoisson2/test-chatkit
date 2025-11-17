@@ -59,6 +59,7 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - fallback sans S
 
         pass
 
+from ..admin_settings import resolve_appearance_settings
 from ..attachment_store import AttachmentUploadError
 from ..chatkit_server.context import (
     _get_wait_state_metadata,
@@ -70,13 +71,21 @@ from ..chatkit_sessions import (
     proxy_chatkit_request,
     summarize_payload_shape,
 )
-from ..admin_settings import resolve_appearance_settings
 from ..config import Settings, get_settings
 from ..database import SessionLocal, get_session
 from ..dependencies import get_current_user, get_optional_user
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
+from ..realtime_gateway import (
+    GatewayConnection,
+    GatewayUser,
+    get_realtime_gateway,
+)
 from ..realtime_runner import open_voice_session
+from ..request_context import (
+    build_chatkit_request_context,
+    resolve_public_base_url_from_request,
+)
 from ..schemas import (
     AppearanceSettingsResponse,
     ChatKitWorkflowResponse,
@@ -95,15 +104,6 @@ from ..security import decode_access_token, decode_agent_image_token
 from ..telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
 from ..voice_settings import get_or_create_voice_settings
 from ..voice_webrtc_gateway import VoiceWebRTCGateway, VoiceWebRTCGatewayError
-from ..realtime_gateway import (
-    GatewayConnection,
-    GatewayUser,
-    get_realtime_gateway,
-)
-from ..request_context import (
-    build_chatkit_request_context,
-    resolve_public_base_url_from_request,
-)
 from ..voice_workflow import finalize_voice_wait_state
 from ..workflows import (
     HostedWorkflowConfig,
@@ -1368,6 +1368,10 @@ async def chatkit_endpoint(
 
     try:
         result = await server.process(payload, context)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     except Exception as exc:
         logger.exception(
             "Erreur lors du traitement ChatKit (user=%s, payload=%d o)",
