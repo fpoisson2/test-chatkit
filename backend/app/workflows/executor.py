@@ -2312,6 +2312,22 @@ async def run_workflow(
                                 state["state"][loop_entry_key] = entry_slug
 
                     if entry_slug is not None:
+                        # If this is a loop re-evaluation (iteration > 1), rebuild history
+                        # to use only the last agent output, not the original user message
+                        if iteration_count > 1 and conversation_history:
+                            # Find the last assistant message(s) from the previous iteration
+                            last_assistant_messages = []
+                            for item in reversed(conversation_history):
+                                if item.get("role") == "assistant":
+                                    last_assistant_messages.insert(0, item)
+                                elif item.get("role") == "user":
+                                    # Stop when we hit a user message
+                                    break
+
+                            # Replace history with only the last assistant output
+                            if last_assistant_messages:
+                                conversation_history[:] = last_assistant_messages
+
                         current_slug = entry_slug
                         continue
 
