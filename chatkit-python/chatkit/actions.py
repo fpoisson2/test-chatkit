@@ -13,7 +13,7 @@ DEFAULT_LOADING_BEHAVIOR: LoadingBehavior = "auto"
 
 class ActionConfig(BaseModel):
     type: str
-    payload: Any = None
+    payload: Any = Field(default_factory=dict)
     handler: Handler = DEFAULT_HANDLER
     loadingBehavior: LoadingBehavior = DEFAULT_LOADING_BEHAVIOR
 

@@ -786,7 +786,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
         payload = action.payload if isinstance(action.payload, Mapping) else None
-        if not payload:
+        if payload is None:
             logger.warning(
                 "Action %s ignorée pour le fil %s : charge utile invalide.",
                 action.type,
