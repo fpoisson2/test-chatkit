@@ -682,6 +682,75 @@ async def run_workflow(
 
         return inside_nodes
 
+    def _reset_while_state_counters() -> None:
+        state_values = state.get("state")
+        if not isinstance(state_values, dict):
+            return
+
+        cleared = False
+        for key in list(state_values.keys()):
+            if key.startswith("__while_"):
+                state_values.pop(key, None)
+                cleared = True
+
+        if cleared:
+            logger.debug(
+                "Compteurs et points d'entrée des boucles while nettoyés pour "
+                "une nouvelle entrée utilisateur"
+            )
+
+    if pending_wait_state:
+        waiting_slug = pending_wait_state.get("slug")
+        waiting_step = (
+            nodes_by_slug.get(waiting_slug)
+            if isinstance(waiting_slug, str)
+            else None
+        )
+
+        if waiting_step and waiting_step.kind == "while":
+            inside_nodes = _get_nodes_inside_while(waiting_step)
+            contains_end_block = any(
+                nodes_by_slug.get(slug, None) is not None
+                and nodes_by_slug[slug].kind == "end"
+                for slug in inside_nodes
+            )
+
+            if not contains_end_block:
+                loop_counter_key = f"__while_{waiting_step.slug}_counter"
+                loop_entry_key = f"__while_{waiting_step.slug}_entry"
+                state_values = state.get("state")
+                if isinstance(state_values, dict):
+                    state_values.pop(loop_counter_key, None)
+                    state_values.pop(loop_entry_key, None)
+
+    pending_wait_input_id = (
+        pending_wait_state.get("input_item_id") if pending_wait_state else None
+    )
+    normalized_pending_input_id = (
+        pending_wait_input_id if isinstance(pending_wait_input_id, str) else None
+    )
+    normalized_current_input_id = (
+        current_input_item_id if isinstance(current_input_item_id, str) else None
+    )
+
+    should_reset_while_state = False
+
+    if normalized_current_input_id and (
+        normalized_pending_input_id is None
+        or normalized_current_input_id != normalized_pending_input_id
+    ):
+        should_reset_while_state = True
+
+    if (
+        not normalized_current_input_id
+        and pending_wait_state is not None
+        and current_user_message is not None
+    ):
+        should_reset_while_state = True
+
+    if should_reset_while_state:
+        _reset_while_state_counters()
+
     def _find_parent_while(node_slug: str) -> str | None:
         """
         Find the while block that contains a given node, if any.
@@ -2050,7 +2119,8 @@ async def run_workflow(
         return join_slug
 
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
-        nonlocal current_slug, final_end_state, thread, conversation_history, state, current_input_item_id
+        nonlocal current_slug, final_end_state, thread, conversation_history
+        nonlocal state, current_input_item_id
         # When a node has no outgoing transition and agent_steps_ordered exists,
         # we create a wait state to get new user input before restarting
         if not agent_steps_ordered:
