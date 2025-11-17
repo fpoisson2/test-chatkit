@@ -1253,6 +1253,67 @@ def test_while_counters_are_reset_when_resuming_after_new_input(monkeypatch):
     asyncio.run(_run())
 
 
+def test_while_counters_are_reset_when_resuming_without_input_id(monkeypatch):
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+        agent_context = _FakeAgentContext()
+
+        definition = _build_while_workflow_without_end()
+
+        def _fake_run_streamed(
+            agent,
+            *,
+            input,
+            run_config,
+            context,
+            previous_response_id,
+        ):
+            agent_name = getattr(agent, "name", "unknown")
+            return _FakeStreamResult({"agent": agent_name})
+
+        async def _fake_stream_agent_response(agent_context, result):
+            if False:  # pragma: no cover - générateur vide
+                yield result
+
+        monkeypatch.setattr(executor.Runner, "run_streamed", _fake_run_streamed)
+        monkeypatch.setattr(
+            executor, "stream_agent_response", _fake_stream_agent_response
+        )
+
+        await executor.run_workflow(
+            WorkflowInput(input_as_text="Première passe", source_item_id="msg-1"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        pending_state = agent_context.thread.metadata.get(
+            "workflow_wait_for_user_input", {}
+        )
+        stored_values = pending_state.setdefault("state", {}).setdefault("state", {})
+        stored_values.update(
+            {
+                "__while_loop_counter": 1,
+                "__while_loop_entry": "increment",
+            }
+        )
+        pending_state.pop("input_item_id", None)
+
+        summary = await executor.run_workflow(
+            WorkflowInput(input_as_text="Nouvelle entrée"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        state_values = summary.state.get("state", {})
+        assert state_values.get("counter") == 4
+        assert "__while_loop_counter" not in state_values
+        assert "__while_loop_entry" not in state_values
+
+    asyncio.run(_run())
+
+
 def test_run_workflow_multi_step_with_widget(monkeypatch):
     async def _run() -> None:
         WorkflowInput = executor.WorkflowInput

@@ -733,10 +733,22 @@ async def run_workflow(
         current_input_item_id if isinstance(current_input_item_id, str) else None
     )
 
+    should_reset_while_state = False
+
     if normalized_current_input_id and (
         normalized_pending_input_id is None
         or normalized_current_input_id != normalized_pending_input_id
     ):
+        should_reset_while_state = True
+
+    if (
+        not normalized_current_input_id
+        and pending_wait_state is not None
+        and current_user_message is not None
+    ):
+        should_reset_while_state = True
+
+    if should_reset_while_state:
         _reset_while_state_counters()
 
     def _find_parent_while(node_slug: str) -> str | None:
