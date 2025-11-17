@@ -237,6 +237,57 @@ def _deduplicate_conversation_history_items(
     return items if not changed else deduplicated
 
 
+def _filter_duplicate_user_history_items(
+    history: Sequence[TResponseInputItem],
+    new_items: Sequence[TResponseInputItem],
+) -> Sequence[TResponseInputItem]:
+    """Prevent re-appending the same user message multiple times.
+
+    When the Responses API echoes the user input back in ``new_items`` (for
+    instance during a while loop re-evaluation), the workflow would grow the
+    history with identical user entries. This helper keeps the first existing
+    occurrence and drops consecutive duplicates based on the textual content.
+    """
+
+    if not new_items:
+        return new_items
+
+    def _extract_user_text(item: TResponseInputItem) -> str | None:
+        if not isinstance(item, Mapping) or item.get("role") != "user":
+            return None
+
+        content = item.get("content")
+        if not isinstance(content, Sequence):
+            return None
+
+        text_parts: list[str] = []
+        for part in content:
+            if not isinstance(part, Mapping):
+                continue
+
+            text_value = part.get("text")
+            if isinstance(text_value, str) and text_value.strip():
+                text_parts.append(text_value.strip())
+
+        return "\n\n".join(text_parts) if text_parts else None
+
+    last_user_text = _extract_user_text(history[-1]) if history else None
+    filtered: list[TResponseInputItem] = []
+    changed = False
+
+    for item in new_items:
+        user_text = _extract_user_text(item)
+        if user_text is not None and user_text == last_user_text:
+            changed = True
+            continue
+
+        filtered.append(item)
+        if user_text is not None:
+            last_user_text = user_text
+
+    return new_items if not changed else filtered
+
+
 def _filter_conversation_history_for_previous_response(
     items: Sequence[TResponseInputItem],
 ) -> Sequence[TResponseInputItem]:
@@ -1738,25 +1789,28 @@ async def run_workflow(
                             exc_info=exc,
                         )
 
-            conversation_history.extend(
-                [item.to_input_item() for item in result.new_items]
+        new_history_items = [item.to_input_item() for item in result.new_items]
+        conversation_history.extend(
+            _filter_duplicate_user_history_items(
+                conversation_history, new_history_items
             )
-            if result.new_items:
-                try:
-                    logger.debug(
-                        "Éléments ajoutés par l'agent %s : %s",
-                        log_agent_key,
-                        json.dumps(
-                            [item.to_input_item() for item in result.new_items],
-                            ensure_ascii=False,
-                            default=str,
-                        ),
-                    )
-                except TypeError:
-                    logger.debug(
-                        "Éléments ajoutés par l'agent %s non sérialisables en JSON",
-                        log_agent_key,
-                    )
+        )
+        if result.new_items:
+            try:
+                logger.debug(
+                    "Éléments ajoutés par l'agent %s : %s",
+                    log_agent_key,
+                    json.dumps(
+                        [item.to_input_item() for item in result.new_items],
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                )
+            except TypeError:
+                logger.debug(
+                    "Éléments ajoutés par l'agent %s non sérialisables en JSON",
+                    log_agent_key,
+                )
             logger.info(
                 "Fin de l'exécution de l'agent %s (étape=%s)",
                 metadata_for_images.get("agent_key")
