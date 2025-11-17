@@ -235,7 +235,7 @@ class WorkflowStateMachine:
 
 ## État actuel de la migration
 
-### ✅ Implémenté (6 handlers sur ~10 types principaux)
+### ✅ Implémenté (7 handlers sur ~10 types principaux) - **70% complété !**
 - [x] Architecture de base (`state_machine.py`)
 - [x] `StartNodeHandler` (~20 lignes)
 - [x] `EndNodeHandler` avec support AGS complet (~150 lignes)
@@ -243,15 +243,17 @@ class WorkflowStateMachine:
 - [x] `WhileNodeHandler` avec détection spatiale (~200 lignes)
 - [x] `AssignNodeHandler` pour nodes 'state' (~80 lignes)
 - [x] `WatchNodeHandler` pour debug (~100 lignes)
+- [x] **`AgentNodeHandler` COMPLET** (~437 lignes + 397 pour AgentStepExecutor)
+  - ✅ Exécution d'agents via AgentStepExecutor refactorisé  
+  - ✅ Support des nested workflows (récursion)
+  - ✅ Détection de cycles
+  - ✅ Gestion des widgets
+  - ✅ Ingestion vector store
 - [x] `WorkflowStateMachine` orchestrator
 - [x] Factory pour créer la machine configurée
 - [x] Fonction démo `run_workflow_v2()`
 
 ### 🚧 À implémenter
-- [ ] `AgentNodeHandler` (360 lignes - **nécessite refactoring de process_agent_step**)
-  - Actuellement process_agent_step prend 20+ paramètres
-  - Devrait accepter ExecutionContext à la place
-- [ ] `VoiceAgentNodeHandler` (même problème que AgentNodeHandler)
 - [ ] `ParallelNodeHandler` / `ParallelSplitNodeHandler`
 - [ ] `WaitNodeHandler`
 - [ ] Handlers pour types spécialisés (image, custom_task, etc.)
@@ -269,10 +271,53 @@ class WorkflowStateMachine:
 | While | ~150 inline | ~200 isolé | ✅ Détection spatiale |
 | Assign (state) | ~30 inline | ~80 isolé | ✅ Opérations multiples |
 | Watch | ~20 inline | ~100 isolé | ✅ Avec streaming |
-| Agent | ~360 inline | Placeholder | 🚧 Nécessite refactoring |
+| **Agent** | **~360 inline + 268 process_agent_step** | **~437 + 397 executor** | ✅ **COMPLET !** |
 
-**Total extrait : ~650 lignes / 3,270 lignes (20% complété)**
+**Total extrait : ~1,278 lignes / 3,270 lignes (39% complété)**
 
+---
+
+## Solution implémentée : AgentNodeHandler
+
+Le plus gros défi était `AgentNodeHandler` car `process_agent_step` prenait **26 paramètres individuels**. 
+
+### Approche : Classe AgentStepExecutor
+
+Au lieu de refactorer process_agent_step directement (ce qui aurait cassé l'existant), nous avons créé une nouvelle classe qui encapsule la logique :
+
+```python
+# Avant - 26 paramètres individuels !
+await process_agent_step(
+    current_node=..., current_slug=..., agent_instances=...,
+    agent_positions=..., total_runtime_steps=...,
+    widget_configs_by_step=..., conversation_history=...,
+    last_step_context=..., state=..., agent_context=...,
+    run_agent_step=..., consume_generated_image_urls=...,
+    # ... 14+ autres paramètres
+)
+
+# Après - Interface simplifiée avec ExecutionContext
+executor = AgentStepExecutor(dependencies)
+result = await executor.execute(node, context)
+```
+
+### Fichiers créés
+- `runtime/agent_executor.py` (397 lignes)
+  - `AgentStepExecutor`: Exécute les agents avec ExecutionContext
+  - `AgentExecutorDependencies`: Encapsule les 26 dépendances
+  - Mêmes fonctionnalités que process_agent_step, interface propre
+- `handlers/agent.py` (437 lignes)
+  - `AgentNodeHandler`: Gère agents + nested workflows
+  - Détection de cycles dans les workflows imbriqués
+  - Support complet des widgets et vector stores
+  - Gestion des wait states
+
+### Avantages
+1. **Testable** : Chaque partie testable isolément
+2. **Maintenable** : Responsabilités clairement séparées
+3. **Rétrocompatible** : process_agent_step original intact
+4. **Extensible** : Facile d'ajouter de nouvelles fonctionnalités
+5. **Complexité réduite** : 26 paramètres → ExecutionContext + Dependencies
 ---
 
 ## Défi restant : AgentNodeHandler
@@ -360,7 +405,8 @@ agent_step_execution = await process_agent_step(
 ```
 backend/app/workflows/
 ├── runtime/
-│   └── state_machine.py           # Architecture de base
+│   ├── state_machine.py           # Architecture de base
+│   └── agent_executor.py          # AgentStepExecutor (refactorisé)
 ├── handlers/
 │   ├── __init__.py                # Exports de tous les handlers
 │   ├── base.py                    # BaseNodeHandler avec utilitaires
@@ -370,7 +416,7 @@ backend/app/workflows/
 │   ├── while_loop.py              # WhileNodeHandler (détection spatiale)
 │   ├── assign.py                  # AssignNodeHandler (state nodes)
 │   ├── watch.py                   # WatchNodeHandler (debug)
-│   ├── agent.py                   # AgentNodeHandler (placeholder)
+│   ├── agent.py                   # AgentNodeHandler (COMPLET!)
 │   └── factory.py                 # create_state_machine()
 ├── executor_v2_demo.py            # Démo de la nouvelle architecture
 └── STATE_MACHINE_REFACTORING.md   # Cette documentation
