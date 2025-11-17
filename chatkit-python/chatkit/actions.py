@@ -13,7 +13,7 @@ DEFAULT_LOADING_BEHAVIOR: LoadingBehavior = "auto"
 
 class ActionConfig(BaseModel):
     type: str
-    payload: Any = None
+    payload: Any = Field(default_factory=dict)
     handler: Handler = DEFAULT_HANDLER
     loadingBehavior: LoadingBehavior = DEFAULT_LOADING_BEHAVIOR
 
@@ -24,7 +24,7 @@ TPayload = TypeVar("TPayload")
 
 class Action(BaseModel, Generic[TType, TPayload]):
     type: TType = Field(default=TType, frozen=True)  # pyright: ignore
-    payload: TPayload
+    payload: TPayload = None  # pyright: ignore
 
     @classmethod
     def create(
