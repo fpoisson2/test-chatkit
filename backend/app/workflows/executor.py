@@ -2305,6 +2305,12 @@ async def run_workflow(
                     transition = _find_while_exit_transition()
                 else:
                     state["state"][loop_counter_key] = iteration_count
+                    logger.debug(
+                        "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
+                        current_slug,
+                        iteration_count,
+                        state["state"].get(loop_counter_key)
+                    )
 
                     # Update iteration variable if specified (1-based: 1, 2, 3, ...,)
                     if iteration_var:
