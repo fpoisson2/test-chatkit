@@ -1145,6 +1145,8 @@ def test_while_without_end_node_waits_for_input():
         assert summary.end_state is not None
         assert summary.end_state.get("status_type") == "waiting"
         assert "attente" in summary.end_state.get("message", "").lower()
+        # The while loop counter should be cleaned up when there's no end block
+        assert "__while_loop_counter" not in summary.state.get("state", {})
 
     asyncio.run(_run())
 

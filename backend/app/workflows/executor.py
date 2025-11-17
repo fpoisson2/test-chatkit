@@ -2321,6 +2321,9 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
 
             if transition is None:
+                # No exit transition found, clean up counter before waiting or breaking
+                state["state"].pop(loop_counter_key, None)
+                state["state"].pop(loop_entry_key, None)
                 if _fallback_to_start("while", current_node.slug):
                     continue
                 break
