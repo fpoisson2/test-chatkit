@@ -767,7 +767,9 @@ def _candidate_widget_keys(*, is_list: bool) -> list[str]:
         "caption",
     ]
     if not is_list:
-        base.extend(["icon", "iconStart", "iconEnd"])
+        base.extend(["icon", "iconStart", "iconEnd", "src"])
+    else:
+        base.append("src")
     return base
 
 
