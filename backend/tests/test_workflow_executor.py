@@ -1119,14 +1119,14 @@ def test_workflow_with_circular_transitions():
 
         # This should hit the 1000 iteration limit
         try:
-            summary = await executor.run_workflow(
+            await executor.run_workflow(
                 WorkflowInput(input_as_text=""),
                 agent_context=_FakeAgentContext(),
                 workflow_definition=definition,
                 workflow_service=_FakeWorkflowService(),
             )
             # Should not reach here - expect an error
-            assert False, "Expected WorkflowExecutionError for infinite loop"
+            raise AssertionError("Expected WorkflowExecutionError for infinite loop")
         except executor.WorkflowExecutionError as e:
             assert "Nombre maximal d'étapes dépassé" in str(e)
 
@@ -1134,7 +1134,7 @@ def test_workflow_with_circular_transitions():
 
 
 def test_while_without_end_node_waits_for_input():
-    """Test that a while block without an END node waits for user input after max iterations."""
+    """While without END should wait for user input after max iterations."""
     async def _run() -> None:
         WorkflowInput = _get_workflow_input_cls()
         definition = _build_while_workflow_without_end()
@@ -1183,6 +1183,72 @@ def test_while_without_end_resets_counter_on_resume():
         assert resumed_summary.end_state is not None
         assert resumed_summary.end_state.status_type == "waiting"
         assert resumed_summary.state.get("state", {}).get("counter") == 4
+
+        state_values = resumed_summary.state.get("state", {})
+        assert "__while_loop_counter" not in state_values
+        assert "__while_loop_entry" not in state_values
+
+    asyncio.run(_run())
+
+
+def test_while_counters_are_reset_when_resuming_after_new_input(monkeypatch):
+    async def _run() -> None:
+        WorkflowInput = _get_workflow_input_cls()
+        agent_context = _FakeAgentContext()
+
+        definition = _build_while_workflow_without_end()
+
+        def _fake_run_streamed(
+            agent,
+            *,
+            input,
+            run_config,
+            context,
+            previous_response_id,
+        ):
+            agent_name = getattr(agent, "name", "unknown")
+            return _FakeStreamResult({"agent": agent_name})
+
+        async def _fake_stream_agent_response(agent_context, result):
+            if False:  # pragma: no cover - générateur vide
+                yield result
+
+        monkeypatch.setattr(executor.Runner, "run_streamed", _fake_run_streamed)
+        monkeypatch.setattr(
+            executor, "stream_agent_response", _fake_stream_agent_response
+        )
+
+        initial_summary = await executor.run_workflow(
+            WorkflowInput(input_as_text="Première passe", source_item_id="msg-1"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        pending_state = agent_context.thread.metadata.get(
+            "workflow_wait_for_user_input", {}
+        )
+        stored_values = pending_state.setdefault("state", {}).setdefault("state", {})
+        assert initial_summary.state.get("state", {}).get("counter") == 2
+
+        stored_values.update(
+            {
+                "__while_loop_counter": 1,
+                "__while_loop_entry": "increment",
+            }
+        )
+
+        summary = await executor.run_workflow(
+            WorkflowInput(input_as_text="Continuer", source_item_id="msg-2"),
+            agent_context=agent_context,
+            workflow_definition=definition,
+            workflow_service=_FakeWorkflowService(),
+        )
+
+        state_values = summary.state.get("state", {})
+        assert state_values.get("counter") == 4
+        assert "__while_loop_counter" not in state_values
+        assert "__while_loop_entry" not in state_values
 
     asyncio.run(_run())
 

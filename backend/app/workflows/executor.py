@@ -682,6 +682,23 @@ async def run_workflow(
 
         return inside_nodes
 
+    def _reset_while_state_counters() -> None:
+        state_values = state.get("state")
+        if not isinstance(state_values, dict):
+            return
+
+        cleared = False
+        for key in list(state_values.keys()):
+            if key.startswith("__while_"):
+                state_values.pop(key, None)
+                cleared = True
+
+        if cleared:
+            logger.debug(
+                "Compteurs et points d'entrée des boucles while nettoyés pour "
+                "une nouvelle entrée utilisateur"
+            )
+
     if pending_wait_state:
         waiting_slug = pending_wait_state.get("slug")
         waiting_step = (
@@ -705,6 +722,22 @@ async def run_workflow(
                 if isinstance(state_values, dict):
                     state_values.pop(loop_counter_key, None)
                     state_values.pop(loop_entry_key, None)
+
+    pending_wait_input_id = (
+        pending_wait_state.get("input_item_id") if pending_wait_state else None
+    )
+    normalized_pending_input_id = (
+        pending_wait_input_id if isinstance(pending_wait_input_id, str) else None
+    )
+    normalized_current_input_id = (
+        current_input_item_id if isinstance(current_input_item_id, str) else None
+    )
+
+    if normalized_current_input_id and (
+        normalized_pending_input_id is None
+        or normalized_current_input_id != normalized_pending_input_id
+    ):
+        _reset_while_state_counters()
 
     def _find_parent_while(node_slug: str) -> str | None:
         """
@@ -2074,7 +2107,8 @@ async def run_workflow(
         return join_slug
 
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
-        nonlocal current_slug, final_end_state, thread, conversation_history, state, current_input_item_id
+        nonlocal current_slug, final_end_state, thread, conversation_history
+        nonlocal state, current_input_item_id
         # When a node has no outgoing transition and agent_steps_ordered exists,
         # we create a wait state to get new user input before restarting
         if not agent_steps_ordered:
