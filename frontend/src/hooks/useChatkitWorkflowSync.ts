@@ -106,17 +106,31 @@ export const useChatkitWorkflowSync = ({
   ]);
 
   useEffect(() => {
+    if (import.meta.env.DEV) {
+      console.log("[ChatKit] Auto-start effect triggered", {
+        enabled,
+        hasWorkflowInfo: !!chatkitWorkflowInfo,
+        autoStart: chatkitWorkflowInfo?.auto_start,
+        initialThreadId,
+        previousThreadId: previousThreadIdRef.current,
+        alreadyAttempted: autoStartAttemptRef.current,
+      });
+    }
+
     if (!enabled) {
       autoStartAttemptRef.current = false;
       previousThreadIdRef.current = initialThreadId;
       return;
     }
 
-    // Detect transition from existing thread to new thread (null)
-    const isTransitionToNewThread = previousThreadIdRef.current && !initialThreadId;
+    // Detect transition from existing thread to no thread (null)
+    const isTransitionToNewThread = previousThreadIdRef.current !== null && initialThreadId === null;
 
     // Reset auto-start flag when transitioning to a new thread
     if (isTransitionToNewThread) {
+      if (import.meta.env.DEV) {
+        console.log("[ChatKit] Transition détectée vers nouveau thread, reset du flag auto-start");
+      }
       autoStartAttemptRef.current = false;
     }
 
@@ -125,17 +139,28 @@ export const useChatkitWorkflowSync = ({
 
     // Auto-start conditions
     if (!chatkitWorkflowInfo || !chatkitWorkflowInfo.auto_start) {
-      autoStartAttemptRef.current = false;
+      if (autoStartAttemptRef.current) {
+        if (import.meta.env.DEV) {
+          console.log("[ChatKit] Auto-start désactivé, reset du flag");
+        }
+        autoStartAttemptRef.current = false;
+      }
       return;
     }
 
     // Only auto-start when there's no thread (fresh start or new thread)
-    if (initialThreadId) {
+    if (initialThreadId !== null) {
+      if (import.meta.env.DEV) {
+        console.log("[ChatKit] Thread existant, pas d'auto-start");
+      }
       return;
     }
 
     // Don't auto-start if already attempted (unless reset by transition)
     if (autoStartAttemptRef.current) {
+      if (import.meta.env.DEV) {
+        console.log("[ChatKit] Auto-start déjà tenté, skip");
+      }
       return;
     }
 
@@ -146,16 +171,19 @@ export const useChatkitWorkflowSync = ({
     const payloadText = configuredMessage.trim() ? configuredMessage : AUTO_START_TRIGGER_MESSAGE;
 
     if (import.meta.env.DEV) {
-      console.log("[ChatKit] Démarrage automatique du workflow", {
+      console.log("[ChatKit] Déclenchement du démarrage automatique du workflow", {
         isTransitionToNewThread,
         payloadText: payloadText === AUTO_START_TRIGGER_MESSAGE ? "[zero-width space]" : payloadText,
       });
     }
 
     sendUserMessage({ text: payloadText, newThread: true })
-      .then(() =>
-        requestRefresh("[ChatKit] Rafraîchissement après démarrage automatique impossible"),
-      )
+      .then(() => {
+        if (import.meta.env.DEV) {
+          console.log("[ChatKit] Auto-start réussi, rafraîchissement...");
+        }
+        return requestRefresh("[ChatKit] Rafraîchissement après démarrage automatique impossible");
+      })
       .catch((err: unknown) => {
         autoStartAttemptRef.current = false;
         const message =
