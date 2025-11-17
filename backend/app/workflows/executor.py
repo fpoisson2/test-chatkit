@@ -682,6 +682,30 @@ async def run_workflow(
 
         return inside_nodes
 
+    if pending_wait_state:
+        waiting_slug = pending_wait_state.get("slug")
+        waiting_step = (
+            nodes_by_slug.get(waiting_slug)
+            if isinstance(waiting_slug, str)
+            else None
+        )
+
+        if waiting_step and waiting_step.kind == "while":
+            inside_nodes = _get_nodes_inside_while(waiting_step)
+            contains_end_block = any(
+                nodes_by_slug.get(slug, None) is not None
+                and nodes_by_slug[slug].kind == "end"
+                for slug in inside_nodes
+            )
+
+            if not contains_end_block:
+                loop_counter_key = f"__while_{waiting_step.slug}_counter"
+                loop_entry_key = f"__while_{waiting_step.slug}_entry"
+                state_values = state.get("state")
+                if isinstance(state_values, dict):
+                    state_values.pop(loop_counter_key, None)
+                    state_values.pop(loop_entry_key, None)
+
     def _find_parent_while(node_slug: str) -> str | None:
         """
         Find the while block that contains a given node, if any.
