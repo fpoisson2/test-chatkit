@@ -1653,40 +1653,41 @@ async def run_workflow(
             )
             conversation_history_input = filtered_input
 
-            # Check if we're in a while loop iteration > 1
-            # If so, don't send the initial user message again as it's already in the context
-            in_while_loop_iteration = False
-            if "state" in state and isinstance(state["state"], dict):
-                logger.debug(
-                    "Vérification du state pour détection de boucle while: %s",
-                    {k: v for k, v in state["state"].items() if "__while_" in str(k)}
-                )
-                for key, value in state["state"].items():
-                    if (
-                        isinstance(key, str)
-                        and key.startswith("__while_")
-                        and key.endswith("_counter")
-                        and isinstance(value, int)
-                        and value >= 1
-                    ):
-                        in_while_loop_iteration = True
-                        logger.debug(
-                            "Boucle while détectée: %s = %d (>= 1)",
-                            key,
-                            value
-                        )
-                        break
+        # Check if we're in a while loop iteration (with previous_response_id or wait state resume)
+        # If so, don't send the initial user message again as it's already in the context
+        in_while_loop_iteration = False
+        if "state" in state and isinstance(state["state"], dict):
+            logger.debug(
+                "Vérification du state pour détection de boucle while: %s",
+                {k: v for k, v in state["state"].items() if "__while_" in str(k)}
+            )
+            for key, value in state["state"].items():
+                if (
+                    isinstance(key, str)
+                    and key.startswith("__while_")
+                    and key.endswith("_counter")
+                    and isinstance(value, int)
+                    and value >= 1
+                ):
+                    in_while_loop_iteration = True
+                    logger.debug(
+                        "Boucle while détectée: %s = %d (>= 1)",
+                        key,
+                        value
+                    )
+                    break
 
-            if in_while_loop_iteration:
-                # We're in a subsequent iteration of a while loop
-                # The initial user message is already in the context via previous_response_id
-                # So we should not send it again
-                logger.debug(
-                    "Boucle while (itération > 1) détectée avec previous_response_id=%s, "
-                    "suppression du message user initial de l'entrée",
-                    sanitized_previous_response_id,
-                )
-                conversation_history_input = []
+        if in_while_loop_iteration and (sanitized_previous_response_id or pending_wait_state):
+            # We're in a subsequent iteration of a while loop
+            # The initial user message is already in the context via previous_response_id or wait state history
+            # So we should not send it again
+            logger.debug(
+                "Boucle while (itération >= 1) détectée avec previous_response_id=%s ou wait_state=%s, "
+                "suppression du message user initial de l'entrée",
+                sanitized_previous_response_id,
+                bool(pending_wait_state),
+            )
+            conversation_history_input = []
 
         try:
             result = Runner.run_streamed(
