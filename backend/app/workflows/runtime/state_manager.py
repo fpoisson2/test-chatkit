@@ -141,6 +141,7 @@ class StateInitializer:
                 "has_all_details": False,
                 "infos_manquantes": initial_user_text,
                 "should_finalize": False,
+                "state": {},  # Initialize nested state dict for while loop counters
             }
             if restored_state:
                 state.update(restored_state)

@@ -1667,11 +1667,11 @@ async def run_workflow(
                         and key.startswith("__while_")
                         and key.endswith("_counter")
                         and isinstance(value, int)
-                        and value > 1
+                        and value >= 1
                     ):
                         in_while_loop_iteration = True
                         logger.debug(
-                            "Boucle while détectée: %s = %d (> 1)",
+                            "Boucle while détectée: %s = %d (>= 1)",
                             key,
                             value
                         )
@@ -2270,10 +2270,10 @@ async def run_workflow(
                 "state" in state,
                 list(state.keys())
             )
+            # state["state"] should always exist now (initialized in state_manager.py)
             if "state" not in state:
-                logger.warning(
-                    "While %s: clé 'state' absente de state, création d'un dict vide - "
-                    "le compteur sera perdu !",
+                logger.error(
+                    "While %s: clé 'state' absente de state - ERREUR INATTENDUE!",
                     current_slug
                 )
                 state["state"] = {}
