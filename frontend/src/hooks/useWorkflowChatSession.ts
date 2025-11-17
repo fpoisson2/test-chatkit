@@ -57,11 +57,11 @@ export const useWorkflowChatSession = ({
     sendUserMessage,
     initialThreadId,
     reportError,
-    enabled: mode !== "hosted",
+    enabled: true, // Always enabled to support auto-start in both local and hosted modes
   });
 
   const requestRefresh = mode === "hosted" ? hostedRequestRefresh : workflowSync.requestRefresh;
-  const chatkitWorkflowInfo = mode === "hosted" ? null : workflowSync.chatkitWorkflowInfo;
+  const chatkitWorkflowInfo = workflowSync.chatkitWorkflowInfo;
 
   return useMemo(
     () => ({

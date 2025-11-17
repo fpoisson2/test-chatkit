@@ -571,17 +571,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             assistant_stream_text = (
                 "" if user_text else _normalize_user_text(config.assistant_message)
             )
-            if not user_text and not assistant_stream_text:
-                yield ErrorEvent(
-                    code=ErrorCode.STREAM_ERROR,
-                    message=(
-                        "Aucun message automatique n'est configuré pour ce "
-                        "workflow."
-                    ),
-                    allow_retry=False,
-                )
-                return
 
+            # Allow auto-start even without configured messages
+            # The workflow will simply start without displaying an initial message
             if user_text:
                 workflow_input = WorkflowInput(
                     input_as_text=user_text,
@@ -594,6 +586,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     input_as_text="",
                     auto_start_was_triggered=True,
                     auto_start_assistant_message=assistant_stream_text,
+                    source_item_id=source_item_id,
+                )
+            else:
+                # No message configured - start workflow silently
+                workflow_input = WorkflowInput(
+                    input_as_text="",
+                    auto_start_was_triggered=True,
+                    auto_start_assistant_message="",
                     source_item_id=source_item_id,
                 )
 
