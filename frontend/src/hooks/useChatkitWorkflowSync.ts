@@ -108,26 +108,49 @@ export const useChatkitWorkflowSync = ({
   useEffect(() => {
     if (!enabled) {
       autoStartAttemptRef.current = false;
+      previousThreadIdRef.current = initialThreadId;
       return;
     }
 
+    // Detect transition from existing thread to new thread (null)
+    const isTransitionToNewThread = previousThreadIdRef.current && !initialThreadId;
+
+    // Reset auto-start flag when transitioning to a new thread
+    if (isTransitionToNewThread) {
+      autoStartAttemptRef.current = false;
+    }
+
+    // Update previous thread ref for next comparison
+    previousThreadIdRef.current = initialThreadId;
+
+    // Auto-start conditions
     if (!chatkitWorkflowInfo || !chatkitWorkflowInfo.auto_start) {
       autoStartAttemptRef.current = false;
       return;
     }
 
+    // Only auto-start when there's no thread (fresh start or new thread)
     if (initialThreadId) {
       return;
     }
 
+    // Don't auto-start if already attempted (unless reset by transition)
     if (autoStartAttemptRef.current) {
       return;
     }
 
+    // Trigger auto-start
     autoStartAttemptRef.current = true;
 
     const configuredMessage = chatkitWorkflowInfo.auto_start_user_message ?? "";
     const payloadText = configuredMessage.trim() ? configuredMessage : AUTO_START_TRIGGER_MESSAGE;
+
+    if (import.meta.env.DEV) {
+      console.log("[ChatKit] Démarrage automatique du workflow", {
+        isTransitionToNewThread,
+        payloadText: payloadText === AUTO_START_TRIGGER_MESSAGE ? "[zero-width space]" : payloadText,
+      });
+    }
 
     sendUserMessage({ text: payloadText, newThread: true })
       .then(() =>
@@ -152,19 +175,6 @@ export const useChatkitWorkflowSync = ({
     requestRefresh,
     sendUserMessage,
   ]);
-
-  useEffect(() => {
-    if (!enabled) {
-      autoStartAttemptRef.current = false;
-      previousThreadIdRef.current = initialThreadId;
-      return;
-    }
-
-    if (previousThreadIdRef.current && !initialThreadId) {
-      autoStartAttemptRef.current = false;
-    }
-    previousThreadIdRef.current = initialThreadId;
-  }, [enabled, initialThreadId]);
 
   useEffect(() => {
     if (!enabled) {
