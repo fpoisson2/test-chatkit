@@ -1789,35 +1789,35 @@ async def run_workflow(
                             exc_info=exc,
                         )
 
-        new_history_items = [item.to_input_item() for item in result.new_items]
-        conversation_history.extend(
-            _filter_duplicate_user_history_items(
-                conversation_history, new_history_items
-            )
-        )
-        if result.new_items:
-            try:
-                logger.debug(
-                    "Éléments ajoutés par l'agent %s : %s",
-                    log_agent_key,
-                    json.dumps(
-                        [item.to_input_item() for item in result.new_items],
-                        ensure_ascii=False,
-                        default=str,
-                    ),
+            new_history_items = [item.to_input_item() for item in result.new_items]
+            conversation_history.extend(
+                _filter_duplicate_user_history_items(
+                    conversation_history, new_history_items
                 )
-            except TypeError:
-                logger.debug(
-                    "Éléments ajoutés par l'agent %s non sérialisables en JSON",
-                    log_agent_key,
-                )
-            logger.info(
-                "Fin de l'exécution de l'agent %s (étape=%s)",
-                metadata_for_images.get("agent_key")
-                or metadata_for_images.get("agent_label")
-                or step_key,
-                metadata_for_images.get("step_slug"),
             )
+            if result.new_items:
+                try:
+                    logger.debug(
+                        "Éléments ajoutés par l'agent %s : %s",
+                        log_agent_key,
+                        json.dumps(
+                            [item.to_input_item() for item in result.new_items],
+                            ensure_ascii=False,
+                            default=str,
+                        ),
+                    )
+                except TypeError:
+                    logger.debug(
+                        "Éléments ajoutés par l'agent %s non sérialisables en JSON",
+                        log_agent_key,
+                    )
+                logger.info(
+                    "Fin de l'exécution de l'agent %s (étape=%s)",
+                    metadata_for_images.get("agent_key")
+                    or metadata_for_images.get("agent_label")
+                    or step_key,
+                    metadata_for_images.get("step_slug"),
+                )
             return result
         finally:
             # Déconnecter les serveurs MCP
@@ -2104,7 +2104,8 @@ async def run_workflow(
         return join_slug
 
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
-        nonlocal current_slug, final_end_state, thread, conversation_history, state, current_input_item_id
+        nonlocal current_slug, final_end_state, thread, conversation_history, state
+        nonlocal current_input_item_id
         # When a node has no outgoing transition and agent_steps_ordered exists,
         # we create a wait state to get new user input before restarting
         if not agent_steps_ordered:
