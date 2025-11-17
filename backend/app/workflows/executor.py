@@ -1653,6 +1653,42 @@ async def run_workflow(
             )
             conversation_history_input = filtered_input
 
+        # Check if we're in a while loop iteration (with previous_response_id or wait state resume)
+        # If so, don't send the initial user message again as it's already in the context
+        in_while_loop_iteration = False
+        if "state" in state and isinstance(state["state"], dict):
+            logger.debug(
+                "Vérification du state pour détection de boucle while: %s",
+                {k: v for k, v in state["state"].items() if "__while_" in str(k)}
+            )
+            for key, value in state["state"].items():
+                if (
+                    isinstance(key, str)
+                    and key.startswith("__while_")
+                    and key.endswith("_counter")
+                    and isinstance(value, int)
+                    and value >= 1
+                ):
+                    in_while_loop_iteration = True
+                    logger.debug(
+                        "Boucle while détectée: %s = %d (>= 1)",
+                        key,
+                        value
+                    )
+                    break
+
+        if in_while_loop_iteration and (sanitized_previous_response_id or pending_wait_state):
+            # We're in a subsequent iteration of a while loop
+            # The initial user message is already in the context via previous_response_id or wait state history
+            # So we should not send it again
+            logger.debug(
+                "Boucle while (itération >= 1) détectée avec previous_response_id=%s ou wait_state=%s, "
+                "suppression du message user initial de l'entrée",
+                sanitized_previous_response_id,
+                bool(pending_wait_state),
+            )
+            conversation_history_input = []
+
         try:
             result = Runner.run_streamed(
                 agent,
@@ -2065,13 +2101,43 @@ async def run_workflow(
             "next_step_slug": start_step.slug,
         }
 
+        # Filter out old user messages from conversation history since we're restarting
+        # Only keep assistant responses and system messages to maintain context
+        filtered_history = [
+            item for item in conversation_history
+            if not (isinstance(item, dict) and item.get("role") == "user")
+        ]
+
         conversation_snapshot = _clone_conversation_history_snapshot(
-            conversation_history
+            filtered_history
         )
         if conversation_snapshot:
             wait_state_payload["conversation_history"] = conversation_snapshot
+            logger.debug(
+                "Nettoyage de %d message(s) user avant redémarrage (conservé %d items)",
+                len(conversation_history) - len(filtered_history),
+                len(filtered_history)
+            )
         if state:
-            wait_state_payload["state"] = _json_safe_copy(state)
+            # Clean up while loop counters since we're restarting at the beginning
+            # This prevents the old counters from incorrectly filtering the new user message
+            cleaned_state = _json_safe_copy(state)
+            if isinstance(cleaned_state, dict) and "state" in cleaned_state:
+                nested_state = cleaned_state.get("state")
+                if isinstance(nested_state, dict):
+                    keys_to_remove = [
+                        k for k in nested_state.keys()
+                        if isinstance(k, str) and k.startswith("__while_")
+                    ]
+                    for key in keys_to_remove:
+                        nested_state.pop(key, None)
+                    if keys_to_remove:
+                        logger.debug(
+                            "Nettoyage de %d compteur(s) de while avant redémarrage: %s",
+                            len(keys_to_remove),
+                            keys_to_remove
+                        )
+            wait_state_payload["state"] = cleaned_state
 
         if thread is not None:
             _set_wait_state_metadata(thread, wait_state_payload)
@@ -2225,7 +2291,18 @@ async def run_workflow(
             # Initialize or get iteration counter from state
             loop_counter_key = f"__while_{current_slug}_counter"
             loop_entry_key = f"__while_{current_slug}_entry"
+            logger.debug(
+                "While %s: avant init, 'state' in state=%s, state.keys()=%s",
+                current_slug,
+                "state" in state,
+                list(state.keys())
+            )
+            # state["state"] should always exist now (initialized in state_manager.py)
             if "state" not in state:
+                logger.error(
+                    "While %s: clé 'state' absente de state - ERREUR INATTENDUE!",
+                    current_slug
+                )
                 state["state"] = {}
 
             iteration_count = state["state"].get(loop_counter_key, 0)
@@ -2266,6 +2343,19 @@ async def run_workflow(
                     transition = _find_while_exit_transition()
                 else:
                     state["state"][loop_counter_key] = iteration_count
+                    logger.debug(
+                        "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
+                        current_slug,
+                        iteration_count,
+                        state["state"].get(loop_counter_key)
+                    )
+                    logger.debug(
+                        "While %s: APRÈS sauvegarde compteur, id(state)=%s, 'state' in state=%s, state.keys()=%s",
+                        current_slug,
+                        id(state),
+                        "state" in state,
+                        list(state.keys())
+                    )
 
                     # Update iteration variable if specified (1-based: 1, 2, 3, ...,)
                     if iteration_var:
@@ -3494,6 +3584,14 @@ async def run_workflow(
                 list(steps),
             )
 
+        logger.debug(
+            "AVANT process_agent_step pour %s: id(state)=%s, 'state' in state=%s, state.keys()=%s",
+            current_slug,
+            id(state),
+            "state" in state,
+            list(state.keys())
+        )
+
         agent_step_execution = await process_agent_step(
             current_node=current_node,
             current_slug=current_slug,
@@ -3522,6 +3620,14 @@ async def run_workflow(
             node_title=_node_title,
             next_edge=_next_edge,
             session_factory=SessionLocal,
+        )
+
+        logger.debug(
+            "APRÈS process_agent_step pour %s: id(state)=%s, 'state' in state=%s, state.keys()=%s",
+            current_slug,
+            id(state),
+            "state" in state,
+            list(state.keys())
         )
 
         last_step_context = agent_step_execution.last_step_context
