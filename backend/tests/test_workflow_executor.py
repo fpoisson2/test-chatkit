@@ -1147,6 +1147,8 @@ def test_while_without_end_node_waits_for_input():
         assert "attente" in summary.end_state.get("message", "").lower()
         # The while loop counter should be cleaned up when there's no end block
         assert "__while_loop_counter" not in summary.state.get("state", {})
+        # But the entry key should be kept so the loop can resume properly
+        assert "__while_loop_entry" in summary.state.get("state", {})
 
     asyncio.run(_run())
 

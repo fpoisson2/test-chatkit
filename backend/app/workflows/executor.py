@@ -2255,9 +2255,12 @@ async def run_workflow(
             if not condition_result:
                 # Condition is false, exit the loop
                 state["state"].pop(loop_counter_key, None)  # Clean up counter
-                state["state"].pop(loop_entry_key, None)  # Clean up entry point
+                # Keep entry key in case we need to wait for input and resume
 
                 transition = _find_while_exit_transition()
+                # Only clean up entry key if we found an exit transition
+                if transition is not None:
+                    state["state"].pop(loop_entry_key, None)
             else:
                 # Condition is true, continue loop after counting the iteration
                 iteration_count = iteration_count + 1
@@ -2265,9 +2268,12 @@ async def run_workflow(
                 # Check max iterations safety limit after incrementing
                 if iteration_count > max_iterations:
                     state["state"].pop(loop_counter_key, None)  # Clean up counter
-                    state["state"].pop(loop_entry_key, None)  # Clean up entry point
+                    # Keep entry key in case we need to wait for input and resume
 
                     transition = _find_while_exit_transition()
+                    # Only clean up entry key if we found an exit transition
+                    if transition is not None:
+                        state["state"].pop(loop_entry_key, None)
                 else:
                     state["state"][loop_counter_key] = iteration_count
 
@@ -2321,9 +2327,8 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
 
             if transition is None:
-                # No exit transition found, clean up counter before waiting or breaking
-                state["state"].pop(loop_counter_key, None)
-                state["state"].pop(loop_entry_key, None)
+                # No exit transition found
+                # Counter is already cleaned up, entry key is kept to resume the loop
                 if _fallback_to_start("while", current_node.slug):
                     continue
                 break
