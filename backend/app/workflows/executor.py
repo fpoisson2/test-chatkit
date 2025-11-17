@@ -1860,23 +1860,38 @@ async def run_workflow(
         path = str(params.get("path", "")).strip()
         value = _resolve_state_path(path) if path else None
 
+        # DEBUG: Log condition evaluation
+        logger.info(f"[DEBUG] Condition {step.slug}: path='{path}', mode='{mode}', resolved_value={value!r}")
+
         if mode == "value":
-            return _stringify_branch_value(value)
+            result = _stringify_branch_value(value)
+            logger.info(f"[DEBUG] Condition {step.slug}: mode=value, returning '{result}'")
+            return result
 
         if mode in {"equals", "not_equals"}:
             expected = _stringify_branch_value(params.get("value"))
             candidate = _stringify_branch_value(value)
             if expected is None:
-                return "false" if mode == "equals" else "true"
+                result = "false" if mode == "equals" else "true"
+                logger.info(f"[DEBUG] Condition {step.slug}: expected is None, returning '{result}'")
+                return result
             comparison = (candidate or "").lower() == expected.lower()
             if mode == "equals":
-                return "true" if comparison else "false"
-            return "false" if comparison else "true"
+                result = "true" if comparison else "false"
+                logger.info(f"[DEBUG] Condition {step.slug}: equals mode, candidate='{candidate}', expected='{expected}', returning '{result}'")
+                return result
+            result = "false" if comparison else "true"
+            logger.info(f"[DEBUG] Condition {step.slug}: not_equals mode, returning '{result}'")
+            return result
 
         if mode == "falsy":
-            return "true" if not bool(value) else "false"
+            result = "true" if not bool(value) else "false"
+            logger.info(f"[DEBUG] Condition {step.slug}: falsy mode, bool(value)={bool(value)}, returning '{result}'")
+            return result
 
-        return "true" if bool(value) else "false"
+        result = "true" if bool(value) else "false"
+        logger.info(f"[DEBUG] Condition {step.slug}: truthy mode (default), bool(value)={bool(value)}, returning '{result}'")
+        return result
 
     def _next_edge(
         source_slug: str, branch: str | None = None
@@ -2244,7 +2259,12 @@ async def run_workflow(
 
         if current_node.kind == "condition":
             branch = _evaluate_condition_node(current_node)
+            # DEBUG: Log condition result and transition
+            available_edges = edges_by_source.get(current_slug, [])
+            logger.info(f"[DEBUG] Condition {current_slug}: returned branch='{branch}'")
+            logger.info(f"[DEBUG] Available edges from {current_slug}: {[(e.target_step.slug, e.condition) for e in available_edges]}")
             transition = _next_edge(current_slug, branch)
+            logger.info(f"[DEBUG] Condition {current_slug} → selected edge to: {transition.target_step.slug if transition else 'None'}")
             if transition is None:
                 branch_label = branch if branch is not None else "par défaut"
                 raise WorkflowExecutionError(
