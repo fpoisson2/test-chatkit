@@ -240,22 +240,24 @@ def _deduplicate_conversation_history_items(
 def _filter_conversation_history_for_previous_response(
     items: Sequence[TResponseInputItem],
 ) -> Sequence[TResponseInputItem]:
-    """Keep only user/system items when a previous response is referenced.
+    """Keep only the last user message when a previous response is referenced.
 
     The Responses API automatically restores the prior context from
     ``previous_response_id``. Sending assistant outputs or tool calls again can
     lead to mismatched references (for instance image generation calls requiring
-    their associated reasoning block). This helper strips everything except
-    user/system authored items so only fresh input is forwarded.
+    their associated reasoning block).
+
+    Since previous_response_id already contains all the prior context, we only
+    need to send the last user message (if any) as new input. Sending all user
+    messages would duplicate the conversation history.
     """
 
     if not items:
         return items
 
-    filtered: list[TResponseInputItem] = []
-    changed = False
-
-    for item in items:
+    # Find the last user message
+    last_user_message = None
+    for item in reversed(items):
         if isinstance(item, Mapping):
             role_candidate = item.get("role")
         else:
@@ -263,12 +265,12 @@ def _filter_conversation_history_for_previous_response(
 
         role = role_candidate if isinstance(role_candidate, str) else None
 
-        if role in {"user", "system"}:
-            filtered.append(item)
-        else:
-            changed = True
+        if role == "user":
+            last_user_message = item
+            break
 
-    return items if not changed else filtered
+    # Return only the last user message (or empty list if none found)
+    return [last_user_message] if last_user_message is not None else []
 
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer

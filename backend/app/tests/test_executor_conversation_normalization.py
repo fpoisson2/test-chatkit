@@ -205,7 +205,7 @@ def test_deduplicate_conversation_history_items_returns_original_when_unique() -
     assert deduplicated is items
 
 
-def test_filter_conversation_history_for_previous_response_keeps_only_user_and_system() -> None:
+def test_filter_conversation_history_for_previous_response_keeps_only_last_user_message() -> None:
     items = [
         {"id": "msg_a", "role": "assistant", "content": "hello"},
         {"id": "msg_b", "role": "user", "content": "hi"},
@@ -216,16 +216,30 @@ def test_filter_conversation_history_for_previous_response_keeps_only_user_and_s
             "role": "assistant",
         },
         {"id": "rs_789", "type": "reasoning", "role": "assistant"},
+        {"id": "msg_c", "role": "user", "content": "second message"},
+    ]
+
+    filtered = executor_module._filter_conversation_history_for_previous_response(items)
+
+    # Should only keep the last user message since previous_response_id
+    # already contains all prior context
+    assert filtered is not items
+    assert filtered == [
+        {"id": "msg_c", "role": "user", "content": "second message"},
+    ]
+
+
+def test_filter_conversation_history_for_previous_response_returns_empty_when_no_user_message() -> None:
+    items = [
+        {"id": "msg_a", "role": "assistant", "content": "hello"},
+        {"id": "rs_789", "type": "reasoning", "role": "assistant"},
         {"id": "sys_1", "role": "system", "content": "instructions"},
     ]
 
     filtered = executor_module._filter_conversation_history_for_previous_response(items)
 
-    assert filtered is not items
-    assert filtered == [
-        {"id": "msg_b", "role": "user", "content": "hi"},
-        {"id": "sys_1", "role": "system", "content": "instructions"},
-    ]
+    # Should return empty list when no user message is found
+    assert filtered == []
 
 
 def test_sanitize_previous_response_id_returns_trimmed_valid_value() -> None:
