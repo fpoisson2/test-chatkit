@@ -185,6 +185,9 @@ async def test_end_node_handler():
 | `StartNodeHandler` | Gérer les nœuds start | ~20 |
 | `EndNodeHandler` | Gérer les nœuds end + AGS | ~150 |
 | `ConditionNodeHandler` | Évaluer les conditions | ~100 |
+| `WhileNodeHandler` | Gérer les boucles while | ~200 |
+| `AssignNodeHandler` | Assigner des valeurs d'état | ~80 |
+| `WatchNodeHandler` | Déboguer / afficher | ~100 |
 | `WorkflowStateMachine` | Orchestrer l'exécution | ~50 |
 
 vs.
@@ -232,50 +235,123 @@ class WorkflowStateMachine:
 
 ## État actuel de la migration
 
-### ✅ Implémenté
+### ✅ Implémenté (6 handlers sur ~10 types principaux)
 - [x] Architecture de base (`state_machine.py`)
-- [x] `StartNodeHandler`
-- [x] `EndNodeHandler` (avec support AGS complet)
-- [x] `ConditionNodeHandler` (tous les modes)
+- [x] `StartNodeHandler` (~20 lignes)
+- [x] `EndNodeHandler` avec support AGS complet (~150 lignes)
+- [x] `ConditionNodeHandler` avec tous les modes (~100 lignes)
+- [x] `WhileNodeHandler` avec détection spatiale (~200 lignes)
+- [x] `AssignNodeHandler` pour nodes 'state' (~80 lignes)
+- [x] `WatchNodeHandler` pour debug (~100 lignes)
 - [x] `WorkflowStateMachine` orchestrator
 - [x] Factory pour créer la machine configurée
 - [x] Fonction démo `run_workflow_v2()`
 
 ### 🚧 À implémenter
-- [ ] `WhileNodeHandler` (150 lignes de logique)
-- [ ] `AgentNodeHandler` (360 lignes de logique!)
-- [ ] `VoiceAgentNodeHandler`
-- [ ] `AssignNodeHandler`
-- [ ] `ParallelNodeHandler`
+- [ ] `AgentNodeHandler` (360 lignes - **nécessite refactoring de process_agent_step**)
+  - Actuellement process_agent_step prend 20+ paramètres
+  - Devrait accepter ExecutionContext à la place
+- [ ] `VoiceAgentNodeHandler` (même problème que AgentNodeHandler)
+- [ ] `ParallelNodeHandler` / `ParallelSplitNodeHandler`
 - [ ] `WaitNodeHandler`
-- [ ] `VectorStoreNodeHandler`
-- [ ] `ImageGenerationNodeHandler`
-- [ ] `WidgetNodeHandler`
-- [ ] Migration complète de `run_workflow()`
+- [ ] Handlers pour types spécialisés (image, custom_task, etc.)
+- [ ] Migration complète de `run_workflow()` → `run_workflow_v2()`
+
+---
+
+## Progrès réalisés
+
+| Handler | Lignes avant | Lignes après | Status |
+|---------|--------------|--------------|--------|
+| Start | ~10 inline | ~20 isolé | ✅ Complet |
+| End | ~50 inline | ~150 isolé | ✅ Complet avec AGS |
+| Condition | ~30 inline | ~100 isolé | ✅ Tous les modes |
+| While | ~150 inline | ~200 isolé | ✅ Détection spatiale |
+| Assign (state) | ~30 inline | ~80 isolé | ✅ Opérations multiples |
+| Watch | ~20 inline | ~100 isolé | ✅ Avec streaming |
+| Agent | ~360 inline | Placeholder | 🚧 Nécessite refactoring |
+
+**Total extrait : ~650 lignes / 3,270 lignes (20% complété)**
+
+---
+
+## Défi restant : AgentNodeHandler
+
+Le plus gros handler (`AgentNodeHandler`) nécessite un refactoring supplémentaire car il dépend de `process_agent_step` qui prend **20+ paramètres individuels** :
+
+```python
+# Actuel - impossible à gérer proprement
+agent_step_execution = await process_agent_step(
+    current_node=...,
+    current_slug=...,
+    agent_instances=...,
+    agent_positions=...,
+    total_runtime_steps=...,
+    widget_configs_by_step=...,
+    conversation_history=...,
+    last_step_context=...,
+    state=...,
+    agent_context=...,
+    run_agent_step=...,
+    consume_generated_image_urls=...,
+    structured_output_as_json=...,
+    record_step=...,
+    merge_generated_image_urls_into_payload=...,
+    append_generated_image_links=...,
+    format_generated_image_links=...,
+    ingest_vector_store_step=...,
+    stream_widget=...,
+    should_wait_for_widget_action=...,
+    on_widget_step=...,
+    emit_stream_event=...,
+    on_stream_event=...,
+    branch_prefixed_slug=...,
+    node_title=...,
+    next_edge=...,
+    session_factory=...,
+    # 25+ paramètres!
+)
+```
+
+**Solution** : Refactorer `process_agent_step` pour accepter `ExecutionContext` :
+
+```python
+# Cible - beaucoup plus simple
+agent_step_execution = await process_agent_step(
+    node=current_node,
+    context=execution_context,
+)
+```
 
 ---
 
 ## Plan de migration
 
 ### Phase 1 : Handlers de base ✅ COMPLÉTÉ
-1. Créer l'architecture
-2. Implémenter start, end, condition
-3. Créer la démo
+1. ✅ Créer l'architecture (state_machine.py)
+2. ✅ Implémenter start, end, condition
+3. ✅ Créer la démo (executor_v2_demo.py)
 
-### Phase 2 : Handlers complexes (En cours)
-4. Extraire `WhileNodeHandler`
-5. Extraire `AgentNodeHandler` (le plus gros)
-6. Extraire les handlers spécialisés (voice, widget, etc.)
+### Phase 2 : Handlers intermédiaires ✅ COMPLÉTÉ
+4. ✅ Extraire `WhileNodeHandler` (200 lignes → handler isolé)
+5. ✅ Extraire `AssignNodeHandler` (state nodes)
+6. ✅ Extraire `WatchNodeHandler` (debug)
+7. ✅ Créer placeholder pour `AgentNodeHandler`
 
-### Phase 3 : Migration complète
-7. Remplacer `run_workflow()` par `run_workflow_v2()`
-8. Migrer tous les tests
-9. Cleanup de l'ancien code
+### Phase 3 : Refactoring AgentNodeHandler (Prochaine étape)
+8. ⏳ Refactorer `process_agent_step` pour accepter `ExecutionContext`
+9. ⏳ Implémenter `AgentNodeHandler` complet
+10. ⏳ Gérer nested workflows dans AgentNodeHandler
 
-### Phase 4 : Optimisations
-10. Consolider les 3 normalizers de conversation
-11. Optimiser la détection de while loops
-12. Extraire StateManager
+### Phase 4 : Migration complète
+11. Remplacer `run_workflow()` par `run_workflow_v2()`
+12. Migrer tous les tests
+13. Cleanup de l'ancien code
+
+### Phase 5 : Optimisations
+14. Consolider les 3 normalizers de conversation
+15. Optimiser la détection de while loops (cache spatial)
+16. Extraire StateManager pour opérations sur state
 
 ---
 
@@ -286,11 +362,15 @@ backend/app/workflows/
 ├── runtime/
 │   └── state_machine.py           # Architecture de base
 ├── handlers/
-│   ├── __init__.py
-│   ├── base.py                    # BaseNodeHandler
+│   ├── __init__.py                # Exports de tous les handlers
+│   ├── base.py                    # BaseNodeHandler avec utilitaires
 │   ├── start.py                   # StartNodeHandler
-│   ├── end.py                     # EndNodeHandler
+│   ├── end.py                     # EndNodeHandler (avec AGS)
 │   ├── condition.py               # ConditionNodeHandler
+│   ├── while_loop.py              # WhileNodeHandler (détection spatiale)
+│   ├── assign.py                  # AssignNodeHandler (state nodes)
+│   ├── watch.py                   # WatchNodeHandler (debug)
+│   ├── agent.py                   # AgentNodeHandler (placeholder)
 │   └── factory.py                 # create_state_machine()
 ├── executor_v2_demo.py            # Démo de la nouvelle architecture
 └── STATE_MACHINE_REFACTORING.md   # Cette documentation
@@ -318,12 +398,14 @@ summary = await run_workflow_v2(
 
 ## Conclusion
 
-Cette refactorisation transforme un "God Function" monolithique de 3,270 lignes en une architecture modulaire et maintenable :
+Cette refactorisation a déjà extrait **6 handlers sur ~10 types de nœuds principaux**, transformant 20% du code monolithique en modules testables :
 
-- **Chaque handler : ~100 lignes** au lieu de tout dans une fonction
-- **Testable unitairement** au lieu d'intégration seulement
-- **Extensible facilement** au lieu de modifier une boucle géante
-- **Séparation des responsabilités** au lieu de tout mélangé
-- **Complexité réduite** : 50+ → 5 par handler
+- **Chaque handler : ~100 lignes** au lieu de tout inline
+- **Testable unitairement** (déjà possible pour 6 types)
+- **Extensible facilement** (nouveau type = nouvelle classe)
+- **Séparation des responsabilités** claire
+- **Complexité réduite** : 50+ → ~5 par handler
 
-Le code est maintenant **simple, clair et professionnel** ! 🎉
+Le code est **significativement plus simple et professionnel** ! 🎉
+
+**Prochaine étape** : Refactorer `process_agent_step` pour compléter `AgentNodeHandler`.
