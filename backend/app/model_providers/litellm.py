@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING
 from agents import set_default_openai_client
 from openai import AsyncOpenAI
 
+try:
+    import litellm
+except ImportError:
+    litellm = None
+
 from ._shared import normalize_api_base
 
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'analyse statique
@@ -28,20 +33,30 @@ def configure_litellm_client(settings: Settings) -> None:
     base_url = normalize_api_base(settings.model_api_base)
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     set_default_openai_client(client)
+
     if settings.litellm_log_level is not None:
-        # Configure le logger principal de litellm
+        # Configure les loggers Python standard pour LiteLLM
         litellm_logger = logging.getLogger("litellm")
         litellm_logger.setLevel(settings.litellm_log_level)
 
-        # Empêche la propagation pour éviter les logs dupliqués
-        litellm_logger.propagate = True
-
-        # Configure aussi tous les loggers enfants existants et futurs
+        # Configure aussi tous les loggers enfants existants
         for name in list(logging.Logger.manager.loggerDict.keys()):
             if name.startswith("litellm") or name.startswith("LiteLLM"):
                 child_logger = logging.getLogger(name)
                 child_logger.setLevel(settings.litellm_log_level)
-                child_logger.propagate = True
+
+        # Configure l'API native de LiteLLM si disponible
+        if litellm is not None:
+            # Désactive les logs debug verbeux de LiteLLM
+            if settings.litellm_log_level >= logging.INFO:
+                litellm.suppress_debug_info = True
+                # Aussi définir set_verbose à False si le niveau est INFO ou plus
+                if hasattr(litellm, 'set_verbose'):
+                    litellm.set_verbose = False
+            else:
+                litellm.suppress_debug_info = False
+                if hasattr(litellm, 'set_verbose'):
+                    litellm.set_verbose = True
 
         logger.info(
             "Niveau de log LiteLLM configuré sur %s",
