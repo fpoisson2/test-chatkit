@@ -2321,8 +2321,16 @@ async def run_workflow(
                         transition = _next_edge(current_slug)
 
             if transition is None:
-                if _fallback_to_start("while", current_node.slug):
-                    continue
+                # Check if start block is inside the while loop
+                inside_nodes = _get_nodes_inside_while(current_node)
+                if start_step.slug in inside_nodes:
+                    # Start is inside the while, we can fallback to it
+                    if _fallback_to_start("while", current_node.slug):
+                        continue
+                else:
+                    # Start is NOT inside the while, reset counter and don't fallback
+                    state["state"].pop(loop_counter_key, None)
+                    state["state"].pop(loop_entry_key, None)
                 break
             current_slug = transition.target_step.slug
             continue
