@@ -2264,7 +2264,18 @@ async def run_workflow(
             # Initialize or get iteration counter from state
             loop_counter_key = f"__while_{current_slug}_counter"
             loop_entry_key = f"__while_{current_slug}_entry"
+            logger.debug(
+                "While %s: avant init, 'state' in state=%s, state.keys()=%s",
+                current_slug,
+                "state" in state,
+                list(state.keys())
+            )
             if "state" not in state:
+                logger.warning(
+                    "While %s: clé 'state' absente de state, création d'un dict vide - "
+                    "le compteur sera perdu !",
+                    current_slug
+                )
                 state["state"] = {}
 
             iteration_count = state["state"].get(loop_counter_key, 0)
