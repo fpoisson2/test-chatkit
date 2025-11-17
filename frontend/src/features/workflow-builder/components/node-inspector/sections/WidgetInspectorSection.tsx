@@ -300,7 +300,7 @@ const WidgetNodeContentEditor = ({
     options?: { mediaPreview?: MediaUploadPreview | null },
   ) => {
     const existingIndex = assignments.findIndex((assignment) => assignment.identifier === identifier);
-    const normalizedValue = value.trim();
+    const isBlank = value.trim() === "";
 
     setMediaUploads((previous) => {
       const next = { ...previous };
@@ -308,13 +308,13 @@ const WidgetNodeContentEditor = ({
         next[identifier] = options.mediaPreview;
       } else if (options && options.mediaPreview === null) {
         delete next[identifier];
-      } else if (!normalizedValue) {
+      } else if (isBlank) {
         delete next[identifier];
       }
       return next;
     });
 
-    if (!normalizedValue) {
+    if (isBlank) {
       if (existingIndex === -1) {
         return;
       }
@@ -323,11 +323,11 @@ const WidgetNodeContentEditor = ({
       return;
     }
     if (existingIndex === -1) {
-      onChange([...assignments, { identifier, expression: normalizedValue }]);
+      onChange([...assignments, { identifier, expression: value }]);
       return;
     }
     const next = assignments.map((assignment, index) =>
-      index === existingIndex ? { ...assignment, expression: normalizedValue } : assignment,
+      index === existingIndex ? { ...assignment, expression: value } : assignment,
     );
     onChange(next);
   };
