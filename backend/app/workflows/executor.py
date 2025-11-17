@@ -1657,6 +1657,10 @@ async def run_workflow(
             # If so, don't send the initial user message again as it's already in the context
             in_while_loop_iteration = False
             if "state" in state and isinstance(state["state"], dict):
+                logger.debug(
+                    "Vérification du state pour détection de boucle while: %s",
+                    {k: v for k, v in state["state"].items() if "__while_" in str(k)}
+                )
                 for key, value in state["state"].items():
                     if (
                         isinstance(key, str)
@@ -1666,6 +1670,11 @@ async def run_workflow(
                         and value > 1
                     ):
                         in_while_loop_iteration = True
+                        logger.debug(
+                            "Boucle while détectée: %s = %d (> 1)",
+                            key,
+                            value
+                        )
                         break
 
             if in_while_loop_iteration:
