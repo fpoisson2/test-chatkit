@@ -2105,11 +2105,23 @@ async def run_workflow(
             "next_step_slug": start_step.slug,
         }
 
+        # Filter out old user messages from conversation history since we're restarting
+        # Only keep assistant responses and system messages to maintain context
+        filtered_history = [
+            item for item in conversation_history
+            if not (isinstance(item, dict) and item.get("role") == "user")
+        ]
+
         conversation_snapshot = _clone_conversation_history_snapshot(
-            conversation_history
+            filtered_history
         )
         if conversation_snapshot:
             wait_state_payload["conversation_history"] = conversation_snapshot
+            logger.debug(
+                "Nettoyage de %d message(s) user avant redémarrage (conservé %d items)",
+                len(conversation_history) - len(filtered_history),
+                len(filtered_history)
+            )
         if state:
             # Clean up while loop counters since we're restarting at the beginning
             # This prevents the old counters from incorrectly filtering the new user message

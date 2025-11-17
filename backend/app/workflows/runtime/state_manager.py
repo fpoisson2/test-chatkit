@@ -91,14 +91,23 @@ class StateInitializer:
                     candidate_id if isinstance(candidate_id, str) else None
                 )
 
+            restored_from_wait_state = False
             if pending_wait_state:
                 restored_history = _clone_conversation_history_snapshot(
                     pending_wait_state.get("conversation_history")
                 )
                 if restored_history:
                     conversation_history.extend(restored_history)
+                    restored_from_wait_state = True
+                    logger.debug(
+                        "Historique restauré depuis wait state (%d items), "
+                        "ignorant thread_items_history pour éviter duplication",
+                        len(restored_history)
+                    )
 
-            if thread_items_history and thread_item_converter:
+            # Only process thread_items_history if we didn't restore from wait state
+            # to avoid re-adding old user messages that were intentionally filtered out
+            if not restored_from_wait_state and thread_items_history and thread_item_converter:
                 try:
                     filtered_history = [
                         item
