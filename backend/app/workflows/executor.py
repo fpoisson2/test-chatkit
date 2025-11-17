@@ -1858,7 +1858,8 @@ async def run_workflow(
         params = step.parameters or {}
         mode = str(params.get("mode", "truthy")).strip().lower()
         path = str(params.get("path", "")).strip()
-        value = _resolve_state_path(path) if path else None
+        # FIX: Use evaluate_state_expression to support both state.* and input.* paths
+        value = evaluate_state_expression(path, state=state, default_input_context=last_step_context) if path else None
 
         # DEBUG: Log condition evaluation
         logger.info(f"[DEBUG] Condition {step.slug}: path='{path}', mode='{mode}', resolved_value={value!r}")
@@ -2258,6 +2259,8 @@ async def run_workflow(
             continue
 
         if current_node.kind == "condition":
+            # DEBUG: Log input context before evaluation
+            logger.info(f"[DEBUG] Condition {current_slug}: last_step_context = {last_step_context!r}")
             branch = _evaluate_condition_node(current_node)
             # DEBUG: Log condition result and transition
             available_edges = edges_by_source.get(current_slug, [])
