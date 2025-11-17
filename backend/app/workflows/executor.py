@@ -2322,6 +2322,13 @@ async def run_workflow(
                         iteration_count,
                         state["state"].get(loop_counter_key)
                     )
+                    logger.debug(
+                        "While %s: APRÈS sauvegarde compteur, id(state)=%s, 'state' in state=%s, state.keys()=%s",
+                        current_slug,
+                        id(state),
+                        "state" in state,
+                        list(state.keys())
+                    )
 
                     # Update iteration variable if specified (1-based: 1, 2, 3, ...,)
                     if iteration_var:
@@ -3550,6 +3557,14 @@ async def run_workflow(
                 list(steps),
             )
 
+        logger.debug(
+            "AVANT process_agent_step pour %s: id(state)=%s, 'state' in state=%s, state.keys()=%s",
+            current_slug,
+            id(state),
+            "state" in state,
+            list(state.keys())
+        )
+
         agent_step_execution = await process_agent_step(
             current_node=current_node,
             current_slug=current_slug,
@@ -3578,6 +3593,14 @@ async def run_workflow(
             node_title=_node_title,
             next_edge=_next_edge,
             session_factory=SessionLocal,
+        )
+
+        logger.debug(
+            "APRÈS process_agent_step pour %s: id(state)=%s, 'state' in state=%s, state.keys()=%s",
+            current_slug,
+            id(state),
+            "state" in state,
+            list(state.keys())
         )
 
         last_step_context = agent_step_execution.last_step_context
