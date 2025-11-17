@@ -11,6 +11,9 @@ logging.basicConfig(
     level=getattr(logging, log_level, logging.INFO),
     format="%(levelname)s:%(name)s:%(message)s",
 )
+# Réduire le niveau de verbosité des librairies HTTP tierces pour éviter les logs de bas niveau
+logging.getLogger("httpcore").setLevel(logging.INFO)
+logging.getLogger("httpx").setLevel(logging.INFO)
 
 
 # Filtre pour supprimer les erreurs de cancel scope du SDK OpenAI
