@@ -30,6 +30,10 @@ import {
   setWidgetNodeSlug,
   setWidgetNodeSource,
   setWidgetNodeVariables,
+  setFrontendTriggerActionType,
+  setFrontendTriggerActionConfig,
+  setFrontendTriggerAwaitResponse,
+  type FrontendTriggerActionType,
   stringifyAgentParameters,
 } from "../../../utils/workflows";
 import { updateNodeParameters, type UpdateNodeDataFn } from "./nodeHandlerUtils";
@@ -106,6 +110,47 @@ const useDataNodeHandlers = ({
           return data;
         }
         const nextParameters = setWidgetNodeAwaitAction(data.parameters, value);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
+  // ========== Frontend Trigger Node Handlers ==========
+
+  const handleFrontendTriggerActionTypeChange = useCallback(
+    (nodeId: string, actionType: FrontendTriggerActionType) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "frontend_trigger") {
+          return data;
+        }
+        const nextParameters = setFrontendTriggerActionType(data.parameters, actionType);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleFrontendTriggerActionConfigChange = useCallback(
+    (nodeId: string, config: Record<string, unknown>) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "frontend_trigger") {
+          return data;
+        }
+        const nextParameters = setFrontendTriggerActionConfig(data.parameters, config);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleFrontendTriggerAwaitResponseChange = useCallback(
+    (nodeId: string, awaitResponse: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "frontend_trigger") {
+          return data;
+        }
+        const nextParameters = setFrontendTriggerAwaitResponse(data.parameters, awaitResponse);
         return updateNodeParameters(data, nextParameters);
       });
     },
@@ -376,6 +421,10 @@ const useDataNodeHandlers = ({
     handleWidgetNodeDefinitionExpressionChange,
     handleWidgetNodeVariablesChange,
     handleWidgetNodeAwaitActionChange,
+    // Frontend trigger handlers
+    handleFrontendTriggerActionTypeChange,
+    handleFrontendTriggerActionConfigChange,
+    handleFrontendTriggerAwaitResponseChange,
     // Vector store handlers
     handleVectorStoreNodeConfigChange,
     // Message handlers

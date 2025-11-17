@@ -1012,6 +1012,7 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.node.kind.parallel_join": "Jointure parallèle",
   "workflowBuilder.node.kind.while": "Boucle while",
   "workflowBuilder.node.kind.widget": "Bloc widget",
+  "workflowBuilder.node.kind.frontend_trigger": "Action frontend",
   "workflowBuilder.node.kind.end": "Fin",
   "workflowBuilder.parallel.joinSlugLabel": "Jointure associée",
   "workflowBuilder.parallel.joinSlugHelp": "Indiquez le slug du bloc parallel_join correspondant.",

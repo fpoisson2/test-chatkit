@@ -4172,3 +4172,112 @@ export const setAgentWorkflowValidationToolEnabled = (
   const toolEntry = buildWorkflowValidationFunctionToolEntry();
   return { ...next, tools: [...tools, toolEntry] };
 };
+
+// Frontend Trigger Node Configuration
+export type FrontendTriggerActionType = "modal" | "notification" | "redirect" | "custom";
+
+export type FrontendTriggerConfig = {
+  actionType: FrontendTriggerActionType;
+  actionConfig: {
+    // Modal configuration
+    component?: string;
+    title?: string;
+    props?: Record<string, unknown>;
+
+    // Notification configuration
+    message?: string;
+    level?: "info" | "success" | "warning" | "error";
+
+    // Redirect configuration
+    url?: string;
+
+    // Custom action
+    customAction?: string;
+  };
+  awaitResponse: boolean;
+  responseTimeout?: number;
+};
+
+export const createFrontendTriggerParameters = (
+  options: Partial<FrontendTriggerConfig> = {},
+): AgentParameters => {
+  const actionType = options.actionType ?? "modal";
+  const actionConfig = options.actionConfig ?? {};
+  const awaitResponse = options.awaitResponse ?? false;
+  const responseTimeout = options.responseTimeout;
+
+  const parameters: AgentParameters = {
+    action_type: actionType,
+    action_config: actionConfig,
+    await_response: awaitResponse,
+  };
+
+  if (responseTimeout !== undefined) {
+    parameters.response_timeout = responseTimeout;
+  }
+
+  return parameters;
+};
+
+export const getFrontendTriggerConfig = (
+  parameters: AgentParameters | null | undefined,
+): FrontendTriggerConfig => {
+  if (!parameters) {
+    return {
+      actionType: "modal",
+      actionConfig: {},
+      awaitResponse: false,
+    };
+  }
+
+  const raw = parameters as Record<string, unknown>;
+  const actionType = (typeof raw.action_type === "string"
+    ? raw.action_type
+    : "modal") as FrontendTriggerActionType;
+  const actionConfig = isPlainRecord(raw.action_config)
+    ? (raw.action_config as Record<string, unknown>)
+    : {};
+  const awaitResponse = typeof raw.await_response === "boolean"
+    ? raw.await_response
+    : false;
+  const responseTimeout = typeof raw.response_timeout === "number"
+    ? raw.response_timeout
+    : undefined;
+
+  return {
+    actionType,
+    actionConfig,
+    awaitResponse,
+    responseTimeout,
+  };
+};
+
+export const setFrontendTriggerActionType = (
+  parameters: AgentParameters,
+  actionType: FrontendTriggerActionType,
+): AgentParameters => {
+  return {
+    ...parameters,
+    action_type: actionType,
+  };
+};
+
+export const setFrontendTriggerActionConfig = (
+  parameters: AgentParameters,
+  actionConfig: Record<string, unknown>,
+): AgentParameters => {
+  return {
+    ...parameters,
+    action_config: actionConfig,
+  };
+};
+
+export const setFrontendTriggerAwaitResponse = (
+  parameters: AgentParameters,
+  awaitResponse: boolean,
+): AgentParameters => {
+  return {
+    ...parameters,
+    await_response: awaitResponse,
+  };
+};

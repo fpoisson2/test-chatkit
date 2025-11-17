@@ -8,6 +8,7 @@ import {
   createVectorStoreNodeParameters,
   createVoiceAgentParameters,
   createWidgetNodeParameters,
+  createFrontendTriggerParameters,
   setEndMessage,
   stringifyAgentParameters,
 } from "../../../utils/workflows";
@@ -404,6 +405,30 @@ const useNodeFactory = ({
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
 
+  const handleAddFrontendTriggerNode = useCallback(() => {
+    const slug = `frontend-trigger-${Date.now()}`;
+    const parameters = createFrontendTriggerParameters();
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 500, y: 240 },
+      data: {
+        slug,
+        kind: "frontend_trigger",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, humanizeSlug]);
+
   const handleAddEndNode = useCallback(() => {
     const slug = `end-${Date.now()}`;
     const parameters = setEndMessage({}, DEFAULT_END_MESSAGE);
@@ -443,6 +468,7 @@ const useNodeFactory = ({
     handleAddUserMessageNode,
     handleAddVectorStoreNode,
     handleAddWidgetNode,
+    handleAddFrontendTriggerNode,
     handleAddEndNode,
   };
 };

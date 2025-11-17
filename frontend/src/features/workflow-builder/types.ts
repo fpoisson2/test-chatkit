@@ -26,6 +26,7 @@ export type NodeKind =
   | "parallel_join"
   | "while"
   | "widget"
+  | "frontend_trigger"
   | "end";
 
 export type ApiWorkflowNode = {

@@ -70,6 +70,7 @@ import { WaitForUserInputInspectorSection } from "./sections/WaitForUserInputIns
 import { WatchInspectorSection } from "./sections/WatchInspectorSection";
 import { ParallelSplitInspectorSection } from "./sections/ParallelSplitInspectorSection";
 import { WidgetInspectorSection } from "./sections/WidgetInspectorSection";
+import { FrontendTriggerInspectorSection } from "./sections/FrontendTriggerInspectorSection";
 
 export type NodeInspectorProps = {
   node: FlowNode;
@@ -140,6 +141,9 @@ const NodeInspector = ({
     handleWidgetNodeDefinitionExpressionChange: onWidgetNodeDefinitionExpressionChange,
     handleWidgetNodeVariablesChange: onWidgetNodeVariablesChange,
     handleWidgetNodeAwaitActionChange: onWidgetNodeAwaitActionChange,
+    handleFrontendTriggerActionTypeChange: onFrontendTriggerActionTypeChange,
+    handleFrontendTriggerActionConfigChange: onFrontendTriggerActionConfigChange,
+    handleFrontendTriggerAwaitResponseChange: onFrontendTriggerAwaitResponseChange,
     handleAgentIncludeChatHistoryChange: onAgentIncludeChatHistoryChange,
     handleAgentDisplayResponseInChatChange: onAgentDisplayResponseInChatChange,
     handleAgentShowSearchSourcesChange: onAgentShowSearchSourcesChange,
@@ -479,6 +483,16 @@ const NodeInspector = ({
           onWidgetNodeDefinitionExpressionChange={onWidgetNodeDefinitionExpressionChange}
           onWidgetNodeVariablesChange={onWidgetNodeVariablesChange}
           onWidgetNodeAwaitActionChange={onWidgetNodeAwaitActionChange}
+        />
+      ) : null}
+
+      {kind === "frontend_trigger" ? (
+        <FrontendTriggerInspectorSection
+          nodeId={node.id}
+          parameters={parameters}
+          onFrontendTriggerActionTypeChange={onFrontendTriggerActionTypeChange}
+          onFrontendTriggerActionConfigChange={onFrontendTriggerActionConfigChange}
+          onFrontendTriggerAwaitResponseChange={onFrontendTriggerAwaitResponseChange}
         />
       ) : null}
 

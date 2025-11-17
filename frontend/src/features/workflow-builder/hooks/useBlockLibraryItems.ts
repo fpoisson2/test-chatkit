@@ -19,6 +19,7 @@ export interface NodeHandlers {
   handleAddUserMessageNode: () => void;
   handleAddVectorStoreNode: () => void;
   handleAddWidgetNode: () => void;
+  handleAddFrontendTriggerNode: () => void;
   handleAddEndNode: () => void;
 }
 
@@ -111,6 +112,7 @@ export const useBlockLibraryItems = ({
         onClick: nodeHandlers.handleAddVectorStoreNode,
       },
       { key: "widget", kind: "widget", shortLabel: "W", onClick: nodeHandlers.handleAddWidgetNode },
+      { key: "frontend-trigger", kind: "frontend_trigger", shortLabel: "FT", onClick: nodeHandlers.handleAddFrontendTriggerNode },
       { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
     ];
 
@@ -136,6 +138,7 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddUserMessageNode,
     nodeHandlers.handleAddVectorStoreNode,
     nodeHandlers.handleAddWidgetNode,
+    nodeHandlers.handleAddFrontendTriggerNode,
     nodeHandlers.handleAddEndNode,
   ]);
 };

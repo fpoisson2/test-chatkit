@@ -3222,6 +3222,81 @@ async def run_workflow(
             current_slug = transition.target_step.slug
             continue
 
+        if current_node.kind == "frontend_trigger":
+            title = _node_title(current_node)
+            action_type = current_node.parameters.get("action_type", "modal")
+            action_config = current_node.parameters.get("action_config", {})
+            await_response = current_node.parameters.get("await_response", False)
+            response_timeout = current_node.parameters.get("response_timeout")
+
+            # Resolve action_config expressions
+            resolved_config = {}
+            if isinstance(action_config, dict):
+                for key, value in action_config.items():
+                    if isinstance(value, str):
+                        try:
+                            resolved_value = _resolve_parameter(
+                                value,
+                                state=state,
+                                last_step_context=last_step_context,
+                                agent_context=agent_context,
+                            )
+                            resolved_config[key] = resolved_value
+                        except Exception:
+                            resolved_config[key] = value
+                    else:
+                        resolved_config[key] = value
+
+            # Emit a stream event to trigger frontend action
+            trigger_payload = {
+                "action_type": action_type,
+                "action_config": resolved_config,
+                "await_response": await_response,
+                "response_timeout": response_timeout,
+                "step_slug": _branch_prefixed_slug(current_node.slug),
+            }
+
+            await _emit_stream_event({
+                "type": "frontend_trigger",
+                "payload": trigger_payload,
+            })
+
+            response_data: dict[str, Any] | None = None
+            if on_widget_step is not None and await_response:
+                # Reuse the widget callback mechanism to wait for frontend response
+                result = await on_widget_step(current_node, trigger_payload)
+                if result is not None:
+                    response_data = dict(result)
+
+            step_payload: dict[str, Any] = {
+                "action_type": action_type,
+                "action_config": resolved_config,
+            }
+            if response_data is not None:
+                step_payload["response"] = response_data
+
+            await record_step(
+                current_node.slug,
+                title,
+                step_payload,
+            )
+
+            context_payload: dict[str, Any] = {
+                "action_type": action_type,
+                "action_config": resolved_config,
+            }
+            if response_data is not None:
+                context_payload["response"] = response_data
+            last_step_context = context_payload
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if _fallback_to_start(current_node.kind, current_node.slug):
+                    continue
+                break
+            current_slug = transition.target_step.slug
+            continue
+
         if (
             current_node.kind in AGENT_NODE_KINDS
             and current_node.slug in nested_workflow_configs
