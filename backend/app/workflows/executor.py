@@ -3311,6 +3311,10 @@ async def run_workflow(
                     context_payload["action"] = action_payload
                 last_step_context = context_payload
             transition = _next_edge(current_slug)
+            # DEBUG: Log widget transition
+            logger.info(f"[DEBUG] Widget {current_slug} → next edge: {transition.target_step.slug if transition else 'None'}")
+            available_edges = edges_by_source.get(current_slug, [])
+            logger.info(f"[DEBUG] Available edges from {current_slug}: {[(e.target_step.slug, e.condition) for e in available_edges]}")
             if transition is None:
                 if _fallback_to_start(current_node.kind, current_node.slug):
                     continue
