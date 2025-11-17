@@ -2086,12 +2086,11 @@ const sanitizeWidgetVariables = (
     if (typeof value !== "string") {
       continue;
     }
-    const trimmedKey = key.trim();
-    const trimmedValue = value.trim();
-    if (!trimmedKey || !trimmedValue) {
+    // Only skip if trimmed values are empty, but preserve original spacing
+    if (!key.trim() || !value.trim()) {
       continue;
     }
-    entries.push([trimmedKey, trimmedValue]);
+    entries.push([key, value]);
   }
   return Object.fromEntries(entries);
 };
@@ -2353,9 +2352,10 @@ const sanitizeWidgetAssignments = (
 ): Record<string, string> => {
   const normalized: Record<string, string> = {};
   for (const assignment of assignments) {
-    const key = assignment.identifier.trim();
-    const value = assignment.expression.trim();
-    if (key && value) {
+    const key = assignment.identifier;
+    const value = assignment.expression;
+    // Only skip if trimmed values are empty, but preserve original spacing
+    if (key.trim() && value.trim()) {
       normalized[key] = value;
     }
   }
