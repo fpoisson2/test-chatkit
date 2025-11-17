@@ -3067,7 +3067,20 @@ async def run_workflow(
             await record_step(current_node.slug, title, sanitized_message or "")
             last_step_context = {"user_message": sanitized_message}
 
-            if sanitized_message and on_stream_event is not None:
+            # Check if this user_message is inside a while loop
+            parent_while_slug = _find_parent_while(current_node.slug)
+            should_emit_message = True
+
+            if parent_while_slug is not None:
+                # We're inside a while loop, check the iteration count
+                loop_counter_key = f"__while_{parent_while_slug}_counter"
+                iteration_count = state.get("state", {}).get(loop_counter_key, 0)
+
+                # Don't emit the message on subsequent iterations (> 1)
+                if iteration_count > 1:
+                    should_emit_message = False
+
+            if sanitized_message and on_stream_event is not None and should_emit_message:
                 user_item = UserMessageItem(
                     id=agent_context.generate_id("message"),
                     thread_id=agent_context.thread.id,
