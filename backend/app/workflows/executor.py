@@ -1653,6 +1653,32 @@ async def run_workflow(
             )
             conversation_history_input = filtered_input
 
+            # Check if we're in a while loop iteration > 1
+            # If so, don't send the initial user message again as it's already in the context
+            in_while_loop_iteration = False
+            if "state" in state and isinstance(state["state"], dict):
+                for key, value in state["state"].items():
+                    if (
+                        isinstance(key, str)
+                        and key.startswith("__while_")
+                        and key.endswith("_counter")
+                        and isinstance(value, int)
+                        and value > 1
+                    ):
+                        in_while_loop_iteration = True
+                        break
+
+            if in_while_loop_iteration:
+                # We're in a subsequent iteration of a while loop
+                # The initial user message is already in the context via previous_response_id
+                # So we should not send it again
+                logger.debug(
+                    "Boucle while (itération > 1) détectée avec previous_response_id=%s, "
+                    "suppression du message user initial de l'entrée",
+                    sanitized_previous_response_id,
+                )
+                conversation_history_input = []
+
         try:
             result = Runner.run_streamed(
                 agent,
