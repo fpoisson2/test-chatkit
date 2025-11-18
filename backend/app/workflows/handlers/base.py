@@ -113,19 +113,19 @@ class BaseNodeHandler(NodeHandler):
         return str(step.parameters.get("title", "")) if step.parameters else ""
 
     def _next_slug_or_fallback(self, node_slug: str, context) -> str | None:
-        """Find next slug with fallback to while parent or start node.
+        """Find next slug with fallback to while parent or None (waiting).
 
         This method implements the standard fallback logic:
         1. Try to find an explicit transition
         2. If no transition and inside a while loop, return to while
-        3. If no transition and not in while, return to start (wait for user)
+        3. If no transition and not in while, return None (workflow ends waiting)
 
         Args:
             node_slug: Current node slug
             context: Execution context
 
         Returns:
-            Next node slug or None if no fallback possible
+            Next node slug, or None to end workflow in waiting state
         """
         # Try to find explicit transition
         transition = self._next_edge(context, node_slug)
@@ -137,9 +137,6 @@ class BaseNodeHandler(NodeHandler):
         if containing_while:
             return containing_while
 
-        # Not in a while - return to start to wait for new user message
-        start_nodes = [n for n in context.nodes_by_slug.values() if n.kind == "start"]
-        if start_nodes:
-            return start_nodes[0].slug
-
+        # Not in a while - return None to end workflow in waiting state
+        # This prevents infinite loops and allows the user to send a new message
         return None

@@ -121,6 +121,9 @@ class EndNodeHandler(BaseNodeHandler):
             "end_state": end_state_payload,
         }
 
+        # Store end state in runtime_vars to block new user messages
+        context.runtime_vars["final_end_state"] = end_state
+
         return NodeResult(
             finished=True,
             output=end_payload,
@@ -206,7 +209,7 @@ class EndNodeHandler(BaseNodeHandler):
 
         return WorkflowEndState(
             slug=step.slug,
-            status_type=status_type,
+            status_type=status_type or "closed",  # Default to "closed" to block new messages
             status_reason=status_reason,
             message=message,
             ags_variable_id=ags_variable_id,

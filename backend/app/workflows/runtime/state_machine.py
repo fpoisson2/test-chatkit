@@ -162,13 +162,20 @@ class WorkflowStateMachine:
             if result.next_slug:
                 context.current_slug = result.next_slug
             else:
-                # No next slug and not finished = error
-                from ..executor import WorkflowExecutionError
-                raise WorkflowExecutionError(
-                    current_node.slug,
-                    f"Nœud {current_node.slug} ({current_node.kind})",
-                    RuntimeError("Aucune transition suivante trouvée"),
-                    list(context.steps),
-                )
+                # No next slug and not finished = end workflow in waiting state
+                # This allows the workflow to wait for a new user message
+                from ..executor import WorkflowEndState
+
+                # Set end state to waiting if not already set
+                if "final_end_state" not in context.runtime_vars:
+                    context.runtime_vars["final_end_state"] = WorkflowEndState(
+                        slug=current_node.slug,
+                        status_type="waiting",
+                        status_reason="En attente d'un nouveau message utilisateur.",
+                        message="En attente d'un nouveau message utilisateur.",
+                    )
+
+                context.is_finished = True
+                break
 
         return context
