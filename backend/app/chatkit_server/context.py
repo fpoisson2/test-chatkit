@@ -20,9 +20,18 @@ _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
     """Retourne l'état d'attente stocké dans les métadonnées du fil."""
 
+    # Pour les threads ChatKit en mémoire (SDK), utiliser thread.metadata
     metadata = getattr(thread, "metadata", None)
+
+    # Pour les threads chargés depuis la DB (ChatThread SQLAlchemy), utiliser payload
+    if not isinstance(metadata, dict):
+        payload = getattr(thread, "payload", None)
+        if isinstance(payload, dict):
+            metadata = payload.get("metadata")
+
     if not isinstance(metadata, dict):
         return None
+
     state = metadata.get(_WAIT_STATE_METADATA_KEY)
     if isinstance(state, dict):
         return dict(state)

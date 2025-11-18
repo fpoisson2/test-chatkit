@@ -168,7 +168,12 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         def _save(session: Session) -> None:
             payload = thread.model_dump(mode="json")
-            metadata = dict(payload.get("metadata") or {})
+            # Utiliser thread.metadata si disponible (peut contenir des mises à jour récentes),
+            # sinon utiliser les métadonnées du payload
+            if isinstance(thread.metadata, dict):
+                metadata = dict(thread.metadata)
+            else:
+                metadata = dict(payload.get("metadata") or {})
             metadata.setdefault("owner_id", owner_id)
             expected_workflow = self._current_workflow_metadata()
             workflow_metadata = metadata.get("workflow")
