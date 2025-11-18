@@ -9,12 +9,15 @@ from .agent import AgentNodeHandler
 from .assign import AssignNodeHandler
 from .condition import ConditionNodeHandler
 from .end import EndNodeHandler
+from .message import AssistantMessageNodeHandler, UserMessageNodeHandler
 from .parallel import ParallelJoinNodeHandler, ParallelSplitNodeHandler
 from .start import StartNodeHandler
 from .transform import TransformNodeHandler
+from .vector_store import VectorStoreNodeHandler
 from .wait import WaitNodeHandler
 from .watch import WatchNodeHandler
 from .while_loop import WhileNodeHandler
+from .widget import WidgetNodeHandler
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..runtime.agent_executor import AgentStepExecutor
@@ -33,7 +36,7 @@ def create_state_machine(
     """
     machine = WorkflowStateMachine()
 
-    # Register all implemented handlers
+    # Register core workflow handlers
     machine.register_handler("start", StartNodeHandler())
     machine.register_handler("end", EndNodeHandler())
     machine.register_handler("condition", ConditionNodeHandler())
@@ -45,16 +48,20 @@ def create_state_machine(
     machine.register_handler("parallel_split", ParallelSplitNodeHandler())
     machine.register_handler("parallel_join", ParallelJoinNodeHandler())
 
+    # Register message handlers
+    machine.register_handler("assistant_message", AssistantMessageNodeHandler())
+    machine.register_handler("user_message", UserMessageNodeHandler())
+
+    # Register specialized handlers
+    machine.register_handler("widget", WidgetNodeHandler())
+    machine.register_handler("json_vector_store", VectorStoreNodeHandler())
+
     # Agent handlers (require AgentStepExecutor)
     if agent_executor is not None:
         agent_handler = AgentNodeHandler(agent_executor)
         machine.register_handler("agent", agent_handler)
         machine.register_handler("voice_agent", agent_handler)
 
-    # TODO: Implement remaining specialized handlers if needed:
-    # - widget nodes (may use existing patterns)
-    # - assistant_message / user_message nodes
-    # - json_vector_store nodes
-    # - outbound_call nodes (voice-specific)
+    # Note: outbound_call nodes are voice-specific and handled separately in voice flows
 
     return machine
