@@ -58,7 +58,7 @@ class BaseNodeHandler(NodeHandler):
     ) -> str | None:
         """Find the while node that contains this node.
 
-        Uses spatial detection to find if this node is inside a while loop.
+        Uses explicit parent_slug relationships to determine containment.
 
         Args:
             node_slug: The node to check
@@ -71,40 +71,13 @@ class BaseNodeHandler(NodeHandler):
         if node is None:
             return None
 
-        node_metadata = node.ui_metadata or {}
-        node_pos = node_metadata.get("position", {})
-
-        # Skip nodes without position
-        if not node_pos or "x" not in node_pos or "y" not in node_pos:
-            return None
-
-        node_x = node_pos.get("x", 0)
-        node_y = node_pos.get("y", 0)
-
-        # Check all while nodes to see if this node is inside
-        for while_node in context.nodes_by_slug.values():
-            if while_node.kind != "while":
-                continue
-
-            while_metadata = while_node.ui_metadata or {}
-            while_pos = while_metadata.get("position", {})
-
-            if not while_pos or "x" not in while_pos or "y" not in while_pos:
-                continue
-
-            while_x = while_pos.get("x", 0)
-            while_y = while_pos.get("y", 0)
-
-            size_metadata = while_metadata.get("size", {})
-            while_width = size_metadata.get("width", 400)
-            while_height = size_metadata.get("height", 300)
-
-            # Check if node is inside the while rectangle
-            if (
-                while_x <= node_x <= while_x + while_width
-                and while_y <= node_y <= while_y + while_height
-            ):
-                return while_node.slug
+        # Check if node has explicit parent_slug
+        parent_slug = getattr(node, "parent_slug", None)
+        if parent_slug:
+            # Verify parent is a while node
+            parent_node = context.nodes_by_slug.get(parent_slug)
+            if parent_node and parent_node.kind == "while":
+                return parent_slug
 
         return None
 

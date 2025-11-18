@@ -34,6 +34,7 @@ export type ApiWorkflowNode = {
   kind: NodeKind;
   display_name: string | null;
   agent_key: string | null;
+  parent_slug?: string | null;
   is_enabled: boolean;
   parameters: AgentParameters | null;
   metadata: Record<string, unknown> | null;
@@ -80,6 +81,7 @@ export type FlowNodeData = {
   label: string;
   isEnabled: boolean;
   agentKey: string | null;
+  parentSlug?: string | null;
   parameters: AgentParameters;
   parametersText: string;
   parametersError: string | null;

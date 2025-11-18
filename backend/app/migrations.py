@@ -212,6 +212,46 @@ def _add_users_is_lti_column(connection) -> None:
     )
 
 
+def _workflow_steps_has_parent_slug_column(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("workflow_steps"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("workflow_steps")}
+    return "parent_slug" in columns
+
+
+def _add_workflow_steps_parent_slug_column(connection) -> None:
+    inspector = inspect(connection)
+
+    if not inspector.has_table("workflow_steps"):
+        logger.warning(
+            "Cannot add parent_slug column to workflow_steps because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("workflow_steps")
+    }
+
+    if "parent_slug" in existing_columns:
+        return
+
+    # Add parent_slug column to define explicit hierarchical relationships
+    connection.execute(
+        text("ALTER TABLE workflow_steps ADD COLUMN parent_slug VARCHAR(128) NULL")
+    )
+
+    # Add index for faster queries on parent_slug
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_workflow_steps_parent_slug ON workflow_steps(parent_slug)")
+    )
+
+    # Add index for combined definition_id + parent_slug lookups
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_workflow_steps_def_parent ON workflow_steps(definition_id, parent_slug)")
+    )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -267,6 +307,12 @@ def check_and_apply_migrations():
             "description": "Add is_lti column to users for proper LTI user identification",
             "check_fn": _users_has_is_lti_column,
             "apply_fn": _add_users_is_lti_column,
+        },
+        {
+            "id": "007_add_parent_slug_to_workflow_steps",
+            "description": "Add parent_slug column for explicit parent-child relationships in workflows",
+            "check_fn": _workflow_steps_has_parent_slug_column,
+            "apply_fn": _add_workflow_steps_parent_slug_column,
         },
     ]
 

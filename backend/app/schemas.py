@@ -1084,6 +1084,7 @@ class WorkflowNodeBase(BaseModel):
     )
     display_name: str | None = None
     agent_key: str | None = None
+    parent_slug: str | None = None
     is_enabled: bool = True
     parameters: WorkflowNodeParameters = Field(
         default_factory=WorkflowNodeParameters,

@@ -240,10 +240,10 @@ class WhileNodeHandler(BaseNodeHandler):
     def _get_nodes_inside_while(
         self, while_node: WorkflowStep, context: ExecutionContext
     ) -> set[str]:
-        """Detect which nodes are visually inside a while block.
+        """Detect which nodes are inside a while block.
 
-        Based on spatial position metadata - nodes whose positions fall
-        within the while block's bounding rectangle.
+        Uses explicit parent_slug relationships only. Nodes must have their
+        parent_slug field set to the while node's slug to be considered inside.
         """
         if not self._belongs_to_current_workflow(while_node, context):
             logger.debug(
@@ -253,59 +253,20 @@ class WhileNodeHandler(BaseNodeHandler):
             )
             return set()
 
-        while_metadata = while_node.ui_metadata or {}
-        while_pos = while_metadata.get("position", {})
-
-        # Check if while has position data
-        if not while_pos or "x" not in while_pos or "y" not in while_pos:
-            logger.warning(
-                "Bloc while %s n'a pas de position définie dans metadata. "
-                "Les blocs ne pourront pas être détectés automatiquement. "
-                "Assurez-vous que le workflow a été sauvegardé avec les positions.",
-                while_node.slug,
-            )
-            return set()
-
-        while_x = while_pos.get("x", 0)
-        while_y = while_pos.get("y", 0)
-
-        # Get while dimensions from size metadata
-        size_metadata = while_metadata.get("size", {})
-        while_width = size_metadata.get("width", 400)
-        while_height = size_metadata.get("height", 300)
-
         inside_nodes = set()
 
+        # Use explicit parent_slug relationships
         for node in context.nodes_by_slug.values():
             if not self._belongs_to_current_workflow(node, context):
                 continue
 
-            if node.slug == while_node.slug or node.kind == "while":
+            if node.slug == while_node.slug:
                 continue
 
-            node_metadata = node.ui_metadata or {}
-            node_pos = node_metadata.get("position", {})
-
-            # Skip nodes without position
-            if not node_pos or "x" not in node_pos or "y" not in node_pos:
-                continue
-
-            node_x = node_pos.get("x", 0)
-            node_y = node_pos.get("y", 0)
-
-            # Check if node is inside the while rectangle
-            if (
-                while_x <= node_x <= while_x + while_width
-                and while_y <= node_y <= while_y + while_height
-            ):
+            # Check if this node explicitly declares this while as its parent
+            node_parent_slug = getattr(node, "parent_slug", None)
+            if node_parent_slug == while_node.slug:
                 inside_nodes.add(node.slug)
-                logger.debug(
-                    "Bloc %s détecté à l'intérieur du while %s (pos: %d,%d)",
-                    node.slug,
-                    while_node.slug,
-                    node_x,
-                    node_y,
-                )
 
         if inside_nodes:
             logger.info(
@@ -316,9 +277,8 @@ class WhileNodeHandler(BaseNodeHandler):
             )
         else:
             logger.warning(
-                "While %s ne contient aucun bloc détecté. "
-                "Vérifiez que les blocs ont des positions définies et "
-                "sont visuellement dans le while.",
+                "While %s ne contient aucun bloc. "
+                "Re-sauvegardez le workflow pour générer parent_slug.",
                 while_node.slug,
             )
 
