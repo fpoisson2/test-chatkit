@@ -48,20 +48,14 @@ interface ActiveWorkflowSessionsResponse {
   total_count: number;
 }
 
-const AUTO_REFRESH_INTERVAL = 30000; // 30 secondes
-
 export const AdminWorkflowMonitorPage = () => {
   const { token, logout } = useAuth();
   const [sessions, setSessions] = useState<ActiveWorkflowSession[]>([]);
   const [isLoading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowInfo | null>(null);
   const [selectedSessions, setSelectedSessions] = useState<ActiveWorkflowSession[]>([]);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [useWebSocket, setUseWebSocket] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Filtres
   const [filterWorkflowId, setFilterWorkflowId] = useState<number | null>(null);
@@ -84,7 +78,7 @@ export const AdminWorkflowMonitorPage = () => {
     setError(err);
   }, []);
 
-  // WebSocket connection
+  // WebSocket connection - always enabled
   const {
     sessions: wsSessions,
     isConnected: wsConnected,
@@ -92,77 +86,18 @@ export const AdminWorkflowMonitorPage = () => {
     reconnect: wsReconnect,
   } = useWorkflowMonitorWebSocket({
     token,
-    enabled: useWebSocket && autoRefresh,
+    enabled: true,
     onUpdate: handleWebSocketUpdate,
     onError: handleWebSocketError,
   });
 
-  // Utiliser les sessions du WebSocket si connecté
+  // Update sessions from WebSocket
   useEffect(() => {
-    if (useWebSocket && wsConnected && wsSessions.length > 0) {
+    if (wsConnected && wsSessions.length > 0) {
       setSessions(wsSessions);
       setLoading(false);
     }
-  }, [useWebSocket, wsConnected, wsSessions]);
-
-  const fetchActiveSessions = useCallback(async (isBackgroundRefresh = false) => {
-    if (!token) {
-      return;
-    }
-
-    if (!isBackgroundRefresh) {
-      setLoading(true);
-    } else {
-      setIsRefreshing(true);
-    }
-
-    setError(null);
-
-    try {
-      const data = await adminApi.getActiveWorkflowSessions(token);
-      setSessions(data.sessions);
-      setLastUpdated(new Date());
-    } catch (err) {
-      if (isUnauthorizedError(err)) {
-        logout();
-        setError("Session expirée, veuillez vous reconnecter.");
-        return;
-      }
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Une erreur inattendue est survenue",
-      );
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [logout, token]);
-
-  // Auto-refresh avec polling (uniquement si WebSocket désactivé)
-  useEffect(() => {
-    if (useWebSocket) {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-      return;
-    }
-
-    void fetchActiveSessions();
-
-    if (autoRefresh) {
-      refreshIntervalRef.current = setInterval(() => {
-        void fetchActiveSessions(true);
-      }, AUTO_REFRESH_INTERVAL);
-    }
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, [fetchActiveSessions, autoRefresh, useWebSocket]);
+  }, [wsConnected, wsSessions]);
 
   // Tri
   const [sortConfig, setSortConfig] = useState<{
@@ -250,21 +185,9 @@ export const AdminWorkflowMonitorPage = () => {
     setSelectedSessions([]);
   }, []);
 
-  const toggleAutoRefresh = useCallback(() => {
-    setAutoRefresh((prev) => !prev);
-  }, []);
-
-  const toggleWebSocket = useCallback(() => {
-    setUseWebSocket((prev) => !prev);
-  }, []);
-
   const handleManualRefresh = useCallback(() => {
-    if (useWebSocket) {
-      wsReconnect();
-    } else {
-      void fetchActiveSessions(false);
-    }
-  }, [useWebSocket, wsReconnect, fetchActiveSessions]);
+    wsReconnect();
+  }, [wsReconnect]);
 
   const clearFilters = useCallback(() => {
     setFilterWorkflowId(null);
@@ -314,8 +237,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
 
     try {
       await adminApi.terminateWorkflowSession(token, confirmAction.session.thread_id);
-      // Rafraîchir les sessions
-      await fetchActiveSessions(true);
+      // WebSocket will automatically receive updates
       setConfirmAction(null);
     } catch (err) {
       setError(
@@ -325,7 +247,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
       );
       setConfirmAction(null);
     }
-  }, [confirmAction, token, fetchActiveSessions]);
+  }, [confirmAction, token]);
 
   const handleResetSession = useCallback(async () => {
     if (!confirmAction || confirmAction.type !== "reset" || !token) {
@@ -334,8 +256,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
 
     try {
       await adminApi.resetWorkflowSession(token, confirmAction.session.thread_id);
-      // Rafraîchir les sessions
-      await fetchActiveSessions(true);
+      // WebSocket will automatically receive updates
       setConfirmAction(null);
     } catch (err) {
       setError(
@@ -345,7 +266,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
       );
       setConfirmAction(null);
     }
-  }, [confirmAction, token, fetchActiveSessions]);
+  }, [confirmAction, token]);
 
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString("fr-FR", {
@@ -572,84 +493,34 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
           subtitle="Visualisez tous les workflows actifs et la position de chaque utilisateur."
           headerAction={
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              {useWebSocket && (
-                <div
-                  style={{
-                    fontSize: "11px",
-                    padding: "2px 8px",
-                    borderRadius: "12px",
-                    background: wsConnected ? "#10b981" : "#ef4444",
-                    color: "white",
-                    fontWeight: 500,
-                  }}
-                  title={wsConnected ? "WebSocket connecté" : "WebSocket déconnecté"}
-                >
-                  {wsConnected ? "● Live" : "○ Offline"}
-                </div>
-              )}
+              <div
+                style={{
+                  fontSize: "11px",
+                  padding: "2px 8px",
+                  borderRadius: "12px",
+                  background: wsConnected ? "#10b981" : "#ef4444",
+                  color: "white",
+                  fontWeight: 500,
+                }}
+                title={wsConnected ? "WebSocket connecté - Mises à jour en temps réel" : "WebSocket déconnecté"}
+              >
+                {wsConnected ? "● Live" : "○ Offline"}
+              </div>
 
               {lastUpdated && (
                 <div style={{ fontSize: "12px", color: "#6b7280", marginRight: "8px" }}>
-                  {isRefreshing ? (
-                    <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                      <span className="spinner-small" />
-                      Actualisation...
-                    </span>
-                  ) : (
-                    <span title={formatDateTime(lastUpdated.toISOString())}>
-                      {formatRelativeTime(lastUpdated)}
-                    </span>
-                  )}
+                  <span title={formatDateTime(lastUpdated.toISOString())}>
+                    {formatRelativeTime(lastUpdated)}
+                  </span>
                 </div>
               )}
-
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-                title={useWebSocket ? "Utilise WebSocket temps réel" : "Utilise le polling"}
-              >
-                <input
-                  type="checkbox"
-                  checked={useWebSocket}
-                  onChange={toggleWebSocket}
-                  style={{ cursor: "pointer" }}
-                />
-                WebSocket
-              </label>
-
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-                title={autoRefresh ? "Désactiver l'actualisation automatique" : "Activer l'actualisation automatique"}
-              >
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={toggleAutoRefresh}
-                  style={{ cursor: "pointer" }}
-                />
-                Auto
-              </label>
 
               <button
                 type="button"
                 className="management-header__icon-button"
-                aria-label="Actualiser"
-                title="Actualiser maintenant"
+                aria-label="Reconnecter"
+                title="Reconnecter le WebSocket"
                 onClick={handleManualRefresh}
-                disabled={isRefreshing}
               >
                 <svg
                   width="20"
@@ -657,9 +528,6 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
                   viewBox="0 0 20 20"
                   fill="none"
                   aria-hidden="true"
-                  style={{
-                    animation: isRefreshing ? "spin 1s linear infinite" : undefined,
-                  }}
                 >
                   <path
                     d="M4 10a6 6 0 1112 0M10 4v6"
