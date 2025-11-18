@@ -174,9 +174,15 @@ async def run_workflow_v2(
 
     # Create record_step function
     async def record_step(step_key: str, title: str, payload: Any) -> None:
-        from .executor import _format_step_summary
+        from .executor import WorkflowStepSummary, _format_step_output
 
-        summary = _format_step_summary(step_key, title, payload)
+        # Format step summary (originally a closure in run_workflow_v1)
+        formatted_output = _format_step_output(payload)
+        summary = WorkflowStepSummary(
+            key=step_key,  # No branch prefix needed in v2 as it's handled by helpers
+            title=title,
+            output=formatted_output,
+        )
         steps.append(summary)
         if on_step is not None:
             await on_step(summary, len(steps))

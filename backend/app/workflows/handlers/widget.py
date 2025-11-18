@@ -25,8 +25,9 @@ class WidgetNodeHandler(BaseNodeHandler):
         self, node: WorkflowStep, context: ExecutionContext
     ) -> NodeResult:
         """Execute widget node."""
-        from ..executor_helpers import _should_wait_for_widget_action, _stream_response_widget
+        from ...chatkit_server.actions import _should_wait_for_widget_action
         from ..runtime.state_machine import NodeResult
+        from ..runtime.widget_streaming import _stream_response_widget
 
         title = self._node_title(node)
         agent_context = context.runtime_vars.get("agent_context")
