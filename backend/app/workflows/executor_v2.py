@@ -195,6 +195,7 @@ async def run_workflow_v2(
 
     # Prepare agent-specific dependencies
     from agents import RunConfig, Runner
+    from agents.mcp import MCPServer
     from chatkit.agents import stream_agent_response
     from chatkit.types import (
         AssistantMessageContentPartTextDelta,
@@ -206,7 +207,6 @@ async def run_workflow_v2(
     )
 
     from ..chatkit.agent_registry import AGENT_RESPONSE_FORMATS
-    from ..chatkit_server.mcp import MCPServer
     from ..chatkit_server.workflow_runner import _WorkflowStreamResult
     from ..config import get_settings
     from .executor import (
