@@ -69,7 +69,9 @@ class WatchNodeHandler(BaseNodeHandler):
             )
             event: ThreadStreamEvent = ThreadItemUpdated(
                 item=message_item,
-                update=AssistantMessageContentPartTextDelta(delta=formatted_payload),
+                update=AssistantMessageContentPartTextDelta(
+                    content_index=0, delta=formatted_payload
+                ),
             )
             await on_stream_event(event)
 
