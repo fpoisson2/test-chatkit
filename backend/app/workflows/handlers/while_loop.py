@@ -242,8 +242,8 @@ class WhileNodeHandler(BaseNodeHandler):
     ) -> set[str]:
         """Detect which nodes are inside a while block.
 
-        Uses explicit parent_slug relationships first, with fallback to
-        spatial position metadata for backwards compatibility.
+        Uses explicit parent_slug relationships only. Nodes must have their
+        parent_slug field set to the while node's slug to be considered inside.
         """
         if not self._belongs_to_current_workflow(while_node, context):
             logger.debug(
@@ -255,7 +255,7 @@ class WhileNodeHandler(BaseNodeHandler):
 
         inside_nodes = set()
 
-        # Strategy 1: Use explicit parent_slug relationships (preferred)
+        # Use explicit parent_slug relationships
         for node in context.nodes_by_slug.values():
             if not self._belongs_to_current_workflow(node, context):
                 continue
@@ -273,84 +273,16 @@ class WhileNodeHandler(BaseNodeHandler):
                     while_node.slug,
                 )
 
-        # If we found nodes via parent_slug, use that
         if inside_nodes:
             logger.info(
-                "While %s contient %d bloc(s) via parent_slug: %s",
-                while_node.slug,
-                len(inside_nodes),
-                ", ".join(inside_nodes),
-            )
-            return inside_nodes
-
-        # Strategy 2: Fallback to spatial position detection (legacy compatibility)
-        logger.debug(
-            "While %s: aucun bloc avec parent_slug, utilisation du fallback position",
-            while_node.slug,
-        )
-
-        while_metadata = while_node.ui_metadata or {}
-        while_pos = while_metadata.get("position", {})
-
-        # Check if while has position data
-        if not while_pos or "x" not in while_pos or "y" not in while_pos:
-            logger.warning(
-                "Bloc while %s n'a ni blocs avec parent_slug, ni position définie. "
-                "Les blocs ne pourront pas être détectés. "
-                "Re-sauvegardez le workflow pour générer parent_slug.",
-                while_node.slug,
-            )
-            return set()
-
-        while_x = while_pos.get("x", 0)
-        while_y = while_pos.get("y", 0)
-
-        # Get while dimensions from size metadata
-        size_metadata = while_metadata.get("size", {})
-        while_width = size_metadata.get("width", 400)
-        while_height = size_metadata.get("height", 300)
-
-        for node in context.nodes_by_slug.values():
-            if not self._belongs_to_current_workflow(node, context):
-                continue
-
-            if node.slug == while_node.slug or node.kind == "while":
-                continue
-
-            node_metadata = node.ui_metadata or {}
-            node_pos = node_metadata.get("position", {})
-
-            # Skip nodes without position
-            if not node_pos or "x" not in node_pos or "y" not in node_pos:
-                continue
-
-            node_x = node_pos.get("x", 0)
-            node_y = node_pos.get("y", 0)
-
-            # Check if node is inside the while rectangle
-            if (
-                while_x <= node_x <= while_x + while_width
-                and while_y <= node_y <= while_y + while_height
-            ):
-                inside_nodes.add(node.slug)
-                logger.debug(
-                    "Bloc %s détecté à l'intérieur du while %s (position: %d,%d)",
-                    node.slug,
-                    while_node.slug,
-                    node_x,
-                    node_y,
-                )
-
-        if inside_nodes:
-            logger.info(
-                "While %s contient %d bloc(s) via position (legacy): %s",
+                "While %s contient %d bloc(s): %s",
                 while_node.slug,
                 len(inside_nodes),
                 ", ".join(inside_nodes),
             )
         else:
             logger.warning(
-                "While %s ne contient aucun bloc détecté. "
+                "While %s ne contient aucun bloc. "
                 "Re-sauvegardez le workflow pour générer parent_slug.",
                 while_node.slug,
             )
