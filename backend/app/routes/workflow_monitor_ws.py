@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from ..chatkit_server.context import _get_wait_state_metadata
 from ..database import get_session
-from ..dependencies import get_current_user_from_websocket
 from ..models import ChatThread, User, Workflow, WorkflowStep
 from ..schemas import (
     ActiveWorkflowSession,
