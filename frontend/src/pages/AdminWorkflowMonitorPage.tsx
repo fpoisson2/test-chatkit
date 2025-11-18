@@ -57,9 +57,14 @@ export const AdminWorkflowMonitorPage = () => {
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowInfo | null>(null);
   const [selectedSessions, setSelectedSessions] = useState<ActiveWorkflowSession[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [useWebSocket, setUseWebSocket] = useState(false); // Toggle WebSocket/Polling
+  const [useWebSocket, setUseWebSocket] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Filtres
+  const [filterWorkflowId, setFilterWorkflowId] = useState<number | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // WebSocket connection
   const {
@@ -124,7 +129,6 @@ export const AdminWorkflowMonitorPage = () => {
   // Auto-refresh avec polling (uniquement si WebSocket désactivé)
   useEffect(() => {
     if (useWebSocket) {
-      // Nettoyer le polling si on utilise WebSocket
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
         refreshIntervalRef.current = null;
@@ -132,10 +136,8 @@ export const AdminWorkflowMonitorPage = () => {
       return;
     }
 
-    // Fetch initial
     void fetchActiveSessions();
 
-    // Setup polling
     if (autoRefresh) {
       refreshIntervalRef.current = setInterval(() => {
         void fetchActiveSessions(true);
@@ -149,9 +151,46 @@ export const AdminWorkflowMonitorPage = () => {
     };
   }, [fetchActiveSessions, autoRefresh, useWebSocket]);
 
+  // Filtrer les sessions
+  const filteredSessions = useMemo(() => {
+    let result = [...sessions];
+
+    // Filtre par workflow
+    if (filterWorkflowId !== null) {
+      result = result.filter((s) => s.workflow.id === filterWorkflowId);
+    }
+
+    // Filtre par statut
+    if (filterStatus !== null) {
+      result = result.filter((s) => s.status === filterStatus);
+    }
+
+    // Recherche par email
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter((s) =>
+        s.user.email.toLowerCase().includes(term)
+      );
+    }
+
+    return result;
+  }, [sessions, filterWorkflowId, filterStatus, searchTerm]);
+
+  // Liste unique des workflows
+  const uniqueWorkflows = useMemo(() => {
+    const workflowMap = new Map<number, WorkflowInfo>();
+    sessions.forEach((session) => {
+      if (!workflowMap.has(session.workflow.id)) {
+        workflowMap.set(session.workflow.id, session.workflow);
+      }
+    });
+    return Array.from(workflowMap.values()).sort((a, b) =>
+      a.display_name.localeCompare(b.display_name)
+    );
+  }, [sessions]);
+
   const handleViewWorkflow = useCallback((session: ActiveWorkflowSession) => {
     setSelectedWorkflow(session.workflow);
-    // Récupérer toutes les sessions pour ce workflow
     setSessions((currentSessions) => {
       const filtered = currentSessions.filter(
         (s) => s.workflow.id === session.workflow.id
@@ -181,6 +220,12 @@ export const AdminWorkflowMonitorPage = () => {
       void fetchActiveSessions(false);
     }
   }, [useWebSocket, wsReconnect, fetchActiveSessions]);
+
+  const clearFilters = useCallback(() => {
+    setFilterWorkflowId(null);
+    setFilterStatus(null);
+    setSearchTerm("");
+  }, []);
 
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString("fr-FR", {
@@ -222,11 +267,10 @@ export const AdminWorkflowMonitorPage = () => {
     return `${diffDays}j ${diffHours % 24}h`;
   };
 
-  // Détecter les sessions bloquées (> 1h sans activité)
   const isStuckSession = (session: ActiveWorkflowSession) => {
     const lastActivity = new Date(session.last_activity);
     const diffMs = new Date().getTime() - lastActivity.getTime();
-    return diffMs > 3600000; // 1 heure
+    return diffMs > 3600000;
   };
 
   const sessionColumns = useMemo<Column<ActiveWorkflowSession>[]>(
@@ -320,8 +364,9 @@ export const AdminWorkflowMonitorPage = () => {
     [handleViewWorkflow],
   );
 
-  const stuckSessionsCount = sessions.filter(isStuckSession).length;
+  const stuckSessionsCount = filteredSessions.filter(isStuckSession).length;
   const displayError = error || wsError;
+  const hasActiveFilters = filterWorkflowId !== null || filterStatus !== null || searchTerm.trim() !== "";
 
   return (
     <>
@@ -338,7 +383,6 @@ export const AdminWorkflowMonitorPage = () => {
           subtitle="Visualisez tous les workflows actifs et la position de chaque utilisateur."
           headerAction={
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              {/* Indicateur de connexion WebSocket */}
               {useWebSocket && (
                 <div
                   style={{
@@ -355,7 +399,6 @@ export const AdminWorkflowMonitorPage = () => {
                 </div>
               )}
 
-              {/* Indicateur de dernière mise à jour */}
               {lastUpdated && (
                 <div style={{ fontSize: "12px", color: "#6b7280", marginRight: "8px" }}>
                   {isRefreshing ? (
@@ -371,7 +414,6 @@ export const AdminWorkflowMonitorPage = () => {
                 </div>
               )}
 
-              {/* Toggle WebSocket */}
               <label
                 style={{
                   display: "flex",
@@ -392,7 +434,6 @@ export const AdminWorkflowMonitorPage = () => {
                 WebSocket
               </label>
 
-              {/* Toggle auto-refresh */}
               <label
                 style={{
                   display: "flex",
@@ -413,7 +454,6 @@ export const AdminWorkflowMonitorPage = () => {
                 Auto
               </label>
 
-              {/* Bouton refresh manuel */}
               <button
                 type="button"
                 className="management-header__icon-button"
@@ -453,29 +493,119 @@ export const AdminWorkflowMonitorPage = () => {
         >
           {isLoading ? (
             <LoadingSpinner text="Chargement des sessions actives…" />
-          ) : sessions.length === 0 ? (
-            <p className="admin-card__subtitle">
-              Aucune session de workflow active pour le moment.
-            </p>
           ) : (
-            <div>
-              <div className="admin-card__subtitle mb-4" style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                <span>
-                  {sessions.length} session{sessions.length > 1 ? "s" : ""} active{sessions.length > 1 ? "s" : ""}
-                </span>
-                {stuckSessionsCount > 0 && (
-                  <span style={{ color: "#f59e0b" }}>
-                    ⚠️ {stuckSessionsCount} session{stuckSessionsCount > 1 ? "s" : ""} inactive{stuckSessionsCount > 1 ? "s" : ""}
-                  </span>
-                )}
+            <>
+              {/* Filtres */}
+              <div style={{
+                marginBottom: "16px",
+                padding: "12px",
+                background: "#f9fafb",
+                borderRadius: "8px",
+                border: "1px solid #e5e7eb",
+              }}>
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+                  {/* Filtre par workflow */}
+                  <div style={{ flex: "1 1 200px", minWidth: "200px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>
+                      Workflow
+                    </label>
+                    <select
+                      className="input"
+                      value={filterWorkflowId || ""}
+                      onChange={(e) => setFilterWorkflowId(e.target.value ? Number(e.target.value) : null)}
+                      style={{ width: "100%", fontSize: "14px" }}
+                    >
+                      <option value="">Tous les workflows</option>
+                      {uniqueWorkflows.map((wf) => (
+                        <option key={wf.id} value={wf.id}>
+                          {wf.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Filtre par statut */}
+                  <div style={{ flex: "1 1 150px", minWidth: "150px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>
+                      Statut
+                    </label>
+                    <select
+                      className="input"
+                      value={filterStatus || ""}
+                      onChange={(e) => setFilterStatus(e.target.value || null)}
+                      style={{ width: "100%", fontSize: "14px" }}
+                    >
+                      <option value="">Tous les statuts</option>
+                      <option value="active">Actif</option>
+                      <option value="waiting_user">En attente</option>
+                      <option value="paused">En pause</option>
+                    </select>
+                  </div>
+
+                  {/* Recherche par email */}
+                  <div style={{ flex: "2 1 250px", minWidth: "250px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>
+                      Recherche utilisateur
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Rechercher par email..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      style={{ width: "100%", fontSize: "14px" }}
+                    />
+                  </div>
+
+                  {/* Bouton réinitialiser */}
+                  {hasActiveFilters && (
+                    <div style={{ display: "flex", alignItems: "flex-end" }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={clearFilters}
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        ✕ Réinitialiser
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <ResponsiveTable
-                columns={sessionColumns}
-                data={sessions}
-                keyExtractor={(session) => session.thread_id}
-                mobileCardView={true}
-              />
-            </div>
+
+              {sessions.length === 0 ? (
+                <p className="admin-card__subtitle">
+                  Aucune session de workflow active pour le moment.
+                </p>
+              ) : (
+                <div>
+                  <div className="admin-card__subtitle mb-4" style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <span>
+                      {filteredSessions.length} session{filteredSessions.length > 1 ? "s" : ""} active{filteredSessions.length > 1 ? "s" : ""}
+                      {hasActiveFilters && ` (sur ${sessions.length} total)`}
+                    </span>
+                    {stuckSessionsCount > 0 && (
+                      <span style={{ color: "#f59e0b" }}>
+                        ⚠️ {stuckSessionsCount} session{stuckSessionsCount > 1 ? "s" : ""} inactive{stuckSessionsCount > 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+
+                  {filteredSessions.length === 0 ? (
+                    <p className="admin-card__subtitle">
+                      Aucune session ne correspond aux filtres sélectionnés.
+                    </p>
+                  ) : (
+                    <ResponsiveTable
+                      columns={sessionColumns}
+                      data={filteredSessions}
+                      keyExtractor={(session) => session.thread_id}
+                      mobileCardView={true}
+                    />
+                  )}
+                </div>
+              )}
+            </>
           )}
         </FormSection>
       </div>
