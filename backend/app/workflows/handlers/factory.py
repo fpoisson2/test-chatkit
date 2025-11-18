@@ -10,6 +10,7 @@ from .assign import AssignNodeHandler
 from .condition import ConditionNodeHandler
 from .end import EndNodeHandler
 from .message import AssistantMessageNodeHandler, UserMessageNodeHandler
+from .outbound_call import OutboundCallNodeHandler
 from .parallel import ParallelJoinNodeHandler, ParallelSplitNodeHandler
 from .start import StartNodeHandler
 from .transform import TransformNodeHandler
@@ -62,6 +63,7 @@ def create_state_machine(
     machine.register_handler("agent", agent_handler)
     machine.register_handler("voice_agent", agent_handler)
 
-    # Note: outbound_call nodes are voice-specific and handled separately in voice flows
+    # Telephony handlers
+    machine.register_handler("outbound_call", OutboundCallNodeHandler())
 
     return machine
