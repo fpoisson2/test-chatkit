@@ -756,6 +756,9 @@ class WorkflowGraphValidator:
                 if parent_slug_raw is not None and str(parent_slug_raw).strip()
                 else None
             )
+            logger.info(
+                f"Parsing node {slug}: parent_slug_raw={parent_slug_raw!r}, parent_slug={parent_slug!r}"
+            )
 
             parameters = self.ensure_dict(entry.get("parameters"), "paramètres")
             metadata = self.ensure_dict(entry.get("metadata"), "métadonnées")

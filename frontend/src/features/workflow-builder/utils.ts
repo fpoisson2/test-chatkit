@@ -233,7 +233,7 @@ const calculateParentSlugs = (flowNodes: FlowNode[]): Map<string, string | null>
 export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge[]) => {
   const parentSlugs = calculateParentSlugs(flowNodes);
 
-  return {
+  const payload = {
     nodes: flowNodes.map((node, index) => ({
       slug: node.data.slug,
       kind: node.data.kind,
@@ -268,6 +268,14 @@ export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge
       },
     })),
   };
+
+  console.log('[buildGraphPayloadFrom] Final payload nodes:', payload.nodes.map(n => ({
+    slug: n.slug,
+    kind: n.kind,
+    parent_slug: n.parent_slug
+  })));
+
+  return payload;
 };
 
 const STATE_ASSIGNMENT_SCOPES = ["globals", "state"] as const;
