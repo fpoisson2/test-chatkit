@@ -39,6 +39,7 @@ class WhileNodeHandler(BaseNodeHandler):
         # Initialize loop state keys
         loop_counter_key = f"__while_{node.slug}_counter"
         loop_entry_key = f"__while_{node.slug}_entry"
+        loop_input_id_key = f"__while_{node.slug}_input_id"
 
         logger.debug(
             "While %s: avant init, 'state' in state=%s, state.keys()=%s",
@@ -56,6 +57,36 @@ class WhileNodeHandler(BaseNodeHandler):
             context.state["state"] = {}
 
         iteration_count = context.state["state"].get(loop_counter_key, 0)
+
+        # Get current input ID to detect if there's a new user message
+        current_input_item_id = context.runtime_vars.get("current_input_item_id")
+        stored_input_id = context.state["state"].get(loop_input_id_key)
+
+        # Check if we have a new user message
+        has_new_input = (
+            iteration_count == 0 or  # First iteration
+            stored_input_id is None or  # No stored ID
+            current_input_item_id != stored_input_id  # Different input ID
+        )
+
+        # If we've already iterated and there's no new input, exit to waiting state
+        if iteration_count > 0 and not has_new_input:
+            from ..executor import WorkflowEndState
+
+            # Clean up loop state
+            context.state["state"].pop(loop_counter_key, None)
+            context.state["state"].pop(loop_entry_key, None)
+            context.state["state"].pop(loop_input_id_key, None)
+
+            # Set waiting state
+            context.runtime_vars["final_end_state"] = WorkflowEndState(
+                slug=node.slug,
+                status_type="waiting",
+                status_reason="En attente d'un nouveau message utilisateur.",
+                message="En attente d'un nouveau message utilisateur.",
+            )
+
+            return NodeResult(finished=True)
 
         # Evaluate the while condition
         try:
@@ -75,6 +106,7 @@ class WhileNodeHandler(BaseNodeHandler):
             # Condition is false, exit the loop
             context.state["state"].pop(loop_counter_key, None)
             context.state["state"].pop(loop_entry_key, None)
+            context.state["state"].pop(loop_input_id_key, None)
             transition = self._find_while_exit_transition(node, context)
         else:
             # Condition is true, continue loop
@@ -84,10 +116,15 @@ class WhileNodeHandler(BaseNodeHandler):
             if iteration_count > max_iterations:
                 context.state["state"].pop(loop_counter_key, None)
                 context.state["state"].pop(loop_entry_key, None)
+                context.state["state"].pop(loop_input_id_key, None)
                 transition = self._find_while_exit_transition(node, context)
             else:
                 # Save iteration counter
                 context.state["state"][loop_counter_key] = iteration_count
+
+                # Store current input ID for next iteration comparison
+                if current_input_item_id is not None:
+                    context.state["state"][loop_input_id_key] = current_input_item_id
 
                 logger.debug(
                     "While %s: compteur incrémenté et sauvegardé, iteration_count=%d, state[loop_counter_key]=%s",
@@ -116,6 +153,7 @@ class WhileNodeHandler(BaseNodeHandler):
             # Reset loop counter before leaving
             context.state["state"].pop(loop_counter_key, None)
             context.state["state"].pop(loop_entry_key, None)
+            context.state["state"].pop(loop_input_id_key, None)
 
             # Use standard fallback: while parent or start node
             next_slug = self._next_slug_or_fallback(node.slug, context)
