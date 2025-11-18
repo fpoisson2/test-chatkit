@@ -34,10 +34,10 @@ class OutboundCallNodeHandler(BaseNodeHandler):
         Returns:
             NodeResult with next slug and call context
         """
+        from chatkit.types import CustomTask, TaskItem, ThreadItemAddedEvent, ThreadItemDoneEvent
+
         from ...database import SessionLocal
         from ...models import SipAccount, Workflow, WorkflowDefinition
-        from ...realtime.models import CustomTask, TaskItem
-        from ...realtime.protocol import ThreadItemAddedEvent, ThreadItemDoneEvent
         from ...telephony.outbound_call_manager import get_outbound_call_manager
         from ..executor import WorkflowExecutionError
         from ..runtime.state_machine import NodeResult
@@ -315,8 +315,7 @@ class OutboundCallNodeHandler(BaseNodeHandler):
             to_number: Destination number
             from_number: Source number
         """
-        from ...realtime.models import CustomTask, TaskItem
-        from ...realtime.protocol import ThreadItemAddedEvent, ThreadItemDoneEvent
+        from chatkit.types import CustomTask, TaskItem, ThreadItemAddedEvent, ThreadItemDoneEvent
 
         if on_stream_event is None or agent_context is None or agent_context.thread is None:
             return
@@ -384,8 +383,7 @@ class OutboundCallNodeHandler(BaseNodeHandler):
         Returns:
             Last step context with call results
         """
-        from ...realtime.models import CustomTask, TaskItem
-        from ...realtime.protocol import ThreadItemAddedEvent, ThreadItemDoneEvent
+        from chatkit.types import CustomTask, TaskItem, ThreadItemAddedEvent, ThreadItemDoneEvent
 
         logger.info(
             "Attente de la fin de l'appel sortant %s",
@@ -458,8 +456,7 @@ class OutboundCallNodeHandler(BaseNodeHandler):
             call_result: Call result data
             audio_recordings: Audio recording URLs
         """
-        from ...realtime.models import CustomTask, TaskItem
-        from ...realtime.protocol import ThreadItemAddedEvent, ThreadItemDoneEvent
+        from chatkit.types import CustomTask, TaskItem, ThreadItemAddedEvent, ThreadItemDoneEvent
 
         try:
             call_id = call_result["call_id"]
