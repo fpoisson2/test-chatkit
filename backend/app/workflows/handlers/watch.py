@@ -56,9 +56,9 @@ class WatchNodeHandler(BaseNodeHandler):
             # Create stream event
             from chatkit.types import (
                 AssistantMessageContent,
-                AssistantMessageContentPartTextDelta,
                 AssistantMessageItem,
-                ThreadItemUpdated,
+                ThreadItemAddedEvent,
+                ThreadItemDoneEvent,
             )
 
             message_item = AssistantMessageItem(
@@ -67,13 +67,8 @@ class WatchNodeHandler(BaseNodeHandler):
                 created_at=datetime.now(),
                 content=[AssistantMessageContent(text=formatted_payload)],
             )
-            event: ThreadStreamEvent = ThreadItemUpdated(
-                item=message_item,
-                update=AssistantMessageContentPartTextDelta(
-                    content_index=0, delta=formatted_payload
-                ),
-            )
-            await on_stream_event(event)
+            await on_stream_event(ThreadItemAddedEvent(item=message_item))
+            await on_stream_event(ThreadItemDoneEvent(item=message_item))
 
         # Find next transition with fallback
         next_slug = self._next_slug_or_fallback(node.slug, context)
