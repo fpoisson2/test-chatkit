@@ -1741,6 +1741,67 @@ async def get_active_workflow_sessions(
     )
 
 
+@router.delete("/api/admin/workflows/sessions/{thread_id}")
+async def terminate_workflow_session(
+    thread_id: str,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Termine une session de workflow en supprimant les métadonnées d'attente.
+
+    Cela permet de "débloquer" un workflow en attente et de le marquer comme terminé.
+    """
+    from ..chatkit_server.context import _set_wait_state_metadata
+
+    # Récupérer le thread
+    thread = session.scalar(select(ChatThread).where(ChatThread.id == thread_id))
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Supprimer les métadonnées d'attente
+    _set_wait_state_metadata(thread, None)
+
+    # Sauvegarder
+    session.commit()
+
+    return {"success": True, "message": "Session terminated"}
+
+
+@router.post("/api/admin/workflows/sessions/{thread_id}/reset")
+async def reset_workflow_session(
+    thread_id: str,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Réinitialise une session de workflow en supprimant l'état du workflow.
+
+    ATTENTION: Cette action est irréversible et supprime toute la progression.
+    """
+    from ..chatkit_server.context import _set_wait_state_metadata
+
+    # Récupérer le thread
+    thread = session.scalar(select(ChatThread).where(ChatThread.id == thread_id))
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Supprimer les métadonnées d'attente et le state du workflow
+    _set_wait_state_metadata(thread, None)
+
+    # Supprimer également les métadonnées de workflow du thread
+    if "metadata" in thread.payload and "workflow" in thread.payload["metadata"]:
+        del thread.payload["metadata"]["workflow"]
+        # Marquer le payload comme modifié pour SQLAlchemy
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(thread, "payload")
+
+    # Sauvegarder
+    session.commit()
+
+    return {"success": True, "message": "Session reset"}
+
+
 class AvailableModelResponse(BaseModel):
     id: int
     name: str

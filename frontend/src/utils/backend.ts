@@ -902,6 +902,22 @@ export const adminApi = {
     });
     return response.json();
   },
+
+  async terminateWorkflowSession(token: string | null, threadId: string): Promise<{ success: boolean; message: string }> {
+    const response = await requestWithFallback(`/api/admin/workflows/sessions/${encodeURIComponent(threadId)}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async resetWorkflowSession(token: string | null, threadId: string): Promise<{ success: boolean; message: string }> {
+    const response = await requestWithFallback(`/api/admin/workflows/sessions/${encodeURIComponent(threadId)}/reset`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
 };
 
 export const ltiAdminApi = {

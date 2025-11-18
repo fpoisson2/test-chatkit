@@ -10,6 +10,7 @@ import {
 } from "../components";
 import { WorkflowVisualizationModal } from "../components/admin/WorkflowVisualizationModal";
 import { ActionsMenu } from "../components/admin/ActionsMenu";
+import { ConfirmDialog } from "../components/admin/ConfirmDialog";
 import { useWorkflowMonitorWebSocket } from "../hooks/useWorkflowMonitorWebSocket";
 
 interface WorkflowStepInfo {
@@ -66,6 +67,12 @@ export const AdminWorkflowMonitorPage = () => {
   const [filterWorkflowId, setFilterWorkflowId] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Confirmations pour actions destructives
+  const [confirmAction, setConfirmAction] = useState<{
+    type: "terminate" | "reset";
+    session: ActiveWorkflowSession;
+  } | null>(null);
 
   // WebSocket connection
   const {
@@ -263,6 +270,46 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
     alert(details);
   }, []);
 
+  const handleTerminateSession = useCallback(async () => {
+    if (!confirmAction || confirmAction.type !== "terminate" || !token) {
+      return;
+    }
+
+    try {
+      await adminApi.terminateWorkflowSession(token, confirmAction.session.thread_id);
+      // Rafraîchir les sessions
+      await fetchActiveSessions(true);
+      setConfirmAction(null);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Erreur lors de la terminaison de la session"
+      );
+      setConfirmAction(null);
+    }
+  }, [confirmAction, token, fetchActiveSessions]);
+
+  const handleResetSession = useCallback(async () => {
+    if (!confirmAction || confirmAction.type !== "reset" || !token) {
+      return;
+    }
+
+    try {
+      await adminApi.resetWorkflowSession(token, confirmAction.session.thread_id);
+      // Rafraîchir les sessions
+      await fetchActiveSessions(true);
+      setConfirmAction(null);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Erreur lors de la réinitialisation de la session"
+      );
+      setConfirmAction(null);
+    }
+  }, [confirmAction, token, fetchActiveSessions]);
+
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString("fr-FR", {
       dateStyle: "short",
@@ -408,6 +455,18 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
                 label: "Afficher les détails",
                 icon: "ℹ️",
                 onClick: () => handleViewSessionDetails(session),
+              },
+              {
+                label: "Terminer la session",
+                icon: "🛑",
+                onClick: () => setConfirmAction({ type: "terminate", session }),
+                variant: "danger",
+              },
+              {
+                label: "Réinitialiser le workflow",
+                icon: "🔄",
+                onClick: () => setConfirmAction({ type: "reset", session }),
+                variant: "danger",
               },
             ]}
           />
@@ -668,6 +727,30 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
           workflow={selectedWorkflow}
           sessions={selectedSessions}
           onClose={handleCloseModal}
+        />
+      )}
+
+      {confirmAction && (
+        <ConfirmDialog
+          title={
+            confirmAction.type === "terminate"
+              ? "Terminer la session"
+              : "Réinitialiser le workflow"
+          }
+          message={
+            confirmAction.type === "terminate"
+              ? `Êtes-vous sûr de vouloir terminer la session de ${confirmAction.session.user.email} ? Cette action marquera le workflow comme terminé et supprimera l'état d'attente.`
+              : `Êtes-vous sûr de vouloir réinitialiser le workflow de ${confirmAction.session.user.email} ? ATTENTION: Cette action est irréversible et supprimera toute la progression (${confirmAction.session.step_history.length} étapes complétées).`
+          }
+          confirmLabel={confirmAction.type === "terminate" ? "Terminer" : "Réinitialiser"}
+          cancelLabel="Annuler"
+          variant="danger"
+          onConfirm={
+            confirmAction.type === "terminate"
+              ? handleTerminateSession
+              : handleResetSession
+          }
+          onCancel={() => setConfirmAction(null)}
         />
       )}
 
