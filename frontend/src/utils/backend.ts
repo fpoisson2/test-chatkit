@@ -883,6 +883,41 @@ export const adminApi = {
       throw new ApiError("Échec de la suppression", { status: response.status });
     }
   },
+
+  async getActiveWorkflowSessions(token: string | null): Promise<{
+    sessions: Array<{
+      thread_id: string;
+      user: { id: number; email: string; is_admin: boolean };
+      workflow: { id: number; slug: string; display_name: string; definition_id: number | null };
+      current_step: { slug: string; display_name: string; timestamp: string | null };
+      step_history: Array<{ slug: string; display_name: string; timestamp: string | null }>;
+      started_at: string;
+      last_activity: string;
+      status: "active" | "waiting_user" | "paused";
+    }>;
+    total_count: number;
+  }> {
+    const response = await requestWithFallback("/api/admin/workflows/active-sessions", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async terminateWorkflowSession(token: string | null, threadId: string): Promise<{ success: boolean; message: string }> {
+    const response = await requestWithFallback(`/api/admin/workflows/sessions/${encodeURIComponent(threadId)}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async resetWorkflowSession(token: string | null, threadId: string): Promise<{ success: boolean; message: string }> {
+    const response = await requestWithFallback(`/api/admin/workflows/sessions/${encodeURIComponent(threadId)}/reset`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
 };
 
 export const ltiAdminApi = {
@@ -1613,8 +1648,8 @@ export const workflowsApi = {
     return response.json();
   },
 
-  async getVersion(token: string | null, versionId: number): Promise<WorkflowVersionResponse> {
-    const response = await requestWithFallback(`/api/workflow_versions/${versionId}`, {
+  async getVersion(token: string | null, workflowId: number, versionId: number): Promise<WorkflowVersionResponse> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/versions/${versionId}`, {
       headers: withAuthHeaders(token),
     });
     return response.json();

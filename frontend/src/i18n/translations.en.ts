@@ -28,6 +28,7 @@ export const en: TranslationDictionary = {
   "admin.tabs.widgets": "Widget library",
   "admin.tabs.mcpServers": "MCP servers",
   "admin.tabs.telephony": "Telephony",
+  "admin.tabs.workflowMonitor": "Active Workflows",
   "admin.tabs.settings": "General settings",
   "admin.tabs.appearance": "Appearance",
   "admin.tabs.languages": "Languages",

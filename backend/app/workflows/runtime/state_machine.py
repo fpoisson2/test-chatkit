@@ -21,6 +21,62 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..executor import WorkflowStepSummary
 
 
+def _update_workflow_metadata(thread: Any, slug: str, title: str, steps_history: list[Any]) -> None:
+    """Update workflow metadata in thread for monitoring purposes."""
+    if thread is None:
+        return
+
+    # Get current metadata - handle both SDK threads (metadata attr) and DB threads (payload)
+    metadata = getattr(thread, "metadata", None)
+
+    # For SQLAlchemy ChatThread, metadata is in payload
+    if not isinstance(metadata, dict):
+        payload = getattr(thread, "payload", None)
+        if isinstance(payload, dict):
+            metadata = payload.get("metadata")
+
+    if isinstance(metadata, dict):
+        updated = dict(metadata)
+    else:
+        updated = {}
+
+    # Ensure workflow metadata exists
+    if "workflow" not in updated or not isinstance(updated["workflow"], dict):
+        updated["workflow"] = {}
+
+    # Update current step
+    updated["workflow"]["current_step"] = {
+        "slug": slug,
+        "title": title,
+    }
+
+    # Update steps history
+    updated["workflow"]["steps_history"] = [
+        {"key": step.key, "title": step.title}
+        for step in steps_history
+    ]
+
+    # Save back to thread - handle both SDK and DB threads
+    # Try SDK thread first (has metadata attribute)
+    if hasattr(thread, "metadata") and not hasattr(thread, "payload"):
+        try:
+            thread.metadata = updated
+            return
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to update SDK thread metadata: %s", exc)
+
+    # Handle SQLAlchemy ChatThread (has payload)
+    payload = getattr(thread, "payload", None)
+    if isinstance(payload, dict):
+        try:
+            payload["metadata"] = updated
+            # Mark the object as modified for SQLAlchemy
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(thread, "payload")
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to update DB thread payload metadata: %s", exc)
+
+
 @dataclass
 class ExecutionContext:
     """Shared context passed to all node handlers.
@@ -166,6 +222,29 @@ class WorkflowStateMachine:
 
             # Execute handler
             result = await handler.execute(current_node, context)
+
+            # Update workflow metadata for monitoring (after each step execution)
+            thread = context.runtime_vars.get("thread")
+            if thread is not None:
+                # Try multiple sources for the title
+                node_title = ""
+                # 1. Try display_name
+                if current_node.display_name:
+                    node_title = current_node.display_name
+                # 2. Try parameters["title"]
+                elif current_node.parameters and current_node.parameters.get("title"):
+                    node_title = str(current_node.parameters.get("title"))
+                # 3. Fallback to handler's _node_title method
+                elif hasattr(handler, "_node_title"):
+                    node_title = handler._node_title(current_node)
+
+                logger.info(
+                    f"[WORKFLOW_META] Updating metadata for step {current_node.slug}: "
+                    f"title='{node_title}', steps_count={len(context.steps)}"
+                )
+                _update_workflow_metadata(thread, current_node.slug, node_title, context.steps)
+            else:
+                logger.warning(f"[WORKFLOW_META] No thread in runtime_vars for step {current_node.slug}")
 
             if debug_enabled:
                 logger.debug(

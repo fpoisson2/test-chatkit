@@ -41,6 +41,7 @@ else:
             vector_stores,
             voice_settings,
             widgets,
+            workflow_monitor_ws,
             workflows,
         )
 
@@ -65,6 +66,7 @@ else:
         app.include_router(auth.router)
         app.include_router(users.router)
         app.include_router(admin.router)
+        app.include_router(workflow_monitor_ws.router)
         app.include_router(docs.router)
         app.include_router(lti.router)
         app.include_router(model_registry.router)

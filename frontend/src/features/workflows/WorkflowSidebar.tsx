@@ -49,6 +49,7 @@ import {
   updateStoredWorkflowSelection,
   type StoredWorkflowLastUsedAt,
   type StoredWorkflowPinnedLookup,
+  type WorkflowSortMode,
 } from "./utils";
 import { useWorkflowSidebar } from "./WorkflowSidebarProvider";
 import { useWorkflowContext } from "../workflow-builder/contexts/WorkflowContext";
@@ -109,6 +110,7 @@ export type WorkflowEntryConfig = {
   localMenuItems?: LocalWorkflowMenuItems;
   hostedTrailingContent?: (hosted: HostedWorkflowMetadata) => ReactNode;
   localTrailingContent?: (workflow: WorkflowSummary) => ReactNode;
+  sortMode?: WorkflowSortMode;
 };
 
 export type WorkflowSidebarSectionEntry = {
@@ -153,6 +155,7 @@ export const useWorkflowSidebarEntries = (
     localMenuItems,
     hostedTrailingContent,
     localTrailingContent,
+    sortMode = "recent",
   } = config;
 
   const sortedWorkflowEntries = useMemo(() => {
@@ -164,9 +167,9 @@ export const useWorkflowSidebarEntries = (
         ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
       ],
       lastUsedAt,
-      { collator, pinnedLookup },
+      { collator, pinnedLookup, sortMode },
     );
-  }, [hostedWorkflows, lastUsedAt, pinnedLookup, workflowCollator, workflows]);
+  }, [hostedWorkflows, lastUsedAt, pinnedLookup, workflowCollator, workflows, sortMode]);
 
   return useMemo<WorkflowSidebarSectionEntry[]>(
     () =>
@@ -193,23 +196,23 @@ export const useWorkflowSidebarEntries = (
             isPinned,
             menuProps: menuConfig && items.length > 0
               ? {
-                  menuId,
-                  isOpen: isMenuOpen,
-                  isMobileLayout,
-                  placement: isMenuOpen ? menuConfig.workflowMenuPlacement : "down",
-                  triggerDisabled: hostedLoading,
-                  triggerLabel: t("workflowBuilder.hostedSection.openActions", {
-                    label: hosted.label,
-                  }),
-                  onOpen: (placement: ActionMenuPlacement) => {
-                    menuConfig.onOpenMenu(menuKey, placement);
-                  },
-                  onClose: menuConfig.onCloseMenu,
-                  triggerRef: menuConfig.workflowMenuTriggerRef,
-                  menuRef: menuConfig.workflowMenuRef,
-                  items,
-                  variant: isMobileLayout ? "overlay" : "default",
-                }
+                menuId,
+                isOpen: isMenuOpen,
+                isMobileLayout,
+                placement: isMenuOpen ? menuConfig.workflowMenuPlacement : "down",
+                triggerDisabled: hostedLoading,
+                triggerLabel: t("workflowBuilder.hostedSection.openActions", {
+                  label: hosted.label,
+                }),
+                onOpen: (placement: ActionMenuPlacement) => {
+                  menuConfig.onOpenMenu(menuKey, placement);
+                },
+                onClose: menuConfig.onCloseMenu,
+                triggerRef: menuConfig.workflowMenuTriggerRef,
+                menuRef: menuConfig.workflowMenuRef,
+                items,
+                variant: isMobileLayout ? "overlay" : "default",
+              }
               : null,
             hasActions: menuConfig && items.length > 0,
             dataAttributes: { "data-hosted-workflow": "" },
@@ -217,9 +220,8 @@ export const useWorkflowSidebarEntries = (
             content: (
               <button
                 type="button"
-                className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${
-                  isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
-                }`}
+                className={`chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted${isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""
+                  }`}
                 onClick={callbacks.onHostedClick ? () => callbacks.onHostedClick!(hosted.slug) : undefined}
                 disabled={!hosted.available || !callbacks.onHostedClick}
                 aria-current={isSelected ? "true" : undefined}
@@ -267,23 +269,23 @@ export const useWorkflowSidebarEntries = (
           isPinned,
           menuProps: menuConfig && items.length > 0
             ? {
-                menuId,
-                isOpen: isMenuOpen,
-                isMobileLayout,
-                placement: isMenuOpen ? menuConfig.workflowMenuPlacement : "down",
-                triggerDisabled: loading,
-                triggerLabel: t("workflowBuilder.localSection.openActions", {
-                  label: workflow.display_name,
-                }),
-                onOpen: (placement: ActionMenuPlacement) => {
-                  menuConfig.onOpenMenu(workflow.id, placement);
-                },
-                onClose: menuConfig.onCloseMenu,
-                triggerRef: menuConfig.workflowMenuTriggerRef,
-                menuRef: menuConfig.workflowMenuRef,
-                items,
-                variant: isMobileLayout ? "overlay" : "default",
-              }
+              menuId,
+              isOpen: isMenuOpen,
+              isMobileLayout,
+              placement: isMenuOpen ? menuConfig.workflowMenuPlacement : "down",
+              triggerDisabled: loading,
+              triggerLabel: t("workflowBuilder.localSection.openActions", {
+                label: workflow.display_name,
+              }),
+              onOpen: (placement: ActionMenuPlacement) => {
+                menuConfig.onOpenMenu(workflow.id, placement);
+              },
+              onClose: menuConfig.onCloseMenu,
+              triggerRef: menuConfig.workflowMenuTriggerRef,
+              menuRef: menuConfig.workflowMenuRef,
+              items,
+              variant: isMobileLayout ? "overlay" : "default",
+            }
             : null,
           hasActions: menuConfig && items.length > 0,
           dataAttributes: {
@@ -294,9 +296,8 @@ export const useWorkflowSidebarEntries = (
           content: (
             <button
               type="button"
-              className={`chatkit-sidebar__workflow-button${
-                isActive ? " chatkit-sidebar__workflow-button--active" : ""
-              }${isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""}`}
+              className={`chatkit-sidebar__workflow-button${isActive ? " chatkit-sidebar__workflow-button--active" : ""
+                }${isPinned ? " chatkit-sidebar__workflow-button--pinned" : ""}`}
               onClick={callbacks.onLocalClick ? () => callbacks.onLocalClick!(workflow.id) : undefined}
               disabled={!hasProduction || !callbacks.onLocalClick || loading}
               aria-current={isActive ? "true" : undefined}
@@ -399,6 +400,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const duplicateWorkflowMutation = useDuplicateWorkflow();
+  const [sortMode, setSortMode] = useState<WorkflowSortMode>("recent");
 
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
@@ -1092,6 +1094,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     hostedMenuItems,
     localMenuItems,
     hostedTrailingContent,
+    sortMode,
   });
 
   const handleOpenBuilder = useCallback(() => {
@@ -1189,6 +1192,31 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         </button>
       ) : null;
 
+    const sortControl = (
+      <div style={{ padding: "0 16px 8px 16px", display: "flex", justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          onClick={() => setSortMode(current => current === "recent" ? "name" : "recent")}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--text-muted)",
+            fontSize: "12px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "4px 8px",
+            borderRadius: "4px",
+          }}
+          className="hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          <span>Trier par : {sortMode === "recent" ? "Récent" : "Nom"}</span>
+          <span style={{ fontSize: "10px" }}>{sortMode === "recent" ? "↓" : "az"}</span>
+        </button>
+      </div>
+    );
+
     return (
       <WorkflowSidebarSection
         sectionId={sectionId}
@@ -1199,12 +1227,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         floatingAction={
           isAdmin
             ? {
-                icon: <span aria-hidden="true">+</span>,
-                label: t("workflowBuilder.createWorkflow.openModal"),
-                onClick: handleOpenBuilder,
-              }
+              icon: <span aria-hidden="true">+</span>,
+              label: t("workflowBuilder.createWorkflow.openModal"),
+              onClick: handleOpenBuilder,
+            }
             : undefined
         }
+        beforeGroups={sortControl}
         footerContent={footerContent}
         variant={sectionVariant}
       />
@@ -1221,6 +1250,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     t,
     user,
     workflows,
+    sortMode,
   ]);
 
   const collapsedSidebarContent = useMemo(() => {
@@ -1558,19 +1588,19 @@ export const WorkflowBuilderSidebar = ({
     const beforeGroupsContent =
       hostedError || (hostedLoading && managedHosted.length === 0)
         ? (
-            <>
-              {hostedError ? (
-                <p className="chatkit-sidebar__section-error" aria-live="polite">
-                  {hostedError}
-                </p>
-              ) : null}
-              {hostedLoading && managedHosted.length === 0 ? (
-                <p className="chatkit-sidebar__section-text" aria-live="polite">
-                  {t("workflowBuilder.hostedSection.loading")}
-                </p>
-              ) : null}
-            </>
-          )
+          <>
+            {hostedError ? (
+              <p className="chatkit-sidebar__section-error" aria-live="polite">
+                {hostedError}
+              </p>
+            ) : null}
+            {hostedLoading && managedHosted.length === 0 ? (
+              <p className="chatkit-sidebar__section-text" aria-live="polite">
+                {t("workflowBuilder.hostedSection.loading")}
+              </p>
+            ) : null}
+          </>
+        )
         : undefined;
 
     const entriesForSection = loadError ? [] : sidebarEntries;
@@ -1599,19 +1629,19 @@ export const WorkflowBuilderSidebar = ({
     const footerContent =
       selectedWorkflow?.description || (selectedWorkflow && !selectedWorkflow.active_version_id)
         ? (
-            <>
-              {selectedWorkflow?.description ? (
-                <p className="chatkit-sidebar__section-text">
-                  {selectedWorkflow.description}
-                </p>
-              ) : null}
-              {selectedWorkflow && !selectedWorkflow.active_version_id ? (
-                <p className="chatkit-sidebar__section-text" style={warningStyle}>
-                  Publiez une version pour l'utiliser.
-                </p>
-              ) : null}
-            </>
-          )
+          <>
+            {selectedWorkflow?.description ? (
+              <p className="chatkit-sidebar__section-text">
+                {selectedWorkflow.description}
+              </p>
+            ) : null}
+            {selectedWorkflow && !selectedWorkflow.active_version_id ? (
+              <p className="chatkit-sidebar__section-text" style={warningStyle}>
+                Publiez une version pour l'utiliser.
+              </p>
+            ) : null}
+          </>
+        )
         : null;
 
     return (

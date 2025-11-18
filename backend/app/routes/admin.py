@@ -29,14 +29,20 @@ from ..i18n_utils import resolve_frontend_i18n_path
 from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
 from ..models import (
+    ChatThread,
     Language,
     LanguageGenerationTask,
     LTIRegistration,
     SipAccount,
     TelephonyRoute,
     User,
+    Workflow,
+    WorkflowDefinition,
+    WorkflowStep,
 )
 from ..schemas import (
+    ActiveWorkflowSession,
+    ActiveWorkflowSessionsResponse,
     AppearanceSettingsResponse,
     AppearanceSettingsUpdateRequest,
     AppSettingsResponse,
@@ -58,6 +64,9 @@ from ..schemas import (
     UserCreate,
     UserResponse,
     UserUpdate,
+    WorkflowInfo,
+    WorkflowStepInfo,
+    WorkflowUserInfo,
 )
 from ..security import hash_password
 
@@ -1591,6 +1600,282 @@ async def activate_stored_language(
             status_code=500,
             detail=f"Failed to update translations.ts: {str(e)}"
         ) from e
+
+
+# ============================================================================
+# Workflow Monitoring Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/api/admin/workflows/active-sessions",
+    response_model=ActiveWorkflowSessionsResponse,
+)
+async def get_active_workflow_sessions(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Récupère toutes les sessions de workflow actives pour tous les utilisateurs.
+
+    Retourne les informations sur les threads ayant un workflow en pause
+    (en attente d'une réponse utilisateur), incluant :
+    - Les informations utilisateur
+    - Les informations sur le workflow
+    - L'étape actuelle dans le workflow
+    - L'historique des étapes complétées
+    - Les timestamps de début et dernière activité
+    """
+    from ..chatkit_server.context import _get_wait_state_metadata
+
+    # Récupérer les threads récents avec une limite
+    # On filtre pour ne récupérer que ceux qui ont des métadonnées de workflow
+    # Pour éviter de charger tous les threads du système
+    stmt = (
+        select(ChatThread)
+        .where(
+            ChatThread.payload["metadata"]["workflow"].is_not(None)
+        )
+        # Filter for sessions updated in the last 2 hours (truly active sessions)
+        .where(ChatThread.updated_at >= datetime.datetime.utcnow() - datetime.timedelta(hours=2))
+        .order_by(ChatThread.updated_at.desc())
+        .limit(100)
+    )
+    
+    all_threads = session.scalars(stmt).all()
+
+    active_sessions = []
+
+    logger.info(f"[WORKFLOW_MONITOR] Checking {len(all_threads)} threads for active workflow sessions")
+
+    # Batch load users and workflows to avoid N+1
+    user_ids = set()
+    workflow_ids = set()
+    
+    for thread in all_threads:
+        # Extract IDs for batch loading
+        try:
+            if thread.owner_id:
+                user_ids.add(int(thread.owner_id))
+        except (ValueError, TypeError):
+            pass
+            
+        thread_payload = thread.payload if hasattr(thread, 'payload') else {}
+        thread_metadata = thread_payload.get("metadata", {}) if isinstance(thread_payload, dict) else {}
+        workflow_meta = thread_metadata.get("workflow", {}) if isinstance(thread_metadata, dict) else {}
+        
+        if workflow_meta and isinstance(workflow_meta, dict):
+            wf_id = workflow_meta.get("id")
+            if wf_id:
+                workflow_ids.add(wf_id)
+
+    # Load users
+    users_map = {}
+    if user_ids:
+        users = session.scalars(select(User).where(User.id.in_(user_ids))).all()
+        users_map = {u.id: u for u in users}
+
+    # Load workflows
+    workflows_map = {}
+    if workflow_ids:
+        workflows = session.scalars(select(Workflow).where(Workflow.id.in_(workflow_ids))).all()
+        workflows_map = {w.id: w for w in workflows}
+
+    for thread in all_threads:
+        # Récupérer les métadonnées du thread
+        thread_payload = thread.payload if hasattr(thread, 'payload') else {}
+        thread_metadata = thread_payload.get("metadata", {}) if isinstance(thread_payload, dict) else {}
+        workflow_meta = thread_metadata.get("workflow", {}) if isinstance(thread_metadata, dict) else {}
+
+        # Skip threads sans workflow
+        if not workflow_meta or not isinstance(workflow_meta, dict):
+            continue
+
+        workflow_id = workflow_meta.get("id")
+        if not workflow_id:
+            continue
+
+        logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: has workflow metadata (id={workflow_id})")
+
+        # Essayer de récupérer le snapshot depuis wait_state si disponible
+        wait_state = _get_wait_state_metadata(thread)
+        snapshot = None
+        current_slug = "unknown"
+        steps_history = []
+
+        if wait_state and isinstance(wait_state, dict):
+            snapshot = wait_state.get("snapshot")
+            if snapshot and isinstance(snapshot, dict):
+                current_slug = snapshot.get("current_slug", "unknown")
+                steps_history = snapshot.get("steps", [])
+                logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: found snapshot in wait_state")
+
+        # Récupérer le workflow depuis la map
+        workflow = workflows_map.get(workflow_id)
+        if not workflow:
+            logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: workflow {workflow_id} not found in DB")
+            continue
+
+        # Récupérer l'utilisateur propriétaire du thread depuis la map
+        user = None
+        owner_id = thread.owner_id
+        try:
+            user_id = int(owner_id)
+            user = users_map.get(user_id)
+            if not user:
+                logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: user {owner_id} not found")
+                continue
+        except (ValueError, TypeError):
+            logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: invalid owner_id {owner_id}")
+            continue
+
+        # Trouver le display_name de l'étape actuelle
+        current_step_display = "unknown"
+        definition_id = workflow_meta.get("definition_id")
+
+        # Try to get current step from metadata (persisted during execution)
+        current_step_meta = workflow_meta.get("current_step")
+        if isinstance(current_step_meta, dict):
+            # Get slug if we don't have it yet
+            if current_slug == "unknown":
+                current_slug = current_step_meta.get("slug", "unknown")
+            # Always try to get the title from metadata
+            title_from_meta = current_step_meta.get("title")
+            if title_from_meta:
+                current_step_display = title_from_meta
+
+        # Try to get history from metadata if not found in wait_state
+        if not steps_history:
+             steps_history = workflow_meta.get("steps_history", [])
+
+        # Enrichir le nom de l'étape depuis la DB SEULEMENT si on n'a pas déjà un titre
+        if current_step_display == "unknown" and definition_id and current_slug != "unknown":
+            # Chercher l'étape dans la définition du workflow
+            workflow_step = session.scalar(
+                select(WorkflowStep).where(
+                    WorkflowStep.definition_id == definition_id,
+                    WorkflowStep.slug == current_slug,
+                )
+            )
+            if workflow_step:
+                # Try parameters["title"] first, then display_name
+                if workflow_step.parameters and workflow_step.parameters.get("title"):
+                    current_step_display = str(workflow_step.parameters.get("title"))
+                elif workflow_step.display_name:
+                    current_step_display = workflow_step.display_name
+                else:
+                    current_step_display = current_slug
+
+        # Construire l'historique des étapes
+        step_history_list = []
+        for step in steps_history:
+            if isinstance(step, dict):
+                step_history_list.append(
+                    WorkflowStepInfo(
+                        slug=step.get("key", ""),
+                        display_name=step.get("title", ""),
+                        timestamp=None,  # Pas de timestamp disponible dans le snapshot
+                    )
+                )
+
+        # Déterminer le statut
+        # Si le workflow a un wait_state, il est en attente utilisateur
+        # Sinon, il est considéré comme actif (probablement en cours d'exécution ou terminé récemment)
+        status = "waiting_user" if wait_state else "active"
+
+        # Créer la session active
+        active_session = ActiveWorkflowSession(
+            thread_id=thread.id,
+            user=WorkflowUserInfo(
+                id=user.id,
+                email=user.email,
+                is_admin=user.is_admin,
+            ),
+            workflow=WorkflowInfo(
+                id=workflow.id,
+                slug=workflow.slug,
+                display_name=workflow.display_name,
+                definition_id=definition_id,
+            ),
+            current_step=WorkflowStepInfo(
+                slug=current_slug,
+                display_name=current_step_display,
+                timestamp=None,
+            ),
+            step_history=step_history_list,
+            started_at=thread.created_at.isoformat(),
+            last_activity=thread.updated_at.isoformat(),
+            status=status,
+        )
+
+        active_sessions.append(active_session)
+
+    logger.info(f"[WORKFLOW_MONITOR] Found {len(active_sessions)} active workflow sessions")
+    return ActiveWorkflowSessionsResponse(
+        sessions=active_sessions,
+        total_count=len(active_sessions),
+    )
+
+
+@router.delete("/api/admin/workflows/sessions/{thread_id}")
+async def terminate_workflow_session(
+    thread_id: str,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Termine une session de workflow en supprimant les métadonnées d'attente.
+
+    Cela permet de "débloquer" un workflow en attente et de le marquer comme terminé.
+    """
+    from ..chatkit_server.context import _set_wait_state_metadata
+
+    # Récupérer le thread
+    thread = session.scalar(select(ChatThread).where(ChatThread.id == thread_id))
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Supprimer les métadonnées d'attente
+    _set_wait_state_metadata(thread, None)
+
+    # Sauvegarder
+    session.commit()
+
+    return {"success": True, "message": "Session terminated"}
+
+
+@router.post("/api/admin/workflows/sessions/{thread_id}/reset")
+async def reset_workflow_session(
+    thread_id: str,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Réinitialise une session de workflow en supprimant l'état du workflow.
+
+    ATTENTION: Cette action est irréversible et supprime toute la progression.
+    """
+    from ..chatkit_server.context import _set_wait_state_metadata
+
+    # Récupérer le thread
+    thread = session.scalar(select(ChatThread).where(ChatThread.id == thread_id))
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Supprimer les métadonnées d'attente et le state du workflow
+    _set_wait_state_metadata(thread, None)
+
+    # Supprimer également les métadonnées de workflow du thread
+    if "metadata" in thread.payload and "workflow" in thread.payload["metadata"]:
+        del thread.payload["metadata"]["workflow"]
+        # Marquer le payload comme modifié pour SQLAlchemy
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(thread, "payload")
+
+    # Sauvegarder
+    session.commit()
+
+    return {"success": True, "message": "Session reset"}
 
 
 class AvailableModelResponse(BaseModel):

@@ -1006,6 +1006,43 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             ) -> None:
                 header = f"{update.title}"
 
+                # Persist current step to metadata if it changed
+                current_step_slug = update.key
+                current_step_title = update.title
+                
+                # Check if we need to update metadata
+                workflow_meta = thread_metadata.get("workflow", {})
+                stored_step = workflow_meta.get("current_step", {})
+                stored_slug = stored_step.get("slug")
+                
+                if stored_slug != current_step_slug:
+                    # Update metadata
+                    if "workflow" not in thread_metadata:
+                        thread_metadata["workflow"] = {}
+                    
+                    # Ensure workflow metadata has basic info if missing
+                    if not thread_metadata["workflow"].get("id") and workflow_slug:
+                         thread_metadata["workflow"]["slug"] = workflow_slug
+
+                    thread_metadata["workflow"]["current_step"] = {
+                        "slug": current_step_slug,
+                        "title": current_step_title,
+                        "started_at": datetime.now().isoformat(),
+                    }
+                    
+                    # Persist thread
+                    try:
+                        # We need to update the thread object's metadata field
+                        thread.metadata = thread_metadata
+                        await self.store.save_thread(thread, context=agent_context.request_context)
+                    except Exception:
+                        logger.warning(
+                            "Failed to persist current step %s for thread %s", 
+                            current_step_slug, 
+                            thread.id,
+                            exc_info=True
+                        )
+
                 waiting_text = step_progress_text.get(update.key)
                 if waiting_text is None:
                     waiting_text = f"{header}\n\n..."
