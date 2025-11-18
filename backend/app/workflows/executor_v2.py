@@ -197,9 +197,9 @@ async def run_workflow_v2(
     from .executor import (
         AGENT_RESPONSE_FORMATS,
         WorkflowAgentRunContext,
+        WorkflowExecutionError,
         _WorkflowStreamResult,
         get_settings,
-        raise_step_error,
         render_agent_instructions,
         stream_agent_response,
         _extract_delta,
@@ -449,7 +449,7 @@ async def run_workflow_v2(
                         )
                     await _inspect_event_for_images(event)
             except Exception as exc:
-                raise_step_error(step_key, title, exc)
+                raise WorkflowExecutionError(step_key, title, exc, list(steps)) from exc
 
             # Handle response_id persistence
             last_response_id = getattr(result, "last_response_id", None)
