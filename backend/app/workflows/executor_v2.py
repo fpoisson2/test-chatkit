@@ -194,29 +194,79 @@ async def run_workflow_v2(
     )
 
     # Prepare agent-specific dependencies
+    from agents import RunConfig, Runner
+    from chatkit.agents import stream_agent_response
+    from chatkit.types import (
+        AssistantMessageContentPartTextDelta,
+        EndOfTurnItem,
+        ImageTask,
+        ThreadItemUpdated,
+        WorkflowTaskAdded,
+        WorkflowTaskUpdated,
+    )
+
+    from ..chatkit.agent_registry import AGENT_RESPONSE_FORMATS
+    from ..chatkit_server.mcp import MCPServer
+    from ..chatkit_server.workflow_runner import _WorkflowStreamResult
+    from ..config import get_settings
     from .executor import (
-        AGENT_RESPONSE_FORMATS,
         WorkflowAgentRunContext,
         WorkflowExecutionError,
-        _WorkflowStreamResult,
-        get_settings,
-        render_agent_instructions,
-        stream_agent_response,
-        _extract_delta,
-        _should_forward_agent_event,
-        _normalize_conversation_history_for_provider,
+        WorkflowStepStreamUpdate,
         _deduplicate_conversation_history_items,
-        _sanitize_previous_response_id,
         _filter_conversation_history_for_previous_response,
-        _workflow_run_config,
+        _normalize_conversation_history_for_provider,
+        _sanitize_previous_response_id,
     )
     from .executor_helpers import create_executor_helpers
+    from .template_utils import render_agent_instructions
 
     # Get agent provider bindings
     agent_provider_bindings = agent_setup.agent_provider_bindings
 
     # Get pending wait state
     pending_wait_state = runtime_snapshot.wait_state if runtime_snapshot else None
+
+    # Local helper functions (originally closures in run_workflow_v1)
+    def _extract_delta(event: Any) -> str:
+        """Extract text delta from stream event."""
+        if isinstance(event, ThreadItemUpdated):
+            update = event.update
+            if isinstance(update, AssistantMessageContentPartTextDelta):
+                return update.delta or ""
+        return ""
+
+    def _should_forward_agent_event(event: Any, *, suppress: bool) -> bool:
+        """Check if agent event should be forwarded to stream."""
+        if not suppress:
+            return True
+        return isinstance(event, EndOfTurnItem)
+
+    def _workflow_run_config(
+        response_format: dict[str, Any] | None = None,
+        *,
+        provider_binding: Any | None = None,
+    ) -> Any:
+        """Create RunConfig for agent execution."""
+        metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
+        if definition.workflow_id is not None:
+            metadata["workflow_db_id"] = str(definition.workflow_id)
+        if definition.workflow and definition.workflow.slug:
+            metadata["workflow_slug"] = definition.workflow.slug
+        if definition.workflow and definition.workflow.display_name:
+            metadata["workflow_name"] = definition.workflow.display_name
+        kwargs: dict[str, Any] = {"trace_metadata": metadata}
+        if provider_binding is not None and provider_binding.provider is not None:
+            kwargs["model_provider"] = provider_binding.provider
+        try:
+            if response_format is not None:
+                return RunConfig(response_format=response_format, **kwargs)
+        except TypeError:
+            logger.debug(
+                "RunConfig ne supporte pas response_format, utilisation de la "
+                "configuration par défaut"
+            )
+        return RunConfig(**kwargs)
 
     # Track image generation tasks and URLs
     agent_image_tasks: dict[str, dict[str, Any]] = {}
@@ -269,10 +319,6 @@ async def run_workflow_v2(
         step_metadata: dict[str, Any] | None = None,
     ) -> _WorkflowStreamResult:
         """Execute an agent step with streaming support."""
-        from chatkit.types import ImageTask, WorkflowTaskAdded, WorkflowTaskUpdated
-        from chatkit_agent.runner import Runner
-        from ..chatkit_server.mcp import MCPServer
-
         step_index = len(steps) + 1
         metadata_for_images = dict(step_metadata or {})
         metadata_for_images["step_key"] = step_key
@@ -318,7 +364,6 @@ async def run_workflow_v2(
                 context_data["last_stored_b64"] = image.b64_json
                 agent_image_tasks.pop(key, None)
 
-        from .executor import WorkflowStepStreamUpdate
         await _emit_step_stream(
             WorkflowStepStreamUpdate(
                 key=step_key,
@@ -372,7 +417,6 @@ async def run_workflow_v2(
         connected_mcp_servers: list[Any] = []
         if mcp_servers:
             for server in mcp_servers:
-                from ..chatkit_server.mcp import MCPServer
                 if isinstance(server, MCPServer):
                     try:
                         await server.connect()
