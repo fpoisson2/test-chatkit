@@ -269,6 +269,7 @@ export function useWorkflowLoader(params: UseWorkflowLoaderParams): UseWorkflowL
                 label: displayName,
                 isEnabled: node.is_enabled,
                 agentKey,
+                parentSlug: node.parent_slug ?? null,
                 parameters,
                 parametersText: stringifyAgentParameters(parameters),
                 parametersError: null,

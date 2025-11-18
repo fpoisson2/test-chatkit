@@ -240,10 +240,10 @@ class WhileNodeHandler(BaseNodeHandler):
     def _get_nodes_inside_while(
         self, while_node: WorkflowStep, context: ExecutionContext
     ) -> set[str]:
-        """Detect which nodes are visually inside a while block.
+        """Detect which nodes are inside a while block.
 
-        Based on spatial position metadata - nodes whose positions fall
-        within the while block's bounding rectangle.
+        Uses explicit parent_slug relationships first, with fallback to
+        spatial position metadata for backwards compatibility.
         """
         if not self._belongs_to_current_workflow(while_node, context):
             logger.debug(
@@ -253,15 +253,51 @@ class WhileNodeHandler(BaseNodeHandler):
             )
             return set()
 
+        inside_nodes = set()
+
+        # Strategy 1: Use explicit parent_slug relationships (preferred)
+        for node in context.nodes_by_slug.values():
+            if not self._belongs_to_current_workflow(node, context):
+                continue
+
+            if node.slug == while_node.slug:
+                continue
+
+            # Check if this node explicitly declares this while as its parent
+            node_parent_slug = getattr(node, "parent_slug", None)
+            if node_parent_slug == while_node.slug:
+                inside_nodes.add(node.slug)
+                logger.debug(
+                    "Bloc %s détecté à l'intérieur du while %s (parent_slug)",
+                    node.slug,
+                    while_node.slug,
+                )
+
+        # If we found nodes via parent_slug, use that
+        if inside_nodes:
+            logger.info(
+                "While %s contient %d bloc(s) via parent_slug: %s",
+                while_node.slug,
+                len(inside_nodes),
+                ", ".join(inside_nodes),
+            )
+            return inside_nodes
+
+        # Strategy 2: Fallback to spatial position detection (legacy compatibility)
+        logger.debug(
+            "While %s: aucun bloc avec parent_slug, utilisation du fallback position",
+            while_node.slug,
+        )
+
         while_metadata = while_node.ui_metadata or {}
         while_pos = while_metadata.get("position", {})
 
         # Check if while has position data
         if not while_pos or "x" not in while_pos or "y" not in while_pos:
             logger.warning(
-                "Bloc while %s n'a pas de position définie dans metadata. "
-                "Les blocs ne pourront pas être détectés automatiquement. "
-                "Assurez-vous que le workflow a été sauvegardé avec les positions.",
+                "Bloc while %s n'a ni blocs avec parent_slug, ni position définie. "
+                "Les blocs ne pourront pas être détectés. "
+                "Re-sauvegardez le workflow pour générer parent_slug.",
                 while_node.slug,
             )
             return set()
@@ -273,8 +309,6 @@ class WhileNodeHandler(BaseNodeHandler):
         size_metadata = while_metadata.get("size", {})
         while_width = size_metadata.get("width", 400)
         while_height = size_metadata.get("height", 300)
-
-        inside_nodes = set()
 
         for node in context.nodes_by_slug.values():
             if not self._belongs_to_current_workflow(node, context):
@@ -300,7 +334,7 @@ class WhileNodeHandler(BaseNodeHandler):
             ):
                 inside_nodes.add(node.slug)
                 logger.debug(
-                    "Bloc %s détecté à l'intérieur du while %s (pos: %d,%d)",
+                    "Bloc %s détecté à l'intérieur du while %s (position: %d,%d)",
                     node.slug,
                     while_node.slug,
                     node_x,
@@ -309,7 +343,7 @@ class WhileNodeHandler(BaseNodeHandler):
 
         if inside_nodes:
             logger.info(
-                "While %s contient %d bloc(s): %s",
+                "While %s contient %d bloc(s) via position (legacy): %s",
                 while_node.slug,
                 len(inside_nodes),
                 ", ".join(inside_nodes),
@@ -317,8 +351,7 @@ class WhileNodeHandler(BaseNodeHandler):
         else:
             logger.warning(
                 "While %s ne contient aucun bloc détecté. "
-                "Vérifiez que les blocs ont des positions définies et "
-                "sont visuellement dans le while.",
+                "Re-sauvegardez le workflow pour générer parent_slug.",
                 while_node.slug,
             )
 

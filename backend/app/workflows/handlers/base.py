@@ -58,7 +58,8 @@ class BaseNodeHandler(NodeHandler):
     ) -> str | None:
         """Find the while node that contains this node.
 
-        Uses spatial detection to find if this node is inside a while loop.
+        Uses explicit parent_slug relationships first, with fallback to
+        spatial detection for backwards compatibility.
 
         Args:
             node_slug: The node to check
@@ -71,6 +72,15 @@ class BaseNodeHandler(NodeHandler):
         if node is None:
             return None
 
+        # Strategy 1: Check if node has explicit parent_slug
+        parent_slug = getattr(node, "parent_slug", None)
+        if parent_slug:
+            # Verify parent is a while node
+            parent_node = context.nodes_by_slug.get(parent_slug)
+            if parent_node and parent_node.kind == "while":
+                return parent_slug
+
+        # Strategy 2: Fallback to spatial detection (legacy compatibility)
         node_metadata = node.ui_metadata or {}
         node_pos = node_metadata.get("position", {})
 

@@ -155,40 +155,99 @@ export const supportsReasoningModel = (model: string): boolean => {
 
 export const AUTO_SAVE_DELAY_MS = 800;
 
-export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge[]) => ({
-  nodes: flowNodes.map((node, index) => ({
-    slug: node.data.slug,
-    kind: node.data.kind,
-    display_name: node.data.displayName.trim() || null,
-    agent_key:
-      node.data.kind === "agent" || node.data.kind === "voice_agent"
-        ? node.data.agentKey
-        : null,
-    is_enabled: node.data.isEnabled,
-    parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
-    metadata: {
-      ...node.data.metadata,
-      position: { x: node.position.x, y: node.position.y },
-      order: index + 1,
-      ...(node.data.kind === "while"
-        ? (() => {
-            const size = getWhileNodeSizeFromStyle(node.style);
-            return size ? { size } : {};
-          })()
-        : {}),
-    },
-  })),
-  edges: flowEdges.map((edge, index) => ({
-    source: edge.source,
-    target: edge.target,
-    condition: edge.data?.condition ? edge.data.condition : null,
-    metadata: {
-      ...edge.data?.metadata,
-      label: edge.label ?? "",
-      order: index + 1,
-    },
-  })),
-});
+/**
+ * Calculate parent_slug for each node based on spatial containment within while blocks
+ */
+const calculateParentSlugs = (flowNodes: FlowNode[]): Map<string, string | null> => {
+  const parentMap = new Map<string, string | null>();
+
+  // Find all while nodes
+  const whileNodes = flowNodes.filter(node => node.data.kind === "while");
+
+  // For each node, check if it's inside a while block
+  for (const node of flowNodes) {
+    if (node.data.kind === "while") {
+      // While nodes don't have parents (or could be nested in another while)
+      continue;
+    }
+
+    let containingWhile: FlowNode | null = null;
+    let smallestArea = Infinity;
+
+    // Check each while block
+    for (const whileNode of whileNodes) {
+      const whileSize = getWhileNodeSizeFromStyle(whileNode.style);
+      if (!whileSize) continue;
+
+      const whileX = whileNode.position.x;
+      const whileY = whileNode.position.y;
+      const whileWidth = whileSize.width;
+      const whileHeight = whileSize.height;
+
+      const nodeX = node.position.x;
+      const nodeY = node.position.y;
+
+      // Check if node is inside this while block
+      if (
+        nodeX >= whileX &&
+        nodeX <= whileX + whileWidth &&
+        nodeY >= whileY &&
+        nodeY <= whileY + whileHeight
+      ) {
+        // If nested whiles, use the smallest containing one
+        const area = whileWidth * whileHeight;
+        if (area < smallestArea) {
+          smallestArea = area;
+          containingWhile = whileNode;
+        }
+      }
+    }
+
+    parentMap.set(node.data.slug, containingWhile?.data.slug ?? null);
+  }
+
+  return parentMap;
+};
+
+export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge[]) => {
+  const parentSlugs = calculateParentSlugs(flowNodes);
+
+  return {
+    nodes: flowNodes.map((node, index) => ({
+      slug: node.data.slug,
+      kind: node.data.kind,
+      display_name: node.data.displayName.trim() || null,
+      agent_key:
+        node.data.kind === "agent" || node.data.kind === "voice_agent"
+          ? node.data.agentKey
+          : null,
+      parent_slug: parentSlugs.get(node.data.slug) ?? null,
+      is_enabled: node.data.isEnabled,
+      parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
+      metadata: {
+        ...node.data.metadata,
+        position: { x: node.position.x, y: node.position.y },
+        order: index + 1,
+        ...(node.data.kind === "while"
+          ? (() => {
+              const size = getWhileNodeSizeFromStyle(node.style);
+              return size ? { size } : {};
+            })()
+          : {}),
+      },
+    })),
+    edges: flowEdges.map((edge, index) => ({
+      source: edge.source,
+      target: edge.target,
+      condition: edge.data?.condition ? edge.data.condition : null,
+      metadata: {
+        ...edge.data?.metadata,
+        label: edge.label ?? "",
+        order: index + 1,
+      },
+    })),
+  };
+};
 
 const STATE_ASSIGNMENT_SCOPES = ["globals", "state"] as const;
 

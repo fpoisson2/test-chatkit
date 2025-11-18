@@ -583,6 +583,7 @@ class WorkflowStep(Base):
     kind: Mapped[str] = mapped_column(String(32), nullable=False, default="agent")
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     agent_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parent_slug: Mapped[str | None] = mapped_column(String(128), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     parameters: Mapped[dict[str, Any]] = mapped_column(
