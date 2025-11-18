@@ -49,28 +49,81 @@ class AgentNodeHandler(BaseNodeHandler):
     async def _execute_agent(
         self, node: WorkflowStep, context: ExecutionContext
     ) -> NodeResult:
-        """Execute regular agent step."""
+        """Execute regular agent step using process_agent_step."""
+        from ..executor_helpers import create_executor_helpers
+        from ..runtime.steps import process_agent_step
         from ..runtime.state_machine import NodeResult
 
-        if self.agent_executor is None:
-            # Fallback: use legacy executor for agent nodes
-            # This is a temporary solution until full AgentStepExecutor integration
-            logger.warning(
-                "AgentNodeHandler fallback: using run_workflow_v1 for agent execution"
-            )
-            # For now, we'll skip agent execution and just transition
-            # In a real scenario, this would call the legacy process_agent_step
-            transition = self._next_edge(context, node.slug)
-            if transition:
-                return NodeResult(next_slug=transition.target_step.slug)
-            else:
-                return NodeResult(next_slug=None)
+        # Extract all dependencies from context
+        agent_instances = context.runtime_vars.get("agent_instances", {})
+        agent_positions = context.runtime_vars.get("agent_positions", {})
+        total_runtime_steps = len(agent_positions)
+        widget_configs_by_step = context.runtime_vars.get("widget_configs_by_step", {})
+        agent_context = context.runtime_vars.get("agent_context")
+        on_widget_step = context.runtime_vars.get("on_widget_step")
+        on_stream_event = context.runtime_vars.get("on_stream_event")
+        on_step_stream = context.runtime_vars.get("on_step_stream")
+        active_branch_id = context.runtime_vars.get("active_branch_id")
+        active_branch_label = context.runtime_vars.get("active_branch_label")
 
-        # Execute agent step using simplified executor
-        result = await self.agent_executor.execute(node, context)
+        # Get or create generated_image_urls dict
+        generated_image_urls = context.runtime_vars.get("generated_image_urls", {})
 
-        # Update context
-        context_updates = {"last_step_context": result.last_step_context}
+        # Create all helper functions with shared image URLs dict
+        helpers = create_executor_helpers(
+            on_stream_event=on_stream_event,
+            on_step_stream=on_step_stream,
+            active_branch_id=active_branch_id,
+            active_branch_label=active_branch_label,
+            generated_image_urls_dict=generated_image_urls,
+        )
+
+        # Get run_agent_step from context or create a stub
+        run_agent_step = context.runtime_vars.get("run_agent_step")
+        if run_agent_step is None:
+            # Stub implementation if not provided
+            async def run_agent_step(*args, **kwargs):
+                raise NotImplementedError(
+                    "run_agent_step not provided in runtime_vars"
+                )
+
+        # Call process_agent_step with all dependencies
+        result = await process_agent_step(
+            current_node=node,
+            current_slug=node.slug,
+            agent_instances=agent_instances,
+            agent_positions=agent_positions,
+            total_runtime_steps=total_runtime_steps,
+            widget_configs_by_step=widget_configs_by_step,
+            conversation_history=context.conversation_history,
+            last_step_context=context.last_step_context,
+            state=context.state,
+            agent_context=agent_context,
+            run_agent_step=run_agent_step,
+            consume_generated_image_urls=helpers["consume_generated_image_urls"],
+            structured_output_as_json=helpers["structured_output_as_json"],
+            record_step=context.record_step,
+            merge_generated_image_urls_into_payload=helpers[
+                "merge_generated_image_urls_into_payload"
+            ],
+            append_generated_image_links=helpers["append_generated_image_links"],
+            format_generated_image_links=helpers["format_generated_image_links"],
+            ingest_vector_store_step=helpers["ingest_vector_store_step"],
+            stream_widget=helpers["stream_widget"],
+            should_wait_for_widget_action=helpers["should_wait_for_widget_action"],
+            on_widget_step=on_widget_step,
+            emit_stream_event=helpers["emit_stream_event"],
+            on_stream_event=on_stream_event,
+            branch_prefixed_slug=helpers["branch_prefixed_slug"],
+            node_title=helpers["node_title"],
+            next_edge=lambda slug: self._next_edge(context, slug),
+            session_factory=helpers["session_factory"],
+        )
+
+        # Update context with result
+        context_updates = {}
+        if result.last_step_context is not None:
+            context_updates["last_step_context"] = result.last_step_context
 
         if result.transition:
             return NodeResult(

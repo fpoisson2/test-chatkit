@@ -193,6 +193,307 @@ async def run_workflow_v2(
         record_step=record_step,
     )
 
+    # Prepare agent-specific dependencies
+    from .executor import (
+        AGENT_RESPONSE_FORMATS,
+        WorkflowAgentRunContext,
+        _WorkflowStreamResult,
+        get_settings,
+        raise_step_error,
+        render_agent_instructions,
+        stream_agent_response,
+        _extract_delta,
+        _should_forward_agent_event,
+        _normalize_conversation_history_for_provider,
+        _deduplicate_conversation_history_items,
+        _sanitize_previous_response_id,
+        _filter_conversation_history_for_previous_response,
+        _workflow_run_config,
+    )
+    from .executor_helpers import create_executor_helpers
+
+    # Get agent provider bindings
+    agent_provider_bindings = agent_setup.agent_provider_bindings
+
+    # Get pending wait state
+    pending_wait_state = runtime_snapshot.wait_state if runtime_snapshot else None
+
+    # Track image generation tasks and URLs
+    agent_image_tasks: dict[str, dict[str, Any]] = {}
+    generated_image_urls: dict[str, list[str]] = {}
+
+    # Create helper functions for streaming with shared image URLs dict
+    helpers = create_executor_helpers(
+        on_stream_event=on_stream_event,
+        on_step_stream=on_step_stream,
+        active_branch_id=None,
+        active_branch_label=None,
+        generated_image_urls_dict=generated_image_urls,
+    )
+
+    async def _emit_stream_event(event: Any) -> None:
+        if on_stream_event is not None:
+            await on_stream_event(event)
+
+    async def _emit_step_stream(update: Any) -> None:
+        if on_step_stream is not None:
+            await on_step_stream(update)
+
+    def _register_image_generation_task(task: Any, metadata: dict[str, Any]) -> tuple[dict[str, Any], str] | None:
+        """Register image generation task for tracking."""
+        call_id = getattr(task, "id", None) or getattr(task, "call_id", None)
+        if not call_id:
+            return None
+        key = f"{metadata.get('step_slug')}:{call_id}"
+        context = dict(metadata)
+        context["call_id"] = call_id
+        agent_image_tasks[key] = context
+        return context, key
+
+    async def _persist_agent_image(context_data: dict[str, Any], key: str, task: Any, image: Any) -> None:
+        """Persist generated image."""
+        step_slug = context_data.get("step_slug")
+        if step_slug:
+            url = f"data:image/png;base64,{image.b64_json}"
+            generated_image_urls.setdefault(step_slug, []).append(url)
+
+    # Create run_agent_step function
+    async def run_agent_step(
+        step_key: str,
+        title: str,
+        agent: Any,
+        *,
+        agent_context: Any,
+        run_context: Any | None = None,
+        suppress_stream_events: bool = False,
+        step_metadata: dict[str, Any] | None = None,
+    ) -> _WorkflowStreamResult:
+        """Execute an agent step with streaming support."""
+        from chatkit.types import ImageTask, WorkflowTaskAdded, WorkflowTaskUpdated
+        from chatkit_agent.runner import Runner
+        from ..chatkit_server.mcp import MCPServer
+
+        step_index = len(steps) + 1
+        metadata_for_images = dict(step_metadata or {})
+        metadata_for_images["step_key"] = step_key
+        metadata_for_images["step_slug"] = metadata_for_images.get("step_slug") or step_key
+        metadata_for_images["step_title"] = metadata_for_images.get("step_title") or title
+
+        if not metadata_for_images.get("agent_key"):
+            metadata_for_images["agent_key"] = getattr(agent, "name", None)
+        if not metadata_for_images.get("agent_label"):
+            metadata_for_images["agent_label"] = getattr(agent, "name", None) or getattr(agent, "model", None)
+
+        thread_meta = getattr(agent_context, "thread", None)
+        if not metadata_for_images.get("thread_id") and thread_meta is not None:
+            metadata_for_images["thread_id"] = getattr(thread_meta, "id", None)
+
+        request_context = getattr(agent_context, "request_context", None)
+        if request_context is not None:
+            metadata_for_images.setdefault("user_id", getattr(request_context, "user_id", None))
+            metadata_for_images.setdefault("backend_public_base_url", getattr(request_context, "public_base_url", None))
+
+        if not metadata_for_images.get("backend_public_base_url"):
+            metadata_for_images["backend_public_base_url"] = get_settings().backend_public_base_url
+
+        async def _inspect_event_for_images(event: Any) -> None:
+            """Inspect events for image generation tasks."""
+            update = getattr(event, "update", None)
+            if not isinstance(update, WorkflowTaskAdded | WorkflowTaskUpdated):
+                return
+            task = getattr(update, "task", None)
+            if not isinstance(task, ImageTask):
+                return
+            registration = _register_image_generation_task(task, metadata=metadata_for_images)
+            if registration is None:
+                return
+            context_data, key = registration
+            image = task.images[0] if task.images else None
+            status = getattr(task, "status_indicator", None) or "none"
+
+            if status == "complete" and image and isinstance(image.b64_json, str) and image.b64_json:
+                if context_data.get("last_stored_b64") == image.b64_json:
+                    return
+                await _persist_agent_image(context_data, key, task, image)
+                context_data["last_stored_b64"] = image.b64_json
+                agent_image_tasks.pop(key, None)
+
+        from .executor import WorkflowStepStreamUpdate
+        await _emit_step_stream(
+            WorkflowStepStreamUpdate(
+                key=step_key,
+                title=title,
+                index=step_index,
+                delta="",
+                text="",
+            )
+        )
+
+        accumulated_text = ""
+        response_format_override = getattr(agent, "_chatkit_response_format", None)
+        if response_format_override is None:
+            try:
+                response_format_override = AGENT_RESPONSE_FORMATS.get(agent)
+            except TypeError:
+                pass
+
+        if isinstance(run_context, WorkflowAgentRunContext):
+            runner_context = run_context
+        else:
+            runner_context = WorkflowAgentRunContext(
+                agent_context=agent_context,
+                step_context=run_context if isinstance(run_context, Mapping) else None,
+            )
+
+        # Handle instruction rendering
+        raw_instructions = getattr(agent, "instructions", None)
+        overridden_instructions: Any = None
+        instructions_overridden = False
+        if isinstance(raw_instructions, str):
+            rendered_instructions = render_agent_instructions(
+                raw_instructions,
+                state=state,
+                last_step_context=last_step_context,
+                run_context=run_context if isinstance(run_context, Mapping) else None,
+            )
+            if rendered_instructions is not None and rendered_instructions != raw_instructions:
+                overridden_instructions = raw_instructions
+                try:
+                    agent.instructions = rendered_instructions
+                    instructions_overridden = True
+                except Exception:
+                    pass
+
+        # Get provider binding
+        provider_binding = agent_provider_bindings.get(context.current_slug)
+
+        # Connect MCP servers
+        mcp_servers = getattr(agent, "mcp_servers", None)
+        connected_mcp_servers: list[Any] = []
+        if mcp_servers:
+            for server in mcp_servers:
+                from ..chatkit_server.mcp import MCPServer
+                if isinstance(server, MCPServer):
+                    try:
+                        await server.connect()
+                        connected_mcp_servers.append(server)
+                    except Exception:
+                        pass
+
+            if connected_mcp_servers:
+                try:
+                    agent.mcp_servers = connected_mcp_servers
+                except Exception:
+                    pass
+            else:
+                try:
+                    agent.mcp_servers = []
+                except Exception:
+                    pass
+
+        # Prepare conversation history
+        conversation_history_input = _normalize_conversation_history_for_provider(
+            conversation_history,
+            getattr(provider_binding, "provider_slug", None) if provider_binding else None,
+        )
+        conversation_history_input = _deduplicate_conversation_history_items(conversation_history_input)
+
+        # Handle previous_response_id
+        sanitized_previous_response_id = _sanitize_previous_response_id(
+            getattr(agent_context, "previous_response_id", None)
+        )
+        if sanitized_previous_response_id != getattr(agent_context, "previous_response_id", None):
+            try:
+                agent_context.previous_response_id = sanitized_previous_response_id
+            except Exception:
+                pass
+
+        if sanitized_previous_response_id:
+            filtered_input = _filter_conversation_history_for_previous_response(conversation_history_input)
+            conversation_history_input = filtered_input
+
+        # Check for while loop iteration
+        in_while_loop_iteration = False
+        if "state" in state and isinstance(state["state"], dict):
+            for key, value in state["state"].items():
+                if isinstance(key, str) and key.startswith("__while_") and key.endswith("_counter") and isinstance(value, int) and value >= 1:
+                    in_while_loop_iteration = True
+                    break
+
+        if in_while_loop_iteration and (sanitized_previous_response_id or pending_wait_state):
+            conversation_history_input = []
+
+        try:
+            result = Runner.run_streamed(
+                agent,
+                input=[*conversation_history_input],
+                run_config=_workflow_run_config(response_format_override, provider_binding=provider_binding),
+                context=runner_context,
+                previous_response_id=sanitized_previous_response_id,
+            )
+            try:
+                async for event in stream_agent_response(agent_context, result):
+                    if _should_forward_agent_event(event, suppress=suppress_stream_events):
+                        await _emit_stream_event(event)
+                    delta_text = _extract_delta(event)
+                    if delta_text:
+                        accumulated_text += delta_text
+                        await _emit_step_stream(
+                            WorkflowStepStreamUpdate(
+                                key=step_key,
+                                title=title,
+                                index=step_index,
+                                delta=delta_text,
+                                text=accumulated_text,
+                            )
+                        )
+                    await _inspect_event_for_images(event)
+            except Exception as exc:
+                raise_step_error(step_key, title, exc)
+
+            # Handle response_id persistence
+            last_response_id = getattr(result, "last_response_id", None)
+            if last_response_id is not None:
+                agent_context.previous_response_id = last_response_id
+                thread_metadata = getattr(agent_context, "thread", None)
+                should_persist_thread = False
+                if thread_metadata is not None:
+                    existing_metadata = getattr(thread_metadata, "metadata", None)
+                    if isinstance(existing_metadata, Mapping):
+                        stored_response_id = existing_metadata.get("previous_response_id")
+                        if stored_response_id != last_response_id:
+                            existing_metadata["previous_response_id"] = last_response_id
+                            should_persist_thread = True
+                    else:
+                        thread_metadata.metadata = {"previous_response_id": last_response_id}
+                        should_persist_thread = True
+
+                store = getattr(agent_context, "store", None)
+                request_context = getattr(agent_context, "request_context", None)
+                if should_persist_thread and store is not None and request_context is not None and hasattr(store, "save_thread"):
+                    try:
+                        await store.save_thread(thread_metadata, context=request_context)
+                    except Exception:
+                        pass
+
+            # Update conversation history
+            conversation_history.extend([item.to_input_item() for item in result.new_items])
+            return result
+        finally:
+            # Cleanup MCP servers
+            for server in connected_mcp_servers:
+                try:
+                    await server.cleanup()
+                except Exception:
+                    pass
+
+            # Restore instructions
+            if instructions_overridden:
+                try:
+                    agent.instructions = overridden_instructions
+                except Exception:
+                    pass
+
     # Populate runtime_vars with all dependencies
     thread = getattr(agent_context, "thread", None)
     context.runtime_vars.update(
@@ -215,6 +516,10 @@ async def run_workflow_v2(
             "nested_workflow_configs": nested_workflow_configs,
             "active_branch_id": None,
             "active_branch_label": None,
+            "agent_instances": agent_instances,
+            "agent_positions": agent_positions,
+            "run_agent_step": run_agent_step,
+            "generated_image_urls": generated_image_urls,
         }
     )
 
