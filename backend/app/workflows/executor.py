@@ -17,9 +17,7 @@ from collections.abc import (
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import (
-    Any,
-)
+from typing import Any, TYPE_CHECKING
 
 from agents import (
     Agent,
@@ -34,6 +32,9 @@ from chatkit.agents import (
     stream_agent_response,
 )
 from pydantic import BaseModel
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .executor_v2 import WorkflowMetrics
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
@@ -310,6 +311,7 @@ class WorkflowRunSummary:
     end_state: WorkflowEndState | None = None
     last_context: dict[str, Any] | None = None
     state: dict[str, Any] | None = None
+    metrics: WorkflowMetrics | None = None
 
 
 @dataclass

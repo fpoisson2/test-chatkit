@@ -8,11 +8,24 @@ from __future__ import annotations
 
 import logging
 import re
+import time
+from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from .handlers.factory import create_state_machine
 from .runtime.state_machine import ExecutionContext, NodeResult
+
+
+@dataclass
+class WorkflowMetrics:
+    executor_version: str
+    workflow_slug: str
+    execution_time_ms: float
+    steps_count: int
+    handler_calls: dict[str, int]
+    errors: list[str]
 
 if TYPE_CHECKING:  # pragma: no cover
     from chatkit.types import ThreadItem, ThreadStreamEvent, UserMessageItem
@@ -86,6 +99,9 @@ async def run_workflow_v2(
         initialize_runtime_context,
     )
 
+    start_time = time.time()
+    handler_calls: defaultdict[str, int] = defaultdict(int)
+
     # Initialize runtime context (reuse existing logic)
     initialization = await initialize_runtime_context(
         workflow_input,
@@ -122,8 +138,6 @@ async def run_workflow_v2(
         )
 
     # Build edge maps
-    from collections import defaultdict
-
     from .executor import AGENT_NODE_KINDS, build_edges_by_source, prepare_agents
 
     edges_by_source = build_edges_by_source(definition.transitions)
@@ -198,6 +212,7 @@ async def run_workflow_v2(
         edges_by_source=dict(edges_by_source),
         current_slug=start_slug,
         record_step=record_step,
+        handler_calls=handler_calls,
     )
 
     # Prepare agent-specific dependencies
@@ -666,6 +681,19 @@ async def run_workflow_v2(
     # Get final end state if set
     final_end_state = context.runtime_vars.get("final_end_state")
 
+    metrics = WorkflowMetrics(
+        executor_version="v2",
+        workflow_slug=(
+            workflow_slug
+            or getattr(getattr(definition, "workflow", None), "slug", "")
+            or ""
+        ),
+        execution_time_ms=(time.time() - start_time) * 1000,
+        steps_count=len(steps),
+        handler_calls=dict(handler_calls),
+        errors=[],
+    )
+
     return WorkflowRunSummary(
         steps=steps,
         state=state,
@@ -673,4 +701,5 @@ async def run_workflow_v2(
         last_context=last_step_context,
         final_node_slug=final_node_slug,
         end_state=final_end_state,
+        metrics=metrics,
     )

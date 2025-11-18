@@ -39,6 +39,7 @@ class ExecutionContext:
     current_slug: str
     guard_counter: int = 0
     max_iterations: int = 1000
+    handler_calls: dict[str, int] | None = None
 
     # Final results
     final_output: dict[str, Any] | None = None
@@ -142,6 +143,11 @@ class WorkflowStateMachine:
                     f"Type de nœud non supporté : {current_node.kind}",
                     RuntimeError(f"Aucun handler pour le type {current_node.kind}"),
                     list(context.steps),
+                )
+
+            if context.handler_calls is not None:
+                context.handler_calls[current_node.kind] = (
+                    context.handler_calls.get(current_node.kind, 0) + 1
                 )
 
             # Execute handler
