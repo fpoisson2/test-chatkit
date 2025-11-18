@@ -69,6 +69,14 @@ export const useWorkflowMonitorWebSocket = ({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const shouldConnectRef = useRef(enabled);
+  const onUpdateRef = useRef(onUpdate);
+  const onErrorRef = useRef(onError);
+
+  // Garder les refs à jour
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+    onErrorRef.current = onError;
+  }, [onUpdate, onError]);
 
   const getWebSocketUrl = useCallback(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -77,8 +85,15 @@ export const useWorkflowMonitorWebSocket = ({
   }, [token]);
 
   const connect = useCallback(() => {
-    if (!enabled || !token || wsRef.current) {
+    if (!enabled || !token) {
       return;
+    }
+
+    // Fermer toute connexion existante avant d'en créer une nouvelle
+    if (wsRef.current) {
+      console.log("[WebSocket] Closing existing connection before creating new one");
+      wsRef.current.close();
+      wsRef.current = null;
     }
 
     try {
@@ -98,13 +113,13 @@ export const useWorkflowMonitorWebSocket = ({
           if (message.type === "error") {
             const errorMsg = message.error || "Unknown WebSocket error";
             setError(errorMsg);
-            onError?.(errorMsg);
+            onErrorRef.current?.(errorMsg);
             return;
           }
 
           if (message.data) {
             setSessions(message.data.sessions);
-            onUpdate?.(message.data.sessions);
+            onUpdateRef.current?.(message.data.sessions);
           }
         } catch (err) {
           console.error("[WebSocket] Error parsing message:", err);
@@ -114,7 +129,7 @@ export const useWorkflowMonitorWebSocket = ({
       ws.onerror = (event) => {
         console.error("[WebSocket] Error:", event);
         setError("WebSocket connection error");
-        onError?.("WebSocket connection error");
+        onErrorRef.current?.("WebSocket connection error");
       };
 
       ws.onclose = (event) => {
@@ -137,7 +152,7 @@ export const useWorkflowMonitorWebSocket = ({
           }, WS_RECONNECT_DELAY);
         } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
           setError("Failed to reconnect after multiple attempts");
-          onError?.("Failed to reconnect after multiple attempts");
+          onErrorRef.current?.("Failed to reconnect after multiple attempts");
         }
       };
 
@@ -145,9 +160,10 @@ export const useWorkflowMonitorWebSocket = ({
     } catch (err) {
       console.error("[WebSocket] Connection error:", err);
       setError("Failed to connect to WebSocket");
-      onError?.("Failed to connect to WebSocket");
+      onErrorRef.current?.("Failed to connect to WebSocket");
     }
-  }, [enabled, token, getWebSocketUrl, onUpdate, onError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, token]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -183,7 +199,8 @@ export const useWorkflowMonitorWebSocket = ({
       shouldConnectRef.current = false;
       disconnect();
     };
-  }, [enabled, token, connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, token]);
 
   return {
     sessions,

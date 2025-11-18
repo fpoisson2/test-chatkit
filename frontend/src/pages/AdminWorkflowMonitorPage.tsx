@@ -74,6 +74,16 @@ export const AdminWorkflowMonitorPage = () => {
     session: ActiveWorkflowSession;
   } | null>(null);
 
+  // Callbacks stables pour le WebSocket
+  const handleWebSocketUpdate = useCallback((newSessions: ActiveWorkflowSession[]) => {
+    setSessions(newSessions);
+    setLastUpdated(new Date());
+  }, []);
+
+  const handleWebSocketError = useCallback((err: string) => {
+    setError(err);
+  }, []);
+
   // WebSocket connection
   const {
     sessions: wsSessions,
@@ -83,13 +93,8 @@ export const AdminWorkflowMonitorPage = () => {
   } = useWorkflowMonitorWebSocket({
     token,
     enabled: useWebSocket && autoRefresh,
-    onUpdate: (newSessions) => {
-      setSessions(newSessions);
-      setLastUpdated(new Date());
-    },
-    onError: (err) => {
-      setError(err);
-    },
+    onUpdate: handleWebSocketUpdate,
+    onError: handleWebSocketError,
   });
 
   // Utiliser les sessions du WebSocket si connecté
