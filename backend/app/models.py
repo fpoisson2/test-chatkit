@@ -90,6 +90,23 @@ class ChatThread(Base):
     )
     payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
 
+    @property
+    def metadata(self) -> dict[str, Any]:
+        """Access metadata from payload for compatibility with SDK threads."""
+        if not isinstance(self.payload, dict):
+            return {}
+        metadata = self.payload.get("metadata")
+        if not isinstance(metadata, dict):
+            return {}
+        return metadata
+
+    @metadata.setter
+    def metadata(self, value: dict[str, Any]) -> None:
+        """Update metadata in payload for compatibility with SDK threads."""
+        if not isinstance(self.payload, dict):
+            self.payload = {}
+        self.payload["metadata"] = value
+
 
 class ChatThreadItem(Base):
     __tablename__ = "chat_thread_items"
