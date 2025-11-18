@@ -310,6 +310,22 @@ async def _stream_response_widget(
             for identifier, value in auto_values.items():
                 resolved.setdefault(identifier, value)
 
+        # Auto-populate image bindings from generated_image_urls
+        generated_urls = step_context.get("generated_image_urls")
+        if generated_urls and isinstance(generated_urls, list) and generated_urls:
+            # Find all image-related bindings (image.src, image.url, etc.)
+            if bindings:
+                for binding_id, binding in bindings.items():
+                    # Check if this is an image src/url binding
+                    if binding_id.endswith(".src") or binding_id.endswith(".url"):
+                        # Use the first image URL if not already set
+                        if binding_id not in resolved:
+                            resolved[binding_id] = generated_urls[0]
+                    elif binding_id.endswith(".alt"):
+                        # Auto-populate alt text if not already set
+                        if binding_id not in resolved:
+                            resolved[binding_id] = "Image générée"
+
     if resolved:
         matched = _apply_widget_variable_values(
             definition, resolved, bindings=bindings
