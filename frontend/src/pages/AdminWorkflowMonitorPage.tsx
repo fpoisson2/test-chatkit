@@ -9,6 +9,7 @@ import {
   FormSection,
 } from "../components";
 import { WorkflowVisualizationModal } from "../components/admin/WorkflowVisualizationModal";
+import { ActionsMenu } from "../components/admin/ActionsMenu";
 import { useWorkflowMonitorWebSocket } from "../hooks/useWorkflowMonitorWebSocket";
 
 interface WorkflowStepInfo {
@@ -227,6 +228,41 @@ export const AdminWorkflowMonitorPage = () => {
     setSearchTerm("");
   }, []);
 
+  const handleViewThread = useCallback((threadId: string) => {
+    // Ouvrir le thread dans un nouvel onglet
+    window.open(`/chat/${threadId}`, "_blank");
+  }, []);
+
+  const handleCopyThreadId = useCallback((threadId: string) => {
+    navigator.clipboard.writeText(threadId).then(() => {
+      // Afficher une notification de succès (optionnel)
+      console.log("Thread ID copié:", threadId);
+    }).catch((err) => {
+      console.error("Erreur lors de la copie:", err);
+    });
+  }, []);
+
+  const handleViewSessionDetails = useCallback((session: ActiveWorkflowSession) => {
+    // Créer une chaîne formatée avec les détails
+    const details = `
+Thread ID: ${session.thread_id}
+Utilisateur: ${session.user.email}
+Workflow: ${session.workflow.display_name}
+Étape actuelle: ${session.current_step.display_name}
+Progression: ${session.step_history.length} étapes complétées
+Démarré: ${formatDateTime(session.started_at)}
+Dernière activité: ${formatDateTime(session.last_activity)}
+Statut: ${session.status}
+
+Historique:
+${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("\n")}
+    `.trim();
+
+    // Afficher dans la console pour le moment (pourrait être un modal plus tard)
+    console.log("Détails de la session:", details);
+    alert(details);
+  }, []);
+
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString("fr-FR", {
       dateStyle: "short",
@@ -351,17 +387,34 @@ export const AdminWorkflowMonitorPage = () => {
         key: "actions",
         label: "Actions",
         render: (session) => (
-          <button
-            className="btn btn-sm btn-subtle"
-            type="button"
-            onClick={() => handleViewWorkflow(session)}
-          >
-            Voir workflow
-          </button>
+          <ActionsMenu
+            actions={[
+              {
+                label: "Voir le workflow",
+                icon: "📊",
+                onClick: () => handleViewWorkflow(session),
+              },
+              {
+                label: "Voir la conversation",
+                icon: "💬",
+                onClick: () => handleViewThread(session.thread_id),
+              },
+              {
+                label: "Copier le thread ID",
+                icon: "📋",
+                onClick: () => handleCopyThreadId(session.thread_id),
+              },
+              {
+                label: "Afficher les détails",
+                icon: "ℹ️",
+                onClick: () => handleViewSessionDetails(session),
+              },
+            ]}
+          />
         ),
       },
     ],
-    [handleViewWorkflow],
+    [handleViewWorkflow, handleViewThread, handleCopyThreadId, handleViewSessionDetails],
   );
 
   const stuckSessionsCount = filteredSessions.filter(isStuckSession).length;
