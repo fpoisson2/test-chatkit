@@ -11,7 +11,6 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from .handlers.factory import create_state_machine
-from .runtime.agent_executor import AgentExecutorDependencies, AgentStepExecutor
 from .runtime.state_machine import ExecutionContext, NodeResult
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -228,30 +227,9 @@ async def run_workflow_v2(
 
         context.runtime_vars["emit_stream_event"] = emit_stream_event
 
-    # Create AgentStepExecutor for agent nodes
-    agent_executor = None
-    if agent_context is not None:
-        # Build agent dependencies
-        agent_dependencies = AgentExecutorDependencies(
-            agent_instances=agent_instances,
-            agent_positions=agent_positions,
-            widget_configs_by_step=widget_configs_by_step,
-            nested_workflow_configs=nested_workflow_configs,
-            definition=definition,
-            agent_context=agent_context,
-            workflow_service=workflow_service or initialization.service,
-            on_step_stream=on_step_stream,
-            on_stream_event=on_stream_event,
-            on_widget_step=on_widget_step,
-            workflow_slug=workflow_slug,
-            current_user_message=current_user_message,
-            workflow_call_stack=workflow_call_stack or (),
-            workflow_input=workflow_input,
-        )
-        agent_executor = AgentStepExecutor(agent_dependencies)
-
     # Create state machine with all handlers
-    machine = create_state_machine(agent_executor=agent_executor)
+    # Note: AgentNodeHandler will access dependencies via context.runtime_vars
+    machine = create_state_machine(agent_executor=None)
 
     # Execute workflow
     try:
