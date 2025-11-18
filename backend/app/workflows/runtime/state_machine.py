@@ -206,7 +206,18 @@ class WorkflowStateMachine:
             # Update workflow metadata for monitoring (after each step execution)
             thread = context.runtime_vars.get("thread")
             if thread is not None:
-                node_title = handler._node_title(current_node) if hasattr(handler, "_node_title") else ""
+                # Try multiple sources for the title
+                node_title = ""
+                # 1. Try display_name
+                if current_node.display_name:
+                    node_title = current_node.display_name
+                # 2. Try parameters["title"]
+                elif current_node.parameters and current_node.parameters.get("title"):
+                    node_title = str(current_node.parameters.get("title"))
+                # 3. Fallback to handler's _node_title method
+                elif hasattr(handler, "_node_title"):
+                    node_title = handler._node_title(current_node)
+
                 logger.info(
                     f"[WORKFLOW_META] Updating metadata for step {current_node.slug}: "
                     f"title='{node_title}', steps_count={len(context.steps)}"
