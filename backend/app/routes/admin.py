@@ -1748,7 +1748,8 @@ async def get_active_workflow_sessions(
         if not steps_history:
              steps_history = workflow_meta.get("steps_history", [])
 
-        if definition_id and current_slug != "unknown":
+        # Enrichir le nom de l'étape depuis la DB SEULEMENT si on n'a pas déjà un titre
+        if current_step_display == "unknown" and definition_id and current_slug != "unknown":
             # Chercher l'étape dans la définition du workflow
             workflow_step = session.scalar(
                 select(WorkflowStep).where(
@@ -1757,7 +1758,13 @@ async def get_active_workflow_sessions(
                 )
             )
             if workflow_step:
-                current_step_display = workflow_step.display_name or current_slug
+                # Try parameters["title"] first, then display_name
+                if workflow_step.parameters and workflow_step.parameters.get("title"):
+                    current_step_display = str(workflow_step.parameters.get("title"))
+                elif workflow_step.display_name:
+                    current_step_display = workflow_step.display_name
+                else:
+                    current_step_display = current_slug
 
         # Construire l'historique des étapes
         step_history_list = []

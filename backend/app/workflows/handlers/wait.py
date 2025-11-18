@@ -161,7 +161,7 @@ class WaitNodeHandler(BaseNodeHandler):
             "current_slug": node.slug,
             "steps": [
                 {"key": step.key, "title": step.title}
-                for step in context.steps_history
+                for step in context.steps
             ],
         }
         wait_state_payload["snapshot"] = snapshot_payload

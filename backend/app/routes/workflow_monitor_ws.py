@@ -168,8 +168,8 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
         if not steps_history:
              steps_history = workflow_meta.get("steps_history", [])
 
-        # Enrichir le nom de l'étape depuis la DB si on a un definition_id et un slug connu
-        if definition_id and current_slug != "unknown":
+        # Enrichir le nom de l'étape depuis la DB SEULEMENT si on n'a pas déjà un titre
+        if current_step_display == "unknown" and definition_id and current_slug != "unknown":
             # Note: Idéalement on mettrait ça en cache ou batch aussi
             workflow_step = session.scalar(
                 select(WorkflowStep).where(
@@ -178,7 +178,13 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
                 )
             )
             if workflow_step:
-                current_step_display = workflow_step.display_name or current_slug
+                # Try parameters["title"] first, then display_name
+                if workflow_step.parameters and workflow_step.parameters.get("title"):
+                    current_step_display = str(workflow_step.parameters.get("title"))
+                elif workflow_step.display_name:
+                    current_step_display = workflow_step.display_name
+                else:
+                    current_step_display = current_slug
 
         step_history_list = []
         for step in steps_history:
