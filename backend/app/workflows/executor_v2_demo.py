@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from chatkit.agents import AgentContext, ThreadItemConverter
 
-from ..chatkit_server.context import _clone_conversation_history_snapshot
+from .utils import _clone_conversation_history_snapshot
 from .handlers.factory import create_state_machine
 from .runtime import initialize_runtime_context
 from .runtime.state_machine import ExecutionContext

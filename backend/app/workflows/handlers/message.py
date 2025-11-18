@@ -50,7 +50,7 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
         self, node: WorkflowStep, context: ExecutionContext
     ) -> NodeResult:
         """Execute assistant_message node."""
-        from ...chatkit_server.context import _normalize_user_text
+        from ..utils import _normalize_user_text
         from ..runtime.state_machine import NodeResult
 
         title = self._node_title(node)
@@ -218,7 +218,7 @@ class UserMessageNodeHandler(BaseNodeHandler):
         self, node: WorkflowStep, context: ExecutionContext
     ) -> NodeResult:
         """Execute user_message node."""
-        from ...chatkit_server.context import _normalize_user_text
+        from ..utils import _normalize_user_text
         from ..runtime.state_machine import NodeResult
 
         title = self._node_title(node)

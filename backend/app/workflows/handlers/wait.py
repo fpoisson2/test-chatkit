@@ -31,12 +31,15 @@ class WaitNodeHandler(BaseNodeHandler):
     ) -> NodeResult:
         """Execute wait_for_user_input node."""
         from ...chatkit_server.context import (
-            _clone_conversation_history_snapshot,
             _get_wait_state_metadata,
-            _normalize_user_text,
             _set_wait_state_metadata,
         )
-        from ..executor import WorkflowEndState, _json_safe_copy
+        from ..executor import WorkflowEndState
+        from ..utils import (
+            _clone_conversation_history_snapshot,
+            _json_safe_copy,
+            _normalize_user_text,
+        )
         from ..runtime.state_machine import NodeResult
 
         # Get runtime dependencies
