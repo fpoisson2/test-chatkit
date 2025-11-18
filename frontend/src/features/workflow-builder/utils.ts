@@ -164,6 +164,15 @@ const calculateParentSlugs = (flowNodes: FlowNode[]): Map<string, string | null>
   // Find all while nodes
   const whileNodes = flowNodes.filter(node => node.data.kind === "while");
 
+  console.log(`[calculateParentSlugs] Found ${whileNodes.length} while nodes:`,
+    whileNodes.map(w => ({
+      slug: w.data.slug,
+      pos: w.position,
+      style: w.style,
+      metadata: w.data.metadata
+    }))
+  );
+
   // For each node, check if it's inside a while block
   for (const node of flowNodes) {
     if (node.data.kind === "while") {
@@ -189,25 +198,35 @@ const calculateParentSlugs = (flowNodes: FlowNode[]): Map<string, string | null>
       const nodeX = node.position.x;
       const nodeY = node.position.y;
 
+      console.log(`[calculateParentSlugs] Checking ${node.data.slug} (${nodeX},${nodeY}) against while ${whileNode.data.slug} rect=(${whileX},${whileY},${whileWidth}x${whileHeight})`);
+
       // Check if node is inside this while block
-      if (
-        nodeX >= whileX &&
+      const isInside = nodeX >= whileX &&
         nodeX <= whileX + whileWidth &&
         nodeY >= whileY &&
-        nodeY <= whileY + whileHeight
-      ) {
+        nodeY <= whileY + whileHeight;
+
+      console.log(`  -> isInside=${isInside}`);
+
+      if (isInside) {
         // If nested whiles, use the smallest containing one
         const area = whileWidth * whileHeight;
         if (area < smallestArea) {
           smallestArea = area;
           containingWhile = whileNode;
+          console.log(`  -> Selected as parent (area=${area})`);
         }
       }
     }
 
-    parentMap.set(node.data.slug, containingWhile?.data.slug ?? null);
+    const parentSlug = containingWhile?.data.slug ?? null;
+    parentMap.set(node.data.slug, parentSlug);
+    if (parentSlug) {
+      console.log(`[calculateParentSlugs] ✓ ${node.data.slug} -> parent_slug=${parentSlug}`);
+    }
   }
 
+  console.log('[calculateParentSlugs] Final parent map:', Object.fromEntries(parentMap));
   return parentMap;
 };
 

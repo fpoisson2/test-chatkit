@@ -574,6 +574,7 @@ class NormalizedNode:
     kind: str
     display_name: str | None
     agent_key: str | None
+    parent_slug: str | None
     is_enabled: bool
     parameters: dict[str, Any]
     metadata: dict[str, Any]
@@ -749,6 +750,13 @@ class WorkflowGraphValidator:
 
             is_enabled = bool(entry.get("is_enabled", True))
 
+            parent_slug_raw = entry.get("parent_slug")
+            parent_slug = (
+                str(parent_slug_raw).strip()
+                if parent_slug_raw is not None and str(parent_slug_raw).strip()
+                else None
+            )
+
             parameters = self.ensure_dict(entry.get("parameters"), "paramètres")
             metadata = self.ensure_dict(entry.get("metadata"), "métadonnées")
 
@@ -849,6 +857,7 @@ class WorkflowGraphValidator:
                 kind=kind,
                 display_name=display_name,
                 agent_key=agent_key,
+                parent_slug=parent_slug,
                 is_enabled=is_enabled,
                 parameters=parameters,
                 metadata=metadata,
@@ -941,6 +950,7 @@ class WorkflowGraphValidator:
                 kind="start",
                 display_name="Début",
                 agent_key=None,
+                parent_slug=None,
                 is_enabled=True,
                 parameters={},
                 metadata={"position": {"x": 0, "y": 0}},
@@ -950,6 +960,7 @@ class WorkflowGraphValidator:
                 kind="end",
                 display_name="Fin",
                 agent_key=None,
+                parent_slug=None,
                 is_enabled=True,
                 parameters={
                     "message": end_message,
@@ -1855,10 +1866,14 @@ class WorkflowService:
                 kind=node.kind,
                 display_name=node.display_name,
                 agent_key=node.agent_key,
+                parent_slug=node.parent_slug,
                 position=index,
                 is_enabled=node.is_enabled,
                 parameters=dict(node.parameters),
                 ui_metadata=dict(node.metadata),
+            )
+            logger.info(
+                f"Creating WorkflowStep: slug={node.slug}, kind={node.kind}, parent_slug={node.parent_slug}"
             )
             definition.steps.append(step)
             slug_to_step[node.slug] = step
@@ -3226,10 +3241,14 @@ class WorkflowService:
                 kind=node.kind,
                 display_name=display_name,
                 agent_key=node.agent_key,
+                parent_slug=node.parent_slug,
                 position=index,
                 is_enabled=is_enabled,
                 parameters=parameters,
                 ui_metadata=metadata,
+            )
+            logger.info(
+                f"Creating WorkflowStep (migration): slug={node.slug}, kind={node.kind}, parent_slug={node.parent_slug}"
             )
             definition.steps.append(step)
             slug_to_step[node.slug] = step
