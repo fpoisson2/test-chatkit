@@ -1034,7 +1034,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     try:
                         # We need to update the thread object's metadata field
                         thread.metadata = thread_metadata
-                        await self.store.save_thread(thread, context=context)
+                        await self.store.save_thread(thread, context=agent_context.request_context)
                     except Exception:
                         logger.warning(
                             "Failed to persist current step %s for thread %s", 

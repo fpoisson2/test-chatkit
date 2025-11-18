@@ -1628,12 +1628,58 @@ async def get_active_workflow_sessions(
     """
     from ..chatkit_server.context import _get_wait_state_metadata
 
-    # Récupérer tous les ChatThreads
-    all_threads = session.scalars(select(ChatThread)).all()
+    # Récupérer les threads récents avec une limite
+    # On filtre pour ne récupérer que ceux qui ont des métadonnées de workflow
+    # Pour éviter de charger tous les threads du système
+    stmt = (
+        select(ChatThread)
+        .where(
+            ChatThread.payload.op("->")("metadata").op("->")("workflow").is_not(None)
+        )
+        # Filter for sessions updated in the last 24 hours
+        .where(ChatThread.updated_at >= datetime.datetime.utcnow() - datetime.timedelta(hours=24))
+        .order_by(ChatThread.updated_at.desc())
+        .limit(100)
+    )
+    
+    all_threads = session.scalars(stmt).all()
 
     active_sessions = []
 
     logger.info(f"[WORKFLOW_MONITOR] Checking {len(all_threads)} threads for active workflow sessions")
+
+    # Batch load users and workflows to avoid N+1
+    user_ids = set()
+    workflow_ids = set()
+    
+    for thread in all_threads:
+        # Extract IDs for batch loading
+        try:
+            if thread.owner_id:
+                user_ids.add(int(thread.owner_id))
+        except (ValueError, TypeError):
+            pass
+            
+        thread_payload = thread.payload if hasattr(thread, 'payload') else {}
+        thread_metadata = thread_payload.get("metadata", {}) if isinstance(thread_payload, dict) else {}
+        workflow_meta = thread_metadata.get("workflow", {}) if isinstance(thread_metadata, dict) else {}
+        
+        if workflow_meta and isinstance(workflow_meta, dict):
+            wf_id = workflow_meta.get("id")
+            if wf_id:
+                workflow_ids.add(wf_id)
+
+    # Load users
+    users_map = {}
+    if user_ids:
+        users = session.scalars(select(User).where(User.id.in_(user_ids))).all()
+        users_map = {u.id: u for u in users}
+
+    # Load workflows
+    workflows_map = {}
+    if workflow_ids:
+        workflows = session.scalars(select(Workflow).where(Workflow.id.in_(workflow_ids))).all()
+        workflows_map = {w.id: w for w in workflows}
 
     for thread in all_threads:
         # Récupérer les métadonnées du thread
@@ -1664,17 +1710,18 @@ async def get_active_workflow_sessions(
                 steps_history = snapshot.get("steps", [])
                 logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: found snapshot in wait_state")
 
-        # Récupérer le workflow depuis la DB
-        workflow = session.get(Workflow, workflow_id)
+        # Récupérer le workflow depuis la map
+        workflow = workflows_map.get(workflow_id)
         if not workflow:
             logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: workflow {workflow_id} not found in DB")
             continue
 
-        # Récupérer l'utilisateur propriétaire du thread
+        # Récupérer l'utilisateur propriétaire du thread depuis la map
+        user = None
         owner_id = thread.owner_id
         try:
             user_id = int(owner_id)
-            user = session.get(User, user_id)
+            user = users_map.get(user_id)
             if not user:
                 logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: user {owner_id} not found")
                 continue
@@ -1685,6 +1732,20 @@ async def get_active_workflow_sessions(
         # Trouver le display_name de l'étape actuelle
         current_step_display = current_slug
         definition_id = workflow_meta.get("definition_id")
+        
+        # Try to get current step from metadata (persisted during execution)
+        if current_slug == "unknown":
+            current_step_meta = workflow_meta.get("current_step")
+            if isinstance(current_step_meta, dict):
+                current_slug = current_step_meta.get("slug", "unknown")
+                # If we have a title in metadata, use it as display name fallback
+                if not current_step_display or current_step_display == "unknown":
+                    current_step_display = current_step_meta.get("title")
+
+        # Try to get history from metadata if not found in wait_state
+        if not steps_history:
+             steps_history = workflow_meta.get("steps_history", [])
+
         if definition_id and current_slug != "unknown":
             # Chercher l'étape dans la définition du workflow
             workflow_step = session.scalar(
