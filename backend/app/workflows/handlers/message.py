@@ -64,13 +64,20 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
         stream_config = self._resolve_assistant_stream_config(node)
 
         # Record step
+        record_task = None
         if context.record_step:
-            await context.record_step(node.slug, title, sanitized_message or "")
+            record_task = asyncio.create_task(
+                context.record_step(node.slug, title, sanitized_message or "")
+            )
 
         last_step_context = {"assistant_message": sanitized_message}
 
         # Stream message to user if needed
-        if sanitized_message and on_stream_event is not None and agent_context is not None:
+        if (
+            sanitized_message
+            and on_stream_event is not None
+            and agent_context is not None
+        ):
             if stream_config.enabled and emit_stream_event is not None:
                 # Stream with delay
                 await self._stream_assistant_message(
@@ -88,11 +95,17 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
                         created_at=datetime.now(),
                         content=[AssistantMessageContent(text=sanitized_message)],
                     )
-                    await emit_stream_event(ThreadItemAddedEvent(item=assistant_message))
-                    await emit_stream_event(ThreadItemDoneEvent(item=assistant_message))
+                    await emit_stream_event(
+                        ThreadItemAddedEvent(item=assistant_message)
+                    )
+                    await emit_stream_event(
+                        ThreadItemDoneEvent(item=assistant_message)
+                    )
 
         # Find next transition with fallback
         next_slug = self._next_slug_or_fallback(node.slug, context)
+        if record_task is not None:
+            await record_task
         return NodeResult(
             next_slug=next_slug,
             context_updates={"last_step_context": last_step_context},
@@ -231,13 +244,20 @@ class UserMessageNodeHandler(BaseNodeHandler):
         sanitized_message = _normalize_user_text(raw_message)
 
         # Record step
+        record_task = None
         if context.record_step:
-            await context.record_step(node.slug, title, sanitized_message or "")
+            record_task = asyncio.create_task(
+                context.record_step(node.slug, title, sanitized_message or "")
+            )
 
         last_step_context = {"user_message": sanitized_message}
 
         # Stream message if needed
-        if sanitized_message and on_stream_event is not None and agent_context is not None:
+        if (
+            sanitized_message
+            and on_stream_event is not None
+            and agent_context is not None
+        ):
             if emit_stream_event is not None:
                 user_item = UserMessageItem(
                     id=agent_context.generate_id("message"),
@@ -253,6 +273,8 @@ class UserMessageNodeHandler(BaseNodeHandler):
 
         # Find next transition with fallback
         next_slug = self._next_slug_or_fallback(node.slug, context)
+        if record_task is not None:
+            await record_task
         return NodeResult(
             next_slug=next_slug,
             context_updates={"last_step_context": last_step_context},
