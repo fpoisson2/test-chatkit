@@ -6,11 +6,15 @@ logic into individual handlers, replacing the monolithic run_workflow function.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from agents import TResponseInputItem
+
+logger = logging.getLogger("chatkit.server")
 
 if TYPE_CHECKING:  # pragma: no cover
     from ...models import WorkflowStep, WorkflowTransition
@@ -74,7 +78,9 @@ class NodeHandler(ABC):
     """
 
     @abstractmethod
-    async def execute(self, node: WorkflowStep, context: ExecutionContext) -> NodeResult:
+    async def execute(
+        self, node: WorkflowStep, context: ExecutionContext
+    ) -> NodeResult:
         """Execute this node and return the next transition.
 
         Args:
@@ -117,7 +123,15 @@ class WorkflowStateMachine:
         Returns:
             Updated execution context after workflow completion
         """
-        while not context.is_finished and context.guard_counter < context.max_iterations:
+        debug_enabled = bool(context.runtime_vars.get("debug"))
+
+        if debug_enabled:
+            logger.debug("Démarrage de l'exécution du workflow (mode debug activé)")
+
+        while (
+            not context.is_finished
+            and context.guard_counter < context.max_iterations
+        ):
             context.guard_counter += 1
 
             # Get current node
@@ -153,10 +167,23 @@ class WorkflowStateMachine:
             # Execute handler
             result = await handler.execute(current_node, context)
 
+            if debug_enabled:
+                logger.debug(
+                    "Résultat du handler %s: next_slug=%s finished=%s updates=%s",
+                    current_node.kind,
+                    result.next_slug,
+                    result.finished,
+                    list(result.context_updates.keys()),
+                )
+
             # Apply context updates
             if result.context_updates:
                 for key, value in result.context_updates.items():
                     setattr(context, key, value)
+                    if debug_enabled:
+                        logger.debug(
+                            "Mise à jour du contexte: %s=%s", key, value
+                        )
 
             # Handle result
             if result.finished:
@@ -166,6 +193,12 @@ class WorkflowStateMachine:
                 break
 
             if result.next_slug:
+                if debug_enabled:
+                    logger.debug(
+                        "Transition vers le nœud suivant: %s -> %s",
+                        current_node.slug,
+                        result.next_slug,
+                    )
                 context.current_slug = result.next_slug
             else:
                 # No next slug and not finished = end workflow in waiting state
