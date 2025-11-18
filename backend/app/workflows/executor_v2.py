@@ -437,31 +437,23 @@ async def run_workflow_v2(
 
         async def _inspect_event_for_images(event: Any) -> None:
             """Inspect events for image generation tasks."""
-            # Log all events for debugging
-            event_type = getattr(event, "type", type(event).__name__)
-            logger.debug(f"_inspect_event_for_images: event type={event_type}")
-
             update = getattr(event, "update", None)
             if not isinstance(update, WorkflowTaskAdded | WorkflowTaskUpdated):
-                logger.debug(f"_inspect_event_for_images: not a Workflow task event, update type={type(update).__name__ if update else None}")
                 return
             task = getattr(update, "task", None)
-            logger.debug(f"_inspect_event_for_images: task type={type(task).__name__ if task else None}")
             if not isinstance(task, ImageTask):
                 return
+
             logger.debug(f"_inspect_event_for_images: Found ImageTask, call_id={task.call_id}, status={task.status_indicator}")
             registration = _register_image_generation_task(task, metadata=metadata_for_images)
             if registration is None:
-                logger.debug("_inspect_event_for_images: registration failed")
                 return
             context_data, key = registration
             image = task.images[0] if task.images else None
             status = getattr(task, "status_indicator", None) or "none"
-            logger.debug(f"_inspect_event_for_images: status={status}, has_image={image is not None}, has_b64={bool(image.b64_json) if image else False}")
 
             if status == "complete" and image and isinstance(image.b64_json, str) and image.b64_json:
                 if context_data.get("last_stored_b64") == image.b64_json:
-                    logger.debug("_inspect_event_for_images: image already stored")
                     return
                 logger.info(f"_persist_agent_image: Persisting image for key={key}")
                 await _persist_agent_image(context_data, key, task, image)
