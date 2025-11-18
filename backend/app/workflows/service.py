@@ -756,9 +756,6 @@ class WorkflowGraphValidator:
                 if parent_slug_raw is not None and str(parent_slug_raw).strip()
                 else None
             )
-            logger.info(
-                f"Parsing node {slug}: parent_slug_raw={parent_slug_raw!r}, parent_slug={parent_slug!r}"
-            )
 
             parameters = self.ensure_dict(entry.get("parameters"), "paramètres")
             metadata = self.ensure_dict(entry.get("metadata"), "métadonnées")
@@ -1874,9 +1871,6 @@ class WorkflowService:
                 is_enabled=node.is_enabled,
                 parameters=dict(node.parameters),
                 ui_metadata=dict(node.metadata),
-            )
-            logger.info(
-                f"Creating WorkflowStep: slug={node.slug}, kind={node.kind}, parent_slug={node.parent_slug}"
             )
             definition.steps.append(step)
             slug_to_step[node.slug] = step
@@ -3250,9 +3244,6 @@ class WorkflowService:
                 parameters=parameters,
                 ui_metadata=metadata,
             )
-            logger.info(
-                f"Creating WorkflowStep (migration): slug={node.slug}, kind={node.kind}, parent_slug={node.parent_slug}"
-            )
             definition.steps.append(step)
             slug_to_step[node.slug] = step
 
@@ -3306,6 +3297,7 @@ def serialize_definition_graph(
                 "kind": step.kind,
                 "display_name": step.display_name,
                 "agent_key": step.agent_key,
+                "parent_slug": step.parent_slug,
                 "position": step.position,
                 "is_enabled": step.is_enabled,
                 "parameters": parameters,

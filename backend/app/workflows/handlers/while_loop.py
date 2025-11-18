@@ -256,7 +256,6 @@ class WhileNodeHandler(BaseNodeHandler):
         inside_nodes = set()
 
         # Use explicit parent_slug relationships
-        logger.debug(f"Checking parent_slug for while {while_node.slug}")
         for node in context.nodes_by_slug.values():
             if not self._belongs_to_current_workflow(node, context):
                 continue
@@ -266,16 +265,8 @@ class WhileNodeHandler(BaseNodeHandler):
 
             # Check if this node explicitly declares this while as its parent
             node_parent_slug = getattr(node, "parent_slug", None)
-            logger.debug(
-                f"Node {node.slug} (kind={node.kind}) has parent_slug={node_parent_slug!r}"
-            )
             if node_parent_slug == while_node.slug:
                 inside_nodes.add(node.slug)
-                logger.debug(
-                    "Bloc %s détecté à l'intérieur du while %s (parent_slug)",
-                    node.slug,
-                    while_node.slug,
-                )
 
         if inside_nodes:
             logger.info(

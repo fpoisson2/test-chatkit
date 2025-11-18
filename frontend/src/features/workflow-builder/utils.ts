@@ -164,15 +164,6 @@ const calculateParentSlugs = (flowNodes: FlowNode[]): Map<string, string | null>
   // Find all while nodes
   const whileNodes = flowNodes.filter(node => node.data.kind === "while");
 
-  console.log(`[calculateParentSlugs] Found ${whileNodes.length} while nodes:`,
-    whileNodes.map(w => ({
-      slug: w.data.slug,
-      pos: w.position,
-      style: w.style,
-      metadata: w.data.metadata
-    }))
-  );
-
   // For each node, check if it's inside a while block
   for (const node of flowNodes) {
     if (node.data.kind === "while") {
@@ -198,42 +189,32 @@ const calculateParentSlugs = (flowNodes: FlowNode[]): Map<string, string | null>
       const nodeX = node.position.x;
       const nodeY = node.position.y;
 
-      console.log(`[calculateParentSlugs] Checking ${node.data.slug} (${nodeX},${nodeY}) against while ${whileNode.data.slug} rect=(${whileX},${whileY},${whileWidth}x${whileHeight})`);
-
       // Check if node is inside this while block
-      const isInside = nodeX >= whileX &&
+      if (
+        nodeX >= whileX &&
         nodeX <= whileX + whileWidth &&
         nodeY >= whileY &&
-        nodeY <= whileY + whileHeight;
-
-      console.log(`  -> isInside=${isInside}`);
-
-      if (isInside) {
+        nodeY <= whileY + whileHeight
+      ) {
         // If nested whiles, use the smallest containing one
         const area = whileWidth * whileHeight;
         if (area < smallestArea) {
           smallestArea = area;
           containingWhile = whileNode;
-          console.log(`  -> Selected as parent (area=${area})`);
         }
       }
     }
 
-    const parentSlug = containingWhile?.data.slug ?? null;
-    parentMap.set(node.data.slug, parentSlug);
-    if (parentSlug) {
-      console.log(`[calculateParentSlugs] ✓ ${node.data.slug} -> parent_slug=${parentSlug}`);
-    }
+    parentMap.set(node.data.slug, containingWhile?.data.slug ?? null);
   }
 
-  console.log('[calculateParentSlugs] Final parent map:', Object.fromEntries(parentMap));
   return parentMap;
 };
 
 export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge[]) => {
   const parentSlugs = calculateParentSlugs(flowNodes);
 
-  const payload = {
+  return {
     nodes: flowNodes.map((node, index) => ({
       slug: node.data.slug,
       kind: node.data.kind,
@@ -268,14 +249,6 @@ export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge
       },
     })),
   };
-
-  console.log('[buildGraphPayloadFrom] Final payload nodes:', payload.nodes.map(n => ({
-    slug: n.slug,
-    kind: n.kind,
-    parent_slug: n.parent_slug
-  })));
-
-  return payload;
 };
 
 const STATE_ASSIGNMENT_SCOPES = ["globals", "state"] as const;
