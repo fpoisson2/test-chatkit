@@ -164,7 +164,20 @@ export const AdminWorkflowMonitorPage = () => {
     };
   }, [fetchActiveSessions, autoRefresh, useWebSocket]);
 
-  // Filtrer les sessions
+  // Tri
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof ActiveWorkflowSession | "user_email" | "workflow_name";
+    direction: "asc" | "desc";
+  }>({ key: "last_activity", direction: "desc" });
+
+  const handleSort = useCallback((key: keyof ActiveWorkflowSession | "user_email" | "workflow_name") => {
+    setSortConfig((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }, []);
+
+  // Filtrer et trier les sessions
   const filteredSessions = useMemo(() => {
     let result = [...sessions];
 
@@ -186,8 +199,27 @@ export const AdminWorkflowMonitorPage = () => {
       );
     }
 
+    // Tri
+    result.sort((a, b) => {
+      let aValue: any = a[sortConfig.key as keyof ActiveWorkflowSession];
+      let bValue: any = b[sortConfig.key as keyof ActiveWorkflowSession];
+
+      // Cas spéciaux pour les champs imbriqués
+      if (sortConfig.key === "user_email") {
+        aValue = a.user.email;
+        bValue = b.user.email;
+      } else if (sortConfig.key === "workflow_name") {
+        aValue = a.workflow.display_name;
+        bValue = b.workflow.display_name;
+      }
+
+      if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+
     return result;
-  }, [sessions, filterWorkflowId, filterStatus, searchTerm]);
+  }, [sessions, filterWorkflowId, filterStatus, searchTerm, sortConfig]);
 
   // Liste unique des workflows
   const uniqueWorkflows = useMemo(() => {
@@ -361,11 +393,23 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
     return diffMs > 3600000;
   };
 
+  const renderSortIcon = (key: string) => {
+    if (sortConfig.key !== key) return <span style={{ opacity: 0.3 }}>↕</span>;
+    return sortConfig.direction === "asc" ? "↑" : "↓";
+  };
+
   const sessionColumns = useMemo<Column<ActiveWorkflowSession>[]>(
     () => [
       {
         key: "user",
-        label: "Utilisateur",
+        label: (
+          <div 
+            onClick={() => handleSort("user_email")} 
+            style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+          >
+            Utilisateur {renderSortIcon("user_email")}
+          </div>
+        ),
         render: (session) => (
           <div>
             <div className="font-medium">{session.user.email}</div>
@@ -377,7 +421,14 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
       },
       {
         key: "workflow",
-        label: "Workflow",
+        label: (
+          <div 
+            onClick={() => handleSort("workflow_name")} 
+            style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+          >
+            Workflow {renderSortIcon("workflow_name")}
+          </div>
+        ),
         render: (session) => (
           <div>
             <div className="font-medium">{session.workflow.display_name}</div>
@@ -402,12 +453,26 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
       },
       {
         key: "duration",
-        label: "Durée",
+        label: (
+          <div 
+            onClick={() => handleSort("started_at")} 
+            style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+          >
+            Durée {renderSortIcon("started_at")}
+          </div>
+        ),
         render: (session) => formatDuration(session.started_at),
       },
       {
         key: "last_activity",
-        label: "Dernière activité",
+        label: (
+          <div 
+            onClick={() => handleSort("last_activity")} 
+            style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+          >
+            Dernière activité {renderSortIcon("last_activity")}
+          </div>
+        ),
         render: (session) => (
           <div>
             <div>{formatDateTime(session.last_activity)}</div>
@@ -421,7 +486,14 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
       },
       {
         key: "status",
-        label: "Statut",
+        label: (
+          <div 
+            onClick={() => handleSort("status")} 
+            style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+          >
+            Statut {renderSortIcon("status")}
+          </div>
+        ),
         render: (session) => {
           const statusLabels = {
             active: "Actif",
@@ -478,7 +550,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
         ),
       },
     ],
-    [handleViewWorkflow, handleViewThread, handleCopyThreadId, handleViewSessionDetails],
+    [handleViewWorkflow, handleViewThread, handleCopyThreadId, handleViewSessionDetails, handleSort, sortConfig],
   );
 
   const stuckSessionsCount = filteredSessions.filter(isStuckSession).length;

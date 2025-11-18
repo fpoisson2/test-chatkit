@@ -499,23 +499,28 @@ type OrderWorkflowEntriesOptions = {
   pinnedLookup?: StoredWorkflowPinnedLookup;
 };
 
+export type WorkflowSortMode = "recent" | "name";
+
 export const compareWorkflowSortMetadata = (
   a: WorkflowSortMetadata,
   b: WorkflowSortMetadata,
   collator: Intl.Collator = defaultWorkflowCollator,
+  sortMode: WorkflowSortMode = "recent",
 ): number => {
   if (a.pinned !== b.pinned) {
     return a.pinned ? -1 : 1;
   }
 
-  if (a.lastUsedAt !== b.lastUsedAt) {
-    if (a.lastUsedAt == null) {
-      return 1;
+  if (sortMode === "recent") {
+    if (a.lastUsedAt !== b.lastUsedAt) {
+      if (a.lastUsedAt == null) {
+        return 1;
+      }
+      if (b.lastUsedAt == null) {
+        return -1;
+      }
+      return b.lastUsedAt - a.lastUsedAt;
     }
-    if (b.lastUsedAt == null) {
-      return -1;
-    }
-    return b.lastUsedAt - a.lastUsedAt;
   }
 
   return collator.compare(a.label, b.label);
@@ -524,17 +529,20 @@ export const compareWorkflowSortMetadata = (
 export const orderWorkflowEntries = <T extends WorkflowSortEntry>(
   entries: readonly T[],
   lastUsedAt: StoredWorkflowLastUsedAt,
-  options?: OrderWorkflowEntriesOptions,
+  options?: OrderWorkflowEntriesOptions & { sortMode?: WorkflowSortMode },
 ): T[] => {
   const collator = options?.collator ?? defaultWorkflowCollator;
   const pinnedLookup =
     options?.pinnedLookup ??
     (options?.pinned ? createPinnedLookup(options.pinned) : undefined);
+  const sortMode = options?.sortMode ?? "recent";
+
   return [...entries].sort((left, right) =>
     compareWorkflowSortMetadata(
       getWorkflowSortMetadata(left, lastUsedAt, pinnedLookup),
       getWorkflowSortMetadata(right, lastUsedAt, pinnedLookup),
       collator,
+      sortMode,
     ),
   );
 };

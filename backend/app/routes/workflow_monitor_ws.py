@@ -62,11 +62,34 @@ manager = ConnectionManager()
 
 
 def get_active_sessions(session: Session) -> list[dict[str, Any]]:
-    """Récupère toutes les sessions actives (même logique que l'endpoint REST)."""
-    all_threads = session.scalars(select(ChatThread)).all()
+    """Récupère toutes les sessions actives (optimisé)."""
+    # Optimisation: Filtrer directement en SQL si possible, sinon filtrer en Python mais avec eager loading
+    # Note: Le filtrage JSONB dépend du dialecte DB, on reste générique ici mais on eager load
+    
+    # On ne récupère que les threads qui ont potentiellement un workflow
+    # Idéalement on filtrerait sur payload->'metadata'->'workflow' mais cela dépend de la DB
+    # Pour l'instant on charge tout mais avec les relations nécessaires pour éviter le N+1
+    stmt = (
+        select(ChatThread)
+        .options(
+            # Eager load pour éviter les requêtes N+1
+            # Note: User et Workflow ne sont pas des relations directes sur ChatThread dans le modèle actuel
+            # On devra les charger efficacement
+        )
+        # On pourrait ajouter un filtre sur updated_at récent si on veut limiter l'historique
+        .order_by(ChatThread.updated_at.desc())
+        .limit(100) # Sécurité pour ne pas exploser la mémoire
+    )
+    
+    all_threads = session.scalars(stmt).all()
     active_sessions = []
 
     logger.info(f"[WS_MONITOR] Checking {len(all_threads)} threads for active workflow sessions")
+
+    # Collecter les IDs pour le chargement en batch
+    user_ids = set()
+    workflow_ids = set()
+    thread_map = []
 
     for thread in all_threads:
         # Récupérer les métadonnées du thread
@@ -81,8 +104,35 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
         workflow_id = workflow_meta.get("id")
         if not workflow_id:
             continue
+            
+        owner_id = thread.owner_id
+        try:
+            u_id = int(owner_id)
+            user_ids.add(u_id)
+        except (ValueError, TypeError):
+            continue
+            
+        workflow_ids.add(workflow_id)
+        
+        thread_map.append({
+            "thread": thread,
+            "workflow_id": workflow_id,
+            "user_id": int(owner_id),
+            "definition_id": workflow_meta.get("definition_id")
+        })
 
-        logger.info(f"[WS_MONITOR] Thread {thread.id}: has workflow metadata (id={workflow_id})")
+    # Chargement en batch des Users et Workflows
+    users = {u.id: u for u in session.scalars(select(User).where(User.id.in_(user_ids))).all()}
+    workflows = {w.id: w for w in session.scalars(select(Workflow).where(Workflow.id.in_(workflow_ids))).all()}
+
+    for item in thread_map:
+        thread = item["thread"]
+        user = users.get(item["user_id"])
+        workflow = workflows.get(item["workflow_id"])
+        definition_id = item["definition_id"]
+
+        if not user or not workflow:
+            continue
 
         # Essayer de récupérer le snapshot depuis wait_state si disponible
         wait_state = _get_wait_state_metadata(thread)
@@ -95,25 +145,31 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             if snapshot and isinstance(snapshot, dict):
                 current_slug = snapshot.get("current_slug", "unknown")
                 steps_history = snapshot.get("steps", [])
-                logger.info(f"[WS_MONITOR] Thread {thread.id}: found snapshot in wait_state")
+        
+        # Si pas de wait_state (workflow actif/running), essayer de déduire du dernier snapshot connu
+        # ou de l'historique dans les métadonnées si disponible
+        if current_slug == "unknown":
+             # Fallback: regarder si on a des infos dans le payload du thread
+             # Parfois le snapshot est stocké ailleurs ou on peut prendre la dernière étape de l'historique
+             pass
 
-        definition_id = workflow_meta.get("definition_id")
-
-        workflow = session.get(Workflow, workflow_id)
-        if not workflow:
-            continue
-
-        owner_id = thread.owner_id
-        try:
-            user_id = int(owner_id)
-            user = session.get(User, user_id)
-            if not user:
-                continue
-        except (ValueError, TypeError):
-            continue
-
+        # Récupérer l'affichage de l'étape
         current_step_display = current_slug
-        if definition_id and current_slug != "unknown":
+        
+        # Si on a un historique mais current_slug est unknown, on prend la dernière étape
+        if current_slug == "unknown" and steps_history:
+            last_step = steps_history[-1]
+            if isinstance(last_step, dict):
+                current_slug = last_step.get("key", "unknown")
+                current_step_display = last_step.get("title", current_slug)
+        
+        # Si on a toujours "unknown", c'est peut-être le début
+        if current_slug == "unknown":
+             current_step_display = "Initialisation..."
+
+        # Essayer d'enrichir le nom de l'étape depuis la DB si on a un definition_id
+        if definition_id and current_slug != "unknown" and current_slug != "Initialisation...":
+            # Note: Idéalement on mettrait ça en cache ou batch aussi
             workflow_step = session.scalar(
                 select(WorkflowStep).where(
                     WorkflowStep.definition_id == definition_id,
@@ -132,7 +188,7 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
                     "timestamp": None,
                 })
 
-        active_session = {
+        active_sessions.append({
             "thread_id": thread.id,
             "user": {
                 "id": user.id,
@@ -154,9 +210,7 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             "started_at": thread.created_at.isoformat(),
             "last_activity": thread.updated_at.isoformat(),
             "status": "waiting_user" if wait_state else "active",
-        }
-
-        active_sessions.append(active_session)
+        })
 
     logger.info(f"[WS_MONITOR] Found {len(active_sessions)} active workflow sessions")
     return active_sessions
