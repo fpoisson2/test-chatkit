@@ -7,6 +7,7 @@ instead of the monolithic run_workflow function.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -308,9 +309,74 @@ async def run_workflow_v2(
 
     async def _persist_agent_image(context_data: dict[str, Any], key: str, task: Any, image: Any) -> None:
         """Persist generated image."""
+        from ..image_utils import save_agent_image_file, build_agent_image_absolute_url
+        from ..security import create_agent_image_token
+        from pathlib import Path
+        import uuid
+
+        def _sanitize_identifier(raw: str, fallback: str) -> str:
+            """Sanitize identifier for filenames."""
+            if not isinstance(raw, str):
+                return fallback
+            sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", raw)
+            if not sanitized or sanitized == "_":
+                return fallback
+            return sanitized[:200]
+
         step_slug = context_data.get("step_slug")
-        if step_slug:
-            url = f"data:image/png;base64,{image.b64_json}"
+        if not step_slug:
+            return
+
+        # Generate doc_id like old executor
+        raw_thread_id = str(context_data.get("thread_id") or "unknown-thread")
+        normalized_thread = _sanitize_identifier(raw_thread_id, "thread")
+        step_identifier_for_doc = context_data.get("step_key") or step_slug
+        normalized_step_identifier = _sanitize_identifier(str(step_identifier_for_doc), "step")
+
+        # Parse key to extract call_id and output_index
+        # key format is "step_slug:call_id"
+        call_id = key.split(":")[-1] if ":" in key else key
+        output_index = 0
+
+        raw_doc_id = f"{normalized_thread}-{call_id}-{output_index}-{normalized_step_identifier}"
+        doc_id = _sanitize_identifier(raw_doc_id, f"{normalized_thread}-{uuid.uuid4().hex[:8]}")
+
+        b64_payload = image.b64_json or ""
+        if not b64_payload:
+            return
+
+        # Save image file to disk
+        local_file_path, local_file_url = save_agent_image_file(
+            doc_id,
+            b64_payload,
+            output_format=getattr(image, "output_format", None),
+        )
+
+        # Create absolute URL with token
+        absolute_file_url: str | None = None
+        if local_file_url:
+            file_name = Path(local_file_url).name
+            token_user = context_data.get("user_id")
+            token = create_agent_image_token(
+                file_name,
+                user_id=str(token_user) if token_user else None,
+                thread_id=raw_thread_id,
+            )
+            base_url = context_data.get("backend_public_base_url") or get_settings().backend_public_base_url
+            absolute_file_url = build_agent_image_absolute_url(
+                local_file_url,
+                base_url=base_url,
+                token=token,
+            )
+
+        # Store the URL in generated_image_urls
+        if absolute_file_url:
+            generated_image_urls.setdefault(step_slug, []).append(absolute_file_url)
+        elif local_file_url:
+            generated_image_urls.setdefault(step_slug, []).append(local_file_url)
+        else:
+            # Fallback to data URL if file save failed
+            url = f"data:image/png;base64,{b64_payload}"
             generated_image_urls.setdefault(step_slug, []).append(url)
 
     # Create run_agent_step function
