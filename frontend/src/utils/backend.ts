@@ -1648,8 +1648,8 @@ export const workflowsApi = {
     return response.json();
   },
 
-  async getVersion(token: string | null, versionId: number): Promise<WorkflowVersionResponse> {
-    const response = await requestWithFallback(`/api/workflow_versions/${versionId}`, {
+  async getVersion(token: string | null, workflowId: number, versionId: number): Promise<WorkflowVersionResponse> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/versions/${versionId}`, {
       headers: withAuthHeaders(token),
     });
     return response.json();

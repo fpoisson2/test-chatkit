@@ -1740,7 +1740,7 @@ async def get_active_workflow_sessions(
                 current_slug = current_step_meta.get("slug", "unknown")
                 # If we have a title in metadata, use it as display name fallback
                 if not current_step_display or current_step_display == "unknown":
-                    current_step_display = current_step_meta.get("title")
+                    current_step_display = current_step_meta.get("title", "unknown")
 
         # Try to get history from metadata if not found in wait_state
         if not steps_history:

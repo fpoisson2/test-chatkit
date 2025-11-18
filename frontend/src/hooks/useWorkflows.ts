@@ -54,11 +54,11 @@ export const useWorkflowVersions = (token: string | null, workflowId: number | n
 /**
  * Hook to fetch a specific version detail
  */
-export const useWorkflowVersion = (token: string | null, versionId: number | null) => {
+export const useWorkflowVersion = (token: string | null, workflowId: number | null, versionId: number | null) => {
   return useQuery({
     queryKey: workflowsKeys.version(versionId ?? -1),
-    queryFn: () => workflowsApi.getVersion(token, versionId!),
-    enabled: !!token && versionId !== null,
+    queryFn: () => workflowsApi.getVersion(token, workflowId!, versionId!),
+    enabled: !!token && workflowId !== null && versionId !== null,
   });
 };
 

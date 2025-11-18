@@ -237,7 +237,7 @@ export const WorkflowVisualizationModal = ({
       }
 
       try {
-        const version = await workflowsApi.getVersion(token, workflow.definition_id);
+        const version = await workflowsApi.getVersion(token, workflow.id, workflow.definition_id);
         setWorkflowVersion(version as unknown as WorkflowVersion);
       } catch (err) {
         setError(
