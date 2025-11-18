@@ -317,11 +317,22 @@ async def _stream_response_widget(
             if bindings:
                 for binding_id, binding in bindings.items():
                     # Check if this is an image src/url binding
-                    if binding_id.endswith(".src") or binding_id.endswith(".url"):
+                    # Either by binding_id suffix (.src, .url) or by value_key
+                    is_src_binding = (
+                        binding_id.endswith(".src")
+                        or binding_id.endswith(".url")
+                        or binding.value_key in ("src", "url")
+                    )
+                    is_alt_binding = (
+                        binding_id.endswith(".alt")
+                        or binding.value_key == "alt"
+                    )
+
+                    if is_src_binding:
                         # Use the first image URL if not already set
                         if binding_id not in resolved:
                             resolved[binding_id] = generated_urls[0]
-                    elif binding_id.endswith(".alt"):
+                    elif is_alt_binding:
                         # Auto-populate alt text if not already set
                         if binding_id not in resolved:
                             resolved[binding_id] = "Image générée"

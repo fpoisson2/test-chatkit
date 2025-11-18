@@ -342,14 +342,15 @@ async def run_workflow_v2(
                 return fallback
             return sanitized[:200]
 
-        step_slug = context_data.get("step_slug")
-        if not step_slug:
+        # Use step_key (not step_slug) to match consume_generated_image_urls
+        step_key = context_data.get("step_key")
+        if not step_key:
             return
 
         # Generate doc_id like old executor
         raw_thread_id = str(context_data.get("thread_id") or "unknown-thread")
         normalized_thread = _sanitize_identifier(raw_thread_id, "thread")
-        step_identifier_for_doc = context_data.get("step_key") or step_slug
+        step_identifier_for_doc = step_key
         normalized_step_identifier = _sanitize_identifier(str(step_identifier_for_doc), "step")
 
         # Parse key to extract call_id and output_index
@@ -388,15 +389,16 @@ async def run_workflow_v2(
                 token=token,
             )
 
-        # Store the URL in generated_image_urls
+        # Store the URL in generated_image_urls using step_key
+        # (must match the key used in consume_generated_image_urls)
         if absolute_file_url:
-            generated_image_urls.setdefault(step_slug, []).append(absolute_file_url)
+            generated_image_urls.setdefault(step_key, []).append(absolute_file_url)
         elif local_file_url:
-            generated_image_urls.setdefault(step_slug, []).append(local_file_url)
+            generated_image_urls.setdefault(step_key, []).append(local_file_url)
         else:
             # Fallback to data URL if file save failed
             url = f"data:image/png;base64,{b64_payload}"
-            generated_image_urls.setdefault(step_slug, []).append(url)
+            generated_image_urls.setdefault(step_key, []).append(url)
 
     # Create run_agent_step function
     async def run_agent_step(
@@ -435,22 +437,33 @@ async def run_workflow_v2(
 
         async def _inspect_event_for_images(event: Any) -> None:
             """Inspect events for image generation tasks."""
+            # Log all events for debugging
+            event_type = getattr(event, "type", type(event).__name__)
+            logger.debug(f"_inspect_event_for_images: event type={event_type}")
+
             update = getattr(event, "update", None)
             if not isinstance(update, WorkflowTaskAdded | WorkflowTaskUpdated):
+                logger.debug(f"_inspect_event_for_images: not a Workflow task event, update type={type(update).__name__ if update else None}")
                 return
             task = getattr(update, "task", None)
+            logger.debug(f"_inspect_event_for_images: task type={type(task).__name__ if task else None}")
             if not isinstance(task, ImageTask):
                 return
+            logger.debug(f"_inspect_event_for_images: Found ImageTask, call_id={task.call_id}, status={task.status_indicator}")
             registration = _register_image_generation_task(task, metadata=metadata_for_images)
             if registration is None:
+                logger.debug("_inspect_event_for_images: registration failed")
                 return
             context_data, key = registration
             image = task.images[0] if task.images else None
             status = getattr(task, "status_indicator", None) or "none"
+            logger.debug(f"_inspect_event_for_images: status={status}, has_image={image is not None}, has_b64={bool(image.b64_json) if image else False}")
 
             if status == "complete" and image and isinstance(image.b64_json, str) and image.b64_json:
                 if context_data.get("last_stored_b64") == image.b64_json:
+                    logger.debug("_inspect_event_for_images: image already stored")
                     return
+                logger.info(f"_persist_agent_image: Persisting image for key={key}")
                 await _persist_agent_image(context_data, key, task, image)
                 context_data["last_stored_b64"] = image.b64_json
                 agent_image_tasks.pop(key, None)
