@@ -220,8 +220,33 @@ class WorkflowStateMachine:
                     context.handler_calls.get(current_node.kind, 0) + 1
                 )
 
+            # Track steps count before handler execution
+            steps_before = len(context.steps)
+
             # Execute handler
             result = await handler.execute(current_node, context)
+
+            # If handler didn't record the step, do it automatically
+            # This ensures all steps (including start, condition, etc.) appear in history
+            steps_after = len(context.steps)
+            if steps_after == steps_before and context.record_step is not None:
+                # Get step title
+                node_title = ""
+                if current_node.display_name:
+                    node_title = current_node.display_name
+                elif current_node.parameters and current_node.parameters.get("title"):
+                    node_title = str(current_node.parameters.get("title"))
+                elif hasattr(handler, "_node_title"):
+                    node_title = handler._node_title(current_node)
+                else:
+                    node_title = current_node.slug
+
+                # Record the step with minimal payload
+                await context.record_step(
+                    current_node.slug,
+                    node_title,
+                    {"type": current_node.kind, "slug": current_node.slug}
+                )
 
             # Update workflow metadata for monitoring (after each step execution)
             thread = context.runtime_vars.get("thread")
