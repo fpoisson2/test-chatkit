@@ -4,15 +4,18 @@ This is the new implementation that uses the modular state machine architecture
 instead of the monolithic run_workflow function.
 """
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from .handlers.factory import create_state_machine
-from .runtime.state_machine import ExecutionContext, NodeResult
+from .runtime.state_machine import ExecutionContext
 
 if TYPE_CHECKING:  # pragma: no cover
     from chatkit.types import ThreadItem, ThreadStreamEvent, UserMessageItem
@@ -122,8 +125,6 @@ async def run_workflow_v2(
         )
 
     # Build edge maps
-    from collections import defaultdict
-
     from .executor import AGENT_NODE_KINDS, build_edges_by_source, prepare_agents
 
     edges_by_source = build_edges_by_source(definition.transitions)
@@ -280,7 +281,7 @@ async def run_workflow_v2(
     generated_image_urls: dict[str, list[str]] = {}
 
     # Create helper functions for streaming with shared image URLs dict
-    helpers = create_executor_helpers(
+    create_executor_helpers(
         on_stream_event=on_stream_event,
         on_step_stream=on_step_stream,
         active_branch_id=None,
@@ -309,10 +310,11 @@ async def run_workflow_v2(
 
     async def _persist_agent_image(context_data: dict[str, Any], key: str, task: Any, image: Any) -> None:
         """Persist generated image."""
-        from ..image_utils import save_agent_image_file, build_agent_image_absolute_url
-        from ..security import create_agent_image_token
-        from pathlib import Path
         import uuid
+        from pathlib import Path
+
+        from ..image_utils import build_agent_image_absolute_url, save_agent_image_file
+        from ..security import create_agent_image_token
 
         def _sanitize_identifier(raw: str, fallback: str) -> str:
             """Sanitize identifier for filenames."""
@@ -612,6 +614,8 @@ async def run_workflow_v2(
 
     # Populate runtime_vars with all dependencies
     thread = getattr(agent_context, "thread", None)
+    debug_enabled = os.getenv("WORKFLOW_DEBUG") == "true"
+
     context.runtime_vars.update(
         {
             "workflow_input": workflow_input,
@@ -639,6 +643,10 @@ async def run_workflow_v2(
         }
     )
 
+    if debug_enabled:
+        context.runtime_vars["debug"] = True
+        logger.debug("WORKFLOW_DEBUG actif : logs détaillés de l'exécution activés")
+
     # Create emit_stream_event wrapper
     if on_stream_event is not None:
 
@@ -655,7 +663,7 @@ async def run_workflow_v2(
     # Execute workflow
     try:
         await machine.execute(context)
-    except Exception as e:
+    except Exception:
         logger.exception("Error executing workflow with state machine")
         raise
 
