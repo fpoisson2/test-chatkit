@@ -323,14 +323,15 @@ async def run_workflow_v2(
                 return fallback
             return sanitized[:200]
 
-        step_slug = context_data.get("step_slug")
-        if not step_slug:
+        # Use step_key (not step_slug) to match consume_generated_image_urls
+        step_key = context_data.get("step_key")
+        if not step_key:
             return
 
         # Generate doc_id like old executor
         raw_thread_id = str(context_data.get("thread_id") or "unknown-thread")
         normalized_thread = _sanitize_identifier(raw_thread_id, "thread")
-        step_identifier_for_doc = context_data.get("step_key") or step_slug
+        step_identifier_for_doc = step_key
         normalized_step_identifier = _sanitize_identifier(str(step_identifier_for_doc), "step")
 
         # Parse key to extract call_id and output_index
@@ -369,15 +370,16 @@ async def run_workflow_v2(
                 token=token,
             )
 
-        # Store the URL in generated_image_urls
+        # Store the URL in generated_image_urls using step_key
+        # (must match the key used in consume_generated_image_urls)
         if absolute_file_url:
-            generated_image_urls.setdefault(step_slug, []).append(absolute_file_url)
+            generated_image_urls.setdefault(step_key, []).append(absolute_file_url)
         elif local_file_url:
-            generated_image_urls.setdefault(step_slug, []).append(local_file_url)
+            generated_image_urls.setdefault(step_key, []).append(local_file_url)
         else:
             # Fallback to data URL if file save failed
             url = f"data:image/png;base64,{b64_payload}"
-            generated_image_urls.setdefault(step_slug, []).append(url)
+            generated_image_urls.setdefault(step_key, []).append(url)
 
     # Create run_agent_step function
     async def run_agent_step(
