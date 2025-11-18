@@ -26,8 +26,15 @@ def _update_workflow_metadata(thread: Any, slug: str, title: str, steps_history:
     if thread is None:
         return
 
-    # Get current metadata
+    # Get current metadata - handle both SDK threads (metadata attr) and DB threads (payload)
     metadata = getattr(thread, "metadata", None)
+
+    # For SQLAlchemy ChatThread, metadata is in payload
+    if not isinstance(metadata, dict):
+        payload = getattr(thread, "payload", None)
+        if isinstance(payload, dict):
+            metadata = payload.get("metadata")
+
     if isinstance(metadata, dict):
         updated = dict(metadata)
     else:
@@ -49,12 +56,25 @@ def _update_workflow_metadata(thread: Any, slug: str, title: str, steps_history:
         for step in steps_history
     ]
 
-    # Save back to thread
-    if hasattr(thread, "metadata"):
+    # Save back to thread - handle both SDK and DB threads
+    # Try SDK thread first (has metadata attribute)
+    if hasattr(thread, "metadata") and not hasattr(thread, "payload"):
         try:
             thread.metadata = updated
+            return
         except Exception as exc:  # pragma: no cover
-            logger.warning("Failed to update workflow metadata: %s", exc)
+            logger.warning("Failed to update SDK thread metadata: %s", exc)
+
+    # Handle SQLAlchemy ChatThread (has payload)
+    payload = getattr(thread, "payload", None)
+    if isinstance(payload, dict):
+        try:
+            payload["metadata"] = updated
+            # Mark the object as modified for SQLAlchemy
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(thread, "payload")
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to update DB thread payload metadata: %s", exc)
 
 
 @dataclass
