@@ -37,13 +37,9 @@ class AssignNodeHandler(BaseNodeHandler):
                 list(context.steps),
             )
 
-        # Find next transition
-        transition = self._next_edge(context, node.slug)
-        if transition is None:
-            # Will be handled by while loop support in main executor
-            return NodeResult(next_slug=None)
-
-        return NodeResult(next_slug=transition.target_step.slug)
+        # Find next transition with fallback
+        next_slug = self._next_slug_or_fallback(node.slug, context)
+        return NodeResult(next_slug=next_slug)
 
     def _apply_state_node(self, step: WorkflowStep, context: ExecutionContext) -> None:
         """Apply all state operations defined in the node."""

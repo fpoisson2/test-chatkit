@@ -117,14 +117,14 @@ class WidgetNodeHandler(BaseNodeHandler):
 
             last_step_context = context_payload
 
-        # Find next transition
-        transition = self._next_edge(context, node.slug)
+        # Find next transition with fallback
+        next_slug = self._next_slug_or_fallback(node.slug, context)
 
         # Debug logging (preserved from original)
         logger.info(
-            "[DEBUG] Widget %s → next edge: %s",
+            "[DEBUG] Widget %s → next slug: %s",
             node.slug,
-            transition.target_step.slug if transition else "None",
+            next_slug if next_slug else "None",
         )
         available_edges = context.edges_by_source.get(node.slug, [])
         logger.info(
@@ -133,12 +133,7 @@ class WidgetNodeHandler(BaseNodeHandler):
             [(e.target_step.slug, e.condition) for e in available_edges],
         )
 
-        if transition is None:
-            return NodeResult(
-                next_slug=None, context_updates={"last_step_context": last_step_context}
-            )
-
         return NodeResult(
-            next_slug=transition.target_step.slug,
+            next_slug=next_slug,
             context_updates={"last_step_context": last_step_context},
         )

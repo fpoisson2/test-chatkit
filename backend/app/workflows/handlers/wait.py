@@ -46,9 +46,6 @@ class WaitNodeHandler(BaseNodeHandler):
         agent_context = context.runtime_vars.get("agent_context")
         on_stream_event = context.runtime_vars.get("on_stream_event")
 
-        # Find next transition
-        transition = self._next_edge(context, node.slug)
-
         # Check if we're resuming from a wait
         pending_wait_state = (
             _get_wait_state_metadata(thread) if thread is not None else None
@@ -69,8 +66,8 @@ class WaitNodeHandler(BaseNodeHandler):
         if resumed:
             # Resume from wait - user provided new message
             next_slug = pending_wait_state.get("next_step_slug")
-            if next_slug is None and transition is not None:
-                next_slug = transition.target_step.slug
+            if next_slug is None:
+                next_slug = self._next_slug_or_fallback(node.slug, context)
 
             # Clear wait state
             if thread is not None:
@@ -148,8 +145,10 @@ class WaitNodeHandler(BaseNodeHandler):
         if conversation_snapshot:
             wait_state_payload["conversation_history"] = conversation_snapshot
 
-        if transition is not None:
-            wait_state_payload["next_step_slug"] = transition.target_step.slug
+        # Store next slug with fallback logic
+        next_slug_after_wait = self._next_slug_or_fallback(node.slug, context)
+        if next_slug_after_wait is not None:
+            wait_state_payload["next_step_slug"] = next_slug_after_wait
 
         if context.state:
             wait_state_payload["state"] = _json_safe_copy(context.state)

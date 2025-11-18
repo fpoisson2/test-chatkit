@@ -60,7 +60,7 @@ class WatchNodeHandler(BaseNodeHandler):
 
             message_item = AssistantMessageItem(
                 id="watch",
-                content=[AssistantMessageContent(type="text", text=formatted_payload)],
+                content=[AssistantMessageContent(text=formatted_payload)],
             )
             event: ThreadStreamEvent = ThreadItemUpdated(
                 item=message_item,
@@ -68,12 +68,9 @@ class WatchNodeHandler(BaseNodeHandler):
             )
             await on_stream_event(event)
 
-        # Find next transition
-        transition = self._next_edge(context, node.slug)
-        if transition is None:
-            return NodeResult(next_slug=None)
-
-        return NodeResult(next_slug=transition.target_step.slug)
+        # Find next transition with fallback
+        next_slug = self._next_slug_or_fallback(node.slug, context)
+        return NodeResult(next_slug=next_slug)
 
     def _resolve_watch_payload(
         self, context_data: Any, steps: Sequence[WorkflowStepSummary]

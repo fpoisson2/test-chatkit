@@ -91,15 +91,10 @@ class AssistantMessageNodeHandler(BaseNodeHandler):
                     await emit_stream_event(ThreadItemAddedEvent(item=assistant_message))
                     await emit_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
-        # Find next transition
-        transition = self._next_edge(context, node.slug)
-        if transition is None:
-            return NodeResult(
-                next_slug=None, context_updates={"last_step_context": last_step_context}
-            )
-
+        # Find next transition with fallback
+        next_slug = self._next_slug_or_fallback(node.slug, context)
         return NodeResult(
-            next_slug=transition.target_step.slug,
+            next_slug=next_slug,
             context_updates={"last_step_context": last_step_context},
         )
 
@@ -256,15 +251,10 @@ class UserMessageNodeHandler(BaseNodeHandler):
                 await emit_stream_event(ThreadItemAddedEvent(item=user_item))
                 await emit_stream_event(ThreadItemDoneEvent(item=user_item))
 
-        # Find next transition
-        transition = self._next_edge(context, node.slug)
-        if transition is None:
-            return NodeResult(
-                next_slug=None, context_updates={"last_step_context": last_step_context}
-            )
-
+        # Find next transition with fallback
+        next_slug = self._next_slug_or_fallback(node.slug, context)
         return NodeResult(
-            next_slug=transition.target_step.slug,
+            next_slug=next_slug,
             context_updates={"last_step_context": last_step_context},
         )
 

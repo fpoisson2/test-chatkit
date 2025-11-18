@@ -125,13 +125,14 @@ class AgentNodeHandler(BaseNodeHandler):
         if result.last_step_context is not None:
             context_updates["last_step_context"] = result.last_step_context
 
+        # Determine next slug
         if result.transition:
-            return NodeResult(
-                next_slug=result.transition.target_step.slug,
-                context_updates=context_updates,
-            )
+            next_slug = result.transition.target_step.slug
         else:
-            return NodeResult(next_slug=None, context_updates=context_updates)
+            # No explicit transition - use fallback logic (while parent or start)
+            next_slug = self._next_slug_or_fallback(node.slug, context)
+
+        return NodeResult(next_slug=next_slug, context_updates=context_updates)
 
     async def _execute_nested_workflow(
         self, node: WorkflowStep, context: ExecutionContext
@@ -270,13 +271,10 @@ class AgentNodeHandler(BaseNodeHandler):
             context.runtime_vars["final_end_state"] = nested_summary.end_state
             return NodeResult(finished=True, context_updates=context_updates)
 
-        # Find next transition
-        transition = self._next_edge(context, node.slug)
-        if transition is None:
-            return NodeResult(next_slug=None, context_updates={"last_step_context": last_step_context})
-
+        # Find next transition with fallback
+        next_slug = self._next_slug_or_fallback(node.slug, context)
         return NodeResult(
-            next_slug=transition.target_step.slug,
+            next_slug=next_slug,
             context_updates={"last_step_context": last_step_context},
         )
 

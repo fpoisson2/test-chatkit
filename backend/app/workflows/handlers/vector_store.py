@@ -48,9 +48,6 @@ class VectorStoreNodeHandler(BaseNodeHandler):
             session_factory=SessionLocal,
         )
 
-        # Find next transition
-        transition = self._next_edge(context, node.slug)
-        if transition is None:
-            return NodeResult(next_slug=None)
-
-        return NodeResult(next_slug=transition.target_step.slug)
+        # Find next transition with fallback
+        next_slug = self._next_slug_or_fallback(node.slug, context)
+        return NodeResult(next_slug=next_slug)
