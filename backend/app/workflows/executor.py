@@ -436,7 +436,7 @@ def _resolve_watch_payload(context: Any, steps: Sequence[WorkflowStepSummary]) -
     return None
 
 
-async def run_workflow(
+async def run_workflow_v1(
     workflow_input: WorkflowInput,
     *,
     agent_context: AgentContext[Any],
@@ -2017,7 +2017,7 @@ async def run_workflow(
                 branch_label=branch_label,
             )
 
-            branch_summary = await run_workflow(
+            branch_summary = await run_workflow_v1(
                 workflow_input,
                 agent_context=agent_context,
                 on_step=None,
@@ -3388,7 +3388,7 @@ async def run_workflow(
             )
 
             try:
-                nested_summary = await run_workflow(
+                nested_summary = await run_workflow_v1(
                     workflow_input,
                     agent_context=agent_context,
                     on_step=on_step,
@@ -3708,3 +3708,7 @@ async def run_workflow(
         else None,
         state=copy.deepcopy(state),
     )
+
+
+# Import v2 implementation as the default run_workflow
+from .executor_v2 import run_workflow_v2 as run_workflow  # noqa: E402, F401
