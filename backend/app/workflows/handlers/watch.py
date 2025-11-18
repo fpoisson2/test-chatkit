@@ -22,6 +22,8 @@ class WatchNodeHandler(BaseNodeHandler):
 
     async def execute(self, node: WorkflowStep, context: ExecutionContext) -> NodeResult:
         """Execute watch node by recording current context."""
+        from datetime import datetime
+
         from ..runtime.state_machine import NodeResult
         from chatkit.types import ThreadStreamEvent
 
@@ -41,7 +43,8 @@ class WatchNodeHandler(BaseNodeHandler):
 
         # Stream event if callback provided
         on_stream_event = context.runtime_vars.get("on_stream_event")
-        if on_stream_event is not None:
+        agent_context = context.runtime_vars.get("agent_context")
+        if on_stream_event is not None and agent_context is not None:
             if payload_to_display is None:
                 formatted_payload = "Aucune donnée issue du bloc précédent."
             else:
@@ -59,7 +62,9 @@ class WatchNodeHandler(BaseNodeHandler):
             )
 
             message_item = AssistantMessageItem(
-                id="watch",
+                id=agent_context.generate_id("message"),
+                thread_id=agent_context.thread.id,
+                created_at=datetime.now(),
                 content=[AssistantMessageContent(text=formatted_payload)],
             )
             event: ThreadStreamEvent = ThreadItemUpdated(
