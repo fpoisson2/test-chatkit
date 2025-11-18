@@ -29,14 +29,20 @@ from ..i18n_utils import resolve_frontend_i18n_path
 from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
 from ..models import (
+    ChatThread,
     Language,
     LanguageGenerationTask,
     LTIRegistration,
     SipAccount,
     TelephonyRoute,
     User,
+    Workflow,
+    WorkflowDefinition,
+    WorkflowStep,
 )
 from ..schemas import (
+    ActiveWorkflowSession,
+    ActiveWorkflowSessionsResponse,
     AppearanceSettingsResponse,
     AppearanceSettingsUpdateRequest,
     AppSettingsResponse,
@@ -58,6 +64,9 @@ from ..schemas import (
     UserCreate,
     UserResponse,
     UserUpdate,
+    WorkflowInfo,
+    WorkflowStepInfo,
+    WorkflowUserInfo,
 )
 from ..security import hash_password
 
@@ -1591,6 +1600,145 @@ async def activate_stored_language(
             status_code=500,
             detail=f"Failed to update translations.ts: {str(e)}"
         ) from e
+
+
+# ============================================================================
+# Workflow Monitoring Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/api/admin/workflows/active-sessions",
+    response_model=ActiveWorkflowSessionsResponse,
+)
+async def get_active_workflow_sessions(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Récupère toutes les sessions de workflow actives pour tous les utilisateurs.
+
+    Retourne les informations sur les threads ayant un workflow en pause
+    (en attente d'une réponse utilisateur), incluant :
+    - Les informations utilisateur
+    - Les informations sur le workflow
+    - L'étape actuelle dans le workflow
+    - L'historique des étapes complétées
+    - Les timestamps de début et dernière activité
+    """
+    from ..chatkit_server.context import _get_wait_state_metadata
+
+    # Récupérer tous les ChatThreads
+    all_threads = session.scalars(select(ChatThread)).all()
+
+    active_sessions = []
+
+    for thread in all_threads:
+        # Récupérer les métadonnées d'attente du workflow
+        wait_state = _get_wait_state_metadata(thread)
+
+        if not wait_state:
+            # Pas de workflow en attente pour ce thread
+            continue
+
+        # Extraire les informations du workflow runtime snapshot
+        snapshot = wait_state.get("snapshot")
+        if not snapshot or not isinstance(snapshot, dict):
+            continue
+
+        # Récupérer les infos du workflow depuis les métadonnées du thread
+        thread_metadata = thread.payload.get("metadata", {})
+        workflow_meta = thread_metadata.get("workflow", {})
+
+        if not workflow_meta:
+            continue
+
+        workflow_id = workflow_meta.get("id")
+        workflow_slug = workflow_meta.get("slug")
+        definition_id = workflow_meta.get("definition_id")
+
+        if not workflow_id:
+            continue
+
+        # Récupérer le workflow depuis la DB
+        workflow = session.get(Workflow, workflow_id)
+        if not workflow:
+            continue
+
+        # Récupérer l'utilisateur propriétaire du thread
+        owner_id = thread.owner_id
+        try:
+            user_id = int(owner_id)
+            user = session.get(User, user_id)
+            if not user:
+                continue
+        except (ValueError, TypeError):
+            # owner_id n'est pas un entier valide
+            continue
+
+        # Extraire les informations de l'étape actuelle
+        current_slug = snapshot.get("current_slug", "unknown")
+        steps_history = snapshot.get("steps", [])
+
+        # Trouver le display_name de l'étape actuelle
+        current_step_display = current_slug
+        if definition_id:
+            # Chercher l'étape dans la définition du workflow
+            workflow_step = session.scalar(
+                select(WorkflowStep).where(
+                    WorkflowStep.definition_id == definition_id,
+                    WorkflowStep.slug == current_slug,
+                )
+            )
+            if workflow_step:
+                current_step_display = workflow_step.display_name or current_slug
+
+        # Construire l'historique des étapes
+        step_history_list = []
+        for step in steps_history:
+            if isinstance(step, dict):
+                step_history_list.append(
+                    WorkflowStepInfo(
+                        slug=step.get("key", ""),
+                        display_name=step.get("title", ""),
+                        timestamp=None,  # Pas de timestamp disponible dans le snapshot
+                    )
+                )
+
+        # Déterminer le statut
+        status = "waiting_user"  # Par défaut, car c'est dans wait_state
+
+        # Créer la session active
+        active_session = ActiveWorkflowSession(
+            thread_id=thread.id,
+            user=WorkflowUserInfo(
+                id=user.id,
+                email=user.email,
+                is_admin=user.is_admin,
+            ),
+            workflow=WorkflowInfo(
+                id=workflow.id,
+                slug=workflow.slug,
+                display_name=workflow.display_name,
+                definition_id=definition_id,
+            ),
+            current_step=WorkflowStepInfo(
+                slug=current_slug,
+                display_name=current_step_display,
+                timestamp=None,
+            ),
+            step_history=step_history_list,
+            started_at=thread.created_at.isoformat(),
+            last_activity=thread.updated_at.isoformat(),
+            status=status,
+        )
+
+        active_sessions.append(active_session)
+
+    return ActiveWorkflowSessionsResponse(
+        sessions=active_sessions,
+        total_count=len(active_sessions),
+    )
 
 
 class AvailableModelResponse(BaseModel):

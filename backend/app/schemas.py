@@ -1480,3 +1480,53 @@ class VectorStoreDocumentSearchResult(BaseModel):
     score: float
     metadata: dict[str, Any] = Field(default_factory=dict)
     matches: list[VectorStoreSearchResult] = Field(default_factory=list)
+
+
+# ============================================================================
+# Workflow Monitoring (Admin)
+# ============================================================================
+
+
+class WorkflowStepInfo(BaseModel):
+    """Information sur une étape du workflow."""
+
+    slug: str
+    display_name: str
+    timestamp: str | None = None
+
+
+class WorkflowUserInfo(BaseModel):
+    """Information sur un utilisateur."""
+
+    id: int
+    email: str
+    is_admin: bool
+
+
+class WorkflowInfo(BaseModel):
+    """Information sur un workflow."""
+
+    id: int
+    slug: str
+    display_name: str
+    definition_id: int | None = None
+
+
+class ActiveWorkflowSession(BaseModel):
+    """Session de workflow active pour un utilisateur."""
+
+    thread_id: str
+    user: WorkflowUserInfo
+    workflow: WorkflowInfo
+    current_step: WorkflowStepInfo
+    step_history: list[WorkflowStepInfo]
+    started_at: str
+    last_activity: str
+    status: Literal["active", "waiting_user", "paused"]
+
+
+class ActiveWorkflowSessionsResponse(BaseModel):
+    """Liste des sessions de workflow actives."""
+
+    sessions: list[ActiveWorkflowSession]
+    total_count: int

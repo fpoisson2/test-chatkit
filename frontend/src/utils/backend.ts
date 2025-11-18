@@ -883,6 +883,25 @@ export const adminApi = {
       throw new ApiError("Échec de la suppression", { status: response.status });
     }
   },
+
+  async getActiveWorkflowSessions(token: string | null): Promise<{
+    sessions: Array<{
+      thread_id: string;
+      user: { id: number; email: string; is_admin: boolean };
+      workflow: { id: number; slug: string; display_name: string; definition_id: number | null };
+      current_step: { slug: string; display_name: string; timestamp: string | null };
+      step_history: Array<{ slug: string; display_name: string; timestamp: string | null }>;
+      started_at: string;
+      last_activity: string;
+      status: "active" | "waiting_user" | "paused";
+    }>;
+    total_count: number;
+  }> {
+    const response = await requestWithFallback("/api/admin/workflows/active-sessions", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
 };
 
 export const ltiAdminApi = {
