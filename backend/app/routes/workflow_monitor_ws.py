@@ -78,8 +78,8 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             # Note: User et Workflow ne sont pas des relations directes sur ChatThread dans le modèle actuel
             # On devra les charger efficacement
         )
-        # Filter for sessions updated in the last 24 hours
-        .where(ChatThread.updated_at >= datetime.utcnow() - timedelta(hours=24))
+        # Filter for sessions updated in the last 2 hours (truly active sessions)
+        .where(ChatThread.updated_at >= datetime.utcnow() - timedelta(hours=2))
         .order_by(ChatThread.updated_at.desc())
         .limit(100) # Sécurité pour ne pas exploser la mémoire
     )
@@ -165,30 +165,8 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
         if not steps_history:
              steps_history = workflow_meta.get("steps_history", [])
 
-        # Si pas de wait_state (workflow actif/running), essayer de déduire du dernier snapshot connu
-        # ou de l'historique dans les métadonnées si disponible
-        if current_slug == "unknown":
-             # Fallback: regarder si on a des infos dans le payload du thread
-             # Parfois le snapshot est stocké ailleurs ou on peut prendre la dernière étape de l'historique
-             pass
-
-        # Récupérer l'affichage de l'étape (seulement si pas déjà défini depuis les métadonnées)
-        if current_step_display == "unknown":
-            current_step_display = current_slug
-        
-        # Si on a un historique mais current_slug est unknown, on prend la dernière étape
-        if current_slug == "unknown" and steps_history:
-            last_step = steps_history[-1]
-            if isinstance(last_step, dict):
-                current_slug = last_step.get("key", "unknown")
-                current_step_display = last_step.get("title", current_slug)
-        
-        # Si on a toujours "unknown", c'est peut-être le début
-        if current_slug == "unknown":
-             current_step_display = "Initialisation..."
-
-        # Essayer d'enrichir le nom de l'étape depuis la DB si on a un definition_id
-        if definition_id and current_slug != "unknown" and current_slug != "Initialisation...":
+        # Enrichir le nom de l'étape depuis la DB si on a un definition_id et un slug connu
+        if definition_id and current_slug != "unknown":
             # Note: Idéalement on mettrait ça en cache ou batch aussi
             workflow_step = session.scalar(
                 select(WorkflowStep).where(
