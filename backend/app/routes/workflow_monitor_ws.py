@@ -7,6 +7,8 @@ import json
 import logging
 from typing import Any
 
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -76,7 +78,9 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             # Note: User et Workflow ne sont pas des relations directes sur ChatThread dans le modèle actuel
             # On devra les charger efficacement
         )
-        # On pourrait ajouter un filtre sur updated_at récent si on veut limiter l'historique
+        )
+        # Filter for sessions updated in the last 24 hours
+        .where(ChatThread.updated_at >= datetime.utcnow() - timedelta(hours=24))
         .order_by(ChatThread.updated_at.desc())
         .limit(100) # Sécurité pour ne pas exploser la mémoire
     )
@@ -145,6 +149,19 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             if snapshot and isinstance(snapshot, dict):
                 current_slug = snapshot.get("current_slug", "unknown")
                 steps_history = snapshot.get("steps", [])
+        
+        # Try to get current step from metadata (persisted during execution)
+        if current_slug == "unknown":
+            current_step_meta = workflow_meta.get("current_step")
+            if isinstance(current_step_meta, dict):
+                current_slug = current_step_meta.get("slug", "unknown")
+                # If we have a title in metadata, use it as display name fallback
+                if not current_step_display or current_step_display == "unknown":
+                    current_step_display = current_step_meta.get("title")
+
+        # Try to get history from metadata if not found in wait_state
+        if not steps_history:
+             steps_history = workflow_meta.get("steps_history", [])
         
         # Si pas de wait_state (workflow actif/running), essayer de déduire du dernier snapshot connu
         # ou de l'historique dans les métadonnées si disponible
