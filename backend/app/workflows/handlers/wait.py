@@ -156,6 +156,16 @@ class WaitNodeHandler(BaseNodeHandler):
         if context.state:
             wait_state_payload["state"] = _json_safe_copy(context.state)
 
+        # Add snapshot for workflow monitoring
+        snapshot_payload: dict[str, Any] = {
+            "current_slug": node.slug,
+            "steps": [
+                {"key": step.key, "title": step.title}
+                for step in context.steps_history
+            ],
+        }
+        wait_state_payload["snapshot"] = snapshot_payload
+
         if thread is not None:
             _set_wait_state_metadata(thread, wait_state_payload)
 

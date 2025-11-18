@@ -21,6 +21,42 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..executor import WorkflowStepSummary
 
 
+def _update_workflow_metadata(thread: Any, slug: str, title: str, steps_history: list[Any]) -> None:
+    """Update workflow metadata in thread for monitoring purposes."""
+    if thread is None:
+        return
+
+    # Get current metadata
+    metadata = getattr(thread, "metadata", None)
+    if isinstance(metadata, dict):
+        updated = dict(metadata)
+    else:
+        updated = {}
+
+    # Ensure workflow metadata exists
+    if "workflow" not in updated or not isinstance(updated["workflow"], dict):
+        updated["workflow"] = {}
+
+    # Update current step
+    updated["workflow"]["current_step"] = {
+        "slug": slug,
+        "title": title,
+    }
+
+    # Update steps history
+    updated["workflow"]["steps_history"] = [
+        {"key": step.key, "title": step.title}
+        for step in steps_history
+    ]
+
+    # Save back to thread
+    if hasattr(thread, "metadata"):
+        try:
+            thread.metadata = updated
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to update workflow metadata: %s", exc)
+
+
 @dataclass
 class ExecutionContext:
     """Shared context passed to all node handlers.
@@ -166,6 +202,12 @@ class WorkflowStateMachine:
 
             # Execute handler
             result = await handler.execute(current_node, context)
+
+            # Update workflow metadata for monitoring (after each step execution)
+            thread = context.runtime_vars.get("thread")
+            if thread is not None:
+                node_title = handler._node_title(current_node) if hasattr(handler, "_node_title") else ""
+                _update_workflow_metadata(thread, current_node.slug, node_title, context.steps)
 
             if debug_enabled:
                 logger.debug(

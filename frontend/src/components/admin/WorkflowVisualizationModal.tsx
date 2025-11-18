@@ -479,14 +479,54 @@ export const WorkflowVisualizationModal = ({
                 edges={edges}
                 nodeTypes={nodeTypes}
                 fitView
+                fitViewOptions={{
+                  padding: 0.2,
+                  minZoom: 0.5,
+                  maxZoom: 1.5,
+                }}
+                minZoom={0.1}
+                maxZoom={4}
                 attributionPosition="bottom-left"
                 nodesDraggable={false}
                 nodesConnectable={false}
-                elementsSelectable={false}
+                elementsSelectable={true}
+                panOnScroll={true}
+                zoomOnScroll={true}
+                zoomOnPinch={true}
+                panOnDrag={true}
+                style={{
+                  background: "var(--color-surface-subtle, #f9fafb)",
+                }}
               >
-                <Background />
-                <Controls showInteractive={false} />
-                <MiniMap />
+                <Background gap={18} size={1} color="#e5e7eb" />
+                <Controls
+                  showZoom={true}
+                  showFitView={true}
+                  showInteractive={true}
+                />
+                <MiniMap
+                  nodeStrokeColor={(node) => {
+                    const colors: Record<string, string> = {
+                      start: "#10b981",
+                      end: "#ef4444",
+                      agent: "#3b82f6",
+                      condition: "#f59e0b",
+                      wait: "#8b5cf6",
+                    };
+                    return colors[node.data.kind] || "#6b7280";
+                  }}
+                  nodeColor={(node) => {
+                    const colors: Record<string, string> = {
+                      start: "#10b981",
+                      end: "#ef4444",
+                      agent: "#3b82f6",
+                      condition: "#f59e0b",
+                      wait: "#8b5cf6",
+                    };
+                    return colors[node.data.kind] || "#6b7280";
+                  }}
+                  maskColor="rgba(0, 0, 0, 0.05)"
+                />
               </ReactFlow>
             </div>
           </>

@@ -149,6 +149,9 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             if snapshot and isinstance(snapshot, dict):
                 current_slug = snapshot.get("current_slug", "unknown")
                 steps_history = snapshot.get("steps", [])
+                logger.info(f"[WS_MONITOR] Thread {thread.id}: found snapshot with slug={current_slug}, steps_count={len(steps_history)}")
+        else:
+            logger.info(f"[WS_MONITOR] Thread {thread.id}: NO wait_state, workflow_meta keys={list(workflow_meta.keys())}")
 
         # Try to get current step from metadata (persisted during execution)
         current_step_meta = workflow_meta.get("current_step")
