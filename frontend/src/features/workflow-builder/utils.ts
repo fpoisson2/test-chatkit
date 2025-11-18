@@ -176,8 +176,10 @@ const calculateParentSlugs = (flowNodes: FlowNode[]): Map<string, string | null>
 
     // Check each while block
     for (const whileNode of whileNodes) {
-      const whileSize = getWhileNodeSizeFromStyle(whileNode.style);
-      if (!whileSize) continue;
+      // Try to get size from style first, then from metadata
+      const whileSize = getWhileNodeSizeFromStyle(whileNode.style)
+        ?? extractWhileNodeSize(whileNode.data.metadata)
+        ?? DEFAULT_WHILE_NODE_SIZE;
 
       const whileX = whileNode.position.x;
       const whileY = whileNode.position.y;
