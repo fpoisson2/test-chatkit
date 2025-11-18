@@ -78,7 +78,6 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             # Note: User et Workflow ne sont pas des relations directes sur ChatThread dans le modèle actuel
             # On devra les charger efficacement
         )
-        )
         # Filter for sessions updated in the last 24 hours
         .where(ChatThread.updated_at >= datetime.utcnow() - timedelta(hours=24))
         .order_by(ChatThread.updated_at.desc())
