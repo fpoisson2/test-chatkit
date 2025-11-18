@@ -207,7 +207,13 @@ class WorkflowStateMachine:
             thread = context.runtime_vars.get("thread")
             if thread is not None:
                 node_title = handler._node_title(current_node) if hasattr(handler, "_node_title") else ""
+                logger.info(
+                    f"[WORKFLOW_META] Updating metadata for step {current_node.slug}: "
+                    f"title='{node_title}', steps_count={len(context.steps)}"
+                )
                 _update_workflow_metadata(thread, current_node.slug, node_title, context.steps)
+            else:
+                logger.warning(f"[WORKFLOW_META] No thread in runtime_vars for step {current_node.slug}")
 
             if debug_enabled:
                 logger.debug(

@@ -55,7 +55,7 @@ interface WorkflowStep {
   display_name: string;
   kind: string;
   position: { x: number; y: number };
-  ui_metadata?: {
+  metadata?: {
     position?: { x: number; y: number };
   };
 }
@@ -298,7 +298,7 @@ export const WorkflowVisualizationModal = ({
 
     // Construire les nodes
     const nodes: Node[] = (workflowVersion.graph?.nodes || []).map((step) => {
-      const position = step.ui_metadata?.position || step.position || { x: 0, y: 0 };
+      const position = step.metadata?.position || { x: 0, y: 0 };
       const usersOnThisStep = usersByStep.get(step.slug) || [];
       const nodeStatus = getNodeStatus(step.slug);
 
