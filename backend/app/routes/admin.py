@@ -1634,7 +1634,7 @@ async def get_active_workflow_sessions(
     stmt = (
         select(ChatThread)
         .where(
-            ChatThread.payload.op("->")("metadata").op("->")("workflow").is_not(None)
+            ChatThread.payload["metadata"]["workflow"].is_not(None)
         )
         # Filter for sessions updated in the last 24 hours
         .where(ChatThread.updated_at >= datetime.datetime.utcnow() - datetime.timedelta(hours=24))
