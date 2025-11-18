@@ -1633,36 +1633,41 @@ async def get_active_workflow_sessions(
 
     active_sessions = []
 
+    logger.info(f"[WORKFLOW_MONITOR] Checking {len(all_threads)} threads for active workflow sessions")
+
     for thread in all_threads:
-        # Récupérer les métadonnées d'attente du workflow
-        wait_state = _get_wait_state_metadata(thread)
+        # Récupérer les métadonnées du thread
+        thread_payload = thread.payload if hasattr(thread, 'payload') else {}
+        thread_metadata = thread_payload.get("metadata", {}) if isinstance(thread_payload, dict) else {}
+        workflow_meta = thread_metadata.get("workflow", {}) if isinstance(thread_metadata, dict) else {}
 
-        if not wait_state:
-            # Pas de workflow en attente pour ce thread
-            continue
-
-        # Extraire les informations du workflow runtime snapshot
-        snapshot = wait_state.get("snapshot")
-        if not snapshot or not isinstance(snapshot, dict):
-            continue
-
-        # Récupérer les infos du workflow depuis les métadonnées du thread
-        thread_metadata = thread.payload.get("metadata", {})
-        workflow_meta = thread_metadata.get("workflow", {})
-
-        if not workflow_meta:
+        # Skip threads sans workflow
+        if not workflow_meta or not isinstance(workflow_meta, dict):
             continue
 
         workflow_id = workflow_meta.get("id")
-        workflow_slug = workflow_meta.get("slug")
-        definition_id = workflow_meta.get("definition_id")
-
         if not workflow_id:
             continue
+
+        logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: has workflow metadata (id={workflow_id})")
+
+        # Essayer de récupérer le snapshot depuis wait_state si disponible
+        wait_state = _get_wait_state_metadata(thread)
+        snapshot = None
+        current_slug = "unknown"
+        steps_history = []
+
+        if wait_state and isinstance(wait_state, dict):
+            snapshot = wait_state.get("snapshot")
+            if snapshot and isinstance(snapshot, dict):
+                current_slug = snapshot.get("current_slug", "unknown")
+                steps_history = snapshot.get("steps", [])
+                logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: found snapshot in wait_state")
 
         # Récupérer le workflow depuis la DB
         workflow = session.get(Workflow, workflow_id)
         if not workflow:
+            logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: workflow {workflow_id} not found in DB")
             continue
 
         # Récupérer l'utilisateur propriétaire du thread
@@ -1671,18 +1676,16 @@ async def get_active_workflow_sessions(
             user_id = int(owner_id)
             user = session.get(User, user_id)
             if not user:
+                logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: user {owner_id} not found")
                 continue
         except (ValueError, TypeError):
-            # owner_id n'est pas un entier valide
+            logger.info(f"[WORKFLOW_MONITOR] Thread {thread.id}: invalid owner_id {owner_id}")
             continue
-
-        # Extraire les informations de l'étape actuelle
-        current_slug = snapshot.get("current_slug", "unknown")
-        steps_history = snapshot.get("steps", [])
 
         # Trouver le display_name de l'étape actuelle
         current_step_display = current_slug
-        if definition_id:
+        definition_id = workflow_meta.get("definition_id")
+        if definition_id and current_slug != "unknown":
             # Chercher l'étape dans la définition du workflow
             workflow_step = session.scalar(
                 select(WorkflowStep).where(
@@ -1706,7 +1709,9 @@ async def get_active_workflow_sessions(
                 )
 
         # Déterminer le statut
-        status = "waiting_user"  # Par défaut, car c'est dans wait_state
+        # Si le workflow a un wait_state, il est en attente utilisateur
+        # Sinon, il est considéré comme actif (probablement en cours d'exécution ou terminé récemment)
+        status = "waiting_user" if wait_state else "active"
 
         # Créer la session active
         active_session = ActiveWorkflowSession(
@@ -1735,6 +1740,7 @@ async def get_active_workflow_sessions(
 
         active_sessions.append(active_session)
 
+    logger.info(f"[WORKFLOW_MONITOR] Found {len(active_sessions)} active workflow sessions")
     return ActiveWorkflowSessionsResponse(
         sessions=active_sessions,
         total_count=len(active_sessions),

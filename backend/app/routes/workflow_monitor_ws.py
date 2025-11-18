@@ -66,24 +66,38 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
     all_threads = session.scalars(select(ChatThread)).all()
     active_sessions = []
 
+    logger.info(f"[WS_MONITOR] Checking {len(all_threads)} threads for active workflow sessions")
+
     for thread in all_threads:
-        wait_state = _get_wait_state_metadata(thread)
-        if not wait_state:
-            continue
+        # Récupérer les métadonnées du thread
+        thread_payload = thread.payload if hasattr(thread, 'payload') else {}
+        thread_metadata = thread_payload.get("metadata", {}) if isinstance(thread_payload, dict) else {}
+        workflow_meta = thread_metadata.get("workflow", {}) if isinstance(thread_metadata, dict) else {}
 
-        snapshot = wait_state.get("snapshot")
-        if not snapshot or not isinstance(snapshot, dict):
-            continue
-
-        thread_metadata = thread.payload.get("metadata", {})
-        workflow_meta = thread_metadata.get("workflow", {})
-        if not workflow_meta:
+        # Skip threads sans workflow
+        if not workflow_meta or not isinstance(workflow_meta, dict):
             continue
 
         workflow_id = workflow_meta.get("id")
-        definition_id = workflow_meta.get("definition_id")
         if not workflow_id:
             continue
+
+        logger.info(f"[WS_MONITOR] Thread {thread.id}: has workflow metadata (id={workflow_id})")
+
+        # Essayer de récupérer le snapshot depuis wait_state si disponible
+        wait_state = _get_wait_state_metadata(thread)
+        snapshot = None
+        current_slug = "unknown"
+        steps_history = []
+
+        if wait_state and isinstance(wait_state, dict):
+            snapshot = wait_state.get("snapshot")
+            if snapshot and isinstance(snapshot, dict):
+                current_slug = snapshot.get("current_slug", "unknown")
+                steps_history = snapshot.get("steps", [])
+                logger.info(f"[WS_MONITOR] Thread {thread.id}: found snapshot in wait_state")
+
+        definition_id = workflow_meta.get("definition_id")
 
         workflow = session.get(Workflow, workflow_id)
         if not workflow:
@@ -98,11 +112,8 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
         except (ValueError, TypeError):
             continue
 
-        current_slug = snapshot.get("current_slug", "unknown")
-        steps_history = snapshot.get("steps", [])
-
         current_step_display = current_slug
-        if definition_id:
+        if definition_id and current_slug != "unknown":
             workflow_step = session.scalar(
                 select(WorkflowStep).where(
                     WorkflowStep.definition_id == definition_id,
@@ -142,11 +153,12 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
             "step_history": step_history_list,
             "started_at": thread.created_at.isoformat(),
             "last_activity": thread.updated_at.isoformat(),
-            "status": "waiting_user",
+            "status": "waiting_user" if wait_state else "active",
         }
 
         active_sessions.append(active_session)
 
+    logger.info(f"[WS_MONITOR] Found {len(active_sessions)} active workflow sessions")
     return active_sessions
 
 
