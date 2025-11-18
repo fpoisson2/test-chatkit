@@ -112,18 +112,14 @@ class WhileNodeHandler(BaseNodeHandler):
                     transition = self._next_edge(context, node.slug)
 
         if transition is None:
-            # Check if start block is inside the while loop
-            inside_nodes = self._get_nodes_inside_while(node, context)
-            start_nodes = [n for n in context.nodes_by_slug.values() if n.kind == "start"]
-            if start_nodes and start_nodes[0].slug in inside_nodes:
-                # Start is inside the while, could fallback to it
-                # For now, return None to let main executor handle it
-                return NodeResult(next_slug=None)
-            else:
-                # Start is NOT inside the while, reset counter
-                context.state["state"].pop(loop_counter_key, None)
-                context.state["state"].pop(loop_entry_key, None)
-                return NodeResult(next_slug=None)
+            # No explicit transition found - use fallback logic
+            # Reset loop counter before leaving
+            context.state["state"].pop(loop_counter_key, None)
+            context.state["state"].pop(loop_entry_key, None)
+
+            # Use standard fallback: while parent or start node
+            next_slug = self._next_slug_or_fallback(node.slug, context)
+            return NodeResult(next_slug=next_slug)
 
         return NodeResult(next_slug=transition.target_step.slug)
 

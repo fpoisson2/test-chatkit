@@ -603,9 +603,8 @@ async def run_workflow_v2(
     return WorkflowRunSummary(
         steps=steps,
         state=state,
-        conversation_history=conversation_history,
         final_output=final_output,
         last_context=last_step_context,
         final_node_slug=final_node_slug,
-        final_end_state=final_end_state,
+        end_state=final_end_state,
     )
