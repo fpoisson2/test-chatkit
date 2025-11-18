@@ -56,11 +56,11 @@ def create_state_machine(
     machine.register_handler("widget", WidgetNodeHandler())
     machine.register_handler("json_vector_store", VectorStoreNodeHandler())
 
-    # Agent handlers (require AgentStepExecutor)
-    if agent_executor is not None:
-        agent_handler = AgentNodeHandler(agent_executor)
-        machine.register_handler("agent", agent_handler)
-        machine.register_handler("voice_agent", agent_handler)
+    # Agent handlers
+    # Note: In v2, agent_executor is optional as dependencies come from runtime_vars
+    agent_handler = AgentNodeHandler(agent_executor)
+    machine.register_handler("agent", agent_handler)
+    machine.register_handler("voice_agent", agent_handler)
 
     # Note: outbound_call nodes are voice-specific and handled separately in voice flows
 
