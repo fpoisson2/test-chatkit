@@ -162,7 +162,7 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
         # Try to get history from metadata if not found in wait_state
         if not steps_history:
              steps_history = workflow_meta.get("steps_history", [])
-        
+
         # Si pas de wait_state (workflow actif/running), essayer de déduire du dernier snapshot connu
         # ou de l'historique dans les métadonnées si disponible
         if current_slug == "unknown":
@@ -170,8 +170,9 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
              # Parfois le snapshot est stocké ailleurs ou on peut prendre la dernière étape de l'historique
              pass
 
-        # Récupérer l'affichage de l'étape
-        current_step_display = current_slug
+        # Récupérer l'affichage de l'étape (seulement si pas déjà défini depuis les métadonnées)
+        if current_step_display == "unknown":
+            current_step_display = current_slug
         
         # Si on a un historique mais current_slug est unknown, on prend la dernière étape
         if current_slug == "unknown" and steps_history:
