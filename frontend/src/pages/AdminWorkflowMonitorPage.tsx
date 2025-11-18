@@ -560,9 +560,9 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
                 borderRadius: "8px",
                 border: "1px solid #e5e7eb",
               }}>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   {/* Filtre par workflow */}
-                  <div style={{ flex: "1 1 200px", minWidth: "200px" }}>
+                  <div style={{ flex: "1 1 140px", minWidth: "140px" }}>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>
                       Workflow
                     </label>
@@ -582,7 +582,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
                   </div>
 
                   {/* Filtre par statut */}
-                  <div style={{ flex: "1 1 150px", minWidth: "150px" }}>
+                  <div style={{ flex: "0.8 1 100px", minWidth: "100px" }}>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>
                       Statut
                     </label>
@@ -600,7 +600,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
                   </div>
 
                   {/* Recherche par email */}
-                  <div style={{ flex: "2 1 250px", minWidth: "250px" }}>
+                  <div style={{ flex: "1.5 1 180px", minWidth: "180px" }}>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 500, marginBottom: "4px" }}>
                       Recherche utilisateur
                     </label>
@@ -616,7 +616,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
 
                   {/* Bouton réinitialiser */}
                   {hasActiveFilters && (
-                    <div style={{ display: "flex", alignItems: "flex-end" }}>
+                    <div style={{ flex: "0 0 auto" }}>
                       <button
                         type="button"
                         className="btn btn-sm btn-ghost"
