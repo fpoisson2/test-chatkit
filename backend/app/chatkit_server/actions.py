@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, create_model
 
 from ..database import SessionLocal
 from ..widgets import WidgetLibraryService
+from ..workflows.utils import _json_safe_copy
 
 logger = logging.getLogger("chatkit.server")
 
@@ -976,18 +977,6 @@ def _clone_widget_definition(definition: Any) -> Any | None:
         return json.loads(json.dumps(definition, ensure_ascii=False))
     except Exception:
         return None
-
-
-def _json_safe_copy(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {str(key): _json_safe_copy(item) for key, item in value.items()}
-    if isinstance(value, Sequence) and not isinstance(
-        value, str | bytes | bytearray
-    ):
-        return [_json_safe_copy(entry) for entry in value]
-    if isinstance(value, str | int | float | bool) or value is None:
-        return value
-    return str(value)
 
 
 def _extract_widget_slug(data: Mapping[str, Any]) -> str | None:

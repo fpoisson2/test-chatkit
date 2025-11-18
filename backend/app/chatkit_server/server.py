@@ -92,9 +92,9 @@ from .ags import (
 from .context import (
     AutoStartConfiguration,
     ChatKitRequestContext,
-    _normalize_user_text,
     _resolve_user_input_text,
 )
+from ..workflows.utils import _normalize_user_text
 from .widget_waiters import WidgetWaiterRegistry
 from .workflow_runner import (
     _STREAM_DONE,

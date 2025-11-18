@@ -10,13 +10,10 @@ from agents import TResponseInputItem
 from chatkit.agents import AgentContext, ThreadItemConverter
 from chatkit.types import ThreadItem, UserMessageItem
 
-from ...chatkit_server.context import (
-    _clone_conversation_history_snapshot,
-    _get_wait_state_metadata,
-    _normalize_user_text,
-)
+from ...chatkit_server.context import _get_wait_state_metadata
 from ...models import WorkflowDefinition
 from ..service import WorkflowService
+from ..utils import _clone_conversation_history_snapshot, _normalize_user_text
 from .history import _build_user_message_history_items
 
 if TYPE_CHECKING:  # pragma: no cover - aide pour les outils de typage

@@ -140,7 +140,7 @@ class AgentNodeHandler(BaseNodeHandler):
         """Execute nested workflow."""
         from ..executor import WorkflowExecutionError, run_workflow, _format_step_output
         from ..runtime.state_machine import NodeResult
-        from ...chatkit_server.context import _clone_conversation_history_snapshot
+        from ..utils import _clone_conversation_history_snapshot
 
         nested_workflow_configs = context.runtime_vars.get(
             "nested_workflow_configs", {}

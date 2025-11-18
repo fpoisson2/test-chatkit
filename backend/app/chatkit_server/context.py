@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from chatkit.types import ThreadItem, UserMessageItem
+
+from ..workflows.utils import (
+    _clone_conversation_history_snapshot,
+    _normalize_user_text,
+)
 
 _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 """Clé de métadonnées utilisée pour stocker l'état d'attente du workflow."""
@@ -51,35 +55,6 @@ def _set_wait_state_metadata(thread: Any, state: Mapping[str, Any] | None) -> No
         metadata.update(updated)
     else:
         thread.metadata = updated
-
-
-def _clone_conversation_history_snapshot(payload: Any) -> list[dict[str, Any]]:
-    """Nettoie et duplique un historique de conversation sérialisable."""
-
-    if isinstance(payload, str | bytes | bytearray):
-        return []
-    if not isinstance(payload, Sequence):
-        return []
-
-    cloned: list[dict[str, Any]] = []
-    for entry in payload:
-        if isinstance(entry, Mapping):
-            cloned.append(copy.deepcopy(dict(entry)))
-    return cloned
-
-
-_ZERO_WIDTH_CHARACTERS = frozenset({"\u200b", "\u200c", "\u200d", "\ufeff"})
-"""Caractères invisibles à supprimer dans les entrées utilisateur."""
-
-
-def _normalize_user_text(value: str | None) -> str:
-    """Supprime les caractères invisibles et normalise les messages utilisateurs."""
-
-    if not value:
-        return ""
-
-    sanitized = "".join(ch for ch in value if ch not in _ZERO_WIDTH_CHARACTERS)
-    return sanitized.strip()
 
 
 @dataclass(frozen=True)

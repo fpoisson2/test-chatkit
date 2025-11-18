@@ -68,14 +68,11 @@ from ..chatkit.agent_registry import (
     AgentProviderBinding,
 )
 from ..chatkit_server.actions import (
-    _json_safe_copy,
     _ResponseWidgetConfig,
     _should_wait_for_widget_action,
 )
 from ..chatkit_server.context import (
-    _clone_conversation_history_snapshot,
     _get_wait_state_metadata,
-    _normalize_user_text,
     _set_wait_state_metadata,
 )
 from ..chatkit_server.workflow_runner import (
@@ -96,6 +93,11 @@ from ..vector_store.ingestion import (
     ingest_document,
     ingest_workflow_step,
     resolve_transform_value,
+)
+from .utils import (
+    _clone_conversation_history_snapshot,
+    _json_safe_copy,
+    _normalize_user_text,
 )
 from .runtime import (
     _coerce_bool,

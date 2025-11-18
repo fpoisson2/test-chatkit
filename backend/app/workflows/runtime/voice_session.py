@@ -21,11 +21,8 @@ from chatkit.types import (
     UserMessageTextContent,
 )
 
-from ...chatkit_server.actions import _json_safe_copy
-from ...chatkit_server.context import (
-    _clone_conversation_history_snapshot,
-    _set_wait_state_metadata,
-)
+from ...chatkit_server.context import _set_wait_state_metadata
+from ..utils import _clone_conversation_history_snapshot, _json_safe_copy
 from ...realtime_runner import close_voice_session, open_voice_session
 from .vector_ingestion import ingest_vector_store_step
 

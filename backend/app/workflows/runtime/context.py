@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from agents import TResponseInputItem
 from chatkit.agents import AgentContext, ThreadItemConverter
 
-from ...chatkit_server.context import _normalize_user_text
+from ..utils import _normalize_user_text
 # Model capabilities removed
 from ...models import WorkflowDefinition
 from ..service import (
