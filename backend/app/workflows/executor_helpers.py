@@ -14,7 +14,7 @@ from typing import Any
 
 from chatkit.types import ThreadStreamEvent
 
-from ..db.connection import SessionLocal
+from ..database import SessionLocal
 from .executor import (
     WorkflowStepStreamUpdate,
     WorkflowStepSummary,

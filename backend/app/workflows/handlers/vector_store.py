@@ -25,8 +25,8 @@ class VectorStoreNodeHandler(BaseNodeHandler):
         self, node: WorkflowStep, context: ExecutionContext
     ) -> NodeResult:
         """Execute json_vector_store node."""
-        from ...db.connection import SessionLocal
-        from ..executor_helpers import ingest_vector_store_step
+        from ...database import SessionLocal
+        from ..runtime import ingest_vector_store_step
         from ..runtime.state_machine import NodeResult
 
         title = self._node_title(node)
