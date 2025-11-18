@@ -151,13 +151,15 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
                 steps_history = snapshot.get("steps", [])
 
         # Try to get current step from metadata (persisted during execution)
-        if current_slug == "unknown":
-            current_step_meta = workflow_meta.get("current_step")
-            if isinstance(current_step_meta, dict):
+        current_step_meta = workflow_meta.get("current_step")
+        if isinstance(current_step_meta, dict):
+            # Get slug if we don't have it yet
+            if current_slug == "unknown":
                 current_slug = current_step_meta.get("slug", "unknown")
-                # If we have a title in metadata, use it as display name fallback
-                if not current_step_display or current_step_display == "unknown":
-                    current_step_display = current_step_meta.get("title", "unknown")
+            # Always try to get the title from metadata
+            title_from_meta = current_step_meta.get("title")
+            if title_from_meta:
+                current_step_display = title_from_meta
 
         # Try to get history from metadata if not found in wait_state
         if not steps_history:

@@ -73,7 +73,10 @@ interface WorkflowVersion {
   name: string;
   version: number;
   steps: WorkflowStep[];
-  transitions: WorkflowTransition[];
+  graph: {
+    nodes: WorkflowStep[];
+    edges: WorkflowTransition[];
+  };
 }
 
 type NodeStatus = "active" | "completed" | "pending";
@@ -294,7 +297,7 @@ export const WorkflowVisualizationModal = ({
     };
 
     // Construire les nodes
-    const nodes: Node[] = workflowVersion.steps.map((step) => {
+    const nodes: Node[] = (workflowVersion.graph?.nodes || []).map((step) => {
       const position = step.ui_metadata?.position || step.position || { x: 0, y: 0 };
       const usersOnThisStep = usersByStep.get(step.slug) || [];
       const nodeStatus = getNodeStatus(step.slug);
@@ -314,10 +317,10 @@ export const WorkflowVisualizationModal = ({
 
     // Construire les edges de base
     const stepIdToSlug = new Map(
-      workflowVersion.steps.map((step) => [step.id, step.slug])
+      (workflowVersion.graph?.nodes || []).map((step) => [step.id, step.slug])
     );
 
-    const edges: Edge[] = workflowVersion.transitions.map((transition, index) => {
+    const edges: Edge[] = (workflowVersion.graph?.edges || []).map((transition, index) => {
       const sourceSlug = stepIdToSlug.get(transition.source_step_id);
       const targetSlug = stepIdToSlug.get(transition.target_step_id);
 
