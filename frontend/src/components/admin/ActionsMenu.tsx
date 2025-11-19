@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface ActionsMenuProps {
   actions: Array<{
@@ -12,11 +13,18 @@ interface ActionsMenuProps {
 
 export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node) &&
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
@@ -30,55 +38,110 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     };
   }, [isOpen]);
 
+  // Position menu when it opens
+  useEffect(() => {
+    if (!isOpen || !buttonRef.current || !menuRef.current) return;
+
+    const buttonRect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const spaceBelow = viewportHeight - buttonRect.bottom;
+    const estimatedMenuHeight = actions.length * 44 + 16;
+    const shouldOpenUpwards = spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight;
+
+    const menuWidth = 200;
+    const preferredLeft = buttonRect.left;
+
+    // Ensure menu stays within viewport
+    let finalLeft = preferredLeft;
+    if (finalLeft < 8) {
+      finalLeft = 8;
+    } else if (finalLeft + menuWidth > viewportWidth - 8) {
+      finalLeft = viewportWidth - menuWidth - 8;
+    }
+
+    // Position menu
+    const menu = menuRef.current;
+    menu.style.left = `${finalLeft}px`;
+
+    if (shouldOpenUpwards) {
+      menu.style.bottom = `${viewportHeight - buttonRect.top + 4}px`;
+      menu.style.top = 'auto';
+    } else {
+      menu.style.top = `${buttonRect.bottom + 4}px`;
+      menu.style.bottom = 'auto';
+    }
+  }, [isOpen, actions.length]);
+
+  // Separate effect for scroll handling
+  useEffect(() => {
+    if (isOpen) {
+      // Close menu on scroll/resize for better UX
+      // This is the standard behavior for dropdown menus
+      const handleScrollOrResize = () => {
+        setIsOpen(false);
+      };
+
+      window.addEventListener("scroll", handleScrollOrResize, true);
+      window.addEventListener("resize", handleScrollOrResize);
+
+      return () => {
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+        window.removeEventListener("resize", handleScrollOrResize);
+      };
+    }
+  }, [isOpen]);
+
   return (
-    <div style={{ position: "relative" }} ref={menuRef}>
-      <button
-        type="button"
-        className="btn btn-sm btn-subtle"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label="Actions"
-        style={{
-          padding: "4px 8px",
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-        }}
-      >
-        Actions
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="none"
+    <>
+      <div style={{ position: "relative" }} ref={containerRef}>
+        <button
+          ref={buttonRef}
+          type="button"
+          className="btn btn-sm btn-subtle"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-label="Actions"
           style={{
-            transition: "transform 0.2s",
-            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            padding: "4px 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
           }}
         >
-          <path
-            d="M3 4.5L6 7.5L9 4.5"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+          Actions
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            style={{
+              transition: "transform 0.2s",
+              transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          >
+            <path
+              d="M3 4.5L6 7.5L9 4.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
+          ref={menuRef}
+          className="actions-menu-dropdown"
           style={{
-            position: "absolute",
-            top: "100%",
-            right: 0,
-            marginTop: "4px",
-            background: "white",
-            border: "1px solid #e5e7eb",
-            borderRadius: "8px",
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
-            minWidth: "200px",
+            position: "fixed",
+            left: 0,
+            top: 0,
+            width: "200px",
+            maxHeight: "400px",
+            overflowY: "auto",
             zIndex: 1000,
-            overflow: "hidden",
           }}
         >
           {actions.map((action, index) => (
@@ -90,6 +153,7 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
                 setIsOpen(false);
               }}
               disabled={action.disabled}
+              className={`actions-menu-item ${action.variant === "danger" ? "actions-menu-item--danger" : ""}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -102,24 +166,15 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
                 fontSize: "14px",
                 cursor: action.disabled ? "not-allowed" : "pointer",
                 opacity: action.disabled ? 0.5 : 1,
-                color: action.variant === "danger" ? "#ef4444" : "#1f2937",
-                transition: "background-color 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                if (!action.disabled) {
-                  e.currentTarget.style.background = "#f3f4f6";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
               }}
             >
               {action.icon && <span>{action.icon}</span>}
               <span>{action.label}</span>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 };
