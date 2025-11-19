@@ -55,7 +55,6 @@ export const AdminWorkflowMonitorPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowInfo | null>(null);
   const [selectedSessions, setSelectedSessions] = useState<ActiveWorkflowSession[]>([]);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Filtres
   const [filterWorkflowId, setFilterWorkflowId] = useState<number | null>(null);
@@ -71,7 +70,6 @@ export const AdminWorkflowMonitorPage = () => {
   // Callbacks stables pour le WebSocket
   const handleWebSocketUpdate = useCallback((newSessions: ActiveWorkflowSession[]) => {
     setSessions(newSessions);
-    setLastUpdated(new Date());
     setLoading(false);
   }, []);
 
@@ -84,7 +82,6 @@ export const AdminWorkflowMonitorPage = () => {
     sessions: wsSessions,
     isConnected: wsConnected,
     error: wsError,
-    reconnect: wsReconnect,
   } = useWorkflowMonitorWebSocket({
     token,
     enabled: true,
@@ -194,10 +191,6 @@ export const AdminWorkflowMonitorPage = () => {
     setSelectedSessions([]);
   }, []);
 
-  const handleManualRefresh = useCallback(() => {
-    wsReconnect();
-  }, [wsReconnect]);
-
   const clearFilters = useCallback(() => {
     setFilterWorkflowId(null);
     setFilterStatus(null);
@@ -282,22 +275,6 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
       dateStyle: "short",
       timeStyle: "short",
     });
-  };
-
-  const formatRelativeTime = (date: Date) => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSecs = Math.floor(diffMs / 1000);
-
-    if (diffSecs < 60) {
-      return `Il y a ${diffSecs}s`;
-    }
-    const diffMins = Math.floor(diffSecs / 60);
-    if (diffMins < 60) {
-      return `Il y a ${diffMins} min`;
-    }
-    const diffHours = Math.floor(diffMins / 60);
-    return `Il y a ${diffHours}h`;
   };
 
   const formatDuration = (startDate: string) => {
@@ -499,7 +476,6 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
       <div className="admin-grid">
         <FormSection
           title="Workflows en cours"
-          subtitle="Visualisez tous les workflows actifs et la position de chaque utilisateur."
           headerAction={
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <div
@@ -515,45 +491,6 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
               >
                 {wsConnected ? "● Live" : "○ Offline"}
               </div>
-
-              {lastUpdated && (
-                <div style={{ fontSize: "12px", color: "#6b7280", marginRight: "8px" }}>
-                  <span title={formatDateTime(lastUpdated.toISOString())}>
-                    {formatRelativeTime(lastUpdated)}
-                  </span>
-                </div>
-              )}
-
-              <button
-                type="button"
-                className="management-header__icon-button"
-                aria-label="Reconnecter"
-                title="Reconnecter le WebSocket"
-                onClick={handleManualRefresh}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M4 10a6 6 0 1112 0M10 4v6"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M7 7l3-3 3 3"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
             </div>
           }
         >
