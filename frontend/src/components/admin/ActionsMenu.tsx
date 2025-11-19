@@ -84,28 +84,18 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     if (isOpen) {
       updatePosition();
 
-      // Update position on scroll to keep menu next to button
-      // Use requestAnimationFrame to ensure layout is updated before calculation
-      let rafId: number | null = null;
-      const handleScroll = () => {
-        if (rafId !== null) {
-          cancelAnimationFrame(rafId);
-        }
-        rafId = requestAnimationFrame(() => {
-          updatePosition();
-          rafId = null;
-        });
+      // Close menu on scroll/resize for better UX
+      // This is the standard behavior for dropdown menus
+      const handleScrollOrResize = () => {
+        setIsOpen(false);
       };
 
-      window.addEventListener("scroll", handleScroll, true);
-      window.addEventListener("resize", handleScroll);
+      window.addEventListener("scroll", handleScrollOrResize, true);
+      window.addEventListener("resize", handleScrollOrResize);
 
       return () => {
-        if (rafId !== null) {
-          cancelAnimationFrame(rafId);
-        }
-        window.removeEventListener("scroll", handleScroll, true);
-        window.removeEventListener("resize", handleScroll);
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+        window.removeEventListener("resize", handleScrollOrResize);
       };
     }
   }, [isOpen, actions.length, openUpwards]);
@@ -154,6 +144,8 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
           className="actions-menu-dropdown"
           style={{
             position: "fixed",
+            left: 0,
+            top: 0,
             width: "200px",
             maxHeight: "400px",
             overflowY: "auto",
