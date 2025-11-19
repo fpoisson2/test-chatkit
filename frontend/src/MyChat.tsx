@@ -225,6 +225,7 @@ export function MyChat() {
   type WorkflowInstanceData = {
     workflowId: string;
     mode: HostedFlowMode;
+    workflow: WorkflowSummary | null;
     initialThreadId: string | null;
     chatkitOptions: ChatKitOptions;
     createdAt: number;
@@ -706,6 +707,7 @@ export function MyChat() {
       next.set(currentWorkflowId, {
         workflowId: currentWorkflowId,
         mode,
+        workflow: activeWorkflow,
         initialThreadId,
         chatkitOptions,
         createdAt: existing?.createdAt ?? Date.now(),
@@ -726,7 +728,7 @@ export function MyChat() {
 
       return next;
     });
-  }, [currentWorkflowId, mode, initialThreadId, chatkitOptions, MAX_CACHED_INSTANCES]);
+  }, [currentWorkflowId, mode, activeWorkflow, initialThreadId, chatkitOptions, MAX_CACHED_INSTANCES]);
 
   const handleRequestRefreshReady = useCallback((requestRefresh: () => Promise<void>) => {
     requestRefreshRef.current = requestRefresh;
@@ -811,7 +813,7 @@ export function MyChat() {
               workflowId={instanceId}
               chatkitOptions={instance.chatkitOptions}
               token={token}
-              activeWorkflow={activeWorkflow}
+              activeWorkflow={instance.workflow}
               initialThreadId={instance.initialThreadId}
               reportError={reportError}
               mode={instance.mode}
