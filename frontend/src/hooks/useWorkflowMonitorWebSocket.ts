@@ -55,8 +55,17 @@ interface UseWorkflowMonitorWebSocketReturn {
 
 const WS_RECONNECT_DELAY = 3000; // 3 secondes
 const MAX_RECONNECT_ATTEMPTS = 5;
-const WORKFLOW_MONITOR_PATH = "/api/admin/workflows/monitor";
 const RAW_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
+const DEFAULT_API_BASE_PATH = "/api";
+const WORKFLOW_MONITOR_SUFFIX = "/admin/workflows/monitor";
+
+const sanitizeApiBasePath = (pathname: string) => {
+  if (!pathname || pathname === "/") {
+    return DEFAULT_API_BASE_PATH;
+  }
+
+  return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+};
 
 const buildWorkflowMonitorUrl = (token: string) => {
   if (typeof window === "undefined") {
@@ -66,11 +75,13 @@ const buildWorkflowMonitorUrl = (token: string) => {
   const origin = new URL(window.location.origin);
   const backendBase = RAW_BACKEND_URL
     ? new URL(RAW_BACKEND_URL, origin)
-    : origin;
+    : new URL(DEFAULT_API_BASE_PATH, origin);
 
-  const target = new URL(backendBase.origin);
+  const target = new URL(backendBase.toString());
   target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
-  target.pathname = WORKFLOW_MONITOR_PATH;
+  const apiBasePath = sanitizeApiBasePath(backendBase.pathname);
+  const monitorPath = `${apiBasePath}${WORKFLOW_MONITOR_SUFFIX}`;
+  target.pathname = monitorPath.startsWith("/") ? monitorPath : `/${monitorPath}`;
   target.search = "";
   target.searchParams.set("token", token);
 
