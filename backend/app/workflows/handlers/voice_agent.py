@@ -26,12 +26,10 @@ class VoiceAgentNodeHandler(BaseNodeHandler):
         self, node: WorkflowStep, context: ExecutionContext
     ) -> NodeResult:
         """Execute voice_agent step by starting a realtime voice session."""
-        from ...chatkit_server.context import _set_wait_state_metadata
+        from ...chatkit_server.context import _get_wait_state_metadata, _set_wait_state_metadata
         from ..executor import WorkflowEndState
         from ..runtime.state_machine import NodeResult
         from ..runtime.voice_context import _resolve_voice_agent_configuration
-
-        logger.info("Démarrage d'une session vocale pour l'étape %s", node.slug)
 
         # Get dependencies from context
         voice_session_manager = context.runtime_vars.get("voice_session_manager")
@@ -43,6 +41,77 @@ class VoiceAgentNodeHandler(BaseNodeHandler):
         current_input_item_id = context.runtime_vars.get("current_input_item_id")
         emit_stream_event = context.runtime_vars.get("emit_stream_event")
         voice_overrides = context.runtime_vars.get("voice_overrides")
+
+        # Check if we're resuming from a voice wait state
+        pending_wait_state = (
+            _get_wait_state_metadata(thread) if thread is not None else None
+        )
+        waiting_slug = (
+            pending_wait_state.get("slug") if pending_wait_state else None
+        )
+        waiting_type = (
+            pending_wait_state.get("type") if pending_wait_state else None
+        )
+        waiting_input_id = (
+            pending_wait_state.get("input_item_id") if pending_wait_state else None
+        )
+        voice_transcripts = (
+            pending_wait_state.get("voice_transcripts") if pending_wait_state else None
+        )
+
+        # Check if we're resuming from this voice session
+        resumed = (
+            pending_wait_state is not None
+            and waiting_type == "voice"
+            and waiting_slug == node.slug
+            and current_input_item_id
+            and waiting_input_id != current_input_item_id
+            and voice_transcripts is not None
+        )
+
+        if resumed:
+            # Resume from voice session - transcripts are ready
+            logger.info("Reprise du workflow après session vocale pour l'étape %s", node.slug)
+
+            next_slug = pending_wait_state.get("next_step_slug")
+            if next_slug is None:
+                next_slug = self._next_slug_or_fallback(node.slug, context)
+
+            # Clear wait state
+            if thread is not None:
+                _set_wait_state_metadata(thread, None)
+
+            # Build context with voice transcripts
+            last_step_context = {
+                "voice_transcripts": voice_transcripts,
+            }
+
+            if not next_slug:
+                # No transition after voice session - finish workflow
+                context.runtime_vars["final_end_state"] = WorkflowEndState(
+                    slug=node.slug,
+                    status_type="closed",
+                    status_reason=(
+                        "Aucune transition disponible après la session vocale."
+                    ),
+                    message=("Aucune transition disponible après la session vocale."),
+                )
+                return NodeResult(
+                    finished=True,
+                    context_updates={
+                        "last_step_context": last_step_context,
+                        "final_node_slug": node.slug,
+                    },
+                )
+
+            # Continue to next node
+            return NodeResult(
+                next_slug=next_slug,
+                context_updates={"last_step_context": last_step_context},
+            )
+
+        # First time hitting voice agent - start voice session
+        logger.info("Démarrage d'une session vocale pour l'étape %s", node.slug)
 
         # Resolve voice agent configuration
         voice_context, event_context = _resolve_voice_agent_configuration(
