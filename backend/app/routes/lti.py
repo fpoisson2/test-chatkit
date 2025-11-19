@@ -115,9 +115,10 @@ async def lti_launch(
     if message_type == "LtiDeepLinkingRequest":
         logger.info("Routing to deep linking selection page")
         # Redirect to deep linking selection page with state and id_token
-        # Use backend API route (served as HTML page)
+        # Use absolute URL to work correctly with reverse proxy
+        base_url = f"{request.url.scheme}://{request.url.netloc}"
         params = urlencode({"state": state, "id_token": id_token})
-        redirect_url = f"/api/lti/deep-link?{params}"
+        redirect_url = f"{base_url}/api/lti/deep-link?{params}"
         logger.info("Redirecting to deep link page: %s", redirect_url)
         return RedirectResponse(
             url=redirect_url,
@@ -543,9 +544,10 @@ async def lti_deep_link(
 
     # Si aucun workflow n'est sélectionné, rediriger vers la page de sélection
     if not workflow_ids and not workflow_slugs:
-        # Use backend API route (served as HTML page)
+        # Use absolute URL to work correctly with reverse proxy
+        base_url = f"{request.url.scheme}://{request.url.netloc}"
         params = urlencode({"state": state, "id_token": id_token})
-        redirect_url = f"/api/lti/deep-link?{params}"
+        redirect_url = f"{base_url}/api/lti/deep-link?{params}"
         logger.info("No workflows selected, redirecting to selection page: %s", redirect_url)
         return RedirectResponse(
             url=redirect_url,
