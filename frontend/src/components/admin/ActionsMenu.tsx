@@ -40,8 +40,8 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     };
   }, [isOpen]);
 
-  // Use useLayoutEffect to ensure position is set before paint
-  useLayoutEffect(() => {
+  // Use useEffect for portal positioning (portal renders async)
+  useEffect(() => {
     if (!isOpen) return;
 
     const updatePosition = () => {
@@ -88,7 +88,11 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     };
 
     setIsPositioned(false);
-    updatePosition();
+
+    // Use requestAnimationFrame to ensure portal DOM is ready
+    requestAnimationFrame(() => {
+      updatePosition();
+    });
   }, [isOpen, actions.length]);
 
   // Separate effect for scroll handling
