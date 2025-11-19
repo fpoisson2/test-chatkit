@@ -506,6 +506,17 @@ export function MyChat() {
         workflowName: workflow.display_name,
       });
 
+      // Clear existing instance for the new workflow to force recreation with fresh values
+      const newWorkflowId = `local::${providerSelectedWorkflowId}`;
+      setActiveInstances((prev) => {
+        const next = new Map(prev);
+        if (next.has(newWorkflowId)) {
+          console.log('[MyChat] Clearing existing instance to force refresh:', newWorkflowId);
+          next.delete(newWorkflowId);
+        }
+        return next;
+      });
+
       setWorkflowSelection({
         kind: "local",
         workflow,
