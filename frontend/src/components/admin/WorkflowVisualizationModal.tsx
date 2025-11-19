@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
+  Handle,
   MarkerType,
+  Position,
   type Node,
   type Edge,
   type NodeProps,
@@ -141,35 +143,48 @@ const CustomNode = ({
   const nodeStyle = getNodeStyleByStatus(data.nodeStatus, data.kind);
 
   return (
-    <div
-      style={{
-        padding: "10px 20px",
-        borderRadius: "8px",
-        minWidth: "150px",
-        position: "relative",
-        transition: "all 0.3s ease",
-        cursor: data.users && data.users.length > 0 ? "pointer" : "default",
-        ...nodeStyle,
-      }}
-      onClick={() => data.users && data.users.length > 0 && setShowUsersList(!showUsersList)}
-      onMouseEnter={() => data.users && data.users.length > 0 && setShowUsersList(true)}
-      onMouseLeave={() => setShowUsersList(false)}
-    >
+    <>
+      {/* Handle d'entrée (target) */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{
+          background: "#555",
+          width: 8,
+          height: 8,
+          border: "2px solid white",
+        }}
+      />
+
       <div
         style={{
-          fontWeight: 600,
-          fontSize: "14px",
-          marginBottom: "4px",
-          color: data.nodeStatus === "pending"
-            ? "var(--color-text-subtle, #9ca3af)"
-            : "var(--color-text, #1f2937)",
+          padding: "10px 20px",
+          borderRadius: "8px",
+          minWidth: "150px",
+          position: "relative",
+          transition: "all 0.3s ease",
+          cursor: data.users && data.users.length > 0 ? "pointer" : "default",
+          ...nodeStyle,
         }}
+        onClick={() => data.users && data.users.length > 0 && setShowUsersList(!showUsersList)}
+        onMouseEnter={() => data.users && data.users.length > 0 && setShowUsersList(true)}
+        onMouseLeave={() => setShowUsersList(false)}
       >
-        {data.label}
-      </div>
-      <div style={{ fontSize: "11px", color: "var(--color-text-muted, #6b7280)" }}>
-        {data.kind}
-      </div>
+        <div
+          style={{
+            fontWeight: 600,
+            fontSize: "14px",
+            marginBottom: "4px",
+            color: data.nodeStatus === "pending"
+              ? "var(--color-text-subtle, #9ca3af)"
+              : "var(--color-text, #1f2937)",
+          }}
+        >
+          {data.label}
+        </div>
+        <div style={{ fontSize: "11px", color: "var(--color-text-muted, #6b7280)" }}>
+          {data.kind}
+        </div>
 
       {/* Badge utilisateurs actuels */}
       {data.users && data.users.length > 0 && (
@@ -278,10 +293,24 @@ const CustomNode = ({
           ✓
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Handle de sortie (source) */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{
+          background: "#555",
+          width: 8,
+          height: 8,
+          border: "2px solid white",
+        }}
+      />
+    </>
   );
 };
 
+// Définir nodeTypes en dehors du composant pour éviter les re-créations
 const nodeTypes = {
   custom: CustomNode,
 };
