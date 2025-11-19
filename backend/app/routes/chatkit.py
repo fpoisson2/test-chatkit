@@ -19,6 +19,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
+from starlette.requests import ClientDisconnect
 
 try:  # pragma: no cover - dépendance optionnelle pour les tests
     from chatkit.server import StreamingResult
@@ -1341,7 +1342,18 @@ async def chatkit_endpoint(
             },
         ) from exc
 
-    payload = await request.body()
+    try:
+        payload = await request.body()
+    except ClientDisconnect:
+        logger.warning(
+            "Client disconnected before request body could be read (user=%s)",
+            current_user.id,
+        )
+        raise HTTPException(
+            status_code=499,
+            detail="Client disconnected before request could be processed",
+        )
+
     payload_length = len(payload)
     content_type = request.headers.get("content-type") or "<inconnu>"
 
