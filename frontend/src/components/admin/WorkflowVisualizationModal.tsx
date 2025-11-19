@@ -409,14 +409,11 @@ export const WorkflowVisualizationModal = ({
     });
 
     // Construire les edges de base
-    const stepIdToSlug = new Map(
-      (workflowVersion.graph?.nodes || []).map((step) => [step.id, step.slug])
-    );
-
     const edges: Edge[] = (workflowVersion.graph?.edges || [])
       .map((transition, index) => {
-        const sourceSlug = stepIdToSlug.get(transition.source_step_id);
-        const targetSlug = stepIdToSlug.get(transition.target_step_id);
+        // Les edges de l'API ont déjà source et target comme slugs
+        const sourceSlug = transition.source;
+        const targetSlug = transition.target;
 
         // Déterminer si cet edge fait partie d'un chemin parcouru
         const isOnUserPath = sourceSlug && targetSlug &&
@@ -426,9 +423,9 @@ export const WorkflowVisualizationModal = ({
 
         return {
           id: `edge-${index}`,
-          source: sourceSlug || "",
-          target: targetSlug || "",
-          label: transition.condition || undefined,
+          source: sourceSlug,
+          target: targetSlug,
+          label: transition.condition || transition.metadata?.label || undefined,
           type: "smoothstep",
           animated: false,
           markerEnd: {
