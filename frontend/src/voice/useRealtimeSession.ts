@@ -133,12 +133,61 @@ type ConnectionRecord = {
 
 const connectionPool = new Map<string, ConnectionRecord>();
 let listenerCounter = 0;
+let wakeLock: WakeLockSentinel | null = null;
+
+// Request Wake Lock to keep websockets alive in background
+const requestWakeLock = async () => {
+  if (typeof navigator === "undefined" || !("wakeLock" in navigator)) {
+    logRealtime("Wake Lock API not supported");
+    return;
+  }
+
+  if (wakeLock !== null && !wakeLock.released) {
+    logRealtime("Wake Lock already active");
+    return;
+  }
+
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    logRealtime("Wake Lock activated - websockets will stay alive in background");
+
+    wakeLock.addEventListener("release", () => {
+      logRealtime("Wake Lock released");
+    });
+  } catch (error) {
+    logRealtime("Failed to acquire Wake Lock", { error });
+  }
+};
+
+// Release Wake Lock when no longer needed
+const releaseWakeLock = async () => {
+  if (wakeLock !== null && !wakeLock.released) {
+    try {
+      await wakeLock.release();
+      wakeLock = null;
+      logRealtime("Wake Lock released manually");
+    } catch (error) {
+      logRealtime("Failed to release Wake Lock", { error });
+    }
+  }
+};
 
 // Handle page visibility changes (important for mobile)
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       logRealtime("page became visible, checking connections");
+
+      // Reacquire Wake Lock if we have active connections
+      const hasActiveConnections = Array.from(connectionPool.values()).some(
+        (record) => record.listeners.size > 0
+      );
+      if (hasActiveConnections) {
+        requestWakeLock().catch((error) => {
+          logRealtime("Failed to reacquire Wake Lock", { error });
+        });
+      }
+
       connectionPool.forEach((record) => {
         // If we have listeners and we're disconnected, try to reconnect
         if (
@@ -465,6 +514,12 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
       record.connectPromise = null;
       record.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
       notifyConnectionChange(record, "connected");
+
+      // Activate Wake Lock to keep connection alive
+      requestWakeLock().catch((error) => {
+        logRealtime("Failed to activate Wake Lock on connect", { error });
+      });
+
       resolve();
     };
 
@@ -558,6 +613,16 @@ const releaseListener = (gatewayUrl: string, listenerId: string) => {
       }
     }
     teardownAudioContextForRecord(record);
+
+    // Release Wake Lock if no more active connections
+    const hasActiveConnections = Array.from(connectionPool.values()).some(
+      (r) => r.listeners.size > 0
+    );
+    if (!hasActiveConnections) {
+      releaseWakeLock().catch((error) => {
+        logRealtime("Failed to release Wake Lock", { error });
+      });
+    }
   }
 };
 
