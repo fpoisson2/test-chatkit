@@ -390,7 +390,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     setWorkflows,
     setSelectedWorkflowId,
     setSelectedHostedSlug,
+    mode: contextMode,
   } = useWorkflowSidebar();
+
+  // Sync mode from context (e.g. when changed via storage event from another tab/component)
+  useEffect(() => {
+    if (contextMode && contextMode !== mode) {
+      setMode(contextMode);
+    }
+  }, [contextMode, mode, setMode]);
 
   const [updatingWorkflowId, setUpdatingWorkflowId] = useState<number | null>(null);
   const hostedInitialAnnouncedRef = useRef(false);

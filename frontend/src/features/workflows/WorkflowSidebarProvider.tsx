@@ -253,6 +253,16 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
         return;
       }
 
+      const stored = readStoredWorkflowSelection();
+      if (stored) {
+        if (stored.mode === "local") {
+          setSelectedWorkflowId(stored.localWorkflowId);
+        } else if (stored.mode === "hosted") {
+          setSelectedHostedSlug(stored.hostedSlug);
+        }
+        setMode(stored.mode);
+      }
+
       setLastUsedAt(
         buildWorkflowOrderingTimestamps(
           workflowsRef.current,
