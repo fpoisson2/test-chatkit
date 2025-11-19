@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 interface ActionsMenuProps {
@@ -13,8 +13,6 @@ interface ActionsMenuProps {
 
 export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [openUpwards, setOpenUpwards] = useState(false);
-  const [isPositioned, setIsPositioned] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -40,59 +38,39 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     };
   }, [isOpen]);
 
-  // Use useEffect for portal positioning (portal renders async)
+  // Position menu when it opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !buttonRef.current || !menuRef.current) return;
 
-    const updatePosition = () => {
-      if (!buttonRef.current || !menuRef.current) return;
+    const buttonRect = buttonRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const spaceBelow = viewportHeight - buttonRect.bottom;
+    const estimatedMenuHeight = actions.length * 44 + 16;
+    const shouldOpenUpwards = spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight;
 
-      const buttonRect = buttonRef.current.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
-      const spaceBelow = viewportHeight - buttonRect.bottom;
-      const estimatedMenuHeight = actions.length * 44 + 16; // 44px per item + padding
-      const shouldOpenUpwards = spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight;
+    const menuWidth = 200;
+    const preferredLeft = buttonRect.left;
 
-      // Calculate menu width
-      const menuWidth = 200;
+    // Ensure menu stays within viewport
+    let finalLeft = preferredLeft;
+    if (finalLeft < 8) {
+      finalLeft = 8;
+    } else if (finalLeft + menuWidth > viewportWidth - 8) {
+      finalLeft = viewportWidth - menuWidth - 8;
+    }
 
-      // Calculate position: align left edge of menu with left edge of button
-      const preferredLeft = buttonRect.left;
+    // Position menu
+    const menu = menuRef.current;
+    menu.style.left = `${finalLeft}px`;
 
-      // Ensure menu stays within viewport with 8px margin
-      let finalLeft = preferredLeft;
-      if (finalLeft < 8) {
-        finalLeft = 8; // Too far left, push right
-      } else if (finalLeft + menuWidth > viewportWidth - 8) {
-        finalLeft = viewportWidth - menuWidth - 8; // Too far right, push left
-      }
-
-      // Update DOM directly for instant synchronization
-      const menu = menuRef.current;
-      menu.style.left = `${finalLeft}px`;
-
-      if (shouldOpenUpwards) {
-        menu.style.bottom = `${viewportHeight - buttonRect.top + 4}px`;
-        menu.style.top = 'auto';
-      } else {
-        menu.style.top = `${buttonRect.bottom + 4}px`;
-        menu.style.bottom = 'auto';
-      }
-
-      // Mark as positioned so it becomes visible
-      setIsPositioned(true);
-
-      // Update openUpwards state if needed
-      setOpenUpwards(shouldOpenUpwards);
-    };
-
-    setIsPositioned(false);
-
-    // Use requestAnimationFrame to ensure portal DOM is ready
-    requestAnimationFrame(() => {
-      updatePosition();
-    });
+    if (shouldOpenUpwards) {
+      menu.style.bottom = `${viewportHeight - buttonRect.top + 4}px`;
+      menu.style.top = 'auto';
+    } else {
+      menu.style.top = `${buttonRect.bottom + 4}px`;
+      menu.style.bottom = 'auto';
+    }
   }, [isOpen, actions.length]);
 
   // Separate effect for scroll handling
@@ -164,8 +142,6 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
             maxHeight: "400px",
             overflowY: "auto",
             zIndex: 1000,
-            opacity: isPositioned ? 1 : 0,
-            pointerEvents: isPositioned ? 'auto' : 'none',
           }}
         >
           {actions.map((action, index) => (
