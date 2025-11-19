@@ -41,6 +41,8 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
 
   // Use useLayoutEffect to ensure position is set before paint
   useLayoutEffect(() => {
+    if (!isOpen) return;
+
     const updatePosition = () => {
       if (!buttonRef.current || !menuRef.current) return;
 
@@ -77,20 +79,16 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
         menu.style.bottom = 'auto';
       }
 
-      // Update state only if direction changes (rare)
-      if (shouldOpenUpwards !== openUpwards) {
-        setOpenUpwards(shouldOpenUpwards);
-      }
-
       // Mark as positioned so it becomes visible
       setIsPositioned(true);
+
+      // Update openUpwards state if needed
+      setOpenUpwards(shouldOpenUpwards);
     };
 
-    if (isOpen) {
-      setIsPositioned(false);
-      updatePosition();
-    }
-  }, [isOpen, actions.length, openUpwards]);
+    setIsPositioned(false);
+    updatePosition();
+  }, [isOpen, actions.length]);
 
   // Separate effect for scroll handling
   useEffect(() => {
