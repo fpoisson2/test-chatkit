@@ -12,7 +12,9 @@ interface ActionsMenuProps {
 
 export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [openUpwards, setOpenUpwards] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -30,9 +32,21 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const spaceBelow = viewportHeight - buttonRect.bottom;
+      const estimatedMenuHeight = actions.length * 44 + 16; // 44px per item + padding
+
+      setOpenUpwards(spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight);
+    }
+  }, [isOpen, actions.length]);
+
   return (
     <div style={{ position: "relative" }} ref={menuRef}>
       <button
+        ref={buttonRef}
         type="button"
         className="btn btn-sm btn-subtle"
         onClick={() => setIsOpen(!isOpen)}
@@ -69,16 +83,18 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
         <div
           style={{
             position: "absolute",
-            top: "100%",
+            ...(openUpwards
+              ? { bottom: "100%", marginBottom: "4px" }
+              : { top: "100%", marginTop: "4px" }),
             right: 0,
-            marginTop: "4px",
             background: "white",
             border: "1px solid #e5e7eb",
             borderRadius: "8px",
             boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
             minWidth: "200px",
+            maxHeight: "400px",
+            overflowY: "auto",
             zIndex: 1000,
-            overflow: "hidden",
           }}
         >
           {actions.map((action, index) => (

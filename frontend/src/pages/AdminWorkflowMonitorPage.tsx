@@ -499,13 +499,7 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
           ) : (
             <>
               {/* Filtres */}
-              <div style={{
-                marginBottom: "16px",
-                padding: "12px",
-                background: "#f9fafb",
-                borderRadius: "8px",
-                border: "1px solid #e5e7eb",
-              }}>
+              <div className="workflow-filters">
                 <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   {/* Filtre par workflow */}
                   <div style={{ flex: "1 1 140px", minWidth: "140px" }}>
@@ -659,6 +653,14 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
           border-top-color: #3b82f6;
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
+        }
+
+        .workflow-filters {
+          margin-bottom: 16px;
+          padding: 12px;
+          background: var(--color-surface-subtle);
+          border-radius: 12px;
+          border: 1px solid var(--color-border-subtle);
         }
       `}</style>
     </>
