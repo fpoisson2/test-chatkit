@@ -15,6 +15,7 @@ from .parallel import ParallelJoinNodeHandler, ParallelSplitNodeHandler
 from .start import StartNodeHandler
 from .transform import TransformNodeHandler
 from .vector_store import VectorStoreNodeHandler
+from .voice_agent import VoiceAgentNodeHandler
 from .wait import WaitNodeHandler
 from .watch import WatchNodeHandler
 from .while_loop import WhileNodeHandler
@@ -61,7 +62,9 @@ def create_state_machine(
     # Note: In v2, agent_executor is optional as dependencies come from runtime_vars
     agent_handler = AgentNodeHandler(agent_executor)
     machine.register_handler("agent", agent_handler)
-    machine.register_handler("voice_agent", agent_handler)
+
+    # Voice agent handler (separate from regular agent handler)
+    machine.register_handler("voice_agent", VoiceAgentNodeHandler())
 
     # Telephony handlers
     machine.register_handler("outbound_call", OutboundCallNodeHandler())
