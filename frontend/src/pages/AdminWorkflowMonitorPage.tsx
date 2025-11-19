@@ -97,6 +97,8 @@ export const AdminWorkflowMonitorPage = () => {
 
     setSessions(wsSessions);
     setLoading(false);
+    // Clear any previous WebSocket errors when connection is established
+    setError(null);
   }, [wsConnected, wsSessions]);
 
   useEffect(() => {
