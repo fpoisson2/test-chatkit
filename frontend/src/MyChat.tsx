@@ -197,7 +197,7 @@ export function MyChat() {
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
   const { openSidebar, setHideSidebar } = useAppLayout();
-  const { loading: workflowsLoading, workflows } = useWorkflowSidebar();
+  const { loading: workflowsLoading, workflows, selectedWorkflowId: providerSelectedWorkflowId } = useWorkflowSidebar();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -473,6 +473,45 @@ export function MyChat() {
     },
     [mode, resetChatState, resetError, setMode, workflowModes],
   );
+
+  // Sync workflow selection from provider (e.g. when changed in builder)
+  useEffect(() => {
+    // Skip if in hosted mode
+    if (mode !== "local") {
+      return;
+    }
+
+    // Skip if no provider workflow selected
+    if (providerSelectedWorkflowId === null) {
+      return;
+    }
+
+    // Check if current selection matches provider
+    const currentId = workflowSelection.kind === "local"
+      ? workflowSelection.workflow?.id ?? null
+      : null;
+
+    // Skip if already synced
+    if (currentId === providerSelectedWorkflowId) {
+      return;
+    }
+
+    // Find the workflow and update selection
+    const workflow = workflows.find((w) => w.id === providerSelectedWorkflowId) ?? null;
+
+    if (workflow) {
+      console.log('[MyChat] Syncing workflow from provider:', {
+        from: currentId,
+        to: providerSelectedWorkflowId,
+        workflowName: workflow.display_name,
+      });
+
+      setWorkflowSelection({
+        kind: "local",
+        workflow,
+      });
+    }
+  }, [mode, providerSelectedWorkflowId, workflows, workflowSelection]);
 
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
