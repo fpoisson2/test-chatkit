@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 
 interface ActionsMenuProps {
   actions: Array<{
@@ -38,7 +38,8 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     };
   }, [isOpen]);
 
-  useEffect(() => {
+  // Use useLayoutEffect to ensure position is set before paint
+  useLayoutEffect(() => {
     const updatePosition = () => {
       if (!buttonRef.current || !menuRef.current) return;
 
@@ -83,7 +84,12 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
 
     if (isOpen) {
       updatePosition();
+    }
+  }, [isOpen, actions.length, openUpwards]);
 
+  // Separate effect for scroll handling
+  useEffect(() => {
+    if (isOpen) {
       // Close menu on scroll/resize for better UX
       // This is the standard behavior for dropdown menus
       const handleScrollOrResize = () => {
@@ -98,7 +104,7 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
         window.removeEventListener("resize", handleScrollOrResize);
       };
     }
-  }, [isOpen, actions.length, openUpwards]);
+  }, [isOpen]);
 
   return (
     <>
