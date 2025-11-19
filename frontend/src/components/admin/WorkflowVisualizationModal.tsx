@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -482,26 +482,6 @@ export const WorkflowVisualizationModal = ({
   }, [workflowVersion, sessions]);
 
   const { nodes, edges } = buildNodesAndEdges();
-
-  // Debug: log pour vérifier les nodes et edges
-  useEffect(() => {
-    console.log('=== WORKFLOW VISUALIZATION DEBUG ===');
-    console.log('workflowVersion:', workflowVersion);
-    console.log('sessions:', sessions);
-    console.log('Nodes count:', nodes.length);
-    console.log('Edges count:', edges.length);
-    if (nodes.length > 0) {
-      console.log('Sample node:', nodes[0]);
-    }
-    if (edges.length > 0) {
-      console.log('Sample edge:', edges[0]);
-    } else {
-      console.log('No edges created!');
-      if (workflowVersion?.graph?.edges) {
-        console.log('Raw edges from API:', workflowVersion.graph.edges);
-      }
-    }
-  }, [nodes, edges, workflowVersion, sessions]);
 
   return (
     <Modal
