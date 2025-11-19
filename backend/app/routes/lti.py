@@ -116,7 +116,10 @@ async def lti_launch(
         logger.info("Routing to deep linking selection page")
         # Redirect to deep linking selection page with state and id_token
         # Use absolute URL to work correctly with reverse proxy
-        base_url = f"{request.url.scheme}://{request.url.netloc}"
+        # Check X-Forwarded-Proto header to get the correct scheme (http vs https)
+        scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+        host = request.headers.get("X-Forwarded-Host", request.url.netloc)
+        base_url = f"{scheme}://{host}"
         params = urlencode({"state": state, "id_token": id_token})
         redirect_url = f"{base_url}/api/lti/deep-link?{params}"
         logger.info("Redirecting to deep link page: %s", redirect_url)
@@ -545,7 +548,10 @@ async def lti_deep_link(
     # Si aucun workflow n'est sélectionné, rediriger vers la page de sélection
     if not workflow_ids and not workflow_slugs:
         # Use absolute URL to work correctly with reverse proxy
-        base_url = f"{request.url.scheme}://{request.url.netloc}"
+        # Check X-Forwarded-Proto header to get the correct scheme (http vs https)
+        scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+        host = request.headers.get("X-Forwarded-Host", request.url.netloc)
+        base_url = f"{scheme}://{host}"
         params = urlencode({"state": state, "id_token": id_token})
         redirect_url = f"{base_url}/api/lti/deep-link?{params}"
         logger.info("No workflows selected, redirecting to selection page: %s", redirect_url)
