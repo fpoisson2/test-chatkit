@@ -8,24 +8,17 @@ let wakeLock: WakeLockSentinel | null = null;
 
 const requestWakeLock = async () => {
   if (typeof navigator === "undefined" || !("wakeLock" in navigator)) {
-    console.log("[OutboundCallSession] Wake Lock API not supported");
     return;
   }
 
   if (wakeLock !== null && !wakeLock.released) {
-    console.log("[OutboundCallSession] Wake Lock already active");
     return;
   }
 
   try {
     wakeLock = await navigator.wakeLock.request("screen");
-    console.log("[OutboundCallSession] Wake Lock activated - websockets will stay alive in background");
-
-    wakeLock.addEventListener("release", () => {
-      console.log("[OutboundCallSession] Wake Lock released");
-    });
-  } catch (error) {
-    console.log("[OutboundCallSession] Failed to acquire Wake Lock:", error);
+  } catch {
+    // Silent - no logging needed
   }
 };
 
@@ -34,9 +27,8 @@ const releaseWakeLock = async () => {
     try {
       await wakeLock.release();
       wakeLock = null;
-      console.log("[OutboundCallSession] Wake Lock released manually");
-    } catch (error) {
-      console.log("[OutboundCallSession] Failed to release Wake Lock:", error);
+    } catch {
+      // Silent - no logging needed
     }
   }
 };
@@ -65,10 +57,16 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
 } {
   const [callId, setCallId] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(false);
+  const isActiveRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldConnectRef = useRef(true);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   const sendCommand = useCallback((command: { type: string; [key: string]: any }) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -82,7 +80,6 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
   const connectWebSocket = useCallback(() => {
     // Close existing connection if any
     if (wsRef.current) {
-      console.log("[OutboundCallSession] Closing existing connection before creating new one");
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -92,51 +89,42 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     const host = window.location.host;
     const wsUrl = `${protocol}//${host}/api/outbound/events`;
 
-    console.log("[OutboundCallSession] Connecting to", wsUrl);
-
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("[OutboundCallSession] WebSocket connected");
       reconnectAttemptsRef.current = 0; // Reset reconnect attempts on successful connection
 
       // Activate Wake Lock to keep connection alive
-      requestWakeLock().catch((error) => {
-        console.log("[OutboundCallSession] Failed to activate Wake Lock on connect:", error);
+      requestWakeLock().catch(() => {
+        // Silent - no logging needed
       });
     };
 
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
-        console.log("[OutboundCallSession] Event received:", message);
 
         switch (message.type) {
           case "call_started":
             setCallId(message.call_id);
             setIsActive(true);
-            console.log("[OutboundCallSession] Call started:", message.call_id);
+            console.log(`[OutboundCallSession] Call started: ${message.call_id}`);
             break;
 
           case "call_ended":
-            console.log("[OutboundCallSession] Call ended:", message.call_id);
+            console.log(`[OutboundCallSession] Call ended: ${message.call_id}`);
             setIsActive(false);
             // Reset callId after a short delay to allow UI to update
             setTimeout(() => setCallId(null), 500);
             break;
 
           case "hangup_response":
-            console.log("[OutboundCallSession] Hangup response:", message);
-            if (message.success) {
-              console.log("[OutboundCallSession] Call hung up successfully");
-            } else {
-              console.error("[OutboundCallSession] Failed to hang up call");
-            }
+            // Silent - hangup response handled without logging
             break;
 
           case "ping":
-            // Ignore pings
+            // Silent - ignore pings
             break;
 
           case "transcript_delta": {
@@ -158,7 +146,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
           }
 
           default:
-            console.log("[OutboundCallSession] Unknown event type:", message.type);
+            // Silent - ignore unknown event types
         }
       } catch (err) {
         console.error("[OutboundCallSession] Failed to parse message:", err);
@@ -170,22 +158,16 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     };
 
     ws.onclose = () => {
-      console.log("[OutboundCallSession] WebSocket closed");
       wsRef.current = null;
 
       // Attempt reconnection if component is still mounted
       if (shouldConnectRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttemptsRef.current += 1;
-        console.log(
-          `[OutboundCallSession] Reconnecting (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...`
-        );
 
         reconnectTimeoutRef.current = setTimeout(() => {
           reconnectTimeoutRef.current = null;
           connectWebSocket();
         }, WS_RECONNECT_DELAY);
-      } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-        console.error("[OutboundCallSession] Max reconnect attempts reached");
       }
     };
   }, [options]);
@@ -203,18 +185,15 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     // Handle page visibility changes (important for mobile)
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        console.log("[OutboundCallSession] Page became visible, checking connection");
-
         // Reacquire Wake Lock if websocket is connected
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          requestWakeLock().catch((error) => {
-            console.log("[OutboundCallSession] Failed to reacquire Wake Lock:", error);
+          requestWakeLock().catch(() => {
+            // Silent - no logging needed
           });
         }
 
         // If we're disconnected, try to reconnect
         if (wsRef.current === null || wsRef.current.readyState !== WebSocket.OPEN) {
-          console.log("[OutboundCallSession] Reconnecting after visibility change");
           reconnectAttemptsRef.current = 0; // Reset attempts on visibility change
           connectWebSocket();
         }
@@ -240,8 +219,8 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
       }
 
       // Release Wake Lock when component unmounts
-      releaseWakeLock().catch((error) => {
-        console.log("[OutboundCallSession] Failed to release Wake Lock on unmount:", error);
+      releaseWakeLock().catch(() => {
+        // Silent - no logging needed
       });
     };
   }, [connectWebSocket, options?.enabled]); // connectWebSocket depends on options
