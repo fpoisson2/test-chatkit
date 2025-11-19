@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
 import { ChatKitHost } from "./ChatKitHost";
@@ -39,7 +39,6 @@ export const WorkflowChatInstance = ({
 
   const requestRefreshRef = useRef(requestRefresh);
   const previousWorkflowRef = useRef<WorkflowSummary | null>(activeWorkflow);
-  const [chatInstanceKey, setChatInstanceKey] = useState(0);
 
   useEffect(() => {
     requestRefreshRef.current = requestRefresh;
@@ -58,15 +57,10 @@ export const WorkflowChatInstance = ({
       previousWorkflow?.active_version_id !== activeWorkflow?.active_version_id ||
       previousWorkflow?.updated_at !== activeWorkflow?.updated_at;
 
-    if (previousWorkflow && hasWorkflowChanged) {
-      setChatInstanceKey((key) => key + 1);
-      requestRefreshRef.current?.(
+    if ((previousWorkflow && hasWorkflowChanged) || (!previousWorkflow && activeWorkflow)) {
+      void requestRefreshRef.current?.(
         "[WorkflowChatInstance] Workflow change detected, refreshing session",
       );
-    }
-
-    if (!previousWorkflow && activeWorkflow) {
-      setChatInstanceKey((key) => key + 1);
     }
 
     previousWorkflowRef.current = activeWorkflow;
@@ -82,7 +76,7 @@ export const WorkflowChatInstance = ({
       }}
       data-workflow-id={workflowId}
     >
-      <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
+      <ChatKitHost control={control} />
     </div>
   );
 };
