@@ -662,6 +662,8 @@ async def run_workflow_v2(
             "agent_positions": agent_positions,
             "run_agent_step": run_agent_step,
             "generated_image_urls": generated_image_urls,
+            "voice_session_manager": initialization.voice_session_manager,
+            "voice_overrides": initialization.voice_overrides,
         }
     )
 
