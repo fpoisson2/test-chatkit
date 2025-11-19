@@ -258,12 +258,6 @@ export function MyChat() {
     requestRefreshRef.current?.("[OutboundCall] Transcription en direct");
   }, []);
 
-  // useOutboundCallSession doit être toujours actif pour détecter les appels sortants en temps réel
-  // Les logs de visibilité ont été rendus conditionnels pour éviter le spam
-  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession({
-    onTranscript: handleOutboundTranscript,
-  });
-
   const handleOutboundCallEnd = useCallback(() => {
     // Refresh the thread to show final transcriptions and audio links
     requestRefreshRef.current?.("[OutboundCall] Appel terminé");
@@ -382,7 +376,7 @@ export function MyChat() {
   });
 
   // Detect workflow capabilities to enable appropriate WebSocket connections
-  const { hasVoiceAgent } = useWorkflowCapabilities(
+  const { hasVoiceAgent, hasOutboundCall } = useWorkflowCapabilities(
     token,
     activeWorkflow?.id ?? null,
     activeWorkflow?.active_version_id ?? null
@@ -396,6 +390,12 @@ export function MyChat() {
     onTranscriptsUpdated: () => {
       requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
     },
+  });
+
+  // useOutboundCallSession: Activated automatically when workflow has outbound_call nodes
+  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession({
+    enabled: hasOutboundCall,
+    onTranscript: handleOutboundTranscript,
   });
 
   // Garder stopVoiceSession dans un ref pour éviter les dépendances circulaires
