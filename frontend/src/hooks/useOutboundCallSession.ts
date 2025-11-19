@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
+const WS_RECONNECT_DELAY = 3000; // 3 seconds
+const MAX_RECONNECT_ATTEMPTS = 5;
+
 /**
  * Hook to detect active outbound calls via WebSocket events.
  * Similar to useWorkflowVoiceSession but for outbound calls.
@@ -24,6 +27,9 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
   const [callId, setCallId] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldConnectRef = useRef(true);
 
   const sendCommand = useCallback((command: { type: string; [key: string]: any }) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -34,7 +40,14 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     }
   }, []);
 
-  useEffect(() => {
+  const connectWebSocket = useCallback(() => {
+    // Close existing connection if any
+    if (wsRef.current) {
+      console.log("[OutboundCallSession] Closing existing connection before creating new one");
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
     // Connect to outbound call events WebSocket
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
@@ -47,6 +60,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
 
     ws.onopen = () => {
       console.log("[OutboundCallSession] WebSocket connected");
+      reconnectAttemptsRef.current = 0; // Reset reconnect attempts on successful connection
     };
 
     ws.onmessage = (event) => {
@@ -113,13 +127,61 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
 
     ws.onclose = () => {
       console.log("[OutboundCallSession] WebSocket closed");
+      wsRef.current = null;
+
+      // Attempt reconnection if component is still mounted
+      if (shouldConnectRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttemptsRef.current += 1;
+        console.log(
+          `[OutboundCallSession] Reconnecting (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...`
+        );
+
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null;
+          connectWebSocket();
+        }, WS_RECONNECT_DELAY);
+      } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        console.error("[OutboundCallSession] Max reconnect attempts reached");
+      }
+    };
+  }, [options]);
+
+  useEffect(() => {
+    shouldConnectRef.current = true;
+    connectWebSocket();
+
+    // Handle page visibility changes (important for mobile)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        console.log("[OutboundCallSession] Page became visible, checking connection");
+        // If we're disconnected, try to reconnect
+        if (wsRef.current === null || wsRef.current.readyState !== WebSocket.OPEN) {
+          console.log("[OutboundCallSession] Reconnecting after visibility change");
+          reconnectAttemptsRef.current = 0; // Reset attempts on visibility change
+          connectWebSocket();
+        }
+      }
     };
 
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
-      ws.close();
-      wsRef.current = null;
+      shouldConnectRef.current = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+      // Clear reconnect timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      // Close websocket
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
-  }, []); // Empty deps - WebSocket should persist for the entire component lifecycle
+  }, [connectWebSocket]); // connectWebSocket depends on options
 
   return { callId, isActive, sendCommand };
 }

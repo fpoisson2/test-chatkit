@@ -41,6 +41,8 @@ export type SendAudioOptions = {
 
 const DEFAULT_GATEWAY_PATH = "/api/chatkit/voice/realtime";
 const SAMPLE_RATE = 24_000;
+const WS_RECONNECT_DELAY = 3000; // 3 seconds
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 const buildGatewayUrl = (token: string, baseUrl?: string): string => {
   if (typeof window === "undefined") {
@@ -124,10 +126,39 @@ type ConnectionRecord = {
   playbackTime: number;
   activeSources: Set<AudioBufferSourceNode>;
   token: string | null;
+  reconnectAttempts: number;
+  reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  shouldReconnect: boolean;
 };
 
 const connectionPool = new Map<string, ConnectionRecord>();
 let listenerCounter = 0;
+
+// Handle page visibility changes (important for mobile)
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      logRealtime("page became visible, checking connections");
+      connectionPool.forEach((record) => {
+        // If we have listeners and we're disconnected, try to reconnect
+        if (
+          record.listeners.size > 0 &&
+          record.status === "disconnected" &&
+          record.shouldReconnect &&
+          !record.connectPromise
+        ) {
+          logRealtime("reconnecting after visibility change", {
+            gatewayUrl: record.gatewayUrl,
+          });
+          record.reconnectAttempts = 0; // Reset attempts on visibility change
+          openWebSocketForRecord(record).catch((error) => {
+            logRealtime("visibility reconnect failed", { error });
+          });
+        }
+      });
+    }
+  });
+}
 
 const createListenerId = () => {
   listenerCounter += 1;
@@ -432,6 +463,7 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
       logRealtime("websocket open", record.gatewayUrl);
       settled = true;
       record.connectPromise = null;
+      record.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
       notifyConnectionChange(record, "connected");
       resolve();
     };
@@ -456,7 +488,28 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
         settled = true;
         reject(new Error("Realtime gateway connection closed"));
       }
-      if (record.listeners.size === 0) {
+
+      // Attempt reconnection if there are still active listeners
+      if (record.listeners.size > 0 && record.shouldReconnect) {
+        if (record.reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          record.reconnectAttempts += 1;
+          logRealtime(
+            `websocket reconnecting (attempt ${record.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
+            { gatewayUrl: record.gatewayUrl }
+          );
+
+          record.reconnectTimeout = setTimeout(() => {
+            record.reconnectTimeout = null;
+            openWebSocketForRecord(record).catch((error) => {
+              logRealtime("websocket reconnect failed", { error });
+            });
+          }, WS_RECONNECT_DELAY);
+        } else {
+          logRealtime("websocket max reconnect attempts reached", {
+            gatewayUrl: record.gatewayUrl,
+          });
+        }
+      } else if (record.listeners.size === 0) {
         connectionPool.delete(record.gatewayUrl);
       }
     };
@@ -478,6 +531,13 @@ const releaseListener = (gatewayUrl: string, listenerId: string) => {
   logRealtime("release listener", listenerId, gatewayUrl);
   record.listeners.delete(listenerId);
   if (record.listeners.size === 0) {
+    // Clear any pending reconnection attempts
+    record.shouldReconnect = false;
+    if (record.reconnectTimeout) {
+      clearTimeout(record.reconnectTimeout);
+      record.reconnectTimeout = null;
+    }
+
     const ws = record.websocket;
     if (ws) {
       if (record.status !== "connected") {
@@ -561,10 +621,14 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
           playbackTime: 0,
           activeSources: new Set(),
           token,
+          reconnectAttempts: 0,
+          reconnectTimeout: null,
+          shouldReconnect: true,
         };
         connectionPool.set(gatewayUrl, record);
       } else {
         record.token = token;
+        record.shouldReconnect = true;
         if (!record.activeSources) {
           record.activeSources = new Set();
         }
