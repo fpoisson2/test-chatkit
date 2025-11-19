@@ -141,7 +141,7 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
             width: "200px",
             maxHeight: "400px",
             overflowY: "auto",
-            zIndex: 1000,
+            zIndex: 110000,
           }}
         >
           {actions.map((action, index) => (
