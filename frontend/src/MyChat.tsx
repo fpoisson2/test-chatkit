@@ -257,8 +257,9 @@ export function MyChat() {
     requestRefreshRef.current?.("[OutboundCall] Transcription en direct");
   }, []);
 
+  // useOutboundCallSession doit être toujours actif pour détecter les appels sortants en temps réel
+  // Les logs de visibilité ont été rendus conditionnels pour éviter le spam
   const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession({
-    enabled: false, // Désactivé par défaut - activer uniquement si nécessaire pour les appels sortants
     onTranscript: handleOutboundTranscript,
   });
 
@@ -379,8 +380,13 @@ export function MyChat() {
     disableHostedFlow,
   });
 
+  // useWorkflowVoiceSession: Désactivé par défaut pour éviter les connexions inutiles
+  // TODO: Activer dynamiquement selon:
+  // 1. Si le workflow contient un node de type "voice_agent"
+  // 2. Si l'utilisateur démarre explicitement une session vocale via l'UI
+  // 3. Ou passer à enabled: true pour toujours permettre les sessions vocales
   const { stopVoiceSession, status: voiceStatus, isListening: voiceIsListening } = useWorkflowVoiceSession({
-    enabled: false, // Désactivé par défaut - activer uniquement si le workflow a des fonctionnalités vocales
+    enabled: false,
     threadId: initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
