@@ -400,7 +400,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const duplicateWorkflowMutation = useDuplicateWorkflow();
-  const [sortMode, setSortMode] = useState<WorkflowSortMode>("recent");
 
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
@@ -1094,7 +1093,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     hostedMenuItems,
     localMenuItems,
     hostedTrailingContent,
-    sortMode,
   });
 
   const handleOpenBuilder = useCallback(() => {
@@ -1192,31 +1190,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         </button>
       ) : null;
 
-    const sortControl = (
-      <div style={{ padding: "0 16px 8px 16px", display: "flex", justifyContent: "flex-end" }}>
-        <button
-          type="button"
-          onClick={() => setSortMode(current => current === "recent" ? "name" : "recent")}
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            fontSize: "12px",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            padding: "4px 8px",
-            borderRadius: "4px",
-          }}
-          className="hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <span>Trier par : {sortMode === "recent" ? "Récent" : "Nom"}</span>
-          <span style={{ fontSize: "10px" }}>{sortMode === "recent" ? "↓" : "az"}</span>
-        </button>
-      </div>
-    );
-
     return (
       <WorkflowSidebarSection
         sectionId={sectionId}
@@ -1233,7 +1206,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             }
             : undefined
         }
-        beforeGroups={sortControl}
         footerContent={footerContent}
         variant={sectionVariant}
       />
@@ -1250,7 +1222,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     t,
     user,
     workflows,
-    sortMode,
   ]);
 
   const collapsedSidebarContent = useMemo(() => {
