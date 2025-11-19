@@ -22,6 +22,7 @@ import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
+import { workflowsApi } from "./utils/backend";
 import {
   clearStoredThreadId,
   loadStoredThreadId,
@@ -483,8 +484,8 @@ export function MyChat() {
       return;
     }
 
-    // Skip if no provider workflow selected
-    if (providerSelectedWorkflowId === null) {
+    // Skip if no provider workflow selected or no token
+    if (providerSelectedWorkflowId === null || !token) {
       return;
     }
 
@@ -508,6 +509,18 @@ export function MyChat() {
         workflowName: workflow.display_name,
       });
 
+      // For admin users, set the workflow on the backend
+      const isAdmin = user?.is_admin;
+      if (isAdmin) {
+        workflowsApi.setChatkitWorkflow(token, providerSelectedWorkflowId)
+          .then(() => {
+            console.log('[MyChat] Backend workflow updated to:', providerSelectedWorkflowId);
+          })
+          .catch((err) => {
+            console.error('[MyChat] Failed to update backend workflow:', err);
+          });
+      }
+
       const selection: WorkflowActivation = {
         kind: "local",
         workflow,
@@ -523,7 +536,7 @@ export function MyChat() {
 
       setWorkflowSelection(selection);
     }
-  }, [mode, providerSelectedWorkflowId, workflows, workflowSelection, resetChatState, resetError]);
+  }, [mode, providerSelectedWorkflowId, workflows, workflowSelection, resetChatState, resetError, token, user?.is_admin]);
 
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
