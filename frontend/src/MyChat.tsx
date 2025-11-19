@@ -633,6 +633,20 @@ export function MyChat() {
           }
           console.groupEnd();
           reportError(error.message, error);
+
+          const message = error.message.toLowerCase();
+          const isMissingThread =
+            message.includes("thread") &&
+            (message.includes("introuvable") || message.includes("not found"));
+
+          if (isMissingThread) {
+            clearStoredThreadId(sessionOwner, persistenceSlug);
+            setInitialThreadId(null);
+
+            requestRefreshRef.current?.(
+              "[ChatKit] Thread introuvable détecté, réinitialisation de la session",
+            );
+          }
         },
         onResponseStart: () => {
           resetError();
