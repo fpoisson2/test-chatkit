@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
 import { ChatKitHost } from "./ChatKitHost";
@@ -28,19 +28,18 @@ export const WorkflowChatInstance = ({
   isActive,
   onRequestRefreshReady,
 }: WorkflowChatInstanceProps) => {
-  // Preserve the workflow that was active when this instance was created
-  const [instanceWorkflow] = useState<WorkflowSummary | null>(activeWorkflow);
-
   const { control, requestRefresh } = useWorkflowChatSession({
     chatkitOptions,
     token,
-    activeWorkflow: instanceWorkflow,
+    activeWorkflow,
     initialThreadId,
     reportError,
     mode,
   });
 
   const requestRefreshRef = useRef(requestRefresh);
+  const previousWorkflowRef = useRef<WorkflowSummary | null>(activeWorkflow);
+  const pendingActivationRefreshRef = useRef(false);
 
   useEffect(() => {
     requestRefreshRef.current = requestRefresh;
@@ -52,6 +51,37 @@ export const WorkflowChatInstance = ({
     }
   }, [isActive, onRequestRefreshReady]);
 
+  useEffect(() => {
+    const previousWorkflow = previousWorkflowRef.current;
+    const hasWorkflowChanged =
+      (previousWorkflow?.id ?? null) !== (activeWorkflow?.id ?? null) ||
+      previousWorkflow?.active_version_id !== activeWorkflow?.active_version_id ||
+      previousWorkflow?.updated_at !== activeWorkflow?.updated_at;
+
+    if ((previousWorkflow && hasWorkflowChanged) || (!previousWorkflow && activeWorkflow)) {
+      if (isActive) {
+        void requestRefreshRef.current?.(
+          "[WorkflowChatInstance] Workflow change detected, refreshing session",
+        );
+      } else {
+        pendingActivationRefreshRef.current = true;
+      }
+    }
+
+    previousWorkflowRef.current = activeWorkflow;
+  }, [activeWorkflow, isActive]);
+
+  useEffect(() => {
+    if (!isActive || !pendingActivationRefreshRef.current) {
+      return;
+    }
+
+    pendingActivationRefreshRef.current = false;
+    void requestRefreshRef.current?.(
+      "[WorkflowChatInstance] Activated with pending workflow change, refreshing session",
+    );
+  }, [isActive]);
+
   return (
     <div
       style={{
@@ -62,7 +92,7 @@ export const WorkflowChatInstance = ({
       }}
       data-workflow-id={workflowId}
     >
-      <ChatKitHost control={control} chatInstanceKey={0} />
+      <ChatKitHost control={control} />
     </div>
   );
 };
