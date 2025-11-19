@@ -279,14 +279,17 @@ export const useWorkflowMonitorWebSocket = ({
     // Handle page visibility changes (important for mobile)
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
+        // Only log and take action if we have an active websocket
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          return;
+        }
+
         console.log("[WorkflowMonitor] Page became visible, checking connection");
 
         // Reacquire Wake Lock if websocket is connected
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          requestWakeLock().catch((error) => {
-            console.log("[WorkflowMonitor] Failed to reacquire Wake Lock:", error);
-          });
-        }
+        requestWakeLock().catch((error) => {
+          console.log("[WorkflowMonitor] Failed to reacquire Wake Lock:", error);
+        });
 
         // If we're disconnected, reconnect logic is already in ws.onclose
       }

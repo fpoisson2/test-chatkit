@@ -176,17 +176,21 @@ const releaseWakeLock = async () => {
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      logRealtime("page became visible, checking connections");
-
       // Reacquire Wake Lock if we have active connections
       const hasActiveConnections = Array.from(connectionPool.values()).some(
         (record) => record.listeners.size > 0
       );
-      if (hasActiveConnections) {
-        requestWakeLock().catch((error) => {
-          logRealtime("Failed to reacquire Wake Lock", { error });
-        });
+
+      // Only log and take action if there are active connections
+      if (!hasActiveConnections) {
+        return;
       }
+
+      logRealtime("page became visible, checking connections");
+
+      requestWakeLock().catch((error) => {
+        logRealtime("Failed to reacquire Wake Lock", { error });
+      });
 
       connectionPool.forEach((record) => {
         // If we have listeners and we're disconnected, try to reconnect

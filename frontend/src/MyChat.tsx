@@ -258,6 +258,7 @@ export function MyChat() {
   }, []);
 
   const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession({
+    enabled: false, // Désactivé par défaut - activer uniquement si nécessaire pour les appels sortants
     onTranscript: handleOutboundTranscript,
   });
 

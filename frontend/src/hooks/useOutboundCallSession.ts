@@ -54,6 +54,7 @@ type OutboundCallTranscriptPayload = {
 };
 
 type UseOutboundCallSessionOptions = {
+  enabled?: boolean;
   onTranscript?: (payload: OutboundCallTranscriptPayload) => void;
 };
 
@@ -190,6 +191,12 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
   }, [options]);
 
   useEffect(() => {
+    const enabled = options?.enabled ?? true;
+
+    if (!enabled) {
+      return;
+    }
+
     shouldConnectRef.current = true;
     connectWebSocket();
 
@@ -237,7 +244,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
         console.log("[OutboundCallSession] Failed to release Wake Lock on unmount:", error);
       });
     };
-  }, [connectWebSocket]); // connectWebSocket depends on options
+  }, [connectWebSocket, options?.enabled]); // connectWebSocket depends on options
 
   return { callId, isActive, sendCommand };
 }
