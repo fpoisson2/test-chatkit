@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
+  MarkerType,
   type Node,
   type Edge,
   type NodeProps,
@@ -392,6 +393,8 @@ export const WorkflowVisualizationModal = ({
         const isOnUserPath = sourceSlug && targetSlug &&
           visitedSteps.has(sourceSlug) && visitedSteps.has(targetSlug);
 
+        const edgeColor = isOnUserPath ? "#3b82f6" : "#9ca3af";
+
         return {
           id: `edge-${index}`,
           source: sourceSlug || "",
@@ -399,9 +402,16 @@ export const WorkflowVisualizationModal = ({
           label: transition.condition || undefined,
           type: "smoothstep",
           animated: false,
-          style: isOnUserPath
-            ? { stroke: "#3b82f6", strokeWidth: 2 }
-            : { stroke: "#e5e7eb", strokeWidth: 1.5 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: edgeColor,
+            width: 20,
+            height: 20,
+          },
+          style: {
+            stroke: edgeColor,
+            strokeWidth: isOnUserPath ? 2 : 1.5,
+          },
         };
       })
       .filter((edge) => edge.source && edge.target); // Filtrer les edges sans source/target valides
@@ -425,6 +435,12 @@ export const WorkflowVisualizationModal = ({
             target,
             type: "smoothstep",
             animated: true,
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: "#10b981",
+              width: 25,
+              height: 25,
+            },
             style: {
               stroke: "#10b981",
               strokeWidth: 3,
