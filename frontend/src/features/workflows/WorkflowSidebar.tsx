@@ -512,6 +512,35 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     );
   }, [mode, selectedWorkflowId, workflows, isLtiUser]);
 
+  // Sync workflow when selectedWorkflowId changes after initial load
+  // This handles the case when user switches workflows from the builder and returns to chat
+  const prevSelectedWorkflowId = useRef<number | null>(selectedWorkflowId);
+  useEffect(() => {
+    // Only sync if:
+    // 1. We're in local mode
+    // 2. Initial announcement has already happened
+    // 3. Workflows are loaded
+    // 4. The selected workflow ID has actually changed
+    // 5. User is not an LTI user (they have their own logic)
+    if (
+      mode !== "local" ||
+      !hasAnnouncedInitialLocal.current ||
+      !workflows.length ||
+      isLtiUser ||
+      prevSelectedWorkflowId.current === selectedWorkflowId
+    ) {
+      prevSelectedWorkflowId.current = selectedWorkflowId;
+      return;
+    }
+
+    const workflow = workflows.find((w) => w.id === selectedWorkflowId) ?? null;
+    prevSelectedWorkflowId.current = selectedWorkflowId;
+    onWorkflowActivatedRef.current(
+      { kind: "local", workflow },
+      { reason: "user" },
+    );
+  }, [mode, selectedWorkflowId, workflows, isLtiUser]);
+
   // Auto-select LTI workflow for LTI users
   const hasCheckedLtiWorkflow = useRef(false);
   useEffect(() => {
