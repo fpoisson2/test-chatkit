@@ -700,9 +700,26 @@ export function MyChat() {
     setActiveInstances((prev) => {
       const existing = prev.get(currentWorkflowId);
 
-      // If instance already exists, don't recreate it - this preserves its state
+      // Update existing instance when critical inputs change so it stays in sync
       if (existing) {
-        return prev;
+        const shouldUpdate =
+          existing.mode !== mode ||
+          existing.initialThreadId !== initialThreadId ||
+          existing.chatkitOptions !== chatkitOptions;
+
+        if (!shouldUpdate) {
+          return prev;
+        }
+
+        const updated = new Map(prev);
+        updated.set(currentWorkflowId, {
+          ...existing,
+          mode,
+          initialThreadId,
+          chatkitOptions,
+        });
+
+        return updated;
       }
 
       const next = new Map(prev);
