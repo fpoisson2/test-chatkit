@@ -78,7 +78,16 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     if (isOpen) {
       // Close menu on scroll/resize for better UX
       // This is the standard behavior for dropdown menus
-      const handleScrollOrResize = () => {
+      const handleScrollOrResize = (event: Event) => {
+        // Ignore scroll events from within the menu
+        if (
+          event.type === "scroll" &&
+          menuRef.current &&
+          event.target instanceof Node &&
+          menuRef.current.contains(event.target)
+        ) {
+          return;
+        }
         setIsOpen(false);
       };
 
