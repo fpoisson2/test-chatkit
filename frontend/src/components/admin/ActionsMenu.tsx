@@ -54,8 +54,8 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
       // Calculate menu width
       const menuWidth = 200;
 
-      // Calculate position: try to align right edge of menu with right edge of button
-      const preferredLeft = buttonRect.right - menuWidth;
+      // Calculate position: align left edge of menu with left edge of button
+      const preferredLeft = buttonRect.left;
 
       // Ensure menu stays within viewport with 8px margin
       let finalLeft = preferredLeft;
