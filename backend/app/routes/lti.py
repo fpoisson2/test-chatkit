@@ -540,20 +540,12 @@ async def lti_deep_link(
     workflow_ids = _as_int_sequence(payload.get("workflow_ids"))
     workflow_slugs = _as_str_sequence(payload.get("workflow_slugs"))
 
-    # Si aucun workflow n'est sélectionné, rediriger vers la page de sélection
+    # Si aucun workflow n'est sélectionné, servir la page de sélection directement
     if not workflow_ids and not workflow_slugs:
-        # Use absolute URL to work correctly with reverse proxy
-        # Check X-Forwarded-Proto header to get the correct scheme (http vs https)
-        scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
-        host = request.headers.get("X-Forwarded-Host", request.url.netloc)
-        base_url = f"{scheme}://{host}"
-        params = urlencode({"state": state, "id_token": id_token})
-        redirect_url = f"{base_url}/api/lti/deep-link?{params}"
-        logger.info("No workflows selected, redirecting to selection page: %s", redirect_url)
-        return RedirectResponse(
-            url=redirect_url,
-            status_code=status.HTTP_303_SEE_OTHER
-        )
+        # Serve the selection page directly instead of redirecting
+        # Moodle expects a direct HTML response, not a redirect
+        logger.info("No workflows selected, serving selection page directly")
+        return await lti_deep_link_page(state=state, id_token=id_token)
 
     # Sinon, traiter la sélection
     return service.handle_deep_link(
