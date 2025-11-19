@@ -700,20 +700,15 @@ export function MyChat() {
     setActiveInstances((prev) => {
       const existing = prev.get(currentWorkflowId);
 
-      // If instance already exists, don't recreate it - this preserves its state
-      if (existing) {
-        return prev;
-      }
-
       const next = new Map(prev);
 
-      // Add new instance only if it doesn't exist
+      // Always update the instance with current options (preserves createdAt for cache eviction)
       next.set(currentWorkflowId, {
         workflowId: currentWorkflowId,
         mode,
         initialThreadId,
         chatkitOptions,
-        createdAt: Date.now(),
+        createdAt: existing?.createdAt ?? Date.now(),
       });
 
       // Limit cache size - remove oldest instances

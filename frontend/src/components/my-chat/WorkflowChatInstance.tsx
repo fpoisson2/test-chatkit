@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
 import { ChatKitHost } from "./ChatKitHost";
@@ -28,13 +28,11 @@ export const WorkflowChatInstance = ({
   isActive,
   onRequestRefreshReady,
 }: WorkflowChatInstanceProps) => {
-  // Preserve the workflow that was active when this instance was created
-  const [instanceWorkflow] = useState<WorkflowSummary | null>(activeWorkflow);
-
+  // Use the activeWorkflow prop directly to reflect workflow changes from the builder
   const { control, requestRefresh } = useWorkflowChatSession({
     chatkitOptions,
     token,
-    activeWorkflow: instanceWorkflow,
+    activeWorkflow,
     initialThreadId,
     reportError,
     mode,
