@@ -672,16 +672,25 @@
 .actions-menu-item {
   color: var(--color-text);
   transition: background-color 0.15s;
+  cursor: pointer;
 }
 
-.actions-menu-item:hover:not(:disabled) {
+.actions-menu-item:hover:not([data-disabled]),
+.actions-menu-item[data-highlighted] {
   background: var(--color-surface-subtle) !important;
+  outline: none;
+}
+
+.actions-menu-item[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .actions-menu-item--danger {
   color: var(--danger-color);
 }
 
-.actions-menu-item--danger:hover:not(:disabled) {
+.actions-menu-item--danger:hover:not([data-disabled]),
+.actions-menu-item--danger[data-highlighted] {
   background: color-mix(in srgb, var(--danger-color) 8%, var(--color-surface)) !important;
 }

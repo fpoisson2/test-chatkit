@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useState } from "react";
+import "../../styles/components/admin.css";
 
 interface ActionsMenuProps {
   actions: Array<{
@@ -13,93 +14,13 @@ interface ActionsMenuProps {
 
 export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node) &&
-        menuRef.current &&
-        !menuRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isOpen]);
-
-  // Position menu when it opens
-  useEffect(() => {
-    if (!isOpen || !buttonRef.current || !menuRef.current) return;
-
-    const buttonRect = buttonRef.current.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
-    const spaceBelow = viewportHeight - buttonRect.bottom;
-    const estimatedMenuHeight = actions.length * 44 + 16;
-    const shouldOpenUpwards = spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight;
-
-    const menuWidth = 200;
-    const preferredLeft = buttonRect.left;
-
-    // Ensure menu stays within viewport
-    let finalLeft = preferredLeft;
-    if (finalLeft < 8) {
-      finalLeft = 8;
-    } else if (finalLeft + menuWidth > viewportWidth - 8) {
-      finalLeft = viewportWidth - menuWidth - 8;
-    }
-
-    // Position menu
-    const menu = menuRef.current;
-    menu.style.left = `${finalLeft}px`;
-
-    if (shouldOpenUpwards) {
-      menu.style.bottom = `${viewportHeight - buttonRect.top + 4}px`;
-      menu.style.top = 'auto';
-    } else {
-      menu.style.top = `${buttonRect.bottom + 4}px`;
-      menu.style.bottom = 'auto';
-    }
-  }, [isOpen, actions.length]);
-
-  // Separate effect for scroll handling
-  useEffect(() => {
-    if (isOpen) {
-      // Close menu on scroll/resize for better UX
-      // This is the standard behavior for dropdown menus
-      const handleScrollOrResize = () => {
-        setIsOpen(false);
-      };
-
-      window.addEventListener("scroll", handleScrollOrResize, true);
-      window.addEventListener("resize", handleScrollOrResize);
-
-      return () => {
-        window.removeEventListener("scroll", handleScrollOrResize, true);
-        window.removeEventListener("resize", handleScrollOrResize);
-      };
-    }
-  }, [isOpen]);
 
   return (
-    <>
-      <div style={{ position: "relative" }} ref={containerRef}>
+    <DropdownMenu.Root open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenu.Trigger asChild>
         <button
-          ref={buttonRef}
           type="button"
           className="btn btn-sm btn-subtle"
-          onClick={() => setIsOpen(!isOpen)}
           aria-label="Actions"
           style={{
             padding: "4px 8px",
@@ -128,32 +49,29 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
             />
           </svg>
         </button>
-      </div>
+      </DropdownMenu.Trigger>
 
-      {isOpen && createPortal(
-        <div
-          ref={menuRef}
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
           className="actions-menu-dropdown"
+          sideOffset={5}
+          align="end"
           style={{
-            position: "fixed",
-            left: 0,
-            top: 0,
-            width: "200px",
-            maxHeight: "400px",
-            overflowY: "auto",
-            zIndex: 1000,
+            zIndex: 110000, // Ensure it's above everything including Radix Dialogs
+            minWidth: "200px",
+            padding: "4px",
           }}
         >
           {actions.map((action, index) => (
-            <button
+            <DropdownMenu.Item
               key={index}
-              type="button"
-              onClick={() => {
+              disabled={action.disabled}
+              className={`actions-menu-item ${action.variant === "danger" ? "actions-menu-item--danger" : ""}`}
+              onSelect={(event) => {
+                event.preventDefault(); // Prevent default closing to handle it manually if needed, or let it close
                 action.onClick();
                 setIsOpen(false);
               }}
-              disabled={action.disabled}
-              className={`actions-menu-item ${action.variant === "danger" ? "actions-menu-item--danger" : ""}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -166,15 +84,15 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
                 fontSize: "14px",
                 cursor: action.disabled ? "not-allowed" : "pointer",
                 opacity: action.disabled ? 0.5 : 1,
+                outline: "none",
               }}
             >
               {action.icon && <span>{action.icon}</span>}
               <span>{action.label}</span>
-            </button>
+            </DropdownMenu.Item>
           ))}
-        </div>,
-        document.body
-      )}
-    </>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 };
