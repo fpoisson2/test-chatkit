@@ -383,29 +383,33 @@ export const WorkflowVisualizationModal = ({
       (workflowVersion.graph?.nodes || []).map((step) => [step.id, step.slug])
     );
 
-    const edges: Edge[] = (workflowVersion.graph?.edges || []).map((transition, index) => {
-      const sourceSlug = stepIdToSlug.get(transition.source_step_id);
-      const targetSlug = stepIdToSlug.get(transition.target_step_id);
+    const edges: Edge[] = (workflowVersion.graph?.edges || [])
+      .map((transition, index) => {
+        const sourceSlug = stepIdToSlug.get(transition.source_step_id);
+        const targetSlug = stepIdToSlug.get(transition.target_step_id);
 
-      // Déterminer si cet edge fait partie d'un chemin parcouru
-      const isOnUserPath = sourceSlug && targetSlug &&
-        visitedSteps.has(sourceSlug) && visitedSteps.has(targetSlug);
+        // Déterminer si cet edge fait partie d'un chemin parcouru
+        const isOnUserPath = sourceSlug && targetSlug &&
+          visitedSteps.has(sourceSlug) && visitedSteps.has(targetSlug);
 
-      return {
-        id: `edge-${index}`,
-        source: sourceSlug || "",
-        target: targetSlug || "",
-        label: transition.condition || undefined,
-        type: "smoothstep",
-        animated: false,
-        style: isOnUserPath
-          ? { stroke: "#3b82f6", strokeWidth: 2 }
-          : { stroke: "#e5e7eb", strokeWidth: 1.5 },
-      };
-    });
+        return {
+          id: `edge-${index}`,
+          source: sourceSlug || "",
+          target: targetSlug || "",
+          label: transition.condition || undefined,
+          type: "smoothstep",
+          animated: false,
+          style: isOnUserPath
+            ? { stroke: "#3b82f6", strokeWidth: 2 }
+            : { stroke: "#e5e7eb", strokeWidth: 1.5 },
+        };
+      })
+      .filter((edge) => edge.source && edge.target); // Filtrer les edges sans source/target valides
 
     // Créer les edges des chemins utilisateurs (animés)
     const userPathEdges: Edge[] = [];
+    const nodeIds = new Set(nodes.map(n => n.id)); // IDs de tous les nodes existants
+
     sessions.forEach((session, sessionIndex) => {
       const allSteps = [...session.step_history.map(s => s.slug), session.current_step.slug];
 
@@ -413,19 +417,22 @@ export const WorkflowVisualizationModal = ({
         const source = allSteps[i];
         const target = allSteps[i + 1];
 
-        userPathEdges.push({
-          id: `user-path-${sessionIndex}-${i}`,
-          source,
-          target,
-          type: "smoothstep",
-          animated: true,
-          style: {
-            stroke: "#10b981",
-            strokeWidth: 3,
-            opacity: 0.6,
-          },
-          zIndex: 10,
-        });
+        // Ne créer l'edge que si les deux nodes existent
+        if (nodeIds.has(source) && nodeIds.has(target)) {
+          userPathEdges.push({
+            id: `user-path-${sessionIndex}-${i}`,
+            source,
+            target,
+            type: "smoothstep",
+            animated: true,
+            style: {
+              stroke: "#10b981",
+              strokeWidth: 3,
+              opacity: 0.6,
+            },
+            zIndex: 10,
+          });
+        }
       }
     });
 
