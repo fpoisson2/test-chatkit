@@ -55,6 +55,38 @@ interface UseWorkflowMonitorWebSocketReturn {
 
 const WS_RECONNECT_DELAY = 3000; // 3 secondes
 const MAX_RECONNECT_ATTEMPTS = 5;
+const RAW_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
+const DEFAULT_API_BASE_PATH = "/api";
+const WORKFLOW_MONITOR_SUFFIX = "/admin/workflows/monitor";
+
+const sanitizeApiBasePath = (pathname: string) => {
+  if (!pathname || pathname === "/") {
+    return DEFAULT_API_BASE_PATH;
+  }
+
+  return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+};
+
+const buildWorkflowMonitorUrl = (token: string) => {
+  if (typeof window === "undefined") {
+    throw new Error("WebSocket non disponible dans cet environnement");
+  }
+
+  const origin = new URL(window.location.origin);
+  const backendBase = RAW_BACKEND_URL
+    ? new URL(RAW_BACKEND_URL, origin)
+    : new URL(DEFAULT_API_BASE_PATH, origin);
+
+  const target = new URL(backendBase.toString());
+  target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
+  const apiBasePath = sanitizeApiBasePath(backendBase.pathname);
+  const monitorPath = `${apiBasePath}${WORKFLOW_MONITOR_SUFFIX}`;
+  target.pathname = monitorPath.startsWith("/") ? monitorPath : `/${monitorPath}`;
+  target.search = "";
+  target.searchParams.set("token", token);
+
+  return target.toString();
+};
 
 export const useWorkflowMonitorWebSocket = ({
   token,
@@ -79,9 +111,10 @@ export const useWorkflowMonitorWebSocket = ({
   }, [onUpdate, onError]);
 
   const getWebSocketUrl = useCallback(() => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host;
-    return `${protocol}//${host}/api/admin/workflows/monitor?token=${encodeURIComponent(token || "")}`;
+    if (!token) {
+      throw new Error("Token manquant pour la connexion WebSocket");
+    }
+    return buildWorkflowMonitorUrl(token);
   }, [token]);
 
   const connect = useCallback(() => {

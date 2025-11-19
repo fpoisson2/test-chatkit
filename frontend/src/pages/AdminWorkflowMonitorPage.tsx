@@ -72,6 +72,7 @@ export const AdminWorkflowMonitorPage = () => {
   const handleWebSocketUpdate = useCallback((newSessions: ActiveWorkflowSession[]) => {
     setSessions(newSessions);
     setLastUpdated(new Date());
+    setLoading(false);
   }, []);
 
   const handleWebSocketError = useCallback((err: string) => {
@@ -93,11 +94,19 @@ export const AdminWorkflowMonitorPage = () => {
 
   // Update sessions from WebSocket
   useEffect(() => {
-    if (wsConnected && wsSessions.length > 0) {
-      setSessions(wsSessions);
+    if (!wsConnected) {
+      return;
+    }
+
+    setSessions(wsSessions);
+    setLoading(false);
+  }, [wsConnected, wsSessions]);
+
+  useEffect(() => {
+    if (wsError) {
       setLoading(false);
     }
-  }, [wsConnected, wsSessions]);
+  }, [wsError]);
 
   // Tri
   const [sortConfig, setSortConfig] = useState<{
