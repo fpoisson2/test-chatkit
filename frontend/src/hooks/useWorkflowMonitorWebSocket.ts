@@ -64,15 +64,13 @@ const buildWorkflowMonitorUrl = (token: string) => {
   }
 
   const origin = new URL(window.location.origin);
-  const target = RAW_BACKEND_URL ? new URL(RAW_BACKEND_URL, origin) : origin;
+  const backendBase = RAW_BACKEND_URL
+    ? new URL(RAW_BACKEND_URL, origin)
+    : origin;
 
+  const target = new URL(backendBase.origin);
   target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
-
-  const sanitizedPath = target.pathname.endsWith("/")
-    ? `${target.pathname.slice(0, -1)}${WORKFLOW_MONITOR_PATH}`
-    : `${target.pathname}${WORKFLOW_MONITOR_PATH}`;
-
-  target.pathname = sanitizedPath.replace(/\/+/g, "/");
+  target.pathname = WORKFLOW_MONITOR_PATH;
   target.search = "";
   target.searchParams.set("token", token);
 
