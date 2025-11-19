@@ -15,6 +15,7 @@ export type TranscriptEntry = {
 };
 
 type UseWorkflowVoiceSessionParams = {
+  enabled?: boolean;
   threadId: string | null;
   onError?: (message: string) => void;
   onTranscriptsUpdated?: () => void;
@@ -108,6 +109,7 @@ const extractTranscriptsFromHistory = (history: unknown[]): TranscriptEntry[] =>
 };
 
 export const useWorkflowVoiceSession = ({
+  enabled = true,
   threadId,
   onError,
   onTranscriptsUpdated,
@@ -361,7 +363,7 @@ export const useWorkflowVoiceSession = ({
   }, [cleanupCapture, finalizeSession, resampler, sendAudioChunk, threadId]);
 
   useEffect(() => {
-    if (!token) {
+    if (!enabled || !token) {
       disconnectRealtime();
       cleanupCapture();
       setStatus("idle");
@@ -389,7 +391,7 @@ export const useWorkflowVoiceSession = ({
       disconnectRealtime();
       cleanupCapture();
     };
-  }, [cleanupCapture, connectRealtime, disconnectRealtime, onError, token]);
+  }, [enabled, cleanupCapture, connectRealtime, disconnectRealtime, onError, token]);
 
   useEffect(() => () => {
     cleanupCapture();

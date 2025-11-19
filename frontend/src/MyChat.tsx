@@ -17,6 +17,7 @@ import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
+import { useWorkflowCapabilities } from "./hooks/useWorkflowCapabilities";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
@@ -257,10 +258,6 @@ export function MyChat() {
     requestRefreshRef.current?.("[OutboundCall] Transcription en direct");
   }, []);
 
-  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession({
-    onTranscript: handleOutboundTranscript,
-  });
-
   const handleOutboundCallEnd = useCallback(() => {
     // Refresh the thread to show final transcriptions and audio links
     requestRefreshRef.current?.("[OutboundCall] Appel terminé");
@@ -378,12 +375,27 @@ export function MyChat() {
     disableHostedFlow,
   });
 
+  // Detect workflow capabilities to enable appropriate WebSocket connections
+  const { hasVoiceAgent, hasOutboundCall } = useWorkflowCapabilities(
+    token,
+    activeWorkflow?.id ?? null,
+    activeWorkflow?.active_version_id ?? null
+  );
+
+  // useWorkflowVoiceSession: Activated automatically when workflow has voice_agent nodes
   const { stopVoiceSession, status: voiceStatus, isListening: voiceIsListening } = useWorkflowVoiceSession({
+    enabled: hasVoiceAgent,
     threadId: initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
       requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
     },
+  });
+
+  // useOutboundCallSession: Activated automatically when workflow has outbound_call nodes
+  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession({
+    enabled: hasOutboundCall,
+    onTranscript: handleOutboundTranscript,
   });
 
   // Garder stopVoiceSession dans un ref pour éviter les dépendances circulaires
