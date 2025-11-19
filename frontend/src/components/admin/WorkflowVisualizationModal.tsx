@@ -488,11 +488,23 @@ export const WorkflowVisualizationModal = ({
 
   // Debug: log pour vérifier les nodes et edges
   useEffect(() => {
-    if (nodes.length > 0 && edges.length > 0) {
-      console.log('Workflow Visualization - Nodes:', nodes.length, nodes);
-      console.log('Workflow Visualization - Edges:', edges.length, edges);
+    console.log('=== WORKFLOW VISUALIZATION DEBUG ===');
+    console.log('workflowVersion:', workflowVersion);
+    console.log('sessions:', sessions);
+    console.log('Nodes count:', nodes.length);
+    console.log('Edges count:', edges.length);
+    if (nodes.length > 0) {
+      console.log('Sample node:', nodes[0]);
     }
-  }, [nodes, edges]);
+    if (edges.length > 0) {
+      console.log('Sample edge:', edges[0]);
+    } else {
+      console.log('No edges created!');
+      if (workflowVersion?.graph?.edges) {
+        console.log('Raw edges from API:', workflowVersion.graph.edges);
+      }
+    }
+  }, [nodes, edges, workflowVersion, sessions]);
 
   return (
     <Modal
