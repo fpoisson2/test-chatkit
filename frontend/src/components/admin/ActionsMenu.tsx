@@ -84,13 +84,28 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     if (isOpen) {
       updatePosition();
 
-      // Update position immediately on scroll to keep menu next to button
-      window.addEventListener("scroll", updatePosition, true);
-      window.addEventListener("resize", updatePosition);
+      // Update position on scroll to keep menu next to button
+      // Use requestAnimationFrame to ensure layout is updated before calculation
+      let rafId: number | null = null;
+      const handleScroll = () => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+        }
+        rafId = requestAnimationFrame(() => {
+          updatePosition();
+          rafId = null;
+        });
+      };
+
+      window.addEventListener("scroll", handleScroll, true);
+      window.addEventListener("resize", handleScroll);
 
       return () => {
-        window.removeEventListener("scroll", updatePosition, true);
-        window.removeEventListener("resize", updatePosition);
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+        }
+        window.removeEventListener("scroll", handleScroll, true);
+        window.removeEventListener("resize", handleScroll);
       };
     }
   }, [isOpen, actions.length, openUpwards]);
