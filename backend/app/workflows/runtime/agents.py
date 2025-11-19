@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from agents import Agent
-from agents.realtime.agent import RealtimeAgent
 
 from ...chatkit.agent_registry import (
     AGENT_BUILDERS,
@@ -35,46 +34,9 @@ from ..service import (
 logger = logging.getLogger("chatkit.server")
 
 
-def _build_voice_agent(overrides: dict[str, Any] | None = None) -> RealtimeAgent:
-    """Build a RealtimeAgent for voice_agent nodes.
-
-    RealtimeAgent is used for voice_agent nodes and supports voice-specific
-    parameters like 'voice' and 'realtime' that regular Agent doesn't support.
-    """
-    merged = overrides or {}
-
-    # Extract parameters for RealtimeAgent
-    name = merged.get("name", "Voice Agent")
-    instructions = merged.get("instructions")
-
-    # Build kwargs for RealtimeAgent
-    agent_kwargs: dict[str, Any] = {
-        "name": name,
-        "instructions": instructions,
-    }
-
-    # Add tools/mcp_servers if present
-    if "tools" in merged:
-        agent_kwargs["tools"] = merged["tools"]
-    if "mcp_servers" in merged:
-        agent_kwargs["mcp_servers"] = merged["mcp_servers"]
-
-    # Note: voice and realtime parameters are configuration options
-    # that are handled by the voice session runtime, not the agent constructor
-    logger.debug(
-        "Creating RealtimeAgent for voice_agent node: name=%s, has_tools=%s, has_mcp=%s",
-        name,
-        "tools" in merged,
-        "mcp_servers" in merged,
-    )
-
-    agent = RealtimeAgent(**agent_kwargs)
-    return agent
-
-
 @dataclass(slots=True)
 class AgentSetupResult:
-    agent_instances: dict[str, Agent | RealtimeAgent]
+    agent_instances: dict[str, Agent]
     agent_provider_bindings: dict[str, AgentProviderBinding | None]
     nested_workflow_configs: dict[str, dict[str, Any]]
     widget_configs_by_step: dict[str, _ResponseWidgetConfig]
@@ -269,11 +231,7 @@ def prepare_agents(
                     ),
                     agent_key,
                 )
-            # voice_agent nodes should create RealtimeAgent instead of regular Agent
-            if step.kind == "voice_agent":
-                agent_instances[step.slug] = _build_voice_agent(overrides)
-            else:
-                agent_instances[step.slug] = _build_custom_agent(overrides)
+            agent_instances[step.slug] = _build_custom_agent(overrides)
         else:
             agent_instances[step.slug] = builder(overrides)
 
