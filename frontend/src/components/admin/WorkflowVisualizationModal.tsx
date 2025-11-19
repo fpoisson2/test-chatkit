@@ -486,6 +486,14 @@ export const WorkflowVisualizationModal = ({
 
   const { nodes, edges } = buildNodesAndEdges();
 
+  // Debug: log pour vérifier les nodes et edges
+  useEffect(() => {
+    if (nodes.length > 0 && edges.length > 0) {
+      console.log('Workflow Visualization - Nodes:', nodes.length, nodes);
+      console.log('Workflow Visualization - Edges:', edges.length, edges);
+    }
+  }, [nodes, edges]);
+
   return (
     <Modal
       title={`Workflow: ${workflow.display_name}`}
@@ -584,6 +592,11 @@ export const WorkflowVisualizationModal = ({
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
+                onNodesChange={() => {}}
+                onEdgesChange={() => {}}
+                defaultEdgeOptions={{
+                  markerEnd: { type: MarkerType.ArrowClosed },
+                }}
                 fitView
                 fitViewOptions={{
                   padding: 0.2,
