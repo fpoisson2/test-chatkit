@@ -22,6 +22,7 @@ import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
+import { workflowsApi } from "./utils/backend";
 import {
   clearStoredThreadId,
   loadStoredThreadId,
@@ -197,7 +198,7 @@ export function MyChat() {
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
   const { openSidebar, setHideSidebar } = useAppLayout();
-  const { loading: workflowsLoading, workflows } = useWorkflowSidebar();
+  const { loading: workflowsLoading, workflows, selectedWorkflowId: providerSelectedWorkflowId } = useWorkflowSidebar();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -225,14 +226,17 @@ export function MyChat() {
   type WorkflowInstanceData = {
     workflowId: string;
     mode: HostedFlowMode;
+    workflow: WorkflowSummary | null;
     initialThreadId: string | null;
     chatkitOptions: ChatKitOptions;
     createdAt: number;
+    instanceKey: number;
   };
   const [activeInstances, setActiveInstances] = useState<Map<string, WorkflowInstanceData>>(
     new Map()
   );
   const MAX_CACHED_INSTANCES = 5;
+  const instanceKeyCounterRef = useRef(0);
 
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
@@ -473,6 +477,67 @@ export function MyChat() {
     [mode, resetChatState, resetError, setMode, workflowModes],
   );
 
+  // Sync workflow selection from provider (e.g. when changed in builder)
+  useEffect(() => {
+    // Skip if in hosted mode
+    if (mode !== "local") {
+      return;
+    }
+
+    // Skip if no provider workflow selected or no token
+    if (providerSelectedWorkflowId === null || !token) {
+      return;
+    }
+
+    // Check if current selection matches provider
+    const currentId = workflowSelection.kind === "local"
+      ? workflowSelection.workflow?.id ?? null
+      : null;
+
+    // Skip if already synced
+    if (currentId === providerSelectedWorkflowId) {
+      return;
+    }
+
+    // Find the workflow and update selection
+    const workflow = workflows.find((w) => w.id === providerSelectedWorkflowId) ?? null;
+
+    if (workflow) {
+      console.log('[MyChat] Syncing workflow from provider:', {
+        from: currentId,
+        to: providerSelectedWorkflowId,
+        workflowName: workflow.display_name,
+      });
+
+      // For admin users, set the workflow on the backend
+      const isAdmin = user?.is_admin;
+      if (isAdmin) {
+        workflowsApi.setChatkitWorkflow(token, providerSelectedWorkflowId)
+          .then(() => {
+            console.log('[MyChat] Backend workflow updated to:', providerSelectedWorkflowId);
+          })
+          .catch((err) => {
+            console.error('[MyChat] Failed to update backend workflow:', err);
+          });
+      }
+
+      const selection: WorkflowActivation = {
+        kind: "local",
+        workflow,
+      };
+
+      // Reset chat state to switch to new workflow (like handleWorkflowActivated does)
+      resetChatState({
+        selection,
+        preserveStoredThread: true,
+        targetMode: mode,
+      });
+      resetError();
+
+      setWorkflowSelection(selection);
+    }
+  }, [mode, providerSelectedWorkflowId, workflows, workflowSelection, resetChatState, resetError, token, user?.is_admin]);
+
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
     if (previousOwner && previousOwner !== sessionOwner) {
@@ -700,20 +765,23 @@ export function MyChat() {
     setActiveInstances((prev) => {
       const existing = prev.get(currentWorkflowId);
 
-      // If instance already exists, don't recreate it - this preserves its state
+      // If instance already exists, don't modify it - preserve its state completely
       if (existing) {
         return prev;
       }
 
       const next = new Map(prev);
 
-      // Add new instance only if it doesn't exist
+      // Create new instance only if it doesn't exist
+      instanceKeyCounterRef.current += 1;
       next.set(currentWorkflowId, {
         workflowId: currentWorkflowId,
         mode,
+        workflow: activeWorkflow,
         initialThreadId,
         chatkitOptions,
         createdAt: Date.now(),
+        instanceKey: instanceKeyCounterRef.current,
       });
 
       // Limit cache size - remove oldest instances
@@ -731,7 +799,8 @@ export function MyChat() {
 
       return next;
     });
-  }, [currentWorkflowId, mode, initialThreadId, chatkitOptions, MAX_CACHED_INSTANCES]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWorkflowId]);
 
   const handleRequestRefreshReady = useCallback((requestRefresh: () => Promise<void>) => {
     requestRefreshRef.current = requestRefresh;
@@ -812,12 +881,12 @@ export function MyChat() {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
             <WorkflowChatInstance
-              key={instanceId}
+              key={`${instanceId}-${instance.instanceKey}`}
               workflowId={instanceId}
-              chatkitOptions={instance.chatkitOptions}
+              chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
               token={token}
-              activeWorkflow={activeWorkflow}
-              initialThreadId={instance.initialThreadId}
+              activeWorkflow={instance.workflow}
+              initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
               reportError={reportError}
               mode={instance.mode}
               isActive={instanceId === currentWorkflowId}
