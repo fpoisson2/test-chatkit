@@ -114,19 +114,9 @@ async def lti_launch(
     # Route to Deep Linking if that's the message type
     if message_type == "LtiDeepLinkingRequest":
         logger.info("Routing to deep linking selection page")
-        # Redirect to deep linking selection page with state and id_token
-        # Use absolute URL to work correctly with reverse proxy
-        # Check X-Forwarded-Proto header to get the correct scheme (http vs https)
-        scheme = request.headers.get("X-Forwarded-Proto", request.url.scheme)
-        host = request.headers.get("X-Forwarded-Host", request.url.netloc)
-        base_url = f"{scheme}://{host}"
-        params = urlencode({"state": state, "id_token": id_token})
-        redirect_url = f"{base_url}/api/lti/deep-link?{params}"
-        logger.info("Redirecting to deep link page: %s", redirect_url)
-        return RedirectResponse(
-            url=redirect_url,
-            status_code=status.HTTP_303_SEE_OTHER
-        )
+        # Serve the deep linking page directly instead of redirecting
+        # Moodle expects a direct HTML response, not a redirect
+        return await lti_deep_link_page(state=state, id_token=id_token)
 
     # Otherwise, proceed with normal resource link launch
     logger.info("Processing as normal resource link launch")
