@@ -39,6 +39,7 @@ export const WorkflowChatInstance = ({
 
   const requestRefreshRef = useRef(requestRefresh);
   const previousWorkflowRef = useRef<WorkflowSummary | null>(activeWorkflow);
+  const pendingActivationRefreshRef = useRef(false);
 
   useEffect(() => {
     requestRefreshRef.current = requestRefresh;
@@ -58,13 +59,28 @@ export const WorkflowChatInstance = ({
       previousWorkflow?.updated_at !== activeWorkflow?.updated_at;
 
     if ((previousWorkflow && hasWorkflowChanged) || (!previousWorkflow && activeWorkflow)) {
-      void requestRefreshRef.current?.(
-        "[WorkflowChatInstance] Workflow change detected, refreshing session",
-      );
+      if (isActive) {
+        void requestRefreshRef.current?.(
+          "[WorkflowChatInstance] Workflow change detected, refreshing session",
+        );
+      } else {
+        pendingActivationRefreshRef.current = true;
+      }
     }
 
     previousWorkflowRef.current = activeWorkflow;
-  }, [activeWorkflow]);
+  }, [activeWorkflow, isActive]);
+
+  useEffect(() => {
+    if (!isActive || !pendingActivationRefreshRef.current) {
+      return;
+    }
+
+    pendingActivationRefreshRef.current = false;
+    void requestRefreshRef.current?.(
+      "[WorkflowChatInstance] Activated with pending workflow change, refreshing session",
+    );
+  }, [isActive]);
 
   return (
     <div
