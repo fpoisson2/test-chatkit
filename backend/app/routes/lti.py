@@ -517,7 +517,7 @@ async def lti_deep_link_page(state: str | None = None, id_token: str | None = No
 @router.post("/api/lti/deep-link")
 async def lti_deep_link(
     request: Request, service: LTIService = Depends(_get_service)
-) -> dict[str, Any]:
+):
     import logging
     from fastapi.responses import RedirectResponse
     from urllib.parse import urlencode
@@ -545,7 +545,8 @@ async def lti_deep_link(
         # Serve the selection page directly instead of redirecting
         # Moodle expects a direct HTML response, not a redirect
         logger.info("No workflows selected, serving selection page directly")
-        return await lti_deep_link_page(state=state, id_token=id_token)
+        html_content = await lti_deep_link_page(state=state, id_token=id_token)
+        return HTMLResponse(content=html_content)
 
     # Sinon, traiter la sélection
     return service.handle_deep_link(
