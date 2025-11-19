@@ -508,23 +508,22 @@ export function MyChat() {
         workflowName: workflow.display_name,
       });
 
-      // Clear existing instance for the new workflow to force recreation with fresh values
-      const newWorkflowId = `local::${providerSelectedWorkflowId}`;
-      setActiveInstances((prev) => {
-        const next = new Map(prev);
-        if (next.has(newWorkflowId)) {
-          console.log('[MyChat] Clearing existing instance to force refresh:', newWorkflowId);
-          next.delete(newWorkflowId);
-        }
-        return next;
-      });
-
-      setWorkflowSelection({
+      const selection: WorkflowActivation = {
         kind: "local",
         workflow,
+      };
+
+      // Reset chat state to switch to new workflow (like handleWorkflowActivated does)
+      resetChatState({
+        selection,
+        preserveStoredThread: true,
+        targetMode: mode,
       });
+      resetError();
+
+      setWorkflowSelection(selection);
     }
-  }, [mode, providerSelectedWorkflowId, workflows, workflowSelection]);
+  }, [mode, providerSelectedWorkflowId, workflows, workflowSelection, resetChatState, resetError]);
 
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
