@@ -23,14 +23,15 @@ def _get_rate_limit_key(request):
     return f"ip:{get_remote_address(request)}"
 
 
-# Initialize the limiter
-# Storage backend uses in-memory storage by default
-# For production with multiple workers, consider using Redis:
-# from slowapi.middleware import SlowAPIMiddleware
-# from slowapi.errors import RateLimitExceeded
+# Get Redis URL from environment (same as Celery)
+REDIS_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+
+# Initialize the limiter with Redis backend
+# This allows rate limiting to work across multiple workers/processes
 limiter = Limiter(
     key_func=_get_rate_limit_key,
     default_limits=[],  # No default limits, we'll apply per-route
+    storage_uri=REDIS_URL,
     enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true",
 )
 

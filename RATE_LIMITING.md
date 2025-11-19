@@ -2,11 +2,21 @@
 
 ## Overview
 
-Rate limiting has been implemented using the `slowapi` library to protect the application against abuse, brute force attacks, and excessive usage.
+Rate limiting has been implemented using the `slowapi` library to protect the application against abuse, brute force attacks, and excessive usage. The implementation uses **Redis as the storage backend**, sharing the same Redis instance already configured for Celery, making it production-ready from day one.
 
 ## Configuration
 
 The rate limiting configuration is centralized in `/backend/app/rate_limit.py`.
+
+### Redis Backend
+
+The rate limiter uses Redis for storage, which provides:
+- **Distributed rate limiting** across multiple workers/containers
+- **Persistence** of rate limit counters
+- **Shared infrastructure** with Celery (no additional services needed)
+- **Production-ready** scalability
+
+Redis connection is configured via the `CELERY_BROKER_URL` environment variable (default: `redis://localhost:6379/0`).
 
 ### Rate Limit Strategy
 
@@ -104,31 +114,19 @@ done
 ## Production Considerations
 
 ### Current Implementation
-- Uses **in-memory storage** (default slowapi backend)
-- Works for **single-worker deployments**
-- Simple and fast for development
+- Uses **Redis backend** for distributed rate limiting
+- Shares the same Redis instance as Celery
+- Works across **multiple workers/processes**
+- Production-ready and scalable
 
-### For Multi-Worker Production
+### Redis Configuration
 
-If deploying with multiple Uvicorn workers or multiple servers, consider upgrading to **Redis backend**:
+The rate limiter uses the same Redis configuration as Celery:
+- Configured via `CELERY_BROKER_URL` environment variable
+- Default: `redis://localhost:6379/0`
+- Already configured in `docker-compose.yml`
 
-```python
-# In app/rate_limit.py
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-import redis
-
-redis_client = redis.Redis(
-    host=os.getenv("REDIS_HOST", "localhost"),
-    port=int(os.getenv("REDIS_PORT", 6379)),
-    db=int(os.getenv("REDIS_DB", 0)),
-)
-
-limiter = Limiter(
-    key_func=_get_rate_limit_key,
-    storage_uri=f"redis://{redis_client.connection_pool.connection_kwargs['host']}",
-)
-```
+No additional setup required! The rate limiting will work seamlessly across multiple Uvicorn workers or containers.
 
 ### Monitoring
 
