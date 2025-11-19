@@ -15,9 +15,10 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const [menuPosition, setMenuPosition] = useState<{
     top?: number;
     bottom?: number;
-    right: number;
+    left?: number;
+    right?: number;
     openUpwards: boolean;
-  }>({ right: 0, openUpwards: false });
+  }>({ openUpwards: false });
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -45,7 +46,7 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
 
   useEffect(() => {
     const updatePosition = () => {
-      if (isOpen && buttonRef.current) {
+      if (buttonRef.current) {
         const buttonRect = buttonRef.current.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
         const viewportWidth = window.innerWidth;
@@ -53,8 +54,22 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
         const estimatedMenuHeight = actions.length * 44 + 16; // 44px per item + padding
         const openUpwards = spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight;
 
+        // Calculate menu width
+        const menuWidth = 200;
+
+        // Calculate position: try to align right edge of menu with right edge of button
+        const preferredLeft = buttonRect.right - menuWidth;
+
+        // Ensure menu stays within viewport with 8px margin
+        let finalLeft = preferredLeft;
+        if (finalLeft < 8) {
+          finalLeft = 8; // Too far left, push right
+        } else if (finalLeft + menuWidth > viewportWidth - 8) {
+          finalLeft = viewportWidth - menuWidth - 8; // Too far right, push left
+        }
+
         setMenuPosition({
-          right: viewportWidth - buttonRect.right,
+          left: finalLeft,
           ...(openUpwards
             ? { bottom: viewportHeight - buttonRect.top + 4 }
             : { top: buttonRect.bottom + 4 }),
@@ -63,15 +78,20 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
       }
     };
 
-    updatePosition();
-
     if (isOpen) {
-      window.addEventListener("scroll", updatePosition, true);
-      window.addEventListener("resize", updatePosition);
+      updatePosition();
+
+      // Close menu on scroll to avoid positioning issues
+      const handleScroll = () => {
+        setIsOpen(false);
+      };
+
+      window.addEventListener("scroll", handleScroll, true);
+      window.addEventListener("resize", handleScroll);
 
       return () => {
-        window.removeEventListener("scroll", updatePosition, true);
-        window.removeEventListener("resize", updatePosition);
+        window.removeEventListener("scroll", handleScroll, true);
+        window.removeEventListener("resize", handleScroll);
       };
     }
   }, [isOpen, actions.length]);
@@ -122,8 +142,9 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
             position: "fixed",
             top: menuPosition.top,
             bottom: menuPosition.bottom,
+            left: menuPosition.left,
             right: menuPosition.right,
-            minWidth: "200px",
+            width: "200px",
             maxHeight: "400px",
             overflowY: "auto",
             zIndex: 1000,
