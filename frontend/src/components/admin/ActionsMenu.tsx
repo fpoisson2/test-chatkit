@@ -18,23 +18,30 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handlePointerDown = (event: PointerEvent) => {
       if (
         containerRef.current &&
-        !containerRef.current.contains(event.target as Node) &&
-        menuRef.current &&
-        !menuRef.current.contains(event.target as Node)
+        containerRef.current.contains(event.target as Node)
       ) {
-        setIsOpen(false);
+        return;
       }
+
+      if (
+        menuRef.current &&
+        menuRef.current.contains(event.target as Node)
+      ) {
+        return;
+      }
+
+      setIsOpen(false);
     };
 
     if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("pointerdown", handlePointerDown);
     }
 
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("pointerdown", handlePointerDown);
     };
   }, [isOpen]);
 
@@ -77,7 +84,6 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   useEffect(() => {
     if (isOpen) {
       // Close menu on scroll/resize for better UX
-      // This is the standard behavior for dropdown menus
       const handleScrollOrResize = (event: Event) => {
         // Ignore scroll events from within the menu
         if (
@@ -143,6 +149,8 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
         <div
           ref={menuRef}
           className="actions-menu-dropdown"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
             left: 0,
@@ -150,14 +158,15 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
             width: "200px",
             maxHeight: "400px",
             overflowY: "auto",
-            zIndex: 110000,
+            zIndex: 999999,
           }}
         >
           {actions.map((action, index) => (
             <button
               key={index}
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 action.onClick();
                 setIsOpen(false);
               }}
