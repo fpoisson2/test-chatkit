@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
-import type { WorkflowSummary, HostedWorkflowMetadata } from "../types";
+import type { WorkflowSummary } from "../types";
+import type { HostedWorkflowMetadata } from "../../../utils/backend";
 
 export interface UseWorkflowSyncParams {
   // From WorkflowSidebarProvider
@@ -100,7 +101,9 @@ export const useWorkflowSync = ({
   }, [hostedWorkflowsStringified, setSidebarHostedWorkflows, hostedWorkflows]);
 
   useEffect(() => {
-    setSidebarSelectedWorkflowId(selectedWorkflowId as number | null);
+    if (initializedFromProviderRef.current) {
+      setSidebarSelectedWorkflowId(selectedWorkflowId as number | null);
+    }
   }, [selectedWorkflowId, setSidebarSelectedWorkflowId]);
 
   return {

@@ -311,6 +311,27 @@ export const WorkflowSidebarProvider = ({ children }: WorkflowSidebarProviderPro
     });
   }, [hostedWorkflows, persistPinnedLookup, token, workflows]);
 
+  // Update mode when selection changes
+  const prevSelectedWorkflowId = useRef(selectedWorkflowId);
+  useEffect(() => {
+    if (selectedWorkflowId !== prevSelectedWorkflowId.current) {
+      if (selectedWorkflowId !== null) {
+        setMode("local");
+      }
+      prevSelectedWorkflowId.current = selectedWorkflowId;
+    }
+  }, [selectedWorkflowId]);
+
+  const prevSelectedHostedSlug = useRef(selectedHostedSlug);
+  useEffect(() => {
+    if (selectedHostedSlug !== prevSelectedHostedSlug.current) {
+      if (selectedHostedSlug !== null) {
+        setMode("hosted");
+      }
+      prevSelectedHostedSlug.current = selectedHostedSlug;
+    }
+  }, [selectedHostedSlug]);
+
   // Persist selection changes
   useEffect(() => {
     updateStoredWorkflowSelection((previous) => {
