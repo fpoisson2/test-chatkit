@@ -17,6 +17,7 @@ import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
+import { useWorkflowCapabilities } from "./hooks/useWorkflowCapabilities";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
@@ -380,13 +381,16 @@ export function MyChat() {
     disableHostedFlow,
   });
 
-  // useWorkflowVoiceSession: Désactivé par défaut pour éviter les connexions inutiles
-  // TODO: Activer dynamiquement selon:
-  // 1. Si le workflow contient un node de type "voice_agent"
-  // 2. Si l'utilisateur démarre explicitement une session vocale via l'UI
-  // 3. Ou passer à enabled: true pour toujours permettre les sessions vocales
+  // Detect workflow capabilities to enable appropriate WebSocket connections
+  const { hasVoiceAgent } = useWorkflowCapabilities(
+    token,
+    activeWorkflow?.id ?? null,
+    activeWorkflow?.active_version_id ?? null
+  );
+
+  // useWorkflowVoiceSession: Activated automatically when workflow has voice_agent nodes
   const { stopVoiceSession, status: voiceStatus, isListening: voiceIsListening } = useWorkflowVoiceSession({
-    enabled: false,
+    enabled: hasVoiceAgent,
     threadId: initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
