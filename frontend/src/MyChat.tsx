@@ -380,6 +380,7 @@ export function MyChat() {
   });
 
   const { stopVoiceSession, status: voiceStatus, isListening: voiceIsListening } = useWorkflowVoiceSession({
+    enabled: false, // Désactivé par défaut - activer uniquement si le workflow a des fonctionnalités vocales
     threadId: initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
