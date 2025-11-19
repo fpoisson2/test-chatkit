@@ -138,10 +138,6 @@ def prepare_agents(
             ),
         )
 
-        if step.kind == "voice_agent":
-            _register_widget_config(step)
-            continue
-
         widget_config = _register_widget_config(step)
 
         workflow_reference = (step.parameters or {}).get("workflow")
