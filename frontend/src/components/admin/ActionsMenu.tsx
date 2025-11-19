@@ -13,6 +13,7 @@ interface ActionsMenuProps {
 export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [openUpwards, setOpenUpwards] = useState(false);
+  const [isPositioned, setIsPositioned] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -80,9 +81,13 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
       if (shouldOpenUpwards !== openUpwards) {
         setOpenUpwards(shouldOpenUpwards);
       }
+
+      // Mark as positioned so it becomes visible
+      setIsPositioned(true);
     };
 
     if (isOpen) {
+      setIsPositioned(false);
       updatePosition();
     }
   }, [isOpen, actions.length, openUpwards]);
@@ -156,6 +161,8 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
             maxHeight: "400px",
             overflowY: "auto",
             zIndex: 1000,
+            opacity: isPositioned ? 1 : 0,
+            pointerEvents: isPositioned ? 'auto' : 'none',
           }}
         >
           {actions.map((action, index) => (
