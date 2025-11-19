@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
+  Handle,
+  MarkerType,
+  Position,
   type Node,
   type Edge,
   type NodeProps,
@@ -140,35 +143,48 @@ const CustomNode = ({
   const nodeStyle = getNodeStyleByStatus(data.nodeStatus, data.kind);
 
   return (
-    <div
-      style={{
-        padding: "10px 20px",
-        borderRadius: "8px",
-        minWidth: "150px",
-        position: "relative",
-        transition: "all 0.3s ease",
-        cursor: data.users && data.users.length > 0 ? "pointer" : "default",
-        ...nodeStyle,
-      }}
-      onClick={() => data.users && data.users.length > 0 && setShowUsersList(!showUsersList)}
-      onMouseEnter={() => data.users && data.users.length > 0 && setShowUsersList(true)}
-      onMouseLeave={() => setShowUsersList(false)}
-    >
+    <>
+      {/* Handle d'entrée (target) */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{
+          background: "#555",
+          width: 8,
+          height: 8,
+          border: "2px solid white",
+        }}
+      />
+
       <div
         style={{
-          fontWeight: 600,
-          fontSize: "14px",
-          marginBottom: "4px",
-          color: data.nodeStatus === "pending"
-            ? "var(--color-text-subtle, #9ca3af)"
-            : "var(--color-text, #1f2937)",
+          padding: "10px 20px",
+          borderRadius: "8px",
+          minWidth: "150px",
+          position: "relative",
+          transition: "all 0.3s ease",
+          cursor: data.users && data.users.length > 0 ? "pointer" : "default",
+          ...nodeStyle,
         }}
+        onClick={() => data.users && data.users.length > 0 && setShowUsersList(!showUsersList)}
+        onMouseEnter={() => data.users && data.users.length > 0 && setShowUsersList(true)}
+        onMouseLeave={() => setShowUsersList(false)}
       >
-        {data.label}
-      </div>
-      <div style={{ fontSize: "11px", color: "var(--color-text-muted, #6b7280)" }}>
-        {data.kind}
-      </div>
+        <div
+          style={{
+            fontWeight: 600,
+            fontSize: "14px",
+            marginBottom: "4px",
+            color: data.nodeStatus === "pending"
+              ? "var(--color-text-subtle, #9ca3af)"
+              : "var(--color-text, #1f2937)",
+          }}
+        >
+          {data.label}
+        </div>
+        <div style={{ fontSize: "11px", color: "var(--color-text-muted, #6b7280)" }}>
+          {data.kind}
+        </div>
 
       {/* Badge utilisateurs actuels */}
       {data.users && data.users.length > 0 && (
@@ -277,10 +293,24 @@ const CustomNode = ({
           ✓
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Handle de sortie (source) */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{
+          background: "#555",
+          width: 8,
+          height: 8,
+          border: "2px solid white",
+        }}
+      />
+    </>
   );
 };
 
+// Définir nodeTypes en dehors du composant pour éviter les re-créations
 const nodeTypes = {
   custom: CustomNode,
 };
@@ -379,33 +409,43 @@ export const WorkflowVisualizationModal = ({
     });
 
     // Construire les edges de base
-    const stepIdToSlug = new Map(
-      (workflowVersion.graph?.nodes || []).map((step) => [step.id, step.slug])
-    );
+    const edges: Edge[] = (workflowVersion.graph?.edges || [])
+      .map((transition, index) => {
+        // Les edges de l'API ont déjà source et target comme slugs
+        const sourceSlug = transition.source;
+        const targetSlug = transition.target;
 
-    const edges: Edge[] = (workflowVersion.graph?.edges || []).map((transition, index) => {
-      const sourceSlug = stepIdToSlug.get(transition.source_step_id);
-      const targetSlug = stepIdToSlug.get(transition.target_step_id);
+        // Déterminer si cet edge fait partie d'un chemin parcouru
+        const isOnUserPath = sourceSlug && targetSlug &&
+          visitedSteps.has(sourceSlug) && visitedSteps.has(targetSlug);
 
-      // Déterminer si cet edge fait partie d'un chemin parcouru
-      const isOnUserPath = sourceSlug && targetSlug &&
-        visitedSteps.has(sourceSlug) && visitedSteps.has(targetSlug);
+        const edgeColor = isOnUserPath ? "#3b82f6" : "#9ca3af";
 
-      return {
-        id: `edge-${index}`,
-        source: sourceSlug || "",
-        target: targetSlug || "",
-        label: transition.condition || undefined,
-        type: "smoothstep",
-        animated: false,
-        style: isOnUserPath
-          ? { stroke: "#3b82f6", strokeWidth: 2 }
-          : { stroke: "#e5e7eb", strokeWidth: 1.5 },
-      };
-    });
+        return {
+          id: `edge-${index}`,
+          source: sourceSlug,
+          target: targetSlug,
+          label: transition.condition || transition.metadata?.label || undefined,
+          type: "smoothstep",
+          animated: false,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: edgeColor,
+            width: 20,
+            height: 20,
+          },
+          style: {
+            stroke: edgeColor,
+            strokeWidth: isOnUserPath ? 2 : 1.5,
+          },
+        };
+      })
+      .filter((edge) => edge.source && edge.target); // Filtrer les edges sans source/target valides
 
     // Créer les edges des chemins utilisateurs (animés)
     const userPathEdges: Edge[] = [];
+    const nodeIds = new Set(nodes.map(n => n.id)); // IDs de tous les nodes existants
+
     sessions.forEach((session, sessionIndex) => {
       const allSteps = [...session.step_history.map(s => s.slug), session.current_step.slug];
 
@@ -413,19 +453,28 @@ export const WorkflowVisualizationModal = ({
         const source = allSteps[i];
         const target = allSteps[i + 1];
 
-        userPathEdges.push({
-          id: `user-path-${sessionIndex}-${i}`,
-          source,
-          target,
-          type: "smoothstep",
-          animated: true,
-          style: {
-            stroke: "#10b981",
-            strokeWidth: 3,
-            opacity: 0.6,
-          },
-          zIndex: 10,
-        });
+        // Ne créer l'edge que si les deux nodes existent
+        if (nodeIds.has(source) && nodeIds.has(target)) {
+          userPathEdges.push({
+            id: `user-path-${sessionIndex}-${i}`,
+            source,
+            target,
+            type: "smoothstep",
+            animated: true,
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: "#10b981",
+              width: 25,
+              height: 25,
+            },
+            style: {
+              stroke: "#10b981",
+              strokeWidth: 3,
+              opacity: 0.6,
+            },
+            zIndex: 10,
+          });
+        }
       }
     });
 
@@ -532,6 +581,11 @@ export const WorkflowVisualizationModal = ({
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
+                onNodesChange={() => {}}
+                onEdgesChange={() => {}}
+                defaultEdgeOptions={{
+                  markerEnd: { type: MarkerType.ArrowClosed },
+                }}
                 fitView
                 fitViewOptions={{
                   padding: 0.2,
