@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..database import get_session
 from ..lti.service import LTIService
 
@@ -114,10 +115,15 @@ async def lti_launch(
     if message_type == "LtiDeepLinkingRequest":
         logger.info("Routing to deep linking selection page")
         # Redirect to deep linking selection page with state and id_token
-        # Use absolute URL to ensure proper routing through reverse proxy
-        base_url = f"{request.url.scheme}://{request.url.netloc}"
+        # Use frontend URL from settings (same as complete_launch does)
+        settings = get_settings()
+        frontend_base = (
+            settings.allowed_origins[0]
+            if settings.allowed_origins
+            else settings.backend_public_base_url
+        ).rstrip("/")
         params = urlencode({"state": state, "id_token": id_token})
-        redirect_url = f"{base_url}/lti/deep-link?{params}"
+        redirect_url = f"{frontend_base}/lti/deep-link?{params}"
         logger.info("Redirecting to deep link page: %s", redirect_url)
         return RedirectResponse(
             url=redirect_url,
@@ -298,10 +304,15 @@ async def lti_deep_link(
 
     # Si aucun workflow n'est sélectionné, rediriger vers la page de sélection
     if not workflow_ids and not workflow_slugs:
-        # Use absolute URL to ensure proper routing through reverse proxy
-        base_url = f"{request.url.scheme}://{request.url.netloc}"
+        # Use frontend URL from settings (same as complete_launch does)
+        settings = get_settings()
+        frontend_base = (
+            settings.allowed_origins[0]
+            if settings.allowed_origins
+            else settings.backend_public_base_url
+        ).rstrip("/")
         params = urlencode({"state": state, "id_token": id_token})
-        redirect_url = f"{base_url}/lti/deep-link?{params}"
+        redirect_url = f"{frontend_base}/lti/deep-link?{params}"
         logger.info("No workflows selected, redirecting to selection page: %s", redirect_url)
         return RedirectResponse(
             url=redirect_url,
