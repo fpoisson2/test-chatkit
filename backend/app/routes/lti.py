@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from ..config import get_settings
 from ..database import get_session
 from ..lti.service import LTIService
 
@@ -115,15 +115,9 @@ async def lti_launch(
     if message_type == "LtiDeepLinkingRequest":
         logger.info("Routing to deep linking selection page")
         # Redirect to deep linking selection page with state and id_token
-        # Use frontend URL from settings (same as complete_launch does)
-        settings = get_settings()
-        frontend_base = (
-            settings.allowed_origins[0]
-            if settings.allowed_origins
-            else settings.backend_public_base_url
-        ).rstrip("/")
+        # Use backend API route (served as HTML page)
         params = urlencode({"state": state, "id_token": id_token})
-        redirect_url = f"{frontend_base}/lti/deep-link?{params}"
+        redirect_url = f"/api/lti/deep-link?{params}"
         logger.info("Redirecting to deep link page: %s", redirect_url)
         return RedirectResponse(
             url=redirect_url,
@@ -276,6 +270,251 @@ async def get_current_lti_workflow(
     }
 
 
+@router.get("/api/lti/deep-link", response_class=HTMLResponse)
+async def lti_deep_link_page(state: str | None = None, id_token: str | None = None):
+    """Serve the deep linking workflow selection page."""
+    import html
+
+    state_escaped = html.escape(state or "")
+    id_token_escaped = html.escape(id_token or "")
+
+    html_content = f"""
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sélection de workflow LTI</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: #f5f5f5;
+        }}
+        .container {{
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }}
+        h1 {{
+            margin-top: 0;
+            color: #333;
+        }}
+        .workflow-list {{
+            margin: 2rem 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }}
+        .workflow-item {{
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }}
+        .workflow-item:hover {{
+            border-color: #007bff;
+            background: #f8f9fa;
+        }}
+        .workflow-item input[type="checkbox"] {{
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }}
+        .workflow-info {{
+            flex: 1;
+        }}
+        .workflow-info h3 {{
+            margin: 0 0 0.5rem 0;
+            color: #333;
+            font-size: 1.1rem;
+        }}
+        .workflow-info p {{
+            margin: 0;
+            color: #666;
+            font-size: 0.9rem;
+        }}
+        .error-message {{
+            padding: 1rem;
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 4px;
+            color: #c00;
+            margin: 1rem 0;
+        }}
+        .loading {{
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }}
+        .actions {{
+            margin-top: 2rem;
+            display: flex;
+            justify-content: flex-end;
+        }}
+        .actions button {{
+            padding: 0.75rem 2rem;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }}
+        .actions button:hover:not(:disabled) {{
+            background: #0056b3;
+        }}
+        .actions button:disabled {{
+            background: #ccc;
+            cursor: not-allowed;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sélection de workflow LTI</h1>
+        <div id="content">
+            <div class="loading">Chargement des workflows disponibles...</div>
+        </div>
+    </div>
+
+    <script>
+        const state = "{state_escaped}";
+        const idToken = "{id_token_escaped}";
+        let selectedWorkflowIds = [];
+
+        async function loadWorkflows() {{
+            try {{
+                const response = await fetch('/api/lti/workflows');
+                if (!response.ok) {{
+                    throw new Error('Impossible de charger les workflows');
+                }}
+                const workflows = await response.json();
+                renderWorkflows(workflows);
+            }} catch (err) {{
+                document.getElementById('content').innerHTML =
+                    '<div class="error-message">Erreur: ' + err.message + '</div>';
+            }}
+        }}
+
+        function renderWorkflows(workflows) {{
+            if (workflows.length === 0) {{
+                document.getElementById('content').innerHTML = `
+                    <p>Aucun workflow n'est activé pour LTI.</p>
+                    <p>Veuillez activer l'option LTI sur au moins un workflow dans les paramètres.</p>
+                `;
+                return;
+            }}
+
+            let html = '<form id="workflowForm"><div class="workflow-list">';
+            workflows.forEach(w => {{
+                html += `
+                    <label class="workflow-item">
+                        <input type="checkbox" name="workflow" value="${{w.id}}"
+                               onchange="toggleWorkflow(${{w.id}})">
+                        <div class="workflow-info">
+                            <h3>${{w.display_name}}</h3>
+                            ${{w.description ? '<p>' + w.description + '</p>' : ''}}
+                        </div>
+                    </label>
+                `;
+            }});
+            html += '</div>';
+            html += '<div class="actions">';
+            html += '<button type="submit" id="submitBtn" disabled>Ajouter au cours</button>';
+            html += '</div></form>';
+
+            document.getElementById('content').innerHTML = html;
+            document.getElementById('workflowForm').addEventListener('submit', handleSubmit);
+        }}
+
+        function toggleWorkflow(workflowId) {{
+            const index = selectedWorkflowIds.indexOf(workflowId);
+            if (index > -1) {{
+                selectedWorkflowIds.splice(index, 1);
+            }} else {{
+                selectedWorkflowIds.push(workflowId);
+            }}
+            document.getElementById('submitBtn').disabled = selectedWorkflowIds.length === 0;
+        }}
+
+        async function handleSubmit(e) {{
+            e.preventDefault();
+
+            if (selectedWorkflowIds.length === 0) {{
+                alert('Veuillez sélectionner au moins un workflow');
+                return;
+            }}
+
+            if (!state || !idToken) {{
+                alert('Paramètres LTI manquants');
+                return;
+            }}
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Envoi en cours...';
+
+            try {{
+                const response = await fetch('/api/lti/deep-link', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify({{
+                        state: state,
+                        id_token: idToken,
+                        workflow_ids: selectedWorkflowIds,
+                    }}),
+                }});
+
+                if (!response.ok) {{
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Erreur lors de la soumission');
+                }}
+
+                const result = await response.json();
+
+                // Créer un formulaire invisible pour POST le JWT vers Moodle
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = result.return_url;
+
+                const jwtInput = document.createElement('input');
+                jwtInput.type = 'hidden';
+                jwtInput.name = 'JWT';
+                jwtInput.value = result.deep_link_jwt || result.jwt;
+
+                form.appendChild(jwtInput);
+                document.body.appendChild(form);
+                form.submit();
+            }} catch (err) {{
+                document.getElementById('content').innerHTML =
+                    '<div class="error-message">' + err.message + '</div>';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Ajouter au cours';
+            }}
+        }}
+
+        // Load workflows on page load
+        loadWorkflows();
+    </script>
+</body>
+</html>
+    """
+
+    return html_content
+
+
 @router.post("/api/lti/deep-link")
 async def lti_deep_link(
     request: Request, service: LTIService = Depends(_get_service)
@@ -304,15 +543,9 @@ async def lti_deep_link(
 
     # Si aucun workflow n'est sélectionné, rediriger vers la page de sélection
     if not workflow_ids and not workflow_slugs:
-        # Use frontend URL from settings (same as complete_launch does)
-        settings = get_settings()
-        frontend_base = (
-            settings.allowed_origins[0]
-            if settings.allowed_origins
-            else settings.backend_public_base_url
-        ).rstrip("/")
+        # Use backend API route (served as HTML page)
         params = urlencode({"state": state, "id_token": id_token})
-        redirect_url = f"{frontend_base}/lti/deep-link?{params}"
+        redirect_url = f"/api/lti/deep-link?{params}"
         logger.info("No workflows selected, redirecting to selection page: %s", redirect_url)
         return RedirectResponse(
             url=redirect_url,
