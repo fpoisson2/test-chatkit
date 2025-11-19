@@ -125,7 +125,7 @@ async def lti_launch(
         logger.info("Redirecting to deep link page: %s", redirect_url)
         return RedirectResponse(
             url=redirect_url,
-            status_code=status.HTTP_302_FOUND
+            status_code=status.HTTP_303_SEE_OTHER
         )
 
     # Otherwise, proceed with normal resource link launch
@@ -562,7 +562,7 @@ async def lti_deep_link(
         logger.info("No workflows selected, redirecting to selection page: %s", redirect_url)
         return RedirectResponse(
             url=redirect_url,
-            status_code=status.HTTP_302_FOUND
+            status_code=status.HTTP_303_SEE_OTHER
         )
 
     # Sinon, traiter la sélection
