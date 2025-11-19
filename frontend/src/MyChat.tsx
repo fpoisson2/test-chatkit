@@ -229,11 +229,13 @@ export function MyChat() {
     initialThreadId: string | null;
     chatkitOptions: ChatKitOptions;
     createdAt: number;
+    instanceKey: number;
   };
   const [activeInstances, setActiveInstances] = useState<Map<string, WorkflowInstanceData>>(
     new Map()
   );
   const MAX_CACHED_INSTANCES = 5;
+  const instanceKeyCounterRef = useRef(0);
 
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
@@ -759,6 +761,7 @@ export function MyChat() {
       const next = new Map(prev);
 
       // Create new instance only if it doesn't exist
+      instanceKeyCounterRef.current += 1;
       next.set(currentWorkflowId, {
         workflowId: currentWorkflowId,
         mode,
@@ -766,6 +769,7 @@ export function MyChat() {
         initialThreadId,
         chatkitOptions,
         createdAt: Date.now(),
+        instanceKey: instanceKeyCounterRef.current,
       });
 
       // Limit cache size - remove oldest instances
@@ -865,7 +869,7 @@ export function MyChat() {
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
             <WorkflowChatInstance
-              key={instanceId}
+              key={`${instanceId}-${instance.instanceKey}`}
               workflowId={instanceId}
               chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
               token={token}
