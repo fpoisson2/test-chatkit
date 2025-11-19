@@ -867,10 +867,10 @@ export function MyChat() {
             <WorkflowChatInstance
               key={instanceId}
               workflowId={instanceId}
-              chatkitOptions={instance.chatkitOptions}
+              chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
               token={token}
               activeWorkflow={instance.workflow}
-              initialThreadId={instance.initialThreadId}
+              initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
               reportError={reportError}
               mode={instance.mode}
               isActive={instanceId === currentWorkflowId}
