@@ -396,55 +396,59 @@ export const WorkflowVisualizationModal = ({
         ) : (
           <>
             <div style={{ marginBottom: "16px", padding: "12px", background: "#f3f4f6", borderRadius: "8px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "8px" }}>
-                <div>
-                  <h3 style={{ margin: "0 0 4px 0", fontSize: "16px", fontWeight: 600 }}>
+              <div style={{ marginBottom: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>
                     Utilisateurs actifs ({sessions.length})
                   </h3>
-                </div>
 
-                {/* Légende */}
-                <div style={{ display: "flex", gap: "12px", fontSize: "11px", alignItems: "center" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <div style={{
-                      width: "16px",
-                      height: "16px",
-                      border: "3px solid #3b82f6",
-                      borderRadius: "4px",
-                      background: "#3b82f615",
-                      boxShadow: "0 0 0 2px #3b82f630",
-                    }} />
-                    <span>Actif</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <div style={{
-                      width: "16px",
-                      height: "16px",
-                      border: "2px solid #3b82f6",
-                      borderRadius: "4px",
-                      background: "#3b82f608",
-                    }} />
-                    <span>Complété</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <div style={{
-                      width: "16px",
-                      height: "16px",
-                      border: "2px dashed #d1d5db",
-                      borderRadius: "4px",
-                      background: "#f9fafb",
-                      opacity: 0.6,
-                    }} />
-                    <span>En attente</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <div style={{
-                      width: "20px",
-                      height: "2px",
-                      background: "#10b981",
-                      borderRadius: "1px",
-                    }} />
-                    <span>Chemin parcouru</span>
+                  {/* Légende - responsive */}
+                  <div style={{ display: "flex", gap: "8px", fontSize: "11px", alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                      <div style={{
+                        width: "16px",
+                        height: "16px",
+                        border: "3px solid #3b82f6",
+                        borderRadius: "4px",
+                        background: "#3b82f615",
+                        boxShadow: "0 0 0 2px #3b82f630",
+                        flexShrink: 0,
+                      }} />
+                      <span>Actif</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                      <div style={{
+                        width: "16px",
+                        height: "16px",
+                        border: "2px solid #3b82f6",
+                        borderRadius: "4px",
+                        background: "#3b82f608",
+                        flexShrink: 0,
+                      }} />
+                      <span>Complété</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                      <div style={{
+                        width: "16px",
+                        height: "16px",
+                        border: "2px dashed #d1d5db",
+                        borderRadius: "4px",
+                        background: "#f9fafb",
+                        opacity: 0.6,
+                        flexShrink: 0,
+                      }} />
+                      <span>En attente</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                      <div style={{
+                        width: "20px",
+                        height: "2px",
+                        background: "#10b981",
+                        borderRadius: "1px",
+                        flexShrink: 0,
+                      }} />
+                      <span>Chemin parcouru</span>
+                    </div>
                   </div>
                 </div>
               </div>
