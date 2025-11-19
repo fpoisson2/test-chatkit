@@ -59,6 +59,44 @@ const RAW_BACKEND_URL = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const DEFAULT_API_BASE_PATH = "/api";
 const WORKFLOW_MONITOR_SUFFIX = "/admin/workflows/monitor";
 
+// Wake Lock management for keeping websockets alive
+let wakeLock: WakeLockSentinel | null = null;
+
+const requestWakeLock = async () => {
+  if (typeof navigator === "undefined" || !("wakeLock" in navigator)) {
+    console.log("[WorkflowMonitor] Wake Lock API not supported");
+    return;
+  }
+
+  if (wakeLock !== null && !wakeLock.released) {
+    console.log("[WorkflowMonitor] Wake Lock already active");
+    return;
+  }
+
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    console.log("[WorkflowMonitor] Wake Lock activated - websockets will stay alive in background");
+
+    wakeLock.addEventListener("release", () => {
+      console.log("[WorkflowMonitor] Wake Lock released");
+    });
+  } catch (error) {
+    console.log("[WorkflowMonitor] Failed to acquire Wake Lock:", error);
+  }
+};
+
+const releaseWakeLock = async () => {
+  if (wakeLock !== null && !wakeLock.released) {
+    try {
+      await wakeLock.release();
+      wakeLock = null;
+      console.log("[WorkflowMonitor] Wake Lock released manually");
+    } catch (error) {
+      console.log("[WorkflowMonitor] Failed to release Wake Lock:", error);
+    }
+  }
+};
+
 const sanitizeApiBasePath = (pathname: string) => {
   if (!pathname || pathname === "/") {
     return DEFAULT_API_BASE_PATH;
@@ -137,6 +175,11 @@ export const useWorkflowMonitorWebSocket = ({
         setIsConnected(true);
         setError(null);
         reconnectAttemptsRef.current = 0;
+
+        // Activate Wake Lock to keep connection alive
+        requestWakeLock().catch((error) => {
+          console.log("[WorkflowMonitor] Failed to activate Wake Lock on connect:", error);
+        });
       };
 
       ws.onmessage = (event) => {
@@ -210,6 +253,11 @@ export const useWorkflowMonitorWebSocket = ({
     }
 
     setIsConnected(false);
+
+    // Release Wake Lock when disconnecting
+    releaseWakeLock().catch((error) => {
+      console.log("[WorkflowMonitor] Failed to release Wake Lock on disconnect:", error);
+    });
   }, []);
 
   const reconnect = useCallback(() => {
@@ -228,8 +276,27 @@ export const useWorkflowMonitorWebSocket = ({
       disconnect();
     }
 
+    // Handle page visibility changes (important for mobile)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        console.log("[WorkflowMonitor] Page became visible, checking connection");
+
+        // Reacquire Wake Lock if websocket is connected
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          requestWakeLock().catch((error) => {
+            console.log("[WorkflowMonitor] Failed to reacquire Wake Lock:", error);
+          });
+        }
+
+        // If we're disconnected, reconnect logic is already in ws.onclose
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       shouldConnectRef.current = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
