@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
-  MiniMap,
   type Node,
   type Edge,
   type NodeProps,
@@ -90,6 +89,8 @@ const CustomNode = ({
   kind: string;
   nodeStatus: NodeStatus;
 }>) => {
+  const [showUsersList, setShowUsersList] = useState(false);
+
   const getNodeBaseColor = (kind: string) => {
     const colors: Record<string, string> = {
       start: "#10b981",
@@ -106,31 +107,31 @@ const CustomNode = ({
 
     switch (nodeStatus) {
       case "active":
-        // Utilisateurs actuellement ici - border épais + background léger
+        // Utilisateurs actuellement ici - border épais + background plus opaque
         return {
           border: `3px solid ${baseColor}`,
-          background: `${baseColor}15`, // 15 = ~8% opacity
-          boxShadow: `0 0 0 3px ${baseColor}30`,
+          background: `color-mix(in srgb, ${baseColor} 20%, var(--color-surface, white))`,
+          boxShadow: `0 0 0 3px color-mix(in srgb, ${baseColor} 30%, transparent)`,
         };
       case "completed":
-        // Déjà complété - border normale + background très léger
+        // Déjà complété - border normale + background opaque
         return {
           border: `2px solid ${baseColor}`,
-          background: `${baseColor}08`, // 08 = ~3% opacity
+          background: `color-mix(in srgb, ${baseColor} 10%, var(--color-surface, white))`,
           boxShadow: "none",
         };
       case "pending":
         // Pas encore atteint - gris + dashed
         return {
-          border: "2px dashed #d1d5db",
-          background: "#f9fafb",
+          border: "2px dashed var(--color-border-subtle, #d1d5db)",
+          background: "var(--color-surface-subtle, #f9fafb)",
           boxShadow: "none",
           opacity: 0.6,
         };
       default:
         return {
           border: `2px solid ${baseColor}`,
-          background: "white",
+          background: "var(--color-surface, white)",
           boxShadow: "none",
         };
     }
@@ -146,48 +147,110 @@ const CustomNode = ({
         minWidth: "150px",
         position: "relative",
         transition: "all 0.3s ease",
+        cursor: data.users && data.users.length > 0 ? "pointer" : "default",
         ...nodeStyle,
       }}
+      onClick={() => data.users && data.users.length > 0 && setShowUsersList(!showUsersList)}
+      onMouseEnter={() => data.users && data.users.length > 0 && setShowUsersList(true)}
+      onMouseLeave={() => setShowUsersList(false)}
     >
       <div
         style={{
           fontWeight: 600,
           fontSize: "14px",
           marginBottom: "4px",
-          color: data.nodeStatus === "pending" ? "#9ca3af" : "#1f2937",
+          color: data.nodeStatus === "pending"
+            ? "var(--color-text-subtle, #9ca3af)"
+            : "var(--color-text, #1f2937)",
         }}
       >
         {data.label}
       </div>
-      <div style={{ fontSize: "11px", color: "#6b7280" }}>
+      <div style={{ fontSize: "11px", color: "var(--color-text-muted, #6b7280)" }}>
         {data.kind}
       </div>
 
       {/* Badge utilisateurs actuels */}
       {data.users && data.users.length > 0 && (
-        <div
-          style={{
-            position: "absolute",
-            top: "-10px",
-            right: "-10px",
-            background: getNodeBaseColor(data.kind),
-            color: "white",
-            borderRadius: "50%",
-            width: "28px",
-            height: "28px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "13px",
-            fontWeight: "bold",
-            border: "3px solid white",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
-            animation: "pulse 2s ease-in-out infinite",
-          }}
-          title={data.users.map((u) => u.email).join(", ")}
-        >
-          {data.users.length}
-        </div>
+        <>
+          <div
+            style={{
+              position: "absolute",
+              top: "-10px",
+              right: "-10px",
+              background: getNodeBaseColor(data.kind),
+              color: "white",
+              borderRadius: "50%",
+              width: "28px",
+              height: "28px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "13px",
+              fontWeight: "bold",
+              border: "3px solid var(--color-surface, white)",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+              animation: "pulse 2s ease-in-out infinite",
+            }}
+          >
+            {data.users.length}
+          </div>
+
+          {/* Liste des utilisateurs au survol/clic */}
+          {showUsersList && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: "50%",
+                transform: "translateX(-50%)",
+                marginTop: "8px",
+                background: "var(--color-surface, white)",
+                border: "1px solid var(--color-border, #e5e7eb)",
+                borderRadius: "8px",
+                padding: "8px",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                zIndex: 1000,
+                minWidth: "200px",
+                maxWidth: "300px",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                marginBottom: "6px",
+                color: "var(--color-text, #1f2937)",
+              }}>
+                Utilisateurs actifs ({data.users.length})
+              </div>
+              {data.users.map((user, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "4px 8px",
+                    fontSize: "12px",
+                    borderRadius: "4px",
+                    background: "var(--color-surface-subtle, #f9fafb)",
+                    marginBottom: idx < data.users.length - 1 ? "4px" : "0",
+                    color: "var(--color-text, #1f2937)",
+                  }}
+                >
+                  {user.email}
+                  {user.is_admin && (
+                    <span style={{
+                      marginLeft: "6px",
+                      fontSize: "10px",
+                      color: "var(--color-text-muted, #6b7280)",
+                    }}>
+                      (admin)
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Indicateur de statut */}
@@ -206,7 +269,7 @@ const CustomNode = ({
             alignItems: "center",
             justifyContent: "center",
             fontSize: "11px",
-            border: "2px solid white",
+            border: "2px solid var(--color-surface, white)",
             boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
           }}
           title="Étape complétée"
@@ -395,89 +458,76 @@ export const WorkflowVisualizationModal = ({
           </div>
         ) : (
           <>
-            <div style={{ marginBottom: "16px", padding: "12px", background: "#f3f4f6", borderRadius: "8px" }}>
-              <div style={{ marginBottom: "8px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>
-                    Utilisateurs actifs ({sessions.length})
-                  </h3>
-
-                  {/* Légende - responsive */}
-                  <div style={{ display: "flex", gap: "8px", fontSize: "11px", alignItems: "center", flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
-                      <div style={{
-                        width: "16px",
-                        height: "16px",
-                        border: "3px solid #3b82f6",
-                        borderRadius: "4px",
-                        background: "#3b82f615",
-                        boxShadow: "0 0 0 2px #3b82f630",
-                        flexShrink: 0,
-                      }} />
-                      <span>Actif</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
-                      <div style={{
-                        width: "16px",
-                        height: "16px",
-                        border: "2px solid #3b82f6",
-                        borderRadius: "4px",
-                        background: "#3b82f608",
-                        flexShrink: 0,
-                      }} />
-                      <span>Complété</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
-                      <div style={{
-                        width: "16px",
-                        height: "16px",
-                        border: "2px dashed #d1d5db",
-                        borderRadius: "4px",
-                        background: "#f9fafb",
-                        opacity: 0.6,
-                        flexShrink: 0,
-                      }} />
-                      <span>En attente</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
-                      <div style={{
-                        width: "20px",
-                        height: "2px",
-                        background: "#10b981",
-                        borderRadius: "1px",
-                        flexShrink: 0,
-                      }} />
-                      <span>Chemin parcouru</span>
-                    </div>
-                  </div>
+            <div style={{ marginBottom: "12px", padding: "10px 12px", background: "var(--color-surface-subtle, #f3f4f6)", borderRadius: "8px", border: "1px solid var(--color-border, #e5e7eb)" }}>
+              {/* Légende - responsive */}
+              <div style={{ display: "flex", gap: "12px", fontSize: "11px", alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                  <div style={{
+                    width: "16px",
+                    height: "16px",
+                    border: "3px solid #3b82f6",
+                    borderRadius: "4px",
+                    background: "#3b82f615",
+                    boxShadow: "0 0 0 2px #3b82f630",
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ color: "var(--color-text, #1f2937)" }}>Actif</span>
                 </div>
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                {sessions.map((session) => (
-                  <div
-                    key={session.thread_id}
-                    style={{
-                      padding: "6px 12px",
-                      background: "white",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      border: "1px solid #e5e7eb",
-                    }}
-                  >
-                    <div style={{ fontWeight: 600 }}>{session.user.email}</div>
-                    <div style={{ color: "#6b7280" }}>
-                      → {session.current_step.display_name}
-                    </div>
-                    <div style={{ fontSize: "10px", color: "#9ca3af", marginTop: "2px" }}>
-                      {session.step_history.length} étapes complétées
-                    </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                  <div style={{
+                    width: "16px",
+                    height: "16px",
+                    border: "2px solid #3b82f6",
+                    borderRadius: "4px",
+                    background: "#3b82f608",
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ color: "var(--color-text, #1f2937)" }}>Complété</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                  <div style={{
+                    width: "16px",
+                    height: "16px",
+                    border: "2px dashed #d1d5db",
+                    borderRadius: "4px",
+                    background: "#f9fafb",
+                    opacity: 0.6,
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ color: "var(--color-text, #1f2937)" }}>En attente</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                  <div style={{
+                    width: "20px",
+                    height: "2px",
+                    background: "#10b981",
+                    borderRadius: "1px",
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ color: "var(--color-text, #1f2937)" }}>Chemin parcouru</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
+                  <div style={{
+                    width: "20px",
+                    height: "20px",
+                    borderRadius: "50%",
+                    background: "#3b82f6",
+                    color: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "10px",
+                    fontWeight: "bold",
+                    flexShrink: 0,
+                  }}>
+                    N
                   </div>
-                ))}
+                  <span style={{ color: "var(--color-text, #1f2937)" }}>Cliquez pour voir les utilisateurs</span>
+                </div>
               </div>
             </div>
 
-            <div style={{ height: "calc(100% - 140px)", border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden" }}>
+            <div style={{ height: "calc(100% - 70px)", border: "1px solid var(--color-border, #e5e7eb)", borderRadius: "8px", overflow: "hidden" }}>
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -507,29 +557,6 @@ export const WorkflowVisualizationModal = ({
                   showZoom={true}
                   showFitView={true}
                   showInteractive={true}
-                />
-                <MiniMap
-                  nodeStrokeColor={(node) => {
-                    const colors: Record<string, string> = {
-                      start: "#10b981",
-                      end: "#ef4444",
-                      agent: "#3b82f6",
-                      condition: "#f59e0b",
-                      wait: "#8b5cf6",
-                    };
-                    return colors[node.data.kind] || "#6b7280";
-                  }}
-                  nodeColor={(node) => {
-                    const colors: Record<string, string> = {
-                      start: "#10b981",
-                      end: "#ef4444",
-                      agent: "#3b82f6",
-                      condition: "#f59e0b",
-                      wait: "#8b5cf6",
-                    };
-                    return colors[node.data.kind] || "#6b7280";
-                  }}
-                  maskColor="rgba(0, 0, 0, 0.05)"
                 />
               </ReactFlow>
             </div>
