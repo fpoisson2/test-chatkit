@@ -24,10 +24,14 @@ if _SKIP_BOOTSTRAP:  # pragma: no cover - test helper
     app = _build_stub_app()
 else:
     try:
-        from fastapi import FastAPI
+        from fastapi import FastAPI, Request
         from fastapi.middleware.cors import CORSMiddleware
+        from fastapi.responses import JSONResponse
+        from slowapi import _rate_limit_exceeded_handler
+        from slowapi.errors import RateLimitExceeded
 
         from .config import get_settings
+        from .rate_limit import limiter
         from .routes import (
             admin,
             auth,
@@ -54,6 +58,10 @@ else:
         settings = get_settings()
 
         app = FastAPI()
+
+        # Add rate limiter state to app
+        app.state.limiter = limiter
+        app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
         app.add_middleware(
             CORSMiddleware,

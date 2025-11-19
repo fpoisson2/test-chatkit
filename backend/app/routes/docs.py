@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..dependencies import get_current_user, require_admin
 from ..docs import DocumentationEntry, DocumentationService
 from ..models import User
+from ..rate_limit import get_rate_limit, limiter
 from ..schemas import (
     DocumentationCreateRequest,
     DocumentationMetadataResponse,
@@ -84,8 +85,10 @@ async def get_document(
     response_model=DocumentationResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(get_rate_limit("api_write"))
 async def create_document(
     payload: DocumentationCreateRequest,
+    request: Request,
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ) -> DocumentationResponse:

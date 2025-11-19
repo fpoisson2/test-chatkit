@@ -77,6 +77,7 @@ from ..database import SessionLocal, get_session
 from ..dependencies import get_current_user, get_optional_user
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
+from ..rate_limit import get_rate_limit, limiter
 from ..realtime_gateway import (
     GatewayConnection,
     GatewayUser,
@@ -408,6 +409,7 @@ async def get_generated_image(
 
 
 @router.post("/api/chatkit/attachments/{attachment_id}/upload")
+@limiter.limit(get_rate_limit("file_upload"))
 async def upload_chatkit_attachment(
     attachment_id: str,
     request: Request,
@@ -518,8 +520,10 @@ async def download_chatkit_attachment(
     "/api/chatkit/voice/session",
     response_model=VoiceSessionResponse,
 )
+@limiter.limit(get_rate_limit("ai_voice"))
 async def create_voice_session(
     req: VoiceSessionRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -1302,6 +1306,7 @@ async def proxy_chatkit(
 
 
 @router.post("/api/chatkit")
+@limiter.limit(get_rate_limit("ai_chat"))
 async def chatkit_endpoint(
     request: Request,
     current_user: User = Depends(get_current_user),

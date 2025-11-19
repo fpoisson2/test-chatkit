@@ -6,6 +6,7 @@ soxr>=0.3.0  # High-quality audio resampling (VHQ mode for telephony)
 numpy>=1.24.0  # Required by soxr for audio processing
 psutil>=5.9.0  # System and process monitoring (used for RTP port diagnostics)
 fastapi
+slowapi>=0.1.9  # Rate limiting for FastAPI
 openai
 openai-chatkit @ file:../chatkit-python
 cryptography
