@@ -701,16 +701,21 @@ export function MyChat() {
     setActiveInstances((prev) => {
       const existing = prev.get(currentWorkflowId);
 
+      // If instance already exists, don't modify it - preserve its state completely
+      if (existing) {
+        return prev;
+      }
+
       const next = new Map(prev);
 
-      // Always update the instance with current options (preserves createdAt for cache eviction)
+      // Create new instance only if it doesn't exist
       next.set(currentWorkflowId, {
         workflowId: currentWorkflowId,
         mode,
         workflow: activeWorkflow,
         initialThreadId,
         chatkitOptions,
-        createdAt: existing?.createdAt ?? Date.now(),
+        createdAt: Date.now(),
       });
 
       // Limit cache size - remove oldest instances
@@ -728,7 +733,8 @@ export function MyChat() {
 
       return next;
     });
-  }, [currentWorkflowId, mode, activeWorkflow, initialThreadId, chatkitOptions, MAX_CACHED_INSTANCES]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWorkflowId]);
 
   const handleRequestRefreshReady = useCallback((requestRefresh: () => Promise<void>) => {
     requestRefreshRef.current = requestRefresh;
