@@ -278,6 +278,11 @@ async def get_current_lti_workflow(
 async def lti_deep_link_page(state: str | None = None, id_token: str | None = None):
     """Serve the deep linking workflow selection page."""
     import html
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info("GET /api/lti/deep-link called - state present: %s, id_token present: %s",
+                bool(state), bool(id_token))
 
     state_escaped = html.escape(state or "")
     id_token_escaped = html.escape(id_token or "")
