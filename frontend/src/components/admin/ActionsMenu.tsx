@@ -81,24 +81,13 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
     if (isOpen) {
       updatePosition();
 
-      // Update position on scroll/resize to keep menu next to button
-      let ticking = false;
-      const handleScrollOrResize = () => {
-        if (!ticking) {
-          window.requestAnimationFrame(() => {
-            updatePosition();
-            ticking = false;
-          });
-          ticking = true;
-        }
-      };
-
-      window.addEventListener("scroll", handleScrollOrResize, true);
-      window.addEventListener("resize", handleScrollOrResize);
+      // Update position immediately on scroll to keep menu next to button
+      window.addEventListener("scroll", updatePosition, true);
+      window.addEventListener("resize", updatePosition);
 
       return () => {
-        window.removeEventListener("scroll", handleScrollOrResize, true);
-        window.removeEventListener("resize", handleScrollOrResize);
+        window.removeEventListener("scroll", updatePosition, true);
+        window.removeEventListener("resize", updatePosition);
       };
     }
   }, [isOpen, actions.length]);

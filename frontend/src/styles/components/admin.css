@@ -664,6 +664,9 @@
   border: 1px solid var(--color-border-subtle);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: none !important;
+  transform: translateZ(0);
+  will-change: top, bottom, left;
 }
 
 .actions-menu-item {
