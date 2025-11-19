@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface ActionsMenuProps {
   actions: Array<{
@@ -147,7 +148,7 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
         </button>
       </div>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
           ref={menuRef}
           className="actions-menu-dropdown"
@@ -191,7 +192,8 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
               <span>{action.label}</span>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
