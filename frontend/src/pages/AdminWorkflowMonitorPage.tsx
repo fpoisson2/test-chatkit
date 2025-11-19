@@ -461,7 +461,8 @@ ${session.step_history.map((step, i) => `${i + 1}. ${step.display_name}`).join("
   );
 
   const stuckSessionsCount = filteredSessions.filter(isStuckSession).length;
-  const displayError = error || wsError;
+  // Only display WebSocket error if not connected - if connected, any error was transient
+  const displayError = error || (!wsConnected && wsError);
   const hasActiveFilters = filterWorkflowId !== null || filterStatus !== null || searchTerm.trim() !== "";
 
   return (
