@@ -160,9 +160,11 @@ export const useWorkflowMonitorWebSocket = ({
       };
 
       ws.onerror = (event) => {
-        console.error("[WebSocket] Error:", event);
-        setError("WebSocket connection error");
-        onErrorRef.current?.("WebSocket connection error");
+        // Log pour le débogage, mais ne pas définir d'erreur car:
+        // - onerror peut se déclencher pendant l'établissement de la connexion
+        // - La connexion peut quand même réussir après
+        // - Les vraies erreurs de connexion sont gérées par onclose
+        console.error("[WebSocket] Error event:", event);
       };
 
       ws.onclose = (event) => {
