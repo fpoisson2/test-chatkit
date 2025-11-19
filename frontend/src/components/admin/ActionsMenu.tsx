@@ -12,13 +12,24 @@ interface ActionsMenuProps {
 
 export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [openUpwards, setOpenUpwards] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{
+    top?: number;
+    bottom?: number;
+    right: number;
+    openUpwards: boolean;
+  }>({ right: 0, openUpwards: false });
+  const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node) &&
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
@@ -33,64 +44,85 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && buttonRef.current) {
-      const buttonRect = buttonRef.current.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const spaceBelow = viewportHeight - buttonRect.bottom;
-      const estimatedMenuHeight = actions.length * 44 + 16; // 44px per item + padding
+    const updatePosition = () => {
+      if (isOpen && buttonRef.current) {
+        const buttonRect = buttonRef.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        const spaceBelow = viewportHeight - buttonRect.bottom;
+        const estimatedMenuHeight = actions.length * 44 + 16; // 44px per item + padding
+        const openUpwards = spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight;
 
-      setOpenUpwards(spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight);
+        setMenuPosition({
+          right: viewportWidth - buttonRect.right,
+          ...(openUpwards
+            ? { bottom: viewportHeight - buttonRect.top + 4 }
+            : { top: buttonRect.bottom + 4 }),
+          openUpwards,
+        });
+      }
+    };
+
+    updatePosition();
+
+    if (isOpen) {
+      window.addEventListener("scroll", updatePosition, true);
+      window.addEventListener("resize", updatePosition);
+
+      return () => {
+        window.removeEventListener("scroll", updatePosition, true);
+        window.removeEventListener("resize", updatePosition);
+      };
     }
   }, [isOpen, actions.length]);
 
   return (
-    <div style={{ position: "relative" }} ref={menuRef}>
-      <button
-        ref={buttonRef}
-        type="button"
-        className="btn btn-sm btn-subtle"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label="Actions"
-        style={{
-          padding: "4px 8px",
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-        }}
-      >
-        Actions
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="none"
+    <>
+      <div style={{ position: "relative" }} ref={containerRef}>
+        <button
+          ref={buttonRef}
+          type="button"
+          className="btn btn-sm btn-subtle"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-label="Actions"
           style={{
-            transition: "transform 0.2s",
-            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            padding: "4px 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
           }}
         >
-          <path
-            d="M3 4.5L6 7.5L9 4.5"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+          Actions
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            style={{
+              transition: "transform 0.2s",
+              transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          >
+            <path
+              d="M3 4.5L6 7.5L9 4.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
 
       {isOpen && (
         <div
+          ref={menuRef}
+          className="actions-menu-dropdown"
           style={{
-            position: "absolute",
-            ...(openUpwards
-              ? { bottom: "100%", marginBottom: "4px" }
-              : { top: "100%", marginTop: "4px" }),
-            right: 0,
-            background: "white",
-            border: "1px solid #e5e7eb",
-            borderRadius: "8px",
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+            position: "fixed",
+            top: menuPosition.top,
+            bottom: menuPosition.bottom,
+            right: menuPosition.right,
             minWidth: "200px",
             maxHeight: "400px",
             overflowY: "auto",
@@ -106,6 +138,7 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
                 setIsOpen(false);
               }}
               disabled={action.disabled}
+              className={`actions-menu-item ${action.variant === "danger" ? "actions-menu-item--danger" : ""}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -118,16 +151,6 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
                 fontSize: "14px",
                 cursor: action.disabled ? "not-allowed" : "pointer",
                 opacity: action.disabled ? 0.5 : 1,
-                color: action.variant === "danger" ? "#ef4444" : "#1f2937",
-                transition: "background-color 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                if (!action.disabled) {
-                  e.currentTarget.style.background = "#f3f4f6";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
               }}
             >
               {action.icon && <span>{action.icon}</span>}
@@ -136,6 +159,6 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 };
