@@ -12,13 +12,7 @@ interface ActionsMenuProps {
 
 export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{
-    top?: number;
-    bottom?: number;
-    left?: number;
-    right?: number;
-    openUpwards: boolean;
-  }>({ openUpwards: false });
+  const [openUpwards, setOpenUpwards] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -46,35 +40,44 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
 
   useEffect(() => {
     const updatePosition = () => {
-      if (buttonRef.current) {
-        const buttonRect = buttonRef.current.getBoundingClientRect();
-        const viewportHeight = window.innerHeight;
-        const viewportWidth = window.innerWidth;
-        const spaceBelow = viewportHeight - buttonRect.bottom;
-        const estimatedMenuHeight = actions.length * 44 + 16; // 44px per item + padding
-        const openUpwards = spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight;
+      if (!buttonRef.current || !menuRef.current) return;
 
-        // Calculate menu width
-        const menuWidth = 200;
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      const spaceBelow = viewportHeight - buttonRect.bottom;
+      const estimatedMenuHeight = actions.length * 44 + 16; // 44px per item + padding
+      const shouldOpenUpwards = spaceBelow < estimatedMenuHeight && buttonRect.top > estimatedMenuHeight;
 
-        // Calculate position: try to align right edge of menu with right edge of button
-        const preferredLeft = buttonRect.right - menuWidth;
+      // Calculate menu width
+      const menuWidth = 200;
 
-        // Ensure menu stays within viewport with 8px margin
-        let finalLeft = preferredLeft;
-        if (finalLeft < 8) {
-          finalLeft = 8; // Too far left, push right
-        } else if (finalLeft + menuWidth > viewportWidth - 8) {
-          finalLeft = viewportWidth - menuWidth - 8; // Too far right, push left
-        }
+      // Calculate position: try to align right edge of menu with right edge of button
+      const preferredLeft = buttonRect.right - menuWidth;
 
-        setMenuPosition({
-          left: finalLeft,
-          ...(openUpwards
-            ? { bottom: viewportHeight - buttonRect.top + 4 }
-            : { top: buttonRect.bottom + 4 }),
-          openUpwards,
-        });
+      // Ensure menu stays within viewport with 8px margin
+      let finalLeft = preferredLeft;
+      if (finalLeft < 8) {
+        finalLeft = 8; // Too far left, push right
+      } else if (finalLeft + menuWidth > viewportWidth - 8) {
+        finalLeft = viewportWidth - menuWidth - 8; // Too far right, push left
+      }
+
+      // Update DOM directly for instant synchronization
+      const menu = menuRef.current;
+      menu.style.left = `${finalLeft}px`;
+
+      if (shouldOpenUpwards) {
+        menu.style.bottom = `${viewportHeight - buttonRect.top + 4}px`;
+        menu.style.top = 'auto';
+      } else {
+        menu.style.top = `${buttonRect.bottom + 4}px`;
+        menu.style.bottom = 'auto';
+      }
+
+      // Update state only if direction changes (rare)
+      if (shouldOpenUpwards !== openUpwards) {
+        setOpenUpwards(shouldOpenUpwards);
       }
     };
 
@@ -90,7 +93,7 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
         window.removeEventListener("resize", updatePosition);
       };
     }
-  }, [isOpen, actions.length]);
+  }, [isOpen, actions.length, openUpwards]);
 
   return (
     <>
@@ -136,10 +139,6 @@ export const ActionsMenu = ({ actions }: ActionsMenuProps) => {
           className="actions-menu-dropdown"
           style={{
             position: "fixed",
-            top: menuPosition.top,
-            bottom: menuPosition.bottom,
-            left: menuPosition.left,
-            right: menuPosition.right,
             width: "200px",
             maxHeight: "400px",
             overflowY: "auto",
