@@ -137,6 +137,11 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
         if not user or not workflow:
             continue
 
+        # Récupérer les métadonnées du workflow pour CE thread spécifique
+        thread_payload = thread.payload if hasattr(thread, 'payload') else {}
+        thread_metadata = thread_payload.get("metadata", {}) if isinstance(thread_payload, dict) else {}
+        workflow_meta = thread_metadata.get("workflow", {}) if isinstance(thread_metadata, dict) else {}
+
         # Essayer de récupérer le snapshot depuis wait_state si disponible
         wait_state = _get_wait_state_metadata(thread)
         snapshot = None
@@ -167,6 +172,8 @@ def get_active_sessions(session: Session) -> list[dict[str, Any]]:
         # Try to get history from metadata if not found in wait_state
         if not steps_history:
              steps_history = workflow_meta.get("steps_history", [])
+             if steps_history:
+                 logger.info(f"[WS_MONITOR] Thread {thread.id}: using steps_history from workflow_meta, count={len(steps_history)}")
 
         # Enrichir le nom de l'étape depuis la DB SEULEMENT si on n'a pas déjà un titre
         if current_step_display == "unknown" and definition_id and current_slug != "unknown":
