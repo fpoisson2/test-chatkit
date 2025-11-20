@@ -62,7 +62,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
   // Envoyer un message utilisateur
   const sendUserMessage = useCallback(
-    async (content: UserMessageContent[] | string) => {
+    async (content: UserMessageContent[] | string, options?: { inferenceOptions?: any }) => {
       // Annuler toute requête en cours
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -80,13 +80,16 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           : content;
 
         const payload = {
-          thread_id: thread?.id || null,
-          messages: [
-            {
-              role: 'user',
+          type: 'threads.add_user_message',
+          params: {
+            thread_id: thread?.id || null,
+            input: {
               content: messageContent,
+              attachments: [],
+              quoted_text: null,
+              inference_options: options?.inferenceOptions || {},
             },
-          ],
+          },
         };
 
         let updatedThread: Thread | null = null;

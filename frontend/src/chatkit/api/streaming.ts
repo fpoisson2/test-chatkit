@@ -560,12 +560,20 @@ export async function fetchThread(options: {
 }): Promise<Thread> {
   const { url, headers = {}, threadId } = options;
 
-  const response = await fetch(`${url}?thread_id=${threadId}`, {
-    method: 'GET',
+  const payload = {
+    type: 'threads.get_by_id',
+    params: {
+      thread_id: threadId,
+    },
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...headers,
     },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -753,17 +761,27 @@ export async function listThreads(options: {
 }): Promise<ThreadListResponse> {
   const { url, headers = {}, limit, order = 'desc', after } = options;
 
-  const params = new URLSearchParams();
-  if (limit !== undefined) params.set('limit', String(limit));
-  params.set('order', order);
-  if (after) params.set('after', after);
+  const payload: any = {
+    type: 'threads.list',
+    params: {
+      order,
+    },
+  };
 
-  const response = await fetch(`${url}?type=threads.list&${params.toString()}`, {
-    method: 'GET',
+  if (limit !== undefined) {
+    payload.params.limit = limit;
+  }
+  if (after) {
+    payload.params.after = after;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...headers,
     },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -785,23 +803,31 @@ export async function listItems(options: {
   limit?: number;
   order?: 'asc' | 'desc';
   after?: string;
-  before?: string;
 }): Promise<ItemListResponse> {
-  const { url, headers = {}, threadId, limit, order = 'desc', after, before } = options;
+  const { url, headers = {}, threadId, limit, order = 'desc', after } = options;
 
-  const params = new URLSearchParams();
-  params.set('thread_id', threadId);
-  if (limit !== undefined) params.set('limit', String(limit));
-  params.set('order', order);
-  if (after) params.set('after', after);
-  if (before) params.set('before', before);
+  const payload: any = {
+    type: 'items.list',
+    params: {
+      thread_id: threadId,
+      order,
+    },
+  };
 
-  const response = await fetch(`${url}?type=items.list&${params.toString()}`, {
-    method: 'GET',
+  if (limit !== undefined) {
+    payload.params.limit = limit;
+  }
+  if (after) {
+    payload.params.after = after;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...headers,
     },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
