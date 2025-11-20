@@ -15,6 +15,7 @@ export interface StreamOptions {
   url: string;
   headers?: Record<string, string>;
   body: unknown;
+  initialThread?: Thread | null;
   onEvent?: (event: ThreadStreamEvent) => void;
   onThreadUpdate?: (thread: Thread) => void;
   onError?: (error: Error) => void;
@@ -49,6 +50,8 @@ function parseSSELine(line: string): ThreadStreamEvent | null {
  * Applique un événement delta à un thread
  */
 function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
+  console.log('[ChatKit applyDelta] Event type:', event.type, 'has update:', 'update' in event);
+
   // Gestion des événements wrapper thread.item.updated
   // Le backend envoie des événements dans un format wrapper avec l'événement réel dans 'update'
   if (event.type === 'thread.item.updated' && 'update' in event) {
@@ -530,9 +533,10 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
  * Stream des événements depuis le backend
  */
 export async function streamChatKitEvents(options: StreamOptions): Promise<Thread | null> {
-  const { url, headers = {}, body, onEvent, onThreadUpdate, onError, onClientToolCall, signal } = options;
+  const { url, headers = {}, body, initialThread, onEvent, onThreadUpdate, onError, onClientToolCall, signal } = options;
 
-  let currentThread: Thread | null = null;
+  let currentThread: Thread | null = initialThread || null;
+  console.log('[ChatKit streamChatKitEvents] Starting with initialThread:', currentThread?.id || 'null');
 
   try {
     const response = await fetch(url, {

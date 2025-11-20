@@ -117,6 +117,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           url: api.url,
           headers: api.headers,
           body: payload,
+          initialThread: thread,
           signal: abortControllerRef.current.signal,
           onEvent: (event: ThreadStreamEvent) => {
             onLog?.({ name: `event.${event.type}`, data: { event } });
