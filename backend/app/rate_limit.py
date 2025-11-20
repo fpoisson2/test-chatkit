@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import os
 
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+try:
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    _SLOWAPI_AVAILABLE = True
+except ImportError:
+    _SLOWAPI_AVAILABLE = False
+    Limiter = None  # type: ignore
+    get_remote_address = None  # type: ignore
 
 
 def _get_rate_limit_key(request):
@@ -25,15 +31,6 @@ def _get_rate_limit_key(request):
 
 # Get Redis URL from environment (same as Celery)
 REDIS_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
-
-# Initialize the limiter with Redis backend
-# This allows rate limiting to work across multiple workers/processes
-limiter = Limiter(
-    key_func=_get_rate_limit_key,
-    default_limits=[],  # No default limits, we'll apply per-route
-    storage_uri=REDIS_URL,
-    enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true",
-)
 
 
 # Rate limit configurations for different endpoint types
@@ -65,3 +62,26 @@ RATE_LIMITS = {
 def get_rate_limit(limit_type: str) -> str:
     """Get the rate limit string for a given limit type."""
     return RATE_LIMITS.get(limit_type, RATE_LIMITS["api_default"])
+
+
+# Initialize the limiter based on slowapi availability
+if _SLOWAPI_AVAILABLE:
+    # Initialize the limiter with Redis backend
+    # This allows rate limiting to work across multiple workers/processes
+    limiter = Limiter(
+        key_func=_get_rate_limit_key,
+        default_limits=[],  # No default limits, we'll apply per-route
+        storage_uri=REDIS_URL,
+        enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true",
+    )
+else:
+    # Create a dummy limiter when slowapi is not installed
+    class _DummyLimiter:
+        """Fallback limiter when slowapi is not installed."""
+        def limit(self, *args, **kwargs):
+            """No-op decorator that does nothing."""
+            def decorator(func):
+                return func
+            return decorator
+
+    limiter = _DummyLimiter()  # type: ignore
