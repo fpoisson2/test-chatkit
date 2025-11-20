@@ -217,6 +217,10 @@
 }
 
 /* Support du thème sombre */
+[data-theme="dark"] .chatkit-markdown pre {
+  background: #2a2a2a !important;
+}
+
 [data-theme="dark"] .chatkit-code-block-wrapper {
   background: transparent !important;
 }
