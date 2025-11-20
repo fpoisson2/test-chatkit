@@ -27,7 +27,6 @@ else:
         from fastapi import FastAPI, Request
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
-        from slowapi import _rate_limit_exceeded_handler
         from slowapi.errors import RateLimitExceeded
 
         from .config import get_settings
@@ -61,7 +60,17 @@ else:
 
         # Add rate limiter state to app
         app.state.limiter = limiter
-        app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+        # Custom rate limit error handler that returns FastAPI-compatible format
+        async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            """Handle rate limit exceeded errors with consistent format."""
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Trop de requêtes. Veuillez réessayer plus tard."},
+                headers={"Retry-After": str(exc.detail) if hasattr(exc, 'detail') else "60"},
+            )
+
+        app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
         app.add_middleware(
             CORSMiddleware,
