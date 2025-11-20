@@ -1,7 +1,15 @@
 /**
  * Gestion du streaming des événements ChatKit
  */
-import type { Thread, ThreadStreamEvent, ThreadItem, AssistantMessageItem, ClientToolCallItem } from '../types';
+import type {
+  Thread,
+  ThreadStreamEvent,
+  ThreadItem,
+  AssistantMessageItem,
+  ClientToolCallItem,
+  ThreadListResponse,
+  ItemListResponse,
+} from '../types';
 
 export interface StreamOptions {
   url: string;
@@ -571,4 +579,76 @@ export async function updateThreadMetadata(options: {
     const errorText = await response.text();
     throw new Error(`HTTP ${response.status}: ${errorText}`);
   }
+}
+
+/**
+ * Liste les threads avec pagination
+ */
+export async function listThreads(options: {
+  url: string;
+  headers?: Record<string, string>;
+  limit?: number;
+  order?: 'asc' | 'desc';
+  after?: string;
+}): Promise<ThreadListResponse> {
+  const { url, headers = {}, limit, order = 'desc', after } = options;
+
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', String(limit));
+  params.set('order', order);
+  if (after) params.set('after', after);
+
+  const response = await fetch(`${url}?type=threads.list&${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data;
+}
+
+/**
+ * Liste les items d'un thread avec pagination
+ */
+export async function listItems(options: {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+  limit?: number;
+  order?: 'asc' | 'desc';
+  after?: string;
+  before?: string;
+}): Promise<ItemListResponse> {
+  const { url, headers = {}, threadId, limit, order = 'desc', after, before } = options;
+
+  const params = new URLSearchParams();
+  params.set('thread_id', threadId);
+  if (limit !== undefined) params.set('limit', String(limit));
+  params.set('order', order);
+  if (after) params.set('after', after);
+  if (before) params.set('before', before);
+
+  const response = await fetch(`${url}?type=items.list&${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data;
 }

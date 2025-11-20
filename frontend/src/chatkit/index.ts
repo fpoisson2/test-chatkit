@@ -38,6 +38,8 @@ export {
   retryAfterItem,
   submitFeedback,
   updateThreadMetadata,
+  listThreads,
+  listItems,
 } from './api/streaming';
 export type { StreamOptions } from './api/streaming';
 export {

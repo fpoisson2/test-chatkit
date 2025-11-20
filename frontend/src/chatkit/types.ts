@@ -722,6 +722,33 @@ export interface Thread {
   metadata?: Record<string, unknown>;
 }
 
+// ===== Types pour les listes paginées =====
+
+export interface ListThreadsOptions {
+  limit?: number;
+  order?: 'asc' | 'desc';
+  after?: string;
+}
+
+export interface ThreadListResponse {
+  threads: Thread[];
+  has_more: boolean;
+  next_cursor?: string;
+}
+
+export interface ListItemsOptions {
+  limit?: number;
+  order?: 'asc' | 'desc';
+  after?: string;
+  before?: string;
+}
+
+export interface ItemListResponse {
+  items: ThreadItem[];
+  has_more: boolean;
+  next_cursor?: string;
+}
+
 // ===== Types pour les événements de streaming =====
 
 export interface ThreadStreamEventBase {
