@@ -404,15 +404,22 @@ export const useChatApiConfig = ({
       }
     };
 
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const customApiConfig = uploadStrategy
       ? ({
           url: customApiUrl,
+          headers,
           fetch: authFetch,
           uploadStrategy,
           ...(domainKey ? { domainKey } : {}),
         } as ChatKitOptions["api"])
       : ({
           url: customApiUrl,
+          headers,
           fetch: authFetch,
           ...(domainKey ? { domainKey } : {}),
         } as ChatKitOptions["api"]);
