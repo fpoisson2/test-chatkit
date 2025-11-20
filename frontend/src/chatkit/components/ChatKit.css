@@ -29,6 +29,11 @@
   margin: 8px 0;
 }
 
+.chatkit-messages > .chatkit-message-standalone {
+  max-width: 100%;
+  padding: 0;
+}
+
 .chatkit-messages > *:first-child {
   margin-top: 36px;
 }
@@ -214,6 +219,12 @@
   outline: none;
 }
 
+.chatkit-input:focus {
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
+
 .chatkit-input:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -316,7 +327,7 @@
 }
 
 [data-theme="dark"] .chatkit-header {
-  background: var(--color-surface);
+  background: #212121;
 }
 
 .chatkit-header-actions {
@@ -708,12 +719,29 @@
   border-top: 1px solid var(--color-border-subtle);
   background: var(--color-surface);
   animation: slideDown 0.2s var(--cubic-enter);
+  position: relative;
+  padding-left: 32px;
+}
+
+.chatkit-workflow-tasks::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-border);
 }
 
 .chatkit-workflow-tasks--collapsed {
   border-top: none;
   background: transparent;
   animation: none;
+  padding-left: 0;
+}
+
+.chatkit-workflow-tasks--collapsed::before {
+  display: none;
 }
 
 @keyframes slideDown {
@@ -757,12 +785,35 @@
   border-top-color: var(--color-border-subtle);
 }
 
+[data-theme="dark"] .chatkit-workflow-tasks::before {
+  background: var(--color-border);
+}
+
+[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task::before {
+  background: var(--color-surface);
+  border-color: var(--accent-color-primary);
+}
+
 /* ===== TASKS ===== */
 .chatkit-task {
   padding: 14px 18px;
   border-bottom: 1px solid var(--color-border-subtle);
   transition: background var(--transition-duration-basic);
   position: relative;
+}
+
+.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task::before {
+  content: '';
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 2px solid var(--accent-color-primary);
+  z-index: 1;
 }
 
 .chatkit-task:last-child {
@@ -1050,12 +1101,13 @@
 
 /* ===== STANDALONE ITEMS ===== */
 .chatkit-message-standalone {
-  margin: 16px 0;
+  margin: 8px 0;
 }
 
 .chatkit-message-standalone .chatkit-message-content {
   background: transparent;
   padding: 0;
+  max-width: 100%;
 }
 
 /* ===== DARK MODE OVERRIDES ===== */

@@ -56,17 +56,13 @@ export function WorkflowRenderer({ workflow, className = '' }: WorkflowRendererP
           )}
         </button>
       </div>
-      <div className={`chatkit-workflow-tasks ${!expanded ? 'chatkit-workflow-tasks--collapsed' : ''}`}>
-        {tasksToShow.map((task, i) => {
-          const originalIndex = expanded ? i : workflow.tasks.length - visibleTasksCount + i;
-          const opacity = getTaskOpacity(originalIndex, workflow.tasks.length);
-          return (
-            <div key={i} style={{ opacity }}>
-              <TaskRenderer task={task} />
-            </div>
-          );
-        })}
-      </div>
+      {expanded && (
+        <div className="chatkit-workflow-tasks">
+          {workflow.tasks.map((task, i) => (
+            <TaskRenderer key={i} task={task} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
