@@ -65,6 +65,8 @@ def configure_logging(
     if use_json_logs:
         # Format JSON pour production
         formatter_processors: list[Any] = [
+            # Convertit les logs de style Python (logger.info("msg %s", arg)) en format structlog
+            structlog.stdlib.render_to_log_kwargs,
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
@@ -72,6 +74,8 @@ def configure_logging(
     else:
         # Format console coloré pour développement
         formatter_processors = [
+            # Convertit les logs de style Python (logger.info("msg %s", arg)) en format structlog
+            structlog.stdlib.render_to_log_kwargs,
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.dev.set_exc_info,
             # Force les couleurs même en Docker
