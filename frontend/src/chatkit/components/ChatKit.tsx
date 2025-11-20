@@ -7,6 +7,7 @@ import { WidgetRenderer } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
 import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
+import { ThreadHistory } from './ThreadHistory';
 import {
   Attachment,
   uploadAttachment,
@@ -152,6 +153,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     control.sendMessage(prompt);
   };
 
+  // Créer un nouveau thread
+  const handleNewThread = () => {
+    if (options.onThreadChange) {
+      options.onThreadChange({ threadId: null });
+    }
+  };
+
+  // Sélectionner un thread de l'historique
+  const handleThreadSelect = (threadId: string) => {
+    if (options.onThreadChange) {
+      options.onThreadChange({ threadId });
+    }
+  };
+
   // Afficher le start screen si pas de messages
   const showStartScreen = !control.thread || control.thread.items.length === 0;
 
@@ -170,19 +185,41 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
               onClick={header.leftAction.onClick}
               aria-label={header.leftAction.icon}
             >
-              {header.leftAction.icon === 'menu' ? '☰' : header.leftAction.icon}
+              {header.leftAction.icon === 'menu' ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+              ) : header.leftAction.icon}
             </button>
           )}
           <div className="chatkit-header-title">Chat</div>
-          {history?.enabled !== false && (
+          <div className="chatkit-header-actions">
             <button
               className="chatkit-header-action"
-              onClick={() => setShowHistory(!showHistory)}
-              aria-label="History"
+              onClick={handleNewThread}
+              aria-label="Nouvelle conversation"
+              title="Nouvelle conversation"
             >
-              📜
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
             </button>
-          )}
+            {history?.enabled !== false && (
+              <button
+                className="chatkit-header-action"
+                onClick={() => setShowHistory(!showHistory)}
+                aria-label="Historique"
+                title="Historique des conversations"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -242,7 +279,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         )}
                         {content.type === 'image' && <img src={content.image} alt="" />}
                         {content.type === 'file' && (
-                          <div className="chatkit-file">📄 {content.file}</div>
+                          <div className="chatkit-file">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                              <polyline points="14 2 14 8 20 8"></polyline>
+                            </svg>
+                            {content.file}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -285,9 +328,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 {/* Client tool call */}
                 {item.type === 'client_tool_call' && (
                   <div className="chatkit-message-content chatkit-tool-call">
-                    🔧 {item.name}
-                    {item.status === 'pending' && ' (en cours...)'}
-                    {item.status === 'completed' && ' ✓'}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+                    </svg>
+                    <span>{item.name}</span>
+                    {item.status === 'pending' && <span className="chatkit-tool-status"> (en cours...)</span>}
+                    {item.status === 'completed' && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="chatkit-tool-check">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    )}
                   </div>
                 )}
 
@@ -337,7 +387,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           {attachments.map(att => (
             <div key={att.id} className={`chatkit-attachment chatkit-attachment-${att.status}`}>
               {att.preview && <img src={att.preview} alt={att.file.name} />}
-              {!att.preview && <div className="chatkit-attachment-icon">📎</div>}
+              {!att.preview && (
+                <div className="chatkit-attachment-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                </div>
+              )}
               <div className="chatkit-attachment-name">{att.file.name}</div>
               <button
                 className="chatkit-attachment-remove"
@@ -369,9 +426,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 className="chatkit-attach-button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={control.isLoading}
-                aria-label="Attach file"
+                aria-label="Joindre un fichier"
+                title="Joindre un fichier"
               >
-                📎
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                </svg>
               </button>
             </>
           )}
@@ -392,6 +452,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           </button>
         </form>
       </div>
+
+      {/* Thread History Modal */}
+      {showHistory && (
+        <ThreadHistory
+          api={options.api}
+          currentThreadId={control.thread?.id || null}
+          onThreadSelect={handleThreadSelect}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 }
