@@ -6,9 +6,10 @@ import { useI18n } from '../../i18n/I18nProvider';
 interface WorkflowRendererProps {
   workflow: Workflow;
   className?: string;
+  theme?: 'light' | 'dark';
 }
 
-export function WorkflowRenderer({ workflow, className = '' }: WorkflowRendererProps): JSX.Element {
+export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: WorkflowRendererProps): JSX.Element {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
 
@@ -59,7 +60,7 @@ export function WorkflowRenderer({ workflow, className = '' }: WorkflowRendererP
       {expanded && (
         <div className="chatkit-workflow-tasks">
           {workflow.tasks.map((task, i) => (
-            <TaskRenderer key={i} task={task} />
+            <TaskRenderer key={i} task={task} theme={theme} />
           ))}
         </div>
       )}

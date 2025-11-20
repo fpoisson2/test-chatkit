@@ -407,7 +407,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 {/* Workflow */}
                 {item.type === 'workflow' && (
                   <div className="chatkit-message-content">
-                    <WorkflowRenderer workflow={item.workflow} />
+                    <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
                   </div>
                 )}
               </div>
