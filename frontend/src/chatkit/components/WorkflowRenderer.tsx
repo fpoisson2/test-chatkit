@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import type { Workflow, WorkflowSummary, CustomSummary, DurationSummary } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import type { Workflow, WorkflowSummary, CustomSummary, DurationSummary, Task } from '../types';
 import { TaskRenderer } from './TaskRenderer';
 import { useI18n } from '../../i18n/I18nProvider';
 
@@ -12,26 +12,26 @@ interface WorkflowRendererProps {
 export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: WorkflowRendererProps): JSX.Element {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
+  const [fadeKey, setFadeKey] = useState(0);
+  const lastTaskRef = useRef<Task | null>(null);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
   };
 
   const isReasoning = workflow.type === 'reasoning';
+  const lastTask = workflow.tasks.length > 0 ? workflow.tasks[workflow.tasks.length - 1] : null;
 
-  // Calculer l'opacité pour chaque task (dégradé)
-  const getTaskOpacity = (index: number, total: number): number => {
-    if (expanded) return 1;
-    const position = total - index;
-    if (position === 1) return 1; // Dernier task = 100%
-    if (position === 2) return 0.6; // Avant-dernier = 60%
-    if (position === 3) return 0.3; // Avant-avant-dernier = 30%
-    return 0; // Autres = cachés
-  };
-
-  // Nombre de tasks à afficher en mode collapsed
-  const visibleTasksCount = expanded ? workflow.tasks.length : Math.min(3, workflow.tasks.length);
-  const tasksToShow = expanded ? workflow.tasks : workflow.tasks.slice(-visibleTasksCount);
+  // Détecter quand la dernière tâche change pour déclencher l'animation
+  useEffect(() => {
+    if (lastTask && lastTaskRef.current) {
+      // Vérifier si c'est une nouvelle tâche différente
+      if (JSON.stringify(lastTask) !== JSON.stringify(lastTaskRef.current)) {
+        setFadeKey(prev => prev + 1);
+      }
+    }
+    lastTaskRef.current = lastTask;
+  }, [lastTask]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
@@ -57,6 +57,15 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
           )}
         </button>
       </div>
+
+      {/* Afficher la dernière tâche même quand collapsed */}
+      {!expanded && lastTask && (
+        <div className="chatkit-workflow-last-task" key={fadeKey}>
+          <TaskRenderer task={lastTask} theme={theme} />
+        </div>
+      )}
+
+      {/* Afficher toutes les tâches quand expanded */}
       {expanded && (
         <div className="chatkit-workflow-tasks">
           {workflow.tasks.map((task, i) => (
