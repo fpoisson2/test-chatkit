@@ -25,23 +25,23 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
 
   return (
     <div className={`chatkit-task chatkit-task--${task.type} ${statusClass} ${className}`}>
-      {task.type === 'custom' && <CustomTaskRenderer task={task} />}
+      {task.type === 'custom' && <CustomTaskRenderer task={task} theme={theme} />}
       {task.type === 'web_search' && <SearchTaskRenderer task={task} />}
-      {task.type === 'thought' && <ThoughtTaskRenderer task={task} />}
+      {task.type === 'thought' && <ThoughtTaskRenderer task={task} theme={theme} />}
       {task.type === 'file' && <FileTaskRenderer task={task} />}
       {task.type === 'image' && <ImageTaskRenderer task={task} />}
     </div>
   );
 }
 
-function CustomTaskRenderer({ task }: { task: CustomTask }): JSX.Element {
+function CustomTaskRenderer({ task, theme = 'light' }: { task: CustomTask; theme?: 'light' | 'dark' }): JSX.Element {
   return (
     <div className="chatkit-task-custom">
       {task.icon && <span className="chatkit-task-icon">{task.icon}</span>}
       {task.title && <div className="chatkit-task-title">{task.title}</div>}
       {task.content && (
         <div className="chatkit-task-content">
-          <MarkdownRenderer content={task.content} />
+          <MarkdownRenderer content={task.content} theme={theme} />
         </div>
       )}
     </div>
@@ -83,12 +83,12 @@ function SearchTaskRenderer({ task }: { task: SearchTask }): JSX.Element {
   );
 }
 
-function ThoughtTaskRenderer({ task }: { task: ThoughtTask }): JSX.Element {
+function ThoughtTaskRenderer({ task, theme = 'light' }: { task: ThoughtTask; theme?: 'light' | 'dark' }): JSX.Element {
   return (
     <div className="chatkit-task-thought">
       {task.title && <div className="chatkit-task-title">{task.title}</div>}
       <div className="chatkit-task-content">
-        <MarkdownRenderer content={task.content} />
+        <MarkdownRenderer content={task.content} theme={theme} />
       </div>
     </div>
   );
