@@ -470,22 +470,30 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
     }
 
     const contentType = response.headers.get('content-type') || '';
+    console.log('[ChatKit] Response Content-Type:', contentType);
 
     // Si la réponse est du JSON (non-streaming), parser directement
     if (contentType.includes('application/json')) {
-      const data = await response.json();
-      const thread = data.thread || data;
+      try {
+        const data = await response.json();
+        console.log('[ChatKit] Received JSON response:', data);
 
-      // Normaliser le thread
-      currentThread = {
-        ...thread,
-        items: Array.isArray(thread.items) ? thread.items : [],
-      };
+        const thread = data.thread || data;
 
-      // Notifier de la création/mise à jour du thread
-      onThreadUpdate?.(currentThread);
+        // Normaliser le thread
+        currentThread = {
+          ...thread,
+          items: Array.isArray(thread.items) ? thread.items : [],
+        };
 
-      return currentThread;
+        // Notifier de la création/mise à jour du thread
+        onThreadUpdate?.(currentThread);
+
+        return currentThread;
+      } catch (err) {
+        console.error('[ChatKit] Failed to parse JSON response:', err);
+        throw new Error(`Failed to parse JSON response: ${err}`);
+      }
     }
 
     // Sinon, traiter comme du streaming (SSE)
