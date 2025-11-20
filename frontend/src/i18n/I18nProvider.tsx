@@ -8,7 +8,14 @@ import {
   useState,
 } from "react";
 
-import { AVAILABLE_LANGUAGES, translations, type Language } from "./translations";
+import {
+  AVAILABLE_LANGUAGES,
+  translations,
+  type Language,
+  updateAvailableLanguages,
+  addTranslations,
+  BASE_LANGUAGES,
+} from "./translations";
 
 type TranslationParams = Record<string, string | number | boolean>;
 
@@ -16,12 +23,16 @@ type I18nContextValue = {
   language: Language;
   setLanguage: (language: Language) => void;
   t: (key: string, params?: TranslationParams) => string;
-  availableLanguages: typeof AVAILABLE_LANGUAGES;
+  availableLanguages: { code: string; label: string }[];
+  isLoading: boolean;
 };
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 const LANGUAGE_STORAGE_KEY = "chatkit.language";
+
+// Cache des traductions chargées
+const translationsCache = new Set<string>(BASE_LANGUAGES as unknown as string[]);
 
 const resolveLanguage = (value: string | null | undefined): Language | null => {
   if (!value) {
@@ -29,12 +40,21 @@ const resolveLanguage = (value: string | null | undefined): Language | null => {
   }
 
   const normalized = value.toLowerCase();
-  if (normalized.startsWith("fr")) {
-    return "fr";
+
+  // Vérifier si le code exact existe
+  const exactMatch = AVAILABLE_LANGUAGES.find(
+    (lang) => lang.code.toLowerCase() === normalized
+  );
+  if (exactMatch) {
+    return exactMatch.code;
   }
 
-  if (normalized.startsWith("en")) {
-    return "en";
+  // Sinon, chercher un préfixe (ex: "fr-CA" → "fr")
+  const prefixMatch = AVAILABLE_LANGUAGES.find((lang) =>
+    normalized.startsWith(lang.code.toLowerCase())
+  );
+  if (prefixMatch) {
+    return prefixMatch.code;
   }
 
   return null;
@@ -84,17 +104,77 @@ const interpolate = (template: string, params: TranslationParams | undefined): s
   });
 };
 
+// Fonction pour charger les langues disponibles depuis l'API
+const fetchAvailableLanguages = async () => {
+  try {
+    const response = await fetch("/api/languages");
+    if (!response.ok) {
+      console.warn("Failed to fetch available languages");
+      return;
+    }
+    const data = await response.json();
+    if (data.languages && Array.isArray(data.languages)) {
+      updateAvailableLanguages(data.languages);
+    }
+  } catch (error) {
+    console.warn("Error fetching available languages:", error);
+  }
+};
+
+// Fonction pour charger les traductions d'une langue depuis l'API
+const fetchLanguageTranslations = async (code: string) => {
+  // Si c'est une langue de base ou déjà chargée, ne rien faire
+  if (translationsCache.has(code)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/languages/${code}/translations`);
+    if (!response.ok) {
+      console.warn(`Failed to fetch translations for ${code}`);
+      return;
+    }
+    const data = await response.json();
+    if (data.translations && Object.keys(data.translations).length > 0) {
+      addTranslations(code, data.translations);
+      translationsCache.add(code);
+    }
+  } catch (error) {
+    console.warn(`Error fetching translations for ${code}:`, error);
+  }
+};
+
 export const I18nProvider = ({ children }: { children: ReactNode }) => {
   const [language, setLanguage] = useState<Language>(() => detectInitialLanguage());
+  const [isLoading, setIsLoading] = useState(true);
+  const [availableLangs, setAvailableLangs] = useState(AVAILABLE_LANGUAGES);
 
+  // Charger les langues disponibles au démarrage
+  useEffect(() => {
+    const loadLanguages = async () => {
+      await fetchAvailableLanguages();
+      setAvailableLangs([...AVAILABLE_LANGUAGES]);
+      setIsLoading(false);
+    };
+    loadLanguages();
+  }, []);
+
+  // Sauvegarder la langue sélectionnée et charger ses traductions si nécessaire
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
+
+    // Sauvegarder dans localStorage
     try {
       window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
     } catch (error) {
       console.warn("Unable to persist language preference", error);
+    }
+
+    // Charger les traductions si nécessaire
+    if (!translationsCache.has(language)) {
+      fetchLanguageTranslations(language);
     }
   }, [language]);
 
@@ -102,7 +182,7 @@ export const I18nProvider = ({ children }: { children: ReactNode }) => {
     (key: string, params?: TranslationParams) => {
       const dictionary = translations[language];
       const fallbackDictionary = translations.en;
-      const template = dictionary[key] ?? fallbackDictionary[key] ?? key;
+      const template = dictionary?.[key] ?? fallbackDictionary[key] ?? key;
       return interpolate(template, params);
     },
     [language],
@@ -113,9 +193,10 @@ export const I18nProvider = ({ children }: { children: ReactNode }) => {
       language,
       setLanguage,
       t: translate,
-      availableLanguages: AVAILABLE_LANGUAGES,
+      availableLanguages: availableLangs,
+      isLoading,
     }),
-    [language, translate],
+    [language, translate, availableLangs, isLoading],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
