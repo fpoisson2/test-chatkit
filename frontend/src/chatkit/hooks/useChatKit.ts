@@ -79,18 +79,28 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           ? [{ type: 'input_text' as const, text: content }]
           : content;
 
-        const payload = {
-          type: 'threads.add_user_message',
-          params: {
-            thread_id: thread?.id || null,
-            input: {
-              content: messageContent,
-              attachments: [],
-              quoted_text: null,
-              inference_options: options?.inferenceOptions || {},
-            },
-          },
+        const input = {
+          content: messageContent,
+          attachments: [],
+          quoted_text: null,
+          inference_options: options?.inferenceOptions || {},
         };
+
+        // Si un thread existe, ajouter un message. Sinon, créer un nouveau thread
+        const payload = thread?.id
+          ? {
+              type: 'threads.add_user_message',
+              params: {
+                thread_id: thread.id,
+                input,
+              },
+            }
+          : {
+              type: 'threads.create',
+              params: {
+                input,
+              },
+            };
 
         let updatedThread: Thread | null = null;
 
