@@ -58,6 +58,7 @@ from .types import (
     AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
     Attachment,
+    ComputerUseItem,
     ClientToolCallItem,
     CustomTask,
     DurationSummary,
@@ -73,6 +74,7 @@ from .types import (
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
+    ThreadItemReplacedEvent,
     ThreadItemRemovedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
@@ -802,6 +804,7 @@ async def stream_agent_response(
     image_tasks: dict[tuple[str, int], ImageTaskTracker] = {}
     computer_tasks: dict[str, ComputerTaskTracker] = {}
     computer_tasks_by_call_id: dict[str, ComputerTaskTracker] = {}
+    computer_use_items: dict[str, ComputerUseItem] = {}
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
     current_reasoning_id: str | None = None
@@ -1215,6 +1218,71 @@ async def stream_agent_response(
             computer_tasks_by_call_id[tracker.call_id] = tracker
         return updated
 
+    def _extract_debug_url(candidate: Any) -> str | None:
+        if candidate is None:
+            return None
+        for attr in ("debug_url", "playwright_debug_url", "browser_url", "url"):
+            value = _get_value(candidate, attr)
+            if isinstance(value, str) and value.strip():
+                return value
+        return None
+
+    def _extract_computer_screenshot(candidate: Any) -> str | None:
+        if candidate is None:
+            return None
+        value = _get_value(candidate, "image_url") or _get_value(candidate, "screenshot_url")
+        if isinstance(value, dict):
+            value = value.get("url")
+        if isinstance(value, str) and value.strip():
+            return value
+        value = _get_value(candidate, "b64_json") or _get_value(candidate, "image_b64")
+        if isinstance(value, str) and value.strip():
+            return f"data:image/png;base64,{value}"
+        return None
+
+    def _ensure_computer_use_item(
+        *,
+        call_id: str | None,
+        status: str | None = None,
+        debug_url: str | None = None,
+        screenshot_url: str | None = None,
+    ) -> list[ThreadStreamEvent]:
+        if not call_id:
+            return []
+
+        item = computer_use_items.get(call_id)
+        events: list[ThreadStreamEvent] = []
+        indicator = _computer_status_indicator(status) or "loading"
+
+        if item is None:
+            item = ComputerUseItem(
+                id=ctx.generate_id("task", thread, ctx.request_context),
+                created_at=datetime.now(),
+                thread_id=thread.id,
+                call_id=call_id,
+                status_indicator=indicator,
+                debug_url=debug_url,
+                screenshot_url=screenshot_url,
+            )
+            computer_use_items[call_id] = item
+            events.append(ThreadItemAddedEvent(item=item))
+            return events
+
+        changed = False
+        if indicator != item.status_indicator:
+            item.status_indicator = indicator
+            changed = True
+        if debug_url and debug_url != item.debug_url:
+            item.debug_url = debug_url
+            changed = True
+        if screenshot_url and screenshot_url != item.screenshot_url:
+            item.screenshot_url = screenshot_url
+            changed = True
+
+        if changed:
+            events.append(ThreadItemReplacedEvent(item=item))
+        return events
+
     def search_status_from_call(call: ResponseFunctionWebSearch) -> str:
         if call.status == "completed":
             return "complete"
@@ -1400,6 +1468,12 @@ async def stream_agent_response(
                             tracker,
                             cast(ResponseComputerToolCall, raw_item),
                         )
+                        for computer_event in _ensure_computer_use_item(
+                            call_id=call_id,
+                            status=getattr(raw_item, "status", None),
+                            debug_url=_extract_debug_url(raw_item),
+                        ):
+                            yield computer_event
                         if ctx.workflow_item and (task_added or updated):
                             task_index = ctx.workflow_item.workflow.tasks.index(
                                 tracker.task
@@ -1584,6 +1658,12 @@ async def stream_agent_response(
                         tracker,
                         cast(ResponseComputerToolCall, item),
                     )
+                    for computer_event in _ensure_computer_use_item(
+                        call_id=getattr(item, "call_id", None) or item.id,
+                        status=getattr(item, "status", None),
+                        debug_url=_extract_debug_url(item),
+                    ):
+                        yield computer_event
                     for workflow_event in workflow_events:
                         yield workflow_event
                     if ctx.workflow_item and (task_added or updated):
@@ -1612,6 +1692,15 @@ async def stream_agent_response(
                             status=getattr(item, "status", None),
                             raw_output=getattr(item, "output", None),
                         )
+                        for computer_event in _ensure_computer_use_item(
+                            call_id=getattr(item, "call_id", None),
+                            status=getattr(item, "status", None),
+                            debug_url=_extract_debug_url(item),
+                            screenshot_url=_extract_computer_screenshot(
+                                getattr(item, "output", None)
+                            ),
+                        ):
+                            yield computer_event
                         if ctx.workflow_item and updated:
                             task_index = ctx.workflow_item.workflow.tasks.index(
                                 tracker.task
@@ -1952,6 +2041,12 @@ async def stream_agent_response(
                         tracker,
                         cast(ResponseComputerToolCall, item),
                     )
+                    for computer_event in _ensure_computer_use_item(
+                        call_id=getattr(item, "call_id", None) or item.id,
+                        status=getattr(item, "status", None),
+                        debug_url=_extract_debug_url(item),
+                    ):
+                        yield computer_event
                     if ctx.workflow_item and (task_added or updated):
                         task_index = ctx.workflow_item.workflow.tasks.index(
                             tracker.task
@@ -1978,6 +2073,15 @@ async def stream_agent_response(
                             status=getattr(item, "status", None),
                             raw_output=getattr(item, "output", None),
                         )
+                        for computer_event in _ensure_computer_use_item(
+                            call_id=getattr(item, "call_id", None),
+                            status=getattr(item, "status", None),
+                            debug_url=_extract_debug_url(item),
+                            screenshot_url=_extract_computer_screenshot(
+                                getattr(item, "output", None)
+                            ),
+                        ):
+                            yield computer_event
                         if ctx.workflow_item and updated:
                             task_index = ctx.workflow_item.workflow.tasks.index(
                                 tracker.task

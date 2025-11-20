@@ -688,6 +688,17 @@ export interface WidgetItem {
   copy_text?: string;
 }
 
+export interface ComputerUseItem {
+  type: 'computer_use';
+  id: string;
+  thread_id: string;
+  created_at: string;
+  call_id?: string | null;
+  status_indicator: 'none' | 'loading' | 'complete';
+  debug_url?: string | null;
+  screenshot_url?: string | null;
+}
+
 export interface TaskItem {
   type: 'task';
   id: string;
@@ -712,6 +723,7 @@ export type ThreadItem =
   | UserMessageItem
   | AssistantMessageItem
   | ClientToolCallItem
+  | ComputerUseItem
   | WidgetItem
   | TaskItem
   | WorkflowItem

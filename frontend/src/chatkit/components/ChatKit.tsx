@@ -283,7 +283,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
               ? 'user'
               : item.type === 'client_tool_call'
               ? 'tool'
-              : item.type === 'widget' || item.type === 'task' || item.type === 'workflow'
+              : item.type === 'widget' || item.type === 'task' || item.type === 'workflow' || item.type === 'computer_use'
               ? 'standalone'
               : 'assistant';
 
@@ -394,6 +394,34 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 {item.type === 'widget' && (
                   <div className="chatkit-message-content">
                     <WidgetRenderer widget={item.widget} />
+                  </div>
+                )}
+
+                {/* Computer use live preview */}
+                {item.type === 'computer_use' && (
+                  <div className="chatkit-message-content chatkit-computer-use">
+                    <div className="chatkit-task-title">
+                      {item.status_indicator === 'complete'
+                        ? 'Session terminée'
+                        : 'Session navigateur en cours'}
+                    </div>
+                    {item.debug_url && (
+                      <div className="chatkit-computer-stream">
+                        <iframe
+                          src={item.debug_url}
+                          title="Session Playwright"
+                          allow="clipboard-read; clipboard-write; fullscreen"
+                        />
+                      </div>
+                    )}
+                    {!item.debug_url && item.screenshot_url && (
+                      <div className="chatkit-computer-stream">
+                        <img src={item.screenshot_url} alt="Aperçu de la navigation" />
+                      </div>
+                    )}
+                    {!item.debug_url && !item.screenshot_url && (
+                      <div className="chatkit-task-content">Préparation du navigateur…</div>
+                    )}
                   </div>
                 )}
 
