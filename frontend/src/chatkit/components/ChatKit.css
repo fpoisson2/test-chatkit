@@ -229,13 +229,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #e5e5e5;
-  background: #fff;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface);
 }
 
 [data-theme="dark"] .chatkit-header {
-  background: #18181b;
-  border-bottom-color: #27272a;
+  background: var(--color-surface);
+  border-bottom-color: var(--color-border-subtle);
 }
 
 .chatkit-header-actions {
@@ -251,26 +251,26 @@
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
-  color: #71717a;
+  color: var(--color-text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-duration-basic);
 }
 
 .chatkit-header-action:hover {
-  background: #f4f4f5;
-  color: #18181b;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
 }
 
 [data-theme="dark"] .chatkit-header-action {
-  color: #a1a1aa;
+  color: var(--color-text-tertiary);
 }
 
 [data-theme="dark"] .chatkit-header-action:hover {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
 }
 
 .chatkit-header-action svg {
@@ -280,13 +280,13 @@
 .chatkit-header-title {
   flex: 1;
   text-align: center;
-  font-weight: 600;
-  font-size: 16px;
-  color: #18181b;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-text-md-size);
+  color: var(--color-text);
 }
 
 [data-theme="dark"] .chatkit-header-title {
-  color: #e4e4e7;
+  color: var(--color-text);
 }
 
 /* Start Screen */
@@ -381,11 +381,11 @@
   justify-content: center;
   width: 60px;
   height: 60px;
-  color: #71717a;
+  color: var(--color-text-tertiary);
 }
 
 [data-theme="dark"] .chatkit-attachment-icon {
-  color: #a1a1aa;
+  color: var(--color-text-tertiary);
 }
 
 .chatkit-attachment-icon svg {
@@ -435,26 +435,26 @@
   cursor: pointer;
   font-size: 20px;
   line-height: 1;
-  color: #71717a;
+  color: var(--color-text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-duration-basic);
 }
 
 .chatkit-attach-button:hover:not(:disabled) {
-  background: #f4f4f5;
-  color: #18181b;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
 }
 
 [data-theme="dark"] .chatkit-attach-button {
-  color: #a1a1aa;
+  color: var(--color-text-tertiary);
 }
 
 [data-theme="dark"] .chatkit-attach-button:hover:not(:disabled) {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
 }
 
 .chatkit-attach-button svg {
@@ -485,12 +485,12 @@
 }
 
 .chatkit-tool-check {
-  color: #22c55e;
+  color: var(--status-success);
   margin-left: 4px;
 }
 
 [data-theme="dark"] .chatkit-tool-check {
-  color: #4ade80;
+  color: var(--status-success);
 }
 
 /* File display */

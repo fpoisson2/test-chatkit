@@ -708,8 +708,13 @@ export function MyChat() {
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
-          persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
-          setInitialThreadId((current) => (current === threadId ? current : threadId));
+          if (threadId === null) {
+            clearStoredThreadId(sessionOwner, persistenceSlug);
+            setInitialThreadId(null);
+          } else {
+            persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
+            setInitialThreadId((current) => (current === threadId ? current : threadId));
+          }
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });

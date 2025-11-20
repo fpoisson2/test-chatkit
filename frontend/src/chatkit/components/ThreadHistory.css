@@ -5,12 +5,12 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--dialog-backdrop-dim-background);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  animation: fadeIn 0.2s ease-in-out;
+  animation: fadeIn var(--transition-duration-basic) var(--transition-ease-basic);
 }
 
 @keyframes fadeIn {
@@ -24,20 +24,20 @@
 
 /* Thread History Panel */
 .thread-history-panel {
-  background: white;
-  border-radius: 12px;
+  background: var(--color-surface);
+  border-radius: var(--radius-2xl);
   width: 90%;
   max-width: 600px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  animation: slideUp 0.3s ease-out;
+  box-shadow: var(--shadow-300);
+  animation: slideUp 0.3s var(--cubic-enter);
 }
 
 [data-theme="dark"] .thread-history-panel {
-  background: #1a1a1a;
-  color: #e4e4e7;
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 @keyframes slideUp {
@@ -57,22 +57,22 @@
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border-bottom: 1px solid #e4e4e7;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 [data-theme="dark"] .thread-history-header {
-  border-bottom-color: #27272a;
+  border-bottom-color: var(--color-border-subtle);
 }
 
 .thread-history-header h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #18181b;
+  font-size: var(--font-heading-lg-size);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
 }
 
 [data-theme="dark"] .thread-history-header h2 {
-  color: #e4e4e7;
+  color: var(--color-text);
 }
 
 .thread-history-close {
@@ -80,7 +80,7 @@
   border: none;
   font-size: 32px;
   line-height: 1;
-  color: #71717a;
+  color: var(--color-text-tertiary);
   cursor: pointer;
   padding: 0;
   width: 32px;
@@ -88,18 +88,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-duration-basic);
 }
 
 .thread-history-close:hover {
-  background: #f4f4f5;
-  color: #18181b;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
 }
 
 [data-theme="dark"] .thread-history-close:hover {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
 }
 
 /* Content */
@@ -116,22 +116,22 @@
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #71717a;
+  color: var(--color-text-tertiary);
 }
 
 .thread-history-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #e4e4e7;
-  border-top-color: #3b82f6;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--accent-color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-bottom: 16px;
 }
 
 [data-theme="dark"] .thread-history-spinner {
-  border-color: #27272a;
-  border-top-color: #3b82f6;
+  border-color: var(--color-border);
+  border-top-color: var(--accent-color-primary);
 }
 
 @keyframes spin {
@@ -144,14 +144,14 @@
 .thread-history-error {
   padding: 40px 20px;
   text-align: center;
-  color: #dc2626;
+  color: var(--status-danger);
 }
 
 /* Empty State */
 .thread-history-empty {
   padding: 60px 20px;
   text-align: center;
-  color: #71717a;
+  color: var(--color-text-tertiary);
 }
 
 /* Thread List */
@@ -167,58 +167,58 @@
   flex-direction: column;
   align-items: flex-start;
   padding: 16px;
-  background: #f9fafb;
-  border: 1px solid #e4e4e7;
-  border-radius: 8px;
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-duration-basic);
   text-align: left;
   width: 100%;
 }
 
 [data-theme="dark"] .thread-history-item {
-  background: #27272a;
-  border-color: #3f3f46;
+  background: var(--color-surface-secondary);
+  border-color: var(--color-border-subtle);
 }
 
 .thread-history-item:hover {
-  background: #f4f4f5;
-  border-color: #d4d4d8;
+  background: var(--color-surface-tertiary);
+  border-color: var(--color-border);
   transform: translateX(4px);
 }
 
 [data-theme="dark"] .thread-history-item:hover {
-  background: #3f3f46;
-  border-color: #52525b;
+  background: var(--color-surface-tertiary);
+  border-color: var(--color-border);
 }
 
 .thread-history-item.active {
-  background: #eff6ff;
-  border-color: #3b82f6;
+  background: var(--accent-color-primary-surface);
+  border-color: var(--accent-color-primary);
 }
 
 [data-theme="dark"] .thread-history-item.active {
-  background: #1e3a5f;
-  border-color: #3b82f6;
+  background: var(--color-surface-tertiary);
+  border-color: var(--accent-color-primary);
 }
 
 .thread-history-item-preview {
-  font-size: 15px;
-  font-weight: 500;
-  color: #18181b;
+  font-size: var(--font-text-md-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
   margin-bottom: 8px;
   line-height: 1.4;
 }
 
 [data-theme="dark"] .thread-history-item-preview {
-  color: #e4e4e7;
+  color: var(--color-text);
 }
 
 .thread-history-item-date {
-  font-size: 13px;
-  color: #71717a;
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-tertiary);
 }
 
 [data-theme="dark"] .thread-history-item-date {
-  color: #a1a1aa;
+  color: var(--color-text-tertiary);
 }

@@ -31,10 +31,11 @@ export function ThreadHistory({ api, currentThreadId, onThreadSelect, onClose }:
           order: 'desc',
         });
 
-        setThreads(response.threads);
+        setThreads(response.threads || []);
       } catch (err) {
         console.error('[ThreadHistory] Failed to load threads:', err);
         setError('Impossible de charger l\'historique');
+        setThreads([]);
       } finally {
         setIsLoading(false);
       }

@@ -37,6 +37,13 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   const [error, setError] = useState<Error | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Réinitialiser le thread si initialThread devient null
+  useEffect(() => {
+    if (initialThread === null) {
+      setThread(null);
+    }
+  }, [initialThread]);
+
   // Charger le thread initial
   useEffect(() => {
     if (initialThread) {
