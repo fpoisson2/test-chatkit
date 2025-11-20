@@ -14,10 +14,10 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
   const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
   const [fadeKey, setFadeKey] = useState(0);
-  const previousTaskCountRef = useRef(0);
-  const lastDisplayedTaskIndexRef = useRef<number>(-1);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const taskQueueRef = useRef<Array<{ task: Task; index: number }>>([]);
+  const isProcessingRef = useRef(false);
+  const displayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const processedTasksRef = useRef<Set<number>>(new Set());
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -25,65 +25,57 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
-  const currentTaskCount = workflow.tasks.length;
 
-  // Fonction pour afficher une tâche pendant 2 secondes
-  const showTaskFor2Seconds = (task: Task, taskIndex: number) => {
-    // Ne pas afficher si c'est la même tâche déjà affichée
-    if (lastDisplayedTaskIndexRef.current === taskIndex) {
+  // Fonction pour traiter la file d'attente
+  const processQueue = () => {
+    if (isProcessingRef.current || taskQueueRef.current.length === 0) {
       return;
     }
 
-    // Si un timeout est déjà en cours, mettre en file d'attente
-    if (hideTimeoutRef.current) {
-      // Mettre en file d'attente dans timeoutRef
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+    isProcessingRef.current = true;
+    const { task, index } = taskQueueRef.current.shift()!;
 
-      timeoutRef.current = setTimeout(() => {
-        showTaskFor2Seconds(task, taskIndex);
-        timeoutRef.current = null;
-      }, 100); // Réessayer dans 100ms
-      return;
-    }
-
+    // Afficher la tâche
     setDisplayedTask(task);
     setFadeKey(prev => prev + 1);
-    lastDisplayedTaskIndexRef.current = taskIndex;
+    processedTasksRef.current.add(index);
 
-    // Cacher après 2 secondes
-    hideTimeoutRef.current = setTimeout(() => {
+    // Cacher après 2 secondes et passer à la suivante
+    displayTimeoutRef.current = setTimeout(() => {
       setDisplayedTask(null);
-      hideTimeoutRef.current = null;
+      isProcessingRef.current = false;
+      displayTimeoutRef.current = null;
+
+      // Traiter la tâche suivante dans la file
+      processQueue();
     }, 2000);
   };
 
-  // Gérer l'affichage des tâches quand elles sont "done"
+  // Détecter les nouvelles tâches et les ajouter à la file
   useEffect(() => {
-    // Détection: nouvelle tâche ajoutée → la précédente est "done"
-    if (currentTaskCount > previousTaskCountRef.current && previousTaskCountRef.current > 0) {
-      const completedTaskIndex = previousTaskCountRef.current - 1;
-      const completedTask = workflow.tasks[completedTaskIndex];
-
-      if (completedTask && lastDisplayedTaskIndexRef.current !== completedTaskIndex) {
-        showTaskFor2Seconds(completedTask, completedTaskIndex);
+    workflow.tasks.forEach((task, index) => {
+      // Si la tâche n'a pas encore été traitée
+      if (!processedTasksRef.current.has(index)) {
+        // Vérifier si elle n'est pas déjà dans la queue
+        const alreadyQueued = taskQueueRef.current.some(item => item.index === index);
+        if (!alreadyQueued) {
+          taskQueueRef.current.push({ task, index });
+        }
       }
-    }
-    // Détection: workflow complété → la dernière tâche est "done"
-    else if (isCompleted && currentTaskCount > 0) {
-      const lastTaskIndex = currentTaskCount - 1;
-      const lastTask = workflow.tasks[lastTaskIndex];
+    });
 
-      if (lastTask && lastDisplayedTaskIndexRef.current !== lastTaskIndex) {
-        showTaskFor2Seconds(lastTask, lastTaskIndex);
+    // Démarrer le traitement de la file
+    processQueue();
+  }, [workflow.tasks, workflow.tasks.length]);
+
+  // Cleanup au démontage
+  useEffect(() => {
+    return () => {
+      if (displayTimeoutRef.current) {
+        clearTimeout(displayTimeoutRef.current);
       }
-    }
-
-    previousTaskCountRef.current = currentTaskCount;
-
-    // Ne pas nettoyer les timeouts dans le cleanup pour éviter d'interrompre l'affichage
-  }, [currentTaskCount, isCompleted, workflow.tasks, workflow.summary]);
+    };
+  }, []);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
