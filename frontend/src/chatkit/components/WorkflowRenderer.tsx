@@ -15,9 +15,8 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
   const [displayQueue, setDisplayQueue] = useState<Task[]>([]);
   const [fadeKey, setFadeKey] = useState(0);
-  const displayStartTimeRef = useRef<number | null>(null);
+  const lastCompletedCountRef = useRef(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const completedCountRef = useRef(0);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -26,29 +25,22 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isReasoning = workflow.type === 'reasoning';
 
   // Trouver toutes les tâches complètes
-  const completedTasks = workflow.tasks.filter(task =>
-    task.status_indicator === 'complete' || task.status_indicator === 'success'
-  );
-
-  // Réinitialiser l'affichage lorsque le workflow change
-  useEffect(() => {
-    setDisplayQueue([]);
-    setDisplayedTask(null);
-    completedCountRef.current = 0;
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  }, [workflow]);
+  const completedTasks = workflow.tasks.filter(task => task.status_indicator === 'complete');
 
   // Alimenter la file d'attente des tâches complètes détectées
   useEffect(() => {
-    const newlyCompleted = completedTasks.slice(completedCountRef.current);
+    // Si le workflow repart à zéro (moins de tâches complètes qu'avant), on repart également de zéro
+    if (completedTasks.length < lastCompletedCountRef.current) {
+      lastCompletedCountRef.current = 0;
+      setDisplayQueue([]);
+      setDisplayedTask(null);
+    }
+
+    const newlyCompleted = completedTasks.slice(lastCompletedCountRef.current);
 
     if (newlyCompleted.length > 0) {
       setDisplayQueue(prev => [...prev, ...newlyCompleted]);
-      completedCountRef.current = completedTasks.length;
+      lastCompletedCountRef.current = completedTasks.length;
     }
   }, [completedTasks]);
 
@@ -61,15 +53,12 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
     if (displayQueue.length === 0) {
       setDisplayedTask(null);
-      displayStartTimeRef.current = null;
       return undefined;
     }
 
     const nextTask = displayQueue[0];
     setDisplayedTask(nextTask);
     setFadeKey(prev => prev + 1);
-    displayStartTimeRef.current = Date.now();
-
     timeoutRef.current = setTimeout(() => {
       setDisplayQueue(prev => prev.slice(1));
     }, 1000);
