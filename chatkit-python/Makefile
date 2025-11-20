@@ -1,4 +1,4 @@
-.PHONY: install format format-check lint mypy pyright test build serve-docs deploy-docs check
+.PHONY: install format format-check lint mypy pyright test coverage coverage-html coverage-report build serve-docs deploy-docs check
 
 install:
 	python -m pip install -e .[dev]
@@ -21,6 +21,16 @@ pyright:
 
 test:
 	PYTHONPATH=. python -m pytest
+
+coverage:
+	PYTHONPATH=. python -m pytest --cov=chatkit --cov-report=term-missing --cov-report=html --cov-report=xml
+
+coverage-html:
+	PYTHONPATH=. python -m pytest --cov=chatkit --cov-report=html
+	@echo "Coverage report generated in htmlcov/index.html"
+
+coverage-report:
+	PYTHONPATH=. python -m pytest --cov=chatkit --cov-report=term-missing
 
 build:
 	python -m build

@@ -26,6 +26,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
     "black>=24.4.0",
     "isort>=5.13.0",
     "mypy>=1.10.0",
@@ -51,6 +54,47 @@ src = ["app", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["B008"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+  "--cov=app",
+  "--cov-report=term-missing",
+  "--cov-report=html",
+  "--cov-report=xml",
+  "--cov-fail-under=80",
+]
+testpaths = ["tests", "app/tests"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+  "*/tests/*",
+  "*/test_*.py",
+  "*/__pycache__/*",
+  "*/.venv/*",
+  "*/migrations/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "class .*\\bProtocol\\):",
+  "@(abc\\.)?abstractmethod",
+]
+# Prioriser les modules critiques
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.mypy]
 python_version = "3.10"
