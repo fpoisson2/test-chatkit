@@ -2,8 +2,9 @@
 
 Ce module configure le logging structuré pour toute l'application, offrant :
 - Sortie JSON pour faciliter le parsing et l'analyse
+- Format console coloré pour le développement (avec support Docker)
 - Contexte enrichi (timestamps ISO, request_id, user_id, etc.)
-- Compatibilité avec le logging standard de Python
+- Interception complète des logs standard Python (pas de duplication)
 - Support des environnements dev/prod avec formats différents
 """
 
@@ -46,15 +47,8 @@ def configure_logging(
         use_json_logs = False
     # Sinon, utilise la valeur du paramètre (défaut: True)
 
-    # Configuration de base du logging standard
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=log_level_int,
-    )
-
-    # Processeurs communs pour tous les environnements
-    processors: list[Any] = [
+    # Processeurs pour structlog (utilisés par les logs structlog directs)
+    structlog_processors: list[Any] = [
         # Ajoute le contexte des variables contextuelles (request_id, user_id, etc.)
         structlog.contextvars.merge_contextvars,
         # Ajoute le nom du logger
@@ -63,31 +57,45 @@ def configure_logging(
         structlog.stdlib.add_log_level,
         # Ajoute le timestamp
         structlog.processors.TimeStamper(fmt="iso", utc=True),
-        # Capture les informations de stack en cas d'erreur
-        structlog.processors.StackInfoRenderer(),
+        # Prépare pour le traitement par ProcessorFormatter
+        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ]
 
-    # Ajouter le processeur de rendu en fonction du format
+    # Processeurs de rendu (utilisés par ProcessorFormatter pour les logs standard)
     if use_json_logs:
-        # Format JSON pour production ou parsing automatisé
-        processors.extend([
-            # Formatte les exceptions
+        # Format JSON pour production
+        formatter_processors: list[Any] = [
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.processors.format_exc_info,
-            # Rendu JSON final
             structlog.processors.JSONRenderer(),
-        ])
+        ]
     else:
         # Format console coloré pour développement
-        processors.extend([
-            # Formatte les exceptions pour la console
+        formatter_processors = [
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.dev.set_exc_info,
-            # Rendu console avec couleurs
-            structlog.dev.ConsoleRenderer(colors=True),
-        ])
+            # Force les couleurs même en Docker
+            structlog.dev.ConsoleRenderer(colors=True, force_colors=True),
+        ]
+
+    # Créer le formatter structlog pour intercepter les logs standard
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processors=formatter_processors,
+        foreign_pre_chain=structlog_processors,
+    )
+
+    # Configurer le root logger pour utiliser structlog
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()  # Supprimer les handlers existants
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
+    root_logger.setLevel(log_level_int)
 
     # Configuration de structlog
     structlog.configure(
-        processors=processors,
+        processors=structlog_processors,
         # Wrapper pour filtrer par niveau de log
         wrapper_class=structlog.make_filtering_bound_logger(log_level_int),
         # Utilise dict pour le contexte (plus performant que OrderedDict)
