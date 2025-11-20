@@ -14,8 +14,9 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
   const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
   const [fadeKey, setFadeKey] = useState(0);
-  const displayStartTimeRef = useRef<number | null>(null);
+  const previousTaskCountRef = useRef(0);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -23,59 +24,63 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true;
+  const currentTaskCount = workflow.tasks.length;
 
-  // Trouver toutes les tâches complètes
-  const completedTasks = workflow.tasks.filter(task =>
-    task.status_indicator === 'complete' || task.status_indicator === 'success'
-  );
-
-  // La dernière tâche complète est celle à afficher
-  const lastCompletedTask = completedTasks.length > 0 ? completedTasks[completedTasks.length - 1] : null;
-
-  // Gérer l'affichage des tâches complètes avec délai minimum de 1 seconde
+  // Gérer l'affichage des tâches quand elles sont "done"
   useEffect(() => {
-    // Nettoyer le timeout précédent
+    // Nettoyer les timeouts précédents
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
 
-    // Si on a une nouvelle tâche complète différente de celle affichée
-    if (lastCompletedTask && lastCompletedTask !== displayedTask) {
-      // Si une tâche est déjà affichée, attendre 1 seconde avant de la remplacer
-      if (displayedTask && displayStartTimeRef.current) {
-        const elapsed = Date.now() - displayStartTimeRef.current;
-        const remaining = Math.max(0, 1000 - elapsed);
+    // Détection: nouvelle tâche ajoutée → la précédente est "done"
+    if (currentTaskCount > previousTaskCountRef.current && previousTaskCountRef.current > 0) {
+      const completedTaskIndex = previousTaskCountRef.current - 1;
+      const completedTask = workflow.tasks[completedTaskIndex];
 
-        timeoutRef.current = setTimeout(() => {
-          setDisplayedTask(lastCompletedTask);
-          setFadeKey(prev => prev + 1);
-          displayStartTimeRef.current = Date.now();
-        }, remaining);
-      } else {
-        // Première tâche complète : l'afficher immédiatement
-        setDisplayedTask(lastCompletedTask);
+      if (completedTask) {
+        // Afficher la tâche terminée immédiatement
+        setDisplayedTask(completedTask);
         setFadeKey(prev => prev + 1);
-        displayStartTimeRef.current = Date.now();
+
+        // Cacher après 1 seconde
+        hideTimeoutRef.current = setTimeout(() => {
+          setDisplayedTask(null);
+        }, 1000);
       }
     }
-    // Si le workflow est terminé et on affiche encore une tâche, la cacher après 1 seconde
-    else if (isCompleted && displayedTask && displayStartTimeRef.current) {
-      const elapsed = Date.now() - displayStartTimeRef.current;
-      const remaining = Math.max(0, 1000 - elapsed);
+    // Détection: workflow complété → la dernière tâche est "done"
+    else if (isCompleted && currentTaskCount > 0 && previousTaskCountRef.current === currentTaskCount) {
+      const lastTask = workflow.tasks[currentTaskCount - 1];
 
-      timeoutRef.current = setTimeout(() => {
-        setDisplayedTask(null);
-        displayStartTimeRef.current = null;
-      }, remaining);
+      if (lastTask && displayedTask !== lastTask) {
+        // Afficher la dernière tâche
+        setDisplayedTask(lastTask);
+        setFadeKey(prev => prev + 1);
+
+        // Cacher après 1 seconde
+        hideTimeoutRef.current = setTimeout(() => {
+          setDisplayedTask(null);
+        }, 1000);
+      }
     }
+
+    previousTaskCountRef.current = currentTaskCount;
 
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
     };
-  }, [lastCompletedTask, displayedTask, isCompleted]);
+  }, [currentTaskCount, isCompleted, workflow.tasks]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
