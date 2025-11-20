@@ -56,7 +56,7 @@ export const FeedbackMessages = ({
       )}
       {success && (
         <ErrorAlert
-          type="info"
+          type="success"
           message={success}
           dismissible={!!onDismissSuccess}
           onDismiss={onDismissSuccess}

@@ -107,3 +107,95 @@
   margin-top: 0.25rem;
   display: block;
 }
+
+/* Mobile Form Improvements */
+@media (max-width: 768px) {
+  .form-grid {
+    gap: clamp(12px, 2.5vh, 16px);
+  }
+
+  .input,
+  .textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 14px 12px;
+  }
+
+  .label {
+    font-size: 0.95rem;
+  }
+
+  /* Ensure long text doesn't overflow on mobile */
+  .input[type="url"],
+  .input[type="email"],
+  .input[type="text"] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Better touch targets on mobile */
+  .checkbox-field,
+  .radio-field {
+    padding: 12px 0;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .checkbox-field input[type="checkbox"],
+  .radio-field input[type="radio"] {
+    min-width: 20px;
+    min-height: 20px;
+  }
+}
+
+/* Form Field States */
+.input:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.input:invalid,
+.textarea:invalid {
+  border-color: var(--danger-color);
+}
+
+.input:disabled,
+.textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--color-surface-subtle);
+}
+
+/* Form Success State */
+.input--success {
+  border-color: #10b981;
+}
+
+.input--success:focus {
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.18);
+}
+
+/* Form Error State */
+.input--error {
+  border-color: var(--danger-color);
+}
+
+.input--error:focus {
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.18);
+}
+
+.form-success-message {
+  color: #059669;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+/* Form Helper Text */
+.form-helper-text {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  display: block;
+  line-height: 1.4;
+}

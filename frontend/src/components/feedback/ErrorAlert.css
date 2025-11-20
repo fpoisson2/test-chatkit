@@ -41,6 +41,17 @@
   border-color: var(--primary-color, #2563eb);
 }
 
+.error-alert--success {
+  background-color: #f0fdf4;
+  border-color: #10b981;
+  color: #059669;
+}
+
+[data-theme="dark"] .error-alert--success {
+  background-color: rgba(16, 185, 129, 0.1);
+  border-color: #10b981;
+}
+
 .error-alert__icon {
   flex-shrink: 0;
   display: flex;
