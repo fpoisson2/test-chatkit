@@ -1,60 +1,24 @@
 """Point d'entrée FastAPI en conservant la compatibilité historique."""
 
-import logging
+from __future__ import annotations
+
 import os
 
 from app import app as fastapi_app
 
-# Configurer le niveau de log depuis la variable d'environnement
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=getattr(logging, log_level, logging.INFO),
-    format="%(levelname)s:%(name)s:%(message)s",
+# Configurer le logging structuré
+from app.logging_config import configure_logging
+
+# Détermine si on utilise JSON ou console en fonction de l'environnement
+# Par défaut: JSON en production, console en développement
+environment = os.getenv("ENVIRONMENT", "development").lower()
+use_json = environment == "production" or os.getenv("LOG_FORMAT", "").lower() == "json"
+
+# Configure le logging avec structlog
+configure_logging(
+    log_level=os.getenv("LOG_LEVEL"),
+    litellm_log_level=os.getenv("LITELLM_LOG_LEVEL"),
+    use_json_logs=use_json,
 )
-# Réduire le niveau de verbosité des librairies HTTP tierces pour éviter les logs de bas niveau
-logging.getLogger("httpcore").setLevel(logging.INFO)
-logging.getLogger("httpx").setLevel(logging.INFO)
-
-# Configurer spécifiquement LiteLLM si défini
-litellm_log_level_str = os.getenv("LITELLM_LOG_LEVEL")
-if litellm_log_level_str:
-    litellm_log_level = getattr(logging, litellm_log_level_str.upper(), logging.INFO)
-
-    # Configure tous les loggers LiteLLM
-    logging.getLogger("litellm").setLevel(litellm_log_level)
-    logging.getLogger("LiteLLM").setLevel(litellm_log_level)
-
-    # Configure l'API native de LiteLLM pour supprimer les logs debug
-    try:
-        import litellm
-        if litellm_log_level >= logging.INFO:
-            litellm.suppress_debug_info = True
-            if hasattr(litellm, 'set_verbose'):
-                litellm.set_verbose = False
-        else:
-            litellm.suppress_debug_info = False
-            if hasattr(litellm, 'set_verbose'):
-                litellm.set_verbose = True
-    except ImportError:
-        pass  # LiteLLM n'est pas installé
-
-
-# Filtre pour supprimer les erreurs de cancel scope du SDK OpenAI
-# Ces erreurs sont internes au SDK et n'affectent pas le fonctionnement
-class OpenAICancelScopeFilter(logging.Filter):
-    """Filtre les erreurs de cancel scope du SDK OpenAI lors du nettoyage."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        # Supprimer les messages d'erreur "Attempted to exit cancel scope in a different task"
-        if record.levelno == logging.ERROR:
-            message = record.getMessage()
-            if "cancel scope" in message.lower() and "different task" in message.lower():
-                return False
-        return True
-
-
-# Appliquer le filtre au logger openai.agents
-openai_agents_logger = logging.getLogger("openai.agents")
-openai_agents_logger.addFilter(OpenAICancelScopeFilter())
 
 app = fastapi_app

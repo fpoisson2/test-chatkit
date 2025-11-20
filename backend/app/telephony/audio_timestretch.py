@@ -198,16 +198,7 @@ class WSolaTimeStretch:
             # Les samples résiduels (<160) sont perdus mais négligeables
             samples_dropped = output_len - frame_aligned_len
             output = output[:frame_aligned_len]
-            if samples_dropped > 40:  # Log seulement si significatif
-                logger.debug(
-                    "WSOLA truncated %d residual samples → %d samples (frame-aligned, no padding)",
-                    output_len, frame_aligned_len
-                )
-
-        logger.debug(
-            "WSOLA: %d samples in → %d samples out (ratio=%.2fx, %d frames)",
-            len(audio), len(output), speed_ratio, len(output) // self.frame_size
-        )
+        # WSOLA processing complete
 
         return output
 
@@ -261,7 +252,7 @@ class WSolaTimeStretch:
     def reset(self) -> None:
         """Reset internal buffers."""
         self._input_buffer = np.array([], dtype=np.int16)
-        logger.debug("WSOLA buffers reset")
+        # WSOLA buffers reset
 
     def validate_output(self, output: bytes) -> bool:
         """Validate que la sortie est alignée sur frame_size.

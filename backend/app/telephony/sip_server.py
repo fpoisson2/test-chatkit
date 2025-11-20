@@ -528,8 +528,7 @@ class SipCallRequestHandler:
             await self.handle_ack(request, dialog=dialog)
         elif method == "BYE":
             await self.handle_bye(request, dialog=dialog)
-        else:
-            logger.debug("Requête SIP ignorée (méthode=%s)", method)
+        # Autres méthodes SIP ignorées
 
     async def handle_invite(self, request: Any, *, dialog: Any | None = None) -> None:
         call_id = self._extract_call_id(request)
@@ -562,9 +561,7 @@ class SipCallRequestHandler:
 
     async def handle_ack(self, request: Any, *, dialog: Any | None = None) -> None:
         del dialog  # Dialog is not used directly but kept for signature symmetry.
-        logger.debug("handle_ack appelé, request=%s", type(request).__name__)
         call_id = self._extract_call_id(request)
-        logger.debug("handle_ack call_id extrait: %s", call_id)
         if call_id is None:
             logger.warning("ACK reçu sans en-tête Call-ID")
             return

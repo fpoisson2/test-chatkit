@@ -27,6 +27,9 @@ pgvector
 celery[redis]>=5.3.0
 redis>=5.0.0
 
+# Observabilité
+structlog>=24.1.0
+
 # Outils de qualité de code
 black>=24.4.0
 isort>=5.13.0

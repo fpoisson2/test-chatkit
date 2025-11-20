@@ -374,7 +374,6 @@ class PJSUAAudioBridge:
 
         # Vérifier si on doit dropper (interruption utilisateur)
         if self._drop_until_next_assistant:
-            logger.debug("🗑️ Drop audio assistant (interruption utilisateur active)")
             # Vider le ring buffer ET le staging buffer
             with self._ring_lock:
                 self._ring_buffer_8k.clear()
@@ -451,12 +450,6 @@ class PJSUAAudioBridge:
             # ANTI-STARVATION PROACTIF: si ring < 4, remplir rapidement jusqu'à TARGET
             if ring_len < RING_STARVATION_THRESHOLD:
                 frames_to_inject = min(self.RING_TARGET - ring_len, staging_len)
-                if frames_to_inject > 1:  # Log seulement si injection multiple
-                    logger.debug(
-                        "⚡ Anti-starvation: ring=%d < %d, injection rapide de %d frames → ring=%d (staging=%d)",
-                        ring_len, RING_STARVATION_THRESHOLD, frames_to_inject,
-                        ring_len + frames_to_inject, staging_len
-                    )
             # OVERFLOW: ne rien injecter, juste drop si nécessaire
             elif ring_len >= self.RING_OVERFLOW:
                 if ring_len > self.RING_SAFE:
@@ -477,10 +470,6 @@ class PJSUAAudioBridge:
             if frames_to_inject > space_available:
                 frames_to_inject = max(0, space_available)
                 if space_available <= 0:
-                    logger.debug(
-                        "⚠️ Ring buffer full (ring=%d >= max=%d), skipping injection",
-                        ring_len, RING_MAX
-                    )
                     return 0
 
             # Injecter les frames
@@ -573,20 +562,7 @@ class PJSUAAudioBridge:
             except Exception as e:
                 logger.warning("Erreur time-stretch @ 8kHz: %s, utilisation frame originale", e)
 
-        # Log périodique avec statistiques détaillées
-        if (self._frames_pulled + self._silence_pulled) % 100 == 0:
-            with self._ring_lock:
-                staging_len = len(self._staging_frames_8k)
-
-            logger.debug(
-                "📊 PULL stats: %d pulled, %d silence, %d overflow drops, ratio=%.3fx, ring=%d, staging=%d",
-                self._frames_pulled,
-                self._silence_pulled,
-                self._drops_overflow,
-                self._speed_ratio,
-                ring_len,
-                staging_len,
-            )
+        # Stats logged periodically to avoid verbosity
 
         return frame_8k
 
@@ -709,7 +685,6 @@ class PJSUAAudioBridge:
         self._call = None
         self._adapter = None
         self._port_ready_event = None
-        logger.debug("✅ Circular references broken (call/adapter/event cleared)")
 
     def reset_all(self) -> None:
         """Reset agressif de tout l'état au début d'un nouvel appel.
