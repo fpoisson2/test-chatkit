@@ -44,7 +44,7 @@ export const LanguageSwitcher = ({
       >
         {availableLanguages.map((item) => (
           <option key={item.code} value={item.code}>
-            {t(`language.name.${item.code}`)}
+            {item.label}
           </option>
         ))}
       </select>
