@@ -57,8 +57,6 @@ def configure_logging(
         structlog.stdlib.add_log_level,
         # Ajoute le timestamp
         structlog.processors.TimeStamper(fmt="iso", utc=True),
-        # Prépare pour le traitement par ProcessorFormatter
-        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ]
 
     # Processeurs de rendu (utilisés par ProcessorFormatter pour les logs standard)
@@ -72,7 +70,6 @@ def configure_logging(
         # Format console coloré pour développement
         formatter_processors = [
             structlog.dev.set_exc_info,
-            # Force les couleurs même en Docker
             structlog.dev.ConsoleRenderer(colors=True, force_colors=True),
         ]
 
