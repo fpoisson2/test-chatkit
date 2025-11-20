@@ -24,12 +24,13 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true;
 
-  // Trouver la dernière tâche complète
-  const lastCompletedTask = workflow.tasks.length > 0
-    ? workflow.tasks.slice().reverse().find(task =>
-        task.status_indicator === 'complete' || task.status_indicator === 'success'
-      )
-    : null;
+  // Trouver toutes les tâches complètes
+  const completedTasks = workflow.tasks.filter(task =>
+    task.status_indicator === 'complete' || task.status_indicator === 'success'
+  );
+
+  // La dernière tâche complète est celle à afficher
+  const lastCompletedTask = completedTasks.length > 0 ? completedTasks[completedTasks.length - 1] : null;
 
   // Gérer l'affichage des tâches complètes avec délai minimum de 1 seconde
   useEffect(() => {
@@ -37,18 +38,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
-    }
-
-    // Si le workflow est terminé, garder la dernière tâche affichée pendant 1 seconde puis la cacher
-    if (isCompleted && displayedTask && displayStartTimeRef.current) {
-      const elapsed = Date.now() - displayStartTimeRef.current;
-      const remaining = Math.max(0, 1000 - elapsed);
-
-      timeoutRef.current = setTimeout(() => {
-        setDisplayedTask(null);
-        displayStartTimeRef.current = null;
-      }, remaining);
-      return;
     }
 
     // Si on a une nouvelle tâche complète différente de celle affichée
@@ -69,6 +58,16 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         setFadeKey(prev => prev + 1);
         displayStartTimeRef.current = Date.now();
       }
+    }
+    // Si le workflow est terminé et on affiche encore une tâche, la cacher après 1 seconde
+    else if (isCompleted && displayedTask && displayStartTimeRef.current) {
+      const elapsed = Date.now() - displayStartTimeRef.current;
+      const remaining = Math.max(0, 1000 - elapsed);
+
+      timeoutRef.current = setTimeout(() => {
+        setDisplayedTask(null);
+        displayStartTimeRef.current = null;
+      }, remaining);
     }
 
     return () => {

@@ -6,7 +6,7 @@
 }
 
 .chatkit-markdown pre {
-  background: var(--color-surface-secondary);
+  background: transparent;
   margin: 0;
   padding: 0;
 }
