@@ -1242,5 +1242,16 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.widgetInspector.media.noFile": "Aucun fichier sélectionné",
   "workflowBuilder.widgetInspector.media.hint":
     "Importez une image ou saisissez une URL/expression existante. En l'absence de fichier, le texte est utilisé tel quel.",
+  "chatkit.thread.newConversation": "Nouvelle conversation",
+  "chatkit.thread.conversation": "Conversation",
+  "chatkit.message.copy": "Copier",
+  "chatkit.message.copied": "Copié",
+  "chatkit.code.copy": "Copier le code",
+  "chatkit.code.copied": "Copié",
+  "chatkit.workflow.expand": "Développer",
+  "chatkit.workflow.collapse": "Réduire",
+  "chatkit.workflow.reasoning": "Raisonnement",
+  "chatkit.workflow.workflow": "Workflow",
+  "chatkit.workflow.executionDuration": "Exécution durant {{duration}}",
 };
   

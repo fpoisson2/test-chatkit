@@ -9,6 +9,7 @@ import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
 import { ThreadHistory } from './ThreadHistory';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { useI18n } from '../../i18n/I18nProvider';
 import {
   Attachment,
   uploadAttachment,
@@ -26,6 +27,7 @@ export interface ChatKitProps {
 }
 
 export function ChatKit({ control, options, className, style }: ChatKitProps): JSX.Element {
+  const { t } = useI18n();
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -182,14 +184,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   // Récupérer le titre du thread
   const getThreadTitle = (): string => {
     if (!control.thread) {
-      return 'Nouvelle conversation';
+      return t('chatkit.thread.newConversation');
     }
 
     if (control.thread.title) {
       return control.thread.title;
     }
 
-    return 'Conversation';
+    return t('chatkit.thread.conversation');
   };
 
   return (

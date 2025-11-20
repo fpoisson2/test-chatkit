@@ -1189,5 +1189,16 @@ export const en: TranslationDictionary = {
   "workflowBuilder.widgetInspector.media.noFile": "No file selected",
   "workflowBuilder.widgetInspector.media.hint":
     "Upload an image or enter an existing URL/expression. If no file is provided, the text is used as-is.",
+  "chatkit.thread.newConversation": "New conversation",
+  "chatkit.thread.conversation": "Conversation",
+  "chatkit.message.copy": "Copy",
+  "chatkit.message.copied": "Copied",
+  "chatkit.code.copy": "Copy code",
+  "chatkit.code.copied": "Copied",
+  "chatkit.workflow.expand": "Expand",
+  "chatkit.workflow.collapse": "Collapse",
+  "chatkit.workflow.reasoning": "Reasoning",
+  "chatkit.workflow.workflow": "Workflow",
+  "chatkit.workflow.executionDuration": "Execution duration {{duration}}",
 };
   

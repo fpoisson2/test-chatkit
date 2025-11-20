@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Workflow, WorkflowSummary, CustomSummary, DurationSummary } from '../types';
 import { TaskRenderer } from './TaskRenderer';
+import { useI18n } from '../../i18n/I18nProvider';
 
 interface WorkflowRendererProps {
   workflow: Workflow;
@@ -8,6 +9,7 @@ interface WorkflowRendererProps {
 }
 
 export function WorkflowRenderer({ workflow, className = '' }: WorkflowRendererProps): JSX.Element {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
 
   const toggleExpanded = () => {
@@ -24,11 +26,11 @@ export function WorkflowRenderer({ workflow, className = '' }: WorkflowRendererP
             <SummaryRenderer summary={workflow.summary} />
           ) : (
             <div className="chatkit-workflow-default-title">
-              {isReasoning ? 'Reasoning' : 'Workflow'}
+              {isReasoning ? t('chatkit.workflow.reasoning') : t('chatkit.workflow.workflow')}
             </div>
           )}
         </div>
-        <button className="chatkit-workflow-toggle" aria-expanded={expanded} aria-label={expanded ? "Réduire" : "Développer"}>
+        <button className="chatkit-workflow-toggle" aria-expanded={expanded} aria-label={expanded ? t('chatkit.workflow.collapse') : t('chatkit.workflow.expand')}>
           {expanded ? (
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="18 15 12 9 6 15"></polyline>
@@ -68,18 +70,20 @@ function CustomSummaryRenderer({ summary }: { summary: CustomSummary }): JSX.Ele
 }
 
 function DurationSummaryRenderer({ summary }: { summary: DurationSummary }): JSX.Element {
+  const { t } = useI18n();
+
   const formatDuration = (seconds: number): string => {
     if (seconds < 60) {
-      return `${seconds}s`;
+      return `${seconds} s`;
     }
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
+    return `${minutes} m ${remainingSeconds} s`;
   };
 
   return (
     <div className="chatkit-workflow-summary-duration">
-      <span>Duration: {formatDuration(summary.duration)}</span>
+      <span>{t('chatkit.workflow.executionDuration', { duration: formatDuration(summary.duration) })}</span>
     </div>
   );
 }

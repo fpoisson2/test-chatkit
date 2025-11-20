@@ -3,6 +3,7 @@
  */
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { useI18n } from '../../i18n/I18nProvider';
 import './MarkdownRenderer.css';
 
 export interface MarkdownRendererProps {
@@ -10,6 +11,7 @@ export interface MarkdownRendererProps {
 }
 
 function CodeBlock({ children }: { children: string }): JSX.Element {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -29,7 +31,7 @@ function CodeBlock({ children }: { children: string }): JSX.Element {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
-            Copié
+            {t('chatkit.code.copied')}
           </>
         ) : (
           <>
@@ -37,7 +39,7 @@ function CodeBlock({ children }: { children: string }): JSX.Element {
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
-            Copier le code
+            {t('chatkit.code.copy')}
           </>
         )}
       </button>

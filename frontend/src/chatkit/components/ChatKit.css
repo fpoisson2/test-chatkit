@@ -8,7 +8,7 @@
   height: 100%;
   width: 100%;
   background: var(--chatkit-background, #fff);
-  font-family: var(--chatkit-font-family, system-ui, -apple-system, sans-serif);
+  font-family: 'Inter', var(--chatkit-font-family, system-ui, -apple-system, sans-serif);
 }
 
 .chatkit-messages {
@@ -129,8 +129,8 @@
 }
 
 .chatkit-copy-button svg {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
 }
 
 .chatkit-copy-button.copied {
@@ -248,8 +248,8 @@
 }
 
 .chatkit-submit svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
 }
 
 /* Styles pour les widgets */
@@ -601,55 +601,48 @@
 /* ===== WORKFLOWS ===== */
 .chatkit-workflow {
   margin: 16px 0;
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: var(--radius-xl);
-  background: var(--color-surface-secondary);
+  background: transparent;
   overflow: hidden;
-  transition: box-shadow var(--transition-duration-basic), border-color var(--transition-duration-basic);
-  box-shadow: var(--shadow-soft);
+  transition: none;
 }
 
 .chatkit-workflow:hover {
-  box-shadow: var(--shadow-200);
-  border-color: var(--color-border-strong);
+  background: transparent;
 }
 
 .chatkit-workflow--reasoning {
-  background: var(--accent-color-primary-surface);
-  border-color: var(--accent-color-primary);
-  border-left-width: 3px;
+  background: transparent;
 }
 
 [data-theme="dark"] .chatkit-workflow {
-  background: var(--color-surface-secondary);
-  border-color: var(--color-border);
+  background: transparent;
 }
 
 [data-theme="dark"] .chatkit-workflow--reasoning {
-  background: var(--color-surface-tertiary);
-  border-color: var(--accent-color-primary);
+  background: transparent;
 }
 
 .chatkit-workflow-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
+  gap: 8px;
+  padding: 0;
   cursor: pointer;
   user-select: none;
-  transition: background var(--transition-duration-basic);
+  transition: none;
 }
 
 .chatkit-workflow-header:hover {
-  background: var(--alpha-02);
+  background: transparent;
 }
 
 [data-theme="dark"] .chatkit-workflow-header:hover {
-  background: var(--alpha-04);
+  background: transparent;
 }
 
 .chatkit-workflow-summary {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -657,7 +650,6 @@
 
 .chatkit-workflow-icon {
   font-size: 18px;
-  margin-right: 8px;
 }
 
 .chatkit-workflow-title {
@@ -679,22 +671,25 @@
 }
 
 .chatkit-workflow-toggle {
-  padding: 6px 10px;
+  padding: 0;
   border: none;
-  background: var(--color-surface-tertiary);
+  background: transparent;
   font-size: 10px;
   cursor: pointer;
   color: var(--color-text-secondary);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-duration-basic);
-  min-width: 28px;
+  border-radius: 0;
+  transition: transform var(--transition-duration-basic);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+.chatkit-workflow-toggle[aria-expanded="true"] {
+  transform: rotate(180deg);
+}
+
 .chatkit-workflow-toggle:hover {
-  background: var(--color-surface-elevated);
+  background: transparent;
   color: var(--color-text);
 }
 
@@ -733,11 +728,11 @@
 }
 
 [data-theme="dark"] .chatkit-workflow-toggle {
-  background: var(--color-surface-tertiary);
+  background: transparent;
 }
 
 [data-theme="dark"] .chatkit-workflow-toggle:hover {
-  background: var(--color-surface-elevated);
+  background: transparent;
 }
 
 [data-theme="dark"] .chatkit-workflow-tasks {
@@ -1044,4 +1039,13 @@
 .chatkit-message-standalone .chatkit-message-content {
   background: transparent;
   padding: 0;
+}
+
+/* ===== DARK MODE OVERRIDES ===== */
+[data-theme="dark"] .chatkit-messages {
+  background: #212121;
+}
+
+[data-theme="dark"] .chatkit-composer {
+  background: #2a2a2a;
 }
