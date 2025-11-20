@@ -51,7 +51,7 @@
   background: var(--color-surface-secondary);
   border: none;
   border-radius: var(--radius-lg);
-  padding: 2.5rem 1rem 1rem 1rem;
+  padding: 0;
   overflow-x: auto;
   margin: 0;
   font-family: var(--font-mono);

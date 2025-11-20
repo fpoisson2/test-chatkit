@@ -790,12 +790,16 @@
 }
 
 
-[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task::before {
+[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(.chatkit-task--custom)::before {
   background: var(--color-surface);
   border-color: var(--color-border);
 }
 
-[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(:last-child)::after {
+[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(:last-child):not(.chatkit-task--custom)::after {
+  background: var(--color-border);
+}
+
+[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task--custom::after {
   background: var(--color-border);
 }
 
@@ -806,7 +810,7 @@
   position: relative;
 }
 
-.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task::before {
+.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(.chatkit-task--custom)::before {
   content: '';
   position: absolute;
   left: -24px;
@@ -819,7 +823,7 @@
   z-index: 1;
 }
 
-.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(:last-child)::after {
+.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(:last-child):not(.chatkit-task--custom)::after {
   content: '';
   position: absolute;
   left: -20px;
@@ -830,11 +834,24 @@
   z-index: 0;
 }
 
+/* Pastille pleine en bas pour les tasks custom */
+.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task--custom::after {
+  content: '';
+  position: absolute;
+  left: -24px;
+  bottom: 14px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-border);
+  z-index: 1;
+}
+
 .chatkit-task:last-child {
   border-bottom: none;
 }
 
-.chatkit-task:hover {
+.chatkit-task:hover:not(.chatkit-task--custom) {
   background: var(--alpha-02);
 }
 
@@ -855,7 +872,7 @@
   font-size: var(--font-text-sm-size);
 }
 
-[data-theme="dark"] .chatkit-task:hover {
+[data-theme="dark"] .chatkit-task:hover:not(.chatkit-task--custom) {
   background: var(--alpha-04);
 }
 

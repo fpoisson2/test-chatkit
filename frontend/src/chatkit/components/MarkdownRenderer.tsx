@@ -53,7 +53,7 @@ function CodeBlock({ children, language, theme = 'light' }: CodeBlockProps): JSX
         style={theme === 'dark' ? vscDarkPlus : vs}
         customStyle={{
           margin: 0,
-          padding: '2.5rem 1rem 1rem 1rem',
+          padding: '2.5rem 0 0 0',
           background: 'transparent',
           fontSize: '16px',
         }}
