@@ -792,7 +792,7 @@
 
 [data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task::before {
   background: var(--color-surface);
-  border-color: var(--accent-color-primary);
+  border-color: var(--color-border);
 }
 
 [data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(:last-child)::after {
@@ -815,7 +815,7 @@
   height: 10px;
   border-radius: 50%;
   background: var(--color-surface);
-  border: 2px solid var(--accent-color-primary);
+  border: 2px solid var(--color-border);
   z-index: 1;
 }
 
@@ -836,11 +836,6 @@
 
 .chatkit-task:hover {
   background: var(--alpha-02);
-}
-
-.chatkit-task--loading {
-  opacity: 0.8;
-  position: relative;
 }
 
 .chatkit-task--complete {
