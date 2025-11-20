@@ -29,15 +29,23 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
   // Fonction pour afficher une tâche pendant 2 secondes
   const showTaskFor2Seconds = (task: Task, taskIndex: number) => {
-    // Ne pas nettoyer le timeout en cours si on affiche la même tâche
+    // Ne pas afficher si c'est la même tâche déjà affichée
     if (lastDisplayedTaskIndexRef.current === taskIndex) {
       return;
     }
 
-    // Nettoyer les timeouts précédents seulement si on change de tâche
+    // Si un timeout est déjà en cours, mettre en file d'attente
     if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-      hideTimeoutRef.current = null;
+      // Mettre en file d'attente dans timeoutRef
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        showTaskFor2Seconds(task, taskIndex);
+        timeoutRef.current = null;
+      }, 100); // Réessayer dans 100ms
+      return;
     }
 
     setDisplayedTask(task);
