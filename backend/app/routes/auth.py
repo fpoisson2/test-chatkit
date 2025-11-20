@@ -16,11 +16,11 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/api/auth/login", response_model=TokenResponse)
 @limiter.limit(get_rate_limit("auth_login"))
+@router.post("/api/auth/login", response_model=TokenResponse)
 async def login(
-    login_request: LoginRequest,
     request: Request,
+    login_request: LoginRequest,
     session: Session = Depends(get_session),
 ):
     client_ip = request.client.host if request.client else "unknown"
