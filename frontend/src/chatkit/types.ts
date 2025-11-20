@@ -731,9 +731,9 @@ export interface ListThreadsOptions {
 }
 
 export interface ThreadListResponse {
-  threads: Thread[];
+  data: Thread[];
   has_more: boolean;
-  next_cursor?: string;
+  after?: string;
 }
 
 export interface ListItemsOptions {
@@ -744,9 +744,9 @@ export interface ListItemsOptions {
 }
 
 export interface ItemListResponse {
-  items: ThreadItem[];
+  data: ThreadItem[];
   has_more: boolean;
-  next_cursor?: string;
+  after?: string;
 }
 
 // ===== Types pour les événements de streaming =====

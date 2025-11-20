@@ -9,6 +9,7 @@ import type {
   URLSource,
   FileSource,
 } from '../types';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface TaskRendererProps {
   task: Task;
@@ -36,7 +37,11 @@ function CustomTaskRenderer({ task }: { task: CustomTask }): JSX.Element {
     <div className="chatkit-task-custom">
       {task.icon && <span className="chatkit-task-icon">{task.icon}</span>}
       {task.title && <div className="chatkit-task-title">{task.title}</div>}
-      {task.content && <div className="chatkit-task-content">{task.content}</div>}
+      {task.content && (
+        <div className="chatkit-task-content">
+          <MarkdownRenderer content={task.content} />
+        </div>
+      )}
     </div>
   );
 }
@@ -80,7 +85,9 @@ function ThoughtTaskRenderer({ task }: { task: ThoughtTask }): JSX.Element {
   return (
     <div className="chatkit-task-thought">
       {task.title && <div className="chatkit-task-title">{task.title}</div>}
-      <div className="chatkit-task-content">{task.content}</div>
+      <div className="chatkit-task-content">
+        <MarkdownRenderer content={task.content} />
+      </div>
     </div>
   );
 }

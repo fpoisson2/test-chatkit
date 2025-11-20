@@ -1,0 +1,187 @@
+/* Markdown Renderer */
+.chatkit-markdown {
+  line-height: var(--leading-relaxed);
+  color: var(--color-text);
+}
+
+/* Paragraphes */
+.chatkit-markdown-paragraph {
+  margin: 0 0 1em 0;
+}
+
+.chatkit-markdown-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* Code inline */
+.chatkit-markdown-code-inline {
+  background: var(--codeblock-background-color);
+  color: var(--color-text);
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  border: 1px solid var(--color-border-subtle);
+}
+
+/* Blocs de code */
+.chatkit-markdown-code-block {
+  background: var(--codeblock-background-color);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 1em 0;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.chatkit-markdown-code-block code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Listes */
+.chatkit-markdown-list {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+
+.chatkit-markdown-list-item {
+  margin: 0.25em 0;
+}
+
+.chatkit-markdown-list .chatkit-markdown-list {
+  margin: 0.25em 0;
+}
+
+/* Citations */
+.chatkit-markdown-blockquote {
+  margin: 1em 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--accent-color-primary);
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+}
+
+.chatkit-markdown-blockquote p {
+  margin: 0;
+}
+
+/* Titres */
+.chatkit-markdown-heading {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-emphasis);
+  margin: 1.5em 0 0.75em 0;
+  line-height: var(--leading-tight);
+}
+
+.chatkit-markdown-heading:first-child {
+  margin-top: 0;
+}
+
+.chatkit-markdown-h1 {
+  font-size: var(--font-heading-2xl-size);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+
+.chatkit-markdown-h2 {
+  font-size: var(--font-heading-xl-size);
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: 0.375rem;
+}
+
+.chatkit-markdown-h3 {
+  font-size: var(--font-heading-lg-size);
+}
+
+.chatkit-markdown-h4 {
+  font-size: var(--font-heading-md-size);
+}
+
+/* Liens */
+.chatkit-markdown-link {
+  color: var(--accent-color-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all var(--transition-duration-basic);
+}
+
+.chatkit-markdown-link:hover {
+  color: var(--accent-color-primary-hover);
+  border-bottom-color: var(--accent-color-primary-hover);
+}
+
+/* Emphase */
+.chatkit-markdown-strong {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-emphasis);
+}
+
+.chatkit-markdown-em {
+  font-style: italic;
+}
+
+/* Séparateur horizontal */
+.chatkit-markdown-hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.5em 0;
+}
+
+/* Tables */
+.chatkit-markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.875rem;
+}
+
+.chatkit-markdown-thead {
+  background: var(--color-surface-secondary);
+}
+
+.chatkit-markdown-th {
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  border: 1px solid var(--color-border);
+}
+
+.chatkit-markdown-td {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+}
+
+.chatkit-markdown-tr:nth-child(even) {
+  background: var(--color-surface-subtle);
+}
+
+/* Support du thème sombre */
+[data-theme="dark"] .chatkit-markdown-code-inline {
+  background: var(--codeblock-background-color);
+  border-color: var(--color-border);
+}
+
+[data-theme="dark"] .chatkit-markdown-code-block {
+  background: var(--codeblock-background-color);
+  border-color: var(--color-border);
+}
+
+[data-theme="dark"] .chatkit-markdown-blockquote {
+  background: var(--color-surface-secondary);
+  border-left-color: var(--accent-color-primary);
+}
+
+[data-theme="dark"] .chatkit-markdown-link {
+  color: var(--accent-color-primary);
+}
+
+[data-theme="dark"] .chatkit-markdown-link:hover {
+  color: var(--accent-color-primary-hover);
+}

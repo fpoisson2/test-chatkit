@@ -28,8 +28,16 @@ export function WorkflowRenderer({ workflow, className = '' }: WorkflowRendererP
             </div>
           )}
         </div>
-        <button className="chatkit-workflow-toggle" aria-expanded={expanded}>
-          {expanded ? '▼' : '▶'}
+        <button className="chatkit-workflow-toggle" aria-expanded={expanded} aria-label={expanded ? "Réduire" : "Développer"}>
+          {expanded ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          )}
         </button>
       </div>
       {expanded && (

@@ -8,6 +8,7 @@ import { WorkflowRenderer } from './WorkflowRenderer';
 import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
 import { ThreadHistory } from './ThreadHistory';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import {
   Attachment,
   uploadAttachment,
@@ -273,7 +274,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   <div className="chatkit-message-content">
                     {item.content.map((content, idx) => (
                       <div key={idx}>
-                        {content.type === 'input_text' && <p>{content.text}</p>}
+                        {content.type === 'input_text' && <MarkdownRenderer content={content.text} />}
                         {content.type === 'input_tag' && (
                           <span className="chatkit-tag">{content.text}</span>
                         )}
@@ -304,7 +305,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                       <div key={idx}>
                         {content.type === 'output_text' && (
                           <>
-                            <p>{content.text}</p>
+                            <MarkdownRenderer content={content.text} />
                             {content.annotations && content.annotations.length > 0 && (
                               <AnnotationRenderer annotations={content.annotations} />
                             )}
