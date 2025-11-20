@@ -156,11 +156,29 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
   }
 
   if (event.type === 'thread.item.completed' || event.type === 'thread.item.done') {
-    const items = thread.items.map((item) => {
-      if (item.id === event.item.id) {
-        return event.item;
+    const existingIndex = thread.items.findIndex((item) => item.id === event.item.id);
+
+    // Si l'item n'existe pas encore (ex: première apparition via thread.item.done),
+    // l'ajouter à la liste plutôt que d'ignorer l'événement.
+    if (existingIndex === -1) {
+      return {
+        ...thread,
+        items: [...thread.items, event.item],
+      };
+    }
+
+    const items = thread.items.map((item, idx) => {
+      if (idx !== existingIndex) {
+        return item;
       }
-      return item;
+
+      // Fusionner les données complétées avec l'item local afin de ne pas
+      // perdre des informations (ex: role) si le backend renvoie un objet incomplet.
+      return {
+        ...item,
+        ...event.item,
+        content: event.item.content ?? (item as AssistantMessageItem).content,
+      };
     });
 
     return {
@@ -716,10 +734,20 @@ export async function fetchThread(options: {
   const data = await response.json();
   const thread = data.thread || data;
 
-  // Normaliser le thread pour garantir que items est un tableau
+  // Normaliser le thread pour garantir que items est un tableau, y compris
+  // lorsqu'il est renvoyé sous forme de structure de pagination { data, has_more }.
+  let normalizedItems: ThreadItem[];
+  if (thread.items && typeof thread.items === 'object' && 'data' in thread.items) {
+    normalizedItems = Array.isArray(thread.items.data) ? thread.items.data : [];
+  } else if (Array.isArray(thread.items)) {
+    normalizedItems = thread.items;
+  } else {
+    normalizedItems = [];
+  }
+
   return {
     ...thread,
-    items: Array.isArray(thread.items) ? thread.items : [],
+    items: normalizedItems,
   };
 }
 
