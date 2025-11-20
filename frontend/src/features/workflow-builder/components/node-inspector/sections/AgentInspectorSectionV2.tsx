@@ -75,6 +75,7 @@ import {
   DEFAULT_JSON_SCHEMA_TEXT,
 } from '../constants';
 import { ToolSettingsPanel } from './ToolSettingsPanel';
+import { JsonSchemaBuilder } from '../components/JsonSchemaBuilder';
 import styles from './AgentInspectorSectionV2.module.css';
 
 const DEFAULT_TAB = 'basic';
@@ -2147,6 +2148,8 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
   onAgentResponseWidgetDefinitionChange,
   t,
 }) => {
+  const [useVisualBuilder, setUseVisualBuilder] = useState(true);
+
   const widgetValidationMessage = useMemo(() => {
     switch (widgetValidationReason) {
       case 'library_empty':
@@ -2189,6 +2192,42 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
       t,
     ],
   );
+
+  const handleVisualSchemaChange = useCallback(
+    (schema: unknown) => {
+      if (responseFormat.kind !== 'json_schema') {
+        return;
+      }
+      try {
+        const schemaText = JSON.stringify(schema, null, 2);
+        setSchemaText(schemaText);
+        setSchemaError(null);
+        onAgentResponseFormatSchemaChange(nodeId, schema);
+      } catch (error) {
+        setSchemaError(
+          error instanceof Error
+            ? error.message
+            : t('workflowBuilder.agentInspector.jsonSchemaInvalid'),
+        );
+      }
+    },
+    [
+      nodeId,
+      onAgentResponseFormatSchemaChange,
+      responseFormat.kind,
+      setSchemaError,
+      setSchemaText,
+      t,
+    ],
+  );
+
+  const parsedSchema = useMemo(() => {
+    try {
+      return JSON.parse(schemaText || '{"type":"object","properties":{}}');
+    } catch {
+      return { type: 'object', properties: {} };
+    }
+  }, [schemaText]);
 
   const handleWidgetSourceChange = useCallback(
     (value: 'library' | 'variable') => {
@@ -2256,18 +2295,51 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
               />
             </Field>
 
-            <Field
-              label={t('workflowBuilder.agentInspector.jsonSchemaDefinitionLabel')}
-              hint={t('workflowBuilder.agentInspector.jsonSchemaDefinitionHint')}
-              error={schemaError ?? undefined}
-            >
-              <textarea
-                data-schema-editor="true"
-                value={schemaText}
-                onChange={(event) => handleSchemaChange(event.target.value)}
-                placeholder={DEFAULT_JSON_SCHEMA_TEXT}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600 }}>
+                {t('workflowBuilder.agentInspector.jsonSchemaDefinitionLabel')}
+              </label>
+              <button
+                type="button"
+                onClick={() => setUseVisualBuilder(!useVisualBuilder)}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: '12px',
+                  background: 'var(--background-secondary, #f5f5f5)',
+                  border: '1px solid var(--border-color, #e0e0e0)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                {useVisualBuilder
+                  ? t('workflowBuilder.agentInspector.jsonSchemaUseTextMode')
+                  : t('workflowBuilder.agentInspector.jsonSchemaUseVisualMode')}
+              </button>
+            </div>
+            {schemaError && (
+              <div style={{ color: 'var(--color-error, #dc3545)', fontSize: '12px', marginBottom: '8px' }}>
+                {schemaError}
+              </div>
+            )}
+            {useVisualBuilder ? (
+              <JsonSchemaBuilder
+                schema={parsedSchema}
+                onChange={handleVisualSchemaChange}
+                onError={setSchemaError}
               />
-            </Field>
+            ) : (
+              <Field
+                hint={t('workflowBuilder.agentInspector.jsonSchemaDefinitionHint')}
+                error={schemaError ?? undefined}
+              >
+                <textarea
+                  data-schema-editor="true"
+                  value={schemaText}
+                  onChange={(event) => handleSchemaChange(event.target.value)}
+                  placeholder={DEFAULT_JSON_SCHEMA_TEXT}
+                />
+              </Field>
+            )}
           </>
         ) : null}
 
