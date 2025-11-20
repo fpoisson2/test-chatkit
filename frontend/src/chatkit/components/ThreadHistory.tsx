@@ -67,10 +67,13 @@ export function ThreadHistory({ api, currentThreadId, onThreadSelect, onClose }:
   };
 
   const getThreadPreview = (thread: Thread): string => {
+    // Normaliser items si c'est une structure paginée
+    const items = Array.isArray(thread.items) ? thread.items : (thread.items as any)?.data || [];
+
     // Trouver le premier message utilisateur
-    const userMessage = thread.items.find(item => item.type === 'user_message');
+    const userMessage = items.find((item: any) => item.type === 'user_message');
     if (userMessage && userMessage.type === 'user_message') {
-      const textContent = userMessage.content.find(c => c.type === 'input_text');
+      const textContent = userMessage.content.find((c: any) => c.type === 'input_text');
       if (textContent && textContent.type === 'input_text') {
         return textContent.text.substring(0, 60) + (textContent.text.length > 60 ? '...' : '');
       }
@@ -110,20 +113,23 @@ export function ThreadHistory({ api, currentThreadId, onThreadSelect, onClose }:
 
           {!isLoading && !error && threads.length > 0 && (
             <div className="thread-history-list">
-              {threads.map((thread) => (
-                <button
-                  key={thread.id}
-                  className={`thread-history-item ${thread.id === currentThreadId ? 'active' : ''}`}
-                  onClick={() => handleThreadClick(thread.id)}
-                >
-                  <div className="thread-history-item-preview">
-                    {getThreadPreview(thread)}
-                  </div>
-                  <div className="thread-history-item-date">
-                    {thread.items.length > 0 && formatDate(thread.items[0].created_at)}
-                  </div>
-                </button>
-              ))}
+              {threads.map((thread) => {
+                const items = Array.isArray(thread.items) ? thread.items : (thread.items as any)?.data || [];
+                return (
+                  <button
+                    key={thread.id}
+                    className={`thread-history-item ${thread.id === currentThreadId ? 'active' : ''}`}
+                    onClick={() => handleThreadClick(thread.id)}
+                  >
+                    <div className="thread-history-item-preview">
+                      {getThreadPreview(thread)}
+                    </div>
+                    <div className="thread-history-item-date">
+                      {items.length > 0 && formatDate(items[0].created_at)}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

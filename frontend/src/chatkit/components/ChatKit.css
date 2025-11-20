@@ -21,11 +21,6 @@
   align-items: center;
 }
 
-.chatkit-messages > * {
-  width: 100%;
-  max-width: 640px;
-}
-
 .chatkit-empty-state {
   display: flex;
   align-items: center;
@@ -38,7 +33,8 @@
 .chatkit-message {
   display: flex;
   flex-direction: column;
-  max-width: 80%;
+  width: 100%;
+  max-width: 640px;
   animation: fadeIn 0.2s ease-in;
 }
 
@@ -65,6 +61,7 @@
   padding: 12px 16px;
   border-radius: 12px;
   word-wrap: break-word;
+  max-width: 80%;
 }
 
 .chatkit-message-user .chatkit-message-content {
@@ -139,15 +136,12 @@
   border-top: 1px solid var(--color-border-subtle);
   padding: 16px;
   background: var(--color-surface);
-  display: flex;
-  justify-content: center;
 }
 
 .chatkit-composer form {
   display: flex;
   gap: 8px;
   width: 100%;
-  max-width: 640px;
 }
 
 [data-theme="dark"] .chatkit-composer {
@@ -369,11 +363,6 @@
   padding: 12px 16px;
   border-top: 1px solid var(--color-border-subtle);
   overflow-x: auto;
-  justify-content: center;
-}
-
-.chatkit-attachments-preview > * {
-  max-width: 640px;
 }
 
 [data-theme="dark"] .chatkit-attachments-preview {
