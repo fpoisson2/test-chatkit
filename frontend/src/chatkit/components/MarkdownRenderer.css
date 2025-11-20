@@ -2,11 +2,13 @@
 .chatkit-markdown {
   line-height: var(--leading-relaxed);
   color: var(--color-text);
+  font-size: 17px;
 }
 
 /* Paragraphes */
 .chatkit-markdown-paragraph {
   margin: 0 0 1em 0;
+  font-size: 17px;
 }
 
 .chatkit-markdown-paragraph:last-child {
