@@ -1,11 +1,51 @@
 /**
  * Composant pour afficher du contenu markdown
  */
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './MarkdownRenderer.css';
 
 export interface MarkdownRendererProps {
   content: string;
+}
+
+function CodeBlock({ children }: { children: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(children);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="chatkit-code-block-wrapper">
+      <pre className="chatkit-markdown-code-block">
+        <code>{children}</code>
+      </pre>
+      <button
+        className={`chatkit-copy-button ${copied ? 'copied' : ''}`}
+        onClick={handleCopy}
+      >
+        {copied ? (
+          <>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Copié
+          </>
+        ) : (
+          <>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copier le code
+          </>
+        )}
+      </button>
+    </div>
+  );
 }
 
 export function MarkdownRenderer({ content }: MarkdownRendererProps): JSX.Element {
@@ -19,7 +59,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps): JSX.Elemen
             if (inline) {
               return <code className="chatkit-markdown-code-inline" {...props}>{children}</code>;
             }
-            return <pre className="chatkit-markdown-code-block"><code {...props}>{children}</code></pre>;
+            return <CodeBlock>{String(children)}</CodeBlock>;
           },
           ul: ({ children }) => <ul className="chatkit-markdown-list">{children}</ul>,
           ol: ({ children }) => <ol className="chatkit-markdown-list">{children}</ol>,

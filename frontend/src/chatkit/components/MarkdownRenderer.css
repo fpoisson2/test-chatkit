@@ -25,13 +25,18 @@
 }
 
 /* Blocs de code */
+.chatkit-code-block-wrapper {
+  position: relative;
+  margin: 1em 0;
+}
+
 .chatkit-markdown-code-block {
   background: var(--codeblock-background-color);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
   padding: 1rem;
   overflow-x: auto;
-  margin: 1em 0;
+  margin: 0;
   font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.5;
@@ -42,6 +47,11 @@
   border: none;
   padding: 0;
   font-size: inherit;
+}
+
+.chatkit-code-block-wrapper .chatkit-copy-button {
+  margin-top: 8px;
+  margin-left: 0;
 }
 
 /* Listes */

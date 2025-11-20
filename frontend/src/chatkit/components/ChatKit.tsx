@@ -29,6 +29,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -168,6 +169,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
   };
 
+  // Copier le contenu d'un message
+  const handleCopyMessage = (messageId: string, content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedMessageId(messageId);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
+
   // Afficher le start screen si pas de messages
   const showStartScreen = !control.thread || control.thread.items.length === 0;
 
@@ -300,30 +308,55 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                 {/* Assistant message */}
                 {item.type === 'assistant_message' && (
-                  <div className="chatkit-message-content">
-                    {item.content.map((content, idx) => (
-                      <div key={idx}>
-                        {content.type === 'output_text' && (
-                          <>
-                            <MarkdownRenderer content={content.text} />
-                            {content.annotations && content.annotations.length > 0 && (
-                              <AnnotationRenderer annotations={content.annotations} />
-                            )}
-                          </>
+                  <>
+                    <div className="chatkit-message-content">
+                      {item.content.map((content, idx) => (
+                        <div key={idx}>
+                          {content.type === 'output_text' && (
+                            <>
+                              <MarkdownRenderer content={content.text} />
+                              {content.annotations && content.annotations.length > 0 && (
+                                <AnnotationRenderer annotations={content.annotations} />
+                              )}
+                            </>
+                          )}
+                          {content.type === 'widget' && (
+                            <WidgetRenderer widget={content.widget} />
+                          )}
+                        </div>
+                      ))}
+                      {item.status === 'in_progress' && (
+                        <div className="chatkit-loading-indicator">
+                          <span className="chatkit-dot"></span>
+                          <span className="chatkit-dot"></span>
+                          <span className="chatkit-dot"></span>
+                        </div>
+                      )}
+                    </div>
+                    {item.status !== 'in_progress' && (
+                      <button
+                        className={`chatkit-copy-button ${copiedMessageId === item.id ? 'copied' : ''}`}
+                        onClick={() => {
+                          const textContent = item.content
+                            .filter((c: any) => c.type === 'output_text')
+                            .map((c: any) => c.text)
+                            .join('\n\n');
+                          handleCopyMessage(item.id, textContent);
+                        }}
+                      >
+                        {copiedMessageId === item.id ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                          </svg>
                         )}
-                        {content.type === 'widget' && (
-                          <WidgetRenderer widget={content.widget} />
-                        )}
-                      </div>
-                    ))}
-                    {item.status === 'in_progress' && (
-                      <div className="chatkit-loading-indicator">
-                        <span className="chatkit-dot"></span>
-                        <span className="chatkit-dot"></span>
-                        <span className="chatkit-dot"></span>
-                      </div>
+                      </button>
                     )}
-                  </div>
+                  </>
                 )}
 
                 {/* Client tool call */}
@@ -448,8 +481,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             type="submit"
             disabled={(!inputValue.trim() && attachments.length === 0) || control.isLoading}
             className="chatkit-submit"
+            aria-label="Envoyer"
           >
-            {control.isLoading ? 'Envoi...' : 'Envoyer'}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 16 16 12 12 8"></polyline>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
           </button>
         </form>
       </div>
