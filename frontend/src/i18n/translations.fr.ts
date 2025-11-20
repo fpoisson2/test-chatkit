@@ -1253,5 +1253,6 @@ export const fr: TranslationDictionary = {
   "chatkit.workflow.reasoning": "Raisonnement",
   "chatkit.workflow.workflow": "Workflow",
   "chatkit.workflow.executionDuration": "Exécution durant {{duration}}",
+  "chatkit.workflow.loading": "En cours...",
 };
   

@@ -13,56 +13,84 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
   const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [fadeKey, setFadeKey] = useState(0);
-  const lastUpdateTimeRef = useRef<number>(Date.now());
-  const lastTaskIndexRef = useRef<number>(-1);
+  const displayStartTimeRef = useRef<number | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
   };
 
   const isReasoning = workflow.type === 'reasoning';
-  const isCompleted = workflow.status === 'completed' || workflow.status === 'error';
-  const lastTask = workflow.tasks.length > 0 ? workflow.tasks[workflow.tasks.length - 1] : null;
+  const isWorkflowCompleted = workflow.status === 'completed' || workflow.status === 'error';
 
-  // Gérer l'affichage des tâches avec un délai minimum d'1 seconde
+  // Trouver la dernière tâche complète
+  const lastCompletedTask = workflow.tasks.length > 0
+    ? workflow.tasks.slice().reverse().find(task =>
+        task.status_indicator === 'complete' || task.status_indicator === 'success'
+      )
+    : null;
+
+  // Gérer l'affichage des tâches complètes avec délai minimum
   useEffect(() => {
-    const currentTaskIndex = workflow.tasks.length - 1;
+    // Nettoyer le timeout précédent
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
 
-    // Si le workflow est terminé, ne pas afficher de tâche
-    if (isCompleted) {
-      setDisplayedTask(null);
+    // Si le workflow est terminé, cacher tout après 1 seconde
+    if (isWorkflowCompleted) {
+      if (displayedTask && displayStartTimeRef.current) {
+        const elapsed = Date.now() - displayStartTimeRef.current;
+        const remaining = Math.max(0, 1000 - elapsed);
+
+        timeoutRef.current = setTimeout(() => {
+          setDisplayedTask(null);
+          setIsLoading(false);
+          displayStartTimeRef.current = null;
+        }, remaining);
+      } else {
+        setDisplayedTask(null);
+        setIsLoading(false);
+        displayStartTimeRef.current = null;
+      }
       return;
     }
 
-    // Si pas de nouvelle tâche, ne rien faire
-    if (currentTaskIndex === lastTaskIndexRef.current) {
-      return;
-    }
+    // Si on a une nouvelle tâche complète différente de celle affichée
+    if (lastCompletedTask && lastCompletedTask !== displayedTask) {
+      // Si une tâche est déjà affichée, attendre 1 seconde avant de la remplacer
+      if (displayedTask && displayStartTimeRef.current) {
+        const elapsed = Date.now() - displayStartTimeRef.current;
+        const remaining = Math.max(0, 1000 - elapsed);
 
-    const now = Date.now();
-    const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
-    const minimumDelay = 1000; // 1 seconde
-
-    // Si moins d'1 seconde s'est écoulée, attendre
-    if (timeSinceLastUpdate < minimumDelay && displayedTask !== null) {
-      const remainingTime = minimumDelay - timeSinceLastUpdate;
-      const timeoutId = setTimeout(() => {
-        setDisplayedTask(lastTask);
+        setIsLoading(true);
+        timeoutRef.current = setTimeout(() => {
+          setDisplayedTask(lastCompletedTask);
+          setFadeKey(prev => prev + 1);
+          setIsLoading(false);
+          displayStartTimeRef.current = Date.now();
+        }, remaining);
+      } else {
+        // Première tâche ou pas de tâche affichée
+        setDisplayedTask(lastCompletedTask);
         setFadeKey(prev => prev + 1);
-        lastUpdateTimeRef.current = Date.now();
-        lastTaskIndexRef.current = currentTaskIndex;
-      }, remainingTime);
-
-      return () => clearTimeout(timeoutId);
-    } else {
-      // Plus d'1 seconde s'est écoulée ou première tâche
-      setDisplayedTask(lastTask);
-      setFadeKey(prev => prev + 1);
-      lastUpdateTimeRef.current = now;
-      lastTaskIndexRef.current = currentTaskIndex;
+        setIsLoading(false);
+        displayStartTimeRef.current = Date.now();
+      }
+    } else if (!lastCompletedTask && !displayedTask) {
+      // Pas de tâche complète et rien d'affiché = en attente
+      setIsLoading(true);
     }
-  }, [workflow.tasks.length, lastTask, isCompleted, displayedTask]);
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [lastCompletedTask, displayedTask, isWorkflowCompleted]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
@@ -89,11 +117,21 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         </button>
       </div>
 
-      {/* Afficher la dernière tâche même quand collapsed (sauf si terminé) */}
-      {!expanded && displayedTask && !isCompleted && (
-        <div className="chatkit-workflow-last-task" key={fadeKey}>
-          <TaskRenderer task={displayedTask} theme={theme} />
-        </div>
+      {/* Afficher la dernière tâche complète ou un loader */}
+      {!expanded && !isWorkflowCompleted && (
+        <>
+          {isLoading && !displayedTask && (
+            <div className="chatkit-workflow-loading">
+              <div className="chatkit-workflow-loading-spinner"></div>
+              <span className="chatkit-workflow-loading-text">{t('chatkit.workflow.loading')}</span>
+            </div>
+          )}
+          {displayedTask && (
+            <div className="chatkit-workflow-last-task" key={fadeKey}>
+              <TaskRenderer task={displayedTask} theme={theme} />
+            </div>
+          )}
+        </>
       )}
 
       {/* Afficher toutes les tâches quand expanded */}
