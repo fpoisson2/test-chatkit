@@ -93,21 +93,6 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           inference_options: options?.inferenceOptions || {},
         };
 
-        // Ajouter optimistiquement le message utilisateur au thread local
-        if (thread) {
-          const optimisticUserMessage = {
-            id: `temp_${Date.now()}`,
-            type: 'user_message' as const,
-            content: messageContent,
-            created_at: new Date().toISOString(),
-          };
-
-          setThread({
-            ...thread,
-            items: [...thread.items, optimisticUserMessage],
-          });
-        }
-
         // Si un thread existe, ajouter un message. Sinon, créer un nouveau thread
         const payload = thread?.id
           ? {
@@ -124,6 +109,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
               },
             };
 
+        console.log('[ChatKit] Sending message with payload:', payload);
+
         let updatedThread: Thread | null = null;
 
         await streamChatKitEvents({
@@ -135,6 +122,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
             onLog?.({ name: `event.${event.type}`, data: { event } });
           },
           onThreadUpdate: (newThread: Thread) => {
+            console.log('[ChatKit] Thread updated:', newThread);
             updatedThread = newThread;
             setThread(newThread);
             onLog?.({ name: 'thread.update', data: { thread: newThread } });
