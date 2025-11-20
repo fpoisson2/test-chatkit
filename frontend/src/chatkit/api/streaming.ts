@@ -167,9 +167,19 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
       };
     }
 
-    const items = thread.items.map((item, idx) =>
-      idx === existingIndex ? event.item : item,
-    );
+    const items = thread.items.map((item, idx) => {
+      if (idx !== existingIndex) {
+        return item;
+      }
+
+      // Fusionner les données complétées avec l'item local afin de ne pas
+      // perdre des informations (ex: role) si le backend renvoie un objet incomplet.
+      return {
+        ...item,
+        ...event.item,
+        content: event.item.content ?? (item as AssistantMessageItem).content,
+      };
+    });
 
     return {
       ...thread,
