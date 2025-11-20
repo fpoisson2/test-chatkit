@@ -30,6 +30,11 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
+  // Détecter si une image est en cours de génération
+  const hasImageGenerating = workflow.tasks.some(
+    task => task.type === 'image' && task.status_indicator === 'loading'
+  );
+
   // Détecter si le workflow était déjà complet au premier render
   if (!hasMountedRef.current) {
     hasMountedRef.current = true;
@@ -118,7 +123,11 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
             <SummaryRenderer summary={workflow.summary} />
           ) : (
             <div className="chatkit-workflow-default-title">
-              {isReasoning ? t('chatkit.workflow.reasoning') : t('chatkit.workflow.workflow')}
+              {hasImageGenerating
+                ? "Génération d'une image en cours..."
+                : isReasoning
+                  ? t('chatkit.workflow.reasoning')
+                  : t('chatkit.workflow.workflow')}
             </div>
           )}
         </div>

@@ -406,9 +406,37 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                 {/* Workflow */}
                 {item.type === 'workflow' && (
-                  <div className="chatkit-message-content">
-                    <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
-                  </div>
+                  <>
+                    {/* Afficher les partials d'images en cours de génération comme message */}
+                    {(() => {
+                      const imageTask = item.workflow.tasks.find(
+                        (task: any) => task.type === 'image' && task.status_indicator === 'loading'
+                      );
+                      if (imageTask && imageTask.images && imageTask.images.length > 0) {
+                        const image = imageTask.images[0];
+                        if (image.partials && image.partials.length > 0) {
+                          const lastPartial = image.partials[image.partials.length - 1];
+                          const src = lastPartial.startsWith('data:')
+                            ? lastPartial
+                            : `data:image/png;base64,${lastPartial}`;
+                          return (
+                            <div className="chatkit-image-generation-preview">
+                              <img
+                                src={src}
+                                alt="Génération en cours..."
+                                className="chatkit-generating-image"
+                              />
+                            </div>
+                          );
+                        }
+                      }
+                      return null;
+                    })()}
+
+                    <div className="chatkit-message-content">
+                      <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
+                    </div>
+                  </>
                 )}
               </div>
             );
