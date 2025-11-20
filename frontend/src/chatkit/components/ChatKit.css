@@ -2,6 +2,12 @@
  * Styles pour le composant ChatKit
  */
 
+:root {
+  --chatkit-dark-bg-primary: #212121;
+  --chatkit-dark-bg-secondary: #2a2a2a;
+  --chatkit-dark-border: #3a3a3a;
+}
+
 .chatkit {
   position: relative;
   display: flex;
@@ -211,10 +217,10 @@
 
 .chatkit-input {
   flex: 1;
-  padding: 12px 16px;
+  padding: 12px;
   border: none;
   background: transparent;
-  font-size: 16px;
+  font-size: 17px;
   font-family: inherit;
   outline: none;
 }
@@ -327,7 +333,11 @@
 }
 
 [data-theme="dark"] .chatkit-header {
-  background: #212121;
+  background: var(--chatkit-dark-bg-primary);
+}
+
+[data-theme="dark"] .chatkit-header::after {
+  background: linear-gradient(to bottom, var(--chatkit-dark-bg-primary), transparent);
 }
 
 .chatkit-header-actions {
@@ -465,7 +475,7 @@
 
 [data-theme="dark"] .chatkit-attachments-preview {
   border-top-color: var(--color-border-subtle);
-  background: #212121;
+  background: var(--chatkit-dark-bg-primary);
 }
 
 .chatkit-attachment {
@@ -721,6 +731,8 @@
   animation: slideDown 0.2s var(--cubic-enter);
   position: relative;
   padding-left: 32px;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .chatkit-workflow-tasks::before {
@@ -798,7 +810,6 @@
 .chatkit-task {
   padding: 14px 18px;
   border-bottom: 1px solid var(--color-border-subtle);
-  transition: background var(--transition-duration-basic);
   position: relative;
 }
 
@@ -913,7 +924,6 @@
   background: transparent;
   padding: 12px 16px;
   border-left: 3px solid var(--accent-color-primary);
-  border-radius: var(--radius-md);
   position: relative;
 }
 
@@ -1112,7 +1122,7 @@
 
 /* ===== DARK MODE OVERRIDES ===== */
 [data-theme="dark"] .chatkit-messages {
-  background: #212121;
+  background: var(--chatkit-dark-bg-primary);
 }
 
 [data-theme="dark"] .chatkit-composer {
@@ -1120,15 +1130,15 @@
 }
 
 [data-theme="dark"] .chatkit-composer form {
-  background: #2a2a2a;
-  border-color: #3a3a3a;
+  background: var(--chatkit-dark-bg-secondary);
+  border-color: var(--chatkit-dark-border);
 }
 
 [data-theme="dark"] .chatkit-message-user .chatkit-message-content {
-  background: #2a2a2a;
+  background: var(--chatkit-dark-bg-secondary);
 }
 
 [data-theme="dark"] .chatkit-disclaimer {
-  background: #212121;
-  border-top-color: #3a3a3a;
+  background: var(--chatkit-dark-bg-primary);
+  border-top-color: var(--chatkit-dark-border);
 }
