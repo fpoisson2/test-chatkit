@@ -58,6 +58,7 @@ export const DEFAULT_IMAGE_TOOL_CONFIG: ImageGenerationToolConfig = {
   quality: "high",
   background: "auto",
   output_format: "auto",
+  partial_images: 3,
 };
 
 export const DEFAULT_COMPUTER_USE_CONFIG: ComputerUseConfig = {

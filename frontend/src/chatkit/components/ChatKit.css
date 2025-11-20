@@ -1056,6 +1056,19 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+.chatkit-generated-image-final {
+  max-width: 512px;
+  max-height: 512px;
+  border-radius: 12px;
+  border: 2px solid var(--color-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] .chatkit-generated-image-final {
+  border-color: var(--color-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 /* ===== ANNOTATIONS & SOURCES ===== */
 .chatkit-annotations {
   margin-top: 12px;

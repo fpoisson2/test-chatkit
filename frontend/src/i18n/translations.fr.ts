@@ -630,6 +630,8 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.image.qualityLabel": "Qualité",
   "workflowBuilder.agentInspector.image.backgroundLabel": "Arrière-plan",
   "workflowBuilder.agentInspector.image.outputLabel": "Format de sortie",
+  "workflowBuilder.agentInspector.image.partialImagesLabel": "Images partielles",
+  "workflowBuilder.agentInspector.image.partialImagesHelp": "Nombre d'images intermédiaires à recevoir pendant la génération (0-3). Plus la valeur est élevée, plus vous recevrez d'aperçus progressifs.",
   "workflowBuilder.agentInspector.image.helpTitle": "À propos de la génération d'images",
   "workflowBuilder.agentInspector.image.helpDescription":
     "Permet à l'agent de générer ou d'éditer des images à partir de descriptions textuelles.",

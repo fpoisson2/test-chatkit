@@ -607,6 +607,8 @@ export const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.image.qualityLabel": "Quality",
   "workflowBuilder.agentInspector.image.backgroundLabel": "Background",
   "workflowBuilder.agentInspector.image.outputLabel": "Output format",
+  "workflowBuilder.agentInspector.image.partialImagesLabel": "Partial images",
+  "workflowBuilder.agentInspector.image.partialImagesHelp": "Number of intermediate images to receive during generation (0-3). Higher values provide more preview updates.",
   "workflowBuilder.agentInspector.image.helpTitle": "About image generation",
   "workflowBuilder.agentInspector.image.helpDescription":
     "Allows the agent to generate or edit images based on textual descriptions.",

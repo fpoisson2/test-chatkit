@@ -11,6 +11,7 @@ export type ImageGenerationToolConfig = {
   quality?: string;
   background?: string;
   output_format?: string;
+  partial_images?: number;
 };
 
 export type ComputerUseConfig = {
