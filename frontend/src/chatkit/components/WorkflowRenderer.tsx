@@ -13,7 +13,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
   const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [fadeKey, setFadeKey] = useState(0);
   const displayStartTimeRef = useRef<number | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -23,7 +22,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   };
 
   const isReasoning = workflow.type === 'reasoning';
-  const isWorkflowCompleted = workflow.status === 'completed' || workflow.status === 'error';
 
   // Trouver la dernière tâche complète
   const lastCompletedTask = workflow.tasks.length > 0
@@ -32,7 +30,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       )
     : null;
 
-  // Gérer l'affichage des tâches complètes avec délai minimum
+  // Gérer l'affichage des tâches complètes avec délai minimum de 1 seconde
   useEffect(() => {
     // Nettoyer le timeout précédent
     if (timeoutRef.current) {
@@ -40,35 +38,8 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       timeoutRef.current = null;
     }
 
-    // Si le workflow est terminé, cacher tout après 1 seconde
-    if (isWorkflowCompleted) {
-      if (displayedTask && displayStartTimeRef.current) {
-        const elapsed = Date.now() - displayStartTimeRef.current;
-        const remaining = Math.max(0, 1000 - elapsed);
-
-        timeoutRef.current = setTimeout(() => {
-          setDisplayedTask(null);
-          setIsLoading(false);
-          displayStartTimeRef.current = null;
-        }, remaining);
-      } else {
-        setDisplayedTask(null);
-        setIsLoading(false);
-        displayStartTimeRef.current = null;
-      }
-      return;
-    }
-
-    // Si pas de tâche complète disponible, afficher le loading
-    if (!lastCompletedTask) {
-      setIsLoading(true);
-      setDisplayedTask(null);
-      displayStartTimeRef.current = null;
-      return;
-    }
-
     // Si on a une nouvelle tâche complète différente de celle affichée
-    if (lastCompletedTask !== displayedTask) {
+    if (lastCompletedTask && lastCompletedTask !== displayedTask) {
       // Si une tâche est déjà affichée, attendre 1 seconde avant de la remplacer
       if (displayedTask && displayStartTimeRef.current) {
         const elapsed = Date.now() - displayStartTimeRef.current;
@@ -77,14 +48,12 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         timeoutRef.current = setTimeout(() => {
           setDisplayedTask(lastCompletedTask);
           setFadeKey(prev => prev + 1);
-          setIsLoading(false);
           displayStartTimeRef.current = Date.now();
         }, remaining);
       } else {
         // Première tâche complète : l'afficher immédiatement
         setDisplayedTask(lastCompletedTask);
         setFadeKey(prev => prev + 1);
-        setIsLoading(false);
         displayStartTimeRef.current = Date.now();
       }
     }
@@ -94,7 +63,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [lastCompletedTask, displayedTask, isWorkflowCompleted]);
+  }, [lastCompletedTask, displayedTask]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
@@ -121,20 +90,11 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         </button>
       </div>
 
-      {/* Afficher la dernière tâche complète ou un loader */}
-      {!expanded && !isWorkflowCompleted && (
-        <>
-          {isLoading && !displayedTask && (
-            <div className="chatkit-workflow-loading">
-              <div className="chatkit-workflow-loading-spinner"></div>
-            </div>
-          )}
-          {displayedTask && (
-            <div className="chatkit-workflow-last-task" key={fadeKey}>
-              <TaskRenderer task={displayedTask} theme={theme} />
-            </div>
-          )}
-        </>
+      {/* Afficher la dernière tâche complète */}
+      {!expanded && displayedTask && (
+        <div className="chatkit-workflow-last-task" key={fadeKey}>
+          <TaskRenderer task={displayedTask} theme={theme} />
+        </div>
       )}
 
       {/* Afficher toutes les tâches quand expanded */}
