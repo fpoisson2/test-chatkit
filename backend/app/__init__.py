@@ -33,11 +33,13 @@ else:
         # Try to import slowapi for rate limiting (optional)
         try:
             from slowapi.errors import RateLimitExceeded
+            from slowapi.middleware import SlowAPIMiddleware
             from .rate_limit import limiter
             _RATE_LIMITING_AVAILABLE = True
         except ImportError:
             _RATE_LIMITING_AVAILABLE = False
             limiter = None
+            SlowAPIMiddleware = None
         from .routes import (
             admin,
             auth,
@@ -102,6 +104,10 @@ else:
             allow_headers=["*"],
             allow_credentials=True,
         )
+
+        # Add SlowAPI middleware for rate limiting (if available)
+        if _RATE_LIMITING_AVAILABLE and SlowAPIMiddleware:
+            app.add_middleware(SlowAPIMiddleware)
 
         app.include_router(auth.router)
         app.include_router(users.router)
