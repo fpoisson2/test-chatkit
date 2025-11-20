@@ -10,6 +10,7 @@ import type {
   FileSource,
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { useI18n } from '../../i18n';
 
 interface TaskRendererProps {
   task: Task;
@@ -18,6 +19,7 @@ interface TaskRendererProps {
 }
 
 export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRendererProps): JSX.Element {
+  const { t } = useI18n();
   // Ne pas ajouter la classe --loading
   const statusClass = task.status_indicator && task.status_indicator !== 'loading'
     ? `chatkit-task--${task.status_indicator}`
@@ -29,7 +31,7 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
       {task.type === 'web_search' && <SearchTaskRenderer task={task} />}
       {task.type === 'thought' && <ThoughtTaskRenderer task={task} theme={theme} />}
       {task.type === 'file' && <FileTaskRenderer task={task} />}
-      {task.type === 'image' && <ImageTaskRenderer task={task} />}
+      {task.type === 'image' && <ImageTaskRenderer task={task} t={t} />}
     </div>
   );
 }
@@ -113,23 +115,12 @@ function FileTaskRenderer({ task }: { task: FileTask }): JSX.Element {
   );
 }
 
-function ImageTaskRenderer({ task }: { task: ImageTask }): JSX.Element {
+function ImageTaskRenderer({ task, t }: { task: ImageTask; t: (key: string) => string }): JSX.Element {
   return (
     <div className="chatkit-task-image">
-      {task.title && <div className="chatkit-task-title">{task.title}</div>}
       {task.images && task.images.length > 0 && (
-        <div className="chatkit-task-images">
-          {task.images.map((image, i) => {
-            const src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
-            return src ? (
-              <img
-                key={i}
-                src={src}
-                alt={`Generated image ${i + 1}`}
-                className="chatkit-task-image-item"
-              />
-            ) : null;
-          })}
+        <div className="chatkit-task-content">
+          {t('chatkit.task.imageCompleted')}
         </div>
       )}
     </div>
