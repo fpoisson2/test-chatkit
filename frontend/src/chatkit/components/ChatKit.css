@@ -1199,6 +1199,11 @@
   max-width: 100%;
 }
 
+.chatkit-message-standalone .chatkit-task {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
 /* ===== DARK MODE OVERRIDES ===== */
 [data-theme="dark"] .chatkit-messages {
   background: var(--chatkit-dark-bg-primary);
