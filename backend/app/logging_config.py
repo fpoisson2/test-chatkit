@@ -65,14 +65,12 @@ def configure_logging(
     if use_json_logs:
         # Format JSON pour production
         formatter_processors: list[Any] = [
-            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ]
     else:
         # Format console coloré pour développement
         formatter_processors = [
-            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.dev.set_exc_info,
             # Force les couleurs même en Docker
             structlog.dev.ConsoleRenderer(colors=True, force_colors=True),
