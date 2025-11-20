@@ -768,13 +768,54 @@ export interface ErrorEvent extends ThreadStreamEventBase {
   };
 }
 
+// Événements de workflow
+export interface WorkflowTaskAddedEvent extends ThreadStreamEventBase {
+  type: 'workflow.task.added';
+  item_id: string;
+  task_index: number;
+  task: Task;
+}
+
+export interface WorkflowTaskUpdatedEvent extends ThreadStreamEventBase {
+  type: 'workflow.task.updated';
+  item_id: string;
+  task_index: number;
+  task: Task;
+}
+
+// Événements de widget
+export interface WidgetRootUpdatedEvent extends ThreadStreamEventBase {
+  type: 'widget.root.updated';
+  item_id: string;
+  widget: WidgetRoot;
+}
+
+export interface WidgetComponentUpdatedEvent extends ThreadStreamEventBase {
+  type: 'widget.component.updated';
+  item_id: string;
+  component_id: string;
+  component: WidgetComponent;
+}
+
+export interface WidgetStreamingTextValueDeltaEvent extends ThreadStreamEventBase {
+  type: 'widget.streaming_text.value_delta';
+  item_id: string;
+  component_id: string;
+  delta: string;
+}
+
 export type ThreadStreamEvent =
   | ThreadCreatedEvent
   | ThreadItemCreatedEvent
   | ThreadItemDeltaEvent
   | ThreadItemCompletedEvent
   | ThreadMessageCompletedEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | WorkflowTaskAddedEvent
+  | WorkflowTaskUpdatedEvent
+  | WidgetRootUpdatedEvent
+  | WidgetComponentUpdatedEvent
+  | WidgetStreamingTextValueDeltaEvent;
 
 // ===== Configuration ChatKit =====
 
@@ -849,10 +890,34 @@ export interface ChatKitOptions {
   onLog?: (entry: { name: string; data?: Record<string, unknown> }) => void;
 }
 
+// ===== Types pour les actions et inférences =====
+
+export interface Action<T extends string = string, D = unknown> {
+  type: T;
+  data?: D;
+}
+
+export interface InferenceOptions {
+  tool_choice?: ToolChoice;
+  model?: string;
+}
+
+export interface ToolChoice {
+  id: string;
+}
+
+export type FeedbackKind = 'positive' | 'negative';
+
+// ===== Control ChatKit =====
+
 export interface ChatKitControl {
   thread: Thread | null;
   isLoading: boolean;
   error: Error | null;
-  sendMessage: (content: UserMessageContent[] | string) => Promise<void>;
+  sendMessage: (content: UserMessageContent[] | string, options?: { inferenceOptions?: InferenceOptions }) => Promise<void>;
   refresh: () => Promise<void>;
+  customAction: (itemId: string | null, action: Action) => Promise<void>;
+  retryAfterItem: (itemId: string) => Promise<void>;
+  submitFeedback: (itemIds: string[], kind: FeedbackKind) => Promise<void>;
+  updateThreadMetadata: (metadata: Record<string, unknown>) => Promise<void>;
 }

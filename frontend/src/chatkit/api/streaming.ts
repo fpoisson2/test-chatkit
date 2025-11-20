@@ -129,6 +129,144 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
     };
   }
 
+  // Gestion des événements workflow
+  if (event.type === 'workflow.task.added') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'workflow') {
+        const workflow = { ...item.workflow };
+        const tasks = [...workflow.tasks];
+        tasks.splice(event.task_index, 0, event.task);
+        return {
+          ...item,
+          workflow: {
+            ...workflow,
+            tasks,
+          },
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  if (event.type === 'workflow.task.updated') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'workflow') {
+        const workflow = { ...item.workflow };
+        const tasks = [...workflow.tasks];
+        tasks[event.task_index] = event.task;
+        return {
+          ...item,
+          workflow: {
+            ...workflow,
+            tasks,
+          },
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  // Gestion des événements widget
+  if (event.type === 'widget.root.updated') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'widget') {
+        return {
+          ...item,
+          widget: event.widget,
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  if (event.type === 'widget.component.updated') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'widget') {
+        // Fonction récursive pour mettre à jour un composant par son ID
+        const updateComponent = (components: any[]): any[] => {
+          return components.map((comp) => {
+            if (comp.id === event.component_id) {
+              return { ...comp, ...event.component };
+            }
+            if (comp.children) {
+              return { ...comp, children: updateComponent(comp.children) };
+            }
+            return comp;
+          });
+        };
+
+        const updatedWidget = { ...item.widget };
+        if (updatedWidget.children) {
+          updatedWidget.children = updateComponent(updatedWidget.children);
+        }
+
+        return {
+          ...item,
+          widget: updatedWidget,
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  if (event.type === 'widget.streaming_text.value_delta') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'widget') {
+        // Fonction récursive pour ajouter du texte à un composant par son ID
+        const updateComponentText = (components: any[]): any[] => {
+          return components.map((comp) => {
+            if (comp.id === event.component_id) {
+              return {
+                ...comp,
+                value: (comp.value || '') + event.delta,
+              };
+            }
+            if (comp.children) {
+              return { ...comp, children: updateComponentText(comp.children) };
+            }
+            return comp;
+          });
+        };
+
+        const updatedWidget = { ...item.widget };
+        if (updatedWidget.children) {
+          updatedWidget.children = updateComponentText(updatedWidget.children);
+        }
+
+        return {
+          ...item,
+          widget: updatedWidget,
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
   return thread;
 }
 
@@ -293,6 +431,138 @@ export async function sendClientToolOutput(options: {
       params: {
         thread_id: threadId,
         result,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+}
+
+/**
+ * Exécute une action personnalisée sur un thread
+ */
+export async function sendCustomAction(options: {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+  itemId: string | null;
+  action: { type: string; data?: unknown };
+}): Promise<void> {
+  const { url, headers = {}, threadId, itemId, action } = options;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      type: 'threads.custom_action',
+      params: {
+        thread_id: threadId,
+        item_id: itemId,
+        action,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+}
+
+/**
+ * Réessaye le traitement après un item spécifique
+ */
+export async function retryAfterItem(options: {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+  itemId: string;
+}): Promise<void> {
+  const { url, headers = {}, threadId, itemId } = options;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      type: 'threads.retry_after_item',
+      params: {
+        thread_id: threadId,
+        item_id: itemId,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+}
+
+/**
+ * Soumet un feedback sur des items
+ */
+export async function submitFeedback(options: {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+  itemIds: string[];
+  kind: 'positive' | 'negative';
+}): Promise<void> {
+  const { url, headers = {}, threadId, itemIds, kind } = options;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      type: 'items.feedback',
+      params: {
+        thread_id: threadId,
+        item_ids: itemIds,
+        kind,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+}
+
+/**
+ * Met à jour les métadonnées d'un thread
+ */
+export async function updateThreadMetadata(options: {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+  metadata: Record<string, unknown>;
+}): Promise<void> {
+  const { url, headers = {}, threadId, metadata } = options;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      type: 'threads.update',
+      params: {
+        thread_id: threadId,
+        metadata,
       },
     }),
   });

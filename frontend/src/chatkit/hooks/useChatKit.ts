@@ -2,8 +2,15 @@
  * Hook principal pour gérer le chat ChatKit
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { ChatKitOptions, Thread, ThreadStreamEvent, ChatKitControl, UserMessageContent } from '../types';
-import { streamChatKitEvents, fetchThread } from '../api/streaming';
+import type { ChatKitOptions, Thread, ThreadStreamEvent, ChatKitControl, UserMessageContent, Action, FeedbackKind } from '../types';
+import {
+  streamChatKitEvents,
+  fetchThread,
+  sendCustomAction,
+  retryAfterItem as retryAfterItemAPI,
+  submitFeedback as submitFeedbackAPI,
+  updateThreadMetadata as updateThreadMetadataAPI,
+} from '../api/streaming';
 
 export interface UseChatKitReturn {
   control: ChatKitControl;
@@ -154,6 +161,117 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     }
   }, [thread?.id, api.url, api.headers, onError, onLog]);
 
+  // Action personnalisée
+  const customAction = useCallback(
+    async (itemId: string | null, action: Action) => {
+      if (!thread) {
+        console.warn('[ChatKit] Cannot send custom action: no thread available');
+        return;
+      }
+
+      try {
+        await sendCustomAction({
+          url: api.url,
+          headers: api.headers,
+          threadId: thread.id,
+          itemId,
+          action,
+        });
+        onLog?.({ name: 'custom_action.sent', data: { itemId, action } });
+
+        // Rafraîchir le thread après l'action
+        await fetchUpdates();
+      } catch (err) {
+        console.error('[ChatKit] Failed to send custom action:', err);
+        const error = err instanceof Error ? err : new Error(String(err));
+        onError?.({ error });
+      }
+    },
+    [thread?.id, api.url, api.headers, fetchUpdates, onError, onLog]
+  );
+
+  // Réessayer après un item
+  const retryAfterItem = useCallback(
+    async (itemId: string) => {
+      if (!thread) {
+        console.warn('[ChatKit] Cannot retry: no thread available');
+        return;
+      }
+
+      try {
+        await retryAfterItemAPI({
+          url: api.url,
+          headers: api.headers,
+          threadId: thread.id,
+          itemId,
+        });
+        onLog?.({ name: 'retry_after_item.sent', data: { itemId } });
+
+        // Rafraîchir le thread après le retry
+        await fetchUpdates();
+      } catch (err) {
+        console.error('[ChatKit] Failed to retry after item:', err);
+        const error = err instanceof Error ? err : new Error(String(err));
+        onError?.({ error });
+      }
+    },
+    [thread?.id, api.url, api.headers, fetchUpdates, onError, onLog]
+  );
+
+  // Soumettre un feedback
+  const submitFeedback = useCallback(
+    async (itemIds: string[], kind: FeedbackKind) => {
+      if (!thread) {
+        console.warn('[ChatKit] Cannot submit feedback: no thread available');
+        return;
+      }
+
+      try {
+        await submitFeedbackAPI({
+          url: api.url,
+          headers: api.headers,
+          threadId: thread.id,
+          itemIds,
+          kind,
+        });
+        onLog?.({ name: 'feedback.submitted', data: { itemIds, kind } });
+      } catch (err) {
+        console.error('[ChatKit] Failed to submit feedback:', err);
+        const error = err instanceof Error ? err : new Error(String(err));
+        onError?.({ error });
+      }
+    },
+    [thread?.id, api.url, api.headers, onError, onLog]
+  );
+
+  // Mettre à jour les métadonnées du thread
+  const updateThreadMetadata = useCallback(
+    async (metadata: Record<string, unknown>) => {
+      if (!thread) {
+        console.warn('[ChatKit] Cannot update metadata: no thread available');
+        return;
+      }
+
+      try {
+        await updateThreadMetadataAPI({
+          url: api.url,
+          headers: api.headers,
+          threadId: thread.id,
+          metadata,
+        });
+        onLog?.({ name: 'thread.metadata.updated', data: { metadata } });
+
+        // Rafraîchir le thread pour obtenir les métadonnées à jour
+        await fetchUpdates();
+      } catch (err) {
+        console.error('[ChatKit] Failed to update thread metadata:', err);
+        const error = err instanceof Error ? err : new Error(String(err));
+        onError?.({ error });
+      }
+    },
+    [thread?.id, api.url, api.headers, fetchUpdates, onError, onLog]
+  );
+
   // Créer le control object
   const control: ChatKitControl = {
     thread,
@@ -161,7 +279,11 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     error,
     sendMessage: sendUserMessage,
     refresh: fetchUpdates,
-  } as ChatKitControl;
+    customAction,
+    retryAfterItem,
+    submitFeedback,
+    updateThreadMetadata,
+  };
 
   return {
     control,

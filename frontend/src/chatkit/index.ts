@@ -30,7 +30,15 @@ export type {
 } from './widgets';
 
 // API
-export { streamChatKitEvents, fetchThread, sendClientToolOutput } from './api/streaming';
+export {
+  streamChatKitEvents,
+  fetchThread,
+  sendClientToolOutput,
+  sendCustomAction,
+  retryAfterItem,
+  submitFeedback,
+  updateThreadMetadata,
+} from './api/streaming';
 export type { StreamOptions } from './api/streaming';
 export {
   uploadAttachment,
