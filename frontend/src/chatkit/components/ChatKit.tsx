@@ -4,6 +4,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ChatKitControl, ChatKitOptions, StartScreenPrompt } from '../types';
 import { WidgetRenderer } from '../widgets';
+import { WorkflowRenderer } from './WorkflowRenderer';
+import { TaskRenderer } from './TaskRenderer';
+import { AnnotationRenderer } from './AnnotationRenderer';
 import {
   Attachment,
   uploadAttachment,
@@ -123,7 +126,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Construire le contenu du message
       const content = [];
       if (message) {
-        content.push({ type: 'text' as const, text: message });
+        content.push({ type: 'input_text' as const, text: message });
       }
       for (const att of attachments) {
         if (att.status === 'uploaded') {
@@ -206,46 +209,108 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             )}
           </div>
         ) : (
-          control.thread?.items.map((item) => (
-            <div
-              key={item.id}
-              className={`chatkit-message chatkit-message-${item.type === 'user_message' ? 'user' : item.type === 'client_tool_call' ? 'tool' : 'assistant'}`}
-            >
-              {item.type === 'user_message' ? (
-                <div className="chatkit-message-content">
-                  {item.content.map((content, idx) => (
-                    <div key={idx}>
-                      {content.type === 'text' && <p>{content.text}</p>}
-                      {content.type === 'image' && <img src={content.image} alt="" />}
-                    </div>
-                  ))}
-                </div>
-              ) : item.type === 'client_tool_call' ? (
-                <div className="chatkit-message-content chatkit-tool-call">
-                  🔧 {item.name}
-                  {item.status === 'pending' && ' (en cours...)'}
-                </div>
-              ) : (
-                <div className="chatkit-message-content">
-                  {item.content.map((content, idx) => (
-                    <div key={idx}>
-                      {content.type === 'text' && <p>{content.text}</p>}
-                      {content.type === 'widget' && (
-                        <WidgetRenderer widget={content.widget} />
-                      )}
-                    </div>
-                  ))}
-                  {item.status === 'in_progress' && (
-                    <div className="chatkit-loading-indicator">
-                      <span className="chatkit-dot"></span>
-                      <span className="chatkit-dot"></span>
-                      <span className="chatkit-dot"></span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))
+          control.thread?.items.map((item) => {
+            // Ne pas afficher end_of_turn
+            if (item.type === 'end_of_turn') {
+              return null;
+            }
+
+            const messageClass = item.type === 'user_message'
+              ? 'user'
+              : item.type === 'client_tool_call'
+              ? 'tool'
+              : item.type === 'widget' || item.type === 'task' || item.type === 'workflow'
+              ? 'standalone'
+              : 'assistant';
+
+            return (
+              <div
+                key={item.id}
+                className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}
+              >
+                {/* User message */}
+                {item.type === 'user_message' && (
+                  <div className="chatkit-message-content">
+                    {item.content.map((content, idx) => (
+                      <div key={idx}>
+                        {content.type === 'input_text' && <p>{content.text}</p>}
+                        {content.type === 'input_tag' && (
+                          <span className="chatkit-tag">{content.text}</span>
+                        )}
+                        {content.type === 'image' && <img src={content.image} alt="" />}
+                        {content.type === 'file' && (
+                          <div className="chatkit-file">📄 {content.file}</div>
+                        )}
+                      </div>
+                    ))}
+                    {item.quoted_text && (
+                      <div className="chatkit-quoted-text">
+                        <blockquote>{item.quoted_text}</blockquote>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Assistant message */}
+                {item.type === 'assistant_message' && (
+                  <div className="chatkit-message-content">
+                    {item.content.map((content, idx) => (
+                      <div key={idx}>
+                        {content.type === 'output_text' && (
+                          <>
+                            <p>{content.text}</p>
+                            {content.annotations && content.annotations.length > 0 && (
+                              <AnnotationRenderer annotations={content.annotations} />
+                            )}
+                          </>
+                        )}
+                        {content.type === 'widget' && (
+                          <WidgetRenderer widget={content.widget} />
+                        )}
+                      </div>
+                    ))}
+                    {item.status === 'in_progress' && (
+                      <div className="chatkit-loading-indicator">
+                        <span className="chatkit-dot"></span>
+                        <span className="chatkit-dot"></span>
+                        <span className="chatkit-dot"></span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Client tool call */}
+                {item.type === 'client_tool_call' && (
+                  <div className="chatkit-message-content chatkit-tool-call">
+                    🔧 {item.name}
+                    {item.status === 'pending' && ' (en cours...)'}
+                    {item.status === 'completed' && ' ✓'}
+                  </div>
+                )}
+
+                {/* Widget standalone */}
+                {item.type === 'widget' && (
+                  <div className="chatkit-message-content">
+                    <WidgetRenderer widget={item.widget} />
+                  </div>
+                )}
+
+                {/* Task standalone */}
+                {item.type === 'task' && (
+                  <div className="chatkit-message-content">
+                    <TaskRenderer task={item.task} />
+                  </div>
+                )}
+
+                {/* Workflow */}
+                {item.type === 'workflow' && (
+                  <div className="chatkit-message-content">
+                    <WorkflowRenderer workflow={item.workflow} />
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>

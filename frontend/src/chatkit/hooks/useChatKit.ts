@@ -69,7 +69,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
       try {
         const messageContent = typeof content === 'string'
-          ? [{ type: 'text' as const, text: content }]
+          ? [{ type: 'input_text' as const, text: content }]
           : content;
 
         const payload = {

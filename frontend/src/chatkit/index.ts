@@ -9,6 +9,9 @@ export type * from './types';
 // Composants
 export { ChatKit } from './components/ChatKit';
 export type { ChatKitProps } from './components/ChatKit';
+export { WorkflowRenderer } from './components/WorkflowRenderer';
+export { TaskRenderer } from './components/TaskRenderer';
+export { AnnotationRenderer } from './components/AnnotationRenderer';
 
 // Hooks
 export { useChatKit } from './hooks/useChatKit';
