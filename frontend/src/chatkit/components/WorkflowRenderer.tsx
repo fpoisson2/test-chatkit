@@ -24,7 +24,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   };
 
   const isReasoning = workflow.type === 'reasoning';
-  const isCompleted = workflow.completed === true;
+  const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
   // Fonction pour afficher une tâche pendant 1 seconde
