@@ -642,3 +642,99 @@ textarea[data-schema-editor="true"] {
     width: 100%;
   }
 }
+
+/* JSON Schema Builder */
+.schemaBuilderHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.schemaBuilderLabel {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-strong, #1f2937);
+  margin: 0;
+}
+
+:global(:root[data-theme='dark' i]) :local(.schemaBuilderLabel) {
+  color: var(--color-text-strong, #f9fafb);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) :local(.schemaBuilderLabel) {
+    color: var(--color-text-strong, #f9fafb);
+  }
+}
+
+.schemaModeToggle {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  background: var(--color-surface-subtle, #f5f5f5);
+  border: 1px solid var(--color-border-subtle, #e0e0e0);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--color-text, #1f2937);
+  font-weight: 500;
+  min-height: 2rem;
+}
+
+.schemaModeToggle:hover {
+  background: var(--form-field-background, #f9fafb);
+  border-color: var(--primary-color, #2563eb);
+}
+
+.schemaModeToggle:active {
+  transform: scale(0.98);
+}
+
+:global(:root[data-theme='dark' i]) :local(.schemaModeToggle) {
+  background: var(--color-surface-subtle, #111114);
+  border-color: var(--color-border-subtle, rgba(228, 228, 231, 0.16));
+  color: var(--color-text, #e4e4e7);
+}
+
+:global(:root[data-theme='dark' i]) :local(.schemaModeToggle:hover) {
+  background: var(--form-field-background, #18181b);
+  border-color: var(--primary-color, #2563eb);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) :local(.schemaModeToggle) {
+    background: var(--color-surface-subtle, #111114);
+    border-color: var(--color-border-subtle, rgba(228, 228, 231, 0.16));
+    color: var(--color-text, #e4e4e7);
+  }
+
+  :global(:root:not([data-theme])) :local(.schemaModeToggle:hover) {
+    background: var(--form-field-background, #18181b);
+    border-color: var(--primary-color, #38bdf8);
+  }
+}
+
+.schemaError {
+  color: var(--status-danger, #dc2626);
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+:global(:root[data-theme='dark' i]) :local(.schemaError) {
+  color: var(--status-danger, #ef4444);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) :local(.schemaError) {
+    color: var(--status-danger, #ef4444);
+  }
+}
+
+@media (max-width: 640px) {
+  .schemaModeToggle {
+    min-height: 2.75rem;
+    font-size: 0.875rem;
+  }
+}

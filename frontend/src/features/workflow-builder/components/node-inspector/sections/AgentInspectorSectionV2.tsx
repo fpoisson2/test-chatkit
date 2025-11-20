@@ -2295,21 +2295,14 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
               />
             </Field>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 600 }}>
+            <div className={styles.schemaBuilderHeader}>
+              <label className={styles.schemaBuilderLabel}>
                 {t('workflowBuilder.agentInspector.jsonSchemaDefinitionLabel')}
               </label>
               <button
                 type="button"
                 onClick={() => setUseVisualBuilder(!useVisualBuilder)}
-                style={{
-                  padding: '4px 12px',
-                  fontSize: '12px',
-                  background: 'var(--background-secondary, #f5f5f5)',
-                  border: '1px solid var(--border-color, #e0e0e0)',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
+                className={styles.schemaModeToggle}
               >
                 {useVisualBuilder
                   ? t('workflowBuilder.agentInspector.jsonSchemaUseTextMode')
@@ -2317,7 +2310,7 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
               </button>
             </div>
             {schemaError && (
-              <div style={{ color: 'var(--color-error, #dc3545)', fontSize: '12px', marginBottom: '8px' }}>
+              <div className={styles.schemaError}>
                 {schemaError}
               </div>
             )}
