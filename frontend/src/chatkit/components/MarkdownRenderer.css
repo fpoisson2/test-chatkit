@@ -5,14 +5,24 @@
   font-size: 17px;
 }
 
+.chatkit-markdown pre {
+  background: var(--color-surface-secondary);
+  margin: 0;
+  padding: 0;
+}
+
 /* Paragraphes */
 .chatkit-markdown-paragraph {
-  margin: 0 0 1em 0;
+  margin: 0;
   font-size: 17px;
 }
 
 .chatkit-markdown-paragraph:last-child {
   margin-bottom: 0;
+}
+
+.chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
+  margin-top: 1em;
 }
 
 /* Code inline */
