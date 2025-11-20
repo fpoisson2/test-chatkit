@@ -3660,6 +3660,10 @@ const sanitizeImageGenerationConfig = (
     sanitized.output_format = outputFormat;
   }
 
+  if (typeof config.partial_images === "number") {
+    sanitized.partial_images = config.partial_images;
+  }
+
   return sanitized;
 };
 
@@ -3875,6 +3879,9 @@ export const getAgentImageGenerationConfig = (
     }
     if (typeof source.output_format === "string" && source.output_format.trim()) {
       config.output_format = source.output_format.trim();
+    }
+    if (typeof source.partial_images === "number") {
+      config.partial_images = source.partial_images;
     }
 
     if (config.model) {
