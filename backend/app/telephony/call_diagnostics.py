@@ -24,7 +24,6 @@ class CallPhaseMetrics:
     def start(self):
         """Démarre le chronomètre de la phase"""
         self.start_time = time.perf_counter()
-        logger.debug(f"📊 Phase '{self.phase_name}' démarrée @ {self.start_time:.3f}s")
 
     def end(self, **metadata):
         """Termine le chronomètre et calcule la durée"""
@@ -79,12 +78,10 @@ class CallDiagnostics:
     def add_buffer_state(self, buffer_name: str, size: int):
         """Enregistre l'état d'un buffer"""
         self.buffers_state[buffer_name] = size
-        logger.debug(f"📦 Buffer '{buffer_name}': {size} items")
 
     def add_openai_timing(self, response_time_ms: float):
         """Enregistre un temps de réponse OpenAI"""
         self.openai_response_times.append(response_time_ms)
-        logger.debug(f"🌐 OpenAI response: {response_time_ms:.1f}ms")
 
     def detect_lag_sources(self):
         """Analyse les métriques pour détecter les sources de lag"""
