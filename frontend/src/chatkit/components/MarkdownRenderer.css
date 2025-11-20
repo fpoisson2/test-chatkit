@@ -18,15 +18,16 @@
 /* Code inline */
 .chatkit-markdown-code-inline {
   display: inline;
-  background: var(--codeblock-background-color);
+  background: var(--color-surface-secondary);
   color: var(--color-text);
   padding: 0.125rem 0.375rem;
   border-radius: var(--radius-xs);
   font-family: var(--font-mono);
   font-size: 0.875em;
   border: 1px solid var(--color-border-subtle);
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
+  vertical-align: baseline;
+  line-height: 1;
 }
 
 /* Blocs de code */
@@ -37,7 +38,7 @@
 }
 
 .chatkit-markdown-code-block {
-  background: var(--codeblock-background-color);
+  background: var(--color-surface-secondary);
   border: none;
   border-radius: var(--radius-lg);
   padding: 2.5rem 1rem 1rem 1rem;
@@ -207,17 +208,21 @@
 
 /* Support du thème sombre */
 [data-theme="dark"] .chatkit-code-block-wrapper {
-  background: transparent;
+  background: transparent !important;
 }
 
 [data-theme="dark"] .chatkit-markdown-code-inline {
-  background: #2a2a2a;
+  background: #2a2a2a !important;
   border-color: var(--color-border);
 }
 
 [data-theme="dark"] .chatkit-markdown-code-block {
-  background: #2a2a2a;
+  background: #2a2a2a !important;
   border-color: var(--color-border);
+}
+
+[data-theme="dark"] .chatkit-markdown-code-block code {
+  background: none !important;
 }
 
 [data-theme="dark"] .chatkit-markdown-blockquote {
