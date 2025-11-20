@@ -529,6 +529,8 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
           continue;
         }
 
+        console.log('[ChatKit] Received SSE event:', event.type, event);
+
         // Appliquer l'événement au thread
         if (currentThread || event.type === 'thread.created') {
           currentThread = applyDelta(currentThread || { id: '', items: [] }, event);
@@ -569,7 +571,8 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
 
         // Gérer les erreurs
         if (event.type === 'error') {
-          const errorMessage = event.error?.message || 'Unknown error';
+          console.error('[ChatKit] Received error event:', event);
+          const errorMessage = event.error?.message || JSON.stringify(event.error) || 'Unknown error';
           const error = new Error(errorMessage);
           if (onError) {
             onError(error);
