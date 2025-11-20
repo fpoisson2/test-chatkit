@@ -17,7 +17,8 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const taskQueueRef = useRef<Array<{ task: Task; index: number }>>([]);
   const isProcessingRef = useRef(false);
   const displayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const processedTasksRef = useRef<Set<number>>(new Set());
+  const lastCompletedIndexRef = useRef<number>(-1);
+  const previousTaskCountRef = useRef(0);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -25,6 +26,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
+  const currentTaskCount = workflow.tasks.length;
 
   // Fonction pour traiter la file d'attente
   const processQueue = () => {
@@ -38,7 +40,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     // Afficher la tâche
     setDisplayedTask(task);
     setFadeKey(prev => prev + 1);
-    processedTasksRef.current.add(index);
 
     // Cacher après 2 secondes et passer à la suivante
     displayTimeoutRef.current = setTimeout(() => {
@@ -51,22 +52,41 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     }, 2000);
   };
 
-  // Détecter les nouvelles tâches et les ajouter à la file
-  useEffect(() => {
-    workflow.tasks.forEach((task, index) => {
-      // Si la tâche n'a pas encore été traitée
-      if (!processedTasksRef.current.has(index)) {
-        // Vérifier si elle n'est pas déjà dans la queue
-        const alreadyQueued = taskQueueRef.current.some(item => item.index === index);
-        if (!alreadyQueued) {
-          taskQueueRef.current.push({ task, index });
-        }
-      }
-    });
+  // Ajouter une tâche à la file d'attente
+  const enqueueTask = (task: Task, index: number) => {
+    // Vérifier si déjà dans la queue
+    const alreadyQueued = taskQueueRef.current.some(item => item.index === index);
+    if (!alreadyQueued && index > lastCompletedIndexRef.current) {
+      taskQueueRef.current.push({ task, index });
+      lastCompletedIndexRef.current = index;
+      processQueue();
+    }
+  };
 
-    // Démarrer le traitement de la file
-    processQueue();
-  }, [workflow.tasks, workflow.tasks.length]);
+  // Détecter les tâches complètes
+  useEffect(() => {
+    // Cas 1: Nouvelle tâche ajoutée → la précédente est "done"
+    if (currentTaskCount > previousTaskCountRef.current && previousTaskCountRef.current > 0) {
+      const completedIndex = previousTaskCountRef.current - 1;
+      const completedTask = workflow.tasks[completedIndex];
+
+      if (completedTask) {
+        enqueueTask(completedTask, completedIndex);
+      }
+    }
+
+    // Cas 2: Workflow complété → la dernière tâche est "done"
+    if (isCompleted && currentTaskCount > 0) {
+      const lastIndex = currentTaskCount - 1;
+      const lastTask = workflow.tasks[lastIndex];
+
+      if (lastTask) {
+        enqueueTask(lastTask, lastIndex);
+      }
+    }
+
+    previousTaskCountRef.current = currentTaskCount;
+  }, [currentTaskCount, isCompleted, workflow.summary]);
 
   // Cleanup au démontage
   useEffect(() => {
