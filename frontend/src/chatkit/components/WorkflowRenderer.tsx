@@ -27,37 +27,39 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
-  // Fonction pour afficher une tâche pendant 1 seconde
-  const showTaskFor1Second = (task: Task, taskIndex: number) => {
-    setDisplayedTask(task);
-    setFadeKey(prev => prev + 1);
-    lastDisplayedTaskIndexRef.current = taskIndex;
-
-    // Cacher après 1 seconde
-    hideTimeoutRef.current = setTimeout(() => {
-      setDisplayedTask(null);
-    }, 1000);
-  };
-
-  // Gérer l'affichage des tâches quand elles sont "done"
-  useEffect(() => {
-    // Nettoyer les timeouts précédents
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
+  // Fonction pour afficher une tâche pendant 2 secondes
+  const showTaskFor2Seconds = (task: Task, taskIndex: number) => {
+    // Ne pas nettoyer le timeout en cours si on affiche la même tâche
+    if (lastDisplayedTaskIndexRef.current === taskIndex) {
+      return;
     }
+
+    // Nettoyer les timeouts précédents seulement si on change de tâche
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
     }
 
+    setDisplayedTask(task);
+    setFadeKey(prev => prev + 1);
+    lastDisplayedTaskIndexRef.current = taskIndex;
+
+    // Cacher après 2 secondes
+    hideTimeoutRef.current = setTimeout(() => {
+      setDisplayedTask(null);
+      hideTimeoutRef.current = null;
+    }, 2000);
+  };
+
+  // Gérer l'affichage des tâches quand elles sont "done"
+  useEffect(() => {
     // Détection: nouvelle tâche ajoutée → la précédente est "done"
     if (currentTaskCount > previousTaskCountRef.current && previousTaskCountRef.current > 0) {
       const completedTaskIndex = previousTaskCountRef.current - 1;
       const completedTask = workflow.tasks[completedTaskIndex];
 
       if (completedTask && lastDisplayedTaskIndexRef.current !== completedTaskIndex) {
-        showTaskFor1Second(completedTask, completedTaskIndex);
+        showTaskFor2Seconds(completedTask, completedTaskIndex);
       }
     }
     // Détection: workflow complété → la dernière tâche est "done"
@@ -66,21 +68,14 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       const lastTask = workflow.tasks[lastTaskIndex];
 
       if (lastTask && lastDisplayedTaskIndexRef.current !== lastTaskIndex) {
-        showTaskFor1Second(lastTask, lastTaskIndex);
+        showTaskFor2Seconds(lastTask, lastTaskIndex);
       }
     }
 
     previousTaskCountRef.current = currentTaskCount;
 
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
-    };
-  }, [currentTaskCount, isCompleted, workflow.tasks]);
+    // Ne pas nettoyer les timeouts dans le cleanup pour éviter d'interrompre l'affichage
+  }, [currentTaskCount, isCompleted, workflow.tasks, workflow.summary]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
