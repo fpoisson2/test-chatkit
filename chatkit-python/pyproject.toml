@@ -10,6 +10,7 @@ dependencies = ["pydantic", "uvicorn", "openai", "openai-agents>=0.3.2"]
 dev = [
   "pytest",
   "pytest-asyncio",
+  "pytest-cov",
   "debugpy",
   "fastapi",
   "python-multipart",
@@ -93,6 +94,41 @@ preview = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+addopts = [
+  "--cov=chatkit",
+  "--cov-report=term-missing",
+  "--cov-report=html",
+  "--cov-report=xml",
+  "--cov-fail-under=80",
+]
+
+[tool.coverage.run]
+source = ["chatkit"]
+omit = [
+  "*/tests/*",
+  "*/test_*.py",
+  "*/__pycache__/*",
+  "*/.venv/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "class .*\\bProtocol\\):",
+  "@(abc\\.)?abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.pyright]
 include = ["."]
