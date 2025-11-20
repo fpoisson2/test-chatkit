@@ -156,12 +156,20 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
   }
 
   if (event.type === 'thread.item.completed' || event.type === 'thread.item.done') {
-    const items = thread.items.map((item) => {
-      if (item.id === event.item.id) {
-        return event.item;
-      }
-      return item;
-    });
+    const existingIndex = thread.items.findIndex((item) => item.id === event.item.id);
+
+    // Si l'item n'existe pas encore (ex: première apparition via thread.item.done),
+    // l'ajouter à la liste plutôt que d'ignorer l'événement.
+    if (existingIndex === -1) {
+      return {
+        ...thread,
+        items: [...thread.items, event.item],
+      };
+    }
+
+    const items = thread.items.map((item, idx) =>
+      idx === existingIndex ? event.item : item,
+    );
 
     return {
       ...thread,
