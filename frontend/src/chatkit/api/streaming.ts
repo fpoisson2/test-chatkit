@@ -49,6 +49,19 @@ function parseSSELine(line: string): ThreadStreamEvent | null {
  * Applique un événement delta à un thread
  */
 function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
+  // Gestion des événements wrapper thread.item.updated
+  // Le backend envoie des événements dans un format wrapper avec l'événement réel dans 'update'
+  if (event.type === 'thread.item.updated' && 'update' in event) {
+    const wrappedEvent = event as any;
+    const realEvent = {
+      ...wrappedEvent.update,
+      item_id: wrappedEvent.item_id,
+    } as ThreadStreamEvent;
+
+    console.log('[ChatKit] Unwrapping thread.item.updated event:', realEvent);
+    return applyDelta(thread, realEvent);
+  }
+
   if (event.type === 'thread.created') {
     // Normaliser le thread pour garantir que items est un tableau
     return {
@@ -366,16 +379,52 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
   }
 
   if (event.type === 'assistant_message.content_part.text_delta') {
+    // Vérifier si l'item existe déjà
+    let itemExists = thread.items.some((item) => item.id === event.item_id);
+
+    // Si l'item n'existe pas et que c'est un ID temporaire, créer l'item
+    if (!itemExists && event.item_id.startsWith('__fake_id__')) {
+      const newItem: AssistantMessageItem = {
+        type: 'assistant_message',
+        id: event.item_id,
+        role: 'assistant',
+        content: [],
+        created_at: new Date().toISOString(),
+      };
+
+      thread = {
+        ...thread,
+        items: [...thread.items, newItem],
+      };
+      itemExists = true;
+    }
+
     const items = thread.items.map((item) => {
       if (item.id === event.item_id && item.type === 'assistant_message') {
         const content = [...item.content];
+
+        // S'assurer que l'index de contenu existe
+        while (content.length <= event.content_index) {
+          content.push({
+            type: 'output_text',
+            text: '',
+          });
+        }
+
         const existing = content[event.content_index];
         if (existing && existing.type === 'output_text') {
           content[event.content_index] = {
             ...existing,
             text: (existing.text || '') + event.delta,
           };
+        } else if (!existing || existing.type !== 'output_text') {
+          // Créer le content part si inexistant
+          content[event.content_index] = {
+            type: 'output_text',
+            text: event.delta,
+          };
         }
+
         return {
           ...item,
           content,
