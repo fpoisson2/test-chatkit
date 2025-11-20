@@ -553,15 +553,20 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let chunkCount = 0;
 
     while (true) {
       const { done, value } = await reader.read();
 
       if (done) {
+        console.log('[ChatKit] SSE stream ended after', chunkCount, 'chunks');
         break;
       }
 
-      buffer += decoder.decode(value, { stream: true });
+      chunkCount++;
+      const chunk = decoder.decode(value, { stream: true });
+      console.log('[ChatKit] Received SSE chunk', chunkCount, ':', chunk.substring(0, 200));
+      buffer += chunk;
 
       // Traiter toutes les lignes complètes
       const lines = buffer.split('\n');
@@ -573,8 +578,10 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
           continue;
         }
 
+        console.log('[ChatKit] Parsing SSE line:', trimmed.substring(0, 100));
         const event = parseSSELine(trimmed);
         if (!event) {
+          console.log('[ChatKit] Failed to parse SSE line (not an event)');
           continue;
         }
 
