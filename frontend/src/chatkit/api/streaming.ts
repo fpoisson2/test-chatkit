@@ -50,7 +50,11 @@ function parseSSELine(line: string): ThreadStreamEvent | null {
  */
 function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
   if (event.type === 'thread.created') {
-    return event.thread;
+    // Normaliser le thread pour garantir que items est un tableau
+    return {
+      ...event.thread,
+      items: Array.isArray(event.thread.items) ? event.thread.items : [],
+    };
   }
 
   if (event.type === 'thread.item.created') {
@@ -277,7 +281,11 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
 
   // Nouveaux événements thread
   if (event.type === 'thread.updated') {
-    return event.thread;
+    // Normaliser le thread pour garantir que items est un tableau
+    return {
+      ...event.thread,
+      items: Array.isArray(event.thread.items) ? event.thread.items : [],
+    };
   }
 
   if (event.type === 'thread.item.added') {
@@ -582,7 +590,13 @@ export async function fetchThread(options: {
   }
 
   const data = await response.json();
-  return data.thread || data;
+  const thread = data.thread || data;
+
+  // Normaliser le thread pour garantir que items est un tableau
+  return {
+    ...thread,
+    items: Array.isArray(thread.items) ? thread.items : [],
+  };
 }
 
 /**

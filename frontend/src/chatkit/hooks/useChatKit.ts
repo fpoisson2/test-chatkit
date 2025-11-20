@@ -54,8 +54,14 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           onLog?.({ name: 'thread.load.end', data: { thread: loadedThread } });
         })
         .catch((err) => {
-          console.error('[ChatKit] Failed to load initial thread:', err);
-          onError?.({ error: err });
+          // Si le thread n'existe pas (404), on l'ignore et on démarre avec thread=null
+          if (err.message && err.message.includes('404')) {
+            console.warn('[ChatKit] Initial thread not found, starting with empty thread');
+            onThreadLoadEnd?.({ threadId: initialThread });
+          } else {
+            console.error('[ChatKit] Failed to load initial thread:', err);
+            onError?.({ error: err });
+          }
         });
     }
   }, [initialThread, api.url, api.headers, onThreadLoadStart, onThreadLoadEnd, onError, onLog]);
