@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from ..database import get_session
@@ -12,6 +12,7 @@ from ..dependencies import (
     get_workflow_persistence_service,
 )
 from ..models import User
+from ..rate_limit import get_rate_limit, limiter
 from ..schemas import (
     WorkflowAppearanceResponse,
     WorkflowAppearanceUpdateRequest,
@@ -186,8 +187,10 @@ async def replace_workflow_viewports(
     response_model=WorkflowDefinitionResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(get_rate_limit("api_write"))
 async def create_workflow(
     payload: WorkflowCreateRequest,
+    request: Request,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
     service: WorkflowPersistenceService = Depends(

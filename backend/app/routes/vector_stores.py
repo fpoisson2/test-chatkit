@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..dependencies import get_current_user, require_admin
 from ..models import JsonDocument, JsonVectorStore, User
+from ..rate_limit import get_rate_limit, limiter
 from ..schemas import (
     VectorStoreCreateRequest,
     VectorStoreDocumentDetailResponse,
@@ -167,9 +168,11 @@ async def delete_vector_store(
     response_model=VectorStoreDocumentResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(get_rate_limit("file_upload"))
 async def ingest_document(
     store_slug: str,
     payload: VectorStoreDocumentIngestRequest,
+    request: Request,
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ) -> VectorStoreDocumentResponse:

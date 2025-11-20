@@ -24,10 +24,22 @@ if _SKIP_BOOTSTRAP:  # pragma: no cover - test helper
     app = _build_stub_app()
 else:
     try:
-        from fastapi import FastAPI
+        from fastapi import FastAPI, Request
         from fastapi.middleware.cors import CORSMiddleware
+        from fastapi.responses import JSONResponse
 
         from .config import get_settings
+
+        # Try to import slowapi for rate limiting (optional)
+        try:
+            from slowapi.errors import RateLimitExceeded
+            from slowapi.middleware import SlowAPIMiddleware
+            from .rate_limit import limiter
+            _RATE_LIMITING_AVAILABLE = True
+        except ImportError:
+            _RATE_LIMITING_AVAILABLE = False
+            limiter = None
+            SlowAPIMiddleware = None
         from .routes import (
             admin,
             auth,
@@ -55,6 +67,36 @@ else:
 
         app = FastAPI()
 
+        # Add rate limiter state to app (if available)
+        if _RATE_LIMITING_AVAILABLE:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Rate limiting is ENABLED (slowapi installed)")
+
+            app.state.limiter = limiter
+
+            # Custom rate limit error handler that returns FastAPI-compatible format
+            async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+                """Handle rate limit exceeded errors with consistent format."""
+                logger.warning(
+                    f"Rate limit exceeded for {request.method} {request.url.path} "
+                    f"from {request.client.host if request.client else 'unknown'}"
+                )
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Trop de requêtes. Veuillez réessayer plus tard."},
+                    headers={"Retry-After": str(exc.detail) if hasattr(exc, 'detail') else "60"},
+                )
+
+            app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+        else:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Rate limiting is DISABLED: slowapi package not installed. "
+                "Install with: pip install slowapi>=0.1.9"
+            )
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.allowed_origins,
@@ -62,6 +104,10 @@ else:
             allow_headers=["*"],
             allow_credentials=True,
         )
+
+        # Add SlowAPI middleware for rate limiting (if available)
+        if _RATE_LIMITING_AVAILABLE and SlowAPIMiddleware:
+            app.add_middleware(SlowAPIMiddleware)
 
         app.include_router(auth.router)
         app.include_router(users.router)

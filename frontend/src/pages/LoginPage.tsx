@@ -60,7 +60,11 @@ export const LoginPage = () => {
             try {
               const body = await response.json();
               if (body?.detail) {
-                detail = String(body.detail);
+                if (typeof body.detail === 'string') {
+                  detail = body.detail;
+                } else {
+                  detail = JSON.stringify(body.detail);
+                }
               } else {
                 detail = `${response.status} ${response.statusText}`;
               }

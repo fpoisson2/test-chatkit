@@ -28,6 +28,7 @@ from ..dependencies import require_admin
 from ..i18n_utils import resolve_frontend_i18n_path
 from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
+from ..rate_limit import get_rate_limit, limiter
 from ..models import (
     ChatThread,
     Language,
@@ -85,6 +86,7 @@ async def get_app_settings(
 
 
 @router.patch("/api/admin/app-settings", response_model=AppSettingsResponse)
+@limiter.limit(get_rate_limit("admin"))
 async def patch_app_settings(
     payload: AppSettingsUpdateRequest,
     request: Request,
