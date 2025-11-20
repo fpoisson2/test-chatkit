@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ChatKitOptions } from "@openai/chatkit";
+import type { ChatKitOptions } from "../../chatkit";
 
 import { ChatKitHost } from "./ChatKitHost";
 import { useWorkflowChatSession } from "../../hooks/useWorkflowChatSession";

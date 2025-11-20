@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatKitOptions, StartScreenPrompt } from "@openai/chatkit";
+import type { ChatKitOptions, StartScreenPrompt } from "./chatkit";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
