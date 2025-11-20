@@ -55,6 +55,8 @@ def configure_logging(
         structlog.stdlib.add_logger_name,
         # Ajoute le niveau de log
         structlog.stdlib.add_log_level,
+        # Convertit les arguments positionnels (ex: logger.info("msg %s", arg))
+        structlog.stdlib.PositionalArgumentsFormatter(),
         # Ajoute le timestamp
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         # Prépare pour le traitement par ProcessorFormatter
