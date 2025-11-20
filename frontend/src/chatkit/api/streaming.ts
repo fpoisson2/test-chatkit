@@ -63,10 +63,22 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
   }
 
   if (event.type === 'thread.created') {
-    // Normaliser le thread pour garantir que items est un tableau
+    // Le backend peut envoyer items comme structure de pagination {"data": [], "has_more": false}
+    const threadItems = event.thread.items as any;
+    let normalizedItems: ThreadItem[];
+
+    if (threadItems && typeof threadItems === 'object' && 'data' in threadItems) {
+      // Structure de pagination
+      normalizedItems = Array.isArray(threadItems.data) ? threadItems.data : [];
+    } else if (Array.isArray(threadItems)) {
+      normalizedItems = threadItems;
+    } else {
+      normalizedItems = [];
+    }
+
     return {
       ...event.thread,
-      items: Array.isArray(event.thread.items) ? event.thread.items : [],
+      items: normalizedItems,
     };
   }
 
@@ -294,10 +306,30 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
 
   // Nouveaux événements thread
   if (event.type === 'thread.updated') {
-    // Normaliser le thread pour garantir que items est un tableau
+    // Le backend peut envoyer items comme structure de pagination {"data": [], "has_more": false}
+    const threadItems = event.thread.items as any;
+    let normalizedItems: ThreadItem[];
+
+    if (threadItems && typeof threadItems === 'object' && 'data' in threadItems) {
+      // Structure de pagination
+      normalizedItems = Array.isArray(threadItems.data) ? threadItems.data : [];
+
+      // Si les items sont vides dans la réponse, préserver les items locaux existants
+      // pour éviter de perdre les items accumulés via thread.item.added et deltas
+      if (normalizedItems.length === 0 && thread.items.length > 0) {
+        console.log('[ChatKit] Preserving local items on thread.updated with empty remote items');
+        normalizedItems = thread.items;
+      }
+    } else if (Array.isArray(threadItems)) {
+      normalizedItems = threadItems;
+    } else {
+      // Si items est absent ou invalide, préserver les items locaux
+      normalizedItems = thread.items;
+    }
+
     return {
       ...event.thread,
-      items: Array.isArray(event.thread.items) ? event.thread.items : [],
+      items: normalizedItems,
     };
   }
 
