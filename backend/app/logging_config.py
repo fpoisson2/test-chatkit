@@ -47,8 +47,8 @@ def configure_logging(
         use_json_logs = False
     # Sinon, utilise la valeur du paramètre (défaut: True)
 
-    # Processeurs pour structlog (utilisés par les logs structlog directs)
-    structlog_processors: list[Any] = [
+    # Processeurs communs (contexte, metadata)
+    shared_processors: list[Any] = [
         # Ajoute le contexte des variables contextuelles (request_id, user_id, etc.)
         structlog.contextvars.merge_contextvars,
         # Ajoute le nom du logger
@@ -59,38 +59,38 @@ def configure_logging(
         structlog.processors.TimeStamper(fmt="iso", utc=True),
     ]
 
-    # Processeurs de rendu (utilisés par ProcessorFormatter pour les logs standard)
+    # Processeurs de rendu (output final)
     if use_json_logs:
         # Format JSON pour production
-        formatter_processors: list[Any] = [
+        render_processors: list[Any] = [
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ]
     else:
         # Format console coloré pour développement
-        formatter_processors = [
+        render_processors = [
             structlog.dev.set_exc_info,
             structlog.dev.ConsoleRenderer(colors=True, force_colors=True),
         ]
 
-    # Créer le formatter structlog pour intercepter les logs standard
-    formatter = structlog.stdlib.ProcessorFormatter(
-        processors=formatter_processors,
-        foreign_pre_chain=structlog_processors,
-    )
-
-    # Configurer le root logger pour utiliser structlog
+    # Configurer le root logger Python pour intercepter les logs standard (uvicorn, etc.)
     root_logger = logging.getLogger()
     root_logger.handlers.clear()  # Supprimer les handlers existants
 
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
+    # ProcessorFormatter pour les logs Python standard
+    handler.setFormatter(
+        structlog.stdlib.ProcessorFormatter(
+            processors=render_processors,
+            foreign_pre_chain=shared_processors,
+        )
+    )
     root_logger.addHandler(handler)
     root_logger.setLevel(log_level_int)
 
-    # Configuration de structlog
+    # Configuration de structlog pour les logs structlog natifs
     structlog.configure(
-        processors=structlog_processors,
+        processors=shared_processors + render_processors,
         # Wrapper pour filtrer par niveau de log
         wrapper_class=structlog.make_filtering_bound_logger(log_level_int),
         # Utilise dict pour le contexte (plus performant que OrderedDict)
