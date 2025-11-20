@@ -297,7 +297,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   <div className="chatkit-message-content">
                     {item.content.map((content, idx) => (
                       <div key={idx}>
-                        {content.type === 'input_text' && <MarkdownRenderer content={content.text} />}
+                        {content.type === 'input_text' && <MarkdownRenderer content={content.text} theme={theme?.colorScheme} />}
                         {content.type === 'input_tag' && (
                           <span className="chatkit-tag">{content.text}</span>
                         )}
@@ -329,7 +329,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         <div key={idx}>
                           {content.type === 'output_text' && (
                             <>
-                              <MarkdownRenderer content={content.text} />
+                              <MarkdownRenderer content={content.text} theme={theme?.colorScheme} />
                               {content.annotations && content.annotations.length > 0 && (
                                 <AnnotationRenderer annotations={content.annotations} />
                               )}

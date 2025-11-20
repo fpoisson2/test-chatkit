@@ -4,14 +4,23 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useI18n } from '../../i18n/I18nProvider';
 import './MarkdownRenderer.css';
 
 export interface MarkdownRendererProps {
   content: string;
+  theme?: 'light' | 'dark';
 }
 
-function CodeBlock({ children }: { children: string }): JSX.Element {
+interface CodeBlockProps {
+  children: string;
+  language?: string;
+  theme?: 'light' | 'dark';
+}
+
+function CodeBlock({ children, language, theme = 'light' }: CodeBlockProps): JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
@@ -39,14 +48,30 @@ function CodeBlock({ children }: { children: string }): JSX.Element {
           </svg>
         )}
       </button>
-      <pre className="chatkit-markdown-code-block">
-        <code>{children}</code>
-      </pre>
+      <SyntaxHighlighter
+        language={language || 'text'}
+        style={theme === 'dark' ? vscDarkPlus : vs}
+        customStyle={{
+          margin: 0,
+          padding: '2.5rem 1rem 1rem 1rem',
+          background: 'transparent',
+          fontSize: '16px',
+        }}
+        codeTagProps={{
+          style: {
+            fontFamily: 'var(--font-mono)',
+          }
+        }}
+        PreTag="div"
+        className="chatkit-markdown-code-block"
+      >
+        {children}
+      </SyntaxHighlighter>
     </div>
   );
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps): JSX.Element {
+export function MarkdownRenderer({ content, theme = 'light' }: MarkdownRendererProps): JSX.Element {
   return (
     <div className="chatkit-markdown">
       <ReactMarkdown
@@ -55,14 +80,17 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps): JSX.Elemen
           p: ({ children }) => <p className="chatkit-markdown-paragraph">{children}</p>,
           code: ({ inline, children, className, ...props }: any) => {
             const isInline = inline || !className?.includes('language-');
-            const content = String(children);
+            const codeContent = String(children);
 
             // Si c'est inline ou qu'il n'y a pas de langage spécifié et pas de retour à la ligne
-            if (isInline && !content.includes('\n')) {
+            if (isInline && !codeContent.includes('\n')) {
               return <code className="chatkit-markdown-code-inline" {...props}>{children}</code>;
             }
 
-            return <CodeBlock>{content}</CodeBlock>;
+            // Extraire le langage de la className (format: "language-javascript")
+            const language = className?.replace('language-', '') || 'text';
+
+            return <CodeBlock language={language} theme={theme}>{codeContent}</CodeBlock>;
           },
           ul: ({ children }) => <ul className="chatkit-markdown-list">{children}</ul>,
           ol: ({ children }) => <ol className="chatkit-markdown-list">{children}</ol>,

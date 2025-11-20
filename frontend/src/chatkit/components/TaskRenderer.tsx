@@ -14,10 +14,12 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 interface TaskRendererProps {
   task: Task;
   className?: string;
+  theme?: 'light' | 'dark';
 }
 
-export function TaskRenderer({ task, className = '' }: TaskRendererProps): JSX.Element {
-  const statusClass = task.status_indicator
+export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRendererProps): JSX.Element {
+  // Ne pas ajouter la classe --loading
+  const statusClass = task.status_indicator && task.status_indicator !== 'loading'
     ? `chatkit-task--${task.status_indicator}`
     : '';
 
