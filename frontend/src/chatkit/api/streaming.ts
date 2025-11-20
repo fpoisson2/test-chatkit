@@ -734,10 +734,20 @@ export async function fetchThread(options: {
   const data = await response.json();
   const thread = data.thread || data;
 
-  // Normaliser le thread pour garantir que items est un tableau
+  // Normaliser le thread pour garantir que items est un tableau, y compris
+  // lorsqu'il est renvoyé sous forme de structure de pagination { data, has_more }.
+  let normalizedItems: ThreadItem[];
+  if (thread.items && typeof thread.items === 'object' && 'data' in thread.items) {
+    normalizedItems = Array.isArray(thread.items.data) ? thread.items.data : [];
+  } else if (Array.isArray(thread.items)) {
+    normalizedItems = thread.items;
+  } else {
+    normalizedItems = [];
+  }
+
   return {
     ...thread,
-    items: Array.isArray(thread.items) ? thread.items : [],
+    items: normalizedItems,
   };
 }
 
