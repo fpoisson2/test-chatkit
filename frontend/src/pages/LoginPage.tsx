@@ -40,17 +40,12 @@ export const LoginPage = () => {
     setSubmitting(true);
     setError(null);
 
-    console.log('[LOGIN] Starting login attempt', { email: formData.email });
-
     try {
       const payload = JSON.stringify({ email: formData.email, password: formData.password });
       let lastError: Error | null = null;
       let data: { access_token: string; user: AuthUser } | null = null;
 
-      console.log('[LOGIN] Attempting endpoints:', loginEndpoints);
-
       for (const endpoint of loginEndpoints) {
-        console.log('[LOGIN] Trying endpoint:', endpoint);
         try {
           const response = await fetch(endpoint, {
             method: "POST",
@@ -60,39 +55,29 @@ export const LoginPage = () => {
             body: payload,
           });
 
-          console.log('[LOGIN] Response status:', response.status, response.statusText);
-
           if (!response.ok) {
             let detail = t("auth.login.error.failure");
             try {
               const body = await response.json();
-              console.log('[LOGIN] Error response body:', body);
-
               if (body?.detail) {
-                // Handle both string and object detail
                 if (typeof body.detail === 'string') {
                   detail = body.detail;
                 } else {
                   detail = JSON.stringify(body.detail);
-                  console.warn('[LOGIN] detail is not a string:', body.detail);
                 }
               } else {
                 detail = `${response.status} ${response.statusText}`;
               }
             } catch (parseError) {
-              console.error('[LOGIN] Failed to parse error response:', parseError);
               detail = `${response.status} ${response.statusText}`;
             }
-            console.log('[LOGIN] Setting error:', detail);
             lastError = new Error(detail);
             continue;
           }
 
           data = (await response.json()) as { access_token: string; user: AuthUser };
-          console.log('[LOGIN] Login successful!');
           break;
         } catch (networkError) {
-          console.error('[LOGIN] Network error:', networkError);
           if (networkError instanceof Error) {
             lastError = networkError;
           } else {
@@ -102,14 +87,12 @@ export const LoginPage = () => {
       }
 
       if (!data) {
-        console.error('[LOGIN] All endpoints failed, last error:', lastError);
         throw lastError ?? new Error(t("auth.login.error.unreachable"));
       }
 
       login(data.access_token, data.user);
       navigate(data.user.is_admin ? "/admin" : "/");
     } catch (err) {
-      console.error('[LOGIN] Final error:', err);
       if (err instanceof Error) {
         setError(err.message);
       } else {

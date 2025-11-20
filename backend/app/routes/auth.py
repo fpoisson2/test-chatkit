@@ -23,24 +23,18 @@ async def login(
     login_request: LoginRequest,
     session: Session = Depends(get_session),
 ):
-    client_ip = request.client.host if request.client else "unknown"
-    logger.info(f"Login attempt for email={login_request.email} from IP={client_ip}")
-
     email = login_request.email.lower()
     user = session.scalar(select(User).where(User.email == email))
 
     if not user:
-        logger.warning(f"Login failed: user not found for email={email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Identifiants invalides"
         )
 
     if not verify_password(login_request.password, user.password_hash):
-        logger.warning(f"Login failed: invalid password for email={email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Identifiants invalides"
         )
 
-    logger.info(f"Login successful for user_id={user.id} email={email}")
     token = create_access_token(user)
     return TokenResponse(access_token=token, user=user)
