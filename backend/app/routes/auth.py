@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 @router.post("/api/auth/login", response_model=TokenResponse)
 @limiter.limit(get_rate_limit("auth_login"))
 async def login(
+    login_request: LoginRequest,
     request: Request,
-    login_request: LoginRequest = Body(...),
     session: Session = Depends(get_session),
 ):
     client_ip = request.client.host if request.client else "unknown"
