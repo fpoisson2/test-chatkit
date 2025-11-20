@@ -407,7 +407,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 {/* Workflow */}
                 {item.type === 'workflow' && (
                   <>
-                    {/* Afficher les images (partielles ou finales) comme message */}
+                    <div className="chatkit-message-content">
+                      <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
+                    </div>
+
+                    {/* Afficher les images (partielles ou finales) après le workflow */}
                     {(() => {
                       const imageTask = item.workflow.tasks.find(
                         (task: any) => task.type === 'image'
@@ -464,10 +468,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                       }
                       return null;
                     })()}
-
-                    <div className="chatkit-message-content">
-                      <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
-                    </div>
                   </>
                 )}
               </div>

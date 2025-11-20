@@ -342,6 +342,10 @@ export const useAgentInspectorState = ({
         normalized.output_format = normalizedOutput;
       }
 
+      if (draft.partial_images !== undefined) {
+        normalized.partial_images = draft.partial_images;
+      }
+
       onAgentImageGenerationChange(nodeId, normalized);
     },
     [imageGenerationConfig, nodeId, onAgentImageGenerationChange],
