@@ -67,11 +67,19 @@ else:
 
         # Add rate limiter state to app (if available)
         if _RATE_LIMITING_AVAILABLE:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Rate limiting is ENABLED (slowapi installed)")
+
             app.state.limiter = limiter
 
             # Custom rate limit error handler that returns FastAPI-compatible format
             async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
                 """Handle rate limit exceeded errors with consistent format."""
+                logger.warning(
+                    f"Rate limit exceeded for {request.method} {request.url.path} "
+                    f"from {request.client.host if request.client else 'unknown'}"
+                )
                 return JSONResponse(
                     status_code=429,
                     content={"detail": "Trop de requêtes. Veuillez réessayer plus tard."},
@@ -83,7 +91,7 @@ else:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(
-                "Rate limiting is disabled: slowapi package not installed. "
+                "Rate limiting is DISABLED: slowapi package not installed. "
                 "Install with: pip install slowapi>=0.1.9"
             )
 
