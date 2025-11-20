@@ -275,6 +275,165 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
     };
   }
 
+  // Nouveaux événements thread
+  if (event.type === 'thread.updated') {
+    return event.thread;
+  }
+
+  if (event.type === 'thread.item.added') {
+    const exists = thread.items.find((item) => item.id === event.item.id);
+    if (exists) {
+      return thread;
+    }
+
+    return {
+      ...thread,
+      items: [...thread.items, event.item],
+    };
+  }
+
+  if (event.type === 'thread.item.done') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item.id) {
+        return event.item;
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  if (event.type === 'thread.item.removed') {
+    const items = thread.items.filter((item) => item.id !== event.item_id);
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  if (event.type === 'thread.item.replaced') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item.id) {
+        return event.item;
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  // Gestion de thread.item.updated (délègue aux handlers spécifiques)
+  if (event.type === 'thread.item.updated') {
+    return applyDelta(thread, event.update);
+  }
+
+  // Événements de contenu assistant
+  if (event.type === 'assistant_message.content_part.added') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'assistant_message') {
+        const content = [...item.content];
+        while (content.length <= event.content_index) {
+          content.push({ type: 'output_text' as const, text: '' });
+        }
+        content[event.content_index] = event.content;
+        return {
+          ...item,
+          content,
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  if (event.type === 'assistant_message.content_part.text_delta') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'assistant_message') {
+        const content = [...item.content];
+        const existing = content[event.content_index];
+        if (existing && existing.type === 'output_text') {
+          content[event.content_index] = {
+            ...existing,
+            text: (existing.text || '') + event.delta,
+          };
+        }
+        return {
+          ...item,
+          content,
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  if (event.type === 'assistant_message.content_part.annotation_added') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'assistant_message') {
+        const content = [...item.content];
+        const existing = content[event.content_index];
+        if (existing && existing.type === 'output_text') {
+          const annotations = [...(existing.annotations || [])];
+          while (annotations.length <= event.annotation_index) {
+            annotations.push(event.annotation);
+          }
+          annotations[event.annotation_index] = event.annotation;
+          content[event.content_index] = {
+            ...existing,
+            annotations,
+          };
+        }
+        return {
+          ...item,
+          content,
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  if (event.type === 'assistant_message.content_part.done') {
+    const items = thread.items.map((item) => {
+      if (item.id === event.item_id && item.type === 'assistant_message') {
+        const content = [...item.content];
+        content[event.content_index] = event.content;
+        return {
+          ...item,
+          content,
+        };
+      }
+      return item;
+    });
+
+    return {
+      ...thread,
+      items,
+    };
+  }
+
+  // Les événements progress_update et notice ne modifient pas le thread
+  // Ils sont gérés par les callbacks onEvent
+
   return thread;
 }
 
@@ -348,8 +507,9 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
           onThreadUpdate(currentThread);
         }
 
-        // Gérer les client tool calls
-        if (event.type === 'thread.item.created' && event.item.type === 'client_tool_call') {
+        // Gérer les client tool calls (support des deux formats)
+        if ((event.type === 'thread.item.added' || event.type === 'thread.item.created') &&
+            event.item.type === 'client_tool_call') {
           const toolCallItem = event.item as ClientToolCallItem;
           if (onClientToolCall && toolCallItem.status === 'pending') {
             try {

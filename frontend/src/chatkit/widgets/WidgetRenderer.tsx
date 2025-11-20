@@ -7,27 +7,35 @@ import { TextComponent } from './Text';
 import { TitleComponent } from './Title';
 import { CaptionComponent } from './Caption';
 import { MarkdownComponent } from './Markdown';
-import { BadgeComponent } from './Badge';
 import { BoxComponent } from './Box';
 import { RowComponent } from './Row';
 import { ColComponent } from './Col';
-import { DividerComponent } from './Divider';
-import { IconComponent } from './Icon';
-import { ImageComponent } from './Image';
-import { ButtonComponent } from './Button';
-import { SpacerComponent } from './Spacer';
-import { SelectComponent } from './Select';
-import { DatePickerComponent } from './DatePicker';
-import { CheckboxComponent } from './Checkbox';
-import { InputComponent } from './Input';
-import { LabelComponent } from './Label';
-import { RadioGroupComponent } from './RadioGroup';
-import { TextareaComponent } from './Textarea';
-import { FormComponent } from './Form';
-import { TransitionComponent } from './Transition';
-import { ChartComponent } from './Chart';
 import { CardComponent } from './Card';
 import { ListViewComponent } from './ListView';
+
+// Import des composants simples
+import {
+  BadgeComponent,
+  DividerComponent,
+  IconComponent,
+  ImageComponent,
+  SpacerComponent,
+} from './SimpleWidgets';
+
+// Import des composants de formulaire
+import {
+  ButtonComponent,
+  InputComponent,
+  TextareaComponent,
+  SelectComponent,
+  CheckboxComponent,
+  RadioGroupComponent,
+  DatePickerComponent,
+  LabelComponent,
+  FormComponent,
+  TransitionComponent,
+  ChartComponent,
+} from './FormWidgets';
 
 /**
  * Context pour passer les callbacks d'actions aux composants

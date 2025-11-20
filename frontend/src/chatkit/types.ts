@@ -756,11 +756,110 @@ export interface ThreadStreamEventBase {
   event_id: string;
 }
 
+// Événements de thread principaux
 export interface ThreadCreatedEvent extends ThreadStreamEventBase {
   type: 'thread.created';
   thread: Thread;
 }
 
+export interface ThreadUpdatedEvent extends ThreadStreamEventBase {
+  type: 'thread.updated';
+  thread: Thread;
+}
+
+// Événements d'items de thread
+export interface ThreadItemAddedEvent extends ThreadStreamEventBase {
+  type: 'thread.item.added';
+  item: ThreadItem;
+}
+
+export interface ThreadItemDoneEvent extends ThreadStreamEventBase {
+  type: 'thread.item.done';
+  item: ThreadItem;
+}
+
+export interface ThreadItemRemovedEvent extends ThreadStreamEventBase {
+  type: 'thread.item.removed';
+  item_id: string;
+}
+
+export interface ThreadItemReplacedEvent extends ThreadStreamEventBase {
+  type: 'thread.item.replaced';
+  item: ThreadItem;
+}
+
+// Union des types d'updates d'items
+export type ThreadItemUpdate =
+  | AssistantMessageContentPartAddedEvent
+  | AssistantMessageContentPartTextDeltaEvent
+  | AssistantMessageContentPartAnnotationAddedEvent
+  | AssistantMessageContentPartDoneEvent
+  | WidgetStreamingTextValueDeltaEvent
+  | WidgetComponentUpdatedEvent
+  | WidgetRootUpdatedEvent
+  | WorkflowTaskAddedEvent
+  | WorkflowTaskUpdatedEvent;
+
+export interface ThreadItemUpdatedEvent extends ThreadStreamEventBase {
+  type: 'thread.item.updated';
+  item_id: string;
+  update: ThreadItemUpdate;
+}
+
+// Événements de contenu assistant (plus granulaires)
+export interface AssistantMessageContentPartAddedEvent extends ThreadStreamEventBase {
+  type: 'assistant_message.content_part.added';
+  item_id: string;
+  content_index: number;
+  content: AssistantMessageContent;
+}
+
+export interface AssistantMessageContentPartTextDeltaEvent extends ThreadStreamEventBase {
+  type: 'assistant_message.content_part.text_delta';
+  item_id: string;
+  content_index: number;
+  delta: string;
+}
+
+export interface AssistantMessageContentPartAnnotationAddedEvent extends ThreadStreamEventBase {
+  type: 'assistant_message.content_part.annotation_added';
+  item_id: string;
+  content_index: number;
+  annotation_index: number;
+  annotation: Annotation;
+}
+
+export interface AssistantMessageContentPartDoneEvent extends ThreadStreamEventBase {
+  type: 'assistant_message.content_part.done';
+  item_id: string;
+  content_index: number;
+  content: AssistantMessageContent;
+}
+
+// Événements UI/UX
+export interface ProgressUpdateEvent extends ThreadStreamEventBase {
+  type: 'progress_update';
+  icon?: string;
+  text: string;
+}
+
+export interface NoticeEvent extends ThreadStreamEventBase {
+  type: 'notice';
+  level: 'info' | 'warning' | 'danger';
+  message: string;
+  title?: string;
+}
+
+// Événements d'erreur
+export interface ErrorEvent extends ThreadStreamEventBase {
+  type: 'error';
+  error: {
+    type: string;
+    message: string;
+  };
+}
+
+// LEGACY: événements conservés pour compatibilité mais deprecated
 export interface ThreadItemCreatedEvent extends ThreadStreamEventBase {
   type: 'thread.item.created';
   item: ThreadItem;
@@ -785,14 +884,6 @@ export interface ThreadItemCompletedEvent extends ThreadStreamEventBase {
 export interface ThreadMessageCompletedEvent extends ThreadStreamEventBase {
   type: 'thread.message.completed';
   message: AssistantMessageItem;
-}
-
-export interface ErrorEvent extends ThreadStreamEventBase {
-  type: 'error';
-  error: {
-    type: string;
-    message: string;
-  };
 }
 
 // Événements de workflow
@@ -829,15 +920,30 @@ export interface WidgetStreamingTextValueDeltaEvent extends ThreadStreamEventBas
   item_id: string;
   component_id: string;
   delta: string;
+  done: boolean;
 }
 
 export type ThreadStreamEvent =
   | ThreadCreatedEvent
+  | ThreadUpdatedEvent
+  | ThreadItemAddedEvent
+  | ThreadItemDoneEvent
+  | ThreadItemUpdatedEvent
+  | ThreadItemRemovedEvent
+  | ThreadItemReplacedEvent
+  | ProgressUpdateEvent
+  | ErrorEvent
+  | NoticeEvent
+  // Legacy events (conservés pour compatibilité)
   | ThreadItemCreatedEvent
   | ThreadItemDeltaEvent
   | ThreadItemCompletedEvent
   | ThreadMessageCompletedEvent
-  | ErrorEvent
+  // Les events individuels sont aussi exportés directement
+  | AssistantMessageContentPartAddedEvent
+  | AssistantMessageContentPartTextDeltaEvent
+  | AssistantMessageContentPartAnnotationAddedEvent
+  | AssistantMessageContentPartDoneEvent
   | WorkflowTaskAddedEvent
   | WorkflowTaskUpdatedEvent
   | WidgetRootUpdatedEvent
