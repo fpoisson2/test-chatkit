@@ -561,7 +561,8 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
 
         // Gérer les erreurs
         if (event.type === 'error') {
-          const error = new Error(event.error.message);
+          const errorMessage = event.error?.message || 'Unknown error';
+          const error = new Error(errorMessage);
           if (onError) {
             onError(error);
           }
