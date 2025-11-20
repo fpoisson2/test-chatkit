@@ -18,6 +18,9 @@ type ModalContextValue = {
   // Appearance Modal State
   isAppearanceModalOpen: boolean;
 
+  // Generate Modal State
+  isGenerateModalOpen: boolean;
+
   // Create Modal Methods
   openCreateModal: (kind?: "local" | "hosted") => void;
   closeCreateModal: () => void;
@@ -36,6 +39,10 @@ type ModalContextValue = {
   // Appearance Modal Methods
   openAppearanceModal: () => void;
   closeAppearanceModal: () => void;
+
+  // Generate Modal Methods
+  openGenerateModal: () => void;
+  closeGenerateModal: () => void;
 };
 
 const ModalContext = createContext<ModalContextValue | null>(null);
@@ -68,6 +75,9 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
 
   // Appearance Modal State
   const [isAppearanceModalOpen, setIsAppearanceModalOpen] = useState(false);
+
+  // Generate Modal State
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
 
   // Create Modal Methods
   const openCreateModal = useCallback((kind: "local" | "hosted" = "local") => {
@@ -103,6 +113,15 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
     setIsAppearanceModalOpen(false);
   }, []);
 
+  // Generate Modal Methods
+  const openGenerateModal = useCallback(() => {
+    setIsGenerateModalOpen(true);
+  }, []);
+
+  const closeGenerateModal = useCallback(() => {
+    setIsGenerateModalOpen(false);
+  }, []);
+
   const value = useMemo<ModalContextValue>(
     () => ({
       // Create Modal State
@@ -120,6 +139,9 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
 
       // Appearance Modal State
       isAppearanceModalOpen,
+
+      // Generate Modal State
+      isGenerateModalOpen,
 
       // Create Modal Methods
       openCreateModal,
@@ -139,6 +161,10 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
       // Appearance Modal Methods
       openAppearanceModal,
       closeAppearanceModal,
+
+      // Generate Modal Methods
+      openGenerateModal,
+      closeGenerateModal,
     }),
     [
       isCreateModalOpen,
@@ -151,12 +177,15 @@ export const ModalProvider = ({ children }: ModalProviderProps) => {
       deployToProduction,
       isDeploying,
       isAppearanceModalOpen,
+      isGenerateModalOpen,
       openCreateModal,
       closeCreateModal,
       openDeployModal,
       closeDeployModal,
       openAppearanceModal,
       closeAppearanceModal,
+      openGenerateModal,
+      closeGenerateModal,
     ],
   );
 

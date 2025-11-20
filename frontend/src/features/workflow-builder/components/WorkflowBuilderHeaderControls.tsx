@@ -1,4 +1,5 @@
 import type { ChangeEvent, MutableRefObject, ReactNode } from "react";
+import { Sparkles } from "lucide-react";
 
 import {
   getActionMenuStyle,
@@ -11,6 +12,7 @@ import {
   getVersionSelectStyle,
 } from "../styles";
 import styles from "../WorkflowBuilderPage.module.css";
+import { useModalContext } from "../contexts";
 import type { WorkflowVersionSummary } from "../types";
 
 type WorkflowBuilderHeaderControlsProps = {
@@ -82,6 +84,9 @@ const WorkflowBuilderHeaderControls = ({
   isImporting,
   isExporting,
 }: WorkflowBuilderHeaderControlsProps) => {
+  // Extract modal methods from context
+  const { openGenerateModal } = useModalContext();
+
   const versionSelect = (
     <div style={getHeaderLayoutStyle(isMobileLayout)}>
       <div style={getHeaderGroupStyle(isMobileLayout)}>
@@ -235,6 +240,19 @@ const WorkflowBuilderHeaderControls = ({
                     type="button"
                     role="menuitem"
                     onClick={() => {
+                      openGenerateModal();
+                      closeMobileActions();
+                    }}
+                    disabled={loading}
+                    style={getMobileActionButtonStyle({ disabled: loading })}
+                  >
+                    <Sparkles size={16} style={{ marginRight: "0.5rem" }} />
+                    Générer par IA
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
                       onOpenDeployModal();
                       closeMobileActions();
                     }}
@@ -280,6 +298,18 @@ const WorkflowBuilderHeaderControls = ({
           })}
         >
           {exportLabel}
+        </button>
+        <button
+          type="button"
+          onClick={openGenerateModal}
+          disabled={loading}
+          style={getDeployButtonStyle(false, {
+            disabled: loading,
+          })}
+          title="Générer un workflow par IA"
+        >
+          <Sparkles size={16} style={{ marginRight: "0.5rem" }} />
+          Générer par IA
         </button>
         <button
           type="button"
