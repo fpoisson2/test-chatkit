@@ -179,6 +179,24 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   // Afficher le start screen si pas de messages
   const showStartScreen = !control.thread || control.thread.items.length === 0;
 
+  // Récupérer le titre du thread (premier message utilisateur)
+  const getThreadTitle = (): string => {
+    if (!control.thread || !control.thread.items || control.thread.items.length === 0) {
+      return 'Nouvelle conversation';
+    }
+
+    const firstUserMessage = control.thread.items.find((item: any) => item.type === 'user_message');
+    if (firstUserMessage && firstUserMessage.type === 'user_message') {
+      const textContent = firstUserMessage.content.find((c: any) => c.type === 'input_text');
+      if (textContent && textContent.type === 'input_text') {
+        const title = textContent.text.substring(0, 40);
+        return title.length < textContent.text.length ? `${title}...` : title;
+      }
+    }
+
+    return 'Conversation';
+  };
+
   return (
     <div
       className={`chatkit ${className || ''}`}
@@ -203,7 +221,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
               ) : header.leftAction.icon}
             </button>
           )}
-          <div className="chatkit-header-title">Chat</div>
+          <div className="chatkit-header-title">{getThreadTitle()}</div>
           <div className="chatkit-header-actions">
             <button
               className="chatkit-header-action"
@@ -485,8 +503,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 16 16 12 12 8"></polyline>
-              <line x1="8" y1="12" x2="16" y2="12"></line>
+              <polyline points="16 12 12 8 8 12"></polyline>
+              <line x1="12" y1="16" x2="12" y2="8"></line>
             </svg>
           </button>
         </form>

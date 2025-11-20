@@ -20,11 +20,8 @@ function CodeBlock({ children }: { children: string }): JSX.Element {
 
   return (
     <div className="chatkit-code-block-wrapper">
-      <pre className="chatkit-markdown-code-block">
-        <code>{children}</code>
-      </pre>
       <button
-        className={`chatkit-copy-button ${copied ? 'copied' : ''}`}
+        className={`chatkit-copy-code-button ${copied ? 'copied' : ''}`}
         onClick={handleCopy}
       >
         {copied ? (
@@ -44,6 +41,9 @@ function CodeBlock({ children }: { children: string }): JSX.Element {
           </>
         )}
       </button>
+      <pre className="chatkit-markdown-code-block">
+        <code>{children}</code>
+      </pre>
     </div>
   );
 }
