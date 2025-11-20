@@ -675,6 +675,7 @@ export interface Workflow {
   tasks: Task[];
   summary?: WorkflowSummary;
   expanded?: boolean;
+  completed?: boolean;
 }
 
 // ===== Types pour les items de thread =====

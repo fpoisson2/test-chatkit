@@ -22,6 +22,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   };
 
   const isReasoning = workflow.type === 'reasoning';
+  const isCompleted = workflow.completed === true;
 
   // Trouver la dernière tâche complète
   const lastCompletedTask = workflow.tasks.length > 0
@@ -36,6 +37,18 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
+    }
+
+    // Si le workflow est terminé, garder la dernière tâche affichée pendant 1 seconde puis la cacher
+    if (isCompleted && displayedTask && displayStartTimeRef.current) {
+      const elapsed = Date.now() - displayStartTimeRef.current;
+      const remaining = Math.max(0, 1000 - elapsed);
+
+      timeoutRef.current = setTimeout(() => {
+        setDisplayedTask(null);
+        displayStartTimeRef.current = null;
+      }, remaining);
+      return;
     }
 
     // Si on a une nouvelle tâche complète différente de celle affichée
@@ -63,7 +76,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [lastCompletedTask, displayedTask]);
+  }, [lastCompletedTask, displayedTask, isCompleted]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>

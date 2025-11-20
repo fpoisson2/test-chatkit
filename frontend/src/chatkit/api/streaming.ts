@@ -369,6 +369,16 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
   if (event.type === 'thread.item.done') {
     const items = thread.items.map((item) => {
       if (item.id === event.item.id) {
+        // Marquer le workflow comme completed
+        if (event.item.type === 'workflow') {
+          return {
+            ...event.item,
+            workflow: {
+              ...event.item.workflow,
+              completed: true,
+            },
+          };
+        }
         return event.item;
       }
       return item;
