@@ -123,7 +123,6 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
           {isLoading && !displayedTask && (
             <div className="chatkit-workflow-loading">
               <div className="chatkit-workflow-loading-spinner"></div>
-              <span className="chatkit-workflow-loading-text">{t('chatkit.workflow.loading')}</span>
             </div>
           )}
           {displayedTask && (
