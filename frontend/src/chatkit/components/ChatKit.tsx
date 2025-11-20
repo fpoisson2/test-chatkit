@@ -179,19 +179,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   // Afficher le start screen si pas de messages
   const showStartScreen = !control.thread || control.thread.items.length === 0;
 
-  // Récupérer le titre du thread (premier message utilisateur)
+  // Récupérer le titre du thread
   const getThreadTitle = (): string => {
-    if (!control.thread || !control.thread.items || control.thread.items.length === 0) {
+    if (!control.thread) {
       return 'Nouvelle conversation';
     }
 
-    const firstUserMessage = control.thread.items.find((item: any) => item.type === 'user_message');
-    if (firstUserMessage && firstUserMessage.type === 'user_message') {
-      const textContent = firstUserMessage.content.find((c: any) => c.type === 'input_text');
-      if (textContent && textContent.type === 'input_text') {
-        const title = textContent.text.substring(0, 40);
-        return title.length < textContent.text.length ? `${title}...` : title;
-      }
+    if (control.thread.title) {
+      return control.thread.title;
     }
 
     return 'Conversation';
@@ -502,7 +497,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             aria-label="Envoyer"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
               <polyline points="16 12 12 8 8 12"></polyline>
               <line x1="12" y1="16" x2="12" y2="8"></line>
             </svg>

@@ -718,6 +718,7 @@ export type ThreadItem =
 
 export interface Thread {
   id: string;
+  title?: string;
   items: ThreadItem[];
   metadata?: Record<string, unknown>;
 }
