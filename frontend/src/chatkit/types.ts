@@ -853,10 +853,9 @@ export interface NoticeEvent extends ThreadStreamEventBase {
 // Événements d'erreur
 export interface ErrorEvent extends ThreadStreamEventBase {
   type: 'error';
-  error: {
-    type: string;
-    message: string;
-  };
+  code: string;
+  message: string;
+  allow_retry?: boolean;
 }
 
 // LEGACY: événements conservés pour compatibilité mais deprecated
