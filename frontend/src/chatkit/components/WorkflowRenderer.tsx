@@ -15,6 +15,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
   const [fadeKey, setFadeKey] = useState(0);
   const previousTaskCountRef = useRef(0);
+  const lastDisplayedTaskIndexRef = useRef<number>(-1);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -25,6 +26,18 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true;
   const currentTaskCount = workflow.tasks.length;
+
+  // Fonction pour afficher une tâche pendant 1 seconde
+  const showTaskFor1Second = (task: Task, taskIndex: number) => {
+    setDisplayedTask(task);
+    setFadeKey(prev => prev + 1);
+    lastDisplayedTaskIndexRef.current = taskIndex;
+
+    // Cacher après 1 seconde
+    hideTimeoutRef.current = setTimeout(() => {
+      setDisplayedTask(null);
+    }, 1000);
+  };
 
   // Gérer l'affichage des tâches quand elles sont "done"
   useEffect(() => {
@@ -43,30 +56,17 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       const completedTaskIndex = previousTaskCountRef.current - 1;
       const completedTask = workflow.tasks[completedTaskIndex];
 
-      if (completedTask) {
-        // Afficher la tâche terminée immédiatement
-        setDisplayedTask(completedTask);
-        setFadeKey(prev => prev + 1);
-
-        // Cacher après 1 seconde
-        hideTimeoutRef.current = setTimeout(() => {
-          setDisplayedTask(null);
-        }, 1000);
+      if (completedTask && lastDisplayedTaskIndexRef.current !== completedTaskIndex) {
+        showTaskFor1Second(completedTask, completedTaskIndex);
       }
     }
     // Détection: workflow complété → la dernière tâche est "done"
-    else if (isCompleted && currentTaskCount > 0 && previousTaskCountRef.current === currentTaskCount) {
-      const lastTask = workflow.tasks[currentTaskCount - 1];
+    else if (isCompleted && currentTaskCount > 0) {
+      const lastTaskIndex = currentTaskCount - 1;
+      const lastTask = workflow.tasks[lastTaskIndex];
 
-      if (lastTask && displayedTask !== lastTask) {
-        // Afficher la dernière tâche
-        setDisplayedTask(lastTask);
-        setFadeKey(prev => prev + 1);
-
-        // Cacher après 1 seconde
-        hideTimeoutRef.current = setTimeout(() => {
-          setDisplayedTask(null);
-        }, 1000);
+      if (lastTask && lastDisplayedTaskIndexRef.current !== lastTaskIndex) {
+        showTaskFor1Second(lastTask, lastTaskIndex);
       }
     }
 
