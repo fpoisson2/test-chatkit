@@ -59,14 +59,21 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       return;
     }
 
+    // Si pas de tâche complète disponible, afficher le loading
+    if (!lastCompletedTask) {
+      setIsLoading(true);
+      setDisplayedTask(null);
+      displayStartTimeRef.current = null;
+      return;
+    }
+
     // Si on a une nouvelle tâche complète différente de celle affichée
-    if (lastCompletedTask && lastCompletedTask !== displayedTask) {
+    if (lastCompletedTask !== displayedTask) {
       // Si une tâche est déjà affichée, attendre 1 seconde avant de la remplacer
       if (displayedTask && displayStartTimeRef.current) {
         const elapsed = Date.now() - displayStartTimeRef.current;
         const remaining = Math.max(0, 1000 - elapsed);
 
-        setIsLoading(true);
         timeoutRef.current = setTimeout(() => {
           setDisplayedTask(lastCompletedTask);
           setFadeKey(prev => prev + 1);
@@ -74,15 +81,12 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
           displayStartTimeRef.current = Date.now();
         }, remaining);
       } else {
-        // Première tâche ou pas de tâche affichée
+        // Première tâche complète : l'afficher immédiatement
         setDisplayedTask(lastCompletedTask);
         setFadeKey(prev => prev + 1);
         setIsLoading(false);
         displayStartTimeRef.current = Date.now();
       }
-    } else if (!lastCompletedTask && !displayedTask) {
-      // Pas de tâche complète et rien d'affiché = en attente
-      setIsLoading(true);
     }
 
     return () => {

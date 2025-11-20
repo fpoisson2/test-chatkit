@@ -847,11 +847,6 @@
   border-top-color: var(--accent-color-primary);
 }
 
-[data-theme="dark"] .chatkit-workflow-loading-text {
-  color: var(--color-text-secondary);
-}
-
-
 [data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(.chatkit-task--custom)::before,
 [data-theme="dark"] .chatkit-workflow-last-task .chatkit-task:not(.chatkit-task--custom)::before {
   background: var(--color-surface);
