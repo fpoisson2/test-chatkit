@@ -400,7 +400,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 {/* Task standalone */}
                 {item.type === 'task' && (
                   <div className="chatkit-message-content">
-                    <TaskRenderer task={item.task} />
+                    <TaskRenderer task={item.task} theme={theme?.colorScheme} />
                   </div>
                 )}
 
