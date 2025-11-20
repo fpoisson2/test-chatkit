@@ -3,6 +3,7 @@
  */
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useI18n } from '../../i18n/I18nProvider';
 import './MarkdownRenderer.css';
 
@@ -82,6 +83,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps): JSX.Elemen
           th: ({ children }) => <th className="chatkit-markdown-th">{children}</th>,
           td: ({ children }) => <td className="chatkit-markdown-td">{children}</td>,
         }}
+        remarkPlugins={[remarkGfm]}
       >
         {content}
       </ReactMarkdown>

@@ -211,12 +211,12 @@
 }
 
 [data-theme="dark"] .chatkit-markdown-code-inline {
-  background: var(--codeblock-background-color);
+  background: #2a2a2a;
   border-color: var(--color-border);
 }
 
 [data-theme="dark"] .chatkit-markdown-code-block {
-  background: var(--codeblock-background-color);
+  background: #2a2a2a;
   border-color: var(--color-border);
 }
 
