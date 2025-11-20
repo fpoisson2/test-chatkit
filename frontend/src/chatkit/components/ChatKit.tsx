@@ -412,22 +412,40 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                       const imageTask = item.workflow.tasks.find(
                         (task: any) => task.type === 'image' && task.status_indicator === 'loading'
                       );
-                      if (imageTask && imageTask.images && imageTask.images.length > 0) {
-                        const image = imageTask.images[0];
-                        if (image.partials && image.partials.length > 0) {
-                          const lastPartial = image.partials[image.partials.length - 1];
-                          const src = lastPartial.startsWith('data:')
-                            ? lastPartial
-                            : `data:image/png;base64,${lastPartial}`;
-                          return (
-                            <div className="chatkit-image-generation-preview">
-                              <img
-                                src={src}
-                                alt="Génération en cours..."
-                                className="chatkit-generating-image"
-                              />
-                            </div>
-                          );
+                      console.log('[ChatKit] Checking for image partials in workflow:', item.id, 'imageTask:', imageTask);
+                      if (imageTask) {
+                        console.log('[ChatKit] ImageTask found:', {
+                          type: imageTask.type,
+                          status: imageTask.status_indicator,
+                          images: imageTask.images,
+                          hasImages: imageTask.images && imageTask.images.length > 0
+                        });
+                        if (imageTask.images && imageTask.images.length > 0) {
+                          const image = imageTask.images[0];
+                          console.log('[ChatKit] Image data:', {
+                            id: image.id,
+                            hasPartials: image.partials && image.partials.length > 0,
+                            partialsCount: image.partials ? image.partials.length : 0,
+                            hasB64: !!image.b64_json,
+                            hasUrl: !!image.image_url,
+                            hasDataUrl: !!image.data_url
+                          });
+                          if (image.partials && image.partials.length > 0) {
+                            const lastPartial = image.partials[image.partials.length - 1];
+                            const src = lastPartial.startsWith('data:')
+                              ? lastPartial
+                              : `data:image/png;base64,${lastPartial}`;
+                            console.log('[ChatKit] Showing partial preview, partials count:', image.partials.length);
+                            return (
+                              <div className="chatkit-image-generation-preview">
+                                <img
+                                  src={src}
+                                  alt="Génération en cours..."
+                                  className="chatkit-generating-image"
+                                />
+                              </div>
+                            );
+                          }
                         }
                       }
                       return null;
