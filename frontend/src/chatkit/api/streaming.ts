@@ -469,6 +469,26 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
+    const contentType = response.headers.get('content-type') || '';
+
+    // Si la réponse est du JSON (non-streaming), parser directement
+    if (contentType.includes('application/json')) {
+      const data = await response.json();
+      const thread = data.thread || data;
+
+      // Normaliser le thread
+      currentThread = {
+        ...thread,
+        items: Array.isArray(thread.items) ? thread.items : [],
+      };
+
+      // Notifier de la création/mise à jour du thread
+      onThreadUpdate?.(currentThread);
+
+      return currentThread;
+    }
+
+    // Sinon, traiter comme du streaming (SSE)
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('Response body is not readable');
