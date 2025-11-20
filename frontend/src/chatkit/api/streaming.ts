@@ -152,7 +152,7 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
     };
   }
 
-  if (event.type === 'thread.item.completed') {
+  if (event.type === 'thread.item.completed' || event.type === 'thread.item.done') {
     const items = thread.items.map((item) => {
       if (item.id === event.item.id) {
         return event.item;

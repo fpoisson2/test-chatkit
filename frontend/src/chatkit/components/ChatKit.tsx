@@ -209,11 +209,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             )}
           </div>
         ) : (
-          control.thread?.items.map((item) => {
-            // Ne pas afficher end_of_turn
-            if (item.type === 'end_of_turn') {
-              return null;
-            }
+          (() => {
+            const items = control.thread?.items || [];
+            console.log('[ChatKit Render] Rendering', items.length, 'items:', items);
+            return items.map((item) => {
+              // Ne pas afficher end_of_turn
+              if (item.type === 'end_of_turn') {
+                return null;
+              }
 
             const messageClass = item.type === 'user_message'
               ? 'user'
@@ -310,7 +313,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 )}
               </div>
             );
-          })
+            });
+          })()
         )}
         <div ref={messagesEndRef} />
       </div>
