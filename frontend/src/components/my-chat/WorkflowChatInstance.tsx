@@ -60,7 +60,7 @@ export const WorkflowChatInstance = ({
       }}
       data-workflow-id={workflowId}
     >
-      <ChatKitHost control={control} chatInstanceKey={0} />
+      <ChatKitHost control={control} options={chatkitOptions} chatInstanceKey={0} />
     </div>
   );
 };

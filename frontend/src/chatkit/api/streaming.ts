@@ -1,7 +1,7 @@
 /**
  * Gestion du streaming des événements ChatKit
  */
-import type { Thread, ThreadStreamEvent, ThreadItem, AssistantMessageItem } from '../types';
+import type { Thread, ThreadStreamEvent, ThreadItem, AssistantMessageItem, ClientToolCallItem } from '../types';
 
 export interface StreamOptions {
   url: string;
@@ -10,6 +10,7 @@ export interface StreamOptions {
   onEvent?: (event: ThreadStreamEvent) => void;
   onThreadUpdate?: (thread: Thread) => void;
   onError?: (error: Error) => void;
+  onClientToolCall?: (toolCall: ClientToolCallItem) => Promise<unknown>;
   signal?: AbortSignal;
 }
 
@@ -135,7 +136,7 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
  * Stream des événements depuis le backend
  */
 export async function streamChatKitEvents(options: StreamOptions): Promise<Thread | null> {
-  const { url, headers = {}, body, onEvent, onThreadUpdate, onError, signal } = options;
+  const { url, headers = {}, body, onEvent, onThreadUpdate, onError, onClientToolCall, signal } = options;
 
   let currentThread: Thread | null = null;
 
@@ -201,6 +202,29 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
           onThreadUpdate(currentThread);
         }
 
+        // Gérer les client tool calls
+        if (event.type === 'thread.item.created' && event.item.type === 'client_tool_call') {
+          const toolCallItem = event.item as ClientToolCallItem;
+          if (onClientToolCall && toolCallItem.status === 'pending') {
+            try {
+              const result = await onClientToolCall(toolCallItem);
+
+              // Envoyer le résultat au backend
+              await sendClientToolOutput({
+                url,
+                headers,
+                threadId: toolCallItem.thread_id,
+                result,
+              });
+            } catch (err) {
+              console.error('[ChatKit] Client tool call failed:', err);
+              if (onError) {
+                onError(err instanceof Error ? err : new Error(String(err)));
+              }
+            }
+          }
+        }
+
         // Gérer les erreurs
         if (event.type === 'error') {
           const error = new Error(event.error.message);
@@ -245,4 +269,36 @@ export async function fetchThread(options: {
 
   const data = await response.json();
   return data.thread || data;
+}
+
+/**
+ * Envoie le résultat d'un client tool call au backend
+ */
+export async function sendClientToolOutput(options: {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+  result: unknown;
+}): Promise<void> {
+  const { url, headers = {}, threadId, result } = options;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      type: 'threads.add_client_tool_output',
+      params: {
+        thread_id: threadId,
+        result,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
 }

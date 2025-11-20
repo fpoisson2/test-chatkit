@@ -222,3 +222,186 @@
   background: none;
   padding: 0;
 }
+
+/* Header */
+.chatkit-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fff;
+}
+
+.chatkit-header-action {
+  padding: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.chatkit-header-action:hover {
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.chatkit-header-title {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* Start Screen */
+.chatkit-start-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+}
+
+.chatkit-start-greeting {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 32px;
+  color: #333;
+}
+
+.chatkit-start-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 500px;
+  width: 100%;
+}
+
+.chatkit-start-prompt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #f5f5f5;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 15px;
+  transition: background 0.2s;
+}
+
+.chatkit-start-prompt:hover {
+  background: #e5e5e5;
+}
+
+.chatkit-prompt-icon {
+  font-size: 20px;
+}
+
+/* Disclaimer */
+.chatkit-disclaimer {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+/* Attachments */
+.chatkit-attachments-preview {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #e5e5e5;
+  overflow-x: auto;
+}
+
+.chatkit-attachment {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  min-width: 80px;
+}
+
+.chatkit-attachment img {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.chatkit-attachment-icon {
+  font-size: 32px;
+}
+
+.chatkit-attachment-name {
+  font-size: 11px;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatkit-attachment-uploading {
+  opacity: 0.6;
+}
+
+.chatkit-attachment-error {
+  border-color: #f00;
+  background: #fee;
+}
+
+.chatkit-attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #f00;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chatkit-attach-button {
+  padding: 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.chatkit-attach-button:hover {
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.chatkit-attach-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Tool call message */
+.chatkit-message-tool .chatkit-message-content {
+  background: #fff3cd;
+  color: #856404;
+  font-family: monospace;
+  font-size: 13px;
+}

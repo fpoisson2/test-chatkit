@@ -27,5 +27,12 @@ export type {
 } from './widgets';
 
 // API
-export { streamChatKitEvents, fetchThread } from './api/streaming';
+export { streamChatKitEvents, fetchThread, sendClientToolOutput } from './api/streaming';
 export type { StreamOptions } from './api/streaming';
+export {
+  uploadAttachment,
+  createFilePreview,
+  generateAttachmentId,
+  validateFile,
+} from './api/attachments';
+export type { Attachment } from './api/attachments';

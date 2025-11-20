@@ -538,7 +538,19 @@ export interface AssistantMessageItem {
   status?: 'in_progress' | 'completed' | 'failed';
 }
 
-export type ThreadItem = UserMessageItem | AssistantMessageItem;
+export interface ClientToolCallItem {
+  type: 'client_tool_call';
+  id: string;
+  created_at: string;
+  thread_id: string;
+  status: 'pending' | 'completed';
+  call_id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  output?: unknown;
+}
+
+export type ThreadItem = UserMessageItem | AssistantMessageItem | ClientToolCallItem;
 
 export interface Thread {
   id: string;

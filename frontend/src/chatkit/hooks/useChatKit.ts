@@ -22,6 +22,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     onThreadLoadStart,
     onThreadLoadEnd,
     onLog,
+    onClientTool,
   } = options;
 
   const [thread, setThread] = useState<Thread | null>(null);
@@ -101,6 +102,13 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
               onThreadChange?.({ threadId: newThread.id });
             }
           },
+          onClientToolCall: onClientTool ? async (toolCall) => {
+            // Adapter le format pour correspondre à l'API attendue
+            return await onClientTool({
+              name: toolCall.name,
+              params: toolCall.arguments,
+            });
+          } : undefined,
           onError: (err: Error) => {
             setError(err);
             onError?.({ error: err });
