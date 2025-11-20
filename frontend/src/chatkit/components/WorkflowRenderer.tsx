@@ -12,26 +12,57 @@ interface WorkflowRendererProps {
 export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: WorkflowRendererProps): JSX.Element {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(workflow.expanded ?? false);
+  const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
   const [fadeKey, setFadeKey] = useState(0);
-  const lastTaskRef = useRef<Task | null>(null);
+  const lastUpdateTimeRef = useRef<number>(Date.now());
+  const lastTaskIndexRef = useRef<number>(-1);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
   };
 
   const isReasoning = workflow.type === 'reasoning';
+  const isCompleted = workflow.status === 'completed' || workflow.status === 'error';
   const lastTask = workflow.tasks.length > 0 ? workflow.tasks[workflow.tasks.length - 1] : null;
 
-  // Détecter quand la dernière tâche change pour déclencher l'animation
+  // Gérer l'affichage des tâches avec un délai minimum d'1 seconde
   useEffect(() => {
-    if (lastTask && lastTaskRef.current) {
-      // Vérifier si c'est une nouvelle tâche différente
-      if (JSON.stringify(lastTask) !== JSON.stringify(lastTaskRef.current)) {
-        setFadeKey(prev => prev + 1);
-      }
+    const currentTaskIndex = workflow.tasks.length - 1;
+
+    // Si le workflow est terminé, ne pas afficher de tâche
+    if (isCompleted) {
+      setDisplayedTask(null);
+      return;
     }
-    lastTaskRef.current = lastTask;
-  }, [lastTask]);
+
+    // Si pas de nouvelle tâche, ne rien faire
+    if (currentTaskIndex === lastTaskIndexRef.current) {
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
+    const minimumDelay = 1000; // 1 seconde
+
+    // Si moins d'1 seconde s'est écoulée, attendre
+    if (timeSinceLastUpdate < minimumDelay && displayedTask !== null) {
+      const remainingTime = minimumDelay - timeSinceLastUpdate;
+      const timeoutId = setTimeout(() => {
+        setDisplayedTask(lastTask);
+        setFadeKey(prev => prev + 1);
+        lastUpdateTimeRef.current = Date.now();
+        lastTaskIndexRef.current = currentTaskIndex;
+      }, remainingTime);
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      // Plus d'1 seconde s'est écoulée ou première tâche
+      setDisplayedTask(lastTask);
+      setFadeKey(prev => prev + 1);
+      lastUpdateTimeRef.current = now;
+      lastTaskIndexRef.current = currentTaskIndex;
+    }
+  }, [workflow.tasks.length, lastTask, isCompleted, displayedTask]);
 
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
@@ -58,10 +89,10 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         </button>
       </div>
 
-      {/* Afficher la dernière tâche même quand collapsed */}
-      {!expanded && lastTask && (
+      {/* Afficher la dernière tâche même quand collapsed (sauf si terminé) */}
+      {!expanded && displayedTask && !isCompleted && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
-          <TaskRenderer task={lastTask} theme={theme} />
+          <TaskRenderer task={displayedTask} theme={theme} />
         </div>
       )}
 
