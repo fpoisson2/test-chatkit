@@ -11,7 +11,6 @@ import { BoxComponent } from './Box';
 import { RowComponent } from './Row';
 import { ColComponent } from './Col';
 import { CardComponent } from './Card';
-import { ListViewComponent } from './ListView';
 
 // Import des composants simples
 import {
@@ -20,6 +19,7 @@ import {
   IconComponent,
   ImageComponent,
   SpacerComponent,
+  ListViewComponent,
 } from './SimpleWidgets';
 
 // Import des composants de formulaire
