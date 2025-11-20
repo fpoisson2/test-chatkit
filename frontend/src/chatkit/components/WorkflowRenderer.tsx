@@ -18,6 +18,20 @@ export function WorkflowRenderer({ workflow, className = '' }: WorkflowRendererP
 
   const isReasoning = workflow.type === 'reasoning';
 
+  // Calculer l'opacité pour chaque task (dégradé)
+  const getTaskOpacity = (index: number, total: number): number => {
+    if (expanded) return 1;
+    const position = total - index;
+    if (position === 1) return 1; // Dernier task = 100%
+    if (position === 2) return 0.6; // Avant-dernier = 60%
+    if (position === 3) return 0.3; // Avant-avant-dernier = 30%
+    return 0; // Autres = cachés
+  };
+
+  // Nombre de tasks à afficher en mode collapsed
+  const visibleTasksCount = expanded ? workflow.tasks.length : Math.min(3, workflow.tasks.length);
+  const tasksToShow = expanded ? workflow.tasks : workflow.tasks.slice(-visibleTasksCount);
+
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
       <div className="chatkit-workflow-header" onClick={toggleExpanded}>
@@ -42,13 +56,17 @@ export function WorkflowRenderer({ workflow, className = '' }: WorkflowRendererP
           )}
         </button>
       </div>
-      {expanded && (
-        <div className="chatkit-workflow-tasks">
-          {workflow.tasks.map((task, i) => (
-            <TaskRenderer key={i} task={task} />
-          ))}
-        </div>
-      )}
+      <div className={`chatkit-workflow-tasks ${!expanded ? 'chatkit-workflow-tasks--collapsed' : ''}`}>
+        {tasksToShow.map((task, i) => {
+          const originalIndex = expanded ? i : workflow.tasks.length - visibleTasksCount + i;
+          const opacity = getTaskOpacity(originalIndex, workflow.tasks.length);
+          return (
+            <div key={i} style={{ opacity }}>
+              <TaskRenderer task={task} />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
