@@ -19,6 +19,8 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const displayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastCompletedIndexRef = useRef<number>(-1);
   const previousTaskCountRef = useRef(0);
+  const wasCompletedOnMountRef = useRef<boolean>(false);
+  const hasMountedRef = useRef<boolean>(false);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -27,6 +29,12 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
+
+  // Détecter si le workflow était déjà complet au premier render
+  if (!hasMountedRef.current) {
+    hasMountedRef.current = true;
+    wasCompletedOnMountRef.current = isCompleted;
+  }
 
   // Fonction pour traiter la file d'attente
   const processQueue = () => {
@@ -65,6 +73,11 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
   // Détecter les tâches complètes
   useEffect(() => {
+    // Ignorer si le workflow était déjà complet au chargement (reload de thread)
+    if (wasCompletedOnMountRef.current) {
+      return;
+    }
+
     // Cas 1: Nouvelle tâche ajoutée → la précédente est "done"
     if (currentTaskCount > previousTaskCountRef.current && previousTaskCountRef.current > 0) {
       const completedIndex = previousTaskCountRef.current - 1;
