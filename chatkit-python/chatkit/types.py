@@ -848,6 +848,9 @@ class ComputerUseTask(BaseTask):
     call_id: str | None = None
     """Identifier of the underlying computer tool call."""
 
+    debug_url: str | None = None
+    """Chrome DevTools debug URL for live screencast."""
+
 
 Task = Annotated[
     CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask,

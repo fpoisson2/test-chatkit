@@ -4,6 +4,7 @@ import json
 import keyword
 import logging
 import re
+import threading
 import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -54,6 +55,12 @@ from ..tool_factory import (
     build_workflow_tool,
     get_mcp_runtime_context,
 )
+
+# Import from chatkit for setting computer tool
+try:
+    from chatkit.agents import set_current_computer_tool as _set_chatkit_computer_tool
+except ImportError:
+    _set_chatkit_computer_tool = None
 
 logger = logging.getLogger("chatkit.server")
 def _model_settings(**kwargs: Any) -> ModelSettings:
@@ -712,6 +719,9 @@ def _coerce_agent_tools(
                 tool = build_computer_use_tool(entry)
                 if tool is not None:
                     coerced.append(tool)
+                    # Store computer tool in thread-local for access in agents.py
+                    if _set_chatkit_computer_tool is not None:
+                        _set_chatkit_computer_tool(tool)
                 continue
 
             if normalized_type == "mcp":
@@ -1116,6 +1126,22 @@ AGENT_RESPONSE_FORMATS: weakref.WeakKeyDictionary[Agent, dict[str, Any]] = (
 AGENT_MCP_METADATA: weakref.WeakKeyDictionary[Agent, dict[str, Any]] = (
     weakref.WeakKeyDictionary()
 )
+AGENT_COMPUTER_TOOLS: weakref.WeakKeyDictionary[Agent, ComputerTool] = (
+    weakref.WeakKeyDictionary()
+)
+
+# Thread-local storage for the current computer tool
+_thread_local = threading.local()
+
+
+def set_current_computer_tool(tool: ComputerTool | None) -> None:
+    """Set the current computer tool for this thread/request."""
+    _thread_local.computer_tool = tool
+
+
+def get_current_computer_tool() -> ComputerTool | None:
+    """Get the current computer tool for this thread/request."""
+    return getattr(_thread_local, "computer_tool", None)
 
 
 def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:

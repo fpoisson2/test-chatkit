@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import threading
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -93,6 +94,22 @@ from .types import (
 from .widgets import Markdown, Text, WidgetRoot
 
 LOGGER = logging.getLogger(__name__)
+
+# Thread-local storage for current computer tool
+_thread_local_state = threading.local()
+
+
+def set_current_computer_tool(computer_tool: Any) -> None:
+    """Set the current computer tool for accessing debug_url.
+
+    This should be called from the backend when building agent tools.
+    """
+    _thread_local_state.computer_tool = computer_tool
+
+
+def get_current_computer_tool() -> Any | None:
+    """Get the current computer tool if set."""
+    return getattr(_thread_local_state, "computer_tool", None)
 
 
 class ClientToolCall(BaseModel):
@@ -1274,6 +1291,20 @@ async def stream_agent_response(
         task_added = False
 
         if tracker is None:
+            # Get debug_url from computer_tool if available
+            debug_url = None
+            computer_tool = get_current_computer_tool()
+            if computer_tool is not None:
+                try:
+                    computer = getattr(computer_tool, "computer", None)
+                    if computer is not None:
+                        debug_url = getattr(computer, "debug_url", None)
+                        if callable(debug_url):
+                            debug_url = debug_url()
+                        LOGGER.info(f"[ComputerTaskTracker] Obtained debug_url: {debug_url}")
+                except Exception as exc:
+                    LOGGER.debug(f"[ComputerTaskTracker] Failed to get debug_url: {exc}")
+
             tracker = ComputerTaskTracker(
                 item_id=item_id,
                 task=ComputerUseTask(
@@ -1281,6 +1312,7 @@ async def stream_agent_response(
                     title=None,
                     screenshots=[],
                     action_sequence=[],
+                    debug_url=debug_url,
                 ),
             )
             computer_tasks[item_id] = tracker
