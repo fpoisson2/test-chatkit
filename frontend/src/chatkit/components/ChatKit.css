@@ -1131,11 +1131,11 @@
 
 /* DevTools Screencast Viewer */
 .chatkit-devtools-screencast {
-  max-width: 800px;
   border: none;
   border-radius: 0;
   overflow: hidden;
   background: transparent;
+  width: 100%;
 }
 
 .chatkit-screencast-header {
@@ -1199,7 +1199,6 @@
 .chatkit-screencast-canvas-container {
   position: relative;
   width: 100%;
-  max-width: 800px;
   display: flex;
   justify-content: flex-start;
   align-items: center;
@@ -1208,7 +1207,6 @@
 }
 
 .chatkit-screencast-canvas {
-  max-width: 800px;
   width: 100%;
   height: auto;
   display: block;

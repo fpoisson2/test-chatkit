@@ -3,7 +3,6 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { DevToolsScreencast } from "../chatkit/components/DevToolsScreencast";
 import { FormSection } from "../components";
-import { Modal } from "../components/Modal";
 import { makeApiEndpointCandidates } from "../utils/backend";
 
 type BrowserSession = {
@@ -52,7 +51,6 @@ export const AdminBrowserTestPage = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [startUrl, setStartUrl] = useState("https://www.google.com");
   const [navigateUrl, setNavigateUrl] = useState("");
-  const [isControlModalOpen, setIsControlModalOpen] = useState(false);
 
   // Clear messages after 5 seconds
   useEffect(() => {
@@ -64,12 +62,6 @@ export const AdminBrowserTestPage = () => {
       return () => clearTimeout(timer);
     }
   }, [error, success]);
-
-  useEffect(() => {
-    if (!browserSession) {
-      setIsControlModalOpen(false);
-    }
-  }, [browserSession]);
 
   const handleStartBrowser = async () => {
     if (!token) return;
@@ -224,13 +216,6 @@ export const AdminBrowserTestPage = () => {
     }
   };
 
-  const handleTakeControl = () => {
-    if (!browserSession) return;
-    setError(null);
-    setIsControlModalOpen(true);
-    setSuccess(t("admin.browserTest.success.controlReady"));
-  };
-
   return (
     <div className="admin-section">
       <h2 className="admin-section__title">{t("admin.browserTest.title")}</h2>
@@ -353,14 +338,6 @@ export const AdminBrowserTestPage = () => {
               </button>
               <button
                 type="button"
-                className="button button--primary"
-                onClick={handleTakeControl}
-                disabled={isLoading}
-              >
-                {t("admin.browserTest.controls.takeControl")}
-              </button>
-              <button
-                type="button"
                 className="button button--danger"
                 onClick={handleCloseBrowser}
                 disabled={isLoading}
@@ -381,30 +358,12 @@ export const AdminBrowserTestPage = () => {
             <DevToolsScreencast
               debugUrlToken={browserSession.token}
               authToken={token}
-              className="browser-test-screencast"
+              className="browser-test-screencast browser-test-screencast--interactive"
+              enableInput
             />
+            <p className="browser-test__tip">{t("admin.browserTest.preview.hint")}</p>
           </div>
         </FormSection>
-      )}
-
-      {browserSession && (
-        <Modal
-          title={t("admin.browserTest.modal.title")}
-          onClose={() => setIsControlModalOpen(false)}
-          open={isControlModalOpen}
-          size="xl"
-        >
-          <p className="admin-section__description">
-            {t("admin.browserTest.modal.description")}
-          </p>
-          <DevToolsScreencast
-            debugUrlToken={browserSession.token}
-            authToken={token}
-            className="browser-test-screencast browser-test-screencast--interactive"
-            enableInput
-          />
-          <p className="browser-test__tip">{t("admin.browserTest.modal.hint")}</p>
-        </Modal>
       )}
 
       <style>{`
@@ -463,16 +422,27 @@ export const AdminBrowserTestPage = () => {
           margin-top: 16px;
         }
 
+        .browser-test-screencast,
+        .browser-test-screencast .chatkit-screencast-canvas-container,
+        .browser-test-screencast .chatkit-screencast-canvas {
+          width: 100%;
+          max-width: 100%;
+        }
+
         .browser-test-screencast--interactive .chatkit-screencast-canvas-container {
           border: 1px solid #e5e7eb;
           border-radius: 8px;
           overflow: hidden;
           box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+          width: 100%;
+          max-width: 100%;
         }
 
         .browser-test-screencast--interactive .chatkit-screencast-canvas {
           outline: none;
           cursor: crosshair;
+          width: 100%;
+          max-width: 100%;
         }
 
         .browser-test__tip {
