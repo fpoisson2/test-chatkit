@@ -576,6 +576,12 @@ class ComputerTaskTracker(BaseModel):
             elif hasattr(output_value, "type"):
                 output_type = getattr(output_value, "type", None)
 
+            LOGGER.debug(
+                f"[ComputerTaskTracker] update_from_output: output_type={output_type}, "
+                f"raw_output type={type(raw_output).__name__}, "
+                f"parsed_output={parsed_output}"
+            )
+
             if output_type == "computer_screenshot":
                 # Extract screenshot data
                 screenshot_id = self.call_id or f"screenshot_{len(self.task.screenshots)}"
@@ -593,7 +599,7 @@ class ComputerTaskTracker(BaseModel):
 
                 if image_url:
                     # Create a ComputerUseScreenshot
-                    # If image_url is a data URL, extract the base64 part
+                    # If image_url is a remote URL, download and inline it (like ImageTask does)
                     data_url = None
                     b64_image = None
 
@@ -605,8 +611,17 @@ class ComputerTaskTracker(BaseModel):
                             if ";base64," in image_url:
                                 b64_image = image_url.split(";base64,", 1)[1]
                         elif image_url.startswith("http://") or image_url.startswith("https://"):
-                            # It's a regular URL, use it as data_url for now
-                            data_url = image_url
+                            # It's a remote URL - download and inline it like ImageTask does
+                            inline_b64, inline_data_url, _ = _inline_remote_image(
+                                image_url,
+                                output_format="png",
+                            )
+                            if inline_b64 and inline_data_url:
+                                b64_image = inline_b64
+                                data_url = inline_data_url
+                            else:
+                                # Fallback to the URL if download fails
+                                data_url = image_url
                         else:
                             # Assume it's base64 encoded image
                             b64_image = image_url
@@ -625,6 +640,12 @@ class ComputerTaskTracker(BaseModel):
                         self.task.screenshots[-1] = screenshot
                     else:
                         self.task.screenshots.append(screenshot)
+
+                    LOGGER.debug(
+                        f"[ComputerTaskTracker] Screenshot added: id={screenshot_id}, "
+                        f"has_b64={b64_image is not None}, has_data_url={data_url is not None}, "
+                        f"total_screenshots={len(self.task.screenshots)}"
+                    )
 
                     changed = True
 
