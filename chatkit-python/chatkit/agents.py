@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import threading
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -59,6 +60,8 @@ from .types import (
     AssistantMessageItem,
     Attachment,
     ClientToolCallItem,
+    ComputerUseScreenshot,
+    ComputerUseTask,
     CustomTask,
     DurationSummary,
     EndOfTurnItem,
@@ -91,6 +94,37 @@ from .types import (
 from .widgets import Markdown, Text, WidgetRoot
 
 LOGGER = logging.getLogger(__name__)
+
+# Thread-local storage for current computer tool
+_thread_local_state = threading.local()
+
+# Global callback for registering debug sessions (injected by backend)
+_debug_session_callback: Any | None = None
+
+
+def set_debug_session_callback(callback: Any) -> None:
+    """Set the callback function for registering debug sessions (called from backend)."""
+    global _debug_session_callback
+    _debug_session_callback = callback
+    LOGGER.info("[Agents] Debug session callback registered")
+
+
+def get_debug_session_callback() -> Any | None:
+    """Get the debug session callback if set."""
+    return _debug_session_callback
+
+
+def set_current_computer_tool(computer_tool: Any) -> None:
+    """Set the current computer tool for accessing debug_url.
+
+    This should be called from the backend when building agent tools.
+    """
+    _thread_local_state.computer_tool = computer_tool
+
+
+def get_current_computer_tool() -> Any | None:
+    """Get the current computer tool if set."""
+    return getattr(_thread_local_state, "computer_tool", None)
 
 
 class ClientToolCall(BaseModel):
@@ -426,7 +460,7 @@ _COMPUTER_ACTION_TITLES: dict[str, str] = {
 
 class ComputerTaskTracker(BaseModel):
     item_id: str
-    task: ThoughtTask
+    task: ComputerUseTask
     call_id: str | None = None
     action_data: Any | None = None
     pending_checks: Any | None = None
@@ -483,22 +517,49 @@ class ComputerTaskTracker(BaseModel):
         self.task.title = title
         return True
 
-    def _sync_content(self) -> bool:
-        previous = self.task.content
-        sections: list[str] = []
-        if self.action_data is not None:
-            sections.append(_format_markdown_section("Action", self.action_data))
-        if self.pending_checks:
-            sections.append(
-                _format_markdown_section(
-                    "Vérifications de sécurité", self.pending_checks
-                )
-            )
-        if self.output_data is not None:
-            sections.append(_format_markdown_section("Résultat", self.output_data))
-        content = "\n\n".join(sections).strip()
-        self.task.content = content or ""
-        return self.task.content != previous
+    def _sync_current_action(self) -> bool:
+        """Update current_action from action_data."""
+        if not isinstance(self.action_data, dict):
+            return False
+
+        action_type = self.action_data.get("type", "")
+        if not action_type:
+            return False
+
+        # Format a readable action description
+        action_desc = _COMPUTER_ACTION_TITLES.get(
+            action_type, action_type.replace("_", " ").capitalize()
+        )
+
+        # Add action details
+        details = []
+        if action_type in ("click", "double_click"):
+            x = self.action_data.get("x")
+            y = self.action_data.get("y")
+            if x is not None and y is not None:
+                details.append(f"à ({x}, {y})")
+        elif action_type == "type":
+            text = self.action_data.get("text", "")
+            if text:
+                details.append(f'"{text}"')
+        elif action_type == "keypress":
+            key = self.action_data.get("key", "")
+            if key:
+                details.append(f'touche "{key}"')
+
+        new_action = f"{action_desc} {' '.join(details)}".strip()
+        if self.task.current_action == new_action:
+            return False
+
+        self.task.current_action = new_action
+        return True
+
+    def _add_to_action_sequence(self, action: str) -> bool:
+        """Add an action to the action sequence if not already present."""
+        if not action or (self.task.action_sequence and self.task.action_sequence[-1] == action):
+            return False
+        self.task.action_sequence.append(action)
+        return True
 
     def update_from_call(
         self, call: ResponseComputerToolCall
@@ -515,7 +576,12 @@ class ComputerTaskTracker(BaseModel):
         )
         changed |= self._set_pending_checks(normalized_pending)
         changed |= self._sync_title()
-        changed |= self._sync_content()
+        changed |= self._sync_current_action()
+
+        # Add action to sequence if we have a current action
+        if self.task.current_action:
+            changed |= self._add_to_action_sequence(self.task.current_action)
+
         return changed, previous_call_id
 
     def update_from_output(
@@ -529,10 +595,108 @@ class ComputerTaskTracker(BaseModel):
         call_id_changed, previous_call_id = self.set_call_id(call_id)
         changed = call_id_changed
         changed |= self.set_status(status)
+
+        # Extract screenshot information from output
         output_value = raw_output if raw_output is not None else parsed_output
         if output_value is not None:
             changed |= self._set_output_data(_normalize_for_json(output_value))
-        changed |= self._sync_content()
+
+            # Check if this is a screenshot output
+            output_type = None
+            if isinstance(output_value, dict):
+                output_type = output_value.get("type")
+            elif hasattr(output_value, "type"):
+                output_type = getattr(output_value, "type", None)
+
+            LOGGER.debug(
+                f"[ComputerTaskTracker] update_from_output: output_type={output_type}, "
+                f"raw_output type={type(raw_output).__name__}"
+            )
+
+            if output_type == "computer_screenshot":
+                # Extract screenshot data
+                screenshot_id = self.call_id or f"screenshot_{len(self.task.screenshots)}"
+
+                # Try to get image data from various sources
+                # Could be in image_url, b64_image, data, or other fields
+                image_url = None
+                b64_data = None
+
+                if isinstance(output_value, dict):
+                    image_url = output_value.get("image_url")
+                    b64_data = output_value.get("b64_image") or output_value.get("data") or output_value.get("base64")
+                elif hasattr(output_value, "image_url"):
+                    image_url = getattr(output_value, "image_url", None)
+                    b64_data = (
+                        getattr(output_value, "b64_image", None)
+                        or getattr(output_value, "data", None)
+                        or getattr(output_value, "base64", None)
+                    )
+
+                # Also check parsed_output
+                if not image_url and not b64_data and parsed_output and isinstance(parsed_output, dict):
+                    image_url = parsed_output.get("image_url")
+                    b64_data = parsed_output.get("b64_image") or parsed_output.get("data") or parsed_output.get("base64")
+
+                LOGGER.info(
+                    f"[ComputerTaskTracker] Screenshot extraction: "
+                    f"image_url={'<present>' if image_url else 'None'}, "
+                    f"b64_data={'<present, {len(b64_data)} chars>' if b64_data else 'None'}"
+                )
+
+                # Use b64_data if available, otherwise fall back to image_url
+                source_data = b64_data or image_url
+                if source_data:
+                    # Create a ComputerUseScreenshot
+                    data_url = None
+                    b64_image = None
+
+                    if isinstance(source_data, str):
+                        if source_data.startswith("data:image/"):
+                            # It's already a data URL
+                            data_url = source_data
+                            # Extract base64 part if needed
+                            if ";base64," in source_data:
+                                b64_image = source_data.split(";base64,", 1)[1]
+                        elif source_data.startswith("http://") or source_data.startswith("https://"):
+                            # It's a remote URL - download and inline it like ImageTask does
+                            inline_b64, inline_data_url, _ = _inline_remote_image(
+                                source_data,
+                                output_format="png",
+                            )
+                            if inline_b64 and inline_data_url:
+                                b64_image = inline_b64
+                                data_url = inline_data_url
+                            else:
+                                # Fallback to the URL if download fails
+                                data_url = source_data
+                        else:
+                            # Assume it's base64 encoded image (from Playwright)
+                            b64_image = source_data
+                            data_url = f"data:image/png;base64,{source_data}"
+
+                    screenshot = ComputerUseScreenshot(
+                        id=screenshot_id,
+                        b64_image=b64_image,
+                        data_url=data_url,
+                        action_description=self.task.current_action,
+                    )
+
+                    # Add or update the screenshot
+                    # Check if we should update the last screenshot or add a new one
+                    if self.task.screenshots and self.task.screenshots[-1].id == screenshot_id:
+                        self.task.screenshots[-1] = screenshot
+                    else:
+                        self.task.screenshots.append(screenshot)
+
+                    LOGGER.debug(
+                        f"[ComputerTaskTracker] Screenshot added: id={screenshot_id}, "
+                        f"has_b64={b64_image is not None}, has_data_url={data_url is not None}, "
+                        f"total_screenshots={len(self.task.screenshots)}"
+                    )
+
+                    changed = True
+
         return changed, previous_call_id
 
 
@@ -1139,12 +1303,42 @@ async def stream_agent_response(
         task_added = False
 
         if tracker is None:
+            # Get debug_url from computer_tool if available and register a secure session
+            debug_url = None
+            debug_url_token = None
+            computer_tool = get_current_computer_tool()
+            if computer_tool is not None:
+                try:
+                    computer = getattr(computer_tool, "computer", None)
+                    if computer is not None:
+                        debug_url = getattr(computer, "debug_url", None)
+                        if callable(debug_url):
+                            debug_url = debug_url()
+                        if debug_url:
+                            LOGGER.info(f"[ComputerTaskTracker] Obtained debug_url: {debug_url}")
+                            # Register a secure debug session for proxy access
+                            callback = get_debug_session_callback()
+                            if callback is not None:
+                                try:
+                                    # TODO: Pass user_id for better authorization
+                                    debug_url_token = callback(debug_url, user_id=None)
+                                    LOGGER.info(f"[ComputerTaskTracker] Registered debug session token: {debug_url_token[:8]}...")
+                                except Exception as exc:
+                                    LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                            else:
+                                LOGGER.warning("[ComputerTaskTracker] Debug session callback not set - screencast will not be available")
+                except Exception as exc:
+                    LOGGER.debug(f"[ComputerTaskTracker] Failed to get debug_url: {exc}")
+
             tracker = ComputerTaskTracker(
                 item_id=item_id,
-                task=ThoughtTask(
+                task=ComputerUseTask(
                     status_indicator="loading",
                     title=None,
-                    content="",
+                    screenshots=[],
+                    action_sequence=[],
+                    debug_url=debug_url,
+                    debug_url_token=debug_url_token,
                 ),
             )
             computer_tasks[item_id] = tracker
@@ -1201,6 +1395,30 @@ async def stream_agent_response(
         raw_output: Any = None,
         parsed_output: Any = None,
     ) -> bool:
+        # Check if we need to register debug session after browser is ready
+        if tracker.task.debug_url_token is None:
+            computer_tool = get_current_computer_tool()
+            if computer_tool is not None:
+                try:
+                    computer = getattr(computer_tool, "computer", None)
+                    if computer is not None:
+                        debug_url = getattr(computer, "debug_url", None)
+                        if callable(debug_url):
+                            debug_url = debug_url()
+                        if debug_url:
+                            LOGGER.info(f"[ComputerTaskTracker] Browser started, obtained debug_url: {debug_url}")
+                            callback = get_debug_session_callback()
+                            if callback is not None:
+                                try:
+                                    debug_url_token = callback(debug_url, user_id=None)
+                                    tracker.task.debug_url_token = debug_url_token
+                                    tracker.task.debug_url = debug_url
+                                    LOGGER.info(f"[ComputerTaskTracker] Registered debug session token after browser start: {debug_url_token[:8]}...")
+                                except Exception as exc:
+                                    LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                except Exception as exc:
+                    LOGGER.debug(f"[ComputerTaskTracker] Failed to update debug_url: {exc}")
+
         updated, previous_call_id = tracker.update_from_output(
             call_id=call_id,
             status=status,

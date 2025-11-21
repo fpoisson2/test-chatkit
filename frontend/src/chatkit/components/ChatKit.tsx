@@ -9,6 +9,7 @@ import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
 import { ThreadHistory } from './ThreadHistory';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { DevToolsScreencast } from './DevToolsScreencast';
 import { useI18n } from '../../i18n/I18nProvider';
 import {
   Attachment,
@@ -42,7 +43,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     disclaimer,
     composer,
     theme,
+    api,
   } = options;
+
+  // Extract auth token from API headers for DevToolsScreencast
+  const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
 
   // Auto-scroll vers le bas
   useEffect(() => {
@@ -471,43 +476,111 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                     {/* Afficher les screenshots du browser automation (computer_use) */}
                     {(() => {
-                      const computerUseTask = item.workflow.tasks.find(
+                      // Find the computer_use task that is currently loading with a debug token,
+                      // or the last computer_use task with a debug token, or the last computer_use task
+                      const computerUseTasks = item.workflow.tasks.filter(
                         (task: any) => task.type === 'computer_use'
                       );
+
+                      let computerUseTask = computerUseTasks.find(
+                        (task: any) => task.status_indicator === 'loading' && task.debug_url_token
+                      );
+
+                      if (!computerUseTask) {
+                        // Find last task with debug_url_token
+                        const tasksWithToken = computerUseTasks.filter((task: any) => task.debug_url_token);
+                        computerUseTask = tasksWithToken[tasksWithToken.length - 1];
+                      }
+
+                      if (!computerUseTask && computerUseTasks.length > 0) {
+                        // Fallback to last computer_use task
+                        computerUseTask = computerUseTasks[computerUseTasks.length - 1];
+                      }
+
                       console.log('[ChatKit] Checking for computer_use in workflow:', item.id, 'computerUseTask:', computerUseTask);
-                      if (computerUseTask && computerUseTask.screenshots && computerUseTask.screenshots.length > 0) {
-                        const screenshot = computerUseTask.screenshots[computerUseTask.screenshots.length - 1];
+                      if (computerUseTask) {
+                        const hasScreenshots = computerUseTask.screenshots && computerUseTask.screenshots.length > 0;
+                        const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
+                        // Check if THIS SPECIFIC task is loading (not the workflow)
                         const isLoading = computerUseTask.status_indicator === 'loading';
-                        console.log('[ChatKit] Computer use screenshot found:', {
-                          id: screenshot.id,
+
+                        // Debug: log all relevant info
+                        console.log('[ChatKit] Computer use task details:', {
+                          hasDebugToken: !!computerUseTask.debug_url_token,
+                          debugToken: computerUseTask.debug_url_token ? `${computerUseTask.debug_url_token.substring(0, 8)}...` : 'none',
+                          debugUrl: computerUseTask.debug_url,
                           status: computerUseTask.status_indicator,
                           isLoading: isLoading,
-                          screenshotsCount: computerUseTask.screenshots.length,
-                          hasB64: !!screenshot.b64_image,
-                          hasDataUrl: !!screenshot.data_url,
-                          currentAction: computerUseTask.current_action
+                          screenshotsCount: computerUseTask.screenshots ? computerUseTask.screenshots.length : 0,
+                          currentAction: computerUseTask.current_action,
                         });
 
-                        const src = screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '');
-                        if (src) {
-                          console.log('[ChatKit] Showing browser screenshot');
+                        if (hasScreenshots) {
+                          console.log('[ChatKit] Screenshot info:', {
+                            id: screenshot.id,
+                            hasB64: !!screenshot.b64_image,
+                            hasDataUrl: !!screenshot.data_url,
+                            action: screenshot.action_description
+                          });
+                        }
+
+                        const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
+
+                        // Check if the workflow is still active:
+                        // - control.isLoading is true during streaming, false after end_of_turn
+                        // - If this is the last workflow AND control.isLoading is true, workflow is active
+                        const workflows = items.filter((i: any) => i.type === 'workflow');
+                        const lastWorkflow = workflows[workflows.length - 1];
+                        const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
+                        const isWorkflowActive = isLastWorkflow && control.isLoading;
+
+                        // Show screencast if:
+                        // - There's a debug_url_token
+                        // - AND (the task is currently loading OR the workflow is still active)
+                        const showScreencast = !!computerUseTask.debug_url_token && (isLoading || isWorkflowActive);
+                        const showScreenshot = !!src;
+                        const showPreview = showScreencast || showScreenshot;
+
+                        console.log('[ChatKit] Display decision:', {
+                          showScreencast,
+                          showScreenshot,
+                          showPreview,
+                          hasDebugToken: !!computerUseTask.debug_url_token,
+                          isLoading,
+                          isLastWorkflow,
+                          isWorkflowActive,
+                          controlIsLoading: control.isLoading,
+                          hasScreenshot: !!src
+                        });
+
+                        if (showPreview) {
                           return (
                             <div className="chatkit-computer-use-preview">
-                              {computerUseTask.current_action && (
+                              {computerUseTask.current_action && isLoading && (
                                 <div className="chatkit-current-action">
                                   <span className="chatkit-action-label">Action en cours:</span> {computerUseTask.current_action}
                                 </div>
                               )}
-                              <div className="chatkit-browser-screenshot-container">
-                                <img
-                                  src={src}
-                                  alt={screenshot.action_description || "Browser automation"}
-                                  className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                              {/* Show screencast if available for active tasks */}
+                              {showScreencast && (
+                                <DevToolsScreencast
+                                  debugUrlToken={computerUseTask.debug_url_token}
+                                  authToken={authToken}
                                 />
-                                {screenshot.action_description && (
-                                  <div className="chatkit-screenshot-caption">{screenshot.action_description}</div>
-                                )}
-                              </div>
+                              )}
+                              {/* Show screenshot for completed tasks or when no screencast */}
+                              {showScreenshot && !showScreencast && (
+                                <div className="chatkit-browser-screenshot-container">
+                                  <img
+                                    src={src}
+                                    alt={screenshot.action_description || "Browser automation"}
+                                    className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                                  />
+                                  {screenshot.action_description && (
+                                    <div className="chatkit-screenshot-caption">{screenshot.action_description}</div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         }

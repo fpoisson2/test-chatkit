@@ -670,6 +670,8 @@ export interface ComputerUseTask extends BaseTask {
   current_action?: string;
   action_sequence?: string[];
   call_id?: string;
+  debug_url?: string;
+  debug_url_token?: string;
 }
 
 export type Task = CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask;

@@ -9,6 +9,7 @@ export type AdminSectionKey =
   | "mcp-servers"
   | "telephony"
   | "workflow-monitor"
+  | "browser-test"
   | "settings"
   | "appearance"
   | "languages"
@@ -100,6 +101,16 @@ export const ADMIN_SECTIONS: AdminSection[] = [
     Component: lazy(() =>
       import("../pages/AdminWorkflowMonitorPage").then((module) => ({
         default: module.AdminWorkflowMonitorPage,
+      })),
+    ),
+    requireAdmin: true,
+  },
+  {
+    key: "browser-test",
+    labelKey: "admin.tabs.browserTest",
+    Component: lazy(() =>
+      import("../pages/AdminBrowserTestPage").then((module) => ({
+        default: module.AdminBrowserTestPage,
       })),
     ),
     requireAdmin: true,

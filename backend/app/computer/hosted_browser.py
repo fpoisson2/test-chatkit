@@ -239,9 +239,11 @@ class _PlaywrightDriver(_BaseBrowserDriver):
                 "Navigateur Playwright lancé en mode visible (headless=False)",
             )
         if self._debug_port is not None:
-            self._debug_url = f"http://{self._debug_host}:{self._debug_port}"
+            # For internal proxy use: always use 127.0.0.1 regardless of bind address
+            # The public access is handled via the /api/computer/cdp proxy endpoints
+            self._debug_url = f"http://127.0.0.1:{self._debug_port}"
             logger.info(
-                "DevTools Chrome accessibles pour le navigateur hébergé : %s",
+                "DevTools Chrome accessibles pour le navigateur hébergé (proxy interne) : %s",
                 self._debug_url,
             )
 
