@@ -624,13 +624,26 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           hasScreenshot: !!src
                         });
 
+                        const actionTitle = computerUseTask.current_action || screenshot?.action_description;
+                        const clickPosition = screenshot?.click_position || screenshot?.click;
+
+                        const toPercent = (value: number): number => {
+                          const scaled = value <= 1 ? value * 100 : value;
+                          return Math.min(100, Math.max(0, scaled));
+                        };
+
+                        const clickCoordinates = clickPosition
+                          ? {
+                              x: toPercent(clickPosition.x),
+                              y: toPercent(clickPosition.y),
+                            }
+                          : null;
+
                         if (showPreview) {
                           return (
                             <div className="chatkit-computer-use-preview">
-                              {computerUseTask.current_action && isLoading && (
-                                <div className="chatkit-current-action">
-                                  <span className="chatkit-action-label">Action en cours:</span> {computerUseTask.current_action}
-                                </div>
+                              {actionTitle && (
+                                <div className="chatkit-computer-action-title">{actionTitle}</div>
                               )}
                               {/* Show screencast if available for active tasks */}
                               {showScreencast && (
@@ -642,14 +655,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                               {/* Show screenshot for completed tasks or when no screencast */}
                               {showScreenshot && !showScreencast && (
                                 <div className="chatkit-browser-screenshot-container">
-                                  <img
-                                    src={src}
-                                    alt={screenshot.action_description || "Browser automation"}
-                                    className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
-                                  />
-                                  {screenshot.action_description && (
-                                    <div className="chatkit-screenshot-caption">{screenshot.action_description}</div>
-                                  )}
+                                  <div className="chatkit-browser-screenshot-image-wrapper">
+                                    <img
+                                      src={src}
+                                      alt={actionTitle || "Browser automation"}
+                                      className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                                    />
+                                    {clickCoordinates && (
+                                      <div
+                                        className="chatkit-browser-click-indicator"
+                                        style={{ left: `${clickCoordinates.x}%`, top: `${clickCoordinates.y}%` }}
+                                        aria-label={actionTitle || "Browser automation"}
+                                      />
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>

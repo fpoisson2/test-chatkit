@@ -138,37 +138,42 @@ function ComputerUseTaskRenderer({ task, t }: { task: ComputerUseTask; t: (key: 
     ? (latestScreenshot.data_url || (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : null))
     : null;
 
+  const actionTitle = task.current_action || latestScreenshot?.action_description || task.title;
+
+  const clickPosition = latestScreenshot?.click_position || latestScreenshot?.click;
+
+  const toPercent = (value: number): number => {
+    const scaled = value <= 1 ? value * 100 : value;
+    return Math.min(100, Math.max(0, scaled));
+  };
+
+  const clickCoordinates = clickPosition
+    ? {
+        x: toPercent(clickPosition.x),
+        y: toPercent(clickPosition.y),
+      }
+    : null;
+
   return (
     <div className="chatkit-task-computer-use">
-      {task.title && <div className="chatkit-task-title">{task.title}</div>}
-
-      {task.current_action && (
-        <div className="chatkit-task-current-action">
-          <span className="chatkit-task-action-label">{t('chatkit.task.currentAction')}:</span> {task.current_action}
-        </div>
-      )}
+      {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
 
       {imageSrc && (
         <div className="chatkit-task-browser-screenshot">
-          <img
-            src={imageSrc}
-            alt={latestScreenshot?.action_description || t('chatkit.task.browserScreenshot')}
-            className="chatkit-browser-screenshot-image"
-          />
-          {latestScreenshot?.action_description && (
-            <div className="chatkit-screenshot-description">{latestScreenshot.action_description}</div>
-          )}
-        </div>
-      )}
-
-      {task.action_sequence && task.action_sequence.length > 0 && (
-        <div className="chatkit-task-action-sequence">
-          <div className="chatkit-action-sequence-title">{t('chatkit.task.actionHistory')}:</div>
-          <ul className="chatkit-action-list">
-            {task.action_sequence.map((action, i) => (
-              <li key={i} className="chatkit-action-item">{action}</li>
-            ))}
-          </ul>
+          <div className="chatkit-browser-screenshot-image-wrapper">
+            <img
+              src={imageSrc}
+              alt={actionTitle || t('chatkit.task.browserScreenshot')}
+              className="chatkit-browser-screenshot-image"
+            />
+            {clickCoordinates && (
+              <div
+                className="chatkit-browser-click-indicator"
+                style={{ left: `${clickCoordinates.x}%`, top: `${clickCoordinates.y}%` }}
+                aria-label={t('chatkit.task.currentAction')}
+              />
+            )}
+          </div>
         </div>
       )}
     </div>

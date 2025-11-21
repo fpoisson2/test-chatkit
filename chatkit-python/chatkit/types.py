@@ -830,6 +830,12 @@ class ComputerUseScreenshot(BaseModel):
     action_description: str | None = None
     """Description of the action being performed when the screenshot was taken."""
 
+    click_position: dict[str, float] | None = None
+    """Optional normalized click coordinates associated with the screenshot."""
+
+    click: dict[str, float] | None = None
+    """Alias for ``click_position`` supporting alternate payload shapes."""
+
 
 class ComputerUseTask(BaseTask):
     """Workflow task for computer use browser automation."""
