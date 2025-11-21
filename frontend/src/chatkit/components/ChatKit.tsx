@@ -526,12 +526,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
-                        // Check if the workflow is still active by checking if there's an assistant_message after it
-                        // An assistant_message after the workflow means the turn is complete
-                        const itemIndex = items.findIndex((i: any) => i.id === item.id);
-                        const itemsAfter = items.slice(itemIndex + 1);
-                        const hasAssistantMessageAfter = itemsAfter.some((i: any) => i.type === 'assistant_message');
-                        const isWorkflowActive = !hasAssistantMessageAfter;
+                        // Check if the workflow is still active:
+                        // - control.isLoading is true during streaming, false after end_of_turn
+                        // - If this is the last workflow AND control.isLoading is true, workflow is active
+                        const workflows = items.filter((i: any) => i.type === 'workflow');
+                        const lastWorkflow = workflows[workflows.length - 1];
+                        const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
+                        const isWorkflowActive = isLastWorkflow && control.isLoading;
 
                         // Show screencast if:
                         // - There's a debug_url_token
@@ -546,8 +547,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           showPreview,
                           hasDebugToken: !!computerUseTask.debug_url_token,
                           isLoading,
+                          isLastWorkflow,
                           isWorkflowActive,
-                          hasAssistantMessageAfter,
+                          controlIsLoading: control.isLoading,
                           hasScreenshot: !!src
                         });
 
