@@ -164,12 +164,10 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
             f"Réutilisation du navigateur en cache ({thread_info}): {cache_key}"
         )
         computer = cached_browser
-        # Navigate to start_url if provided, even when reusing cached browser
-        if start_url:
-            computer.set_pending_navigation(start_url)
-            logger.info(
-                f"URL initiale configurée pour navigation: {start_url}"
-            )
+        # Don't navigate when reusing - keep browser at its current page
+        logger.debug(
+            "Navigateur réutilisé, conservation de la page actuelle"
+        )
     else:
         # Create new browser instance for this context
         try:
