@@ -6,6 +6,7 @@ import type {
   ThoughtTask,
   FileTask,
   ImageTask,
+  ComputerUseTask,
   URLSource,
   FileSource,
 } from '../types';
@@ -32,6 +33,7 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
       {task.type === 'thought' && <ThoughtTaskRenderer task={task} theme={theme} />}
       {task.type === 'file' && <FileTaskRenderer task={task} />}
       {task.type === 'image' && <ImageTaskRenderer task={task} t={t} />}
+      {task.type === 'computer_use' && <ComputerUseTaskRenderer task={task} t={t} />}
     </div>
   );
 }
@@ -121,6 +123,52 @@ function ImageTaskRenderer({ task, t }: { task: ImageTask; t: (key: string) => s
       {task.images && task.images.length > 0 && (
         <div className="chatkit-task-content">
           {t('chatkit.task.imageCompleted')}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComputerUseTaskRenderer({ task, t }: { task: ComputerUseTask; t: (key: string) => string }): JSX.Element {
+  const latestScreenshot = task.screenshots && task.screenshots.length > 0
+    ? task.screenshots[task.screenshots.length - 1]
+    : null;
+
+  const imageSrc = latestScreenshot
+    ? (latestScreenshot.data_url || (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : null))
+    : null;
+
+  return (
+    <div className="chatkit-task-computer-use">
+      {task.title && <div className="chatkit-task-title">{task.title}</div>}
+
+      {task.current_action && (
+        <div className="chatkit-task-current-action">
+          <span className="chatkit-task-action-label">{t('chatkit.task.currentAction')}:</span> {task.current_action}
+        </div>
+      )}
+
+      {imageSrc && (
+        <div className="chatkit-task-browser-screenshot">
+          <img
+            src={imageSrc}
+            alt={latestScreenshot?.action_description || t('chatkit.task.browserScreenshot')}
+            className="chatkit-browser-screenshot-image"
+          />
+          {latestScreenshot?.action_description && (
+            <div className="chatkit-screenshot-description">{latestScreenshot.action_description}</div>
+          )}
+        </div>
+      )}
+
+      {task.action_sequence && task.action_sequence.length > 0 && (
+        <div className="chatkit-task-action-sequence">
+          <div className="chatkit-action-sequence-title">{t('chatkit.task.actionHistory')}:</div>
+          <ul className="chatkit-action-list">
+            {task.action_sequence.map((action, i) => (
+              <li key={i} className="chatkit-action-item">{action}</li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
