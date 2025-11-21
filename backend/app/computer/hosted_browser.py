@@ -161,7 +161,10 @@ class _PlaywrightDriver(_BaseBrowserDriver):
 
         debug_host = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_HOST", "127.0.0.1")
         debug_port_raw = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT")
+        # Public host for debug URL (can be different from bind host for remote access)
+        debug_public_host = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_PUBLIC_HOST")
         self._debug_host = debug_host
+        self._debug_public_host = debug_public_host
         try:
             parsed = int(debug_port_raw) if debug_port_raw else None
         except ValueError:
@@ -239,7 +242,18 @@ class _PlaywrightDriver(_BaseBrowserDriver):
                 "Navigateur Playwright lancé en mode visible (headless=False)",
             )
         if self._debug_port is not None:
-            self._debug_url = f"http://{self._debug_host}:{self._debug_port}"
+            # Determine the host to use for the public debug URL:
+            # 1. If CHATKIT_HOSTED_BROWSER_DEBUG_PUBLIC_HOST is set, use it (for remote access)
+            # 2. If binding to 0.0.0.0, use 127.0.0.1 for local access
+            # 3. Otherwise, use the bind host
+            if self._debug_public_host:
+                debug_url_host = self._debug_public_host
+            elif self._debug_host == "0.0.0.0":
+                debug_url_host = "127.0.0.1"
+            else:
+                debug_url_host = self._debug_host
+
+            self._debug_url = f"http://{debug_url_host}:{self._debug_port}"
             logger.info(
                 "DevTools Chrome accessibles pour le navigateur hébergé : %s",
                 self._debug_url,

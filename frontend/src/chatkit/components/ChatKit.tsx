@@ -482,7 +482,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                       console.log('[ChatKit] Checking for computer_use in workflow:', item.id, 'computerUseTask:', computerUseTask);
                       if (computerUseTask) {
                         const hasScreenshots = computerUseTask.screenshots && computerUseTask.screenshots.length > 0;
-                        const screenshot = hasScreenshots ? computerUseTask.screenshots[0] : null;
+                        const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
                         const isLoading = computerUseTask.status_indicator === 'loading';
 
                         if (hasScreenshots) {
@@ -501,7 +501,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
                         // Show screencast only if task is still loading (in progress)
-                        // Otherwise show the first screenshot
+                        // Otherwise show the last screenshot
                         const showScreencast = computerUseTask.debug_url_token && isLoading;
                         const showScreenshot = src && (!showScreencast || !computerUseTask.debug_url_token);
                         const showPreview = showScreencast || showScreenshot;
