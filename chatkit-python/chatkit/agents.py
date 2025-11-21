@@ -1395,6 +1395,30 @@ async def stream_agent_response(
         raw_output: Any = None,
         parsed_output: Any = None,
     ) -> bool:
+        # Check if we need to register debug session after browser is ready
+        if tracker.task.debug_url_token is None:
+            computer_tool = get_current_computer_tool()
+            if computer_tool is not None:
+                try:
+                    computer = getattr(computer_tool, "computer", None)
+                    if computer is not None:
+                        debug_url = getattr(computer, "debug_url", None)
+                        if callable(debug_url):
+                            debug_url = debug_url()
+                        if debug_url:
+                            LOGGER.info(f"[ComputerTaskTracker] Browser started, obtained debug_url: {debug_url}")
+                            callback = get_debug_session_callback()
+                            if callback is not None:
+                                try:
+                                    debug_url_token = callback(debug_url, user_id=None)
+                                    tracker.task.debug_url_token = debug_url_token
+                                    tracker.task.debug_url = debug_url
+                                    LOGGER.info(f"[ComputerTaskTracker] Registered debug session token after browser start: {debug_url_token[:8]}...")
+                                except Exception as exc:
+                                    LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                except Exception as exc:
+                    LOGGER.debug(f"[ComputerTaskTracker] Failed to update debug_url: {exc}")
+
         updated, previous_call_id = tracker.update_from_output(
             call_id=call_id,
             status=status,
