@@ -1092,6 +1092,32 @@
   color: var(--color-text-accent);
 }
 
+.chatkit-debug-url {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--color-bg-warning);
+  border-radius: 6px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chatkit-debug-label {
+  font-weight: 600;
+  color: var(--color-text-default);
+}
+
+.chatkit-debug-link {
+  color: var(--color-text-accent);
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.chatkit-debug-link:hover {
+  opacity: 0.8;
+}
+
 .chatkit-browser-screenshot-container {
   display: flex;
   flex-direction: column;
