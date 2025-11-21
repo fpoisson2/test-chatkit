@@ -507,10 +507,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
-                        // Show screencast only if task is still loading (in progress)
-                        // Otherwise show the last screenshot
-                        const showScreencast = computerUseTask.debug_url_token && isLoading;
-                        const showScreenshot = src && (!showScreencast || !computerUseTask.debug_url_token);
+                        // Show screencast if debug_url_token is available (browser is running)
+                        // Show screenshot as fallback when screencast is not available
+                        const showScreencast = !!computerUseTask.debug_url_token;
+                        const showScreenshot = !showScreencast && !!src;
                         const showPreview = showScreencast || showScreenshot;
 
                         console.log('[ChatKit] Display decision:', {
