@@ -64,29 +64,25 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
 
-    let latestActiveScreencast: { token: string; itemId: string } | null = null;
+    let latestScreencastWithToken: { token: string; itemId: string } | null = null;
 
-    // Parcourir tous les workflows pour trouver le dernier avec un computer_use task actif (loading)
+    // Parcourir tous les workflows pour trouver le dernier avec un computer_use task qui a un debug_url_token
     workflows.forEach((item: any) => {
       const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask?.debug_url_token) return;
 
-      const isLoading = computerUseTask.status_indicator === 'loading';
-
-      // Un screencast est actif s'il est en cours de chargement
-      if (isLoading) {
-        latestActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
-      }
+      // Capturer tout screencast qui a un token, qu'il soit loading ou complete
+      latestScreencastWithToken = {
+        token: computerUseTask.debug_url_token,
+        itemId: item.id,
+      };
     });
 
     // Mise à jour de activeScreencast :
-    // - Si on trouve un screencast actif différent de l'actuel, on le met à jour
-    // - Si aucun screencast actif n'est trouvé, on garde l'ancien (persistance)
-    if (latestActiveScreencast && latestActiveScreencast.token !== activeScreencast?.token) {
-      setActiveScreencast(latestActiveScreencast);
+    // - Si on trouve un screencast avec un token différent de l'actuel, on le met à jour (nouveau screencast)
+    // - Si aucun nouveau screencast n'est trouvé, on garde l'ancien (persistance)
+    if (latestScreencastWithToken && latestScreencastWithToken.token !== activeScreencast?.token) {
+      setActiveScreencast(latestScreencastWithToken);
     }
   }, [activeScreencast?.token, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
