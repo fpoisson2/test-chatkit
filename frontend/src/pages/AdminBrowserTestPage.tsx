@@ -3,6 +3,7 @@ import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { DevToolsScreencast } from "../chatkit/components/DevToolsScreencast";
 import { FormSection } from "../components";
+import { Modal } from "../components/Modal";
 import { makeApiEndpointCandidates } from "../utils/backend";
 
 type BrowserSession = {
@@ -51,6 +52,7 @@ export const AdminBrowserTestPage = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [startUrl, setStartUrl] = useState("https://www.google.com");
   const [navigateUrl, setNavigateUrl] = useState("");
+  const [isControlModalOpen, setIsControlModalOpen] = useState(false);
 
   // Clear messages after 5 seconds
   useEffect(() => {
@@ -62,6 +64,12 @@ export const AdminBrowserTestPage = () => {
       return () => clearTimeout(timer);
     }
   }, [error, success]);
+
+  useEffect(() => {
+    if (!browserSession) {
+      setIsControlModalOpen(false);
+    }
+  }, [browserSession]);
 
   const handleStartBrowser = async () => {
     if (!token) return;
@@ -100,6 +108,13 @@ export const AdminBrowserTestPage = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleRestartBrowser = async () => {
+    if (browserSession) {
+      await handleCloseBrowser();
+    }
+    await handleStartBrowser();
   };
 
   const handleNavigate = async () => {
@@ -170,46 +185,11 @@ export const AdminBrowserTestPage = () => {
     }
   };
 
-  const handleTakeControl = async () => {
-    if (!token || !browserSession) return;
-
-    try {
-      // Get the DevTools WebSocket path from backend
-      const response = await makeApiRequest(
-        `/api/computer/browser/devtools/${browserSession.token}`,
-        {
-          method: "GET",
-        },
-        token
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to get DevTools URL");
-      }
-
-      const data = await response.json();
-      const wsPath = data.devtools_ws_path;
-
-      // Build the full WebSocket URL using current location
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}${wsPath}`;
-
-      // Show instructions in a user-friendly way
-      const instructions = `Pour prendre le contrôle du navigateur :\n\n1. Ouvrez Chrome et allez à : chrome://inspect/#devices\n\n2. Cliquez sur "Configure..." et ajoutez :\n   ${window.location.host}\n\n3. Attendez quelques secondes, votre navigateur devrait apparaître\n\n4. Cliquez sur "inspect" sous votre navigateur\n\nAlternative : Copiez cette URL WebSocket :\n${wsUrl}`;
-
-      // Copy WebSocket URL to clipboard
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(wsUrl);
-        alert(instructions + "\n\n✓ URL WebSocket copiée dans le presse-papiers !");
-      } else {
-        alert(instructions);
-      }
-
-      setSuccess("Instructions affichées - URL WebSocket copiée");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get DevTools info");
-    }
+  const handleTakeControl = () => {
+    if (!browserSession) return;
+    setError(null);
+    setIsControlModalOpen(true);
+    setSuccess(t("admin.browserTest.success.controlReady"));
   };
 
   return (
@@ -308,6 +288,14 @@ export const AdminBrowserTestPage = () => {
             <div className="browser-test__action-buttons">
               <button
                 type="button"
+                className="button button--secondary"
+                onClick={handleRestartBrowser}
+                disabled={isLoading}
+              >
+                {t("admin.browserTest.controls.restartBrowser")}
+              </button>
+              <button
+                type="button"
                 className="button button--primary"
                 onClick={handleTakeControl}
                 disabled={isLoading}
@@ -340,6 +328,26 @@ export const AdminBrowserTestPage = () => {
             />
           </div>
         </FormSection>
+      )}
+
+      {browserSession && (
+        <Modal
+          title={t("admin.browserTest.modal.title")}
+          onClose={() => setIsControlModalOpen(false)}
+          open={isControlModalOpen}
+          size="xl"
+        >
+          <p className="admin-section__description">
+            {t("admin.browserTest.modal.description")}
+          </p>
+          <DevToolsScreencast
+            debugUrlToken={browserSession.token}
+            authToken={token}
+            className="browser-test-screencast browser-test-screencast--interactive"
+            enableInput
+          />
+          <p className="browser-test__tip">{t("admin.browserTest.modal.hint")}</p>
+        </Modal>
       )}
 
       <style>{`
@@ -390,6 +398,24 @@ export const AdminBrowserTestPage = () => {
 
         .browser-test__preview {
           margin-top: 16px;
+        }
+
+        .browser-test-screencast--interactive .chatkit-screencast-canvas-container {
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        }
+
+        .browser-test-screencast--interactive .chatkit-screencast-canvas {
+          outline: none;
+          cursor: crosshair;
+        }
+
+        .browser-test__tip {
+          margin-top: 12px;
+          color: #4b5563;
+          font-size: 0.95rem;
         }
 
         .button--danger {

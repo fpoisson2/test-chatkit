@@ -5,6 +5,7 @@ interface DevToolsScreencastProps {
   authToken?: string; // JWT token for authentication
   className?: string;
   onConnectionError?: () => void; // Callback when connection fails
+  enableInput?: boolean; // Capture keyboard/mouse events and forward to CDP
 }
 
 interface ScreencastFrame {
@@ -17,7 +18,13 @@ interface ScreencastFrame {
   };
 }
 
-export function DevToolsScreencast({ debugUrlToken, authToken, className = '', onConnectionError }: DevToolsScreencastProps): JSX.Element {
+export function DevToolsScreencast({
+  debugUrlToken,
+  authToken,
+  className = '',
+  enableInput = false,
+  onConnectionError,
+}: DevToolsScreencastProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -25,6 +32,7 @@ export function DevToolsScreencast({ debugUrlToken, authToken, className = '', o
   const [frameCount, setFrameCount] = useState(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageIdRef = useRef(1);
+  const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -115,6 +123,11 @@ export function DevToolsScreencast({ debugUrlToken, authToken, className = '', o
             // Handle screencast frame
             if (message.method === 'Page.screencastFrame') {
               const frameData: ScreencastFrame = message.params;
+
+              // Keep track of latest frame metadata to map pointer events
+              if (frameData.metadata) {
+                lastMetadataRef.current = frameData.metadata;
+              }
 
               // Draw frame to canvas
               if (canvasRef.current && frameData.data) {
@@ -216,6 +229,112 @@ export function DevToolsScreencast({ debugUrlToken, authToken, className = '', o
     };
   }, [debugUrlToken, authToken]);
 
+  const sendCdpCommand = (command: Record<string, unknown>) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(command));
+    }
+  };
+
+  const mapPointerToPage = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    const metadata = lastMetadataRef.current;
+    if (!canvas || !metadata) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = metadata.deviceWidth / canvas.width;
+    const scaleY = metadata.deviceHeight / canvas.height;
+
+    const canvasX = ((clientX - rect.left) / rect.width) * canvas.width;
+    const canvasY = ((clientY - rect.top) / rect.height) * canvas.height;
+
+    return {
+      x: canvasX * scaleX,
+      y: canvasY * scaleY,
+    };
+  };
+
+  const handleMouseEvent = (
+    type: 'mousePressed' | 'mouseReleased' | 'mouseMoved',
+    event: React.MouseEvent<HTMLCanvasElement>
+  ) => {
+    if (!enableInput) return;
+    const position = mapPointerToPage(event.clientX, event.clientY);
+    if (!position) return;
+
+    event.preventDefault();
+
+    const buttonMap: Record<number, 'left' | 'middle' | 'right'> = {
+      0: 'left',
+      1: 'middle',
+      2: 'right',
+    };
+
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Input.dispatchMouseEvent',
+      params: {
+        type,
+        x: position.x,
+        y: position.y,
+        button: buttonMap[event.button] || 'left',
+        clickCount: 1,
+        modifiers:
+          (event.altKey ? 1 : 0) +
+          (event.ctrlKey ? 2 : 0) +
+          (event.metaKey ? 4 : 0) +
+          (event.shiftKey ? 8 : 0),
+      },
+    };
+
+    sendCdpCommand(command);
+  };
+
+  const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
+    if (!enableInput) return;
+    const position = mapPointerToPage(event.clientX, event.clientY);
+    if (!position) return;
+
+    event.preventDefault();
+
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Input.dispatchMouseEvent',
+      params: {
+        type: 'mouseWheel',
+        x: position.x,
+        y: position.y,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        button: 'none',
+        clickCount: 0,
+      },
+    };
+
+    sendCdpCommand(command);
+  };
+
+  const handleKeyEvent = (type: 'keyDown' | 'keyUp', event: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if (!enableInput) return;
+    event.preventDefault();
+
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Input.dispatchKeyEvent',
+      params: {
+        type,
+        key: event.key,
+        code: event.code,
+        windowsVirtualKeyCode: event.key.length === 1 ? event.key.toUpperCase().charCodeAt(0) : 0,
+        text: event.key.length === 1 ? event.key : undefined,
+      },
+    };
+
+    sendCdpCommand(command);
+  };
+
   return (
     <div className={`chatkit-devtools-screencast ${className}`}>
       <div className="chatkit-screencast-header">
@@ -244,6 +363,13 @@ export function DevToolsScreencast({ debugUrlToken, authToken, className = '', o
         <canvas
           ref={canvasRef}
           className="chatkit-screencast-canvas"
+          tabIndex={enableInput ? 0 : -1}
+          onMouseDown={(e) => handleMouseEvent('mousePressed', e)}
+          onMouseUp={(e) => handleMouseEvent('mouseReleased', e)}
+          onMouseMove={(e) => handleMouseEvent('mouseMoved', e)}
+          onWheel={handleWheel}
+          onKeyDown={(e) => handleKeyEvent('keyDown', e)}
+          onKeyUp={(e) => handleKeyEvent('keyUp', e)}
         />
       </div>
     </div>

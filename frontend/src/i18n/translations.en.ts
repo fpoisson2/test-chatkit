@@ -1215,6 +1215,7 @@ export const en: TranslationDictionary = {
   "admin.browserTest.controls.startBrowser": "Start Browser",
   "admin.browserTest.controls.navigateUrl": "Navigate to URL",
   "admin.browserTest.controls.navigate": "Navigate",
+  "admin.browserTest.controls.restartBrowser": "Start a fresh browser",
   "admin.browserTest.controls.takeControl": "Take Control",
   "admin.browserTest.controls.closeBrowser": "Close Browser",
   "admin.browserTest.info.status": "Status",
@@ -1225,6 +1226,10 @@ export const en: TranslationDictionary = {
   "admin.browserTest.success.started": "Browser started successfully",
   "admin.browserTest.success.navigated": "Navigation successful",
   "admin.browserTest.success.controlOpened": "Chrome DevTools opened in new window",
+  "admin.browserTest.success.controlReady": "Interactive control is ready inside the modal",
   "admin.browserTest.success.closed": "Browser closed successfully",
+  "admin.browserTest.modal.title": "Control the browser directly",
+  "admin.browserTest.modal.description": "Interact with the hosted browser from here. Click inside the preview to focus and use your mouse and keyboard like a normal tab.",
+  "admin.browserTest.modal.hint": "Tip: use the “Start a fresh browser” button if you need a brand-new session distinct from the one used in chat.",
 };
   
