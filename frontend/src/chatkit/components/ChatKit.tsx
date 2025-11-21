@@ -32,7 +32,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const [isMultiline, setIsMultiline] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -66,11 +65,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const paddingBottom = parseFloat(styles.paddingBottom || '0');
     const minHeight = lineHeight + paddingTop + paddingBottom;
 
-    // Vérifier si le contenu nécessite plus d'une ligne
-    const isNowMultiline = textarea.scrollHeight > minHeight + 1; // marge pour les arrondis
-    setIsMultiline(isNowMultiline);
-
-    // Ajuster la hauteur en fonction du contenu
+    // Ajuster la hauteur en fonction du contenu tout en limitant le multi-ligne
     const nextHeight = Math.max(textarea.scrollHeight, minHeight);
     textarea.style.height = `${Math.min(nextHeight, 200)}px`;
   }, [inputValue]);
@@ -611,7 +606,31 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       {/* Composer */}
       <div className="chatkit-composer">
-        <form onSubmit={handleSubmit} className={isMultiline ? 'chatkit-form-multiline' : ''}>
+        <form onSubmit={handleSubmit}>
+          {composer?.attachments?.enabled && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={composer.attachments.accept ? Object.values(composer.attachments.accept).flat().join(',') : undefined}
+                onChange={(e) => handleFileSelect(e.target.files)}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                className="chatkit-attach-button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={control.isLoading}
+                aria-label="Joindre un fichier"
+                title="Joindre un fichier"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                </svg>
+              </button>
+            </>
+          )}
           <textarea
             ref={textareaRef}
             value={inputValue}
@@ -628,43 +647,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             className="chatkit-input"
             rows={1}
           />
-          <div className="chatkit-composer-actions">
-            {composer?.attachments?.enabled && (
-              <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept={composer.attachments.accept ? Object.values(composer.attachments.accept).flat().join(',') : undefined}
-                  onChange={(e) => handleFileSelect(e.target.files)}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  type="button"
-                  className="chatkit-attach-button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={control.isLoading}
-                  aria-label="Joindre un fichier"
-                  title="Joindre un fichier"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                  </svg>
-                </button>
-              </>
-            )}
-            <button
-              type="submit"
-              disabled={(!inputValue.trim() && attachments.length === 0) || control.isLoading}
-              className="chatkit-submit"
-              aria-label="Envoyer"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="16 12 12 8 8 12"></polyline>
-                <line x1="12" y1="16" x2="12" y2="8"></line>
-              </svg>
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={(!inputValue.trim() && attachments.length === 0) || control.isLoading}
+            className="chatkit-submit"
+            aria-label="Envoyer"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16 12 12 8 8 12"></polyline>
+              <line x1="12" y1="16" x2="12" y2="8"></line>
+            </svg>
+          </button>
         </form>
       </div>
 
