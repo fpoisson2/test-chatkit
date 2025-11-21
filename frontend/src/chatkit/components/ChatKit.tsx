@@ -33,6 +33,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -53,6 +54,34 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [control.thread?.items.length]);
+
+  // Conserver le dernier screencast actif jusqu'à ce qu'un nouveau arrive ou qu'il se déconnecte
+  useEffect(() => {
+    const items = control.thread?.items || [];
+    const workflows = items.filter((i: any) => i.type === 'workflow');
+    const lastWorkflow = workflows[workflows.length - 1];
+
+    let latestActiveScreencast: { token: string; itemId: string } | null = null;
+
+    workflows.forEach((item: any) => {
+      const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
+      if (!computerUseTask?.debug_url_token) return;
+
+      const isLoading = computerUseTask.status_indicator === 'loading';
+      const isWorkflowActive = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
+
+      if (isLoading || isWorkflowActive) {
+        latestActiveScreencast = {
+          token: computerUseTask.debug_url_token,
+          itemId: item.id,
+        };
+      }
+    });
+
+    if (latestActiveScreencast && latestActiveScreencast.token !== activeScreencast?.token) {
+      setActiveScreencast(latestActiveScreencast);
+    }
+  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
 
   // Gérer l'ajout de fichiers
   const handleFileSelect = useCallback(async (files: FileList | null) => {
@@ -538,8 +567,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         // - There's a debug_url_token
                         // - AND (the task is currently loading OR the workflow is still active)
                         const showScreencast = !!computerUseTask.debug_url_token && (isLoading || isWorkflowActive);
+                        const isPersistedScreencast =
+                          !!computerUseTask.debug_url_token &&
+                          activeScreencast?.token === computerUseTask.debug_url_token;
                         const showScreenshot = !!src;
-                        const showPreview = showScreencast || showScreenshot;
+                        const shouldRenderScreencast = showScreencast || isPersistedScreencast;
+                        const showPreview = shouldRenderScreencast || showScreenshot;
 
                         console.log('[ChatKit] Display decision:', {
                           showScreencast,
@@ -562,15 +595,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                 </div>
                               )}
                               {/* Show screencast if available for active tasks */}
-                              {showScreencast && (
+                              {shouldRenderScreencast && (
                                 <DevToolsScreencast
                                   debugUrlToken={computerUseTask.debug_url_token}
                                   authToken={authToken}
                                   enableInput
+                                  onConnectionError={() => {
+                                    setActiveScreencast(current =>
+                                      current?.token === computerUseTask.debug_url_token ? null : current
+                                    );
+                                  }}
                                 />
                               )}
                               {/* Show screenshot for completed tasks or when no screencast */}
-                              {showScreenshot && !showScreencast && (
+                              {showScreenshot && !shouldRenderScreencast && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <img
                                     src={src}
