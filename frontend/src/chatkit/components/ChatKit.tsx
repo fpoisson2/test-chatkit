@@ -507,9 +507,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
-                        // Show screencast if debug_url_token is available (browser is running)
-                        // Show screenshot as fallback when screencast is not available OR if connection fails
-                        const showScreencast = !!computerUseTask.debug_url_token;
+                        // Show screencast ONLY for current/active task (isLoading)
+                        // For completed tasks, always show the last screenshot
+                        const showScreencast = !!computerUseTask.debug_url_token && isLoading;
                         const showScreenshot = !!src;
                         const showPreview = showScreencast || showScreenshot;
 
