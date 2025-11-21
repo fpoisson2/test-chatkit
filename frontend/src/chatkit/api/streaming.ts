@@ -91,9 +91,14 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
       return thread;
     }
 
+    // Add default status for assistant messages if not present
+    const item = event.item.type === 'assistant_message' && !event.item.status
+      ? { ...event.item, status: 'in_progress' as const }
+      : event.item;
+
     return {
       ...thread,
-      items: [...thread.items, event.item],
+      items: [...thread.items, item],
     };
   }
 
@@ -161,9 +166,14 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
     // Si l'item n'existe pas encore (ex: première apparition via thread.item.done),
     // l'ajouter à la liste plutôt que d'ignorer l'événement.
     if (existingIndex === -1) {
+      // Add default status for assistant messages if not present
+      const item = event.item.type === 'assistant_message' && !event.item.status
+        ? { ...event.item, status: 'completed' as const }
+        : event.item;
+
       return {
         ...thread,
-        items: [...thread.items, event.item],
+        items: [...thread.items, item],
       };
     }
 
@@ -174,11 +184,18 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
 
       // Fusionner les données complétées avec l'item local afin de ne pas
       // perdre des informations (ex: role) si le backend renvoie un objet incomplet.
-      return {
+      const merged = {
         ...item,
         ...event.item,
         content: event.item.content ?? (item as AssistantMessageItem).content,
       };
+
+      // Ensure assistant messages have completed status when done
+      if (merged.type === 'assistant_message' && !merged.status) {
+        merged.status = 'completed';
+      }
+
+      return merged;
     });
 
     return {
@@ -360,9 +377,14 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
       return thread;
     }
 
+    // Add default status for assistant messages if not present
+    const item = event.item.type === 'assistant_message' && !event.item.status
+      ? { ...event.item, status: 'in_progress' as const }
+      : event.item;
+
     return {
       ...thread,
-      items: [...thread.items, event.item],
+      items: [...thread.items, item],
     };
   }
 
@@ -377,6 +399,13 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
               ...event.item.workflow,
               completed: true,
             },
+          };
+        }
+        // Si c'est un assistant message, s'assurer qu'il a le status completed
+        if (event.item.type === 'assistant_message') {
+          return {
+            ...event.item,
+            status: event.item.status || 'completed',
           };
         }
         return event.item;
@@ -453,6 +482,7 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
         role: 'assistant',
         content: [],
         created_at: new Date().toISOString(),
+        status: 'in_progress',
       };
 
       thread = {
