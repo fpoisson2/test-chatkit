@@ -213,8 +213,10 @@
 }
 
 .chatkit-composer-form.is-singleline {
-  grid-template-areas: "input actions";
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "attach input send";
   grid-template-rows: auto;
+  align-items: end;
 }
 
 .chatkit-composer-form.is-multiline {
@@ -272,6 +274,24 @@
   gap: 8px;
   width: 100%;
   grid-area: actions;
+}
+
+.chatkit-composer-actions .chatkit-attach-wrapper {
+  display: flex;
+  align-items: flex-end;
+  grid-area: attach;
+}
+
+.chatkit-composer-form.is-multiline .chatkit-composer-actions {
+  justify-content: space-between;
+}
+
+.chatkit-composer-form.is-singleline .chatkit-composer-actions {
+  display: contents;
+}
+
+.chatkit-composer-form.is-singleline .chatkit-submit {
+  grid-area: send;
 }
 
 .chatkit-composer-actions .chatkit-submit {
