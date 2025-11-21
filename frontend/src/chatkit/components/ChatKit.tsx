@@ -63,18 +63,18 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   useEffect(() => {
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
-    const lastWorkflow = workflows[workflows.length - 1];
 
     let latestActiveScreencast: { token: string; itemId: string } | null = null;
 
+    // Parcourir tous les workflows pour trouver le dernier avec un computer_use task actif (loading)
     workflows.forEach((item: any) => {
       const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask?.debug_url_token) return;
 
       const isLoading = computerUseTask.status_indicator === 'loading';
-      const isWorkflowActive = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
 
-      if (isLoading || isWorkflowActive) {
+      // Un screencast est actif s'il est en cours de chargement
+      if (isLoading) {
         latestActiveScreencast = {
           token: computerUseTask.debug_url_token,
           itemId: item.id,
@@ -82,10 +82,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     });
 
+    // Mise à jour de activeScreencast :
+    // - Si on trouve un screencast actif différent de l'actuel, on le met à jour
+    // - Si aucun screencast actif n'est trouvé, on garde l'ancien (persistance)
     if (latestActiveScreencast && latestActiveScreencast.token !== activeScreencast?.token) {
       setActiveScreencast(latestActiveScreencast);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.token, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -631,40 +634,28 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
-                        // Check if the workflow is still active:
-                        // - control.isLoading is true during streaming, false after end_of_turn
-                        // - If this is the last workflow AND control.isLoading is true, workflow is active
-                        const workflows = items.filter((i: any) => i.type === 'workflow');
-                        const lastWorkflow = workflows[workflows.length - 1];
-                        const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
-                        const isWorkflowActive = isLastWorkflow && control.isLoading;
-
-                        // Prefer the persisted token for this workflow if the task no longer exposes it
+                        // Vérifier si ce workflow contient le screencast actuellement actif
                         const debugUrlToken =
                           computerUseTask.debug_url_token ||
                           (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
 
-                        // Show screencast if:
-                        // - There's a debug_url_token (live or persisted)
-                        // - AND (the task is currently loading OR the workflow is still active)
-                        const showScreencast = !!debugUrlToken && (isLoading || isWorkflowActive);
-                        const isPersistedScreencast =
-                          !!debugUrlToken &&
-                          activeScreencast?.itemId === item.id &&
-                          activeScreencast?.token === debugUrlToken;
-                        const showScreenshot = !!src;
-                        const shouldRenderScreencast = showScreencast || isPersistedScreencast;
-                        const showPreview = shouldRenderScreencast || showScreenshot;
+                        const isActiveScreencast = activeScreencast?.itemId === item.id && !!debugUrlToken;
+
+                        // Afficher le screencast live seulement si c'est le screencast actif
+                        const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
+
+                        // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
+                        const showScreenshot = !!src && !showLiveScreencast;
+
+                        const showPreview = showLiveScreencast || showScreenshot;
 
                         console.log('[ChatKit] Display decision:', {
-                          showScreencast,
+                          showLiveScreencast,
                           showScreenshot,
                           showPreview,
+                          isActiveScreencast,
                           hasDebugToken: !!computerUseTask.debug_url_token,
                           isLoading,
-                          isLastWorkflow,
-                          isWorkflowActive,
-                          controlIsLoading: control.isLoading,
                           hasScreenshot: !!src
                         });
 
@@ -689,8 +680,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                               {actionTitle && (
                                 <div className="chatkit-computer-action-title">{actionTitle}</div>
                               )}
-                              {/* Show screencast if available for active tasks */}
-                              {shouldRenderScreencast && (
+                              {/* Show screencast if this is the active screencast */}
+                              {showLiveScreencast && (
                                   <DevToolsScreencast
                                     debugUrlToken={debugUrlToken as string}
                                     authToken={authToken}
@@ -702,8 +693,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                     }}
                                 />
                               )}
-                              {/* Show screenshot for completed tasks or when no screencast */}
-                              {showScreenshot && !shouldRenderScreencast && (
+                              {/* Show screenshot for completed tasks or non-active screencasts */}
+                              {showScreenshot && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <div className="chatkit-browser-screenshot-image-wrapper">
                                     <img
