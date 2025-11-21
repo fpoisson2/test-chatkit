@@ -566,6 +566,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                 <DevToolsScreencast
                                   debugUrlToken={computerUseTask.debug_url_token}
                                   authToken={authToken}
+                                  enableInput
                                 />
                               )}
                               {/* Show screenshot for completed tasks or when no screencast */}
