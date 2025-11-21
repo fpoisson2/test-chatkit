@@ -39,7 +39,7 @@ class BrowserNavigateRequest(BaseModel):
 
 
 # Store debug URLs per session token
-# Format: {token: {"debug_url": str, "user_id": int, "driver": _BaseBrowserDriver | None}}
+# Format: {token: {"debug_url": str, "user_id": int, "browser": HostedBrowser | None, "driver": _BaseBrowserDriver | None}}
 _DEBUG_SESSIONS: dict[str, dict[str, Any]] = {}
 
 
@@ -245,25 +245,26 @@ async def start_test_browser(
             start_url=request.url,
         )
 
-        # Get the driver to access debug_url
-        driver = browser._driver
+        # Get the driver (this initializes it if needed)
+        driver = await browser._get_driver()
 
         # Ensure browser is ready (this starts it)
         await driver.ensure_ready()
 
-        # Get debug URL from driver
-        debug_url = driver.debug_url()
+        # Get debug URL from browser property
+        debug_url = browser.debug_url
         if not debug_url:
             raise HTTPException(
                 status_code=500,
                 detail="Failed to get debug URL from browser"
             )
 
-        # Register debug session with driver reference
+        # Register debug session with browser reference
         token = secrets.token_urlsafe(32)
         _DEBUG_SESSIONS[token] = {
             "debug_url": debug_url,
             "user_id": current_user.id,
+            "browser": browser,
             "driver": driver,
         }
 
