@@ -661,6 +661,14 @@ export interface ComputerUseScreenshot {
   data_url?: string;
   timestamp?: string;
   action_description?: string;
+  click_position?: {
+    x: number;
+    y: number;
+  };
+  click?: {
+    x: number;
+    y: number;
+  };
 }
 
 export interface ComputerUseTask extends BaseTask {
