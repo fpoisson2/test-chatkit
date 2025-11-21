@@ -2,7 +2,7 @@ import asyncio
 import base64
 import json
 import logging
-import threading
+import contextvars
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -95,8 +95,10 @@ from .widgets import Markdown, Text, WidgetRoot
 
 LOGGER = logging.getLogger(__name__)
 
-# Thread-local storage for current computer tool
-_thread_local_state = threading.local()
+# Context-local storage for current computer tool (propagates across async tasks)
+_computer_tool_ctx: contextvars.ContextVar[Any | None] = contextvars.ContextVar(
+    "computer_tool_ctx", default=None
+)
 
 # Global callback for registering debug sessions (injected by backend)
 _debug_session_callback: Any | None = None
@@ -119,12 +121,12 @@ def set_current_computer_tool(computer_tool: Any) -> None:
 
     This should be called from the backend when building agent tools.
     """
-    _thread_local_state.computer_tool = computer_tool
+    _computer_tool_ctx.set(computer_tool)
 
 
 def get_current_computer_tool() -> Any | None:
     """Get the current computer tool if set."""
-    return getattr(_thread_local_state, "computer_tool", None)
+    return _computer_tool_ctx.get()
 
 
 class ClientToolCall(BaseModel):

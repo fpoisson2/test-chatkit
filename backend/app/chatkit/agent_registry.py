@@ -4,7 +4,7 @@ import json
 import keyword
 import logging
 import re
-import threading
+import contextvars
 import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -1168,18 +1168,20 @@ AGENT_COMPUTER_TOOLS: weakref.WeakKeyDictionary[Agent, ComputerTool] = (
     weakref.WeakKeyDictionary()
 )
 
-# Thread-local storage for the current computer tool
-_thread_local = threading.local()
+# Context-local storage for the current computer tool (propagates to child tasks)
+_computer_tool_ctx: contextvars.ContextVar[ComputerTool | None] = (
+    contextvars.ContextVar("computer_tool_ctx", default=None)
+)
 
 
 def set_current_computer_tool(tool: ComputerTool | None) -> None:
     """Set the current computer tool for this thread/request."""
-    _thread_local.computer_tool = tool
+    _computer_tool_ctx.set(tool)
 
 
 def get_current_computer_tool() -> ComputerTool | None:
     """Get the current computer tool for this thread/request."""
-    return getattr(_thread_local, "computer_tool", None)
+    return _computer_tool_ctx.get()
 
 
 def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
