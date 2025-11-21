@@ -42,7 +42,10 @@ def set_current_thread_id(thread_id: str | None) -> None:
     task = asyncio.current_task()
     if task and thread_id:
         _thread_id_by_task[task] = thread_id
-        logger.debug(f"Thread ID {thread_id} associé à la tâche {id(task)}")
+        logger.info(
+            f"🔵 NOUVEAU MAPPING: thread_id={thread_id} → task_id={id(task)} "
+            f"| Total tâches actives: {len(_thread_id_by_task)}"
+        )
 
 
 def _get_browser_cache(thread_id: str | None) -> dict[str, HostedBrowser]:
@@ -157,13 +160,20 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
         task = asyncio.current_task()
         if task:
             thread_id = _thread_id_by_task.get(task)
+            logger.info(
+                f"🔍 Récupération thread_id depuis mapping: task_id={id(task)} → thread_id={thread_id}"
+            )
+        else:
+            logger.warning("⚠️ Aucune tâche asyncio actuelle trouvée!")
 
     # Log thread_id for debugging
     logger.info(
-        f"build_computer_use_tool: thread_id={thread_id}, from_config={config.get('thread_id') is not None}"
+        f"🛠️ build_computer_use_tool: thread_id={thread_id}, "
+        f"from_config={config.get('thread_id') is not None}, "
+        f"tâches actives={len(_thread_id_by_task)}"
     )
-    logger.debug(
-        f"Cache actuel contient {len(_browser_cache_by_thread)} threads: {list(_browser_cache_by_thread.keys())}"
+    logger.info(
+        f"📦 Cache global: {len(_browser_cache_by_thread)} threads → {list(_browser_cache_by_thread.keys())}"
     )
 
     # Create a cache key based on browser configuration
@@ -178,12 +188,12 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
     if cached_browser is not None:
         thread_info = f"thread={thread_id}" if thread_id else "sans thread_id"
         logger.info(
-            f"Réutilisation du navigateur en cache ({thread_info}): {cache_key}"
+            f"♻️ RÉUTILISATION navigateur en cache ({thread_info}): {cache_key}"
         )
         computer = cached_browser
         # Don't navigate when reusing - keep browser at its current page
-        logger.debug(
-            "Navigateur réutilisé, conservation de la page actuelle"
+        logger.info(
+            f"✓ Navigateur réutilisé pour thread {thread_id}, conservation de la page actuelle"
         )
     else:
         # Create new browser instance for this context
@@ -198,11 +208,12 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
             if thread_id:
                 cache[cache_key] = computer
                 logger.info(
-                    f"Création et mise en cache d'un nouveau navigateur (thread={thread_id}): {cache_key}"
+                    f"🆕 CRÉATION nouveau navigateur (thread={thread_id}): {cache_key} | "
+                    f"Mise en cache pour réutilisation future"
                 )
             else:
                 logger.info(
-                    f"Création d'un nouveau navigateur (pas de cache, thread_id manquant): {cache_key}"
+                    f"⚠️ CRÉATION navigateur SANS CACHE (thread_id manquant): {cache_key}"
                 )
         except HostedBrowserError as exc:  # pragma: no cover - dépend de l'environnement
             logger.warning("Impossible d'initialiser le navigateur hébergé : %s", exc)
