@@ -1268,6 +1268,7 @@ export const fr: TranslationDictionary = {
   "admin.browserTest.controls.startBrowser": "Démarrer le navigateur",
   "admin.browserTest.controls.navigateUrl": "Naviguer vers l'URL",
   "admin.browserTest.controls.navigate": "Naviguer",
+  "admin.browserTest.controls.takeControl": "Prendre le contrôle",
   "admin.browserTest.controls.closeBrowser": "Fermer le navigateur",
   "admin.browserTest.info.status": "Statut",
   "admin.browserTest.info.running": "En cours d'exécution",
@@ -1276,6 +1277,7 @@ export const fr: TranslationDictionary = {
   "admin.browserTest.preview.description": "Vue en direct de l'écran du navigateur utilisant le protocole Chrome DevTools screencast.",
   "admin.browserTest.success.started": "Navigateur démarré avec succès",
   "admin.browserTest.success.navigated": "Navigation réussie",
+  "admin.browserTest.success.controlOpened": "Chrome DevTools ouvert dans une nouvelle fenêtre",
   "admin.browserTest.success.closed": "Navigateur fermé avec succès",
 };
   

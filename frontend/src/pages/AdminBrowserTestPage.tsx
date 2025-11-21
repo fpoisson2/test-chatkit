@@ -171,6 +171,16 @@ export const AdminBrowserTestPage = () => {
     }
   };
 
+  const handleTakeControl = () => {
+    if (!browserSession) return;
+
+    // Open Chrome DevTools in a new window
+    // The debug_url points to the CDP endpoint which can be opened directly
+    const devtoolsUrl = browserSession.debug_url;
+    window.open(devtoolsUrl, '_blank', 'noopener,noreferrer');
+    setSuccess(t("admin.browserTest.success.controlOpened"));
+  };
+
   return (
     <div className="admin-section">
       <h2 className="admin-section__title">{t("admin.browserTest.title")}</h2>
@@ -264,14 +274,24 @@ export const AdminBrowserTestPage = () => {
               </div>
             </div>
 
-            <button
-              type="button"
-              className="button button--danger"
-              onClick={handleCloseBrowser}
-              disabled={isLoading}
-            >
-              {t("admin.browserTest.controls.closeBrowser")}
-            </button>
+            <div className="browser-test__action-buttons">
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={handleTakeControl}
+                disabled={isLoading}
+              >
+                {t("admin.browserTest.controls.takeControl")}
+              </button>
+              <button
+                type="button"
+                className="button button--danger"
+                onClick={handleCloseBrowser}
+                disabled={isLoading}
+              >
+                {t("admin.browserTest.controls.closeBrowser")}
+              </button>
+            </div>
           </div>
         )}
       </FormSection>
@@ -326,6 +346,15 @@ export const AdminBrowserTestPage = () => {
           display: flex;
           flex-direction: column;
           gap: 8px;
+        }
+
+        .browser-test__action-buttons {
+          display: flex;
+          gap: 12px;
+        }
+
+        .browser-test__action-buttons button {
+          flex: 1;
         }
 
         .browser-test__preview {
