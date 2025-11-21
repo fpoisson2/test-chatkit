@@ -597,6 +597,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         computerUseTask = computerUseTasks[computerUseTasks.length - 1];
                       }
 
+                      if (!computerUseTask && activeScreencast?.itemId === item.id) {
+                        // Persist the last screencast of this workflow even if the task is no longer returned
+                        computerUseTask = {
+                          debug_url_token: activeScreencast.token,
+                          status_indicator: 'completed',
+                          screenshots: [],
+                          current_action: null,
+                        };
+                      }
+
                       console.log('[ChatKit] Checking for computer_use in workflow:', item.id, 'computerUseTask:', computerUseTask);
                       if (computerUseTask) {
                         const hasScreenshots = computerUseTask.screenshots && computerUseTask.screenshots.length > 0;
