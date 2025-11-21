@@ -198,10 +198,23 @@ export const AdminBrowserTestPage = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}${wsPath}`;
 
-      // Open Chrome DevTools frontend with our WebSocket proxy
-      // Using the official Chrome DevTools frontend hosted by Google
-      const devtoolsUrl = `https://chrome-devtools-frontend.appspot.com/serve_file/@60cd6e859b9f557d2312f5bf532f6aec5f284980/inspector.html?ws=${encodeURIComponent(wsUrl)}`;
-      window.open(devtoolsUrl, '_blank', 'noopener,noreferrer');
+      // Try multiple DevTools frontend URLs
+      // 1. Try the latest version
+      const devtoolsUrl1 = `https://chrome-devtools-frontend.appspot.com/serve_rev/@latest/inspector.html?ws=${wsUrl}`;
+
+      // 2. If that doesn't work, show instructions
+      const message = `Chrome DevTools URL:\n\n${devtoolsUrl1}\n\nIf the page is blank, open Chrome and go to:\nchrome://inspect/#devices\n\nThen click "Configure..." and add:\n${window.location.host}\n\nOr copy this WebSocket URL:\n${wsUrl}`;
+
+      console.log('[DevTools]', message);
+
+      // Open DevTools in new window
+      const win = window.open(devtoolsUrl1, '_blank', 'noopener,noreferrer,width=1200,height=800');
+
+      if (!win) {
+        // Popup was blocked, show the info
+        alert(message);
+      }
+
       setSuccess(t("admin.browserTest.success.controlOpened"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to open DevTools");
