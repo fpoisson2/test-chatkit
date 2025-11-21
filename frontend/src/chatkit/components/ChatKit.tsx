@@ -63,29 +63,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   useEffect(() => {
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
-    const lastWorkflow = workflows[workflows.length - 1];
 
-    let latestActiveScreencast: { token: string; itemId: string } | null = null;
+    // Parcourir du plus récent au plus ancien pour récupérer le dernier screencast connu
+    const latestWorkflowWithCast = [...workflows]
+      .reverse()
+      .map((workflow: any) => ({
+        workflow,
+        computerUseTask: workflow.tasks?.find((t: any) => t.type === 'computer_use'),
+      }))
+      .find(({ computerUseTask }) => !!computerUseTask?.debug_url_token);
 
-    workflows.forEach((item: any) => {
-      const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
-      if (!computerUseTask?.debug_url_token) return;
+    if (!latestWorkflowWithCast?.computerUseTask?.debug_url_token) return;
 
-      const isLoading = computerUseTask.status_indicator === 'loading';
-      const isWorkflowActive = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
+    const latestActiveScreencast = {
+      token: latestWorkflowWithCast.computerUseTask.debug_url_token as string,
+      itemId: latestWorkflowWithCast.workflow.id,
+    };
 
-      if (isLoading || isWorkflowActive) {
-        latestActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
-      }
-    });
-
-    if (latestActiveScreencast && latestActiveScreencast.token !== activeScreencast?.token) {
+    if (
+      latestActiveScreencast.token !== activeScreencast?.token ||
+      latestActiveScreencast.itemId !== activeScreencast?.itemId
+    ) {
       setActiveScreencast(latestActiveScreencast);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.itemId, activeScreencast?.token, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
