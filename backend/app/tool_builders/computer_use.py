@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 from typing import Any, Mapping
 
@@ -11,7 +12,7 @@ from ..computer.hosted_browser import HostedBrowser, HostedBrowserError
 
 logger = logging.getLogger("chatkit.server")
 
-__all__ = ["build_computer_use_tool", "cleanup_browser_cache"]
+__all__ = ["build_computer_use_tool", "cleanup_browser_cache", "set_current_thread_id"]
 
 _DEFAULT_COMPUTER_USE_DISPLAY_WIDTH = 1024
 _DEFAULT_COMPUTER_USE_DISPLAY_HEIGHT = 768
@@ -20,6 +21,21 @@ _SUPPORTED_COMPUTER_ENVIRONMENTS = frozenset({"browser", "mac", "windows", "ubun
 # Global cache for browser instances, keyed by thread_id
 # Format: {thread_id: {cache_key: HostedBrowser}}
 _browser_cache_by_thread: dict[str, dict[str, HostedBrowser]] = {}
+
+# Context variable to pass thread_id from server to tool builders
+_current_thread_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "computer_use_thread_id", default=None
+)
+
+
+def set_current_thread_id(thread_id: str | None) -> None:
+    """
+    Set the current thread ID for browser caching.
+
+    This should be called at the beginning of workflow execution to enable
+    browser persistence across multiple turns in the same conversation.
+    """
+    _current_thread_id.set(thread_id)
 
 
 def _get_browser_cache(thread_id: str | None) -> dict[str, HostedBrowser]:
@@ -122,12 +138,16 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
         if stripped:
             start_url = stripped
 
-    # Extract thread_id from config if available
+    # Extract thread_id from config if available, otherwise use context variable
     thread_id = config.get("thread_id")
     if isinstance(thread_id, str):
         thread_id = thread_id.strip() or None
     else:
         thread_id = None
+
+    # Fallback to context variable if not in config
+    if not thread_id:
+        thread_id = _current_thread_id.get()
 
     # Create a cache key based on browser configuration
     # Each chat thread has its own isolated cache that persists across requests
