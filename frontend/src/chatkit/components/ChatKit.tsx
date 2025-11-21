@@ -70,13 +70,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
       const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
-      if (!computerUseTask?.debug_url_token) return;
+      if (!computerUseTask) return;
 
       const isLoading = computerUseTask.status_indicator === 'loading';
       const isLastWorkflowAndStreaming = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
 
       // Capturer le screencast s'il est actuellement actif (en cours de chargement ou dernier workflow pendant le streaming)
-      if (isLoading || isLastWorkflowAndStreaming) {
+      // ET s'il a un debug_url_token
+      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token) {
         newActiveScreencast = {
           token: computerUseTask.debug_url_token,
           itemId: item.id,
