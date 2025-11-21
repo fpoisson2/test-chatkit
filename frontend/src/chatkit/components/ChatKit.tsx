@@ -63,26 +63,45 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   useEffect(() => {
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
+    const lastWorkflow = workflows[workflows.length - 1];
 
-    let latestActiveScreencast: { token: string; itemId: string } | null = null;
+    let newActiveScreencast: { token: string; itemId: string } | null = null;
 
-    // Parcourir les workflows pour trouver le dernier avec un debug_url_token
+    // Chercher un workflow en cours de chargement avec un debug_url_token
     workflows.forEach((item: any) => {
       const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask?.debug_url_token) return;
 
-      // Capturer le screencast peu importe son statut (loading, completed, etc.)
-      latestActiveScreencast = {
-        token: computerUseTask.debug_url_token,
-        itemId: item.id,
-      };
+      const isLoading = computerUseTask.status_indicator === 'loading';
+      const isWorkflowActive = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
+
+      // Capturer seulement si le workflow est actif (loading ou dernier workflow en cours)
+      if (isLoading || isWorkflowActive) {
+        newActiveScreencast = {
+          token: computerUseTask.debug_url_token,
+          itemId: item.id,
+        };
+      }
     });
 
-    // Mettre à jour uniquement si un nouveau workflow apparaît (itemId différent)
-    if (latestActiveScreencast && latestActiveScreencast.itemId !== activeScreencast?.itemId) {
-      setActiveScreencast(latestActiveScreencast);
+    // Mettre à jour vers le nouveau workflow actif, ou garder l'ancien si aucun nouveau n'est actif
+    if (newActiveScreencast && newActiveScreencast.itemId !== activeScreencast?.itemId) {
+      setActiveScreencast(newActiveScreencast);
+    } else if (!activeScreencast && workflows.length > 0) {
+      // Au premier chargement, si aucun workflow n'est actif mais qu'il y en a, prendre le dernier
+      const lastWorkflowWithToken = workflows.reverse().find((item: any) => {
+        const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
+        return computerUseTask?.debug_url_token;
+      });
+      if (lastWorkflowWithToken) {
+        const computerUseTask = lastWorkflowWithToken.tasks.find((t: any) => t.type === 'computer_use');
+        setActiveScreencast({
+          token: computerUseTask.debug_url_token,
+          itemId: lastWorkflowWithToken.id,
+        });
+      }
     }
-  }, [activeScreencast?.itemId, control.thread?.items]);
+  }, [activeScreencast?.itemId, control.isLoading, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
