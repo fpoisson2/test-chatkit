@@ -38,6 +38,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const singleLineHeightRef = useRef<number | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
     header,
@@ -62,34 +63,67 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    // Réinitialiser la hauteur pour recalculer correctement
-    textarea.style.height = 'auto';
-
     // Calculer la hauteur minimale basée sur le style réel du textarea
     const styles = window.getComputedStyle(textarea);
     const lineHeight = parseFloat(styles.lineHeight || '0');
     const paddingTop = parseFloat(styles.paddingTop || '0');
     const paddingBottom = parseFloat(styles.paddingBottom || '0');
     const minHeight = lineHeight + paddingTop + paddingBottom;
-    const baseHeight = singleLineHeightRef.current ?? minHeight;
+
     if (singleLineHeightRef.current === null) {
       singleLineHeightRef.current = minHeight;
     }
+    const baseHeight = singleLineHeightRef.current;
 
+    // Pour détecter correctement le dépassement, mesurer avec la largeur du mode SINGLE-LINE
+    // Si ça déborde en mode single-line, on passe en multiline
+    const form = textarea.closest('.chatkit-composer-form');
+    const wasMultiline = isMultiline;
+
+    // Forcer temporairement le mode single-line pour mesurer avec la largeur réduite
+    if (form) {
+      form.classList.add('is-singleline');
+      form.classList.remove('is-multiline');
+      // Forcer un reflow pour que le CSS soit appliqué avant la mesure
+      void form.offsetHeight;
+    }
+
+    // Réinitialiser la hauteur pour recalculer correctement
+    textarea.style.height = 'auto';
     const contentHeight = textarea.scrollHeight;
     const nextHeight = Math.max(contentHeight, baseHeight);
 
-    setIsMultiline((prev) => {
-      const activateThreshold = baseHeight + 8;
-      const deactivateThreshold = baseHeight + 4;
-      return prev
-        ? contentHeight > deactivateThreshold
-        : contentHeight > activateThreshold;
-    });
+    // Restaurer l'état actuel immédiatement après la mesure
+    if (form) {
+      if (wasMultiline) {
+        form.classList.add('is-multiline');
+        form.classList.remove('is-singleline');
+      } else {
+        form.classList.add('is-singleline');
+        form.classList.remove('is-multiline');
+      }
+    }
 
-    // Ajuster la hauteur en fonction du contenu tout en limitant le multi-ligne
+    // Déterminer si on doit être en mode multiline avec hystérésis
+    const lineHeightValue = lineHeight || 25.5;
+    const shouldBeMultiline = isMultiline
+      ? contentHeight > baseHeight + 2  // Rester en multiline si > baseHeight + 2px
+      : contentHeight > baseHeight + (lineHeightValue * 0.1); // Activer si déborde
+
+    // Ajuster la hauteur immédiatement en fonction du contenu
     textarea.style.height = `${Math.min(nextHeight, 200)}px`;
-  }, [inputValue]);
+
+    // Changer le mode si nécessaire
+    if (shouldBeMultiline !== isMultiline) {
+      // Annuler le timeout précédent s'il existe
+      if (modeChangeTimeoutRef.current) {
+        clearTimeout(modeChangeTimeoutRef.current);
+        modeChangeTimeoutRef.current = null;
+      }
+
+      setIsMultiline(shouldBeMultiline);
+    }
+  }, [inputValue, isMultiline]);
 
   // Gérer l'ajout de fichiers
   const handleFileSelect = useCallback(async (files: FileList | null) => {
@@ -718,13 +752,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             />
           </div>
           <div className="chatkit-composer-actions">
-            {composer?.attachments?.enabled && (
+            {(composer?.attachments?.enabled || composer?.attachments !== false) && (
               <div className="chatkit-attach-wrapper">
                 <input
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept={composer.attachments.accept ? Object.values(composer.attachments.accept).flat().join(',') : undefined}
+                  accept={composer?.attachments?.accept ? Object.values(composer.attachments.accept).flat().join(',') : undefined}
                   onChange={(e) => handleFileSelect(e.target.files)}
                   style={{ display: 'none' }}
                 />
@@ -732,7 +766,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   type="button"
                   className="chatkit-attach-button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={control.isLoading}
+                  disabled={control.isLoading || !composer?.attachments?.enabled}
                   aria-label="Joindre un fichier"
                   title="Joindre un fichier"
                 >
