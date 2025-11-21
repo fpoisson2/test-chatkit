@@ -63,45 +63,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   useEffect(() => {
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
-    const lastWorkflow = workflows[workflows.length - 1];
 
-    let newActiveScreencast: { token: string; itemId: string } | null = null;
-
-    // Chercher un workflow en cours de chargement avec un debug_url_token
-    workflows.forEach((item: any) => {
-      const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
-      if (!computerUseTask?.debug_url_token) return;
-
-      const isLoading = computerUseTask.status_indicator === 'loading';
-      const isWorkflowActive = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
-
-      // Capturer seulement si le workflow est actif (loading ou dernier workflow en cours)
-      if (isLoading || isWorkflowActive) {
-        newActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
+    // Trouver le dernier workflow avec un debug_url_token
+    let latestWorkflowWithToken: any = null;
+    for (let i = workflows.length - 1; i >= 0; i--) {
+      const workflow = workflows[i];
+      const computerUseTask = workflow.tasks?.find((t: any) => t.type === 'computer_use');
+      if (computerUseTask?.debug_url_token) {
+        latestWorkflowWithToken = workflow;
+        break;
       }
-    });
+    }
 
-    // Mettre à jour vers le nouveau workflow actif, ou garder l'ancien si aucun nouveau n'est actif
-    if (newActiveScreencast && newActiveScreencast.itemId !== activeScreencast?.itemId) {
-      setActiveScreencast(newActiveScreencast);
-    } else if (!activeScreencast && workflows.length > 0) {
-      // Au premier chargement, si aucun workflow n'est actif mais qu'il y en a, prendre le dernier
-      const lastWorkflowWithToken = workflows.reverse().find((item: any) => {
-        const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
-        return computerUseTask?.debug_url_token;
-      });
-      if (lastWorkflowWithToken) {
-        const computerUseTask = lastWorkflowWithToken.tasks.find((t: any) => t.type === 'computer_use');
+    // S'il y a un workflow avec token et qu'il est différent de l'actuel, le définir comme actif
+    if (latestWorkflowWithToken) {
+      const computerUseTask = latestWorkflowWithToken.tasks.find((t: any) => t.type === 'computer_use');
+      if (!activeScreencast || activeScreencast.itemId !== latestWorkflowWithToken.id) {
+        console.log('[ChatKit] Setting active screencast:', latestWorkflowWithToken.id);
         setActiveScreencast({
           token: computerUseTask.debug_url_token,
-          itemId: lastWorkflowWithToken.id,
+          itemId: latestWorkflowWithToken.id,
         });
       }
     }
-  }, [activeScreencast?.itemId, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.itemId, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
