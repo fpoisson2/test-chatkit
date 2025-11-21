@@ -812,8 +812,45 @@ class ImageTask(BaseTask):
     """Index of the image within the tool call output array."""
 
 
+class ComputerUseScreenshot(BaseModel):
+    """Screenshot from a computer use browser automation task."""
+
+    id: str
+    """Unique identifier for the screenshot."""
+
+    b64_image: str | None = None
+    """Base64-encoded PNG representation of the browser screenshot."""
+
+    data_url: str | None = None
+    """Convenience field exposing the screenshot as a ``data:`` URL."""
+
+    timestamp: str | None = None
+    """ISO timestamp when the screenshot was taken."""
+
+    action_description: str | None = None
+    """Description of the action being performed when the screenshot was taken."""
+
+
+class ComputerUseTask(BaseTask):
+    """Workflow task for computer use browser automation."""
+
+    type: Literal["computer_use"] = "computer_use"
+    title: str | None = None
+    screenshots: list[ComputerUseScreenshot] = Field(default_factory=list)
+    """Screenshots from the browser automation session."""
+
+    current_action: str | None = None
+    """Current action being performed in the browser."""
+
+    action_sequence: list[str] = Field(default_factory=list)
+    """History of actions performed during the session."""
+
+    call_id: str | None = None
+    """Identifier of the underlying computer tool call."""
+
+
 Task = Annotated[
-    CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask,
+    CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask,
     Field(discriminator="type"),
 ]
 """Union of workflow task variants."""

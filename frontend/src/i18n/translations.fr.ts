@@ -1257,5 +1257,8 @@ export const fr: TranslationDictionary = {
   "chatkit.workflow.executionDuration": "Exécution durant {{duration}}",
   "chatkit.workflow.loading": "En cours...",
   "chatkit.task.imageCompleted": "Génération d'image complétée",
+  "chatkit.task.currentAction": "Action en cours",
+  "chatkit.task.browserScreenshot": "Capture d'écran du navigateur",
+  "chatkit.task.actionHistory": "Historique des actions",
 };
   

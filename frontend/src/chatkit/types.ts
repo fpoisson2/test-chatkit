@@ -655,7 +655,24 @@ export interface ImageTask extends BaseTask {
   output_index?: number;
 }
 
-export type Task = CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask;
+export interface ComputerUseScreenshot {
+  id: string;
+  b64_image?: string;
+  data_url?: string;
+  timestamp?: string;
+  action_description?: string;
+}
+
+export interface ComputerUseTask extends BaseTask {
+  type: 'computer_use';
+  title?: string;
+  screenshots?: ComputerUseScreenshot[];
+  current_action?: string;
+  action_sequence?: string[];
+  call_id?: string;
+}
+
+export type Task = CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask;
 
 // ===== Types pour les workflows =====
 

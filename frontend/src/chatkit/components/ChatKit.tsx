@@ -468,6 +468,52 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                       }
                       return null;
                     })()}
+
+                    {/* Afficher les screenshots du browser automation (computer_use) */}
+                    {(() => {
+                      const computerUseTask = item.workflow.tasks.find(
+                        (task: any) => task.type === 'computer_use'
+                      );
+                      console.log('[ChatKit] Checking for computer_use in workflow:', item.id, 'computerUseTask:', computerUseTask);
+                      if (computerUseTask && computerUseTask.screenshots && computerUseTask.screenshots.length > 0) {
+                        const screenshot = computerUseTask.screenshots[computerUseTask.screenshots.length - 1];
+                        const isLoading = computerUseTask.status_indicator === 'loading';
+                        console.log('[ChatKit] Computer use screenshot found:', {
+                          id: screenshot.id,
+                          status: computerUseTask.status_indicator,
+                          isLoading: isLoading,
+                          screenshotsCount: computerUseTask.screenshots.length,
+                          hasB64: !!screenshot.b64_image,
+                          hasDataUrl: !!screenshot.data_url,
+                          currentAction: computerUseTask.current_action
+                        });
+
+                        const src = screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '');
+                        if (src) {
+                          console.log('[ChatKit] Showing browser screenshot');
+                          return (
+                            <div className="chatkit-computer-use-preview">
+                              {computerUseTask.current_action && (
+                                <div className="chatkit-current-action">
+                                  <span className="chatkit-action-label">Action en cours:</span> {computerUseTask.current_action}
+                                </div>
+                              )}
+                              <div className="chatkit-browser-screenshot-container">
+                                <img
+                                  src={src}
+                                  alt={screenshot.action_description || "Browser automation"}
+                                  className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                                />
+                                {screenshot.action_description && (
+                                  <div className="chatkit-screenshot-caption">{screenshot.action_description}</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+                      }
+                      return null;
+                    })()}
                   </>
                 )}
               </div>
