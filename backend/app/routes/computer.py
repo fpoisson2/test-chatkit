@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from fastapi.responses import JSONResponse
 
 from ..dependencies import get_current_user
-from ..models.user import User
+from ..models import User
 
 logger = logging.getLogger("chatkit.computer")
 
