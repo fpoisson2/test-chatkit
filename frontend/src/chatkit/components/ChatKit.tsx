@@ -63,29 +63,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   useEffect(() => {
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
-    const lastWorkflow = workflows[workflows.length - 1];
 
-    let latestActiveScreencast: { token: string; itemId: string } | null = null;
+    // Parcourir du plus récent au plus ancien pour récupérer le dernier screencast connu
+    const latestWorkflowWithCast = [...workflows]
+      .reverse()
+      .map((workflow: any) => ({
+        workflow,
+        computerUseTask: workflow.tasks?.find((t: any) => t.type === 'computer_use'),
+      }))
+      .find(({ computerUseTask }) => !!computerUseTask?.debug_url_token);
 
-    workflows.forEach((item: any) => {
-      const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
-      if (!computerUseTask?.debug_url_token) return;
+    if (!latestWorkflowWithCast?.computerUseTask?.debug_url_token) return;
 
-      const isLoading = computerUseTask.status_indicator === 'loading';
-      const isWorkflowActive = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
+    const latestActiveScreencast = {
+      token: latestWorkflowWithCast.computerUseTask.debug_url_token as string,
+      itemId: latestWorkflowWithCast.workflow.id,
+    };
 
-      if (isLoading || isWorkflowActive) {
-        latestActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
-      }
-    });
-
-    if (latestActiveScreencast && latestActiveScreencast.token !== activeScreencast?.token) {
+    if (
+      latestActiveScreencast.token !== activeScreencast?.token ||
+      latestActiveScreencast.itemId !== activeScreencast?.itemId
+    ) {
       setActiveScreencast(latestActiveScreencast);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.itemId, activeScreencast?.token, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -602,6 +603,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         computerUseTask = computerUseTasks[computerUseTasks.length - 1];
                       }
 
+                      if (!computerUseTask && activeScreencast?.itemId === item.id) {
+                        // Persist the last screencast of this workflow even if the task is no longer returned
+                        computerUseTask = {
+                          debug_url_token: activeScreencast.token,
+                          status_indicator: 'completed',
+                          screenshots: [],
+                          current_action: null,
+                        };
+                      }
+
                       console.log('[ChatKit] Checking for computer_use in workflow:', item.id, 'computerUseTask:', computerUseTask);
                       if (computerUseTask) {
                         const hasScreenshots = computerUseTask.screenshots && computerUseTask.screenshots.length > 0;
@@ -641,17 +652,19 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         // Prefer the persisted token for this workflow if the task no longer exposes it
                         const debugUrlToken =
-                          computerUseTask.debug_url_token ||
+                          computerUseTask?.debug_url_token ||
                           (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
 
                         // Show screencast if:
                         // - There's a debug_url_token (live or persisted)
-                        // - AND (the task is currently loading OR the workflow is still active)
-                        const showScreencast = !!debugUrlToken && (isLoading || isWorkflowActive);
+                        // - AND (the task is currently loading OR the workflow is still active
+                        //   OR it's the last persisted screencast for this workflow)
                         const isPersistedScreencast =
                           !!debugUrlToken &&
                           activeScreencast?.itemId === item.id &&
-                          activeScreencast?.token === debugUrlToken;
+                          (!!computerUseTask?.debug_url_token || activeScreencast?.token === debugUrlToken);
+                        const showScreencast =
+                          !!debugUrlToken && (isLoading || isWorkflowActive || isPersistedScreencast);
                         const showScreenshot = !!src;
                         const shouldRenderScreencast = showScreencast || isPersistedScreencast;
                         const showPreview = shouldRenderScreencast || showScreenshot;
