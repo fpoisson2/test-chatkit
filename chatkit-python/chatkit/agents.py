@@ -1256,7 +1256,7 @@ async def stream_agent_response(
 
         if item is None:
             item = ComputerUseItem(
-                id=ctx.generate_id("task", thread, ctx.request_context),
+                id=ctx.generate_id("task", thread),
                 created_at=datetime.now(),
                 thread_id=thread.id,
                 call_id=call_id,
