@@ -102,6 +102,13 @@ export const AdminBrowserTestPage = () => {
     }
   };
 
+  const handleRestartBrowser = async () => {
+    if (browserSession) {
+      await handleCloseBrowser();
+    }
+    await handleStartBrowser();
+  };
+
   const handleNavigate = async () => {
     if (!token || !browserSession || !navigateUrl) return;
 
@@ -138,6 +145,45 @@ export const AdminBrowserTestPage = () => {
     }
   };
 
+  const handleHistoryNavigate = async (direction: "back" | "forward") => {
+    if (!token || !browserSession) return;
+
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await makeApiRequest(
+        `/api/computer/browser/history/${direction}/${browserSession.token}`,
+        {
+          method: "POST",
+        },
+        token
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to navigate history");
+      }
+
+      setSuccess(
+        t(
+          direction === "back"
+            ? "admin.browserTest.success.historyBack"
+            : "admin.browserTest.success.historyForward"
+        )
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to navigate browser history"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCloseBrowser = async () => {
     if (!token || !browserSession) return;
 
@@ -167,48 +213,6 @@ export const AdminBrowserTestPage = () => {
       setBrowserSession(null);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleTakeControl = async () => {
-    if (!token || !browserSession) return;
-
-    try {
-      // Get the DevTools WebSocket path from backend
-      const response = await makeApiRequest(
-        `/api/computer/browser/devtools/${browserSession.token}`,
-        {
-          method: "GET",
-        },
-        token
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to get DevTools URL");
-      }
-
-      const data = await response.json();
-      const wsPath = data.devtools_ws_path;
-
-      // Build the full WebSocket URL using current location
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}${wsPath}`;
-
-      // Show instructions in a user-friendly way
-      const instructions = `Pour prendre le contrôle du navigateur :\n\n1. Ouvrez Chrome et allez à : chrome://inspect/#devices\n\n2. Cliquez sur "Configure..." et ajoutez :\n   ${window.location.host}\n\n3. Attendez quelques secondes, votre navigateur devrait apparaître\n\n4. Cliquez sur "inspect" sous votre navigateur\n\nAlternative : Copiez cette URL WebSocket :\n${wsUrl}`;
-
-      // Copy WebSocket URL to clipboard
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(wsUrl);
-        alert(instructions + "\n\n✓ URL WebSocket copiée dans le presse-papiers !");
-      } else {
-        alert(instructions);
-      }
-
-      setSuccess("Instructions affichées - URL WebSocket copiée");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get DevTools info");
     }
   };
 
@@ -303,16 +307,34 @@ export const AdminBrowserTestPage = () => {
                   </button>
                 </div>
               </div>
+              <div className="browser-test__history-buttons">
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => handleHistoryNavigate("back")}
+                  disabled={isLoading}
+                >
+                  {t("admin.browserTest.controls.historyBack")}
+                </button>
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => handleHistoryNavigate("forward")}
+                  disabled={isLoading}
+                >
+                  {t("admin.browserTest.controls.historyForward")}
+                </button>
+              </div>
             </div>
 
             <div className="browser-test__action-buttons">
               <button
                 type="button"
-                className="button button--primary"
-                onClick={handleTakeControl}
+                className="button button--secondary"
+                onClick={handleRestartBrowser}
                 disabled={isLoading}
               >
-                {t("admin.browserTest.controls.takeControl")}
+                {t("admin.browserTest.controls.restartBrowser")}
               </button>
               <button
                 type="button"
@@ -336,8 +358,10 @@ export const AdminBrowserTestPage = () => {
             <DevToolsScreencast
               debugUrlToken={browserSession.token}
               authToken={token}
-              className="browser-test-screencast"
+              className="browser-test-screencast browser-test-screencast--interactive"
+              enableInput
             />
+            <p className="browser-test__tip">{t("admin.browserTest.preview.hint")}</p>
           </div>
         </FormSection>
       )}
@@ -379,6 +403,12 @@ export const AdminBrowserTestPage = () => {
           gap: 8px;
         }
 
+        .browser-test__history-buttons {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
         .browser-test__action-buttons {
           display: flex;
           gap: 12px;
@@ -390,6 +420,35 @@ export const AdminBrowserTestPage = () => {
 
         .browser-test__preview {
           margin-top: 16px;
+        }
+
+        .browser-test-screencast,
+        .browser-test-screencast .chatkit-screencast-canvas-container,
+        .browser-test-screencast .chatkit-screencast-canvas {
+          width: 100%;
+          max-width: 100%;
+        }
+
+        .browser-test-screencast--interactive .chatkit-screencast-canvas-container {
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+          width: 100%;
+          max-width: 100%;
+        }
+
+        .browser-test-screencast--interactive .chatkit-screencast-canvas {
+          outline: none;
+          cursor: crosshair;
+          width: 100%;
+          max-width: 100%;
+        }
+
+        .browser-test__tip {
+          margin-top: 12px;
+          color: #4b5563;
+          font-size: 0.95rem;
         }
 
         .button--danger {
