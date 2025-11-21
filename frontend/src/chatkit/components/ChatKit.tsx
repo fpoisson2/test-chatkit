@@ -635,16 +635,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           computerUseTask.debug_url_token ||
                           (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
 
-                        // Show screencast if:
-                        // - There's a debug_url_token (live or persisted)
-                        // Le screencast persiste jusqu'à ce qu'un nouveau démarre ou qu'il y ait déconnexion
-                        const showScreencast = !!debugUrlToken;
-                        const isPersistedScreencast =
-                          !!debugUrlToken &&
-                          activeScreencast?.itemId === item.id &&
-                          activeScreencast?.token === debugUrlToken;
+                        // Show screencast seulement si c'est le workflow actif (le dernier)
+                        // Sinon, afficher la screenshot statique
+                        const isActiveWorkflow = activeScreencast?.itemId === item.id;
+                        const showScreencast = !!debugUrlToken && isActiveWorkflow;
                         const showScreenshot = !!src;
-                        const shouldRenderScreencast = showScreencast || isPersistedScreencast;
+                        const shouldRenderScreencast = showScreencast;
                         const showPreview = shouldRenderScreencast || showScreenshot;
 
                         console.log('[ChatKit] Display decision:', {
