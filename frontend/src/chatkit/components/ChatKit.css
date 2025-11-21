@@ -1138,6 +1138,79 @@
   animation: browserAutomating 2s ease-in-out infinite;
 }
 
+/* DevTools Screencast Viewer */
+.chatkit-devtools-screencast {
+  margin-top: 12px;
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+}
+
+.chatkit-screencast-header {
+  padding: 8px 12px;
+  background: var(--color-bg-default);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.chatkit-screencast-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.chatkit-status-indicator {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.chatkit-status-connected {
+  color: #22c55e;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.chatkit-status-disconnected {
+  color: #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.chatkit-screencast-error {
+  padding: 8px 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.chatkit-screencast-canvas-container {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #000;
+  min-height: 300px;
+}
+
+.chatkit-screencast-canvas {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
 @keyframes browserAutomating {
   0%, 100% {
     opacity: 0.8;

@@ -9,6 +9,7 @@ import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
 import { ThreadHistory } from './ThreadHistory';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { DevToolsScreencast } from './DevToolsScreencast';
 import { useI18n } from '../../i18n/I18nProvider';
 import {
   Attachment,
@@ -506,14 +507,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                 </div>
                               )}
                               {computerUseTask.debug_url && (
-                                <div className="chatkit-debug-url">
-                                  <span className="chatkit-debug-label">🔍 Live view:</span>{' '}
-                                  <a href={computerUseTask.debug_url} target="_blank" rel="noopener noreferrer" className="chatkit-debug-link">
-                                    Open Chrome DevTools
-                                  </a>
-                                </div>
+                                <DevToolsScreencast debugUrl={computerUseTask.debug_url} />
                               )}
-                              {src && (
+                              {!computerUseTask.debug_url && src && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <img
                                     src={src}
