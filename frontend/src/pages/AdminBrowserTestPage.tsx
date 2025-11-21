@@ -173,9 +173,6 @@ export const AdminBrowserTestPage = () => {
   const handleTakeControl = async () => {
     if (!token || !browserSession) return;
 
-    setIsLoading(true);
-    setError(null);
-
     try {
       // Get the DevTools WebSocket path from backend
       const response = await makeApiRequest(
@@ -198,28 +195,20 @@ export const AdminBrowserTestPage = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}${wsPath}`;
 
-      // Try multiple DevTools frontend URLs
-      // 1. Try the latest version
-      const devtoolsUrl1 = `https://chrome-devtools-frontend.appspot.com/serve_rev/@latest/inspector.html?ws=${wsUrl}`;
+      // Show instructions in a user-friendly way
+      const instructions = `Pour prendre le contrôle du navigateur :\n\n1. Ouvrez Chrome et allez à : chrome://inspect/#devices\n\n2. Cliquez sur "Configure..." et ajoutez :\n   ${window.location.host}\n\n3. Attendez quelques secondes, votre navigateur devrait apparaître\n\n4. Cliquez sur "inspect" sous votre navigateur\n\nAlternative : Copiez cette URL WebSocket :\n${wsUrl}`;
 
-      // 2. If that doesn't work, show instructions
-      const message = `Chrome DevTools URL:\n\n${devtoolsUrl1}\n\nIf the page is blank, open Chrome and go to:\nchrome://inspect/#devices\n\nThen click "Configure..." and add:\n${window.location.host}\n\nOr copy this WebSocket URL:\n${wsUrl}`;
-
-      console.log('[DevTools]', message);
-
-      // Open DevTools in new window
-      const win = window.open(devtoolsUrl1, '_blank', 'noopener,noreferrer,width=1200,height=800');
-
-      if (!win) {
-        // Popup was blocked, show the info
-        alert(message);
+      // Copy WebSocket URL to clipboard
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(wsUrl);
+        alert(instructions + "\n\n✓ URL WebSocket copiée dans le presse-papiers !");
+      } else {
+        alert(instructions);
       }
 
-      setSuccess(t("admin.browserTest.success.controlOpened"));
+      setSuccess("Instructions affichées - URL WebSocket copiée");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to open DevTools");
-    } finally {
-      setIsLoading(false);
+      setError(err instanceof Error ? err.message : "Failed to get DevTools info");
     }
   };
 

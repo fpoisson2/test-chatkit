@@ -1072,7 +1072,7 @@
 /* Computer Use Browser Automation Preview */
 .chatkit-computer-use-preview {
   max-width: 800px;
-  margin-bottom: 8px;
+  margin: 0 auto 8px auto;
 }
 
 .chatkit-current-action {

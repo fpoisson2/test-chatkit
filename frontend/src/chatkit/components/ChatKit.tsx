@@ -508,9 +508,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
                         // Show screencast if debug_url_token is available (browser is running)
-                        // Show screenshot as fallback when screencast is not available
+                        // Show screenshot as fallback when screencast is not available OR if connection fails
                         const showScreencast = !!computerUseTask.debug_url_token;
-                        const showScreenshot = !showScreencast && !!src;
+                        const showScreenshot = !!src;
                         const showPreview = showScreencast || showScreenshot;
 
                         console.log('[ChatKit] Display decision:', {
@@ -523,6 +523,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         });
 
                         if (showPreview) {
+                          const [screencastError, setScreencastError] = React.useState(false);
+
                           return (
                             <div className="chatkit-computer-use-preview">
                               {computerUseTask.current_action && isLoading && (
@@ -530,13 +532,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                   <span className="chatkit-action-label">Action en cours:</span> {computerUseTask.current_action}
                                 </div>
                               )}
-                              {showScreencast && (
+                              {/* Show screencast if available and not in error */}
+                              {showScreencast && !screencastError && (
                                 <DevToolsScreencast
                                   debugUrlToken={computerUseTask.debug_url_token}
                                   authToken={authToken}
+                                  onConnectionError={() => setScreencastError(true)}
                                 />
                               )}
-                              {showScreenshot && (
+                              {/* Show screenshot as fallback when no screencast or screencast failed */}
+                              {showScreenshot && (!showScreencast || screencastError) && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <img
                                     src={src}

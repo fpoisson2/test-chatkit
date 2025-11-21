@@ -50,7 +50,12 @@ export function DevToolsScreencast({ debugUrlToken, authToken, className = '', o
           headers,
         });
         if (!response.ok) {
-          throw new Error(`Failed to fetch debug info: ${response.status} ${response.statusText}`);
+          const errorMsg = `Failed to fetch debug info: ${response.status} ${response.statusText}`;
+          setError(errorMsg);
+          if (onConnectionError) {
+            onConnectionError();
+          }
+          throw new Error(errorMsg);
         }
 
         const targets = await response.json();
