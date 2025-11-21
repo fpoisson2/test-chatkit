@@ -659,14 +659,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         const isActiveScreencast = activeScreencast?.itemId === item.id && !!debugUrlToken;
 
-                        // Vérifier si le workflow/task est actuellement actif
-                        const workflows = items.filter((i: any) => i.type === 'workflow');
-                        const lastWorkflow = workflows[workflows.length - 1];
-                        const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
-                        const isWorkflowActive = (isLoading || (isLastWorkflow && control.isLoading));
-
-                        // Afficher le screencast live seulement si c'est le screencast actif ET que le workflow est actif
-                        const showLiveScreencast = isActiveScreencast && !!debugUrlToken && isWorkflowActive;
+                        // Afficher le screencast live seulement si c'est le screencast actif
+                        const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
 
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
                         const showScreenshot = !!src && !showLiveScreencast;
@@ -678,7 +672,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           showScreenshot,
                           showPreview,
                           isActiveScreencast,
-                          isWorkflowActive,
                           hasDebugToken: !!computerUseTask.debug_url_token,
                           isLoading,
                           hasScreenshot: !!src,
