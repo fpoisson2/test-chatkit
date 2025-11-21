@@ -101,6 +101,7 @@ from chatkit.types import (
     AssistantMessageItem,
     Attachment,
     ClientToolCallItem,
+    ComputerUseTask,
     CustomSummary,
     CustomTask,
     DurationSummary,
@@ -1442,7 +1443,7 @@ async def test_stream_agent_response_streams_computer_tool_events_from_run_items
         event
         for event in events
         if isinstance(event, ThreadItemUpdated)
-        and isinstance(getattr(event.update, "task", None), ThoughtTask)
+        and isinstance(getattr(event.update, "task", None), ComputerUseTask)
         and getattr(event.update.task, "title", None) == "Clic"
     ]
     assert computer_task_events, "Expected computer call task events"
@@ -1457,7 +1458,10 @@ async def test_stream_agent_response_streams_computer_tool_events_from_run_items
     )
     assert final_update is not None
     assert final_update.update.task.status_indicator == "complete"
-    assert "https://example.com/screenshot.png" in final_update.update.task.content
+    # Check that screenshot was captured
+    assert len(final_update.update.task.screenshots) > 0
+    screenshot = final_update.update.task.screenshots[0]
+    assert screenshot.data_url == "https://example.com/screenshot.png" or "https://example.com/screenshot.png" in (screenshot.data_url or "")
 
 
 async def test_stream_agent_response_streams_function_calls_with_reasoning():

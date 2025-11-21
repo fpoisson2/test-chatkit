@@ -59,6 +59,8 @@ from .types import (
     AssistantMessageItem,
     Attachment,
     ClientToolCallItem,
+    ComputerUseScreenshot,
+    ComputerUseTask,
     CustomTask,
     DurationSummary,
     EndOfTurnItem,
@@ -426,7 +428,7 @@ _COMPUTER_ACTION_TITLES: dict[str, str] = {
 
 class ComputerTaskTracker(BaseModel):
     item_id: str
-    task: ThoughtTask
+    task: ComputerUseTask
     call_id: str | None = None
     action_data: Any | None = None
     pending_checks: Any | None = None
@@ -483,22 +485,49 @@ class ComputerTaskTracker(BaseModel):
         self.task.title = title
         return True
 
-    def _sync_content(self) -> bool:
-        previous = self.task.content
-        sections: list[str] = []
-        if self.action_data is not None:
-            sections.append(_format_markdown_section("Action", self.action_data))
-        if self.pending_checks:
-            sections.append(
-                _format_markdown_section(
-                    "Vérifications de sécurité", self.pending_checks
-                )
-            )
-        if self.output_data is not None:
-            sections.append(_format_markdown_section("Résultat", self.output_data))
-        content = "\n\n".join(sections).strip()
-        self.task.content = content or ""
-        return self.task.content != previous
+    def _sync_current_action(self) -> bool:
+        """Update current_action from action_data."""
+        if not isinstance(self.action_data, dict):
+            return False
+
+        action_type = self.action_data.get("type", "")
+        if not action_type:
+            return False
+
+        # Format a readable action description
+        action_desc = _COMPUTER_ACTION_TITLES.get(
+            action_type, action_type.replace("_", " ").capitalize()
+        )
+
+        # Add action details
+        details = []
+        if action_type in ("click", "double_click"):
+            x = self.action_data.get("x")
+            y = self.action_data.get("y")
+            if x is not None and y is not None:
+                details.append(f"à ({x}, {y})")
+        elif action_type == "type":
+            text = self.action_data.get("text", "")
+            if text:
+                details.append(f'"{text}"')
+        elif action_type == "keypress":
+            key = self.action_data.get("key", "")
+            if key:
+                details.append(f'touche "{key}"')
+
+        new_action = f"{action_desc} {' '.join(details)}".strip()
+        if self.task.current_action == new_action:
+            return False
+
+        self.task.current_action = new_action
+        return True
+
+    def _add_to_action_sequence(self, action: str) -> bool:
+        """Add an action to the action sequence if not already present."""
+        if not action or (self.task.action_sequence and self.task.action_sequence[-1] == action):
+            return False
+        self.task.action_sequence.append(action)
+        return True
 
     def update_from_call(
         self, call: ResponseComputerToolCall
@@ -515,7 +544,12 @@ class ComputerTaskTracker(BaseModel):
         )
         changed |= self._set_pending_checks(normalized_pending)
         changed |= self._sync_title()
-        changed |= self._sync_content()
+        changed |= self._sync_current_action()
+
+        # Add action to sequence if we have a current action
+        if self.task.current_action:
+            changed |= self._add_to_action_sequence(self.task.current_action)
+
         return changed, previous_call_id
 
     def update_from_output(
@@ -529,10 +563,71 @@ class ComputerTaskTracker(BaseModel):
         call_id_changed, previous_call_id = self.set_call_id(call_id)
         changed = call_id_changed
         changed |= self.set_status(status)
+
+        # Extract screenshot information from output
         output_value = raw_output if raw_output is not None else parsed_output
         if output_value is not None:
             changed |= self._set_output_data(_normalize_for_json(output_value))
-        changed |= self._sync_content()
+
+            # Check if this is a screenshot output
+            output_type = None
+            if isinstance(output_value, dict):
+                output_type = output_value.get("type")
+            elif hasattr(output_value, "type"):
+                output_type = getattr(output_value, "type", None)
+
+            if output_type == "computer_screenshot":
+                # Extract screenshot data
+                screenshot_id = self.call_id or f"screenshot_{len(self.task.screenshots)}"
+
+                # Try to get image_url from various sources
+                image_url = None
+                if isinstance(output_value, dict):
+                    image_url = output_value.get("image_url")
+                elif hasattr(output_value, "image_url"):
+                    image_url = getattr(output_value, "image_url", None)
+
+                # Also check parsed_output for image_url
+                if not image_url and parsed_output and isinstance(parsed_output, dict):
+                    image_url = parsed_output.get("image_url")
+
+                if image_url:
+                    # Create a ComputerUseScreenshot
+                    # If image_url is a data URL, extract the base64 part
+                    data_url = None
+                    b64_image = None
+
+                    if isinstance(image_url, str):
+                        if image_url.startswith("data:image/"):
+                            # It's already a data URL
+                            data_url = image_url
+                            # Extract base64 part if needed
+                            if ";base64," in image_url:
+                                b64_image = image_url.split(";base64,", 1)[1]
+                        elif image_url.startswith("http://") or image_url.startswith("https://"):
+                            # It's a regular URL, use it as data_url for now
+                            data_url = image_url
+                        else:
+                            # Assume it's base64 encoded image
+                            b64_image = image_url
+                            data_url = f"data:image/png;base64,{image_url}"
+
+                    screenshot = ComputerUseScreenshot(
+                        id=screenshot_id,
+                        b64_image=b64_image,
+                        data_url=data_url,
+                        action_description=self.task.current_action,
+                    )
+
+                    # Add or update the screenshot
+                    # Check if we should update the last screenshot or add a new one
+                    if self.task.screenshots and self.task.screenshots[-1].id == screenshot_id:
+                        self.task.screenshots[-1] = screenshot
+                    else:
+                        self.task.screenshots.append(screenshot)
+
+                    changed = True
+
         return changed, previous_call_id
 
 
@@ -1141,10 +1236,11 @@ async def stream_agent_response(
         if tracker is None:
             tracker = ComputerTaskTracker(
                 item_id=item_id,
-                task=ThoughtTask(
+                task=ComputerUseTask(
                     status_indicator="loading",
                     title=None,
-                    content="",
+                    screenshots=[],
+                    action_sequence=[],
                 ),
             )
             computer_tasks[item_id] = tracker
