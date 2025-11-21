@@ -1071,25 +1071,16 @@
 
 /* Computer Use Browser Automation Preview */
 .chatkit-computer-use-preview {
-  padding: 16px;
+  max-width: 800px;
   margin-bottom: 8px;
-  background: var(--color-bg-subtle);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
 }
 
 .chatkit-current-action {
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: var(--color-bg-info);
-  border-radius: 6px;
-  font-size: 14px;
-  color: var(--color-text-default);
+  display: none;
 }
 
 .chatkit-action-label {
-  font-weight: 600;
-  color: var(--color-text-accent);
+  display: none;
 }
 
 .chatkit-debug-url {
@@ -1121,17 +1112,17 @@
 .chatkit-browser-screenshot-container {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 0;
 }
 
 .chatkit-browser-screenshot {
   max-width: 800px;
   width: 100%;
-  border-radius: 8px;
-  border: 2px solid var(--color-border);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   display: block;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .chatkit-browser-screenshot--loading {
@@ -1140,21 +1131,15 @@
 
 /* DevTools Screencast Viewer */
 .chatkit-devtools-screencast {
-  margin-top: 12px;
-  border: 2px solid var(--color-border);
-  border-radius: 8px;
+  max-width: 800px;
+  border: none;
+  border-radius: 0;
   overflow: hidden;
-  background: var(--color-bg-secondary);
+  background: transparent;
 }
 
 .chatkit-screencast-header {
-  padding: 8px 12px;
-  background: var(--color-bg-default);
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
+  display: none;
 }
 
 .chatkit-screencast-status {
@@ -1188,27 +1173,29 @@
 }
 
 .chatkit-screencast-error {
-  padding: 8px 12px;
-  background: #fef2f2;
-  color: #991b1b;
-  font-size: 13px;
-  border-bottom: 1px solid var(--color-border);
+  display: none;
 }
 
 .chatkit-screencast-canvas-container {
   position: relative;
   width: 100%;
+  max-width: 800px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
-  background: #000;
-  min-height: 300px;
+  background: transparent;
+  min-height: auto;
 }
 
 .chatkit-screencast-canvas {
-  max-width: 100%;
+  max-width: 800px;
+  width: 100%;
   height: auto;
   display: block;
+}
+
+.chatkit-screenshot-caption {
+  display: none;
 }
 
 @keyframes browserAutomating {
