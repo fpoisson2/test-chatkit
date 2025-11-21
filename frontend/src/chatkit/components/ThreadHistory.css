@@ -164,8 +164,9 @@
 /* Thread Item */
 .thread-history-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
   padding: 16px;
   background: var(--color-surface-secondary);
   border: 1px solid var(--color-border-subtle);
@@ -202,12 +203,21 @@
   border-color: var(--accent-color-primary);
 }
 
+.thread-history-item-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
 .thread-history-item-preview {
   font-size: var(--font-text-md-size);
   font-weight: var(--font-weight-medium);
   color: var(--color-text);
-  margin-bottom: 8px;
   line-height: 1.4;
+  word-break: break-word;
 }
 
 [data-theme="dark"] .thread-history-item-preview {
@@ -221,4 +231,24 @@
 
 [data-theme="dark"] .thread-history-item-date {
   color: var(--color-text-tertiary);
+}
+
+.thread-history-item-delete {
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-full);
+  transition: background var(--transition-duration-fast), color var(--transition-duration-fast);
+}
+
+.thread-history-item-delete:hover:not(:disabled) {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.thread-history-item-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

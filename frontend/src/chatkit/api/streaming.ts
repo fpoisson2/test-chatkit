@@ -970,6 +970,36 @@ export async function listThreads(options: {
 }
 
 /**
+ * Supprime un thread
+ */
+export async function deleteThread(options: {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+}): Promise<void> {
+  const { url, headers = {}, threadId } = options;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      type: 'threads.delete',
+      params: {
+        thread_id: threadId,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+}
+
+/**
  * Liste les items d'un thread avec pagination
  */
 export async function listItems(options: {
