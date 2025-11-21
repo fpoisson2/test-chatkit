@@ -35,6 +35,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isMultiline, setIsMultiline] = useState(false);
 
   const {
     header,
@@ -65,8 +66,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const paddingBottom = parseFloat(styles.paddingBottom || '0');
     const minHeight = lineHeight + paddingTop + paddingBottom;
 
+    const contentHeight = textarea.scrollHeight;
+    const nextHeight = Math.max(contentHeight, minHeight);
+    const isContentMultiline = contentHeight > minHeight + 1;
+
+    setIsMultiline(isContentMultiline);
+
     // Ajuster la hauteur en fonction du contenu tout en limitant le multi-ligne
-    const nextHeight = Math.max(textarea.scrollHeight, minHeight);
     textarea.style.height = `${Math.min(nextHeight, 200)}px`;
   }, [inputValue]);
 
@@ -606,7 +612,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       {/* Composer */}
       <div className="chatkit-composer">
-        <form onSubmit={handleSubmit}>
+        <form
+          onSubmit={handleSubmit}
+          className={`chatkit-composer-form ${isMultiline ? 'is-multiline' : 'is-singleline'}`}
+        >
           <div className="chatkit-input-area">
             <textarea
               ref={textareaRef}
