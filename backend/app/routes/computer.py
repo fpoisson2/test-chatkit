@@ -30,7 +30,6 @@ class BrowserStartRequest(BaseModel):
 class BrowserStartResponse(BaseModel):
     """Response with browser session token."""
     token: str
-    debug_url: str
 
 
 class BrowserNavigateRequest(BaseModel):
@@ -275,7 +274,6 @@ async def start_test_browser(
 
         return BrowserStartResponse(
             token=token,
-            debug_url=debug_url,
         )
 
     except Exception as exc:
@@ -283,6 +281,85 @@ async def start_test_browser(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to start browser: {str(exc)}"
+        )
+
+
+@router.get("/browser/devtools/{token}")
+async def get_devtools_url(
+    token: str,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Get the Chrome DevTools URL for remote debugging.
+
+    This returns a URL that can be opened to control the browser manually.
+    The URL uses the CDP proxy to securely tunnel the connection.
+    """
+    session = _DEBUG_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(status_code=404, detail="Browser session not found")
+
+    if session.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    # Get the actual CDP targets to find the page ID
+    debug_url = session.get("debug_url")
+    if not debug_url:
+        raise HTTPException(
+            status_code=500,
+            detail="Debug URL not available"
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{debug_url}/json")
+            response.raise_for_status()
+            targets = response.json()
+
+            # Find the first page target
+            page_target = None
+            if isinstance(targets, list):
+                for target in targets:
+                    if target.get("type") == "page":
+                        page_target = target
+                        break
+
+            if not page_target:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No page target found"
+                )
+
+            # Extract the devtools frontend URL
+            devtools_frontend_url = page_target.get("devtoolsFrontendUrl", "")
+
+            # Extract the page ID from webSocketDebuggerUrl
+            ws_url = page_target.get("webSocketDebuggerUrl", "")
+            if ws_url:
+                # Extract path from ws://host:port/devtools/page/XXX
+                parts = ws_url.split("/", 3)
+                if len(parts) >= 4:
+                    target_path = "/" + parts[3]
+
+                    # Build WebSocket URL that will use our proxy
+                    # This needs to be a full wss:// URL for the remote DevTools frontend
+                    # The frontend will construct the full URL using window.location
+
+                    # Return relative path that frontend will complete with domain
+                    return {
+                        "devtools_ws_path": f"/api/computer/cdp/ws?token={token}&target={target_path}"
+                    }
+
+            raise HTTPException(
+                status_code=500,
+                detail="Could not generate DevTools URL"
+            )
+
+    except httpx.RequestError as exc:
+        logger.error(f"Failed to get DevTools URL: {exc}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to connect to Chrome DevTools: {str(exc)}"
         )
 
 

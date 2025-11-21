@@ -7,7 +7,6 @@ import { makeApiEndpointCandidates } from "../utils/backend";
 
 type BrowserSession = {
   token: string;
-  debug_url: string;
 };
 
 // Helper to make API requests
@@ -171,14 +170,44 @@ export const AdminBrowserTestPage = () => {
     }
   };
 
-  const handleTakeControl = () => {
-    if (!browserSession) return;
+  const handleTakeControl = async () => {
+    if (!token || !browserSession) return;
 
-    // Open Chrome DevTools in a new window
-    // The debug_url points to the CDP endpoint which can be opened directly
-    const devtoolsUrl = browserSession.debug_url;
-    window.open(devtoolsUrl, '_blank', 'noopener,noreferrer');
-    setSuccess(t("admin.browserTest.success.controlOpened"));
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Get the DevTools WebSocket path from backend
+      const response = await makeApiRequest(
+        `/api/computer/browser/devtools/${browserSession.token}`,
+        {
+          method: "GET",
+        },
+        token
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to get DevTools URL");
+      }
+
+      const data = await response.json();
+      const wsPath = data.devtools_ws_path;
+
+      // Build the full WebSocket URL using current location
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}${wsPath}`;
+
+      // Open Chrome DevTools frontend with our WebSocket proxy
+      // Using the official Chrome DevTools frontend hosted by Google
+      const devtoolsUrl = `https://chrome-devtools-frontend.appspot.com/serve_file/@60cd6e859b9f557d2312f5bf532f6aec5f284980/inspector.html?ws=${encodeURIComponent(wsUrl)}`;
+      window.open(devtoolsUrl, '_blank', 'noopener,noreferrer');
+      setSuccess(t("admin.browserTest.success.controlOpened"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to open DevTools");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
