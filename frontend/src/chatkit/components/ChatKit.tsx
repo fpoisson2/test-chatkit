@@ -563,13 +563,19 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
                         const isWorkflowActive = isLastWorkflow && control.isLoading;
 
+                        // Prefer the persisted token for this workflow if the task no longer exposes it
+                        const debugUrlToken =
+                          computerUseTask.debug_url_token ||
+                          (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
+
                         // Show screencast if:
-                        // - There's a debug_url_token
+                        // - There's a debug_url_token (live or persisted)
                         // - AND (the task is currently loading OR the workflow is still active)
-                        const showScreencast = !!computerUseTask.debug_url_token && (isLoading || isWorkflowActive);
+                        const showScreencast = !!debugUrlToken && (isLoading || isWorkflowActive);
                         const isPersistedScreencast =
-                          !!computerUseTask.debug_url_token &&
-                          activeScreencast?.token === computerUseTask.debug_url_token;
+                          !!debugUrlToken &&
+                          activeScreencast?.itemId === item.id &&
+                          activeScreencast?.token === debugUrlToken;
                         const showScreenshot = !!src;
                         const shouldRenderScreencast = showScreencast || isPersistedScreencast;
                         const showPreview = shouldRenderScreencast || showScreenshot;
@@ -596,15 +602,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                               )}
                               {/* Show screencast if available for active tasks */}
                               {shouldRenderScreencast && (
-                                <DevToolsScreencast
-                                  debugUrlToken={computerUseTask.debug_url_token}
-                                  authToken={authToken}
-                                  enableInput
-                                  onConnectionError={() => {
-                                    setActiveScreencast(current =>
-                                      current?.token === computerUseTask.debug_url_token ? null : current
-                                    );
-                                  }}
+                                  <DevToolsScreencast
+                                    debugUrlToken={debugUrlToken as string}
+                                    authToken={authToken}
+                                    enableInput
+                                    onConnectionError={() => {
+                                      setActiveScreencast(current =>
+                                        current?.token === debugUrlToken ? null : current
+                                      );
+                                    }}
                                 />
                               )}
                               {/* Show screenshot for completed tasks or when no screencast */}
