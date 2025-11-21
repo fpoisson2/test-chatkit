@@ -526,9 +526,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
-                        // Show screencast ONLY for current/active task (isLoading)
-                        // For completed tasks, always show the last screenshot
-                        const showScreencast = !!computerUseTask.debug_url_token && isLoading;
+                        // Check if the workflow is still active by looking if this workflow is one of the last items
+                        // and there's no end_of_turn after it (which would indicate the turn is finished)
+                        const itemIndex = items.findIndex((i: any) => i.id === item.id);
+                        const itemsAfter = items.slice(itemIndex + 1);
+                        const hasEndOfTurnAfter = itemsAfter.some((i: any) => i.type === 'end_of_turn');
+                        const isWorkflowActive = !hasEndOfTurnAfter;
+
+                        // Show screencast if:
+                        // - There's a debug_url_token
+                        // - AND (the task is currently loading OR the workflow is still active)
+                        const showScreencast = !!computerUseTask.debug_url_token && (isLoading || isWorkflowActive);
                         const showScreenshot = !!src;
                         const showPreview = showScreencast || showScreenshot;
 
@@ -538,6 +546,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           showPreview,
                           hasDebugToken: !!computerUseTask.debug_url_token,
                           isLoading,
+                          isWorkflowActive,
+                          hasEndOfTurnAfter,
                           hasScreenshot: !!src
                         });
 
