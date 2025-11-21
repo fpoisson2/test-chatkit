@@ -626,3 +626,15 @@ def register_startup_events(app: FastAPI) -> None:
         sip_contact_host=sip_contact_host,
         sip_contact_port=sip_contact_port,
     )
+
+    # Initialize debug session callback for computer use screencast
+    @app.on_event("startup")
+    def _init_debug_callback() -> None:
+        """Initialize the debug session callback after all routes are loaded."""
+        try:
+            from ..chatkit.agent_registry import initialize_debug_session_callback
+            initialize_debug_session_callback()
+        except Exception as exc:
+            logger.warning(
+                "Failed to initialize debug session callback: %s", exc, exc_info=True
+            )
