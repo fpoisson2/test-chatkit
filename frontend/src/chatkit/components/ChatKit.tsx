@@ -485,16 +485,23 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
                         const isLoading = computerUseTask.status_indicator === 'loading';
 
+                        // Debug: log all relevant info
+                        console.log('[ChatKit] Computer use task details:', {
+                          hasDebugToken: !!computerUseTask.debug_url_token,
+                          debugToken: computerUseTask.debug_url_token ? `${computerUseTask.debug_url_token.substring(0, 8)}...` : 'none',
+                          debugUrl: computerUseTask.debug_url,
+                          status: computerUseTask.status_indicator,
+                          isLoading: isLoading,
+                          screenshotsCount: computerUseTask.screenshots ? computerUseTask.screenshots.length : 0,
+                          currentAction: computerUseTask.current_action,
+                        });
+
                         if (hasScreenshots) {
-                          console.log('[ChatKit] Computer use screenshot found:', {
+                          console.log('[ChatKit] Screenshot info:', {
                             id: screenshot.id,
-                            status: computerUseTask.status_indicator,
-                            isLoading: isLoading,
-                            screenshotsCount: computerUseTask.screenshots.length,
                             hasB64: !!screenshot.b64_image,
                             hasDataUrl: !!screenshot.data_url,
-                            currentAction: computerUseTask.current_action,
-                            debugUrl: computerUseTask.debug_url
+                            action: screenshot.action_description
                           });
                         }
 
@@ -506,8 +513,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const showScreenshot = src && (!showScreencast || !computerUseTask.debug_url_token);
                         const showPreview = showScreencast || showScreenshot;
 
+                        console.log('[ChatKit] Display decision:', {
+                          showScreencast,
+                          showScreenshot,
+                          showPreview,
+                          hasDebugToken: !!computerUseTask.debug_url_token,
+                          isLoading,
+                          hasScreenshot: !!src
+                        });
+
                         if (showPreview) {
-                          console.log('[ChatKit] Showing browser preview:', { showScreencast, showScreenshot, isLoading });
                           return (
                             <div className="chatkit-computer-use-preview">
                               {computerUseTask.current_action && isLoading && (
