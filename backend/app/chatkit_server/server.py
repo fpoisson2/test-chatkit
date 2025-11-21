@@ -979,6 +979,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         # Set thread_id in context for browser caching
         from ..tool_builders.computer_use import set_current_thread_id
         set_current_thread_id(thread.id)
+        logger.info(f"Context thread_id défini: {thread.id}")
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)

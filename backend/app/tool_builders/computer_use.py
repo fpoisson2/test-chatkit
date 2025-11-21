@@ -149,6 +149,14 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
     if not thread_id:
         thread_id = _current_thread_id.get()
 
+    # Log thread_id for debugging
+    logger.info(
+        f"build_computer_use_tool: thread_id={thread_id}, from_config={config.get('thread_id') is not None}"
+    )
+    logger.debug(
+        f"Cache actuel contient {len(_browser_cache_by_thread)} threads: {list(_browser_cache_by_thread.keys())}"
+    )
+
     # Create a cache key based on browser configuration
     # Each chat thread has its own isolated cache that persists across requests
     cache_key = f"{environment}:{width}x{height}"
