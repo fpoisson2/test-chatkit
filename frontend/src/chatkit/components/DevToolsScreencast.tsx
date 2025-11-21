@@ -4,6 +4,7 @@ interface DevToolsScreencastProps {
   debugUrlToken: string;
   authToken?: string; // JWT token for authentication
   className?: string;
+  onConnectionError?: () => void; // Callback when connection fails
 }
 
 interface ScreencastFrame {
@@ -16,7 +17,7 @@ interface ScreencastFrame {
   };
 }
 
-export function DevToolsScreencast({ debugUrlToken, authToken, className = '' }: DevToolsScreencastProps): JSX.Element {
+export function DevToolsScreencast({ debugUrlToken, authToken, className = '', onConnectionError }: DevToolsScreencastProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);

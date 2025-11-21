@@ -499,24 +499,29 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         }
 
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
-                        const showPreview = src || computerUseTask.debug_url_token;
+
+                        // Show screencast only if task is still loading (in progress)
+                        // Otherwise show the last screenshot
+                        const showScreencast = computerUseTask.debug_url_token && isLoading;
+                        const showScreenshot = src && (!showScreencast || !computerUseTask.debug_url_token);
+                        const showPreview = showScreencast || showScreenshot;
 
                         if (showPreview) {
-                          console.log('[ChatKit] Showing browser preview');
+                          console.log('[ChatKit] Showing browser preview:', { showScreencast, showScreenshot, isLoading });
                           return (
                             <div className="chatkit-computer-use-preview">
-                              {computerUseTask.current_action && (
+                              {computerUseTask.current_action && isLoading && (
                                 <div className="chatkit-current-action">
                                   <span className="chatkit-action-label">Action en cours:</span> {computerUseTask.current_action}
                                 </div>
                               )}
-                              {computerUseTask.debug_url_token && (
+                              {showScreencast && (
                                 <DevToolsScreencast
                                   debugUrlToken={computerUseTask.debug_url_token}
                                   authToken={authToken}
                                 />
                               )}
-                              {!computerUseTask.debug_url_token && src && (
+                              {showScreenshot && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <img
                                     src={src}
