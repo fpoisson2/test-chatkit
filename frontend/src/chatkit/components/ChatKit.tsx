@@ -636,17 +636,19 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         // Prefer the persisted token for this workflow if the task no longer exposes it
                         const debugUrlToken =
-                          computerUseTask.debug_url_token ||
+                          computerUseTask?.debug_url_token ||
                           (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
 
                         // Show screencast if:
                         // - There's a debug_url_token (live or persisted)
-                        // - AND (the task is currently loading OR the workflow is still active)
-                        const showScreencast = !!debugUrlToken && (isLoading || isWorkflowActive);
+                        // - AND (the task is currently loading OR the workflow is still active
+                        //   OR it's the last persisted screencast for this workflow)
                         const isPersistedScreencast =
                           !!debugUrlToken &&
                           activeScreencast?.itemId === item.id &&
-                          activeScreencast?.token === debugUrlToken;
+                          (!!computerUseTask?.debug_url_token || activeScreencast?.token === debugUrlToken);
+                        const showScreencast =
+                          !!debugUrlToken && (isLoading || isWorkflowActive || isPersistedScreencast);
                         const showScreenshot = !!src;
                         const shouldRenderScreencast = showScreencast || isPersistedScreencast;
                         const showPreview = shouldRenderScreencast || showScreenshot;
