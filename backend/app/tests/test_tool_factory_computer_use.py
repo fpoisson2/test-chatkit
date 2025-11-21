@@ -21,6 +21,7 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
 from app.computer import hosted_browser  # noqa: E402
+from app.tool_builders import computer_use  # noqa: E402
 from app.tool_builders.computer_use import build_computer_use_tool  # noqa: E402
 
 
@@ -44,6 +45,41 @@ def test_build_computer_use_tool_returns_computer_tool() -> None:
 
 def test_build_computer_use_tool_handles_missing_config() -> None:
     assert build_computer_use_tool({}) is None
+
+
+def test_build_computer_use_tool_prefers_mapped_thread_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _StubHostedBrowser:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.args = args
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(computer_use, "HostedBrowser", _StubHostedBrowser)
+    computer_use.cleanup_browser_cache()
+
+    payload = {
+        "type": "computer_use",
+        "computer_use": {
+            "thread_id": "stale-thread",
+            "display_width": 640,
+            "display_height": 480,
+        },
+    }
+
+    async def _run() -> ComputerTool | None:
+        # Simule un nouveau thread en cours d'exécution dans la tâche actuelle
+        computer_use.set_current_thread_id("context-thread")
+        return build_computer_use_tool(payload)
+
+    tool = asyncio.run(_run())
+
+    assert isinstance(tool, ComputerTool)
+    # Le navigateur est mis en cache sur le thread courant, pas celui du payload
+    assert "context-thread" in computer_use._browser_cache_by_thread
+    assert "stale-thread" not in computer_use._browser_cache_by_thread
+
+    computer_use.cleanup_browser_cache()
 
 
 def test_hosted_browser_fallback_produces_png(monkeypatch: pytest.MonkeyPatch) -> None:

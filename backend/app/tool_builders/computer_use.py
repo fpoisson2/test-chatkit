@@ -148,23 +148,32 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
         if stripped:
             start_url = stripped
 
-    # Extract thread_id from config if available, otherwise use context variable
-    thread_id = config.get("thread_id")
-    if isinstance(thread_id, str):
-        thread_id = thread_id.strip() or None
+    # Extract thread_id from task mapping first (authoritative per-workflow),
+    # then fall back to any value provided in the tool config.
+    task = asyncio.current_task()
+    mapped_thread_id: str | None = None
+    if task:
+        mapped_thread_id = _thread_id_by_task.get(task)
+        logger.info(
+            f"🔍 Récupération thread_id depuis mapping: task_id={id(task)} → thread_id={mapped_thread_id}"
+        )
     else:
-        thread_id = None
+        logger.warning("⚠️ Aucune tâche asyncio actuelle trouvée!")
 
-    # Fallback to task mapping if not in config
-    if not thread_id:
-        task = asyncio.current_task()
-        if task:
-            thread_id = _thread_id_by_task.get(task)
-            logger.info(
-                f"🔍 Récupération thread_id depuis mapping: task_id={id(task)} → thread_id={thread_id}"
-            )
-        else:
-            logger.warning("⚠️ Aucune tâche asyncio actuelle trouvée!")
+    configured_thread_id = config.get("thread_id") if isinstance(config, Mapping) else None
+    if isinstance(configured_thread_id, str):
+        configured_thread_id = configured_thread_id.strip() or None
+    else:
+        configured_thread_id = None
+
+    if mapped_thread_id and configured_thread_id and configured_thread_id != mapped_thread_id:
+        logger.info(
+            "♻️ Ignoring configured thread_id=%s in favor of current task mapping %s",
+            configured_thread_id,
+            mapped_thread_id,
+        )
+
+    thread_id = mapped_thread_id or configured_thread_id
 
     # Log thread_id for debugging
     logger.info(
