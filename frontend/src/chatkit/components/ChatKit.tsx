@@ -476,16 +476,33 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                     {/* Afficher les screenshots du browser automation (computer_use) */}
                     {(() => {
-                      const computerUseTask = item.workflow.tasks.find(
+                      // Find the computer_use task that is currently loading with a debug token,
+                      // or the last computer_use task with a debug token, or the last computer_use task
+                      const computerUseTasks = item.workflow.tasks.filter(
                         (task: any) => task.type === 'computer_use'
                       );
+
+                      let computerUseTask = computerUseTasks.find(
+                        (task: any) => task.status_indicator === 'loading' && task.debug_url_token
+                      );
+
+                      if (!computerUseTask) {
+                        // Find last task with debug_url_token
+                        const tasksWithToken = computerUseTasks.filter((task: any) => task.debug_url_token);
+                        computerUseTask = tasksWithToken[tasksWithToken.length - 1];
+                      }
+
+                      if (!computerUseTask && computerUseTasks.length > 0) {
+                        // Fallback to last computer_use task
+                        computerUseTask = computerUseTasks[computerUseTasks.length - 1];
+                      }
+
                       console.log('[ChatKit] Checking for computer_use in workflow:', item.id, 'computerUseTask:', computerUseTask);
                       if (computerUseTask) {
                         const hasScreenshots = computerUseTask.screenshots && computerUseTask.screenshots.length > 0;
                         const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
-                        // Check if the WORKFLOW is loading, not just the individual task
-                        // Individual tasks complete quickly, but the workflow may still be running
-                        const isLoading = item.status_indicator === 'loading';
+                        // Check if THIS SPECIFIC task is loading (not the workflow)
+                        const isLoading = computerUseTask.status_indicator === 'loading';
 
                         // Debug: log all relevant info
                         console.log('[ChatKit] Computer use task details:', {
