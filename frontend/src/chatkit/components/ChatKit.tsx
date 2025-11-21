@@ -71,7 +71,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
-      const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
+      const computerUseTask = item.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask) return;
 
       const isLoading = computerUseTask.status_indicator === 'loading';
