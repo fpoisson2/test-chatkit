@@ -65,6 +65,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const workflows = items.filter((i: any) => i.type === 'workflow');
     const lastWorkflow = workflows[workflows.length - 1];
 
+    console.log('[ChatKit useEffect] Checking for active screencast, control.isLoading:', control.isLoading, 'workflows:', workflows.length);
+
     let newActiveScreencast: { token: string; itemId: string } | null = null;
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
@@ -73,7 +75,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       if (!computerUseTask) return;
 
       const isLoading = computerUseTask.status_indicator === 'loading';
-      const isLastWorkflowAndStreaming = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
+      const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
+      const isLastWorkflowAndStreaming = isLastWorkflow && control.isLoading;
+
+      console.log('[ChatKit useEffect] Workflow:', item.id, {
+        hasToken: !!computerUseTask.debug_url_token,
+        token: computerUseTask.debug_url_token?.substring(0, 8),
+        isLoading,
+        isLastWorkflow,
+        isLastWorkflowAndStreaming,
+        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token
+      });
 
       // Capturer le screencast s'il est actuellement actif (en cours de chargement ou dernier workflow pendant le streaming)
       // ET s'il a un debug_url_token
@@ -84,6 +96,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         };
       }
     });
+
+    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentActiveScreencast:', activeScreencast);
 
     // Mise à jour de activeScreencast :
     // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
