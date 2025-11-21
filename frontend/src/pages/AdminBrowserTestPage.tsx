@@ -282,7 +282,10 @@ export const AdminBrowserTestPage = () => {
             <p className="admin-section__description">
               {t("admin.browserTest.preview.description")}
             </p>
-            <DevToolsScreencast debugUrlToken={browserSession.token} />
+            <DevToolsScreencast
+              debugUrlToken={browserSession.token}
+              className="browser-test-screencast"
+            />
           </div>
         </FormSection>
       )}
@@ -353,6 +356,26 @@ export const AdminBrowserTestPage = () => {
           border-radius: 4px;
           color: #155724;
           margin-bottom: 16px;
+        }
+
+        /* Show status and errors for browser test page */
+        .browser-test-screencast .chatkit-screencast-header {
+          display: block !important;
+          padding: 8px 12px;
+          background: #f8f9fa;
+          border-radius: 4px;
+          margin-bottom: 8px;
+          font-size: 13px;
+        }
+
+        .browser-test-screencast .chatkit-screencast-error {
+          display: block !important;
+          padding: 12px;
+          background-color: #fff3cd;
+          border: 1px solid #ffc107;
+          border-radius: 4px;
+          color: #856404;
+          margin-bottom: 12px;
         }
       `}</style>
     </div>
