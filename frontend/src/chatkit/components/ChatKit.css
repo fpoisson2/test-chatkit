@@ -200,11 +200,10 @@
 
 .chatkit-composer form {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   gap: 8px;
   width: 100%;
   max-width: 800px;
-  align-items: flex-end;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 24px;
@@ -217,7 +216,7 @@
 }
 
 .chatkit-input {
-  flex: 1;
+  width: 100%;
   padding: 12px;
   border: none;
   background: transparent;
@@ -240,6 +239,21 @@
 .chatkit-input:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.chatkit-input-area {
+  width: 100%;
+}
+
+.chatkit-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.chatkit-composer-actions .chatkit-submit {
+  margin-left: auto;
 }
 
 .chatkit-submit {
