@@ -34,6 +34,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [showHistory, setShowHistory] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
+  const activeScreencastThreadRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -61,31 +62,43 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   // Conserver le dernier screencast actif jusqu'à ce qu'un nouveau arrive ou qu'il se déconnecte
   useEffect(() => {
+    const currentThreadId = control.thread?.id ?? null;
+
+    if (activeScreencastThreadRef.current && activeScreencastThreadRef.current !== currentThreadId) {
+      setActiveScreencast(null);
+    }
+
+    activeScreencastThreadRef.current = currentThreadId;
+
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
     const lastWorkflow = workflows[workflows.length - 1];
 
-    let latestActiveScreencast: { token: string; itemId: string } | null = null;
-
-    workflows.forEach((item: any) => {
+    const latestWorkflowWithScreencast = [...workflows].reverse().find((item: any) => {
       const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
-      if (!computerUseTask?.debug_url_token) return;
-
-      const isLoading = computerUseTask.status_indicator === 'loading';
-      const isWorkflowActive = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
-
-      if (isLoading || isWorkflowActive) {
-        latestActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
-      }
+      return !!computerUseTask?.debug_url_token;
     });
 
-    if (latestActiveScreencast && latestActiveScreencast.token !== activeScreencast?.token) {
-      setActiveScreencast(latestActiveScreencast);
+    const computerUseTask = latestWorkflowWithScreencast?.tasks?.find((t: any) => t.type === 'computer_use');
+    const debugUrlToken = computerUseTask?.debug_url_token;
+
+    if (!latestWorkflowWithScreencast || !computerUseTask || !debugUrlToken) {
+      return;
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+
+    const isLoading = computerUseTask.status_indicator === 'loading';
+    const isWorkflowActive = lastWorkflow && lastWorkflow.id === latestWorkflowWithScreencast.id && control.isLoading;
+
+    const isNewScreencast =
+      activeScreencast?.token !== debugUrlToken || activeScreencast?.itemId !== latestWorkflowWithScreencast.id;
+
+    if (isLoading || isWorkflowActive || isNewScreencast) {
+      setActiveScreencast({
+        token: debugUrlToken,
+        itemId: latestWorkflowWithScreencast.id,
+      });
+    }
+  }, [activeScreencast?.itemId, activeScreencast?.token, control.isLoading, control.thread?.id, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
