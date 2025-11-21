@@ -241,6 +241,7 @@ async def start_test_browser(
         browser = HostedBrowser(
             width=request.width,
             height=request.height,
+            environment="browser",  # Use browser environment for testing
             start_url=request.url,
         )
 
