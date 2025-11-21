@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from ..dependencies import get_current_user
 from ..models import User
@@ -18,8 +19,27 @@ logger = logging.getLogger("chatkit.computer")
 router = APIRouter(prefix="/api/computer", tags=["computer"])
 
 
+# Pydantic models for browser control
+class BrowserStartRequest(BaseModel):
+    """Request to start a test browser instance."""
+    url: str | None = None
+    width: int = 1024
+    height: int = 768
+
+
+class BrowserStartResponse(BaseModel):
+    """Response with browser session token."""
+    token: str
+    debug_url: str
+
+
+class BrowserNavigateRequest(BaseModel):
+    """Request to navigate browser to a URL."""
+    url: str
+
+
 # Store debug URLs per session token
-# Format: {token: {"debug_url": str, "user_id": int}}
+# Format: {token: {"debug_url": str, "user_id": int, "driver": _BaseBrowserDriver | None}}
 _DEBUG_SESSIONS: dict[str, dict[str, Any]] = {}
 
 
@@ -196,3 +216,158 @@ async def proxy_cdp_websocket(websocket: WebSocket, token: str, target: str) -> 
     except Exception as exc:
         logger.error(f"WebSocket proxy error: {exc}")
         await websocket.close(code=1011, reason=str(exc))
+
+
+# Browser test endpoints for admin panel
+@router.post("/browser/start", response_model=BrowserStartResponse)
+async def start_test_browser(
+    request: BrowserStartRequest,
+    current_user: User = Depends(get_current_user),
+) -> BrowserStartResponse:
+    """
+    Start a test browser instance for admin testing.
+
+    Args:
+        request: Browser configuration (URL, dimensions)
+        current_user: Authenticated user
+
+    Returns:
+        Session token and debug URL for the browser instance
+    """
+    try:
+        from ..computer.hosted_browser import HostedBrowser
+
+        # Create browser instance
+        browser = HostedBrowser(
+            width=request.width,
+            height=request.height,
+            start_url=request.url,
+        )
+
+        # Get the driver to access debug_url
+        driver = browser._driver
+
+        # Ensure browser is ready (this starts it)
+        await driver.ensure_ready()
+
+        # Get debug URL from driver
+        debug_url = driver.debug_url()
+        if not debug_url:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to get debug URL from browser"
+            )
+
+        # Register debug session with driver reference
+        token = secrets.token_urlsafe(32)
+        _DEBUG_SESSIONS[token] = {
+            "debug_url": debug_url,
+            "user_id": current_user.id,
+            "driver": driver,
+        }
+
+        logger.info(
+            f"Started test browser for user {current_user.id}: "
+            f"token={token[:8]}..., url={request.url}"
+        )
+
+        return BrowserStartResponse(
+            token=token,
+            debug_url=debug_url,
+        )
+
+    except Exception as exc:
+        logger.error(f"Failed to start test browser: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start browser: {str(exc)}"
+        )
+
+
+@router.post("/browser/navigate/{token}")
+async def navigate_test_browser(
+    token: str,
+    request: BrowserNavigateRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Navigate the test browser to a new URL.
+
+    Args:
+        token: Browser session token
+        request: Navigation request with URL
+        current_user: Authenticated user
+
+    Returns:
+        Success message
+    """
+    session = _DEBUG_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(status_code=404, detail="Browser session not found")
+
+    # Check authorization
+    if session.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    driver = session.get("driver")
+    if not driver:
+        raise HTTPException(
+            status_code=500,
+            detail="Browser driver not available"
+        )
+
+    try:
+        # Access the page and navigate
+        page = driver._page
+        if page:
+            await page.goto(request.url, wait_until="domcontentloaded")
+            logger.info(f"Navigated browser {token[:8]}... to {request.url}")
+            return {"status": "success", "url": request.url}
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Browser page not available"
+            )
+    except Exception as exc:
+        logger.error(f"Failed to navigate browser: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Navigation failed: {str(exc)}"
+        )
+
+
+@router.delete("/browser/close/{token}")
+async def close_test_browser(
+    token: str,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Close the test browser and clean up session.
+
+    Args:
+        token: Browser session token
+        current_user: Authenticated user
+
+    Returns:
+        Success message
+    """
+    session = _DEBUG_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(status_code=404, detail="Browser session not found")
+
+    # Check authorization
+    if session.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    driver = session.get("driver")
+    if driver:
+        try:
+            await driver.close()
+            logger.info(f"Closed test browser {token[:8]}... for user {current_user.id}")
+        except Exception as exc:
+            logger.warning(f"Error closing browser driver: {exc}")
+
+    # Clean up session
+    cleanup_debug_session(token)
+
+    return {"status": "success", "message": "Browser closed"}
