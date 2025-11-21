@@ -62,6 +62,12 @@ try:
 except ImportError:
     _set_chatkit_computer_tool = None
 
+# Import from routes for registering debug sessions
+try:
+    from app.routes.computer import register_debug_session as _register_computer_debug_session
+except ImportError:
+    _register_computer_debug_session = None
+
 logger = logging.getLogger("chatkit.server")
 def _model_settings(**kwargs: Any) -> ModelSettings:
     return sanitize_model_like(ModelSettings(**kwargs))
@@ -720,6 +726,7 @@ def _coerce_agent_tools(
                 if tool is not None:
                     coerced.append(tool)
                     # Store computer tool in thread-local for access in agents.py
+                    # The debug session will be registered in agents.py when creating the task
                     if _set_chatkit_computer_tool is not None:
                         _set_chatkit_computer_tool(tool)
                 continue

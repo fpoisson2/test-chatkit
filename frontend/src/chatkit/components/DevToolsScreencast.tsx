@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 interface DevToolsScreencastProps {
-  debugUrl: string;
+  debugUrlToken: string;
   className?: string;
 }
 
@@ -15,7 +15,7 @@ interface ScreencastFrame {
   };
 }
 
-export function DevToolsScreencast({ debugUrl, className = '' }: DevToolsScreencastProps): JSX.Element {
+export function DevToolsScreencast({ debugUrlToken, className = '' }: DevToolsScreencastProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -30,14 +30,15 @@ export function DevToolsScreencast({ debugUrl, className = '' }: DevToolsScreenc
 
     const connect = async () => {
       try {
-        // The debugUrl is in format http://host:port
-        // We need to fetch /json to get the webSocketDebuggerUrl
-        console.log('[DevToolsScreencast] Fetching WebSocket endpoint from:', debugUrl);
+        // Fetch Chrome DevTools targets via our backend proxy
+        console.log('[DevToolsScreencast] Fetching targets via proxy...');
 
-        const jsonUrl = `${debugUrl}/json`;
-        const response = await fetch(jsonUrl);
+        const jsonUrl = `/api/computer/cdp/json?token=${encodeURIComponent(debugUrlToken)}`;
+        const response = await fetch(jsonUrl, {
+          credentials: 'include', // Include auth cookies
+        });
         if (!response.ok) {
-          throw new Error(`Failed to fetch debug info: ${response.status}`);
+          throw new Error(`Failed to fetch debug info: ${response.status} ${response.statusText}`);
         }
 
         const targets = await response.json();
@@ -53,8 +54,16 @@ export function DevToolsScreencast({ debugUrl, className = '' }: DevToolsScreenc
           return;
         }
 
-        const wsUrl = pageTarget.webSocketDebuggerUrl;
-        console.log('[DevToolsScreencast] Connecting to:', wsUrl);
+        // The WebSocket URL is already rewritten by the backend to point to our proxy
+        // Format: /api/computer/cdp/ws?token=XXX&target=/devtools/page/ABC123
+        let wsUrl = pageTarget.webSocketDebuggerUrl;
+
+        // Convert to full WebSocket URL (ws:// or wss://)
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsUrl = `${protocol}//${host}${wsUrl}`;
+
+        console.log('[DevToolsScreencast] Connecting to proxy WebSocket:', wsUrl);
         ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
@@ -188,7 +197,7 @@ export function DevToolsScreencast({ debugUrl, className = '' }: DevToolsScreenc
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [debugUrl]);
+  }, [debugUrlToken]);
 
   return (
     <div className={`chatkit-devtools-screencast ${className}`}>

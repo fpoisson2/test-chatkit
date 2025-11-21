@@ -495,7 +495,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         }
 
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
-                        const showPreview = src || computerUseTask.debug_url;
+                        const showPreview = src || computerUseTask.debug_url_token;
 
                         if (showPreview) {
                           console.log('[ChatKit] Showing browser preview');
@@ -506,10 +506,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                   <span className="chatkit-action-label">Action en cours:</span> {computerUseTask.current_action}
                                 </div>
                               )}
-                              {computerUseTask.debug_url && (
-                                <DevToolsScreencast debugUrl={computerUseTask.debug_url} />
+                              {computerUseTask.debug_url_token && (
+                                <DevToolsScreencast debugUrlToken={computerUseTask.debug_url_token} />
                               )}
-                              {!computerUseTask.debug_url && src && (
+                              {!computerUseTask.debug_url_token && src && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <img
                                     src={src}
