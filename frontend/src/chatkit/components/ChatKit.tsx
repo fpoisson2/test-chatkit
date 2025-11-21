@@ -59,33 +59,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [control.thread?.items.length]);
 
-  // Conserver le dernier screencast actif jusqu'à ce qu'un nouveau arrive ou qu'il se déconnecte
+  // Conserver le dernier screencast actif jusqu'à ce qu'un nouveau workflow arrive ou qu'il se déconnecte
   useEffect(() => {
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
-    const lastWorkflow = workflows[workflows.length - 1];
 
     let latestActiveScreencast: { token: string; itemId: string } | null = null;
 
+    // Parcourir les workflows pour trouver le dernier avec un debug_url_token
     workflows.forEach((item: any) => {
       const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask?.debug_url_token) return;
 
-      const isLoading = computerUseTask.status_indicator === 'loading';
-      const isWorkflowActive = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
-
-      if (isLoading || isWorkflowActive) {
-        latestActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
-      }
+      // Capturer le screencast peu importe son statut (loading, completed, etc.)
+      latestActiveScreencast = {
+        token: computerUseTask.debug_url_token,
+        itemId: item.id,
+      };
     });
 
-    if (latestActiveScreencast && latestActiveScreencast.token !== activeScreencast?.token) {
+    // Mettre à jour uniquement si un nouveau workflow apparaît (itemId différent)
+    if (latestActiveScreencast && latestActiveScreencast.itemId !== activeScreencast?.itemId) {
       setActiveScreencast(latestActiveScreencast);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.itemId, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -640,8 +637,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         // Show screencast if:
                         // - There's a debug_url_token (live or persisted)
-                        // - AND (the task is currently loading OR the workflow is still active)
-                        const showScreencast = !!debugUrlToken && (isLoading || isWorkflowActive);
+                        // Le screencast persiste jusqu'à ce qu'un nouveau démarre ou qu'il y ait déconnexion
+                        const showScreencast = !!debugUrlToken;
                         const isPersistedScreencast =
                           !!debugUrlToken &&
                           activeScreencast?.itemId === item.id &&
