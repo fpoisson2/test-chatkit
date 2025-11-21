@@ -586,34 +586,53 @@ class ComputerTaskTracker(BaseModel):
                 # Extract screenshot data
                 screenshot_id = self.call_id or f"screenshot_{len(self.task.screenshots)}"
 
-                # Try to get image_url from various sources
+                # Try to get image data from various sources
+                # Could be in image_url, b64_image, data, or other fields
                 image_url = None
+                b64_data = None
+
                 if isinstance(output_value, dict):
                     image_url = output_value.get("image_url")
+                    b64_data = output_value.get("b64_image") or output_value.get("data") or output_value.get("base64")
                 elif hasattr(output_value, "image_url"):
                     image_url = getattr(output_value, "image_url", None)
+                    b64_data = (
+                        getattr(output_value, "b64_image", None)
+                        or getattr(output_value, "data", None)
+                        or getattr(output_value, "base64", None)
+                    )
 
-                # Also check parsed_output for image_url
-                if not image_url and parsed_output and isinstance(parsed_output, dict):
+                # Also check parsed_output
+                if not image_url and not b64_data and parsed_output and isinstance(parsed_output, dict):
                     image_url = parsed_output.get("image_url")
+                    b64_data = parsed_output.get("b64_image") or parsed_output.get("data") or parsed_output.get("base64")
 
-                if image_url:
+                LOGGER.info(
+                    f"[ComputerTaskTracker] Screenshot extraction: "
+                    f"output_value keys={list(output_value.keys()) if isinstance(output_value, dict) else 'not a dict'}, "
+                    f"image_url={'<present>' if image_url else 'None'}, "
+                    f"b64_data={'<present>' if b64_data else 'None'}, "
+                    f"parsed_output={parsed_output}"
+                )
+
+                # Use b64_data if available, otherwise fall back to image_url
+                source_data = b64_data or image_url
+                if source_data:
                     # Create a ComputerUseScreenshot
-                    # If image_url is a remote URL, download and inline it (like ImageTask does)
                     data_url = None
                     b64_image = None
 
-                    if isinstance(image_url, str):
-                        if image_url.startswith("data:image/"):
+                    if isinstance(source_data, str):
+                        if source_data.startswith("data:image/"):
                             # It's already a data URL
-                            data_url = image_url
+                            data_url = source_data
                             # Extract base64 part if needed
-                            if ";base64," in image_url:
-                                b64_image = image_url.split(";base64,", 1)[1]
-                        elif image_url.startswith("http://") or image_url.startswith("https://"):
+                            if ";base64," in source_data:
+                                b64_image = source_data.split(";base64,", 1)[1]
+                        elif source_data.startswith("http://") or source_data.startswith("https://"):
                             # It's a remote URL - download and inline it like ImageTask does
                             inline_b64, inline_data_url, _ = _inline_remote_image(
-                                image_url,
+                                source_data,
                                 output_format="png",
                             )
                             if inline_b64 and inline_data_url:
@@ -621,11 +640,11 @@ class ComputerTaskTracker(BaseModel):
                                 data_url = inline_data_url
                             else:
                                 # Fallback to the URL if download fails
-                                data_url = image_url
+                                data_url = source_data
                         else:
-                            # Assume it's base64 encoded image
-                            b64_image = image_url
-                            data_url = f"data:image/png;base64,{image_url}"
+                            # Assume it's base64 encoded image (from Playwright)
+                            b64_image = source_data
+                            data_url = f"data:image/png;base64,{source_data}"
 
                     screenshot = ComputerUseScreenshot(
                         id=screenshot_id,
