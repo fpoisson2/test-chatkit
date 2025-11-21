@@ -32,10 +32,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const [isMultiline, setIsMultiline] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const singleLineHeightRef = useRef<number | null>(null);
+  const [isMultiline, setIsMultiline] = useState(false);
 
   const {
     header,
@@ -59,13 +60,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // Réinitialiser la hauteur pour recalculer correctement
     textarea.style.height = 'auto';
 
-    // Vérifier si le contenu nécessite plus d'une ligne
-    const lineHeight = 24; // min-height du textarea
-    const isNowMultiline = textarea.scrollHeight > lineHeight;
-    setIsMultiline(isNowMultiline);
+    // Calculer la hauteur minimale basée sur le style réel du textarea
+    const styles = window.getComputedStyle(textarea);
+    const lineHeight = parseFloat(styles.lineHeight || '0');
+    const paddingTop = parseFloat(styles.paddingTop || '0');
+    const paddingBottom = parseFloat(styles.paddingBottom || '0');
+    const minHeight = lineHeight + paddingTop + paddingBottom;
+    const baseHeight = singleLineHeightRef.current ?? minHeight;
+    if (singleLineHeightRef.current === null) {
+      singleLineHeightRef.current = minHeight;
+    }
 
-    // Ajuster la hauteur en fonction du contenu
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    const contentHeight = textarea.scrollHeight;
+    const nextHeight = Math.max(contentHeight, baseHeight);
+
+    setIsMultiline((prev) => {
+      const activateThreshold = baseHeight + 8;
+      const deactivateThreshold = baseHeight + 4;
+      return prev
+        ? contentHeight > deactivateThreshold
+        : contentHeight > activateThreshold;
+    });
+
+    // Ajuster la hauteur en fonction du contenu tout en limitant le multi-ligne
+    textarea.style.height = `${Math.min(nextHeight, 200)}px`;
   }, [inputValue]);
 
   // Gérer l'ajout de fichiers
@@ -604,26 +622,31 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       {/* Composer */}
       <div className="chatkit-composer">
-        <form onSubmit={handleSubmit} className={isMultiline ? 'chatkit-form-multiline' : ''}>
-          <textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => {
-              // Envoyer avec Entrée (sans Shift)
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
-              }
-            }}
-            placeholder={composer?.placeholder || 'Posez votre question...'}
-            disabled={control.isLoading}
-            className="chatkit-input"
-            rows={1}
-          />
+        <form
+          onSubmit={handleSubmit}
+          className={`chatkit-composer-form ${isMultiline ? 'is-multiline' : 'is-singleline'}`}
+        >
+          <div className="chatkit-input-area">
+            <textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                // Envoyer avec Entrée (sans Shift)
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              placeholder={composer?.placeholder || 'Posez votre question...'}
+              disabled={control.isLoading}
+              className="chatkit-input"
+              rows={1}
+            />
+          </div>
           <div className="chatkit-composer-actions">
             {composer?.attachments?.enabled && (
-              <>
+              <div className="chatkit-attach-wrapper">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -644,7 +667,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                     <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
                   </svg>
                 </button>
-              </>
+              </div>
             )}
             <button
               type="submit"
