@@ -523,8 +523,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         });
 
                         if (showPreview) {
-                          const [screencastError, setScreencastError] = React.useState(false);
-
                           return (
                             <div className="chatkit-computer-use-preview">
                               {computerUseTask.current_action && isLoading && (
@@ -532,16 +530,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                   <span className="chatkit-action-label">Action en cours:</span> {computerUseTask.current_action}
                                 </div>
                               )}
-                              {/* Show screencast if available and not in error */}
-                              {showScreencast && !screencastError && (
+                              {/* Show screencast if available for active tasks */}
+                              {showScreencast && (
                                 <DevToolsScreencast
                                   debugUrlToken={computerUseTask.debug_url_token}
                                   authToken={authToken}
-                                  onConnectionError={() => setScreencastError(true)}
                                 />
                               )}
-                              {/* Show screenshot as fallback when no screencast or screencast failed */}
-                              {showScreenshot && (!showScreencast || screencastError) && (
+                              {/* Show screenshot for completed tasks or when no screencast */}
+                              {showScreenshot && !showScreencast && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <img
                                     src={src}
