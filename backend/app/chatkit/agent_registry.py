@@ -701,7 +701,9 @@ def _coerce_agent_tools(
                 continue
 
             if normalized_type == "image_generation":
+                logger.debug("Image generation entry avant build: %s", entry)
                 tool = build_image_generation_tool(entry)
+                logger.debug("Image generation tool après build: %s", tool)
                 if tool is not None:
                     coerced.append(tool)
                 continue

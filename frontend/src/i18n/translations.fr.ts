@@ -630,6 +630,8 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.image.qualityLabel": "Qualité",
   "workflowBuilder.agentInspector.image.backgroundLabel": "Arrière-plan",
   "workflowBuilder.agentInspector.image.outputLabel": "Format de sortie",
+  "workflowBuilder.agentInspector.image.partialImagesLabel": "Images partielles",
+  "workflowBuilder.agentInspector.image.partialImagesHelp": "Nombre d'images intermédiaires à recevoir pendant la génération (0-3). Plus la valeur est élevée, plus vous recevrez d'aperçus progressifs.",
   "workflowBuilder.agentInspector.image.helpTitle": "À propos de la génération d'images",
   "workflowBuilder.agentInspector.image.helpDescription":
     "Permet à l'agent de générer ou d'éditer des images à partir de descriptions textuelles.",
@@ -1242,5 +1244,18 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.widgetInspector.media.noFile": "Aucun fichier sélectionné",
   "workflowBuilder.widgetInspector.media.hint":
     "Importez une image ou saisissez une URL/expression existante. En l'absence de fichier, le texte est utilisé tel quel.",
+  "chatkit.thread.newConversation": "Nouvelle conversation",
+  "chatkit.thread.conversation": "Conversation",
+  "chatkit.message.copy": "Copier",
+  "chatkit.message.copied": "Copié",
+  "chatkit.code.copy": "Copier le code",
+  "chatkit.code.copied": "Copié",
+  "chatkit.workflow.expand": "Développer",
+  "chatkit.workflow.collapse": "Réduire",
+  "chatkit.workflow.reasoning": "Raisonnement",
+  "chatkit.workflow.workflow": "Workflow",
+  "chatkit.workflow.executionDuration": "Exécution durant {{duration}}",
+  "chatkit.workflow.loading": "En cours...",
+  "chatkit.task.imageCompleted": "Génération d'image complétée",
 };
   

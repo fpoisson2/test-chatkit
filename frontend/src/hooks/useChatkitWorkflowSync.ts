@@ -7,7 +7,7 @@ type UseChatkitWorkflowSyncParams = {
   token: string | null;
   activeWorkflow: WorkflowSummary | null;
   fetchUpdates: () => Promise<void>;
-  sendUserMessage: (payload: { text: string; newThread?: boolean }) => Promise<unknown>;
+  sendUserMessage: (content: string) => Promise<void>;
   initialThreadId: string | null;
   reportError: (message: string, detail?: unknown) => void;
   enabled?: boolean;
@@ -177,7 +177,7 @@ export const useChatkitWorkflowSync = ({
       });
     }
 
-    sendUserMessage({ text: payloadText, newThread: true })
+    sendUserMessage(payloadText)
       .then(() => {
         if (import.meta.env.DEV) {
           console.log("[ChatKit] Auto-start réussi, rafraîchissement...");

@@ -2033,6 +2033,20 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
                 ))}
               </select>
             </Field>
+
+            <Field label={t('workflowBuilder.agentInspector.image.partialImagesLabel')} help={t('workflowBuilder.agentInspector.image.partialImagesHelp')}>
+              <input
+                type="number"
+                min="0"
+                max="3"
+                value={imageGenerationConfig?.partial_images ?? 3}
+                onChange={(event) =>
+                  updateImageTool({
+                    partial_images: parseInt(event.target.value, 10) || 0,
+                  })
+                }
+              />
+            </Field>
           </div>
 
           <InlineHelp title={t('workflowBuilder.agentInspector.image.helpTitle')}>

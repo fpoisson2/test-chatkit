@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ChatKitOptions } from "@openai/chatkit";
+import type { ChatKitOptions } from "../../chatkit";
 
 import { ChatKitHost } from "./ChatKitHost";
 import { useWorkflowChatSession } from "../../hooks/useWorkflowChatSession";
@@ -60,7 +60,7 @@ export const WorkflowChatInstance = ({
       }}
       data-workflow-id={workflowId}
     >
-      <ChatKitHost control={control} chatInstanceKey={0} />
+      <ChatKitHost control={control} options={chatkitOptions} chatInstanceKey={0} />
     </div>
   );
 };
