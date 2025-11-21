@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import threading
 from typing import Any, Mapping
+from weakref import WeakKeyDictionary
 
 from agents.tool import ComputerTool
 
@@ -12,35 +13,78 @@ from ..computer.hosted_browser import HostedBrowser, HostedBrowserError
 
 logger = logging.getLogger("chatkit.server")
 
-__all__ = ["build_computer_use_tool", "cleanup_browser_cache"]
+__all__ = ["build_computer_use_tool", "cleanup_browser_cache", "set_current_thread_id"]
 
 _DEFAULT_COMPUTER_USE_DISPLAY_WIDTH = 1024
 _DEFAULT_COMPUTER_USE_DISPLAY_HEIGHT = 768
 _SUPPORTED_COMPUTER_ENVIRONMENTS = frozenset({"browser", "mac", "windows", "ubuntu"})
 
-# Thread-local storage for cached browser instances
-_thread_local = threading.local()
+# Global cache for browser instances, keyed by thread_id
+# Format: {thread_id: {cache_key: HostedBrowser}}
+_browser_cache_by_thread: dict[str, dict[str, HostedBrowser]] = {}
+
+# Map asyncio tasks to their thread_id (using WeakKeyDictionary for auto-cleanup)
+# This is more reliable than contextvars because each async task has a unique ID
+# and there's no inheritance/copying issues
+_thread_id_by_task: WeakKeyDictionary[asyncio.Task, str] = WeakKeyDictionary()
 
 
-def _get_browser_cache() -> dict[str, HostedBrowser]:
-    """Get the browser cache for this thread/request."""
-    if not hasattr(_thread_local, "browser_cache"):
-        _thread_local.browser_cache = {}
-    return _thread_local.browser_cache
+def set_current_thread_id(thread_id: str | None) -> None:
+    """
+    Set the current thread ID for browser caching.
+
+    This should be called at the beginning of workflow execution to enable
+    browser persistence across multiple turns in the same conversation.
+
+    Uses asyncio.current_task() instead of contextvars to avoid context
+    inheritance issues between different chat threads.
+    """
+    task = asyncio.current_task()
+    if task and thread_id:
+        _thread_id_by_task[task] = thread_id
+        logger.info(
+            f"🔵 NOUVEAU MAPPING: thread_id={thread_id} → task_id={id(task)} "
+            f"| Total tâches actives: {len(_thread_id_by_task)}"
+        )
 
 
-def cleanup_browser_cache() -> None:
-    """Clean up all cached browsers for this thread/request."""
-    cache = _get_browser_cache()
-    if cache:
-        logger.info(f"Cleaning up {len(cache)} cached browser(s)")
-        for key, browser in cache.items():
-            try:
-                # Browser cleanup will be handled by driver close
-                logger.debug(f"Removed cached browser: {key}")
-            except Exception as exc:
-                logger.warning(f"Error cleaning up cached browser {key}: {exc}")
-        cache.clear()
+def _get_browser_cache(thread_id: str | None) -> dict[str, HostedBrowser]:
+    """
+    Get the browser cache for a specific thread ID.
+
+    Each chat thread maintains its own browser cache, persisting across
+    multiple requests/turns in the same conversation.
+    """
+    if not thread_id:
+        # Fallback: temporary cache for requests without thread_id
+        return {}
+
+    if thread_id not in _browser_cache_by_thread:
+        _browser_cache_by_thread[thread_id] = {}
+
+    return _browser_cache_by_thread[thread_id]
+
+
+def cleanup_browser_cache(thread_id: str | None = None) -> None:
+    """
+    Clean up cached browsers for a specific thread or all threads.
+
+    Args:
+        thread_id: If provided, only clean browsers for this thread.
+                   If None, clean all threads' browsers.
+    """
+    if thread_id:
+        cache = _browser_cache_by_thread.get(thread_id)
+        if cache:
+            logger.info(
+                f"Nettoyage de {len(cache)} navigateur(s) pour le thread {thread_id}"
+            )
+            cache.clear()
+            del _browser_cache_by_thread[thread_id]
+    else:
+        total = sum(len(cache) for cache in _browser_cache_by_thread.values())
+        logger.info(f"Nettoyage de {total} navigateur(s) pour tous les threads")
+        _browser_cache_by_thread.clear()
 
 
 def _coerce_computer_dimension(value: Any, *, fallback: int) -> int:
@@ -104,22 +148,55 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
         if stripped:
             start_url = stripped
 
+    # Extract thread_id from config if available, otherwise use context variable
+    thread_id = config.get("thread_id")
+    if isinstance(thread_id, str):
+        thread_id = thread_id.strip() or None
+    else:
+        thread_id = None
+
+    # Fallback to task mapping if not in config
+    if not thread_id:
+        task = asyncio.current_task()
+        if task:
+            thread_id = _thread_id_by_task.get(task)
+            logger.info(
+                f"🔍 Récupération thread_id depuis mapping: task_id={id(task)} → thread_id={thread_id}"
+            )
+        else:
+            logger.warning("⚠️ Aucune tâche asyncio actuelle trouvée!")
+
+    # Log thread_id for debugging
+    logger.info(
+        f"🛠️ build_computer_use_tool: thread_id={thread_id}, "
+        f"from_config={config.get('thread_id') is not None}, "
+        f"tâches actives={len(_thread_id_by_task)}"
+    )
+    logger.info(
+        f"📦 Cache global: {len(_browser_cache_by_thread)} threads → {list(_browser_cache_by_thread.keys())}"
+    )
+
     # Create a cache key based on browser configuration
-    # Note: We don't include start_url in the cache key because we want to reuse
-    # the browser even if the URL changes - navigation can be done separately
+    # Each chat thread has its own isolated cache that persists across requests
     cache_key = f"{environment}:{width}x{height}"
 
-    # Check if we already have a cached browser with this configuration
-    cache = _get_browser_cache()
+    # Check if we already have a cached browser for this configuration
+    # in the current chat thread
+    cache = _get_browser_cache(thread_id)
     cached_browser = cache.get(cache_key)
 
     if cached_browser is not None:
+        thread_info = f"thread={thread_id}" if thread_id else "sans thread_id"
         logger.info(
-            f"Réutilisation du navigateur en cache pour la configuration: {cache_key}"
+            f"♻️ RÉUTILISATION navigateur en cache ({thread_info}): {cache_key}"
         )
         computer = cached_browser
+        # Don't navigate when reusing - keep browser at its current page
+        logger.info(
+            f"✓ Navigateur réutilisé pour thread {thread_id}, conservation de la page actuelle"
+        )
     else:
-        # Create new browser instance
+        # Create new browser instance for this context
         try:
             computer = HostedBrowser(
                 width=width,
@@ -127,11 +204,17 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
                 environment=environment,
                 start_url=start_url,
             )
-            # Cache the browser for reuse
-            cache[cache_key] = computer
-            logger.info(
-                f"Création et mise en cache d'un nouveau navigateur: {cache_key}"
-            )
+            # Cache the browser for reuse within this chat thread (if thread_id provided)
+            if thread_id:
+                cache[cache_key] = computer
+                logger.info(
+                    f"🆕 CRÉATION nouveau navigateur (thread={thread_id}): {cache_key} | "
+                    f"Mise en cache pour réutilisation future"
+                )
+            else:
+                logger.info(
+                    f"⚠️ CRÉATION navigateur SANS CACHE (thread_id manquant): {cache_key}"
+                )
         except HostedBrowserError as exc:  # pragma: no cover - dépend de l'environnement
             logger.warning("Impossible d'initialiser le navigateur hébergé : %s", exc)
             return None

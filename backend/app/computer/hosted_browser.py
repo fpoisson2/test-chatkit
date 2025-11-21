@@ -123,6 +123,9 @@ class _BaseBrowserDriver:
     async def wait(self) -> None:
         raise NotImplementedError  # pragma: no cover - défini par les sous-classes
 
+    async def navigate(self, url: str) -> None:
+        raise NotImplementedError  # pragma: no cover - défini par les sous-classes
+
     async def close(self) -> None:
         raise NotImplementedError  # pragma: no cover - défini par les sous-classes
 
@@ -162,18 +165,46 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         debug_host = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_HOST", "127.0.0.1")
         debug_port_raw = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT")
         self._debug_host = debug_host
+
+        # If debug port is specified, use it; otherwise find a free port dynamically
+        if debug_port_raw:
+            try:
+                parsed = int(debug_port_raw)
+            except ValueError:
+                parsed = None
+            if parsed is not None and not (0 < parsed < 65536):
+                logger.warning(
+                    "Port de débogage Playwright invalide (%s), "
+                    "désactivation de l'inspection",
+                    debug_port_raw,
+                )
+                parsed = None
+            self._debug_port = parsed
+        else:
+            # Find a free port dynamically for this browser instance
+            self._debug_port = self._find_free_port()
+            if self._debug_port:
+                logger.info(
+                    f"Port de débogage dynamique assigné: {self._debug_port}"
+                )
+
+    def _find_free_port(self) -> int | None:
+        """Find a free port for Chrome DevTools debugging."""
+        import socket
+
         try:
-            parsed = int(debug_port_raw) if debug_port_raw else None
-        except ValueError:
-            parsed = None
-        if parsed is not None and not (0 < parsed < 65536):
+            # Create a socket and bind to port 0 to get a free port
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', 0))
+                s.listen(1)
+                port = s.getsockname()[1]
+                return port
+        except Exception as exc:
             logger.warning(
-                "Port de débogage Playwright invalide (%s), "
-                "désactivation de l'inspection",
-                debug_port_raw,
+                "Impossible de trouver un port libre pour le débogage: %s",
+                exc,
             )
-            parsed = None
-        self._debug_port = parsed
+            return None
 
     async def ensure_ready(self) -> None:
         if self._ready:
@@ -485,6 +516,24 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         page = self._require_page()
         await page.wait_for_timeout(1_500)
 
+    async def navigate(self, url: str) -> None:
+        if not url or not url.strip():
+            return
+        await self.ensure_ready()
+        page = self._require_page()
+        try:
+            await page.goto(
+                url.strip(),
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
+        except Exception as exc:  # pragma: no cover - robuste en production
+            logger.warning(
+                "Échec de la navigation vers %s : %s",
+                url,
+                exc,
+            )
+
     async def close(self) -> None:
         try:
             if self._context is not None:
@@ -633,6 +682,11 @@ class _FallbackDriver(_BaseBrowserDriver):
         self._remember_action("Attente simulée")
         await asyncio.sleep(0.5)
 
+    async def navigate(self, url: str) -> None:
+        if not url or not url.strip():
+            return
+        self._remember_action(f"Navigation vers {url}")
+
     async def close(self) -> None:
         self._ready = False
         self._placeholder_cache = None
@@ -663,6 +717,7 @@ class HostedBrowser(AsyncComputer):
         self._start_url = start_url.strip() if isinstance(start_url, str) else None
         self._driver: _BaseBrowserDriver | None = None
         self._lock = asyncio.Lock()
+        self._pending_navigation_url: str | None = None
 
     @property
     def environment(self) -> Environment:
@@ -678,6 +733,19 @@ class HostedBrowser(AsyncComputer):
         if driver is None:
             return None
         return driver.debug_url()
+
+    def set_pending_navigation(self, url: str | None) -> None:
+        """Set a URL to navigate to before the next action."""
+        self._pending_navigation_url = url
+
+    async def _handle_pending_navigation(self) -> None:
+        """Navigate to pending URL if one is set."""
+        if self._pending_navigation_url:
+            url = self._pending_navigation_url
+            self._pending_navigation_url = None
+            driver = self._driver
+            if driver:
+                await driver.navigate(url)
 
     async def _get_driver(self) -> _BaseBrowserDriver:
         if self._driver is not None:
@@ -725,39 +793,53 @@ class HostedBrowser(AsyncComputer):
 
     async def screenshot(self) -> str:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         return await driver.screenshot()
 
     async def click(self, x: int, y: int, button: Button) -> None:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         await driver.click(x, y, button)
 
     async def double_click(self, x: int, y: int) -> None:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         await driver.double_click(x, y)
 
     async def scroll(self, x: int, y: int, scroll_x: int, scroll_y: int) -> None:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         await driver.scroll(x, y, scroll_x, scroll_y)
 
     async def move(self, x: int, y: int) -> None:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         await driver.move(x, y)
 
     async def type(self, text: str) -> None:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         await driver.type(text)
 
     async def keypress(self, keys: Sequence[str]) -> None:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         await driver.keypress(keys)
 
     async def drag(self, path: Sequence[tuple[int, int]]) -> None:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         await driver.drag(path)
 
     async def wait(self) -> None:
         driver = await self._get_driver()
+        await self._handle_pending_navigation()
         await driver.wait()
+
+    async def navigate(self, url: str) -> None:
+        """Navigate to the specified URL."""
+        driver = await self._get_driver()
+        await driver.navigate(url)
 
     async def close(self) -> None:
         if self._driver is None:
