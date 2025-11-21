@@ -526,12 +526,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
-                        // Check if the workflow is still active by looking if this workflow is one of the last items
-                        // and there's no end_of_turn after it (which would indicate the turn is finished)
+                        // Check if the workflow is still active by checking if there's an assistant_message after it
+                        // An assistant_message after the workflow means the turn is complete
                         const itemIndex = items.findIndex((i: any) => i.id === item.id);
                         const itemsAfter = items.slice(itemIndex + 1);
-                        const hasEndOfTurnAfter = itemsAfter.some((i: any) => i.type === 'end_of_turn');
-                        const isWorkflowActive = !hasEndOfTurnAfter;
+                        const hasAssistantMessageAfter = itemsAfter.some((i: any) => i.type === 'assistant_message');
+                        const isWorkflowActive = !hasAssistantMessageAfter;
 
                         // Show screencast if:
                         // - There's a debug_url_token
@@ -547,7 +547,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           hasDebugToken: !!computerUseTask.debug_url_token,
                           isLoading,
                           isWorkflowActive,
-                          hasEndOfTurnAfter,
+                          hasAssistantMessageAfter,
                           hasScreenshot: !!src
                         });
 
