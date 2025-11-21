@@ -165,18 +165,46 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         debug_host = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_HOST", "127.0.0.1")
         debug_port_raw = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT")
         self._debug_host = debug_host
+
+        # If debug port is specified, use it; otherwise find a free port dynamically
+        if debug_port_raw:
+            try:
+                parsed = int(debug_port_raw)
+            except ValueError:
+                parsed = None
+            if parsed is not None and not (0 < parsed < 65536):
+                logger.warning(
+                    "Port de débogage Playwright invalide (%s), "
+                    "désactivation de l'inspection",
+                    debug_port_raw,
+                )
+                parsed = None
+            self._debug_port = parsed
+        else:
+            # Find a free port dynamically for this browser instance
+            self._debug_port = self._find_free_port()
+            if self._debug_port:
+                logger.info(
+                    f"Port de débogage dynamique assigné: {self._debug_port}"
+                )
+
+    def _find_free_port(self) -> int | None:
+        """Find a free port for Chrome DevTools debugging."""
+        import socket
+
         try:
-            parsed = int(debug_port_raw) if debug_port_raw else None
-        except ValueError:
-            parsed = None
-        if parsed is not None and not (0 < parsed < 65536):
+            # Create a socket and bind to port 0 to get a free port
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', 0))
+                s.listen(1)
+                port = s.getsockname()[1]
+                return port
+        except Exception as exc:
             logger.warning(
-                "Port de débogage Playwright invalide (%s), "
-                "désactivation de l'inspection",
-                debug_port_raw,
+                "Impossible de trouver un port libre pour le débogage: %s",
+                exc,
             )
-            parsed = None
-        self._debug_port = parsed
+            return None
 
     async def ensure_ready(self) -> None:
         if self._ready:
