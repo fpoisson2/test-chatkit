@@ -176,6 +176,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
   };
 
+  const handleThreadDeleted = (threadId: string) => {
+    if (options.onThreadChange && control.thread?.id === threadId) {
+      options.onThreadChange({ threadId: null });
+    }
+  };
+
   // Copier le contenu d'un message
   const handleCopyMessage = (messageId: string, content: string) => {
     navigator.clipboard.writeText(content);
@@ -707,13 +713,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       {/* Thread History Modal */}
       {showHistory && (
-        <ThreadHistory
-          api={options.api}
-          currentThreadId={control.thread?.id || null}
-          onThreadSelect={handleThreadSelect}
-          onClose={() => setShowHistory(false)}
-        />
-      )}
+          <ThreadHistory
+            api={options.api}
+            currentThreadId={control.thread?.id || null}
+            onThreadSelect={handleThreadSelect}
+            onThreadDeleted={handleThreadDeleted}
+            onClose={() => setShowHistory(false)}
+          />
+        )}
     </div>
   );
 }
