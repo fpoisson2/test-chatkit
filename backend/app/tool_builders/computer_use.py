@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import contextvars
+import asyncio
 import logging
 from typing import Any, Mapping
+from weakref import WeakKeyDictionary
 
 from agents.tool import ComputerTool
 
@@ -22,10 +23,10 @@ _SUPPORTED_COMPUTER_ENVIRONMENTS = frozenset({"browser", "mac", "windows", "ubun
 # Format: {thread_id: {cache_key: HostedBrowser}}
 _browser_cache_by_thread: dict[str, dict[str, HostedBrowser]] = {}
 
-# Context variable to pass thread_id from server to tool builders
-_current_thread_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "computer_use_thread_id", default=None
-)
+# Map asyncio tasks to their thread_id (using WeakKeyDictionary for auto-cleanup)
+# This is more reliable than contextvars because each async task has a unique ID
+# and there's no inheritance/copying issues
+_thread_id_by_task: WeakKeyDictionary[asyncio.Task, str] = WeakKeyDictionary()
 
 
 def set_current_thread_id(thread_id: str | None) -> None:
@@ -34,8 +35,14 @@ def set_current_thread_id(thread_id: str | None) -> None:
 
     This should be called at the beginning of workflow execution to enable
     browser persistence across multiple turns in the same conversation.
+
+    Uses asyncio.current_task() instead of contextvars to avoid context
+    inheritance issues between different chat threads.
     """
-    _current_thread_id.set(thread_id)
+    task = asyncio.current_task()
+    if task and thread_id:
+        _thread_id_by_task[task] = thread_id
+        logger.debug(f"Thread ID {thread_id} associé à la tâche {id(task)}")
 
 
 def _get_browser_cache(thread_id: str | None) -> dict[str, HostedBrowser]:
@@ -145,9 +152,11 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
     else:
         thread_id = None
 
-    # Fallback to context variable if not in config
+    # Fallback to task mapping if not in config
     if not thread_id:
-        thread_id = _current_thread_id.get()
+        task = asyncio.current_task()
+        if task:
+            thread_id = _thread_id_by_task.get(task)
 
     # Log thread_id for debugging
     logger.info(
