@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-from ..auth import get_current_user
+from ..dependencies import get_current_user
 from ..models.user import User
 
 logger = logging.getLogger("chatkit.computer")
