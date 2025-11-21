@@ -610,8 +610,7 @@ class ComputerTaskTracker(BaseModel):
 
             LOGGER.debug(
                 f"[ComputerTaskTracker] update_from_output: output_type={output_type}, "
-                f"raw_output type={type(raw_output).__name__}, "
-                f"parsed_output={parsed_output}"
+                f"raw_output type={type(raw_output).__name__}"
             )
 
             if output_type == "computer_screenshot":
@@ -641,10 +640,8 @@ class ComputerTaskTracker(BaseModel):
 
                 LOGGER.info(
                     f"[ComputerTaskTracker] Screenshot extraction: "
-                    f"output_value keys={list(output_value.keys()) if isinstance(output_value, dict) else 'not a dict'}, "
                     f"image_url={'<present>' if image_url else 'None'}, "
-                    f"b64_data={'<present>' if b64_data else 'None'}, "
-                    f"parsed_output={parsed_output}"
+                    f"b64_data={'<present, {len(b64_data)} chars>' if b64_data else 'None'}"
                 )
 
                 # Use b64_data if available, otherwise fall back to image_url
