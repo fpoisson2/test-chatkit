@@ -59,13 +59,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // Réinitialiser la hauteur pour recalculer correctement
     textarea.style.height = 'auto';
 
+    // Calculer la hauteur minimale basée sur le style réel du textarea
+    const styles = window.getComputedStyle(textarea);
+    const lineHeight = parseFloat(styles.lineHeight || '0');
+    const paddingTop = parseFloat(styles.paddingTop || '0');
+    const paddingBottom = parseFloat(styles.paddingBottom || '0');
+    const minHeight = lineHeight + paddingTop + paddingBottom;
+
     // Vérifier si le contenu nécessite plus d'une ligne
-    const lineHeight = 24; // min-height du textarea
-    const isNowMultiline = textarea.scrollHeight > lineHeight;
+    const isNowMultiline = textarea.scrollHeight > minHeight + 1; // marge pour les arrondis
     setIsMultiline(isNowMultiline);
 
     // Ajuster la hauteur en fonction du contenu
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    const nextHeight = Math.max(textarea.scrollHeight, minHeight);
+    textarea.style.height = `${Math.min(nextHeight, 200)}px`;
   }, [inputValue]);
 
   // Gérer l'ajout de fichiers
