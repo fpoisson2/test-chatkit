@@ -1139,7 +1139,15 @@
 }
 
 .chatkit-screencast-header {
-  display: none;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+[data-theme="dark"] .chatkit-screencast-header {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .chatkit-screencast-status {
@@ -1173,7 +1181,19 @@
 }
 
 .chatkit-screencast-error {
-  display: none;
+  padding: 12px;
+  background-color: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 4px;
+  color: #856404;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+[data-theme="dark"] .chatkit-screencast-error {
+  background-color: rgba(255, 193, 7, 0.15);
+  border-color: rgba(255, 193, 7, 0.4);
+  color: #ffb74d;
 }
 
 .chatkit-screencast-canvas-container {
