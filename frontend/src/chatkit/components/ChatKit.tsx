@@ -35,6 +35,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const singleLineHeightRef = useRef<number | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
 
   const {
@@ -65,12 +66,21 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const paddingTop = parseFloat(styles.paddingTop || '0');
     const paddingBottom = parseFloat(styles.paddingBottom || '0');
     const minHeight = lineHeight + paddingTop + paddingBottom;
+    const baseHeight = singleLineHeightRef.current ?? minHeight;
+    if (singleLineHeightRef.current === null) {
+      singleLineHeightRef.current = minHeight;
+    }
 
     const contentHeight = textarea.scrollHeight;
-    const nextHeight = Math.max(contentHeight, minHeight);
-    const isContentMultiline = contentHeight > minHeight + 1;
+    const nextHeight = Math.max(contentHeight, baseHeight);
 
-    setIsMultiline(isContentMultiline);
+    setIsMultiline((prev) => {
+      const activateThreshold = baseHeight + 8;
+      const deactivateThreshold = baseHeight + 4;
+      return prev
+        ? contentHeight > deactivateThreshold
+        : contentHeight > activateThreshold;
+    });
 
     // Ajuster la hauteur en fonction du contenu tout en limitant le multi-ligne
     textarea.style.height = `${Math.min(nextHeight, 200)}px`;
