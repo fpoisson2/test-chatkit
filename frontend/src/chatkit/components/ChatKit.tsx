@@ -598,12 +598,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         {/* Loading indicator */}
         {control.isLoading && (() => {
           const items = control.thread?.items || [];
-          const hasAssistantContent = items.some(item =>
-            item.type === 'assistant_message' ||
-            item.type === 'workflow' ||
-            item.type === 'widget'
+          const lastItem = items[items.length - 1];
+          const lastItemFromAssistant = lastItem && (
+            lastItem.type === 'assistant_message' ||
+            lastItem.type === 'workflow' ||
+            lastItem.type === 'widget' ||
+            lastItem.type === 'task'
           );
-          return !hasAssistantContent && (
+
+          return !lastItemFromAssistant && (
             <div className="chatkit-message chatkit-message-assistant">
               <div className="chatkit-message-content">
                 <div className="chatkit-workflow-loading">
