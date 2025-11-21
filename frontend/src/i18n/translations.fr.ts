@@ -1268,6 +1268,8 @@ export const fr: TranslationDictionary = {
   "admin.browserTest.controls.startBrowser": "Démarrer le navigateur",
   "admin.browserTest.controls.navigateUrl": "Naviguer vers l'URL",
   "admin.browserTest.controls.navigate": "Naviguer",
+  "admin.browserTest.controls.historyBack": "Page précédente",
+  "admin.browserTest.controls.historyForward": "Page suivante",
   "admin.browserTest.controls.restartBrowser": "Démarrer un navigateur neuf",
   "admin.browserTest.controls.takeControl": "Prendre le contrôle",
   "admin.browserTest.controls.closeBrowser": "Fermer le navigateur",
@@ -1280,9 +1282,11 @@ export const fr: TranslationDictionary = {
   "admin.browserTest.success.navigated": "Navigation réussie",
   "admin.browserTest.success.controlOpened": "Chrome DevTools ouvert dans une nouvelle fenêtre",
   "admin.browserTest.success.controlReady": "Le contrôle interactif est prêt dans la fenêtre dédiée",
+  "admin.browserTest.success.historyBack": "Retour en arrière d'une page",
+  "admin.browserTest.success.historyForward": "Avance d'une page",
   "admin.browserTest.success.closed": "Navigateur fermé avec succès",
   "admin.browserTest.modal.title": "Contrôler le navigateur directement",
   "admin.browserTest.modal.description": "Interagissez avec le navigateur hébergé ici. Cliquez dans l'aperçu pour prendre le focus puis utilisez votre souris et votre clavier comme dans un onglet classique.",
-  "admin.browserTest.modal.hint": "Astuce : utilisez le bouton \"Démarrer un navigateur neuf\" si vous voulez une session totalement distincte de celle utilisée dans le chat.",
+  "admin.browserTest.modal.hint": "Astuce : utilisez le bouton \"Démarrer un navigateur neuf\" si vous voulez une session totalement distincte de celle utilisée dans le chat. Une fois l'aperçu sélectionné, les événements clavier et souris sont transmis directement à la page.",
 };
   

@@ -153,6 +153,45 @@ export const AdminBrowserTestPage = () => {
     }
   };
 
+  const handleHistoryNavigate = async (direction: "back" | "forward") => {
+    if (!token || !browserSession) return;
+
+    setIsLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await makeApiRequest(
+        `/api/computer/browser/history/${direction}/${browserSession.token}`,
+        {
+          method: "POST",
+        },
+        token
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to navigate history");
+      }
+
+      setSuccess(
+        t(
+          direction === "back"
+            ? "admin.browserTest.success.historyBack"
+            : "admin.browserTest.success.historyForward"
+        )
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to navigate browser history"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCloseBrowser = async () => {
     if (!token || !browserSession) return;
 
@@ -283,6 +322,24 @@ export const AdminBrowserTestPage = () => {
                   </button>
                 </div>
               </div>
+              <div className="browser-test__history-buttons">
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => handleHistoryNavigate("back")}
+                  disabled={isLoading}
+                >
+                  {t("admin.browserTest.controls.historyBack")}
+                </button>
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => handleHistoryNavigate("forward")}
+                  disabled={isLoading}
+                >
+                  {t("admin.browserTest.controls.historyForward")}
+                </button>
+              </div>
             </div>
 
             <div className="browser-test__action-buttons">
@@ -385,6 +442,12 @@ export const AdminBrowserTestPage = () => {
           display: flex;
           flex-direction: column;
           gap: 8px;
+        }
+
+        .browser-test__history-buttons {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
         }
 
         .browser-test__action-buttons {

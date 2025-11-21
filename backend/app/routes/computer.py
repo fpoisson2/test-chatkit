@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import secrets
+from enum import Enum
 from typing import Any
 
 import httpx
+
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -35,6 +37,13 @@ class BrowserStartResponse(BaseModel):
 class BrowserNavigateRequest(BaseModel):
     """Request to navigate browser to a URL."""
     url: str
+
+
+class BrowserHistoryDirection(str, Enum):
+    """Navigation direction for history actions."""
+
+    BACK = "back"
+    FORWARD = "forward"
 
 
 # Store debug URLs per session token
@@ -413,6 +422,77 @@ async def navigate_test_browser(
             status_code=500,
             detail=f"Navigation failed: {str(exc)}"
         )
+
+
+#
+# History navigation helpers
+async def _navigate_history(
+    token: str, direction: BrowserHistoryDirection, current_user: User
+) -> dict[str, str]:
+    session = _DEBUG_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(status_code=404, detail="Browser session not found")
+
+    # Check authorization
+    if session.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    driver = session.get("driver")
+    if not driver:
+        raise HTTPException(
+            status_code=500,
+            detail="Browser driver not available",
+        )
+
+    page = driver._page
+    if not page:
+        raise HTTPException(
+            status_code=500,
+            detail="Browser page not available",
+        )
+
+    try:
+        if direction == BrowserHistoryDirection.BACK:
+            await page.go_back(wait_until="domcontentloaded")
+        else:
+            await page.go_forward(wait_until="domcontentloaded")
+
+        logger.info(
+            "Navigated browser %s... %s one step",
+            token[:8],
+            direction.value,
+        )
+        return {"status": "success", "direction": direction.value}
+    except Exception as exc:
+        logger.error(
+            "Failed to move browser %s... %s: %s", token[:8], direction.value, exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Navigation failed: {str(exc)}",
+        )
+
+
+@router.post("/browser/history/{direction}/{token}")
+async def navigate_test_browser_history(
+    direction: BrowserHistoryDirection,
+    token: str,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Move the browser forward or backward one step in history.
+
+    Args:
+        direction: Either "back" or "forward"
+        token: Browser session token
+        current_user: Authenticated user
+
+    Returns:
+        Success message with direction used
+    """
+
+    return await _navigate_history(token, direction, current_user)
 
 
 @router.delete("/browser/close/{token}")

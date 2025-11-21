@@ -33,6 +33,7 @@ export function DevToolsScreencast({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageIdRef = useRef(1);
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
+  const shouldAutoFocusRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -112,6 +113,10 @@ export function DevToolsScreencast({
           };
           ws?.send(JSON.stringify(startScreencastCommand));
           console.log('[DevToolsScreencast] Sent Page.startScreencast');
+
+          if (enableInput) {
+            shouldAutoFocusRef.current = true;
+          }
         };
 
         ws.onmessage = (event) => {
@@ -256,11 +261,31 @@ export function DevToolsScreencast({
     };
   };
 
+  useEffect(() => {
+    if (enableInput && isConnected && shouldAutoFocusRef.current && canvasRef.current) {
+      canvasRef.current.focus({ preventScroll: true });
+      shouldAutoFocusRef.current = false;
+    }
+  }, [enableInput, isConnected, frameCount]);
+
+  const focusCanvas = () => {
+    if (enableInput && canvasRef.current) {
+      canvasRef.current.focus({ preventScroll: true });
+    }
+  };
+
+  const getModifierMask = (event: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) =>
+    (event.altKey ? 1 : 0) +
+    (event.ctrlKey ? 2 : 0) +
+    (event.metaKey ? 4 : 0) +
+    (event.shiftKey ? 8 : 0);
+
   const handleMouseEvent = (
     type: 'mousePressed' | 'mouseReleased' | 'mouseMoved',
     event: React.MouseEvent<HTMLCanvasElement>
   ) => {
     if (!enableInput) return;
+    focusCanvas();
     const position = mapPointerToPage(event.clientX, event.clientY);
     if (!position) return;
 
@@ -281,11 +306,7 @@ export function DevToolsScreencast({
         y: position.y,
         button: buttonMap[event.button] || 'left',
         clickCount: 1,
-        modifiers:
-          (event.altKey ? 1 : 0) +
-          (event.ctrlKey ? 2 : 0) +
-          (event.metaKey ? 4 : 0) +
-          (event.shiftKey ? 8 : 0),
+        modifiers: getModifierMask(event),
       },
     };
 
@@ -294,6 +315,7 @@ export function DevToolsScreencast({
 
   const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
     if (!enableInput) return;
+    focusCanvas();
     const position = mapPointerToPage(event.clientX, event.clientY);
     if (!position) return;
 
@@ -318,18 +340,32 @@ export function DevToolsScreencast({
 
   const handleKeyEvent = (type: 'keyDown' | 'keyUp', event: React.KeyboardEvent<HTMLCanvasElement>) => {
     if (!enableInput) return;
+    focusCanvas();
     event.preventDefault();
+
+    const virtualKeyCode = (event.nativeEvent as KeyboardEvent).keyCode || event.keyCode;
+    const text = event.key.length === 1 ? event.key : undefined;
+
+    const params: Record<string, unknown> = {
+      type,
+      key: event.key,
+      code: event.code,
+      windowsVirtualKeyCode: virtualKeyCode,
+      nativeVirtualKeyCode: virtualKeyCode,
+      modifiers: getModifierMask(event),
+      location: event.location,
+      autoRepeat: event.repeat,
+    };
+
+    if (type === 'keyDown' && text) {
+      params.text = text;
+      params.unmodifiedText = text;
+    }
 
     const command = {
       id: messageIdRef.current++,
       method: 'Input.dispatchKeyEvent',
-      params: {
-        type,
-        key: event.key,
-        code: event.code,
-        windowsVirtualKeyCode: event.key.length === 1 ? event.key.toUpperCase().charCodeAt(0) : 0,
-        text: event.key.length === 1 ? event.key : undefined,
-      },
+      params,
     };
 
     sendCdpCommand(command);
