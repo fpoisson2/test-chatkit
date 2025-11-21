@@ -62,22 +62,31 @@ try:
         set_current_computer_tool as _set_chatkit_computer_tool,
         set_debug_session_callback as _set_debug_callback,
     )
-except ImportError:
+    _chatkit_import_success = True
+except ImportError as e:
+    logging.getLogger("chatkit.server").warning(f"Failed to import chatkit.agents: {e}")
     _set_chatkit_computer_tool = None
     _set_debug_callback = None
+    _chatkit_import_success = False
 
 # Import from routes for registering debug sessions
 try:
     from app.routes.computer import register_debug_session as _register_computer_debug_session
-except ImportError:
+    _routes_import_success = True
+except ImportError as e:
+    logging.getLogger("chatkit.server").warning(f"Failed to import app.routes.computer: {e}")
     _register_computer_debug_session = None
+    _routes_import_success = False
 
 logger = logging.getLogger("chatkit.server")
 
 # Initialize debug session callback once at module load
+logger.info(f"Debug callback initialization: chatkit_import={_chatkit_import_success}, routes_import={_routes_import_success}, callback={_set_debug_callback is not None}, register={_register_computer_debug_session is not None}")
 if _set_debug_callback is not None and _register_computer_debug_session is not None:
     _set_debug_callback(_register_computer_debug_session)
     logger.info("Computer debug session callback initialized")
+else:
+    logger.warning(f"Debug callback NOT initialized: callback={_set_debug_callback is not None}, register={_register_computer_debug_session is not None}")
 def _model_settings(**kwargs: Any) -> ModelSettings:
     return sanitize_model_like(ModelSettings(**kwargs))
 
