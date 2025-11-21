@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 interface DevToolsScreencastProps {
   debugUrlToken: string;
+  authToken?: string; // JWT token for authentication
   className?: string;
 }
 
@@ -15,7 +16,7 @@ interface ScreencastFrame {
   };
 }
 
-export function DevToolsScreencast({ debugUrlToken, className = '' }: DevToolsScreencastProps): JSX.Element {
+export function DevToolsScreencast({ debugUrlToken, authToken, className = '' }: DevToolsScreencastProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -34,8 +35,18 @@ export function DevToolsScreencast({ debugUrlToken, className = '' }: DevToolsSc
         console.log('[DevToolsScreencast] Fetching targets via proxy...');
 
         const jsonUrl = `/api/computer/cdp/json?token=${encodeURIComponent(debugUrlToken)}`;
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        };
+
+        // Add JWT auth token if provided
+        if (authToken) {
+          headers['Authorization'] = `Bearer ${authToken}`;
+        }
+
         const response = await fetch(jsonUrl, {
           credentials: 'include', // Include auth cookies
+          headers,
         });
         if (!response.ok) {
           throw new Error(`Failed to fetch debug info: ${response.status} ${response.statusText}`);
@@ -197,7 +208,7 @@ export function DevToolsScreencast({ debugUrlToken, className = '' }: DevToolsSc
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [debugUrlToken]);
+  }, [debugUrlToken, authToken]);
 
   return (
     <div className={`chatkit-devtools-screencast ${className}`}>

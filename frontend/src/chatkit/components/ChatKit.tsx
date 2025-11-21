@@ -43,7 +43,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     disclaimer,
     composer,
     theme,
+    api,
   } = options;
+
+  // Extract auth token from API headers for DevToolsScreencast
+  const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
 
   // Auto-scroll vers le bas
   useEffect(() => {
@@ -507,7 +511,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                 </div>
                               )}
                               {computerUseTask.debug_url_token && (
-                                <DevToolsScreencast debugUrlToken={computerUseTask.debug_url_token} />
+                                <DevToolsScreencast
+                                  debugUrlToken={computerUseTask.debug_url_token}
+                                  authToken={authToken}
+                                />
                               )}
                               {!computerUseTask.debug_url_token && src && (
                                 <div className="chatkit-browser-screenshot-container">

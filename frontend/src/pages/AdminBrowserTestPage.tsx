@@ -284,6 +284,7 @@ export const AdminBrowserTestPage = () => {
             </p>
             <DevToolsScreencast
               debugUrlToken={browserSession.token}
+              authToken={token}
               className="browser-test-screencast"
             />
           </div>
