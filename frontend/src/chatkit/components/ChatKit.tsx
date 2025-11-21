@@ -63,28 +63,35 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   useEffect(() => {
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
+    const lastWorkflow = workflows[workflows.length - 1];
 
-    let latestScreencastWithToken: { token: string; itemId: string } | null = null;
+    let newActiveScreencast: { token: string; itemId: string } | null = null;
 
-    // Parcourir tous les workflows pour trouver le dernier avec un computer_use task qui a un debug_url_token
+    // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
       const computerUseTask = item.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask?.debug_url_token) return;
 
-      // Capturer tout screencast qui a un token, qu'il soit loading ou complete
-      latestScreencastWithToken = {
-        token: computerUseTask.debug_url_token,
-        itemId: item.id,
-      };
+      const isLoading = computerUseTask.status_indicator === 'loading';
+      const isLastWorkflowAndStreaming = lastWorkflow && lastWorkflow.id === item.id && control.isLoading;
+
+      // Capturer le screencast s'il est actuellement actif (en cours de chargement ou dernier workflow pendant le streaming)
+      if (isLoading || isLastWorkflowAndStreaming) {
+        newActiveScreencast = {
+          token: computerUseTask.debug_url_token,
+          itemId: item.id,
+        };
+      }
     });
 
     // Mise à jour de activeScreencast :
-    // - Si on trouve un screencast avec un token différent de l'actuel, on le met à jour (nouveau screencast)
-    // - Si aucun nouveau screencast n'est trouvé, on garde l'ancien (persistance)
-    if (latestScreencastWithToken && latestScreencastWithToken.token !== activeScreencast?.token) {
-      setActiveScreencast(latestScreencastWithToken);
+    // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
+    // - Si aucun nouveau screencast actif n'est trouvé, on GARDE l'ancien (persistance)
+    if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
+      console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
+      setActiveScreencast(newActiveScreencast);
     }
-  }, [activeScreencast?.token, control.thread?.items]);
+  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
