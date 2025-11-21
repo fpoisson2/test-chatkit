@@ -483,7 +483,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                       if (computerUseTask) {
                         const hasScreenshots = computerUseTask.screenshots && computerUseTask.screenshots.length > 0;
                         const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
-                        const isLoading = computerUseTask.status_indicator === 'loading';
+                        // Check if the WORKFLOW is loading, not just the individual task
+                        // Individual tasks complete quickly, but the workflow may still be running
+                        const isLoading = item.status_indicator === 'loading';
 
                         // Debug: log all relevant info
                         console.log('[ChatKit] Computer use task details:', {
