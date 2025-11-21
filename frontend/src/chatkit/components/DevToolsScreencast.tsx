@@ -28,20 +28,32 @@ export function DevToolsScreencast({ debugUrl, className = '' }: DevToolsScreenc
     let mounted = true;
     let ws: WebSocket | null = null;
 
-    const connect = () => {
+    const connect = async () => {
       try {
-        // Extract WebSocket URL from debug URL
-        // Format is typically: devtools://devtools/bundled/inspector.html?ws=localhost:9222/devtools/page/...
-        // We need to extract the ws parameter and convert to ws://
-        const wsMatch = debugUrl.match(/[?&]ws=([^&]+)/);
-        if (!wsMatch) {
-          setError('Invalid debug URL format');
+        // The debugUrl is in format http://host:port
+        // We need to fetch /json to get the webSocketDebuggerUrl
+        console.log('[DevToolsScreencast] Fetching WebSocket endpoint from:', debugUrl);
+
+        const jsonUrl = `${debugUrl}/json`;
+        const response = await fetch(jsonUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch debug info: ${response.status}`);
+        }
+
+        const targets = await response.json();
+        console.log('[DevToolsScreencast] Available targets:', targets);
+
+        // Find the first page target
+        const pageTarget = Array.isArray(targets)
+          ? targets.find((t: any) => t.type === 'page')
+          : null;
+
+        if (!pageTarget || !pageTarget.webSocketDebuggerUrl) {
+          setError('No page target with WebSocket URL found');
           return;
         }
 
-        const wsPath = wsMatch[1];
-        const wsUrl = `ws://${wsPath}`;
-
+        const wsUrl = pageTarget.webSocketDebuggerUrl;
         console.log('[DevToolsScreencast] Connecting to:', wsUrl);
         ws = new WebSocket(wsUrl);
         wsRef.current = ws;
@@ -137,6 +149,14 @@ export function DevToolsScreencast({ debugUrl, className = '' }: DevToolsScreenc
       } catch (err) {
         console.error('[DevToolsScreencast] Connection error:', err);
         setError(`Failed to connect: ${err instanceof Error ? err.message : String(err)}`);
+
+        // Retry on error
+        if (mounted) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log('[DevToolsScreencast] Retrying connection...');
+            connect();
+          }, 3000);
+        }
       }
     };
 
