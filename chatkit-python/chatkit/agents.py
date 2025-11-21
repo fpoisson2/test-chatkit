@@ -95,14 +95,23 @@ from .widgets import Markdown, Text, WidgetRoot
 
 LOGGER = logging.getLogger(__name__)
 
-# Import for registering debug sessions (optional, only available in backend context)
-try:
-    from app.routes.computer import register_debug_session as _register_debug_session
-except ImportError:
-    _register_debug_session = None
-
 # Thread-local storage for current computer tool
 _thread_local_state = threading.local()
+
+# Global callback for registering debug sessions (injected by backend)
+_debug_session_callback: Any | None = None
+
+
+def set_debug_session_callback(callback: Any) -> None:
+    """Set the callback function for registering debug sessions (called from backend)."""
+    global _debug_session_callback
+    _debug_session_callback = callback
+    LOGGER.info("[Agents] Debug session callback registered")
+
+
+def get_debug_session_callback() -> Any | None:
+    """Get the debug session callback if set."""
+    return _debug_session_callback
 
 
 def set_current_computer_tool(computer_tool: Any) -> None:
@@ -1311,13 +1320,16 @@ async def stream_agent_response(
                         if debug_url:
                             LOGGER.info(f"[ComputerTaskTracker] Obtained debug_url: {debug_url}")
                             # Register a secure debug session for proxy access
-                            if _register_debug_session is not None:
+                            callback = get_debug_session_callback()
+                            if callback is not None:
                                 try:
                                     # TODO: Pass user_id for better authorization
-                                    debug_url_token = _register_debug_session(debug_url, user_id=None)
+                                    debug_url_token = callback(debug_url, user_id=None)
                                     LOGGER.info(f"[ComputerTaskTracker] Registered debug session token: {debug_url_token[:8]}...")
                                 except Exception as exc:
                                     LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                            else:
+                                LOGGER.warning("[ComputerTaskTracker] Debug session callback not set - screencast will not be available")
                 except Exception as exc:
                     LOGGER.debug(f"[ComputerTaskTracker] Failed to get debug_url: {exc}")
 

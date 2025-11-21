@@ -58,9 +58,13 @@ from ..tool_factory import (
 
 # Import from chatkit for setting computer tool
 try:
-    from chatkit.agents import set_current_computer_tool as _set_chatkit_computer_tool
+    from chatkit.agents import (
+        set_current_computer_tool as _set_chatkit_computer_tool,
+        set_debug_session_callback as _set_debug_callback,
+    )
 except ImportError:
     _set_chatkit_computer_tool = None
+    _set_debug_callback = None
 
 # Import from routes for registering debug sessions
 try:
@@ -69,6 +73,11 @@ except ImportError:
     _register_computer_debug_session = None
 
 logger = logging.getLogger("chatkit.server")
+
+# Initialize debug session callback once at module load
+if _set_debug_callback is not None and _register_computer_debug_session is not None:
+    _set_debug_callback(_register_computer_debug_session)
+    logger.info("Computer debug session callback initialized")
 def _model_settings(**kwargs: Any) -> ModelSettings:
     return sanitize_model_like(ModelSettings(**kwargs))
 
