@@ -121,9 +121,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const paddingBottom = parseFloat(styles.paddingBottom || '0');
     const minHeight = lineHeight + paddingTop + paddingBottom;
 
+    // Use the real scroll height of an empty textarea as the baseline so
+    // tiny sub-pixel differences don't immediately push us into multiline.
     if (singleLineHeightRef.current === null) {
-      singleLineHeightRef.current = minHeight;
+      const currentValue = textarea.value;
+      textarea.value = '';
+      textarea.style.height = 'auto';
+      singleLineHeightRef.current = Math.max(minHeight, textarea.scrollHeight);
+      textarea.value = currentValue;
     }
+
     const baseHeight = singleLineHeightRef.current;
 
     // Conserver les largeurs disponibles pour chaque layout afin
@@ -197,8 +204,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       return;
     }
 
+    const epsilon = 1; // avoid flipping modes due to fractional pixel differences
     const shouldBeMultiline = hasValue && (
-      isMultiline ? multiLayoutHeight > baseHeight : singleLayoutHeight > baseHeight
+      isMultiline
+        ? multiLayoutHeight > baseHeight + epsilon
+        : singleLayoutHeight > baseHeight + epsilon
     );
 
     const targetHeight = shouldBeMultiline ? multiLayoutHeight : singleLayoutHeight;
