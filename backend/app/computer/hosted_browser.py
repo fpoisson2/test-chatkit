@@ -167,6 +167,13 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         debug_port_raw = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT")
         self._debug_host = debug_host
 
+        # DEBUG: Log the raw value to understand what's happening
+        logger.info(
+            f"🔍 DEBUG: debug_port_raw={repr(debug_port_raw)}, "
+            f"type={type(debug_port_raw).__name__}, "
+            f"truthy={bool(debug_port_raw)}"
+        )
+
         # If debug port is specified, use it; otherwise find a free port dynamically
         if debug_port_raw:
             try:
