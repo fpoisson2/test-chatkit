@@ -200,7 +200,7 @@
 
 .chatkit-composer-form {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   grid-template-columns: auto 1fr auto;
   grid-template-areas: "attach input send";
   align-items: end;
@@ -216,6 +216,8 @@
 .chatkit-composer-form.is-singleline {
   grid-template-rows: auto;
   align-items: center;
+  gap: 2px;
+  padding: 4px 5px;
 }
 
 .chatkit-composer-form.is-singleline .chatkit-input {
@@ -269,7 +271,7 @@
 
 @media (max-width: 600px) {
   .chatkit-input {
-    font-size: 14px;
+    font-size: 15px;
   }
 }
 
