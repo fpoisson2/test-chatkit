@@ -34,10 +34,15 @@ export function DevToolsScreencast({
   const messageIdRef = useRef(1);
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
   const shouldAutoFocusRef = useRef(false);
+  const consecutiveFailuresRef = useRef(0);
+  const maxConsecutiveFailures = 3;
 
   useEffect(() => {
     let mounted = true;
     let ws: WebSocket | null = null;
+
+    // Reset failure counter when token changes (new connection)
+    consecutiveFailuresRef.current = 0;
 
     const connect = async () => {
       try {
@@ -59,9 +64,13 @@ export function DevToolsScreencast({
           headers,
         });
         if (!response.ok) {
+          consecutiveFailuresRef.current += 1;
           const errorMsg = `Failed to fetch debug info: ${response.status} ${response.statusText}`;
           setError(errorMsg);
-          if (onConnectionError) {
+
+          // Call connection error callback on any failure
+          if (onConnectionError && consecutiveFailuresRef.current >= maxConsecutiveFailures) {
+            console.log('[DevToolsScreencast] Max consecutive failures reached, calling onConnectionError');
             onConnectionError();
           }
           throw new Error(errorMsg);
@@ -98,6 +107,7 @@ export function DevToolsScreencast({
           console.log('[DevToolsScreencast] WebSocket connected');
           setIsConnected(true);
           setError(null);
+          consecutiveFailuresRef.current = 0; // Reset failure counter on success
 
           // Start screencast with CDP command
           const startScreencastCommand = {
@@ -182,24 +192,35 @@ export function DevToolsScreencast({
           setIsConnected(false);
           wsRef.current = null;
 
-          // Attempt reconnection after 2 seconds
-          if (mounted) {
+          // Attempt reconnection after 2 seconds, unless we've hit max failures
+          if (mounted && consecutiveFailuresRef.current < maxConsecutiveFailures) {
             reconnectTimeoutRef.current = setTimeout(() => {
               console.log('[DevToolsScreencast] Attempting reconnection...');
               connect();
             }, 2000);
+          } else if (consecutiveFailuresRef.current >= maxConsecutiveFailures) {
+            console.log('[DevToolsScreencast] Max failures reached, stopping reconnection attempts');
+            if (onConnectionError) {
+              onConnectionError();
+            }
           }
         };
       } catch (err) {
         console.error('[DevToolsScreencast] Connection error:', err);
+        consecutiveFailuresRef.current += 1;
         setError(`Failed to connect: ${err instanceof Error ? err.message : String(err)}`);
 
-        // Retry on error
-        if (mounted) {
+        // Retry on error, unless we've hit max failures
+        if (mounted && consecutiveFailuresRef.current < maxConsecutiveFailures) {
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log('[DevToolsScreencast] Retrying connection...');
             connect();
           }, 3000);
+        } else if (consecutiveFailuresRef.current >= maxConsecutiveFailures) {
+          console.log('[DevToolsScreencast] Max failures reached, stopping retry attempts');
+          if (onConnectionError) {
+            onConnectionError();
+          }
         }
       }
     };
