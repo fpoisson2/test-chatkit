@@ -38,10 +38,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const singleLineHeightRef = useRef<number | null>(null);
+  const singleLineWidthRef = useRef<number | null>(null);
+  const multiLineWidthRef = useRef<number | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
   const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingModeRef = useRef<boolean | null>(null);
   const latestShouldMultilineRef = useRef<boolean | null>(null);
+  const measureTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const {
     header,
@@ -126,26 +129,77 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
     const baseHeight = singleLineHeightRef.current;
 
-    // Mesurer le contenu avec la largeur réelle du layout courant
-    // (single-line ou multi-line) afin que l'ajout de lignes
-    // en mode multi-line se base sur l'espace effectivement disponible.
-    // Réinitialiser la hauteur pour recalculer correctement
-    textarea.style.height = 'auto';
-    const contentHeight = textarea.scrollHeight;
-    const nextHeight = Math.max(contentHeight, baseHeight);
+    // Conserver les largeurs disponibles pour chaque layout afin
+    // de mesurer le passage single-line -> multi-line avec la largeur
+    // single, puis les lignes suivantes avec la largeur multi-line.
+    if (isMultiline) {
+      multiLineWidthRef.current = textarea.clientWidth;
+    } else {
+      singleLineWidthRef.current = textarea.clientWidth;
+    }
+
+    // Préparer un clone invisible pour mesurer la hauteur avec une largeur
+    // contrôlée sans provoquer de reflow visible.
+    if (!measureTextareaRef.current) {
+      const clone = document.createElement('textarea');
+      clone.setAttribute('aria-hidden', 'true');
+      clone.tabIndex = -1;
+      clone.style.position = 'absolute';
+      clone.style.top = '-9999px';
+      clone.style.left = '0';
+      clone.style.height = 'auto';
+      clone.style.visibility = 'hidden';
+      clone.style.whiteSpace = 'pre-wrap';
+      clone.style.wordBreak = 'break-word';
+      clone.style.resize = 'none';
+      document.body.appendChild(clone);
+      measureTextareaRef.current = clone;
+    }
+
+    const measureHeight = (mode: 'single' | 'multi') => {
+      const clone = measureTextareaRef.current!;
+      const widthRef = mode === 'single' ? singleLineWidthRef : multiLineWidthRef;
+      const targetWidth = (widthRef.current ?? textarea.clientWidth) || textarea.clientWidth;
+
+      clone.value = textarea.value;
+      clone.setAttribute('style', `
+        position: absolute;
+        top: -9999px;
+        left: 0;
+        height: auto;
+        visibility: hidden;
+        white-space: pre-wrap;
+        word-break: break-word;
+        resize: none;
+        box-sizing: border-box;
+        padding: ${styles.padding};
+        width: ${targetWidth}px;
+        font: ${styles.font};
+        line-height: ${styles.lineHeight};
+        border: none;
+        outline: none;
+        letter-spacing: ${styles.letterSpacing};
+      `);
+
+      return Math.max(clone.scrollHeight, baseHeight);
+    };
+
+    const singleLayoutHeight = measureHeight('single');
+    const multiLayoutHeight = measureHeight('multi');
+    const contentHeight = isMultiline ? multiLayoutHeight : singleLayoutHeight;
 
     // Déterminer si on doit être en mode multiline avec hystérésis
     const lineHeightValue = lineHeight || 25.5;
     const enterThreshold = baseHeight + (lineHeightValue * 0.85);
     const exitThreshold = baseHeight + (lineHeightValue * 0.35);
     const shouldBeMultiline = isMultiline
-      ? contentHeight > exitThreshold
-      : contentHeight > enterThreshold;
+      ? multiLayoutHeight > exitThreshold
+      : singleLayoutHeight > enterThreshold;
 
     latestShouldMultilineRef.current = shouldBeMultiline;
 
     // Ajuster la hauteur immédiatement en fonction du contenu
-    textarea.style.height = `${Math.min(nextHeight, 200)}px`;
+    textarea.style.height = `${Math.min(contentHeight, 200)}px`;
 
     // Changer le mode si nécessaire
     if (shouldBeMultiline !== isMultiline) {
@@ -165,6 +219,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       pendingModeRef.current = null;
     }
   }, [inputValue, isMultiline]);
+
+  useEffect(() => () => {
+    if (measureTextareaRef.current) {
+      measureTextareaRef.current.remove();
+      measureTextareaRef.current = null;
+    }
+  }, []);
 
   // Gérer l'ajout de fichiers
   const handleFileSelect = useCallback(async (files: FileList | null) => {
