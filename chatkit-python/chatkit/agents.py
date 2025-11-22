@@ -638,12 +638,6 @@ class ComputerTaskTracker(BaseModel):
                     image_url = parsed_output.get("image_url")
                     b64_data = parsed_output.get("b64_image") or parsed_output.get("data") or parsed_output.get("base64")
 
-                LOGGER.info(
-                    f"[ComputerTaskTracker] Screenshot extraction: "
-                    f"image_url={'<present>' if image_url else 'None'}, "
-                    f"b64_data={'<present, {len(b64_data)} chars>' if b64_data else 'None'}"
-                )
-
                 # Use b64_data if available, otherwise fall back to image_url
                 source_data = b64_data or image_url
                 if source_data:
