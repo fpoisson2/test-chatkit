@@ -21,10 +21,12 @@ from chatkit.types import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-from ...chatkit_server.actions import _ResponseWidgetConfig
-from ...models import WorkflowStep, WorkflowTransition
-from ..runtime.state_machine import ExecutionContext
-from ...chatkit.agent_registry import set_current_computer_tool as _set_backend_current_computer_tool
+    from ...chatkit_server.actions import _ResponseWidgetConfig
+    from ...models import WorkflowStep, WorkflowTransition
+    from ..runtime.state_machine import ExecutionContext
+    from ...chatkit.agent_registry import (
+        set_current_computer_tool as _set_backend_current_computer_tool,
+    )
 
 
 logger = logging.getLogger("chatkit.server")
