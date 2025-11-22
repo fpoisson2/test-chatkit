@@ -150,6 +150,7 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         self._original_display = os.getenv("DISPLAY")
         self._display = self._original_display
         self._display_overridden = False
+        self._port_reservation_socket = None  # Keep port reserved until Chrome starts
 
         headless_env = os.getenv("CHATKIT_HOSTED_BROWSER_HEADLESS")
         if headless_env is None:
@@ -189,16 +190,27 @@ class _PlaywrightDriver(_BaseBrowserDriver):
                 )
 
     def _find_free_port(self) -> int | None:
-        """Find a free port for Chrome DevTools debugging."""
+        """Find a free port for Chrome DevTools debugging.
+
+        The socket is kept open in self._port_reservation_socket to reserve the port
+        until Chrome starts. This prevents race conditions where multiple browsers
+        could get assigned the same port.
+        """
         import socket
 
         try:
             # Create a socket and bind to port 0 to get a free port
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('', 0))
-                s.listen(1)
-                port = s.getsockname()[1]
-                return port
+            # IMPORTANT: We keep this socket open to reserve the port until Chrome starts
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(('', 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+
+            # Store the socket to keep the port reserved
+            # It will be closed in _launch_playwright after Chrome starts
+            self._port_reservation_socket = s
+
+            return port
         except Exception as exc:
             logger.warning(
                 "Impossible de trouver un port libre pour le débogage: %s",
@@ -246,6 +258,15 @@ class _PlaywrightDriver(_BaseBrowserDriver):
             args=launch_args,
             env=launch_env,
         )
+
+        # Chrome has started successfully - release the port reservation socket
+        if self._port_reservation_socket is not None:
+            try:
+                self._port_reservation_socket.close()
+            except Exception:
+                pass  # Ignore errors when closing reservation socket
+            self._port_reservation_socket = None
+
         self._context = await self._browser.new_context(
             viewport={"width": self.width, "height": self.height},
             accept_downloads=False,
@@ -552,6 +573,15 @@ class _PlaywrightDriver(_BaseBrowserDriver):
             self._playwright_manager = None
             self._playwright = None
             self._ready = False
+
+        # Release port reservation socket if still held
+        if self._port_reservation_socket is not None:
+            try:
+                self._port_reservation_socket.close()
+            except Exception:
+                pass  # Ignore errors when closing reservation socket
+            self._port_reservation_socket = None
+
         if self._display_overridden:
             if self._original_display is None:
                 os.environ.pop("DISPLAY", None)
