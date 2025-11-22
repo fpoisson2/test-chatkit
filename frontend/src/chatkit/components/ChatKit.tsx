@@ -101,10 +101,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     // Mise à jour de activeScreencast :
     // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
-    // - Si aucun nouveau screencast actif n'est trouvé, on GARDE l'ancien (persistance)
-    if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
-      console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
-      setActiveScreencast(newActiveScreencast);
+    // - Si aucun nouveau screencast actif n'est trouvé, on RÉINITIALISE l'état pour éviter
+    //   d'afficher un debug_url périmé d'un run précédent
+    if (newActiveScreencast) {
+      if (newActiveScreencast.token !== activeScreencast?.token) {
+        console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
+        setActiveScreencast(newActiveScreencast);
+      }
+    } else if (activeScreencast) {
+      console.log('[ChatKit] Clearing stale screencast state');
+      setActiveScreencast(null);
     }
   }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
