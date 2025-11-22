@@ -138,6 +138,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       singleLineWidthRef.current = textarea.clientWidth;
     }
 
+    const hasValue = textarea.value.trim().length > 0;
+
     // Préparer un clone invisible pour mesurer la hauteur avec une largeur
     // contrôlée sans provoquer de reflow visible.
     if (!measureTextareaRef.current) {
@@ -187,6 +189,23 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const singleLayoutHeight = measureHeight('single');
     const multiLayoutHeight = measureHeight('multi');
     const contentHeight = isMultiline ? multiLayoutHeight : singleLayoutHeight;
+
+    if (!hasValue) {
+      latestShouldMultilineRef.current = false;
+      textarea.style.height = `${baseHeight}px`;
+
+      if (isMultiline) {
+        setIsMultiline(false);
+      }
+
+      if (modeChangeTimeoutRef.current) {
+        clearTimeout(modeChangeTimeoutRef.current);
+        modeChangeTimeoutRef.current = null;
+        pendingModeRef.current = null;
+      }
+
+      return;
+    }
 
     // Déterminer si on doit être en mode multiline avec hystérésis
     const lineHeightValue = lineHeight || 25.5;
