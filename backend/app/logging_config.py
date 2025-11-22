@@ -124,9 +124,16 @@ def configure_logging(
 def _configure_third_party_loggers() -> None:
     """Configure les niveaux de log pour les librairies tierces bruyantes."""
 
-    # HTTP clients (réduire la verbosité)
-    logging.getLogger("httpcore").setLevel(logging.INFO)
-    logging.getLogger("httpx").setLevel(logging.INFO)
+    # HTTP clients (supprimer les logs bruyants)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # Clients OpenAI / Stainless (supprimer le spam de logs)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("openai._client").setLevel(logging.WARNING)
+    logging.getLogger("openai._base_client").setLevel(logging.WARNING)
+    logging.getLogger("openai._http_client").setLevel(logging.WARNING)
+    logging.getLogger("stainless_sdk").setLevel(logging.WARNING)
 
     # Filtre pour supprimer les erreurs de cancel scope du SDK OpenAI
     # Ces erreurs sont internes au SDK et n'affectent pas le fonctionnement
