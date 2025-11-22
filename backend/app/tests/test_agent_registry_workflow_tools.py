@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
 import os
@@ -389,6 +390,22 @@ def test_build_agent_kwargs_sets_truncation_for_computer_tool(
     assert isinstance(settings, agent_registry.ModelSettings)
     assert settings.truncation == "auto"
     assert result["tools"] == [computer_tool]
+
+
+def test_current_computer_tool_is_task_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    tool_a = ComputerTool(computer=_DummyComputer())
+    tool_b = ComputerTool(computer=_DummyComputer())
+
+    async def _set_and_get(tool: ComputerTool) -> ComputerTool | None:
+        agent_registry.set_current_computer_tool(tool)
+        await asyncio.sleep(0)
+        return agent_registry.get_current_computer_tool()
+
+    results = asyncio.run(asyncio.gather(_set_and_get(tool_a), _set_and_get(tool_b)))
+
+    assert results == [tool_a, tool_b]
 
 
 def test_build_agent_kwargs_adds_model_settings_when_missing(
