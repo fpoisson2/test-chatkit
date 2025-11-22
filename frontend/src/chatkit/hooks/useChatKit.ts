@@ -108,9 +108,10 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   // Envoyer un message utilisateur
   const sendUserMessage = useCallback(
     async (content: UserMessageContent[] | string, options?: { inferenceOptions?: any }) => {
-      const targetThreadId = thread?.id ?? activeThreadIdRef.current;
+      const targetThreadId = activeThreadIdRef.current ?? thread?.id ?? null;
       const threadKey = getThreadKey(targetThreadId);
       const existingController = abortControllersRef.current.get(threadKey);
+      const initialThreadForStream = thread?.id === targetThreadId ? thread : null;
 
       if (existingController) {
         existingController.abort();
@@ -159,7 +160,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
             url: api.url,
             headers: api.headers,
             body: payload,
-            initialThread: thread,
+            initialThread: initialThreadForStream,
             signal: controller.signal,
             onEvent: (event: ThreadStreamEvent) => {
               onLog?.({ name: `event.${event.type}`, data: { event } });
