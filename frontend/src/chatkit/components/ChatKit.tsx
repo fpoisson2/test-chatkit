@@ -142,6 +142,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     if (!measureTextareaRef.current) {
       const clone = document.createElement('textarea');
       clone.setAttribute('aria-hidden', 'true');
+      clone.setAttribute('rows', textarea.getAttribute('rows') || '1');
       clone.tabIndex = -1;
       clone.style.position = 'absolute';
       clone.style.top = '-9999px';
