@@ -125,41 +125,44 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const baseHeight = singleLineHeightRef.current;
 
     // Pour détecter correctement le dépassement, mesurer avec la largeur du mode SINGLE-LINE
-    // Si ça déborde en mode single-line, on passe en multiline
+    // pour le premier passage en multiline, puis utiliser la largeur effective en mode multiline
     const form = textarea.closest('.chatkit-composer-form');
-    const wasMultiline = isMultiline;
+    const lineHeightValue = lineHeight || 25.5;
 
-    // Forcer temporairement le mode single-line pour mesurer avec la largeur réduite
-    if (form) {
-      form.classList.add('is-singleline');
-      form.classList.remove('is-multiline');
-      // Forcer un reflow pour que le CSS soit appliqué avant la mesure
-      void form.offsetHeight;
-    }
-
-    // Réinitialiser la hauteur pour recalculer correctement
-    textarea.style.height = 'auto';
-    const contentHeight = textarea.scrollHeight;
-    const nextHeight = Math.max(contentHeight, baseHeight);
-
-    // Restaurer l'état actuel immédiatement après la mesure
-    if (form) {
-      if (wasMultiline) {
+    const setModeClass = (mode: 'single' | 'multi') => {
+      if (!form) return;
+      if (mode === 'multi') {
         form.classList.add('is-multiline');
         form.classList.remove('is-singleline');
       } else {
         form.classList.add('is-singleline');
         form.classList.remove('is-multiline');
       }
-    }
+      // Forcer un reflow pour que le CSS soit appliqué avant la mesure
+      void form.offsetHeight;
+    };
+
+    const measureHeight = (mode: 'single' | 'multi') => {
+      setModeClass(mode);
+      textarea.style.height = 'auto';
+      return textarea.scrollHeight;
+    };
+
+    // Toujours mesurer la longueur de référence en mode single-line pour décider
+    // du passage/retour en multiline, puis prendre la mesure réelle du layout courant
+    const singleLineContentHeight = measureHeight('single');
+    const multilineContentHeight = measureHeight('multi');
+
+    // Restaurer le layout actuel immédiatement après la mesure
+    setModeClass(isMultiline ? 'multi' : 'single');
 
     // Déterminer si on doit être en mode multiline avec hystérésis
-    const lineHeightValue = lineHeight || 25.5;
     const shouldBeMultiline = isMultiline
-      ? contentHeight > baseHeight + 2  // Rester en multiline si > baseHeight + 2px
-      : contentHeight > baseHeight + (lineHeightValue * 0.1); // Activer si déborde
+      ? singleLineContentHeight > baseHeight + 2 // Revenir en single-line seulement quand ça tient sur une ligne de référence
+      : singleLineContentHeight > baseHeight + (lineHeightValue * 0.1); // Activer si déborde la largeur single-line
 
-    // Ajuster la hauteur immédiatement en fonction du contenu
+    // Ajuster la hauteur immédiatement en fonction du contenu effectif
+    const nextHeight = Math.max(isMultiline ? multilineContentHeight : singleLineContentHeight, baseHeight);
     textarea.style.height = `${Math.min(nextHeight, 200)}px`;
 
     // Changer le mode si nécessaire

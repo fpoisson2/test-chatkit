@@ -190,7 +190,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 16px;
+  padding: 4px;
   background: transparent;
   display: flex;
   justify-content: center;
@@ -200,7 +200,7 @@
 
 .chatkit-composer-form {
   display: grid;
-  gap: 8px;
+  gap: 3px;
   grid-template-columns: auto 1fr auto;
   grid-template-areas: "attach input send";
   align-items: end;
@@ -209,22 +209,25 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 24px;
-  padding: 12px;
+  padding: 5px 6px;
   overflow: visible;
 }
 
 .chatkit-composer-form.is-singleline {
   grid-template-rows: auto;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 5px;
 }
 
 .chatkit-composer-form.is-singleline .chatkit-input {
+  overflow: hidden;
+}
+
+.chatkit-composer-form.is-singleline .chatkit-input:placeholder-shown {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.chatkit-composer-form.is-singleline .chatkit-input::placeholder {
-  white-space: nowrap;
 }
 
 .chatkit-composer-form.is-multiline {
@@ -234,8 +237,8 @@
     "attach . send";
   grid-template-rows: auto auto;
   align-items: end;
-  row-gap: 12px;
-  padding: 12px;
+  row-gap: 2px;
+  padding: 5px 6px 6px;
 }
 
 
@@ -246,7 +249,7 @@
 
 .chatkit-input {
   width: 100%;
-  padding: 12px;
+  padding: 6px;
   border: none;
   background: transparent;
   font-size: 17px;
@@ -291,15 +294,20 @@
 
 .chatkit-composer-actions .chatkit-attach-wrapper {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   grid-area: attach;
-  align-self: end;
+  align-self: center;
 }
 
 .chatkit-composer-actions .chatkit-submit {
   margin-left: auto;
   grid-area: send;
   justify-self: end;
+  align-self: center;
+}
+
+.chatkit-composer-form.is-multiline .chatkit-composer-actions .chatkit-attach-wrapper,
+.chatkit-composer-form.is-multiline .chatkit-composer-actions .chatkit-submit {
   align-self: end;
 }
 
