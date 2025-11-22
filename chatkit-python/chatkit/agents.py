@@ -953,7 +953,10 @@ def _format_markdown_section(label: str, value: Any) -> str:
 
 
 async def stream_agent_response(
-    context: AgentContext, result: RunResultStreaming
+    context: AgentContext,
+    result: RunResultStreaming,
+    *,
+    computer_tool: Any | None = None,
 ) -> AsyncIterator[ThreadStreamEvent]:
     current_item_id = None
     current_tool_call = None
@@ -969,6 +972,8 @@ async def stream_agent_response(
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
     current_reasoning_id: str | None = None
+
+    current_computer_tool = computer_tool or get_current_computer_tool()
 
     def _get_value(raw: Any, key: str) -> Any:
         if isinstance(raw, dict):
@@ -1297,6 +1302,7 @@ async def stream_agent_response(
         item_id: str,
         *,
         call_id: str | None = None,
+        computer_tool: Any | None = current_computer_tool,
     ) -> tuple[ComputerTaskTracker, bool, list[ThreadStreamEvent]]:
         events = ensure_workflow()
         tracker = computer_tasks.get(item_id)
@@ -1306,10 +1312,10 @@ async def stream_agent_response(
             # Get debug_url from computer_tool if available and register a secure session
             debug_url = None
             debug_url_token = None
-            computer_tool = get_current_computer_tool()
-            if computer_tool is not None:
+            active_tool = computer_tool or get_current_computer_tool()
+            if active_tool is not None:
                 try:
-                    computer = getattr(computer_tool, "computer", None)
+                    computer = getattr(active_tool, "computer", None)
                     if computer is not None:
                         debug_url = getattr(computer, "debug_url", None)
                         if callable(debug_url):
@@ -1394,13 +1400,14 @@ async def stream_agent_response(
         status: str | None,
         raw_output: Any = None,
         parsed_output: Any = None,
+        computer_tool: Any | None = current_computer_tool,
     ) -> bool:
         # Check if we need to register debug session after browser is ready
         if tracker.task.debug_url_token is None:
-            computer_tool = get_current_computer_tool()
-            if computer_tool is not None:
+            active_tool = computer_tool or get_current_computer_tool()
+            if active_tool is not None:
                 try:
-                    computer = getattr(computer_tool, "computer", None)
+                    computer = getattr(active_tool, "computer", None)
                     if computer is not None:
                         debug_url = getattr(computer, "debug_url", None)
                         if callable(debug_url):

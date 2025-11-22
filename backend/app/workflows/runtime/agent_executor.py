@@ -10,7 +10,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from agents import Agent, TResponseInputItem
-from chatkit.agents import AgentContext
+from agents.tool import ComputerTool
+from chatkit.agents import AgentContext, set_current_computer_tool
 from chatkit.types import (
     AssistantMessageContent,
     AssistantMessageItem,
@@ -20,9 +21,10 @@ from chatkit.types import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ...chatkit_server.actions import _ResponseWidgetConfig
-    from ...models import WorkflowStep, WorkflowTransition
-    from ..runtime.state_machine import ExecutionContext
+from ...chatkit_server.actions import _ResponseWidgetConfig
+from ...models import WorkflowStep, WorkflowTransition
+from ..runtime.state_machine import ExecutionContext
+from ...chatkit.agent_registry import set_current_computer_tool as _set_backend_current_computer_tool
 
 
 logger = logging.getLogger("chatkit.server")
@@ -96,6 +98,7 @@ class AgentStepExecutor:
         base_step_identifier = f"{agent_key}_{position}"
         step_identifier = self.deps.branch_prefixed_slug(base_step_identifier)
         agent = self.deps.agent_instances[current_slug]
+        computer_tool = _extract_computer_tool(agent)
         title = self.deps.node_title(current_node)
         widget_config = self.deps.widget_configs_by_step.get(current_node.slug)
 
@@ -150,19 +153,23 @@ class AgentStepExecutor:
             )
 
         # Execute agent step
-        result_stream = await self.deps.run_agent_step(
-            step_identifier,
-            title,
-            agent,
-            agent_context=self.deps.agent_context,
-            run_context=run_context,
-            suppress_stream_events=widget_config is not None,
-            step_metadata={
-                "agent_key": agent_key,
-                "step_slug": self.deps.branch_prefixed_slug(current_node.slug),
-                "step_title": title,
-            },
-        )
+        _set_computer_tool_for_request(computer_tool)
+        try:
+            result_stream = await self.deps.run_agent_step(
+                step_identifier,
+                title,
+                agent,
+                agent_context=self.deps.agent_context,
+                run_context=run_context,
+                suppress_stream_events=widget_config is not None,
+                step_metadata={
+                    "agent_key": agent_key,
+                    "step_slug": self.deps.branch_prefixed_slug(current_node.slug),
+                    "step_title": title,
+                },
+            )
+        finally:
+            _clear_computer_tool_for_request()
 
         # Collect generated images
         image_urls = list(self.deps.consume_generated_image_urls(step_identifier))
@@ -395,3 +402,43 @@ class AgentStepExecutor:
                 augmented_context["action"] = dict(result)
 
         return augmented_context
+
+
+def _extract_computer_tool(agent: Agent) -> ComputerTool | None:
+    """Return the first ComputerTool configured on the agent, if any."""
+
+    tools = getattr(agent, "tools", None)
+    if not tools:
+        return None
+
+    if isinstance(tools, Mapping):
+        candidates = tools.values()
+    elif isinstance(tools, Sequence) and not isinstance(tools, (str, bytes, bytearray)):
+        candidates = tools
+    else:
+        candidates = (tools,)
+
+    for tool in candidates:
+        if isinstance(tool, ComputerTool):
+            return tool
+    return None
+
+
+def _set_computer_tool_for_request(tool: ComputerTool | None) -> None:
+    """Propagate the active computer tool to thread-local state."""
+
+    set_current_computer_tool(tool)
+    try:
+        _set_backend_current_computer_tool(tool)
+    except Exception:
+        logger.debug("Unable to set backend computer tool state", exc_info=True)
+
+
+def _clear_computer_tool_for_request() -> None:
+    """Clear any computer tool state to avoid leaking across requests."""
+
+    set_current_computer_tool(None)
+    try:
+        _set_backend_current_computer_tool(None)
+    except Exception:
+        logger.debug("Unable to clear backend computer tool state", exc_info=True)

@@ -19,6 +19,11 @@ from typing import TYPE_CHECKING, Any
 
 from .handlers.factory import create_state_machine
 from .runtime.state_machine import ExecutionContext
+from .runtime.agent_executor import (
+    _clear_computer_tool_for_request,
+    _extract_computer_tool,
+    _set_computer_tool_for_request,
+)
 
 
 @dataclass
@@ -563,6 +568,8 @@ async def run_workflow_v2(
         if in_while_loop_iteration and (sanitized_previous_response_id or pending_wait_state):
             conversation_history_input = []
 
+        computer_tool = _extract_computer_tool(agent)
+        _set_computer_tool_for_request(computer_tool)
         try:
             result = Runner.run_streamed(
                 agent,
@@ -572,7 +579,9 @@ async def run_workflow_v2(
                 previous_response_id=sanitized_previous_response_id,
             )
             try:
-                async for event in stream_agent_response(agent_context, result):
+                async for event in stream_agent_response(
+                    agent_context, result, computer_tool=computer_tool
+                ):
                     if _should_forward_agent_event(event, suppress=suppress_stream_events):
                         await _emit_stream_event(event)
                     delta_text = _extract_delta(event)
@@ -620,6 +629,7 @@ async def run_workflow_v2(
             conversation_history.extend([item.to_input_item() for item in result.new_items])
             return result
         finally:
+            _clear_computer_tool_for_request()
             # Cleanup MCP servers
             for server in connected_mcp_servers:
                 try:

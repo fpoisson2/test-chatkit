@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterator
 from datetime import datetime
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -91,6 +91,8 @@ from chatkit.agents import (
     accumulate_text,
     simple_to_agent_input,
     stream_agent_response,
+    set_current_computer_tool,
+    set_debug_session_callback,
 )
 from chatkit.types import (
     Annotation,
@@ -1462,6 +1464,114 @@ async def test_stream_agent_response_streams_computer_tool_events_from_run_items
     assert len(final_update.update.task.screenshots) > 0
     screenshot = final_update.update.task.screenshots[0]
     assert screenshot.data_url == "https://example.com/screenshot.png" or "https://example.com/screenshot.png" in (screenshot.data_url or "")
+
+
+async def test_stream_agent_response_scopes_computer_tool_debug_sessions():
+    mock_store.add_thread_item.reset_mock()
+    tokens: list[tuple[str, str]] = []
+
+    def _register_debug_session(debug_url: str, user_id: Any | None = None) -> str:
+        token = f"token-{debug_url}"
+        tokens.append((debug_url, token))
+        return token
+
+    set_debug_session_callback(_register_debug_session)
+
+    class _StubComputerTool:
+        def __init__(self, debug_url: str) -> None:
+            self.computer = SimpleNamespace(debug_url=debug_url)
+
+    async def _stream_with_tool(
+        tool: Any, call_id: str, item_id: str
+    ) -> ComputerUseTask:
+        context = AgentContext(
+            previous_response_id=None,
+            thread=thread,
+            store=mock_store,
+            request_context=None,
+        )
+        result = make_result()
+
+        call_item = ResponseComputerToolCall(
+            id=item_id,
+            call_id=call_id,
+            status="in_progress",
+            type="computer_call",
+            action=ActionClick(type="click", x=120, y=360, button="left"),
+            pending_safety_checks=[],
+        )
+
+        result.add_event(
+            RunItemStreamEvent(
+                name="tool_called",
+                item=ToolCallItem(agent=Agent(name="Assistant"), raw_item=call_item),
+            )
+        )
+
+        call_output = ComputerCallOutput(
+            type="computer_call_output",
+            call_id=call_item.call_id,
+            status="completed",
+            output=ResponseComputerToolCallOutputScreenshotParam(
+                type="computer_screenshot",
+                file_id=f"file_{call_id}",
+                image_url="https://example.com/screenshot.png",
+            ),
+        )
+
+        result.add_event(
+            RunItemStreamEvent(
+                name="tool_output",
+                item=ToolCallOutputItem(
+                    agent=Agent(name="Assistant"),
+                    raw_item=call_output,
+                    output={
+                        "image_url": "https://example.com/screenshot.png",
+                        "file_id": f"file_{call_id}",
+                    },
+                ),
+            )
+        )
+
+        result.done()
+
+        events = await all_events(
+            stream_agent_response(context, result, computer_tool=tool)
+        )
+
+        final_update = next(
+            (
+                event
+                for event in reversed(events)
+                if isinstance(event, ThreadItemUpdated)
+                and isinstance(getattr(event.update, "task", None), ComputerUseTask)
+                and isinstance(event.update, WorkflowTaskUpdated)
+            ),
+            None,
+        )
+        assert final_update is not None
+        return final_update.update.task
+
+    tool_one = _StubComputerTool("http://debug-1")
+    tool_two = _StubComputerTool("http://debug-2")
+
+    # Seed thread-local state with the first tool
+    set_current_computer_tool(tool_one)
+    first_task = await _stream_with_tool(tool_one, "computer_call_1", "computer_item_1")
+
+    # Do not clear the thread-local tool to ensure the second request passes its own
+    second_task = await _stream_with_tool(tool_two, "computer_call_2", "computer_item_2")
+
+    assert first_task.debug_url_token == "token-http://debug-1"
+    assert second_task.debug_url_token == "token-http://debug-2"
+    assert second_task.debug_url == "http://debug-2"
+    assert tokens == [
+        ("http://debug-1", "token-http://debug-1"),
+        ("http://debug-2", "token-http://debug-2"),
+    ]
+
+    set_current_computer_tool(None)
+    set_debug_session_callback(None)
 
 
 async def test_stream_agent_response_streams_function_calls_with_reasoning():
