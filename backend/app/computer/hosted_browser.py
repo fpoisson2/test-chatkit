@@ -163,30 +163,19 @@ class _PlaywrightDriver(_BaseBrowserDriver):
             }
 
         debug_host = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_HOST", "127.0.0.1")
-        debug_port_raw = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT")
         self._debug_host = debug_host
 
-        # If debug port is specified, use it; otherwise find a free port dynamically
-        if debug_port_raw:
-            try:
-                parsed = int(debug_port_raw)
-            except ValueError:
-                parsed = None
-            if parsed is not None and not (0 < parsed < 65536):
-                logger.warning(
-                    "Port de débogage Playwright invalide (%s), "
-                    "désactivation de l'inspection",
-                    debug_port_raw,
-                )
-                parsed = None
-            self._debug_port = parsed
-        else:
-            # Find a free port dynamically for this browser instance
-            self._debug_port = self._find_free_port()
-            if self._debug_port:
-                logger.info(
-                    f"Port de débogage dynamique assigné: {self._debug_port}"
-                )
+        # Always use a dedicated DevTools port for each browser instance
+        self._debug_port = self._find_free_port()
+        if self._debug_port:
+            logger.info(
+                f"Port de débogage dynamique assigné: {self._debug_port}"
+            )
+        if os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT"):
+            logger.warning(
+                "CHATKIT_HOSTED_BROWSER_DEBUG_PORT est ignorée : un port "
+                "dédié est attribué dynamiquement pour chaque session"
+            )
 
     def _find_free_port(self) -> int | None:
         """Find a free port for Chrome DevTools debugging."""
