@@ -100,18 +100,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentActiveScreencast:', activeScreencast);
 
     // Mise à jour de activeScreencast :
-    // - Si on trouve un nouveau screencast actif, on le met à jour
-    // - Si aucun nouveau screencast actif n'est trouvé, on CLEAR l'ancien (évite les tokens morts)
-    if (newActiveScreencast) {
-      if (newActiveScreencast.token !== activeScreencast?.token) {
-        console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
-        setActiveScreencast(newActiveScreencast);
-      }
-    } else if (activeScreencast !== null) {
-      // Clear the active screencast if no active computer use task is found
-      // This prevents dead tokens from persisting and causing 503 errors
-      console.log('[ChatKit] Clearing inactive screencast:', activeScreencast);
-      setActiveScreencast(null);
+    // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
+    // - Si aucun nouveau screencast actif n'est trouvé, on GARDE l'ancien (persistance)
+    // - Le retry limit dans DevToolsScreencast empêche les retries infinis sur tokens morts
+    if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
+      console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
+      setActiveScreencast(newActiveScreencast);
     }
   }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
