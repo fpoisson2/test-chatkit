@@ -551,6 +551,16 @@ class WidgetItem(ThreadItemBase):
     copy_text: str | None = None
 
 
+class ComputerUseItem(ThreadItemBase):
+    """Thread item exposing a live computer-use session."""
+
+    type: Literal["computer_use"] = "computer_use"
+    call_id: str | None = None
+    status_indicator: Literal["none", "loading", "complete"] = "none"
+    debug_url: str | None = None
+    screenshot_url: str | None = None
+
+
 class TaskItem(ThreadItemBase):
     """Thread item containing a task."""
 
@@ -582,6 +592,7 @@ ThreadItem = Annotated[
     UserMessageItem
     | AssistantMessageItem
     | ClientToolCallItem
+    | ComputerUseItem
     | WidgetItem
     | WorkflowItem
     | TaskItem
