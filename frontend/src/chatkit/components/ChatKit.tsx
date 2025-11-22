@@ -121,18 +121,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const paddingBottom = parseFloat(styles.paddingBottom || '0');
     const minHeight = lineHeight + paddingTop + paddingBottom;
 
-    // Use the real scroll height of an empty textarea as the baseline so
-    // tiny sub-pixel differences don't immediately push us into multiline.
-    if (singleLineHeightRef.current === null) {
-      const currentValue = textarea.value;
-      textarea.value = '';
-      textarea.style.height = 'auto';
-      singleLineHeightRef.current = Math.max(minHeight, textarea.scrollHeight);
-      textarea.value = currentValue;
-    }
-
-    const baseHeight = singleLineHeightRef.current;
-
     // Conserver les largeurs disponibles pour chaque layout afin
     // de mesurer le passage single-line -> multi-line avec la largeur
     // single, puis les lignes suivantes avec la largeur multi-line.
@@ -163,30 +151,45 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       measureTextareaRef.current = clone;
     }
 
+    const applyMeasureStyles = (clone: HTMLTextAreaElement, width: number) => {
+      clone.style.position = 'absolute';
+      clone.style.top = '-9999px';
+      clone.style.left = '0';
+      clone.style.height = 'auto';
+      clone.style.visibility = 'hidden';
+      clone.style.whiteSpace = 'pre-wrap';
+      clone.style.wordBreak = 'break-word';
+      clone.style.resize = 'none';
+      clone.style.boxSizing = styles.boxSizing;
+      clone.style.padding = styles.padding;
+      clone.style.width = `${width}px`;
+      clone.style.font = styles.font;
+      clone.style.lineHeight = styles.lineHeight;
+      clone.style.border = 'none';
+      clone.style.outline = 'none';
+      clone.style.letterSpacing = styles.letterSpacing;
+    };
+
+    const ensureBaseHeight = () => {
+      if (singleLineHeightRef.current !== null) return singleLineHeightRef.current;
+
+      const clone = measureTextareaRef.current!;
+      const baselineWidth = (singleLineWidthRef.current ?? textarea.clientWidth) || textarea.clientWidth;
+      applyMeasureStyles(clone, baselineWidth);
+      clone.value = '';
+      singleLineHeightRef.current = Math.max(minHeight, clone.scrollHeight);
+      return singleLineHeightRef.current;
+    };
+
+    const baseHeight = ensureBaseHeight();
+
     const measureHeight = (mode: 'single' | 'multi') => {
       const clone = measureTextareaRef.current!;
       const widthRef = mode === 'single' ? singleLineWidthRef : multiLineWidthRef;
       const targetWidth = (widthRef.current ?? textarea.clientWidth) || textarea.clientWidth;
 
+      applyMeasureStyles(clone, targetWidth);
       clone.value = textarea.value;
-      clone.setAttribute('style', `
-        position: absolute;
-        top: -9999px;
-        left: 0;
-        height: auto;
-        visibility: hidden;
-        white-space: pre-wrap;
-        word-break: break-word;
-        resize: none;
-        box-sizing: border-box;
-        padding: ${styles.padding};
-        width: ${targetWidth}px;
-        font: ${styles.font};
-        line-height: ${styles.lineHeight};
-        border: none;
-        outline: none;
-        letter-spacing: ${styles.letterSpacing};
-      `);
 
       return Math.max(clone.scrollHeight, baseHeight);
     };
