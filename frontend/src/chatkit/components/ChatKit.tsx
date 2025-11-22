@@ -59,53 +59,51 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [control.thread?.items.length]);
 
-  // Conserver le dernier screencast actif jusqu'à ce qu'un nouveau arrive ou qu'il se déconnecte
+  // Conserver le dernier screencast actif du workflow le plus récent qui expose un debug_url_token,
+  // et réinitialiser dès qu'aucun workflow récent ne fournit de screencast pour éviter les URLs périmées
   useEffect(() => {
     const items = control.thread?.items || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
 
-    console.log('[ChatKit useEffect] Checking for active screencast, control.isLoading:', control.isLoading, 'workflows:', workflows.length);
-
-    // Identifier le workflow actuellement en streaming en fonction de ses tâches
-    const streamingWorkflow = [...workflows]
-      .reverse()
-      .find((item: any) => item.workflow?.tasks?.some((t: any) => t.status_indicator === 'loading'));
-
+    // Parcourir les workflows du plus récent au plus ancien et récupérer le dernier debug_url_token disponible
     let newActiveScreencast: { token: string; itemId: string } | null = null;
 
-    if (streamingWorkflow) {
-      const computerUseTask = streamingWorkflow.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
+    for (let i = workflows.length - 1; i >= 0; i--) {
+      const workflow = workflows[i];
+      const computerUseTasks = workflow.workflow?.tasks?.filter((t: any) => t.type === 'computer_use') || [];
 
-      console.log('[ChatKit useEffect] Streaming workflow:', streamingWorkflow.id, {
-        hasToken: !!computerUseTask?.debug_url_token,
-        token: computerUseTask?.debug_url_token?.substring(0, 8),
-        hasLoadingTask: streamingWorkflow.workflow?.tasks?.some((t: any) => t.status_indicator === 'loading'),
-      });
-
-      if (computerUseTask?.debug_url_token) {
-        newActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: streamingWorkflow.id,
-        };
+      for (let j = computerUseTasks.length - 1; j >= 0; j--) {
+        const task = computerUseTasks[j];
+        if (task.debug_url_token) {
+          newActiveScreencast = { token: task.debug_url_token, itemId: workflow.id };
+          break;
+        }
       }
+
+      if (newActiveScreencast) break;
     }
 
-    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentActiveScreencast:', activeScreencast);
+    console.log('[ChatKit useEffect] Screencast resolution', {
+      workflows: workflows.length,
+      newActiveScreencast,
+      currentActiveScreencast: activeScreencast,
+    });
 
-    // Mise à jour de activeScreencast :
-    // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
-    // - Si aucun nouveau screencast actif n'est trouvé, on RÉINITIALISE l'état pour éviter
-    //   d'afficher un debug_url périmé d'un run précédent
-    if (newActiveScreencast) {
-      if (newActiveScreencast.token !== activeScreencast?.token) {
-        console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
+    // Mettre à jour uniquement si la cible change pour éviter les re-renders inutiles
+    const hasChanged =
+      newActiveScreencast?.token !== activeScreencast?.token ||
+      newActiveScreencast?.itemId !== activeScreencast?.itemId;
+
+    if (hasChanged) {
+      if (newActiveScreencast) {
+        console.log('[ChatKit] Activating screencast', newActiveScreencast);
         setActiveScreencast(newActiveScreencast);
+      } else {
+        console.log('[ChatKit] Clearing screencast (no debug token found)');
+        setActiveScreencast(null);
       }
-    } else if (activeScreencast) {
-      console.log('[ChatKit] Clearing stale screencast state');
-      setActiveScreencast(null);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.itemId, activeScreencast?.token, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
