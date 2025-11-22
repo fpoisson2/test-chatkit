@@ -225,6 +225,8 @@
 
 .chatkit-composer-form.is-singleline .chatkit-input::placeholder {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chatkit-composer-form.is-multiline {
@@ -268,7 +270,7 @@
 
 @media (max-width: 600px) {
   .chatkit-input {
-    font-size: 15px;
+    font-size: 14px;
   }
 }
 

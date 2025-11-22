@@ -125,14 +125,19 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const baseHeight = singleLineHeightRef.current;
 
     // Pour détecter correctement le dépassement, mesurer avec la largeur du mode SINGLE-LINE
-    // Si ça déborde en mode single-line, on passe en multiline
+    // pour le premier passage en multiline, puis utiliser la largeur effective en mode multiline
     const form = textarea.closest('.chatkit-composer-form');
     const wasMultiline = isMultiline;
 
-    // Forcer temporairement le mode single-line pour mesurer avec la largeur réduite
     if (form) {
-      form.classList.add('is-singleline');
-      form.classList.remove('is-multiline');
+      if (isMultiline) {
+        form.classList.add('is-multiline');
+        form.classList.remove('is-singleline');
+      } else {
+        // Forcer temporairement le mode single-line pour mesurer avec la largeur réduite
+        form.classList.add('is-singleline');
+        form.classList.remove('is-multiline');
+      }
       // Forcer un reflow pour que le CSS soit appliqué avant la mesure
       void form.offsetHeight;
     }
