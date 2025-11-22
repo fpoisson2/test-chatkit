@@ -157,7 +157,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const lineHeightValue = lineHeight || 25.5;
     const shouldBeMultiline = isMultiline
       ? contentHeight > baseHeight + 2  // Rester en multiline si > baseHeight + 2px
-      : contentHeight > baseHeight + (lineHeightValue * 0.1); // Activer si déborde
+      : contentHeight > baseHeight + (lineHeightValue * 0.75); // Activer seulement en fin de ligne
 
     // Ajuster la hauteur immédiatement en fonction du contenu
     textarea.style.height = `${Math.min(nextHeight, 200)}px`;
