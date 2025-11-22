@@ -6,6 +6,7 @@ import logging
 import re
 import threading
 import weakref
+from contextlib import contextmanager
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -758,8 +759,7 @@ def _coerce_agent_tools(
                     coerced.append(tool)
                     # Store computer tool in thread-local for access in agents.py
                     # The debug session will be registered in agents.py when creating the task
-                    if _set_chatkit_computer_tool is not None:
-                        _set_chatkit_computer_tool(tool)
+                    set_current_computer_tool(tool)
                 continue
 
             if normalized_type == "mcp":
@@ -1175,11 +1175,25 @@ _thread_local = threading.local()
 def set_current_computer_tool(tool: ComputerTool | None) -> None:
     """Set the current computer tool for this thread/request."""
     _thread_local.computer_tool = tool
+    if _set_chatkit_computer_tool is not None:
+        _set_chatkit_computer_tool(tool)
 
 
 def get_current_computer_tool() -> ComputerTool | None:
     """Get the current computer tool for this thread/request."""
     return getattr(_thread_local, "computer_tool", None)
+
+
+@contextmanager
+def computer_tool_context(tool: ComputerTool | None):
+    """Temporarily set the current computer tool for the active thread."""
+
+    previous_tool = get_current_computer_tool()
+    set_current_computer_tool(tool)
+    try:
+        yield
+    finally:
+        set_current_computer_tool(previous_tool)
 
 
 def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
@@ -1368,5 +1382,6 @@ __all__ = [
     "_coerce_agent_tools",
     "_create_response_format_from_pydantic",
     "_instantiate_agent",
+    "computer_tool_context",
     "initialize_debug_session_callback",
 ]
