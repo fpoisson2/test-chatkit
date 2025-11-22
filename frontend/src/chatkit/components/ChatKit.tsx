@@ -779,11 +779,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         </div>
       )}
 
-      {/* Disclaimer */}
-      {disclaimer && (
-        <div className="chatkit-disclaimer">{disclaimer.text}</div>
-      )}
-
       {/* Attachments preview */}
       {attachments.length > 0 && (
         <div className="chatkit-attachments-preview">
@@ -873,6 +868,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             </button>
           </div>
         </form>
+
+        {/* Disclaimer */}
+        {disclaimer && (
+          <div className="chatkit-disclaimer">{disclaimer.text}</div>
+        )}
       </div>
 
       {/* Thread History Modal */}
