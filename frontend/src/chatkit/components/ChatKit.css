@@ -218,12 +218,10 @@
 }
 
 .chatkit-composer-form.is-singleline .chatkit-input {
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.chatkit-composer-form.is-singleline .chatkit-input::placeholder {
+.chatkit-composer-form.is-singleline .chatkit-input:placeholder-shown {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
