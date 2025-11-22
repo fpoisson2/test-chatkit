@@ -627,7 +627,7 @@
     color: var(--code-color, var(--color-text));
   }
 
-  .code-inline, code {
+  .code-inline {
     padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 1.5);
     font-family: var(--default-mono-font-family, ui-monospace, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
     font-size: 0.875em;
