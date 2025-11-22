@@ -15,12 +15,16 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const [displayedTask, setDisplayedTask] = useState<Task | null>(null);
   const [fadeKey, setFadeKey] = useState(0);
   const taskQueueRef = useRef<Array<{ task: Task; index: number }>>([]);
-  const isProcessingRef = useRef(false);
   const displayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastCompletedIndexRef = useRef<number>(-1);
   const previousTaskCountRef = useRef(0);
   const wasCompletedOnMountRef = useRef<boolean>(false);
   const hasMountedRef = useRef<boolean>(false);
+  const displayStartRef = useRef<number | null>(null);
+  const displayedTaskRef = useRef<Task | null>(null);
+  const completedIndicesRef = useRef<Set<number>>(new Set());
+  const statusHistoryRef = useRef<Array<Task['status_indicator'] | undefined>>([]);
+
+  const MIN_DISPLAY_DURATION_MS = 2000;
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -41,38 +45,64 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     wasCompletedOnMountRef.current = isCompleted;
   }
 
-  // Fonction pour traiter la file d'attente
-  const processQueue = () => {
-    if (isProcessingRef.current || taskQueueRef.current.length === 0) {
+  const showTask = (task: Task) => {
+    setDisplayedTask(task);
+    displayedTaskRef.current = task;
+    setFadeKey(prev => prev + 1);
+    displayStartRef.current = Date.now();
+  };
+
+  // Planifie l'affichage de la prochaine tâche en respectant une durée minimale
+  const scheduleNextTask = () => {
+    if (taskQueueRef.current.length === 0) {
       return;
     }
 
-    isProcessingRef.current = true;
-    const { task, index } = taskQueueRef.current.shift()!;
+    const elapsedSinceDisplay = displayStartRef.current
+      ? Date.now() - displayStartRef.current
+      : MIN_DISPLAY_DURATION_MS;
+    const delay = Math.max(0, MIN_DISPLAY_DURATION_MS - elapsedSinceDisplay);
 
-    // Afficher la tâche
-    setDisplayedTask(task);
-    setFadeKey(prev => prev + 1);
+    if (displayTimeoutRef.current) {
+      clearTimeout(displayTimeoutRef.current);
+    }
 
-    // Cacher après 2 secondes et passer à la suivante
     displayTimeoutRef.current = setTimeout(() => {
-      setDisplayedTask(null);
-      isProcessingRef.current = false;
       displayTimeoutRef.current = null;
 
-      // Traiter la tâche suivante dans la file
-      processQueue();
-    }, 2000);
+      const nextTask = taskQueueRef.current.shift();
+      if (!nextTask) {
+        return;
+      }
+
+      showTask(nextTask.task);
+
+      // Si d'autres tâches sont en attente, planifier la suivante
+      if (taskQueueRef.current.length > 0) {
+        scheduleNextTask();
+      }
+    }, delay);
   };
 
   // Ajouter une tâche à la file d'attente
   const enqueueTask = (task: Task, index: number) => {
     // Vérifier si déjà dans la queue
     const alreadyQueued = taskQueueRef.current.some(item => item.index === index);
-    if (!alreadyQueued && index > lastCompletedIndexRef.current) {
+    const alreadyEnqueued = completedIndicesRef.current.has(index);
+    if (!alreadyQueued && !alreadyEnqueued) {
       taskQueueRef.current.push({ task, index });
-      lastCompletedIndexRef.current = index;
-      processQueue();
+      completedIndicesRef.current.add(index);
+
+      // Si aucune tâche n'est affichée, montrer celle-ci immédiatement
+      if (!displayedTaskRef.current) {
+        const nextTask = taskQueueRef.current.shift();
+        if (nextTask) {
+          showTask(nextTask.task);
+        }
+      }
+
+      // Planifier le passage à la prochaine tâche (ou la garder affichée)
+      scheduleNextTask();
     }
   };
 
@@ -105,6 +135,25 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
     previousTaskCountRef.current = currentTaskCount;
   }, [currentTaskCount, isCompleted, workflow.summary]);
+
+  // Détecter les tâches qui viennent tout juste d'être complétées (changement de statut)
+  useEffect(() => {
+    if (wasCompletedOnMountRef.current) {
+      statusHistoryRef.current = workflow.tasks.map(task => task.status_indicator);
+      return;
+    }
+
+    workflow.tasks.forEach((task, index) => {
+      const previousStatus = statusHistoryRef.current[index];
+      const currentStatus = task.status_indicator;
+
+      if (currentStatus === 'complete' && previousStatus !== 'complete') {
+        enqueueTask(task, index);
+      }
+    });
+
+    statusHistoryRef.current = workflow.tasks.map(task => task.status_indicator);
+  }, [workflow.tasks]);
 
   // Cleanup au démontage
   useEffect(() => {
