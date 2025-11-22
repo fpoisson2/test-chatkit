@@ -40,6 +40,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const singleLineHeightRef = useRef<number | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
   const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingModeRef = useRef<boolean | null>(null);
+  const latestShouldMultilineRef = useRef<boolean | null>(null);
 
   const {
     header,
@@ -134,22 +136,33 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     // Déterminer si on doit être en mode multiline avec hystérésis
     const lineHeightValue = lineHeight || 25.5;
+    const enterThreshold = baseHeight + (lineHeightValue * 0.85);
+    const exitThreshold = baseHeight + (lineHeightValue * 0.35);
     const shouldBeMultiline = isMultiline
-      ? contentHeight > baseHeight + 2  // Rester en multiline si > baseHeight + 2px
-      : contentHeight > baseHeight + (lineHeightValue * 0.75); // Activer seulement en fin de ligne
+      ? contentHeight > exitThreshold
+      : contentHeight > enterThreshold;
+
+    latestShouldMultilineRef.current = shouldBeMultiline;
 
     // Ajuster la hauteur immédiatement en fonction du contenu
     textarea.style.height = `${Math.min(nextHeight, 200)}px`;
 
     // Changer le mode si nécessaire
     if (shouldBeMultiline !== isMultiline) {
-      // Annuler le timeout précédent s'il existe
       if (modeChangeTimeoutRef.current) {
         clearTimeout(modeChangeTimeoutRef.current);
-        modeChangeTimeoutRef.current = null;
       }
-
-      setIsMultiline(shouldBeMultiline);
+      pendingModeRef.current = shouldBeMultiline;
+      modeChangeTimeoutRef.current = setTimeout(() => {
+        if (latestShouldMultilineRef.current === pendingModeRef.current) {
+          setIsMultiline(shouldBeMultiline);
+        }
+        modeChangeTimeoutRef.current = null;
+      }, 160);
+    } else if (modeChangeTimeoutRef.current) {
+      clearTimeout(modeChangeTimeoutRef.current);
+      modeChangeTimeoutRef.current = null;
+      pendingModeRef.current = null;
     }
   }, [inputValue, isMultiline]);
 
