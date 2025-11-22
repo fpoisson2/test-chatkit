@@ -41,9 +41,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const singleLineWidthRef = useRef<number | null>(null);
   const multiLineWidthRef = useRef<number | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
-  const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingModeRef = useRef<boolean | null>(null);
-  const latestShouldMultilineRef = useRef<boolean | null>(null);
   const measureTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const {
@@ -188,54 +185,26 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     const singleLayoutHeight = measureHeight('single');
     const multiLayoutHeight = measureHeight('multi');
-    const contentHeight = isMultiline ? multiLayoutHeight : singleLayoutHeight;
 
     if (!hasValue) {
-      latestShouldMultilineRef.current = false;
       textarea.style.height = `${baseHeight}px`;
 
       if (isMultiline) {
         setIsMultiline(false);
       }
 
-      if (modeChangeTimeoutRef.current) {
-        clearTimeout(modeChangeTimeoutRef.current);
-        modeChangeTimeoutRef.current = null;
-        pendingModeRef.current = null;
-      }
-
       return;
     }
 
-    // Déterminer si on doit être en mode multiline avec hystérésis
-    const lineHeightValue = lineHeight || 25.5;
-    const enterThreshold = baseHeight + (lineHeightValue * 0.85);
-    const exitThreshold = baseHeight + (lineHeightValue * 0.35);
-    const shouldBeMultiline = isMultiline
-      ? multiLayoutHeight > exitThreshold
-      : singleLayoutHeight > enterThreshold;
+    const shouldBeMultiline = hasValue && (
+      isMultiline ? multiLayoutHeight > baseHeight : singleLayoutHeight > baseHeight
+    );
 
-    latestShouldMultilineRef.current = shouldBeMultiline;
+    const targetHeight = shouldBeMultiline ? multiLayoutHeight : singleLayoutHeight;
+    textarea.style.height = `${Math.min(targetHeight, 200)}px`;
 
-    // Ajuster la hauteur immédiatement en fonction du contenu
-    textarea.style.height = `${Math.min(contentHeight, 200)}px`;
-
-    // Changer le mode si nécessaire
     if (shouldBeMultiline !== isMultiline) {
-      if (modeChangeTimeoutRef.current) {
-        clearTimeout(modeChangeTimeoutRef.current);
-      }
-      pendingModeRef.current = shouldBeMultiline;
-      modeChangeTimeoutRef.current = setTimeout(() => {
-        if (latestShouldMultilineRef.current === pendingModeRef.current) {
-          setIsMultiline(shouldBeMultiline);
-        }
-        modeChangeTimeoutRef.current = null;
-      }, 160);
-    } else if (modeChangeTimeoutRef.current) {
-      clearTimeout(modeChangeTimeoutRef.current);
-      modeChangeTimeoutRef.current = null;
-      pendingModeRef.current = null;
+      setIsMultiline(shouldBeMultiline);
     }
   }, [inputValue, isMultiline]);
 
