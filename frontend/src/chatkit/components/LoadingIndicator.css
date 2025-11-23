@@ -1,37 +1,29 @@
 .chatkit-loading {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 8px 0;
   color: var(--color-text, #1f2937);
   --chatkit-loading-dot-color: #0f172a;
 }
 
-.chatkit-loading__spinner {
-  position: relative;
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-}
-
-.chatkit-loading--small .chatkit-loading__spinner {
-  width: 22px;
-  height: 22px;
-}
-
-.chatkit-loading--large .chatkit-loading__spinner {
-  width: 40px;
-  height: 40px;
-}
-
-.chatkit-loading__pulse {
-  width: 64%;
-  aspect-ratio: 1;
+.chatkit-loading__dot {
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--chatkit-loading-dot-color);
   box-shadow: none;
   animation: chatkit-breath 1.2s ease-in-out infinite;
+}
+
+.chatkit-loading--small .chatkit-loading__dot {
+  width: 10px;
+  height: 10px;
+}
+
+.chatkit-loading--large .chatkit-loading__dot {
+  width: 14px;
+  height: 14px;
 }
 
 .chatkit-loading__label {
@@ -52,6 +44,12 @@
 
 [data-theme="dark"] .chatkit-loading {
   --chatkit-loading-dot-color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chatkit-loading {
+    --chatkit-loading-dot-color: #fff;
+  }
 }
 
 @keyframes chatkit-breath {
