@@ -10,9 +10,7 @@ export function LoadingIndicator({ label, size = 'medium' }: LoadingIndicatorPro
   return (
     <div className={`chatkit-loading chatkit-loading--${size}`} role="status" aria-live="polite">
       <div className="chatkit-loading__spinner">
-        <span className="chatkit-loading__arc chatkit-loading__arc--primary" />
-        <span className="chatkit-loading__arc chatkit-loading__arc--secondary" />
-        <span className="chatkit-loading__dot" />
+        <span className="chatkit-loading__circle" />
       </div>
       {label && <span className="chatkit-loading__label">{label}</span>}
     </div>
