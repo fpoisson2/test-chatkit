@@ -54,7 +54,6 @@ function CodeBlock({ children, language, theme = 'light' }: CodeBlockProps): JSX
         customStyle={{
           margin: 0,
           padding: '0.75rem 1rem',
-          background: 'transparent',
           fontSize: '16px',
         }}
         codeTagProps={{
@@ -62,7 +61,6 @@ function CodeBlock({ children, language, theme = 'light' }: CodeBlockProps): JSX
             fontFamily: 'var(--font-mono)',
           }
         }}
-        PreTag="div"
         className="chatkit-markdown-code-block"
       >
         {children}
@@ -78,30 +76,16 @@ export function MarkdownRenderer({ content, theme = 'light' }: MarkdownRendererP
         components={{
           // Customisation des composants HTML générés
           p: ({ children }) => <p className="chatkit-markdown-paragraph">{children}</p>,
-          pre: ({ children }: any) => {
-            // Le pre contient normalement un code element
-            return <>{children}</>;
-          },
           code: ({ inline, children, className, ...props }: any) => {
             const codeContent = String(children);
 
-            // Debug
-            console.log('[MarkdownRenderer] code element:', {
-              inline,
-              className,
-              contentPreview: codeContent.substring(0, 50),
-              hasNewlines: codeContent.includes('\n')
-            });
-
             // Code inline (backticks simples)
             if (inline) {
-              console.log('[MarkdownRenderer] Rendering as INLINE code');
               return <code className="chatkit-markdown-code-inline" {...props}>{children}</code>;
             }
 
             // Code block (triple backticks) - extraire le langage
             const language = className?.replace('language-', '') || 'text';
-            console.log('[MarkdownRenderer] Rendering as CODE BLOCK with language:', language);
 
             return <CodeBlock language={language} theme={theme}>{codeContent}</CodeBlock>;
           },

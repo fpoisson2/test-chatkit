@@ -1,14 +1,17 @@
 /* Markdown Renderer */
 .chatkit-markdown {
   line-height: var(--leading-relaxed);
-  color: var(--color-text);
   font-size: 17px;
 }
 
-.chatkit-markdown pre {
-  background: transparent;
+/* Apply text color only to direct text, not code blocks */
+.chatkit-markdown > *:not(.chatkit-code-block-wrapper) {
+  color: var(--color-text);
+}
+
+/* Pre elements inside code blocks are handled by SyntaxHighlighter */
+.chatkit-code-block-wrapper pre {
   margin: 0;
-  padding: 0;
 }
 
 /* Paragraphes */
@@ -219,26 +222,9 @@
 }
 
 /* Support du thème sombre */
-[data-theme="dark"] .chatkit-markdown pre {
-  background: #2a2a2a !important;
-}
-
-[data-theme="dark"] .chatkit-code-block-wrapper {
-  background: transparent !important;
-}
-
 [data-theme="dark"] .chatkit-markdown-code-inline {
   background: #2a2a2a !important;
   border-color: var(--color-border);
-}
-
-[data-theme="dark"] .chatkit-markdown-code-block {
-  background: #2a2a2a !important;
-  border-color: var(--color-border);
-}
-
-[data-theme="dark"] .chatkit-markdown-code-block code {
-  background: none !important;
 }
 
 [data-theme="dark"] .chatkit-markdown-blockquote {
