@@ -375,6 +375,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   // Récupérer le titre du thread
   const getThreadTitle = (): string => {
+    if (showStartScreen) {
+      return '';
+    }
+
     if (!control.thread) {
       return t('chatkit.thread.newConversation');
     }
@@ -417,6 +421,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           <div className="chatkit-header-actions">
             <button
               className="chatkit-header-action"
+              disabled={showStartScreen}
               onClick={handleNewThread}
               aria-label="Nouvelle conversation"
               title="Nouvelle conversation"
