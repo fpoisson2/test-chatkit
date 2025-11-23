@@ -54,6 +54,7 @@ _HOSTED_WORKFLOW_SLUG_INVALID_CHARS = re.compile(r"[^0-9a-z_-]+")
 
 _APPEARANCE_ATTRIBUTE_NAMES = (
     "appearance_color_scheme",
+    "appearance_radius_style",
     "appearance_accent_color",
     "appearance_use_custom_surface",
     "appearance_surface_hue",
@@ -1420,6 +1421,7 @@ class WorkflowAppearanceService:
                 key: values[key]
                 for key in (
                     "color_scheme",
+                    "radius_style",
                     "accent_color",
                     "use_custom_surface_colors",
                     "surface_hue",
@@ -1544,6 +1546,7 @@ class WorkflowAppearanceService:
             return None
         return {
             "color_scheme": override.appearance_color_scheme,
+            "radius_style": override.appearance_radius_style,
             "accent_color": override.appearance_accent_color,
             "use_custom_surface_colors": override.appearance_use_custom_surface,
             "surface_hue": override.appearance_surface_hue,
@@ -1731,6 +1734,7 @@ class WorkflowService:
             return None
         return {
             "color_scheme": override.appearance_color_scheme,
+            "radius_style": override.appearance_radius_style,
             "accent_color": override.appearance_accent_color,
             "use_custom_surface_colors": override.appearance_use_custom_surface,
             "surface_hue": override.appearance_surface_hue,
@@ -2739,6 +2743,7 @@ class WorkflowService:
                 key: values[key]
                 for key in (
                     "color_scheme",
+                    "radius_style",
                     "accent_color",
                     "use_custom_surface_colors",
                     "surface_hue",

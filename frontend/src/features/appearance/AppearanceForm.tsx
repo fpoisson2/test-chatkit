@@ -19,6 +19,7 @@ const DEFAULT_COLOR = "#2563eb";
 
 export type AppearanceFormState = {
   colorScheme: "system" | "light" | "dark";
+  radiusStyle: "pill" | "round" | "soft" | "sharp";
   accentColor: string;
   useCustomSurfaceColors: boolean;
   surfaceHue: number;
@@ -34,6 +35,7 @@ export type AppearanceFormState = {
 
 export const DEFAULT_FORM_STATE: AppearanceFormState = {
   colorScheme: "system",
+  radiusStyle: "soft",
   accentColor: DEFAULT_COLOR,
   useCustomSurfaceColors: false,
   surfaceHue: 222,
@@ -74,6 +76,7 @@ export const buildFormStateFromSettings = (
 
   return {
     colorScheme: settings.color_scheme ?? "system",
+    radiusStyle: settings.radius_style ?? DEFAULT_FORM_STATE.radiusStyle,
     accentColor: ensureColorValue(settings.accent_color ?? DEFAULT_COLOR),
     useCustomSurfaceColors: Boolean(settings.use_custom_surface_colors),
     surfaceHue: settings.surface_hue ?? DEFAULT_FORM_STATE.surfaceHue,
@@ -93,6 +96,7 @@ export const buildAppearanceUpdatePayload = (
   state: AppearanceFormState,
 ): AppearanceSettingsUpdatePayload => ({
   color_scheme: state.colorScheme,
+  radius_style: state.radiusStyle,
   accent_color: state.accentColor,
   use_custom_surface_colors: state.useCustomSurfaceColors,
   surface_hue: state.useCustomSurfaceColors ? state.surfaceHue : null,
@@ -212,6 +216,30 @@ export const AppearanceForm = ({
               </label>
             );
           })}
+        </div>
+      </section>
+
+      <section className="card" aria-labelledby="appearance-radius">
+        <div className="card-header">
+          <h2 id="appearance-radius" className="card-title">
+            {t("admin.appearance.radius.cardTitle")}
+          </h2>
+          <p className="card-subtitle">
+            {t("admin.appearance.radius.cardDescription")}
+          </p>
+        </div>
+        <div className="card-body grid gap-4 md:grid-cols-2">
+          {["soft", "round", "pill", "sharp"].map((option) => (
+            <label key={option} className="radio-field">
+              <input
+                type="radio"
+                value={option}
+                {...register("radiusStyle")}
+                disabled={isBusy}
+              />
+              <span>{t(`admin.appearance.radius.option.${option}`)}</span>
+            </label>
+          ))}
         </div>
       </section>
 

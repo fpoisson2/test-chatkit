@@ -250,6 +250,7 @@ class ModelProviderSettingsUpdate(BaseModel):
 
 class AppearanceSettingsResponse(BaseModel):
     color_scheme: Literal["system", "light", "dark"]
+    radius_style: Literal["pill", "round", "soft", "sharp"]
     accent_color: constr(pattern=r"^#[0-9a-fA-F]{6}$")
     use_custom_surface_colors: bool
     surface_hue: float
@@ -271,6 +272,10 @@ class AppearanceSettingsUpdateRequest(BaseModel):
     color_scheme: Literal["system", "light", "dark"] | None = Field(
         default=None,
         description="Mode de couleur à appliquer (system, light ou dark).",
+    )
+    radius_style: Literal["pill", "round", "soft", "sharp"] | None = Field(
+        default=None,
+        description="Style d'arrondi des coins pour l'interface.",
     )
     accent_color: constr(pattern=r"^#[0-9a-fA-F]{6}$") | None = Field(
         default=None,

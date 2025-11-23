@@ -26,6 +26,7 @@ const mockedGet = vi.mocked(appearanceSettingsApi.get);
 
 const GLOBAL_SETTINGS = {
   color_scheme: "system" as const,
+  radius_style: "soft" as const,
   accent_color: "#2563eb",
   use_custom_surface_colors: false,
   surface_hue: 222,

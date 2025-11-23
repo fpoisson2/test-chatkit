@@ -367,6 +367,7 @@ export type AppSettingsUpdatePayload = {
 
 export type AppearanceSettings = {
   color_scheme: "system" | "light" | "dark";
+  radius_style: "pill" | "round" | "soft" | "sharp";
   accent_color: string;
   use_custom_surface_colors: boolean;
   surface_hue: number;
@@ -384,6 +385,7 @@ export type AppearanceSettings = {
 
 export type AppearanceSettingsUpdatePayload = {
   color_scheme?: "system" | "light" | "dark" | null;
+  radius_style?: "pill" | "round" | "soft" | "sharp" | null;
   accent_color?: string | null;
   use_custom_surface_colors?: boolean | null;
   surface_hue?: number | null;
@@ -489,6 +491,7 @@ export const normalizeHostedWorkflowMetadata = (
 
 export type WorkflowAppearanceOverride = {
   color_scheme: "system" | "light" | "dark" | null;
+  radius_style: "pill" | "round" | "soft" | "sharp" | null;
   accent_color: string | null;
   use_custom_surface_colors: boolean | null;
   surface_hue: number | null;

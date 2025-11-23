@@ -21,7 +21,7 @@ export function CardComponent(props: Card): JSX.Element {
 
   const style: React.CSSProperties = {
     background: resolveColor(background) || 'var(--color-surface-background)',
-    borderRadius: 'var(--radius-md)',
+    borderRadius: '0.75rem',
     border: '1px solid var(--color-border-default)',
     ...resolveSpacing(padding),
     ...(size === 'full' ? { width: '100%' } : {}),

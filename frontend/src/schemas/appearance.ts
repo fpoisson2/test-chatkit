@@ -18,6 +18,7 @@ const colorWithHashSchema = z.string().transform((val) => {
  */
 export const appearanceFormSchema = z.object({
   colorScheme: z.enum(['system', 'light', 'dark']).default('system'),
+  radiusStyle: z.enum(['pill', 'round', 'soft', 'sharp']).default('soft'),
   accentColor: colorWithHashSchema.default(DEFAULT_COLOR),
   useCustomSurfaceColors: z.boolean().default(false),
   surfaceHue: numberInRange(0, 360, 'Teinte doit être entre 0 et 360').default(222),

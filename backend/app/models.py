@@ -225,6 +225,9 @@ class AppSettings(Base):
     appearance_color_scheme: Mapped[str | None] = mapped_column(
         String(16), nullable=True
     )
+    appearance_radius_style: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
     appearance_accent_color: Mapped[str | None] = mapped_column(
         String(32), nullable=True
     )
@@ -470,6 +473,7 @@ class WorkflowAppearance(Base):
         String(128), nullable=True, index=True
     )
     appearance_color_scheme: Mapped[str | None] = mapped_column(String(16))
+    appearance_radius_style: Mapped[str | None] = mapped_column(String(16))
     appearance_accent_color: Mapped[str | None] = mapped_column(String(32))
     appearance_use_custom_surface: Mapped[bool | None] = mapped_column(Boolean)
     appearance_surface_hue: Mapped[float | None] = mapped_column(Float)
