@@ -59,16 +59,21 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   // Réinitialiser le thread si initialThread devient null
   useEffect(() => {
     if (initialThread === null) {
+      // Ne pas annuler les autres flux en cours : nous gérons plusieurs conversations
+      // en parallèle et celles qui continuent à streamer doivent rester actives.
+      // On réinitialise uniquement le thread actif pour préparer une nouvelle
+      // conversation.
       setThread(null);
       activeThreadIdRef.current = null;
-      threadCacheRef.current.clear();
-      abortControllersRef.current.forEach((controller) => controller.abort());
-      abortControllersRef.current.clear();
-      setLoadingByThread({});
+      setLoadingByThread((prev) => {
+        const next = { ...prev };
+        delete next[getThreadKey(null)];
+        return next;
+      });
     } else if (initialThread) {
       activeThreadIdRef.current = initialThread;
     }
-  }, [initialThread]);
+  }, [getThreadKey, initialThread]);
 
   // Charger le thread initial
   useEffect(() => {
