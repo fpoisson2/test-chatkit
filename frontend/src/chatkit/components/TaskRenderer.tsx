@@ -46,16 +46,16 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
 }
 
 function isActionTask(task: Task): task is ThoughtTask | ActionTask {
-  const actionType = (task as ActionTask).action_type || task.type;
-  return [
-    'thought',
-    'tool_call',
-    'tool_calls',
-    'mcp',
-    'cua',
-    'client_ui_action',
-    'computer_use_action',
-  ].includes(actionType as ActionTask['type'] | ThoughtTask['type']);
+  const actionType = ((task as ActionTask).action_type || task.type || '').toString().toLowerCase();
+  return (
+    actionType === 'thought'
+    || actionType.includes('tool_call')
+    || actionType === 'tool_calls'
+    || actionType.includes('mcp')
+    || actionType.includes('cua')
+    || actionType.includes('client_ui_action')
+    || actionType.includes('computer_use_action')
+  );
 }
 
 function CustomTaskRenderer({ task, theme = 'light' }: { task: CustomTask; theme?: 'light' | 'dark' }): JSX.Element {

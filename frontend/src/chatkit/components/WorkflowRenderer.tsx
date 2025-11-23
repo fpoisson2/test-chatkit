@@ -50,7 +50,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       return null;
     }
 
-    const actionType = (lastActionTask as any).action_type || lastActionTask.type;
+    const actionType = ((lastActionTask as any).action_type || lastActionTask.type || '').toString().toLowerCase();
 
     const actionTitles: Record<string, string> = {
       thought: 'chatkit.workflow.reasoning',
@@ -61,6 +61,14 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       cua: 'chatkit.workflow.action.computerUse',
       client_ui_action: 'chatkit.workflow.action.clientUi',
     };
+
+    if (actionType.includes('mcp')) {
+      return t('chatkit.workflow.action.mcp');
+    }
+
+    if (actionType.includes('tool_call') || actionTitles[actionType] === 'chatkit.workflow.action.toolCall') {
+      return t('chatkit.workflow.action.toolCall');
+    }
 
     const key = actionTitles[actionType];
     return key ? t(key) : null;
@@ -278,14 +286,14 @@ function DurationSummaryRenderer({ summary }: { summary: DurationSummary }): JSX
 }
 
 function isActionTask(task: Task): boolean {
-  const actionType = (task as any).action_type || task.type;
-  return [
-    'thought',
-    'tool_call',
-    'tool_calls',
-    'mcp',
-    'cua',
-    'client_ui_action',
-    'computer_use_action',
-  ].includes(actionType);
+  const actionType = ((task as any).action_type || task.type || '').toString().toLowerCase();
+  return (
+    actionType === 'thought'
+    || actionType.includes('tool_call')
+    || actionType === 'tool_calls'
+    || actionType.includes('mcp')
+    || actionType.includes('cua')
+    || actionType.includes('client_ui_action')
+    || actionType.includes('computer_use_action')
+  );
 }
