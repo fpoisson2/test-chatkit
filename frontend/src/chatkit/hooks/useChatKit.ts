@@ -198,10 +198,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
           let updatedThread: Thread | null = null;
 
-          // Utiliser une ref mutable pour suivre l'ID du thread en cours de streaming
+          // Utiliser une ref mutable pour suivre la clé du thread en cours de streaming
           // Cela permet de gérer le cas où un thread temporaire reçoit son vrai ID
           const streamThreadKeyRef = { current: threadKey };
-          const streamThreadIdRef = { current: targetThreadId };
 
           await streamChatKitEvents({
             url: api.url,
@@ -226,9 +225,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
                 abortControllersRef.current.set(getThreadKey(newThread.id), controller);
                 setThreadLoading(targetThreadId, false);
                 setThreadLoading(newThread.id, true);
-                // Mettre à jour la clé et l'ID de streaming pour qu'ils correspondent au nouveau thread
+                // Mettre à jour la clé de streaming pour qu'elle corresponde au nouveau thread
                 streamThreadKeyRef.current = getThreadKey(newThread.id);
-                streamThreadIdRef.current = newThread.id;
               }
 
               if (shouldUpdateThreadState) {
@@ -274,10 +272,17 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         setError(error);
         onError?.({ error });
       } finally {
-        // Utiliser streamThreadIdRef qui suit le vrai ID même si le thread change d'ID temporaire à un vrai ID
-        const resolvedThreadId = streamThreadIdRef.current;
-        setThreadLoading(resolvedThreadId, false);
-        abortControllersRef.current.delete(getThreadKey(resolvedThreadId));
+        // Nettoyer l'état de loading pour les deux IDs (initial et final) pour être sûr
+        // Cela gère le cas où le thread passe d'un ID temporaire à un vrai ID
+        setThreadLoading(targetThreadId, false);
+        if (updatedThread?.id && updatedThread.id !== targetThreadId) {
+          setThreadLoading(updatedThread.id, false);
+        }
+        // Nettoyer les abort controllers
+        abortControllersRef.current.delete(getThreadKey(targetThreadId));
+        if (updatedThread?.id) {
+          abortControllersRef.current.delete(getThreadKey(updatedThread.id));
+        }
       }
     },
     [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading, isTempThreadId]
