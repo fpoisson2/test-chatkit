@@ -1069,9 +1069,9 @@
   );
   mix-blend-mode: multiply;
   opacity: 0.9;
-  background-size: 42% 100%;
+  background-size: 58% 100%;
   background-repeat: no-repeat;
-  background-position: -55% 0;
+  background-position: -70% 0;
   animation: chatkit-last-task-scan 3s linear infinite;
   animation-delay: -1.5s;
   z-index: 1;
@@ -1085,10 +1085,10 @@
 
 @keyframes chatkit-last-task-scan {
   from {
-    background-position: -55% 0;
+    background-position: -70% 0;
   }
   to {
-    background-position: 115% 0;
+    background-position: 170% 0;
   }
 }
 
@@ -1115,9 +1115,9 @@
   );
   mix-blend-mode: multiply;
   opacity: 0.9;
-  background-size: 42% 100%;
+  background-size: 58% 100%;
   background-repeat: no-repeat;
-  background-position: -55% 0;
+  background-position: -70% 0;
   animation: chatkit-last-task-scan 3s linear infinite;
   animation-delay: -1.5s;
 }
@@ -1147,8 +1147,8 @@
     rgba(0, 0, 0, 0) 76%
   );
   mix-blend-mode: multiply;
-  background-size: 42% 100%;
-  background-position: -55% 0;
+  background-size: 58% 100%;
+  background-position: -70% 0;
 }
 
 [data-theme="dark"] .chatkit-workflow-header .chatkit-workflow-title::after,
