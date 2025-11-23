@@ -1059,8 +1059,8 @@
   opacity: 0.9;
   background-size: 160px 100%;
   background-position: -200px 0;
-  animation: chatkit-last-task-scan 3s ease-in-out infinite;
-  animation-delay: -1.5s;
+  animation: chatkit-last-task-scan 3.2s linear infinite alternate;
+  animation-delay: -1.6s;
 }
 
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-code-block,
