@@ -37,6 +37,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   const [error, setError] = useState<Error | null>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const activeThreadIdRef = useRef<string | null>(initialThread || null);
+  const visibleThreadIdRef = useRef<string | null>(initialThread || null);
+  const threadCacheRef = useRef<Map<string, Thread>>(new Map());
 
   const getThreadKey = useCallback((threadId: string | null | undefined) => threadId ?? '__new_thread__', []);
 
@@ -57,16 +59,28 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
   // Réinitialiser le thread si initialThread devient null
   useEffect(() => {
+    visibleThreadIdRef.current = thread?.id ?? null;
+  }, [thread?.id]);
+
+  useEffect(() => {
     if (initialThread === null) {
+      // Ne pas annuler les autres flux en cours : nous gérons plusieurs conversations
+      // en parallèle et celles qui continuent à streamer doivent rester actives.
+      // On réinitialise uniquement le thread actif pour préparer une nouvelle
+      // conversation.
       setThread(null);
       activeThreadIdRef.current = null;
-      abortControllersRef.current.forEach((controller) => controller.abort());
-      abortControllersRef.current.clear();
-      setLoadingByThread({});
+      visibleThreadIdRef.current = null;
+      setLoadingByThread((prev) => {
+        const next = { ...prev };
+        delete next[getThreadKey(null)];
+        return next;
+      });
     } else if (initialThread) {
       activeThreadIdRef.current = initialThread;
+      visibleThreadIdRef.current = initialThread;
     }
-  }, [initialThread]);
+  }, [getThreadKey, initialThread]);
 
   // Charger le thread initial
   useEffect(() => {
@@ -83,7 +97,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       })
         .then((loadedThread) => {
           setThread(loadedThread);
+          threadCacheRef.current.set(loadedThread.id, loadedThread);
           activeThreadIdRef.current = loadedThread.id;
+          visibleThreadIdRef.current = loadedThread.id;
           setThreadLoading(loadedThread.id, false);
           onThreadLoadEnd?.({ threadId: initialThread });
           onLog?.({ name: 'thread.load.end', data: { thread: loadedThread } });
@@ -108,9 +124,11 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   // Envoyer un message utilisateur
   const sendUserMessage = useCallback(
     async (content: UserMessageContent[] | string, options?: { inferenceOptions?: any }) => {
-      const targetThreadId = thread?.id ?? activeThreadIdRef.current;
+      const targetThreadId = activeThreadIdRef.current ?? thread?.id ?? null;
       const threadKey = getThreadKey(targetThreadId);
       const existingController = abortControllersRef.current.get(threadKey);
+      const initialThreadForStream =
+        targetThreadId ? threadCacheRef.current.get(targetThreadId) ?? null : null;
 
       if (existingController) {
         existingController.abort();
@@ -136,11 +154,11 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         };
 
           // Si un thread existe, ajouter un message. Sinon, créer un nouveau thread
-          const payload = thread?.id
+          const payload = targetThreadId
             ? {
                 type: 'threads.add_user_message',
                 params: {
-                  thread_id: thread.id,
+                  thread_id: targetThreadId,
                   input,
                 },
               }
@@ -155,11 +173,13 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
           let updatedThread: Thread | null = null;
 
+          const streamThreadKey = threadKey;
+
           await streamChatKitEvents({
             url: api.url,
             headers: api.headers,
             body: payload,
-            initialThread: thread,
+            initialThread: initialThreadForStream,
             signal: controller.signal,
             onEvent: (event: ThreadStreamEvent) => {
               onLog?.({ name: `event.${event.type}`, data: { event } });
@@ -167,20 +187,27 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
             onThreadUpdate: (newThread: Thread) => {
               console.log('[ChatKit] Thread updated:', newThread);
               updatedThread = newThread;
-              setThread(newThread);
-              activeThreadIdRef.current = newThread.id;
+              threadCacheRef.current.set(newThread.id, newThread);
+
+              const visibleKey = getThreadKey(visibleThreadIdRef.current);
+              const shouldUpdateThreadState = streamThreadKey === visibleKey;
+
               if (threadKey !== getThreadKey(newThread.id)) {
                 abortControllersRef.current.delete(threadKey);
                 abortControllersRef.current.set(getThreadKey(newThread.id), controller);
                 setThreadLoading(targetThreadId, false);
                 setThreadLoading(newThread.id, true);
               }
-              onLog?.({ name: 'thread.update', data: { thread: newThread } });
 
-              // Notifier le changement de thread ID si nécessaire
-              if (!thread || thread.id !== newThread.id) {
-                onThreadChange?.({ threadId: newThread.id });
+              if (shouldUpdateThreadState) {
+                setThread(newThread);
+                activeThreadIdRef.current = newThread.id;
+                visibleThreadIdRef.current = newThread.id;
+                if (!thread || thread.id !== newThread.id) {
+                  onThreadChange?.({ threadId: newThread.id });
+                }
               }
+              onLog?.({ name: 'thread.update', data: { thread: newThread } });
             },
             onClientToolCall: onClientTool
               ? async (toolCall) => {
@@ -198,7 +225,15 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           });
 
         if (updatedThread) {
-          setThread(updatedThread);
+          const visibleKey = getThreadKey(visibleThreadIdRef.current);
+          const streamKey = streamThreadKey;
+
+          // Ne mettre à jour l'UI que si le thread de ce flux est toujours celui
+          // affiché par l'utilisateur. Sinon, on garde uniquement le cache
+          // à jour pour éviter de changer de conversation automatiquement.
+          if (visibleKey === streamKey) {
+            setThread(updatedThread);
+          }
         }
 
         onResponseEnd?.();
@@ -207,9 +242,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         setError(error);
         onError?.({ error });
       } finally {
-        const latestThreadId = activeThreadIdRef.current ?? thread?.id ?? targetThreadId;
-        setThreadLoading(latestThreadId, false);
-        abortControllersRef.current.delete(getThreadKey(latestThreadId));
+        const resolvedThreadId = updatedThread?.id ?? targetThreadId ?? null;
+        setThreadLoading(resolvedThreadId, false);
+        abortControllersRef.current.delete(getThreadKey(resolvedThreadId));
       }
     },
     [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading]
@@ -232,6 +267,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       });
 
       setThread(updatedThread);
+      threadCacheRef.current.set(updatedThread.id, updatedThread);
       activeThreadIdRef.current = updatedThread.id;
       setThreadLoading(updatedThread.id, false);
       onLog?.({ name: 'thread.refresh', data: { thread: updatedThread } });
