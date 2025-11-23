@@ -399,6 +399,17 @@
   color: #000;
 }
 
+.chatkit-header-action:disabled {
+  color: #a3a3a3;
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.chatkit-header-action:disabled:hover {
+  background: transparent;
+  color: #a3a3a3;
+}
+
 [data-theme="dark"] .chatkit-header-action {
   color: #fff;
 }
@@ -406,6 +417,12 @@
 [data-theme="dark"] .chatkit-header-action:hover {
   background: var(--color-surface-secondary);
   color: #fff;
+}
+
+[data-theme="dark"] .chatkit-header-action:disabled,
+[data-theme="dark"] .chatkit-header-action:disabled:hover {
+  color: #6b7280;
+  background: transparent;
 }
 
 .chatkit-header-action svg {
