@@ -11,8 +11,8 @@
 
 body {
   margin: 0;
-  min-height: 100dvh;
-  height: 100dvh;
+  min-height: 100vh;
+  height: 100vh;
   background: var(--main-background);
   color: var(--text-color);
   display: flex;
@@ -22,6 +22,14 @@ body {
   padding: 0;
   width: 100%;
   font-family: inherit;
+}
+
+/* Use dvh on desktop where keyboard doesn't affect viewport */
+@media (min-width: 768px) {
+  body {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
 }
 
 #root {

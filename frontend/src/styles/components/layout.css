@@ -28,6 +28,13 @@
   border-left: 1px solid rgba(15, 23, 42, 0.08);
 }
 
+/* Sur mobile, empêcher le scroll du main container pour que seul chatkit-messages scrolle */
+@media (max-width: 767px) {
+  .chatkit-layout__main {
+    overflow-y: hidden;
+  }
+}
+
 .chatkit-layout__scrim {
   position: absolute;
   inset: 0;
