@@ -8,11 +8,11 @@
   --chatkit-dark-border: #3a3a3a;
   --chatkit-scan-gradient: linear-gradient(
     90deg,
-    rgba(37, 99, 235, 0) 0%,
-    rgba(37, 99, 235, 0.12) 24%,
-    rgba(37, 99, 235, 0.32) 42%,
-    rgba(37, 99, 235, 0.12) 58%,
-    rgba(37, 99, 235, 0) 76%
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.06) 24%,
+    rgba(0, 0, 0, 0.18) 42%,
+    rgba(0, 0, 0, 0.06) 58%,
+    rgba(0, 0, 0, 0) 76%
   );
 }
 
@@ -1167,7 +1167,7 @@
   pointer-events: none;
   background-image: var(--chatkit-scan-gradient);
   mix-blend-mode: multiply;
-  opacity: 0.9;
+  opacity: 0.7;
   background-size: 58% 100%;
   background-repeat: no-repeat;
   background-position: -70% 0;
@@ -1216,7 +1216,7 @@
   pointer-events: none;
   background-image: var(--chatkit-scan-gradient);
   mix-blend-mode: multiply;
-  opacity: 0.9;
+  opacity: 0.7;
   background-size: 58% 100%;
   background-repeat: no-repeat;
   background-position: -70% 0;
