@@ -817,12 +817,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
               onKeyDown={(e) => {
                 // Envoyer avec Entrée (sans Shift)
                 if (e.key === 'Enter' && !e.shiftKey) {
+                  if (control.isLoading) {
+                    return;
+                  }
                   e.preventDefault();
                   handleSubmit(e);
                 }
               }}
               placeholder={composer?.placeholder || 'Posez votre question...'}
-              disabled={control.isLoading}
               className="chatkit-input"
               rows={1}
             />
