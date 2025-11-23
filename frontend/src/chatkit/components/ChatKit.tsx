@@ -511,8 +511,31 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         ) : (
           (() => {
             const items = control.thread?.items || [];
-            console.log('[ChatKit Render] Rendering', items.length, 'items:', items);
-            return items.map((item) => {
+
+            // Filtrer les tasks dès qu'un message assistant est arrivé après elles
+            const filteredItems = (() => {
+              const latestAssistantTs = items.reduce<number>((latest, item) => {
+                if (item.type !== 'assistant_message') return latest;
+
+                const ts = Date.parse(item.created_at ?? '');
+                return Number.isFinite(ts) ? Math.max(latest, ts) : latest;
+              }, Number.NEGATIVE_INFINITY);
+
+              // Si aucune date valide n'est trouvée, ne filtrer aucun task
+              if (!Number.isFinite(latestAssistantTs)) {
+                return items;
+              }
+
+              return items.filter((item) => {
+                if (item.type !== 'task') return true;
+
+                const ts = Date.parse(item.created_at ?? '');
+                return !Number.isFinite(ts) || ts > latestAssistantTs;
+              });
+            })();
+
+            console.log('[ChatKit Render] Rendering', filteredItems.length, 'items:', filteredItems);
+            return filteredItems.map((item) => {
               // Ne pas afficher end_of_turn
               if (item.type === 'end_of_turn') {
                 return null;
