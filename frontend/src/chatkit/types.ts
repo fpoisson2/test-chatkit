@@ -744,11 +744,35 @@ export type ThreadItem =
   | WorkflowItem
   | EndOfTurnItem;
 
+// ===== Types pour le statut des threads =====
+
+export interface ThreadStatusBase {
+  type: string;
+  reason?: string;
+}
+
+export interface ActiveStatus extends ThreadStatusBase {
+  type: 'active';
+}
+
+export interface ClosedStatus extends ThreadStatusBase {
+  type: 'closed';
+  reason?: string;
+}
+
+export interface LockedStatus extends ThreadStatusBase {
+  type: 'locked';
+  reason?: string;
+}
+
+export type ThreadStatus = ActiveStatus | ClosedStatus | LockedStatus;
+
 export interface Thread {
   id: string;
   title?: string;
   items: ThreadItem[];
   metadata?: Record<string, unknown>;
+  status?: ThreadStatus;
 }
 
 // ===== Types pour les listes paginées =====
