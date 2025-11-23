@@ -47,26 +47,12 @@
 .chatkit-code-block-wrapper {
   position: relative;
   margin: 1em 0;
-  background: transparent;
 }
 
+/* SyntaxHighlighter applies its own styles via the theme */
 .chatkit-markdown-code-block {
-  background: var(--color-surface-secondary);
-  border: none;
   border-radius: var(--radius-lg);
-  padding: 0;
   overflow-x: auto;
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 16px;
-  line-height: 1.5;
-}
-
-.chatkit-markdown-code-block code {
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: inherit;
 }
 
 .chatkit-copy-code-button {
