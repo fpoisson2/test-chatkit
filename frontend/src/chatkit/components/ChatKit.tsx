@@ -383,17 +383,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Collect form data if available
       const formData = formDataRef.current ? Object.fromEntries(formDataRef.current.entries()) : {};
 
-      // Build the values object combining payload and form data
-      // Backend expects values to be in payload.values or payload.variables
-      const values = {
+      // Build the payload combining all data sources
+      // The payload is stored as-is in raw_payload, so data should be at root level
+      // for workflow access via input.action.raw_payload.fieldName
+      const actionPayload = {
         ...(payload || {}),
         ...formData,
         ...rest, // Include any extra properties that aren't ActionConfig metadata
-      };
-
-      // Wrap values in 'values' key for backend extraction
-      const actionPayload = {
-        values,
       };
 
       const action = {
