@@ -516,7 +516,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           )}
                         </div>
                       ))}
-                      {item.status === 'in_progress' && <LoadingIndicator label={t('chat.loading')} />}
+                      {item.status === 'in_progress' && (
+                        <LoadingIndicator label={t('chat.loading')} size="small" />
+                      )}
                     </div>
                     {item.status !== 'in_progress' && (
                       <button
