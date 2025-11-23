@@ -78,17 +78,30 @@ export function MarkdownRenderer({ content, theme = 'light' }: MarkdownRendererP
         components={{
           // Customisation des composants HTML générés
           p: ({ children }) => <p className="chatkit-markdown-paragraph">{children}</p>,
+          pre: ({ children }: any) => {
+            // Le pre contient normalement un code element
+            return <>{children}</>;
+          },
           code: ({ inline, children, className, ...props }: any) => {
-            const isInline = inline || !className?.includes('language-');
             const codeContent = String(children);
 
-            // Si c'est inline ou qu'il n'y a pas de langage spécifié et pas de retour à la ligne
-            if (isInline && !codeContent.includes('\n')) {
+            // Debug
+            console.log('[MarkdownRenderer] code element:', {
+              inline,
+              className,
+              contentPreview: codeContent.substring(0, 50),
+              hasNewlines: codeContent.includes('\n')
+            });
+
+            // Code inline (backticks simples)
+            if (inline) {
+              console.log('[MarkdownRenderer] Rendering as INLINE code');
               return <code className="chatkit-markdown-code-inline" {...props}>{children}</code>;
             }
 
-            // Extraire le langage de la className (format: "language-javascript")
+            // Code block (triple backticks) - extraire le langage
             const language = className?.replace('language-', '') || 'text';
+            console.log('[MarkdownRenderer] Rendering as CODE BLOCK with language:', language);
 
             return <CodeBlock language={language} theme={theme}>{codeContent}</CodeBlock>;
           },
