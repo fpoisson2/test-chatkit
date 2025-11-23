@@ -36,12 +36,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const singleLineHeightRef = useRef<number | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
   const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const previousKeyboardOffsetRef = useRef(0);
 
   const {
     header,
@@ -201,6 +203,18 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       viewport.removeEventListener('scroll', updateKeyboardOffset);
     };
   }, []);
+
+  // Conserver la portion visible du chat lorsque le clavier ajuste le viewport
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const delta = keyboardOffset - previousKeyboardOffsetRef.current;
+    if (delta !== 0) {
+      container.scrollTop += delta;
+      previousKeyboardOffsetRef.current = keyboardOffset;
+    }
+  }, [keyboardOffset]);
 
   // Gérer l'ajout de fichiers
   const handleFileSelect = useCallback(async (files: FileList | null) => {
@@ -410,7 +424,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       )}
 
       {/* Messages */}
-      <div className="chatkit-messages">
+      <div className="chatkit-messages" ref={messagesContainerRef}>
         {showStartScreen && startScreen ? (
           <div className="chatkit-start-screen">
             {startScreen.greeting && (

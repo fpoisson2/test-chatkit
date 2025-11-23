@@ -26,7 +26,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  padding-bottom: 150px;
+  padding-bottom: calc(150px + var(--chatkit-keyboard-offset) + max(env(safe-area-inset-bottom), 0px));
 }
 
 .chatkit-messages > * {
