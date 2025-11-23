@@ -763,10 +763,22 @@
   border-top: 1px solid var(--color-border-subtle);
   background: transparent;
   position: relative;
-  padding-left: 32px;
+  padding-left: 0;
   max-width: 800px;
   margin: 0 auto;
   animation: fadeIn 0.3s ease-in-out;
+}
+
+.chatkit-workflow-last-task .chatkit-task {
+  padding-top: 2px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.chatkit-workflow-tasks .chatkit-task {
+  padding-top: 2px;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 /* Indicateur de chargement */
@@ -945,6 +957,11 @@
   position: relative;
 }
 
+.chatkit-workflow-last-task .chatkit-task::before,
+.chatkit-workflow-last-task .chatkit-task::after {
+  display: none;
+}
+
 .chatkit-task-title {
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
@@ -986,6 +1003,198 @@
   background: transparent;
   padding: 0;
   position: relative;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought {
+  padding: 6px 10px;
+}
+
+.chatkit-workflow-tasks .chatkit-task-thought {
+  padding: 6px 10px;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-title {
+  font-size: var(--font-text-xs-size);
+  margin-bottom: 6px;
+  position: relative;
+  display: inline-block;
+}
+
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-task-title {
+  font-size: var(--font-text-xs-size);
+  margin-bottom: 6px;
+  position: relative;
+  display: inline-block;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph {
+  font-size: var(--font-text-xs-size);
+  line-height: 1.35;
+}
+
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-task-content,
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown,
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-paragraph {
+  font-size: var(--font-text-xs-size);
+  line-height: 1.35;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
+  margin-top: 0.5em;
+}
+
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
+  margin-top: 0.5em;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown {
+  position: relative;
+  display: block;
+  max-height: 150px;
+  overflow: hidden;
+  mask-image: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.82) 0%,
+    rgba(0, 0, 0, 1) 12%,
+    rgba(0, 0, 0, 1) 72%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.82) 0%,
+    rgba(0, 0, 0, 1) 12%,
+    rgba(0, 0, 0, 1) 72%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph,
+.chatkit-workflow-header .chatkit-workflow-title,
+.chatkit-workflow-header .chatkit-workflow-default-title {
+  position: relative;
+  isolation: isolate;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph::after,
+.chatkit-workflow-header .chatkit-workflow-title::after,
+.chatkit-workflow-header .chatkit-workflow-default-title::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.05) 24%,
+    rgba(0, 0, 0, 0.22) 42%,
+    rgba(0, 0, 0, 0.05) 58%,
+    rgba(0, 0, 0, 0) 76%
+  );
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+  background-size: 58% 100%;
+  background-repeat: no-repeat;
+  background-position: -70% 0;
+  animation: chatkit-last-task-scan 3s linear infinite;
+  animation-delay: -1.5s;
+  z-index: 1;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-code-block,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-code-block code {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-code-block,
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-code-block code {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@keyframes chatkit-last-task-scan {
+  from {
+    background-position: -70% 0;
+  }
+  to {
+    background-position: 170% 0;
+  }
+}
+
+.chatkit-workflow-header .chatkit-workflow-title,
+.chatkit-workflow-header .chatkit-workflow-default-title {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+}
+
+.chatkit-workflow-header .chatkit-workflow-title::after,
+.chatkit-workflow-header .chatkit-workflow-default-title::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.05) 24%,
+    rgba(0, 0, 0, 0.22) 42%,
+    rgba(0, 0, 0, 0.05) 58%,
+    rgba(0, 0, 0, 0) 76%
+  );
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+  background-size: 58% 100%;
+  background-repeat: no-repeat;
+  background-position: -70% 0;
+  animation: chatkit-last-task-scan 3s linear infinite;
+  animation-delay: -1.5s;
+}
+
+.chatkit-workflow-last-task .chatkit-task {
+  animation: chatkit-last-task-crossfade 0.35s ease;
+}
+
+@keyframes chatkit-last-task-crossfade {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph::after {
+  background-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.08) 24%,
+    rgba(0, 0, 0, 0.28) 42%,
+    rgba(0, 0, 0, 0.08) 58%,
+    rgba(0, 0, 0, 0) 76%
+  );
+  mix-blend-mode: multiply;
+  background-size: 58% 100%;
+  background-position: -70% 0;
+}
+
+[data-theme="dark"] .chatkit-workflow-header .chatkit-workflow-title::after,
+[data-theme="dark"] .chatkit-workflow-header .chatkit-workflow-default-title::after {
+  background-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.08) 24%,
+    rgba(0, 0, 0, 0.28) 42%,
+    rgba(0, 0, 0, 0.08) 58%,
+    rgba(0, 0, 0, 0) 76%
+  );
 }
 
 [data-theme="dark"] .chatkit-task-thought {
