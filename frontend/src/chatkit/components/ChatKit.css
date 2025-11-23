@@ -293,7 +293,7 @@
 
 .chatkit-submit {
   padding: 10px;
-  background: #000;
+  background: var(--appearance-accent, var(--accent-color-primary));
   color: #fff;
   border: none;
   border-radius: 50%;
@@ -308,7 +308,7 @@
 }
 
 .chatkit-submit:hover:not(:disabled) {
-  background: #333;
+  background: var(--appearance-accent-hover, var(--accent-color-primary-hover));
   transform: scale(1.05);
 }
 
