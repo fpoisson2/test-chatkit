@@ -21,6 +21,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const previousTaskCountRef = useRef(0);
   const wasCompletedOnMountRef = useRef<boolean>(false);
   const hasMountedRef = useRef<boolean>(false);
+  const minDisplayTimeRef = useRef<number | null>(null);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -53,15 +54,22 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     // Afficher la tâche
     setDisplayedTask(task);
     setFadeKey(prev => prev + 1);
+    minDisplayTimeRef.current = Date.now();
 
-    // Cacher après 2 secondes et passer à la suivante
+    // Attendre 2 secondes minimum
     displayTimeoutRef.current = setTimeout(() => {
-      setDisplayedTask(null);
-      isProcessingRef.current = false;
       displayTimeoutRef.current = null;
 
-      // Traiter la tâche suivante dans la file
-      processQueue();
+      // Vérifier si on peut passer à la suivante
+      if (taskQueueRef.current.length > 0) {
+        // Il y a une tâche en attente, passer directement à la suivante
+        isProcessingRef.current = false;
+        minDisplayTimeRef.current = null;
+        processQueue();
+      } else {
+        // Pas de tâche en attente, continuer à afficher la tâche actuelle
+        // On reste en mode processing jusqu'à ce qu'une nouvelle tâche arrive
+      }
     }, 2000);
   };
 
@@ -72,7 +80,26 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     if (!alreadyQueued && index > lastCompletedIndexRef.current) {
       taskQueueRef.current.push({ task, index });
       lastCompletedIndexRef.current = index;
-      processQueue();
+
+      // Si on affiche déjà une tâche
+      if (isProcessingRef.current && minDisplayTimeRef.current !== null) {
+        const elapsed = Date.now() - minDisplayTimeRef.current;
+
+        // Si le temps minimum est écoulé et qu'on n'a plus de timeout actif
+        // (c'est-à-dire qu'on attend juste une nouvelle tâche)
+        if (elapsed >= 2000 && !displayTimeoutRef.current) {
+          // On peut passer directement à la nouvelle tâche
+          isProcessingRef.current = false;
+          minDisplayTimeRef.current = null;
+          processQueue();
+          return;
+        }
+      }
+
+      // Démarrer le traitement si rien n'est en cours
+      if (!isProcessingRef.current) {
+        processQueue();
+      }
     }
   };
 
