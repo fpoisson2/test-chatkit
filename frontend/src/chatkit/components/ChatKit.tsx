@@ -11,6 +11,7 @@ import { ThreadHistory } from './ThreadHistory';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { DevToolsScreencast } from './DevToolsScreencast';
 import { useI18n } from '../../i18n/I18nProvider';
+import { LoadingIndicator } from './LoadingIndicator';
 import {
   Attachment,
   uploadAttachment,
@@ -474,13 +475,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           )}
                         </div>
                       ))}
-                      {item.status === 'in_progress' && (
-                        <div className="chatkit-loading-indicator">
-                          <span className="chatkit-dot"></span>
-                          <span className="chatkit-dot"></span>
-                          <span className="chatkit-dot"></span>
-                        </div>
-                      )}
+                      {item.status === 'in_progress' && <LoadingIndicator label={t('chat.loading')} />}
                     </div>
                     {item.status !== 'in_progress' && (
                       <button
