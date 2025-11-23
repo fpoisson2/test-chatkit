@@ -75,10 +75,17 @@
   color: var(--color-text);
 }
 
+.thread-history-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.thread-history-refresh,
 .thread-history-close {
   background: none;
   border: none;
-  font-size: 32px;
+  font-size: 28px;
   line-height: 1;
   color: var(--color-text-tertiary);
   cursor: pointer;
@@ -92,14 +99,29 @@
   transition: all var(--transition-duration-basic);
 }
 
+.thread-history-close {
+  font-size: 32px;
+}
+
+.thread-history-refresh:hover:not(:disabled),
 .thread-history-close:hover {
   background: var(--color-surface-secondary);
   color: var(--color-text);
 }
 
+[data-theme="dark"] .thread-history-refresh:hover:not(:disabled),
 [data-theme="dark"] .thread-history-close:hover {
   background: var(--color-surface-secondary);
   color: var(--color-text);
+}
+
+.thread-history-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.thread-history-refresh.spinning {
+  animation: spin 0.8s linear infinite;
 }
 
 /* Content */
