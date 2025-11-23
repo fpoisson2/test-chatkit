@@ -988,6 +988,26 @@
   position: relative;
 }
 
+.chatkit-workflow-last-task .chatkit-task-thought {
+  padding: 10px 14px;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-title {
+  font-size: var(--font-text-xs-size);
+  margin-bottom: 6px;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph {
+  font-size: var(--font-text-xs-size);
+  line-height: 1.35;
+}
+
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
+  margin-top: 0.5em;
+}
+
 [data-theme="dark"] .chatkit-task-thought {
   background: transparent;
 }
