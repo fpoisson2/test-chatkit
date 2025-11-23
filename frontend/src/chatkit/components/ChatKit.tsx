@@ -451,26 +451,24 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
             // Filtrer les tasks dès qu'un message assistant est arrivé après elles
             const filteredItems = (() => {
-              let assistantSeen = false;
-              const result: any[] = [];
+              const latestAssistantTs = items.reduce<number>((latest, item) => {
+                if (item.type !== 'assistant_message') return latest;
 
-              for (let i = items.length - 1; i >= 0; i--) {
-                const currentItem = items[i];
+                const ts = Date.parse(item.created_at ?? '');
+                return Number.isFinite(ts) ? Math.max(latest, ts) : latest;
+              }, Number.NEGATIVE_INFINITY);
 
-                if (currentItem.type === 'assistant_message') {
-                  assistantSeen = true;
-                  result.push(currentItem);
-                  continue;
-                }
-
-                if (currentItem.type === 'task' && assistantSeen) {
-                  continue;
-                }
-
-                result.push(currentItem);
+              // Si aucune date valide n'est trouvée, ne filtrer aucun task
+              if (!Number.isFinite(latestAssistantTs)) {
+                return items;
               }
 
-              return result.reverse();
+              return items.filter((item) => {
+                if (item.type !== 'task') return true;
+
+                const ts = Date.parse(item.created_at ?? '');
+                return !Number.isFinite(ts) || ts > latestAssistantTs;
+              });
             })();
 
             console.log('[ChatKit Render] Rendering', filteredItems.length, 'items:', filteredItems);
