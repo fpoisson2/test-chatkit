@@ -39,8 +39,18 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   const activeThreadIdRef = useRef<string | null>(initialThread || null);
   const visibleThreadIdRef = useRef<string | null>(initialThread || null);
   const threadCacheRef = useRef<Map<string, Thread>>(new Map());
+  const tempThreadIdCounterRef = useRef<number>(0);
 
   const getThreadKey = useCallback((threadId: string | null | undefined) => threadId ?? '__new_thread__', []);
+
+  const generateTempThreadId = useCallback(() => {
+    tempThreadIdCounterRef.current += 1;
+    return `__temp_thread_${tempThreadIdCounterRef.current}__`;
+  }, []);
+
+  const isTempThreadId = useCallback((threadId: string | null | undefined): boolean => {
+    return typeof threadId === 'string' && threadId.startsWith('__temp_thread_');
+  }, []);
 
   const setThreadLoading = useCallback((threadId: string | null | undefined, value: boolean) => {
     const key = getThreadKey(threadId);
@@ -63,9 +73,12 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       // en parallèle et celles qui continuent à streamer doivent rester actives.
       // On réinitialise uniquement le thread actif pour préparer une nouvelle
       // conversation.
+      // Générer un ID temporaire unique pour ce nouveau thread afin d'éviter les
+      // collisions avec d'autres nouveaux threads en cours de streaming.
+      const tempId = generateTempThreadId();
       setThread(null);
-      activeThreadIdRef.current = null;
-      visibleThreadIdRef.current = null;
+      activeThreadIdRef.current = tempId;
+      visibleThreadIdRef.current = tempId;
       setLoadingByThread((prev) => {
         const next = { ...prev };
         delete next[getThreadKey(null)];
@@ -75,7 +88,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       activeThreadIdRef.current = initialThread;
       visibleThreadIdRef.current = initialThread;
     }
-  }, [getThreadKey, initialThread]);
+  }, [getThreadKey, generateTempThreadId, initialThread]);
 
   // Charger le thread initial
   useEffect(() => {
@@ -122,8 +135,11 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       const targetThreadId = activeThreadIdRef.current ?? thread?.id ?? null;
       const threadKey = getThreadKey(targetThreadId);
       const existingController = abortControllersRef.current.get(threadKey);
+      // Ne chercher le thread dans le cache que si c'est un vrai ID, pas un ID temporaire
       const initialThreadForStream =
-        targetThreadId ? threadCacheRef.current.get(targetThreadId) ?? null : null;
+        targetThreadId && !isTempThreadId(targetThreadId)
+          ? threadCacheRef.current.get(targetThreadId) ?? null
+          : null;
 
       if (existingController) {
         existingController.abort();
@@ -148,8 +164,10 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           inference_options: options?.inferenceOptions || {},
         };
 
-          // Si un thread existe, ajouter un message. Sinon, créer un nouveau thread
-          const payload = targetThreadId
+          // Si un thread réel existe (pas un ID temporaire), ajouter un message.
+          // Sinon, créer un nouveau thread.
+          const isRealThread = targetThreadId && !isTempThreadId(targetThreadId);
+          const payload = isRealThread
             ? {
                 type: 'threads.add_user_message',
                 params: {
@@ -242,14 +260,15 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         abortControllersRef.current.delete(getThreadKey(resolvedThreadId));
       }
     },
-    [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading]
+    [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading, isTempThreadId]
   );
 
   // Récupérer les mises à jour du thread
   const fetchUpdates = useCallback(async () => {
     const targetThreadId = visibleThreadIdRef.current ?? activeThreadIdRef.current;
 
-    if (!targetThreadId) {
+    // Ne pas essayer de fetch un thread temporaire (qui n'existe pas encore sur le serveur)
+    if (!targetThreadId || isTempThreadId(targetThreadId)) {
       return;
     }
 
@@ -274,7 +293,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     } finally {
       setThreadLoading(targetThreadId, false);
     }
-  }, [api.url, api.headers, onError, onLog, setThreadLoading]);
+  }, [api.url, api.headers, onError, onLog, setThreadLoading, isTempThreadId]);
 
   useEffect(() => {
     return () => {
