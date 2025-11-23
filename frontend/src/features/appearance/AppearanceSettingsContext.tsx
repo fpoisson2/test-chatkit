@@ -346,6 +346,7 @@ const applyDocumentTheme = (settings: AppearanceSettings) => {
   Object.entries(radiusPreset).forEach(([token, value]) => {
     root.style.setProperty(`--radius-${token}`, value);
   });
+  root.style.setProperty("--button-radius", radiusPreset.md);
   const palette = buildSurfacePalette(settings);
   root.style.setProperty("--appearance-accent", settings.accent_color);
   root.style.setProperty(
