@@ -27,8 +27,12 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
     ? `chatkit-task--${task.status_indicator}`
     : '';
 
+  const reasoningClass = (task.type === 'thought' || isActionTask(task))
+    ? 'chatkit-task--reasoning'
+    : '';
+
   return (
-    <div className={`chatkit-task chatkit-task--${task.type} ${statusClass} ${className}`}>
+    <div className={`chatkit-task chatkit-task--${task.type} ${statusClass} ${reasoningClass} ${className}`}>
       {task.type === 'custom' && <CustomTaskRenderer task={task} theme={theme} />}
       {task.type === 'web_search' && <SearchTaskRenderer task={task} />}
       {(task.type === 'thought' || isActionTask(task)) && (
