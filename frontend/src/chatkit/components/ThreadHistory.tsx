@@ -1,7 +1,7 @@
 /**
  * Composant pour afficher l'historique des threads
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Thread, ChatKitAPIConfig } from '../types';
 import { deleteThread, listThreads } from '../api/streaming';
 import './ThreadHistory.css';
@@ -15,29 +15,31 @@ export interface ThreadHistoryProps {
   onClose: () => void;
 }
 
+// Cache au niveau du module pour persister les données entre les montages
+let cachedThreads: Thread[] = [];
+let cachedAfter: string | undefined = undefined;
+let cachedHasMore = true;
+
 export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThreadSelect, onThreadDeleted, onClose }: ThreadHistoryProps): JSX.Element {
-  const [threads, setThreads] = useState<Thread[]>([]);
+  const [threads, setThreads] = useState<Thread[]>(cachedThreads);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [after, setAfter] = useState<string | undefined>(undefined);
-  const hasLoadedRef = useRef(false);
+  const [hasMore, setHasMore] = useState(cachedHasMore);
+  const [after, setAfter] = useState<string | undefined>(cachedAfter);
 
   const loadThreads = async (isInitial = false, isRefresh = false) => {
-    // Pour le premier chargement (pas un refresh), afficher le spinner
-    if (isInitial && !isRefresh && !hasLoadedRef.current) {
+    // Pour le premier chargement sans cache, afficher le spinner
+    if (isInitial && !isRefresh && cachedThreads.length === 0) {
       setIsLoading(true);
-      setAfter(undefined);
     } else if (!isInitial) {
       // Pour "Charger plus"
       setIsLoadingMore(true);
     } else if (isRefresh) {
       // Pour le refresh, on met juste à jour isLoading pour le bouton
       setIsLoading(true);
-      setAfter(undefined);
     }
     setError(null);
 
@@ -51,21 +53,25 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
       });
 
       const newThreads = response.data || [];
-      setThreads(prev => (isInitial || isRefresh) ? newThreads : [...prev, ...newThreads]);
-      setHasMore(newThreads.length === 10);
+      const updatedThreads = (isInitial || isRefresh) ? newThreads : [...threads, ...newThreads];
+      const updatedHasMore = newThreads.length === 10;
+      const updatedAfter = newThreads.length > 0 ? newThreads[newThreads.length - 1].id : after;
 
-      if (newThreads.length > 0) {
-        setAfter(newThreads[newThreads.length - 1].id);
-      }
+      // Mettre à jour l'état local
+      setThreads(updatedThreads);
+      setHasMore(updatedHasMore);
+      setAfter(updatedAfter);
 
-      if (isInitial || isRefresh) {
-        hasLoadedRef.current = true;
-      }
+      // Mettre à jour le cache
+      cachedThreads = updatedThreads;
+      cachedHasMore = updatedHasMore;
+      cachedAfter = updatedAfter;
     } catch (err) {
       console.error('[ThreadHistory] Failed to load threads:', err);
       setError('Impossible de charger l\'historique');
-      if (isInitial && !isRefresh) {
+      if (isInitial && !isRefresh && cachedThreads.length === 0) {
         setThreads([]);
+        cachedThreads = [];
       }
     } finally {
       setIsLoading(false);
@@ -74,9 +80,8 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
   };
 
   useEffect(() => {
-    if (!hasLoadedRef.current) {
-      loadThreads(true);
-    }
+    // Toujours charger en arrière-plan, que le cache existe ou non
+    loadThreads(true, cachedThreads.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -147,7 +152,10 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
         threadId,
       });
 
-      setThreads((prev) => prev.filter((thread) => thread.id !== threadId));
+      const updatedThreads = threads.filter((thread) => thread.id !== threadId);
+      setThreads(updatedThreads);
+      cachedThreads = updatedThreads;
+
       if (currentThreadId === threadId) {
         onThreadDeleted?.(threadId);
       }
@@ -180,7 +188,7 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
         </div>
 
         <div className="thread-history-content">
-          {isLoading && !hasLoadedRef.current && (
+          {isLoading && cachedThreads.length === 0 && (
             <div className="thread-history-loading">
               <div className="thread-history-spinner"></div>
               <p>Chargement...</p>
@@ -205,7 +213,7 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
             </div>
           )}
 
-          {(hasLoadedRef.current || !isLoading) && !error && threads.length > 0 && (
+          {!error && threads.length > 0 && (
             <>
               <div className="thread-history-list">
                 {threads.map((thread) => {
