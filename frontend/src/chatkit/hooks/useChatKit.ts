@@ -96,36 +96,49 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       onThreadLoadStart?.({ threadId: initialThread });
       onLog?.({ name: 'thread.load.start', data: { threadId: initialThread } });
 
-      setThreadLoading(initialThread, true);
+      // Vérifier d'abord le cache pour un affichage instantané
+      const cachedThread = threadCacheRef.current.get(initialThread);
 
-      fetchThread({
-        url: api.url,
-        headers: api.headers,
-        threadId: initialThread,
-      })
-        .then((loadedThread) => {
-          setThread(loadedThread);
-          threadCacheRef.current.set(loadedThread.id, loadedThread);
-          activeThreadIdRef.current = loadedThread.id;
-          visibleThreadIdRef.current = loadedThread.id;
-          setThreadLoading(loadedThread.id, false);
-          onThreadLoadEnd?.({ threadId: initialThread });
-          onLog?.({ name: 'thread.load.end', data: { thread: loadedThread } });
+      if (cachedThread) {
+        // Utiliser le thread en cache immédiatement
+        setThread(cachedThread);
+        activeThreadIdRef.current = cachedThread.id;
+        visibleThreadIdRef.current = cachedThread.id;
+        onThreadLoadEnd?.({ threadId: initialThread });
+        onLog?.({ name: 'thread.load.end', data: { thread: cachedThread, source: 'cache' } });
+      } else {
+        // Si pas en cache, charger depuis le serveur
+        setThreadLoading(initialThread, true);
+
+        fetchThread({
+          url: api.url,
+          headers: api.headers,
+          threadId: initialThread,
         })
-        .catch((err) => {
-          // Si le thread n'existe pas (404), on l'ignore et on démarre avec thread=null
-          const errorMessage = err?.message || String(err);
-          if (errorMessage.includes('404')) {
-            console.warn('[ChatKit] Initial thread not found, starting with empty thread');
+          .then((loadedThread) => {
+            setThread(loadedThread);
+            threadCacheRef.current.set(loadedThread.id, loadedThread);
+            activeThreadIdRef.current = loadedThread.id;
+            visibleThreadIdRef.current = loadedThread.id;
+            setThreadLoading(loadedThread.id, false);
             onThreadLoadEnd?.({ threadId: initialThread });
-          } else {
-            console.error('[ChatKit] Failed to load initial thread:', err);
-            onError?.({ error: err instanceof Error ? err : new Error(errorMessage) });
-          }
-        })
-        .finally(() => {
-          setThreadLoading(initialThread, false);
-        });
+            onLog?.({ name: 'thread.load.end', data: { thread: loadedThread, source: 'server' } });
+          })
+          .catch((err) => {
+            // Si le thread n'existe pas (404), on l'ignore et on démarre avec thread=null
+            const errorMessage = err?.message || String(err);
+            if (errorMessage.includes('404')) {
+              console.warn('[ChatKit] Initial thread not found, starting with empty thread');
+              onThreadLoadEnd?.({ threadId: initialThread });
+            } else {
+              console.error('[ChatKit] Failed to load initial thread:', err);
+              onError?.({ error: err instanceof Error ? err : new Error(errorMessage) });
+            }
+          })
+          .finally(() => {
+            setThreadLoading(initialThread, false);
+          });
+      }
     }
   }, [initialThread, api.url, api.headers, onThreadLoadStart, onThreadLoadEnd, onError, onLog, setThreadLoading]);
 
