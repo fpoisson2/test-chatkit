@@ -944,6 +944,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           <ThreadHistory
             api={options.api}
             currentThreadId={control.thread?.id || null}
+            loadingThreadIds={control.loadingThreadIds}
             onThreadSelect={handleThreadSelect}
             onThreadDeleted={handleThreadDeleted}
             onClose={() => setShowHistory(false)}

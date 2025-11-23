@@ -252,3 +252,19 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Thread Item Loading Spinner */
+.thread-history-item-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--accent-color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .thread-history-item-spinner {
+  border-color: var(--color-border);
+  border-top-color: var(--accent-color-primary);
+}

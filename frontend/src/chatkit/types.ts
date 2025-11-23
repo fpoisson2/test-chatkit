@@ -1075,6 +1075,7 @@ export interface ChatKitControl {
   thread: Thread | null;
   isLoading: boolean;
   error: Error | null;
+  loadingThreadIds: Set<string>;
   sendMessage: (content: UserMessageContent[] | string, options?: { inferenceOptions?: InferenceOptions }) => Promise<void>;
   refresh: () => Promise<void>;
   customAction: (itemId: string | null, action: Action) => Promise<void>;

@@ -198,7 +198,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
           let updatedThread: Thread | null = null;
 
-          // Utiliser une ref mutable pour suivre l'ID du thread en cours de streaming
+          // Utiliser une ref mutable pour suivre la clé du thread en cours de streaming
           // Cela permet de gérer le cas où un thread temporaire reçoit son vrai ID
           const streamThreadKeyRef = { current: threadKey };
 
@@ -272,9 +272,17 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         setError(error);
         onError?.({ error });
       } finally {
-        const resolvedThreadId = updatedThread?.id ?? targetThreadId ?? null;
-        setThreadLoading(resolvedThreadId, false);
-        abortControllersRef.current.delete(getThreadKey(resolvedThreadId));
+        // Nettoyer l'état de loading pour les deux IDs (initial et final) pour être sûr
+        // Cela gère le cas où le thread passe d'un ID temporaire à un vrai ID
+        setThreadLoading(targetThreadId, false);
+        if (updatedThread?.id && updatedThread.id !== targetThreadId) {
+          setThreadLoading(updatedThread.id, false);
+        }
+        // Nettoyer les abort controllers
+        abortControllersRef.current.delete(getThreadKey(targetThreadId));
+        if (updatedThread?.id) {
+          abortControllersRef.current.delete(getThreadKey(updatedThread.id));
+        }
       }
     },
     [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading, isTempThreadId]
@@ -436,11 +444,23 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     [currentThreadId, getThreadKey, loadingByThread],
   );
 
+  // Créer un Set des thread IDs en cours de chargement
+  const loadingThreadIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [key, isLoading] of Object.entries(loadingByThread)) {
+      if (isLoading && key !== '__new_thread__' && !key.startsWith('__temp_thread_')) {
+        ids.add(key);
+      }
+    }
+    return ids;
+  }, [loadingByThread]);
+
   // Créer le control object
   const control: ChatKitControl = {
     thread,
     isLoading,
     error,
+    loadingThreadIds,
     sendMessage: sendUserMessage,
     refresh: fetchUpdates,
     customAction,
