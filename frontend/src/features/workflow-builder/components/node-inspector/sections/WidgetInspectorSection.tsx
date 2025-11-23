@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from "react";
 
-import { WidgetPreview } from "../../../../../components/WidgetPreview";
+import { WidgetRenderer } from "../../../../../chatkit";
 import {
   applyWidgetInputValues,
   buildWidgetInputSample,
@@ -367,7 +367,7 @@ const WidgetNodeContentEditor = ({
       ) : (
         <>
           <div className={styles.nodeInspectorPreviewCard}>
-            <WidgetPreview definition={previewDefinition ?? definition} />
+            <WidgetRenderer definition={previewDefinition ?? definition} />
           </div>
           {bindingEntries.length > 0 ? (
             bindingEntries.map(([identifier, binding]) => {

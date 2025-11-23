@@ -12,6 +12,7 @@ export type { ChatKitProps } from './components/ChatKit';
 export { WorkflowRenderer } from './components/WorkflowRenderer';
 export { TaskRenderer } from './components/TaskRenderer';
 export { AnnotationRenderer } from './components/AnnotationRenderer';
+export { WidgetRenderer } from './components/WidgetRenderer';
 
 // Hooks
 export { useChatKit } from './hooks/useChatKit';
@@ -19,12 +20,12 @@ export type { UseChatKitReturn } from './hooks/useChatKit';
 
 // Widgets
 export {
-  WidgetRenderer,
+  WidgetRenderer as WidgetTreeRenderer,
   WidgetListRenderer,
   useWidgetContext,
 } from './widgets';
 export type {
-  WidgetRendererProps,
+  WidgetRendererProps as WidgetTreeRendererProps,
   WidgetListRendererProps,
   WidgetContext,
 } from './widgets';

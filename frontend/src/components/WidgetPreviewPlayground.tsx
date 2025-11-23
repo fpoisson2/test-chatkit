@@ -7,7 +7,7 @@ import {
   sanitizeWidgetInputValues,
   type WidgetBindingMap,
 } from "../utils/widgetPreview";
-import { WidgetPreview } from "./WidgetPreview";
+import { WidgetRenderer } from "../chatkit";
 
 const toJson = (value: Record<string, string | string[]>): string =>
   JSON.stringify(value, null, 2);
@@ -123,7 +123,7 @@ export const WidgetPreviewPlayground = ({ definition }: WidgetPreviewPlaygroundP
 
   return (
     <div className="flex flex-col gap-3">
-      <WidgetPreview definition={appliedDefinition} />
+      <WidgetRenderer definition={appliedDefinition} />
       <details className="accordion-item" key={detailsKey} open={hasBindings}>
         <summary className="accordion-trigger cursor-pointer">Paramètres de test du widget</summary>
         <div className="accordion-content flex flex-col gap-3">

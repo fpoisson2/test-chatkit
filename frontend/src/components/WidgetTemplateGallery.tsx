@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { WidgetPreview } from "./WidgetPreview";
+import { WidgetRenderer } from "../chatkit";
 
 import type { WidgetTemplate } from "../utils/backend";
 
@@ -39,7 +39,7 @@ export const WidgetTemplateGallery = ({
         {widgets.map((widget) => (
           <article key={widget.slug} className="card widget-library-card" role="listitem">
             <div className="card-body widget-library-preview">
-              <WidgetPreview definition={widget.definition} />
+              <WidgetRenderer definition={widget.definition} />
             </div>
 
             <div className="card-footer widget-library-actions flex items-center gap-2">
