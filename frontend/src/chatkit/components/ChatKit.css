@@ -991,40 +991,72 @@
   color: var(--color-text-secondary);
 }
 
-/* Custom Task */
+/* Custom Task - default flex layout */
 .chatkit-task-custom {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+/* Override for workflow contexts to use unified styling */
+.chatkit-workflow-last-task .chatkit-task-custom,
+.chatkit-workflow-tasks .chatkit-task-custom {
+  display: block;
+  gap: 0;
+}
+
 .chatkit-task-icon {
   font-size: 20px;
 }
 
-/* Thought Task */
-.chatkit-task-thought {
+/* All Task Types (unified styling) */
+.chatkit-task-thought,
+.chatkit-task-search,
+.chatkit-task-file,
+.chatkit-task-image,
+.chatkit-task-computer-use,
+.chatkit-task-custom {
   background: transparent;
   padding: 0;
   position: relative;
 }
 
-.chatkit-workflow-last-task .chatkit-task-thought {
+.chatkit-workflow-last-task .chatkit-task-thought,
+.chatkit-workflow-last-task .chatkit-task-search,
+.chatkit-workflow-last-task .chatkit-task-file,
+.chatkit-workflow-last-task .chatkit-task-image,
+.chatkit-workflow-last-task .chatkit-task-computer-use,
+.chatkit-workflow-last-task .chatkit-task-custom {
   padding: 6px 10px;
 }
 
-.chatkit-workflow-tasks .chatkit-task-thought {
+.chatkit-workflow-tasks .chatkit-task-thought,
+.chatkit-workflow-tasks .chatkit-task-search,
+.chatkit-workflow-tasks .chatkit-task-file,
+.chatkit-workflow-tasks .chatkit-task-image,
+.chatkit-workflow-tasks .chatkit-task-computer-use,
+.chatkit-workflow-tasks .chatkit-task-custom {
   padding: 6px 10px;
 }
 
-.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-title {
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-title,
+.chatkit-workflow-last-task .chatkit-task-search .chatkit-task-title,
+.chatkit-workflow-last-task .chatkit-task-file .chatkit-task-title,
+.chatkit-workflow-last-task .chatkit-task-image .chatkit-task-title,
+.chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-title,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-task-title {
   font-size: var(--font-text-xs-size);
   margin-bottom: 6px;
   position: relative;
   display: inline-block;
 }
 
-.chatkit-workflow-tasks .chatkit-task-thought .chatkit-task-title {
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-task-title,
+.chatkit-workflow-tasks .chatkit-task-search .chatkit-task-title,
+.chatkit-workflow-tasks .chatkit-task-file .chatkit-task-title,
+.chatkit-workflow-tasks .chatkit-task-image .chatkit-task-title,
+.chatkit-workflow-tasks .chatkit-task-computer-use .chatkit-task-title,
+.chatkit-workflow-tasks .chatkit-task-custom .chatkit-task-title {
   font-size: var(--font-text-xs-size);
   margin-bottom: 6px;
   position: relative;
@@ -1033,28 +1065,50 @@
 
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown,
-.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph {
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph,
+.chatkit-workflow-last-task .chatkit-task-search .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-file .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-image .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown-paragraph {
   font-size: var(--font-text-xs-size);
   line-height: 1.35;
 }
 
 .chatkit-workflow-tasks .chatkit-task-thought .chatkit-task-content,
 .chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown,
-.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-paragraph {
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-paragraph,
+.chatkit-workflow-tasks .chatkit-task-search .chatkit-task-content,
+.chatkit-workflow-tasks .chatkit-task-file .chatkit-task-content,
+.chatkit-workflow-tasks .chatkit-task-image .chatkit-task-content,
+.chatkit-workflow-tasks .chatkit-task-computer-use .chatkit-task-content,
+.chatkit-workflow-tasks .chatkit-task-custom .chatkit-task-content,
+.chatkit-workflow-tasks .chatkit-task-custom .chatkit-markdown,
+.chatkit-workflow-tasks .chatkit-task-custom .chatkit-markdown-paragraph {
   font-size: var(--font-text-xs-size);
   line-height: 1.35;
 }
 
-.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
   margin-top: 0.5em;
 }
 
-.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph,
+.chatkit-workflow-tasks .chatkit-task-custom .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
   margin-top: 0.5em;
 }
 
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
-.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown {
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown,
+.chatkit-workflow-last-task .chatkit-task-search .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-file .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-image .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown {
   position: relative;
   display: block;
   max-height: 150px;
@@ -1078,6 +1132,13 @@
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown,
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph,
+.chatkit-workflow-last-task .chatkit-task-search .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-file .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-image .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown-paragraph,
 .chatkit-workflow-header .chatkit-workflow-title,
 .chatkit-workflow-header .chatkit-workflow-default-title {
   position: relative;
@@ -1085,6 +1146,11 @@
 }
 
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph::after,
+.chatkit-workflow-last-task .chatkit-task-search .chatkit-task-content::after,
+.chatkit-workflow-last-task .chatkit-task-file .chatkit-task-content::after,
+.chatkit-workflow-last-task .chatkit-task-image .chatkit-task-content::after,
+.chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-content::after,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown-paragraph::after,
 .chatkit-workflow-header .chatkit-workflow-title::after,
 .chatkit-workflow-header .chatkit-workflow-default-title::after {
   content: "";
@@ -1110,13 +1176,17 @@
 }
 
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-code-block,
-.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-code-block code {
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-code-block code,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown-code-block,
+.chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown-code-block code {
   font-size: 13px;
   line-height: 1.4;
 }
 
 .chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-code-block,
-.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-code-block code {
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-code-block code,
+.chatkit-workflow-tasks .chatkit-task-custom .chatkit-markdown-code-block,
+.chatkit-workflow-tasks .chatkit-task-custom .chatkit-markdown-code-block code {
   font-size: 13px;
   line-height: 1.4;
 }
@@ -1175,7 +1245,12 @@
   }
 }
 
-[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph::after {
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph::after,
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-search .chatkit-task-content::after,
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-file .chatkit-task-content::after,
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-image .chatkit-task-content::after,
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-computer-use .chatkit-task-content::after,
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-custom .chatkit-markdown-paragraph::after {
   background-image: linear-gradient(
     90deg,
     rgba(0, 0, 0, 0) 0%,
