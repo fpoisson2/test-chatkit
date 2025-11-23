@@ -805,6 +805,13 @@ export async function sendCustomAction(options: {
 }): Promise<void> {
   const { url, headers = {}, threadId, itemId, action } = options;
 
+  // Convert 'data' to 'payload' for backend compatibility
+  // Backend Python expects Action with 'payload' field, not 'data'
+  const backendAction = {
+    type: action.type,
+    payload: action.data,
+  };
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -816,7 +823,7 @@ export async function sendCustomAction(options: {
       params: {
         thread_id: threadId,
         item_id: itemId,
-        action,
+        action: backendAction,
       },
     }),
   });

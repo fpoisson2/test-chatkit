@@ -376,15 +376,23 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const createWidgetContext = useCallback((itemId: string): WidgetContext => ({
     onAction: (actionConfig: ActionConfig) => {
       // Convert ActionConfig to Action format expected by customAction
-      const { type, ...rest } = actionConfig;
+      // Backend expects 'payload' not 'data'
+      const { type, payload, ...rest } = actionConfig;
+
+      // Build the payload combining ActionConfig payload, rest properties, and form data
+      const actionPayload = {
+        ...(payload || {}),
+        ...rest,
+        // Include form data if available
+        ...(formDataRef.current ? Object.fromEntries(formDataRef.current.entries()) : {}),
+      };
+
       const action = {
         type,
-        data: {
-          ...rest,
-          // Include form data if available
-          ...(formDataRef.current ? Object.fromEntries(formDataRef.current.entries()) : {}),
-        },
+        // Use 'data' for frontend Action type, will be converted to 'payload' by API
+        data: actionPayload,
       };
+
       // Clear form data after use
       formDataRef.current = null;
       // Send the action to the backend
