@@ -775,6 +775,12 @@
   padding-right: 6px;
 }
 
+.chatkit-workflow-tasks .chatkit-task {
+  padding-top: 2px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
 /* Indicateur de chargement */
 .chatkit-workflow-loading {
   background: transparent;
@@ -1003,7 +1009,18 @@
   padding: 6px 10px;
 }
 
+.chatkit-workflow-tasks .chatkit-task-thought {
+  padding: 6px 10px;
+}
+
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-title {
+  font-size: var(--font-text-xs-size);
+  margin-bottom: 6px;
+  position: relative;
+  display: inline-block;
+}
+
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-task-title {
   font-size: var(--font-text-xs-size);
   margin-bottom: 6px;
   position: relative;
@@ -1017,7 +1034,18 @@
   line-height: 1.35;
 }
 
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-task-content,
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown,
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-paragraph {
+  font-size: var(--font-text-xs-size);
+  line-height: 1.35;
+}
+
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
+  margin-top: 0.5em;
+}
+
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-paragraph + .chatkit-markdown-paragraph {
   margin-top: 0.5em;
 }
 
@@ -1079,6 +1107,12 @@
 
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-code-block,
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown-code-block code {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-code-block,
+.chatkit-workflow-tasks .chatkit-task-thought .chatkit-markdown-code-block code {
   font-size: 13px;
   line-height: 1.4;
 }
