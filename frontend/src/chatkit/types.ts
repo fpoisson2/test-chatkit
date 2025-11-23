@@ -606,6 +606,11 @@ export interface ClientToolCallItem {
 
 export interface BaseTask {
   status_indicator?: 'none' | 'loading' | 'complete';
+  /**
+   * Type d'action détaillé, envoyé par le backend pour distinguer les tâches de workflow
+   * (ex: tool_call, mcp, computer_use_action).
+   */
+  action_type?: string;
 }
 
 export interface CustomTask extends BaseTask {
@@ -627,6 +632,12 @@ export interface ThoughtTask extends BaseTask {
   type: 'thought';
   title?: string;
   content: string;
+}
+
+export interface ActionTask extends BaseTask {
+  type: 'tool_call' | 'tool_calls' | 'mcp' | 'cua' | 'client_ui_action' | 'computer_use_action';
+  title?: string;
+  content?: string;
 }
 
 export interface FileTask extends BaseTask {
@@ -682,7 +693,14 @@ export interface ComputerUseTask extends BaseTask {
   debug_url_token?: string;
 }
 
-export type Task = CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask;
+export type Task =
+  | CustomTask
+  | SearchTask
+  | ThoughtTask
+  | ActionTask
+  | FileTask
+  | ImageTask
+  | ComputerUseTask;
 
 // ===== Types pour les workflows =====
 

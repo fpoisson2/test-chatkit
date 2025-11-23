@@ -4,6 +4,7 @@ import type {
   CustomTask,
   SearchTask,
   ThoughtTask,
+  ActionTask,
   FileTask,
   ImageTask,
   ComputerUseTask,
@@ -30,12 +31,27 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
     <div className={`chatkit-task chatkit-task--${task.type} ${statusClass} ${className}`}>
       {task.type === 'custom' && <CustomTaskRenderer task={task} theme={theme} />}
       {task.type === 'web_search' && <SearchTaskRenderer task={task} />}
-      {task.type === 'thought' && <ThoughtTaskRenderer task={task} theme={theme} />}
+      {(task.type === 'thought' || isActionTask(task)) && (
+        <ThoughtTaskRenderer task={task} theme={theme} />
+      )}
       {task.type === 'file' && <FileTaskRenderer task={task} />}
       {task.type === 'image' && <ImageTaskRenderer task={task} t={t} />}
       {task.type === 'computer_use' && <ComputerUseTaskRenderer task={task} t={t} />}
     </div>
   );
+}
+
+function isActionTask(task: Task): task is ThoughtTask | ActionTask {
+  const actionType = (task as ActionTask).action_type || task.type;
+  return [
+    'thought',
+    'tool_call',
+    'tool_calls',
+    'mcp',
+    'cua',
+    'client_ui_action',
+    'computer_use_action',
+  ].includes(actionType as ActionTask['type'] | ThoughtTask['type']);
 }
 
 function CustomTaskRenderer({ task, theme = 'light' }: { task: CustomTask; theme?: 'light' | 'dark' }): JSX.Element {
@@ -87,12 +103,12 @@ function SearchTaskRenderer({ task }: { task: SearchTask }): JSX.Element {
   );
 }
 
-function ThoughtTaskRenderer({ task, theme = 'light' }: { task: ThoughtTask; theme?: 'light' | 'dark' }): JSX.Element {
+function ThoughtTaskRenderer({ task, theme = 'light' }: { task: ThoughtTask | ActionTask; theme?: 'light' | 'dark' }): JSX.Element {
   return (
     <div className="chatkit-task-thought">
       {task.title && <div className="chatkit-task-title">{task.title}</div>}
       <div className="chatkit-task-content">
-        <MarkdownRenderer content={task.content} theme={theme} />
+        <MarkdownRenderer content={task.content || ''} theme={theme} />
       </div>
     </div>
   );

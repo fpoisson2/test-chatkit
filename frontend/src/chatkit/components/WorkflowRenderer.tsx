@@ -36,6 +36,36 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     task => task.type === 'image' && task.status_indicator === 'loading'
   );
 
+  const getActiveActionTitle = (): string | null => {
+    const findActionTask = (tasks: Task[]) =>
+      tasks.find(task => isActionTask(task));
+
+    const reversedTasks = [...workflow.tasks].reverse();
+    const loadingActionTask = findActionTask(
+      reversedTasks.filter(task => task.status_indicator === 'loading')
+    );
+    const lastActionTask = loadingActionTask || findActionTask(reversedTasks);
+
+    if (!lastActionTask) {
+      return null;
+    }
+
+    const actionType = (lastActionTask as any).action_type || lastActionTask.type;
+
+    const actionTitles: Record<string, string> = {
+      thought: 'chatkit.workflow.reasoning',
+      tool_call: 'chatkit.workflow.action.toolCall',
+      tool_calls: 'chatkit.workflow.action.toolCall',
+      mcp: 'chatkit.workflow.action.mcp',
+      computer_use_action: 'chatkit.workflow.action.computerUse',
+      cua: 'chatkit.workflow.action.computerUse',
+      client_ui_action: 'chatkit.workflow.action.clientUi',
+    };
+
+    const key = actionTitles[actionType];
+    return key ? t(key) : null;
+  };
+
   // Détecter si le workflow était déjà complet au premier render
   if (!hasMountedRef.current) {
     hasMountedRef.current = true;
@@ -171,11 +201,12 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
             <SummaryRenderer summary={workflow.summary} />
           ) : (
             <div className="chatkit-workflow-default-title">
-              {hasImageGenerating
-                ? "Génération d'une image en cours..."
-                : isReasoning
-                  ? t('chatkit.workflow.reasoning')
-                  : t('chatkit.workflow.workflow')}
+              {getActiveActionTitle()
+                || (hasImageGenerating
+                  ? "Génération d'une image en cours..."
+                  : isReasoning
+                    ? t('chatkit.workflow.reasoning')
+                    : t('chatkit.workflow.workflow'))}
             </div>
           )}
         </div>
@@ -244,4 +275,17 @@ function DurationSummaryRenderer({ summary }: { summary: DurationSummary }): JSX
       <span>{t('chatkit.workflow.executionDuration', { duration: formatDuration(summary.duration) })}</span>
     </div>
   );
+}
+
+function isActionTask(task: Task): boolean {
+  const actionType = (task as any).action_type || task.type;
+  return [
+    'thought',
+    'tool_call',
+    'tool_calls',
+    'mcp',
+    'cua',
+    'client_ui_action',
+    'computer_use_action',
+  ].includes(actionType);
 }
