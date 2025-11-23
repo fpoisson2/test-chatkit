@@ -30,8 +30,12 @@
   height: 100%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: var(--color-accent, #2563eb);
+  background: var(--color-text, #1f2937);
   animation: chatkit-scale 1.4s ease-in-out infinite;
+}
+
+[data-theme="dark"] .chatkit-loading__circle {
+  background: var(--color-text, #ffffff);
 }
 
 .chatkit-loading__label {
