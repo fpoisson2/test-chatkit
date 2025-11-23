@@ -138,39 +138,6 @@
   color: var(--status-success);
 }
 
-.chatkit-loading-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 8px 0;
-}
-
-.chatkit-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #999;
-  animation: pulse 1.4s infinite ease-in-out;
-}
-
-.chatkit-dot:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.chatkit-dot:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes pulse {
-  0%, 80%, 100% {
-    transform: scale(0.8);
-    opacity: 0.5;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
 .chatkit-error {
   position: absolute;
   bottom: 120px;
