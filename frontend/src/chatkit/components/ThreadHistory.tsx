@@ -18,34 +18,53 @@ export interface ThreadHistoryProps {
 export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThreadSelect, onThreadDeleted, onClose }: ThreadHistoryProps): JSX.Element {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [after, setAfter] = useState<string | undefined>(undefined);
+
+  const loadThreads = async (isInitial = false) => {
+    if (isInitial) {
+      setIsLoading(true);
+      setAfter(undefined);
+    } else {
+      setIsLoadingMore(true);
+    }
+    setError(null);
+
+    try {
+      const response = await listThreads({
+        url: api.url,
+        headers: api.headers,
+        limit: 10,
+        order: 'desc',
+        after: isInitial ? undefined : after,
+      });
+
+      const newThreads = response.data || [];
+      setThreads(prev => isInitial ? newThreads : [...prev, ...newThreads]);
+      setHasMore(newThreads.length === 10);
+
+      if (newThreads.length > 0) {
+        setAfter(newThreads[newThreads.length - 1].id);
+      }
+    } catch (err) {
+      console.error('[ThreadHistory] Failed to load threads:', err);
+      setError('Impossible de charger l\'historique');
+      if (isInitial) {
+        setThreads([]);
+      }
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
-    const loadThreads = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await listThreads({
-          url: api.url,
-          headers: api.headers,
-          limit: 20,
-          order: 'desc',
-        });
-
-        setThreads(response.data || []);
-      } catch (err) {
-        console.error('[ThreadHistory] Failed to load threads:', err);
-        setError('Impossible de charger l\'historique');
-        setThreads([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadThreads();
+    loadThreads(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api.url, api.headers]);
 
   const handleThreadClick = (threadId: string) => {
@@ -164,44 +183,58 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
           )}
 
           {!isLoading && !error && threads.length > 0 && (
-            <div className="thread-history-list">
-              {threads.map((thread) => {
-                const items = normalizeItems(thread);
-                return (
-                  <div
-                    key={thread.id}
-                    className={`thread-history-item ${thread.id === currentThreadId ? 'active' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handleThreadClick(thread.id)}
-                    onKeyDown={(event) => handleKeyDown(event, thread.id)}
-                  >
-                    <div className="thread-history-item-info">
-                      <div className="thread-history-item-preview">
-                        {getThreadTitle(thread)}
-                      </div>
-                      <div className="thread-history-item-date">
-                        {items.length > 0 && formatDate(items[0].created_at)}
-                      </div>
-                    </div>
-                    {loadingThreadIds?.has(thread.id) && (
-                      <div className="thread-history-item-spinner" />
-                    )}
-                    <button
-                      className="thread-history-item-delete"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleDeleteThread(thread.id);
-                      }}
-                      aria-label="Supprimer cette conversation"
-                      disabled={deletingThreadId === thread.id}
+            <>
+              <div className="thread-history-list">
+                {threads.map((thread) => {
+                  const items = normalizeItems(thread);
+                  return (
+                    <div
+                      key={thread.id}
+                      className={`thread-history-item ${thread.id === currentThreadId ? 'active' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleThreadClick(thread.id)}
+                      onKeyDown={(event) => handleKeyDown(event, thread.id)}
                     >
-                      {deletingThreadId === thread.id ? '...' : '×'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                      <div className="thread-history-item-info">
+                        <div className="thread-history-item-preview">
+                          {getThreadTitle(thread)}
+                        </div>
+                        <div className="thread-history-item-date">
+                          {items.length > 0 && formatDate(items[0].created_at)}
+                        </div>
+                      </div>
+                      {loadingThreadIds?.has(thread.id) && (
+                        <div className="thread-history-item-spinner" />
+                      )}
+                      <button
+                        className="thread-history-item-delete"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteThread(thread.id);
+                        }}
+                        aria-label="Supprimer cette conversation"
+                        disabled={deletingThreadId === thread.id}
+                      >
+                        {deletingThreadId === thread.id ? '...' : '×'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {hasMore && (
+                <div className="thread-history-load-more">
+                  <button
+                    className="button button--subtle button--sm"
+                    onClick={() => loadThreads(false)}
+                    disabled={isLoadingMore}
+                  >
+                    {isLoadingMore ? 'Chargement...' : 'Charger plus'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
