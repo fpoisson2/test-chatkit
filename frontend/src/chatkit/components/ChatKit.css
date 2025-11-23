@@ -815,7 +815,12 @@
   height: 16px;
   border-radius: 50%;
   background: var(--color-text, #1f2937);
-  animation: scale-pulse 1.4s ease-in-out infinite;
+  /*
+    Override the global loading animation that fades elements in and out so the
+    waiting indicator only scales without changing opacity.
+  */
+  opacity: 1;
+  animation: scale-pulse 1.4s ease-in-out infinite !important;
 }
 
 @keyframes fadeIn {
