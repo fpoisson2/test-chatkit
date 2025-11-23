@@ -89,10 +89,12 @@ button.btn-primary:not(:disabled):hover {
 /* Pulse animation for loading states */
 @keyframes pulse {
   0%, 100% {
+    transform: scale(0.9);
     opacity: 1;
   }
   50% {
-    opacity: 0.5;
+    transform: scale(1.05);
+    opacity: 1;
   }
 }
 
