@@ -1006,6 +1006,8 @@
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-title {
   font-size: var(--font-text-xs-size);
   margin-bottom: 6px;
+  position: relative;
+  display: inline-block;
 }
 
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
@@ -1042,7 +1044,8 @@
 }
 
 .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content::after,
-.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown::after {
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown::after,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-title::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1058,8 +1061,9 @@
   mix-blend-mode: multiply;
   opacity: 0.9;
   background-size: 160px 100%;
-  background-position: -200px 0;
-  animation: chatkit-last-task-scan 3.2s linear infinite alternate;
+  background-repeat: repeat-x;
+  background-position: 0 0;
+  animation: chatkit-last-task-scan 3.2s linear infinite;
   animation-delay: -1.6s;
 }
 
@@ -1071,10 +1075,10 @@
 
 @keyframes chatkit-last-task-scan {
   from {
-    background-position: -200px 0;
+    background-position: 0 0;
   }
   to {
-    background-position: 200px 0;
+    background-position: 160px 0;
   }
 }
 
@@ -1094,7 +1098,8 @@
 }
 
 [data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content::after,
-[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown::after {
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown::after,
+[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-title::after {
   background: linear-gradient(
     90deg,
     rgba(0, 0, 0, 0) 0%,
