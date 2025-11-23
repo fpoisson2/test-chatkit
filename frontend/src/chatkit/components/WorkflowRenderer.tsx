@@ -31,6 +31,19 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
 
+  // Obtenir le type de la tâche actuelle ou de la dernière tâche
+  const getCurrentTaskType = (): string | null => {
+    if (displayedTask) {
+      return displayedTask.type;
+    }
+    if (workflow.tasks.length > 0) {
+      return workflow.tasks[workflow.tasks.length - 1].type;
+    }
+    return null;
+  };
+
+  const currentTaskType = getCurrentTaskType();
+
   // Détecter si une image est en cours de génération
   const hasImageGenerating = workflow.tasks.some(
     task => task.type === 'image' && task.status_indicator === 'loading'
@@ -171,8 +184,8 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
             <SummaryRenderer summary={workflow.summary} />
           ) : (
             <div className="chatkit-workflow-default-title">
-              {hasImageGenerating
-                ? "Génération d'une image en cours..."
+              {currentTaskType
+                ? t(`chatkit.task.type.${currentTaskType}`)
                 : isReasoning
                   ? t('chatkit.workflow.reasoning')
                   : t('chatkit.workflow.workflow')}
