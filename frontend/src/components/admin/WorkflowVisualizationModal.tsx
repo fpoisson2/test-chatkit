@@ -206,7 +206,7 @@ const CustomNode = ({
               fontWeight: "bold",
               border: "3px solid var(--color-surface, white)",
               boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
-              animation: "pulse 2s ease-in-out infinite",
+              animation: "chatkit-workflow-visualization-pulse 2s ease-in-out infinite",
             }}
           >
             {data.users.length}
@@ -619,7 +619,7 @@ export const WorkflowVisualizationModal = ({
       </div>
 
       <style>{`
-        @keyframes pulse {
+        @keyframes chatkit-workflow-visualization-pulse {
           0%, 100% {
             transform: scale(1);
           }

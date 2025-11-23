@@ -815,7 +815,6 @@
   height: 16px;
   border-radius: 50%;
   background: var(--color-text, #1f2937);
-  animation: scale-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes fadeIn {
@@ -848,16 +847,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes scale-pulse {
-  0%,
-  100% {
-    transform: scale(0.5);
-  }
-  50% {
-    transform: scale(1);
   }
 }
 
@@ -1456,14 +1445,14 @@
 
 .chatkit-status-connected {
   color: #22c55e;
-  animation: pulse 2s ease-in-out infinite;
+  animation: chatkit-status-pulse 2s ease-in-out infinite;
 }
 
 .chatkit-status-disconnected {
   color: #ef4444;
 }
 
-@keyframes pulse {
+@keyframes chatkit-status-pulse {
   0%, 100% {
     opacity: 1;
   }

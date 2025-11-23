@@ -924,7 +924,7 @@ export function MyChat() {
             height: "8px",
             borderRadius: "50%",
             background: "white",
-            animation: voiceIsListening ? "pulse 1.5s infinite" : "none",
+            animation: voiceIsListening ? "chatkit-voice-pulse 1.5s infinite" : "none",
           }} />
           {voiceStatusMessage}
           <button
@@ -953,7 +953,7 @@ export function MyChat() {
         />
       )}
       <style>{`
-        @keyframes pulse {
+        @keyframes chatkit-voice-pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.5; transform: scale(1.2); }
         }

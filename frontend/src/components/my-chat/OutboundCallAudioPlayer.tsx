@@ -331,7 +331,7 @@ export const OutboundCallAudioPlayer = ({
               height: "10px",
               borderRadius: "50%",
               background: "white",
-              animation: isConnected ? "pulse 1.5s infinite" : "none",
+              animation: isConnected ? "chatkit-outbound-call-pulse 1.5s infinite" : "none",
             }}
           />
           <span style={{ fontWeight: 600 }}>
@@ -443,7 +443,7 @@ export const OutboundCallAudioPlayer = ({
       </div>
 
       <style>{`
-        @keyframes pulse {
+        @keyframes chatkit-outbound-call-pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.5; transform: scale(1.2); }
         }
