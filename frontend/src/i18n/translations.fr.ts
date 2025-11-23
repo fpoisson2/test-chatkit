@@ -281,6 +281,13 @@ export const fr: TranslationDictionary = {
   "admin.appearance.colorScheme.option.system": "Suivre le système",
   "admin.appearance.colorScheme.option.light": "Mode clair",
   "admin.appearance.colorScheme.option.dark": "Mode sombre",
+  "admin.appearance.radius.cardTitle": "Rayon des coins",
+  "admin.appearance.radius.cardDescription":
+    "Définissez le niveau d'arrondi appliqué aux éléments de l'interface.",
+  "admin.appearance.radius.option.soft": "Doux (par défaut)",
+  "admin.appearance.radius.option.round": "Arrondi marqué",
+  "admin.appearance.radius.option.pill": "Pastille (très arrondi)",
+  "admin.appearance.radius.option.sharp": "Angles vifs",
   "admin.appearance.colors.cardTitle": "Couleurs de l'interface",
   "admin.appearance.colors.cardDescription":
     "Définissez la couleur d'accent et ajustez les surfaces si nécessaire.",

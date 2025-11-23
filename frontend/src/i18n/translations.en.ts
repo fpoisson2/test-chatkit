@@ -268,6 +268,13 @@ export const en: TranslationDictionary = {
   "admin.appearance.colorScheme.option.system": "Match system",
   "admin.appearance.colorScheme.option.light": "Light mode",
   "admin.appearance.colorScheme.option.dark": "Dark mode",
+  "admin.appearance.radius.cardTitle": "Corner radius",
+  "admin.appearance.radius.cardDescription":
+    "Control how rounded interface elements should appear.",
+  "admin.appearance.radius.option.soft": "Soft (default)",
+  "admin.appearance.radius.option.round": "Round",
+  "admin.appearance.radius.option.pill": "Pill-shaped",
+  "admin.appearance.radius.option.sharp": "Sharp corners",
   "admin.appearance.colors.cardTitle": "Interface colors",
   "admin.appearance.colors.cardDescription":
     "Define the accent color and tweak surfaces when needed.",

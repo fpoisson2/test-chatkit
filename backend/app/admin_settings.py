@@ -87,7 +87,9 @@ DEFAULT_APPEARANCE_GREETING = ""
 DEFAULT_APPEARANCE_PROMPT = ""
 DEFAULT_APPEARANCE_PLACEHOLDER = "Posez votre question..."
 DEFAULT_APPEARANCE_DISCLAIMER = ""
+DEFAULT_APPEARANCE_RADIUS_STYLE = "soft"
 _ALLOWED_COLOR_SCHEMES = {"system", "light", "dark"}
+_ALLOWED_RADIUS_STYLES = {"pill", "round", "soft", "sharp"}
 
 
 def _now() -> datetime.datetime:
@@ -190,6 +192,32 @@ def _resolve_color_scheme(settings: AppSettings | None) -> str:
         if candidate in _ALLOWED_COLOR_SCHEMES:
             return candidate
     return DEFAULT_APPEARANCE_COLOR_SCHEME
+
+
+def _sanitize_radius_style(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(
+            "Le style d'arrondi doit être pill, round, soft ou sharp."
+        )
+    candidate = value.strip().lower()
+    if candidate not in _ALLOWED_RADIUS_STYLES:
+        raise ValueError(
+            "Le style d'arrondi doit être pill, round, soft ou sharp."
+        )
+    if candidate == DEFAULT_APPEARANCE_RADIUS_STYLE:
+        return None
+    return candidate
+
+
+def _resolve_radius_style(settings: AppSettings | None) -> str:
+    raw_value = getattr(settings, "appearance_radius_style", None)
+    if isinstance(raw_value, str):
+        candidate = raw_value.strip().lower()
+        if candidate in _ALLOWED_RADIUS_STYLES:
+            return candidate
+    return DEFAULT_APPEARANCE_RADIUS_STYLE
 
 
 _HEX_COLOR_PATTERN = re.compile(r"#([0-9a-fA-F]{6})")
@@ -545,6 +573,7 @@ def _compute_model_overrides(settings: AppSettings | None) -> dict[str, Any]:
 
 _APPEARANCE_ATTRIBUTE_NAMES = (
     "appearance_color_scheme",
+    "appearance_radius_style",
     "appearance_accent_color",
     "appearance_use_custom_surface",
     "appearance_surface_hue",
@@ -586,6 +615,7 @@ def _resolve_appearance_settings(
     source = _combine_appearance_sources(settings, workflow_override)
     return {
         "color_scheme": _resolve_color_scheme(source),
+        "radius_style": _resolve_radius_style(source),
         "accent_color": _resolve_accent_color(source),
         "use_custom_surface_colors": bool(
             getattr(source, "appearance_use_custom_surface", False)
@@ -636,6 +666,8 @@ def _has_custom_appearance(settings: AppSettings | None) -> bool:
         return False
     resolved = _resolve_appearance_settings(settings)
     if resolved["color_scheme"] != DEFAULT_APPEARANCE_COLOR_SCHEME:
+        return True
+    if resolved["radius_style"] != DEFAULT_APPEARANCE_RADIUS_STYLE:
         return True
     if resolved["accent_color"].lower() != DEFAULT_APPEARANCE_ACCENT_COLOR:
         return True
@@ -728,6 +760,7 @@ def apply_appearance_update(
     target: Any,
     *,
     color_scheme: str | None | object = _UNSET,
+    radius_style: str | None | object = _UNSET,
     accent_color: str | None | object = _UNSET,
     use_custom_surface_colors: bool | None | object = _UNSET,
     surface_hue: float | int | str | None | object = _UNSET,
@@ -748,6 +781,10 @@ def apply_appearance_update(
                 "Le mode de couleur doit être une chaîne de caractères."
             )
         target.appearance_color_scheme = _sanitize_color_scheme(color_scheme)
+        changed = True
+
+    if radius_style is not _UNSET:
+        target.appearance_radius_style = _sanitize_radius_style(radius_style)
         changed = True
 
     if accent_color is not _UNSET:
@@ -856,6 +893,7 @@ def update_appearance_settings(
     session: Session,
     *,
     color_scheme: str | None | object = _UNSET,
+    radius_style: str | None | object = _UNSET,
     accent_color: str | None | object = _UNSET,
     use_custom_surface_colors: bool | None | object = _UNSET,
     surface_hue: float | int | str | None | object = _UNSET,
@@ -879,6 +917,7 @@ def update_appearance_settings(
     changed = apply_appearance_update(
         settings,
         color_scheme=color_scheme,
+        radius_style=radius_style,
         accent_color=accent_color,
         use_custom_surface_colors=use_custom_surface_colors,
         surface_hue=surface_hue,

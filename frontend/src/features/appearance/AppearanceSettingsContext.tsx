@@ -27,9 +27,85 @@ const DEFAULT_LIGHT_BORDER = "rgba(24, 24, 27, 0.12)";
 const DEFAULT_DARK_SURFACE = "#18181b";
 const DEFAULT_DARK_SURFACE_SUBTLE = "#111114";
 const DEFAULT_DARK_BORDER = "rgba(228, 228, 231, 0.16)";
+const DEFAULT_RADIUS_STYLE = "soft" as const;
+const RADIUS_PRESETS: Record<
+  string,
+  {
+    "2xs": string;
+    xs: string;
+    sm: string;
+    md: string;
+    lg: string;
+    xl: string;
+    "2xl": string;
+    "3xl": string;
+    "4xl": string;
+    full: string;
+  }
+> = {
+  soft: {
+    "2xs": "0.125rem",
+    xs: "0.25rem",
+    sm: "0.375rem",
+    md: "0.5rem",
+    lg: "0.625rem",
+    xl: "0.75rem",
+    "2xl": "1rem",
+    "3xl": "1.25rem",
+    "4xl": "1.5rem",
+    full: "9999px",
+  },
+  round: {
+    "2xs": "0.5rem",
+    xs: "0.65rem",
+    sm: "0.75rem",
+    md: "0.9rem",
+    lg: "1rem",
+    xl: "1.15rem",
+    "2xl": "1.35rem",
+    "3xl": "1.6rem",
+    "4xl": "1.85rem",
+    full: "9999px",
+  },
+  pill: {
+    "2xs": "9999px",
+    xs: "9999px",
+    sm: "9999px",
+    md: "9999px",
+    lg: "9999px",
+    xl: "9999px",
+    "2xl": "9999px",
+    "3xl": "9999px",
+    "4xl": "9999px",
+    full: "9999px",
+  },
+  sharp: {
+    "2xs": "0px",
+    xs: "0px",
+    sm: "0px",
+    md: "0px",
+    lg: "0px",
+    xl: "0px",
+    "2xl": "0px",
+    "3xl": "0px",
+    "4xl": "0px",
+    full: "9999px",
+  },
+};
+
+const sanitizeRadiusStyle = (
+  value: string | null | undefined,
+): keyof typeof RADIUS_PRESETS => {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized && normalized in RADIUS_PRESETS) {
+    return normalized as keyof typeof RADIUS_PRESETS;
+  }
+  return DEFAULT_RADIUS_STYLE;
+};
 
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   color_scheme: "system",
+  radius_style: DEFAULT_RADIUS_STYLE,
   accent_color: DEFAULT_ACCENT,
   use_custom_surface_colors: false,
   surface_hue: DEFAULT_SURFACE_HUE,
@@ -189,6 +265,9 @@ const mergeAppearance = (
 ): AppearanceSettings => ({
   ...DEFAULT_APPEARANCE_SETTINGS,
   ...(payload ?? {}),
+  radius_style: sanitizeRadiusStyle(
+    payload?.radius_style ?? DEFAULT_APPEARANCE_SETTINGS.radius_style,
+  ),
   accent_color: sanitizeHexColor(payload?.accent_color ?? DEFAULT_ACCENT),
   heading_font:
     payload?.heading_font?.trim() || DEFAULT_APPEARANCE_SETTINGS.heading_font,
@@ -262,6 +341,11 @@ const applyDocumentTheme = (settings: AppearanceSettings) => {
   } else {
     delete root.dataset.theme;
   }
+  const radiusStyle = sanitizeRadiusStyle(settings.radius_style);
+  const radiusPreset = RADIUS_PRESETS[radiusStyle];
+  Object.entries(radiusPreset).forEach(([token, value]) => {
+    root.style.setProperty(`--radius-${token}`, value);
+  });
   const palette = buildSurfacePalette(settings);
   root.style.setProperty("--appearance-accent", settings.accent_color);
   root.style.setProperty(

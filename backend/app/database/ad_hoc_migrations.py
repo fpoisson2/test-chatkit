@@ -112,6 +112,23 @@ def _run_ad_hoc_migrations() -> None:
             WorkflowAppearance.__table__.create(bind=connection)
             table_names.add("workflow_appearances")
 
+        if "workflow_appearances" in table_names:
+            workflow_appearance_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("workflow_appearances")
+            }
+            if "appearance_radius_style" not in workflow_appearance_columns:
+                logger.info(
+                    "Migration du schéma workflow_appearances : ajout de la colonne "
+                    "appearance_radius_style",
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_appearances ADD COLUMN "
+                        "appearance_radius_style VARCHAR(16)"
+                    )
+                )
+
         if "hosted_workflows" in table_names:
             hosted_columns = {
                 column["name"]
@@ -746,6 +763,17 @@ def _run_ad_hoc_migrations() -> None:
                     text(
                         "ALTER TABLE app_settings ADD COLUMN appearance_support_email "
                         "TEXT"
+                    )
+                )
+            if "appearance_radius_style" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "appearance_radius_style",
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN appearance_radius_style "
+                        "VARCHAR(16)"
                     )
                 )
             if "appearance_links" not in app_settings_columns:
