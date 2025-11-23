@@ -657,7 +657,8 @@
 
 /* ===== WORKFLOWS ===== */
 .chatkit-workflow {
-  margin: 16px 0;
+  /* Reduce vertical spacing so workflow summaries sit closer to the surrounding messages */
+  margin: 0;
   border: none;
   border-radius: var(--radius-xl);
   background: transparent;
@@ -685,7 +686,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 8px 12px;
   cursor: pointer;
   user-select: none;
   transition: none;
