@@ -1,7 +1,7 @@
 /**
  * Composant ChatKit complet avec toutes les fonctionnalités
  */
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { ChatKitControl, ChatKitOptions, StartScreenPrompt } from '../types';
 import { WidgetRenderer } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
@@ -54,6 +54,26 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     theme,
     api,
   } = options;
+
+  const hasActiveTask = useMemo(() => {
+    const items = control.thread?.items || [];
+
+    return items.some((item: any) => {
+      if (item.type === 'task') {
+        return item.task?.status_indicator === 'loading';
+      }
+
+      if (item.type === 'workflow') {
+        return Array.isArray(item.workflow?.tasks)
+          ? item.workflow.tasks.some((task: any) => task.status_indicator === 'loading')
+          : false;
+      }
+
+      return false;
+    });
+  }, [control.thread?.items]);
+
+  const showHistoryLoading = control.isLoading || hasActiveTask;
 
   // Extract auth token from API headers for DevToolsScreencast
   const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
@@ -408,15 +428,21 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             </button>
             {history?.enabled !== false && (
               <button
-                className="chatkit-header-action"
+                className="chatkit-header-action chatkit-header-action--history"
                 onClick={() => setShowHistory(!showHistory)}
                 aria-label="Historique"
                 title="Historique des conversations"
+                aria-busy={showHistoryLoading}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"></circle>
                   <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
+                {showHistoryLoading && (
+                  <span className="chatkit-header-action__loading" aria-hidden="true">
+                    <span className="chatkit-header-action__loading-circle" />
+                  </span>
+                )}
               </button>
             )}
           </div>

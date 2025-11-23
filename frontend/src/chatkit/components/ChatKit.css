@@ -394,6 +394,35 @@
   transition: all var(--transition-duration-basic);
 }
 
+.chatkit-header-action--history {
+  position: relative;
+}
+
+.chatkit-header-action__loading {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chatkit-header-action__loading-circle {
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--color-text-tertiary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: chatkit-rotate 0.9s linear infinite;
+}
+
+[data-theme="dark"] .chatkit-header-action__loading-circle {
+  border-color: var(--color-text-tertiary);
+  border-top-color: transparent;
+}
+
 .chatkit-header-action:hover {
   background: var(--color-surface-secondary);
   color: var(--color-text);
@@ -412,6 +441,15 @@
   display: block;
   width: 20px;
   height: 20px;
+}
+
+@keyframes chatkit-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .chatkit-header-title {
