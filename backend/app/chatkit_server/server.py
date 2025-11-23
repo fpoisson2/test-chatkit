@@ -796,6 +796,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 yield None
             return
 
+        logger.info(
+            "Action de widget reçue : type=%s, thread=%s, sender=%s, payload_keys=%s",
+            action.type,
+            thread.id,
+            sender.id if sender else None,
+            list(payload.keys()) if payload else [],
+        )
+
         def _build_widget_item(data: Mapping[str, Any]) -> WidgetItem:
             validator = getattr(WidgetItem, "model_validate", None)
             if callable(validator):
@@ -804,6 +812,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         slug, definition_override, values, manual_bindings, copy_text_update = (
             _resolve_widget_action_payload(payload)
+        )
+
+        logger.debug(
+            "Payload résolu : slug=%s, values=%s, bindings=%s, has_definition=%s",
+            slug,
+            values,
+            list(manual_bindings.keys()) if manual_bindings else [],
+            definition_override is not None,
         )
 
         definition = definition_override
@@ -850,6 +866,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     ", ".join(sorted(missing)),
                 )
             matched_identifiers = matched
+            logger.debug(
+                "Variables appliquées : matched=%s, missing=%s",
+                sorted(matched),
+                sorted(missing) if missing else [],
+            )
 
         try:
             widget_root = WidgetLibraryService._validate_widget(definition)
@@ -919,6 +940,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 payload=action_context,
             )
 
+            logger.info(
+                "Action de widget traitée avec succès : type=%s, widget_id=%s, slug=%s",
+                action.type,
+                updated_item.id,
+                slug,
+            )
+
             yield ThreadItemUpdated(
                 item_id=updated_item.id,
                 update=WidgetRootUpdated(widget=widget_root),
@@ -956,6 +984,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             widget_item_id=new_item.id,
             widget_slug=slug,
             payload=action_context,
+        )
+
+        logger.info(
+            "Action de widget traitée avec succès (nouveau widget) : type=%s, widget_id=%s, slug=%s",
+            action.type,
+            new_item.id,
+            slug,
         )
 
         yield ThreadItemDoneEvent(item=new_item)
