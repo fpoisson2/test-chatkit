@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import html
+import re
+from copy import deepcopy
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -55,6 +58,69 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
     def _run_sync(self, func: Callable[[Session], _T]) -> _T:
         with self._session_factory() as session:
             return func(session)
+
+    @staticmethod
+    def _normalize_text_block(text: str) -> str:
+        if not isinstance(text, str):
+            return ""
+
+        normalized = text.strip()
+        if not normalized:
+            return ""
+
+        # Convert legacy HTML-formatted responses back to raw text/markdown.
+        if "<" in normalized and ">" in normalized:
+            normalized = normalized.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+
+            def _replace_code_block(match: re.Match[str]) -> str:
+                language = match.group(1) or ""
+                code_content = html.unescape(match.group(2))
+                return f"\n```{language}\n{code_content}\n```\n"
+
+            normalized = re.sub(
+                r"<pre><code(?: class=\"language-([^\"]+)\")?>(.*?)</code></pre>",
+                _replace_code_block,
+                normalized,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            normalized = re.sub(
+                r"<code(?: class=\"language-([^\"]+)\")?>(.*?)</code>",
+                _replace_code_block,
+                normalized,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            normalized = re.sub(r"</p>\s*<p>", "\n\n", normalized, flags=re.IGNORECASE)
+            normalized = normalized.replace("<p>", "").replace("</p>", "")
+            normalized = html.unescape(re.sub(r"<[^>]+>", "", normalized))
+
+        return normalized
+
+    def _normalize_thread_item_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        updated = False
+        normalized_payload = deepcopy(payload)
+        content_blocks = normalized_payload.get("content")
+        if isinstance(content_blocks, list):
+            normalized_content: list[Any] = []
+            for block in content_blocks:
+                if not isinstance(block, dict):
+                    normalized_content.append(block)
+                    continue
+
+                block_copy = dict(block)
+                if block_copy.get("type") in {"input_text", "output_text", "text"}:
+                    text_value = block_copy.get("text")
+                    normalized_text = self._normalize_text_block(text_value)
+                    if normalized_text != (text_value or ""):
+                        updated = True
+                    block_copy["text"] = normalized_text
+
+                normalized_content.append(block_copy)
+
+            if normalized_content != content_blocks:
+                updated = True
+            normalized_payload["content"] = normalized_content
+
+        return normalized_payload if updated else dict(payload)
 
     def _current_workflow_metadata(self) -> dict[str, Any]:
         definition = self._workflow_service.get_current()
@@ -254,10 +320,20 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             sliced = records[start_index : start_index + effective_limit]
             has_more = start_index + effective_limit < len(records)
             next_after = sliced[-1].id if has_more and sliced else None
-            items = [
-                self._thread_item_adapter.validate_python(record.payload)
-                for record in sliced
-            ]
+            items: list[ThreadItem] = []
+            changed_records: list[ChatThreadItem] = []
+
+            for record in sliced:
+                payload = self._normalize_thread_item_payload(record.payload)
+                if payload != record.payload:
+                    record.payload = payload
+                    changed_records.append(record)
+
+                items.append(self._thread_item_adapter.validate_python(payload))
+
+            if changed_records:
+                session.add_all(changed_records)
+                session.commit()
             return Page(data=items, has_more=has_more, after=next_after)
 
         return await self._run(_load)
@@ -387,7 +463,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 owner_id,
                 expected,
             )
-            payload = item.model_dump(mode="json")
+            payload = self._normalize_thread_item_payload(item.model_dump(mode="json"))
             created_at = _ensure_timezone(getattr(item, "created_at", None))
             existing = session.get(ChatThreadItem, item.id)
             if existing is None:
@@ -434,7 +510,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 raise NotFoundError(
                     f"Élément {item.id} introuvable dans le fil {thread_id}"
                 )
-            record.payload = item.model_dump(mode="json")
+            record.payload = self._normalize_thread_item_payload(
+                item.model_dump(mode="json")
+            )
             record.created_at = _ensure_timezone(getattr(item, "created_at", None))
             session.commit()
 
@@ -463,7 +541,12 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 raise NotFoundError(
                     f"Élément {item_id} introuvable dans le fil {thread_id}"
                 )
-            return self._thread_item_adapter.validate_python(record.payload)
+            payload = self._normalize_thread_item_payload(record.payload)
+            if payload != record.payload:
+                record.payload = payload
+                session.add(record)
+                session.commit()
+            return self._thread_item_adapter.validate_python(payload)
 
         return await self._run(_load)
 

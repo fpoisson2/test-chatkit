@@ -54,7 +54,6 @@ function CodeBlock({ children, language, theme = 'light' }: CodeBlockProps): JSX
         customStyle={{
           margin: 0,
           padding: '0.75rem 1rem',
-          background: 'transparent',
           fontSize: '16px',
         }}
         codeTagProps={{
