@@ -165,6 +165,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
           let updatedThread: Thread | null = null;
 
+          const streamThreadKey = threadKey;
+
           await streamChatKitEvents({
             url: api.url,
             headers: api.headers,
@@ -177,21 +179,31 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
             onThreadUpdate: (newThread: Thread) => {
               console.log('[ChatKit] Thread updated:', newThread);
               updatedThread = newThread;
-              setThread(newThread);
               threadCacheRef.current.set(newThread.id, newThread);
-              activeThreadIdRef.current = newThread.id;
+
+              const activeKey = getThreadKey(activeThreadIdRef.current);
+              const isSelectedThread = streamThreadKey === activeKey;
+              const isViewingThisStream = threadKey === getThreadKey(thread?.id);
+              const shouldUpdateThreadState = isSelectedThread || isViewingThisStream;
+
               if (threadKey !== getThreadKey(newThread.id)) {
                 abortControllersRef.current.delete(threadKey);
                 abortControllersRef.current.set(getThreadKey(newThread.id), controller);
                 setThreadLoading(targetThreadId, false);
                 setThreadLoading(newThread.id, true);
               }
-              onLog?.({ name: 'thread.update', data: { thread: newThread } });
 
-              // Notifier le changement de thread ID si nécessaire
-              if (!thread || thread.id !== newThread.id) {
-                onThreadChange?.({ threadId: newThread.id });
+              if (shouldUpdateThreadState) {
+                setThread(newThread);
               }
+
+              if (isSelectedThread) {
+                activeThreadIdRef.current = newThread.id;
+                if (!thread || thread.id !== newThread.id) {
+                  onThreadChange?.({ threadId: newThread.id });
+                }
+              }
+              onLog?.({ name: 'thread.update', data: { thread: newThread } });
             },
             onClientToolCall: onClientTool
               ? async (toolCall) => {
@@ -218,9 +230,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         setError(error);
         onError?.({ error });
       } finally {
-        const latestThreadId = activeThreadIdRef.current ?? thread?.id ?? targetThreadId;
-        setThreadLoading(latestThreadId, false);
-        abortControllersRef.current.delete(getThreadKey(latestThreadId));
+        const resolvedThreadId = updatedThread?.id ?? targetThreadId ?? null;
+        setThreadLoading(resolvedThreadId, false);
+        abortControllersRef.current.delete(getThreadKey(resolvedThreadId));
       }
     },
     [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading]
