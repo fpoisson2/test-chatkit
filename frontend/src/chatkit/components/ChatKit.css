@@ -763,7 +763,7 @@
   border-top: 1px solid var(--color-border-subtle);
   background: transparent;
   position: relative;
-  padding-left: 32px;
+  padding-left: 0;
   max-width: 800px;
   margin: 0 auto;
   animation: fadeIn 0.3s ease-in-out;
@@ -943,6 +943,11 @@
 
 .chatkit-task--complete {
   position: relative;
+}
+
+.chatkit-workflow-last-task .chatkit-task::before,
+.chatkit-workflow-last-task .chatkit-task::after {
+  display: none;
 }
 
 .chatkit-task-title {
