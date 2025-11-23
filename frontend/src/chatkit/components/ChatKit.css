@@ -6,13 +6,14 @@
   --chatkit-dark-bg-primary: #212121;
   --chatkit-dark-bg-secondary: #2a2a2a;
   --chatkit-dark-border: #3a3a3a;
+  --chatkit-scan-overlay-color: var(--color-surface, #fff);
   --chatkit-scan-gradient: linear-gradient(
     90deg,
-    rgba(0, 0, 0, 0) 0%,
-    rgba(0, 0, 0, 0.06) 24%,
-    rgba(0, 0, 0, 0.18) 42%,
-    rgba(0, 0, 0, 0.06) 58%,
-    rgba(0, 0, 0, 0) 76%
+    transparent 0%,
+    color-mix(in srgb, var(--chatkit-scan-overlay-color) 60%, transparent) 24%,
+    color-mix(in srgb, var(--chatkit-scan-overlay-color) 92%, transparent) 42%,
+    color-mix(in srgb, var(--chatkit-scan-overlay-color) 60%, transparent) 58%,
+    transparent 76%
   );
 }
 
@@ -1166,8 +1167,8 @@
   inset: 0;
   pointer-events: none;
   background-image: var(--chatkit-scan-gradient);
-  mix-blend-mode: multiply;
-  opacity: 0.7;
+  mix-blend-mode: normal;
+  opacity: 0.9;
   background-size: 58% 100%;
   background-repeat: no-repeat;
   background-position: -70% 0;
@@ -1215,8 +1216,8 @@
   inset: 0;
   pointer-events: none;
   background-image: var(--chatkit-scan-gradient);
-  mix-blend-mode: multiply;
-  opacity: 0.7;
+  mix-blend-mode: normal;
+  opacity: 0.9;
   background-size: 58% 100%;
   background-repeat: no-repeat;
   background-position: -70% 0;
@@ -1240,14 +1241,7 @@
 }
 
 [data-theme="dark"] {
-  --chatkit-scan-gradient: linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0) 0%,
-    rgba(0, 0, 0, 0.08) 24%,
-    rgba(0, 0, 0, 0.28) 42%,
-    rgba(0, 0, 0, 0.08) 58%,
-    rgba(0, 0, 0, 0) 76%
-  );
+  --chatkit-scan-overlay-color: var(--chatkit-dark-bg-secondary, #2a2a2a);
 }
 
 [data-theme="dark"] .chatkit-task-thought {
