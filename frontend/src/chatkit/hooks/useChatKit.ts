@@ -436,11 +436,23 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     [currentThreadId, getThreadKey, loadingByThread],
   );
 
+  // Créer un Set des thread IDs en cours de chargement
+  const loadingThreadIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [key, isLoading] of Object.entries(loadingByThread)) {
+      if (isLoading && key !== '__new_thread__' && !key.startsWith('__temp_thread_')) {
+        ids.add(key);
+      }
+    }
+    return ids;
+  }, [loadingByThread]);
+
   // Créer le control object
   const control: ChatKitControl = {
     thread,
     isLoading,
     error,
+    loadingThreadIds,
     sendMessage: sendUserMessage,
     refresh: fetchUpdates,
     customAction,
