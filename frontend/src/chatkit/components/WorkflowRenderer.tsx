@@ -194,7 +194,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
       {/* Afficher la dernière tâche complète */}
       {!expanded && displayedTask && (
-        <div className="chatkit-workflow-last-task" key={fadeKey}>
+        <div className="chatkit-workflow-last-task">
           <TaskRenderer task={displayedTask} theme={theme} />
         </div>
       )}
