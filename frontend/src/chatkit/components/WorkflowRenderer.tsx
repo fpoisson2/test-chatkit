@@ -62,8 +62,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
 
       // Vérifier si on peut passer à la suivante
       if (taskQueueRef.current.length > 0) {
-        // Il y a une tâche en attente, passer à la suivante
-        setDisplayedTask(null);
+        // Il y a une tâche en attente, passer directement à la suivante
         isProcessingRef.current = false;
         minDisplayTimeRef.current = null;
         processQueue();
@@ -89,8 +88,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         // Si le temps minimum est écoulé et qu'on n'a plus de timeout actif
         // (c'est-à-dire qu'on attend juste une nouvelle tâche)
         if (elapsed >= 2000 && !displayTimeoutRef.current) {
-          // On peut passer immédiatement à la nouvelle tâche
-          setDisplayedTask(null);
+          // On peut passer directement à la nouvelle tâche
           isProcessingRef.current = false;
           minDisplayTimeRef.current = null;
           processQueue();
