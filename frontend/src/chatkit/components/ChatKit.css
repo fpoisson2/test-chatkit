@@ -1445,14 +1445,14 @@
 
 .chatkit-status-connected {
   color: #22c55e;
-  animation: pulse 2s ease-in-out infinite;
+  animation: chatkit-status-pulse 2s ease-in-out infinite;
 }
 
 .chatkit-status-disconnected {
   color: #ef4444;
 }
 
-@keyframes pulse {
+@keyframes chatkit-status-pulse {
   0%, 100% {
     opacity: 1;
   }
