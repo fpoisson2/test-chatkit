@@ -201,6 +201,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           // Utiliser une ref mutable pour suivre l'ID du thread en cours de streaming
           // Cela permet de gérer le cas où un thread temporaire reçoit son vrai ID
           const streamThreadKeyRef = { current: threadKey };
+          const streamThreadIdRef = { current: targetThreadId };
 
           await streamChatKitEvents({
             url: api.url,
@@ -225,8 +226,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
                 abortControllersRef.current.set(getThreadKey(newThread.id), controller);
                 setThreadLoading(targetThreadId, false);
                 setThreadLoading(newThread.id, true);
-                // Mettre à jour la clé de streaming pour qu'elle corresponde au nouveau thread
+                // Mettre à jour la clé et l'ID de streaming pour qu'ils correspondent au nouveau thread
                 streamThreadKeyRef.current = getThreadKey(newThread.id);
+                streamThreadIdRef.current = newThread.id;
               }
 
               if (shouldUpdateThreadState) {
@@ -272,7 +274,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         setError(error);
         onError?.({ error });
       } finally {
-        const resolvedThreadId = updatedThread?.id ?? targetThreadId ?? null;
+        // Utiliser streamThreadIdRef qui suit le vrai ID même si le thread change d'ID temporaire à un vrai ID
+        const resolvedThreadId = streamThreadIdRef.current;
         setThreadLoading(resolvedThreadId, false);
         abortControllersRef.current.delete(getThreadKey(resolvedThreadId));
       }
