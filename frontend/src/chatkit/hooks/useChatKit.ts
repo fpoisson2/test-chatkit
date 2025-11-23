@@ -37,6 +37,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   const [error, setError] = useState<Error | null>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const activeThreadIdRef = useRef<string | null>(initialThread || null);
+  const threadCacheRef = useRef<Map<string, Thread>>(new Map());
 
   const getThreadKey = useCallback((threadId: string | null | undefined) => threadId ?? '__new_thread__', []);
 
@@ -60,6 +61,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     if (initialThread === null) {
       setThread(null);
       activeThreadIdRef.current = null;
+      threadCacheRef.current.clear();
       abortControllersRef.current.forEach((controller) => controller.abort());
       abortControllersRef.current.clear();
       setLoadingByThread({});
@@ -83,6 +85,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       })
         .then((loadedThread) => {
           setThread(loadedThread);
+          threadCacheRef.current.set(loadedThread.id, loadedThread);
           activeThreadIdRef.current = loadedThread.id;
           setThreadLoading(loadedThread.id, false);
           onThreadLoadEnd?.({ threadId: initialThread });
@@ -111,7 +114,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       const targetThreadId = activeThreadIdRef.current ?? thread?.id ?? null;
       const threadKey = getThreadKey(targetThreadId);
       const existingController = abortControllersRef.current.get(threadKey);
-      const initialThreadForStream = thread?.id === targetThreadId ? thread : null;
+      const initialThreadForStream =
+        targetThreadId ? threadCacheRef.current.get(targetThreadId) ?? null : null;
 
       if (existingController) {
         existingController.abort();
@@ -137,11 +141,11 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         };
 
           // Si un thread existe, ajouter un message. Sinon, créer un nouveau thread
-          const payload = thread?.id
+          const payload = targetThreadId
             ? {
                 type: 'threads.add_user_message',
                 params: {
-                  thread_id: thread.id,
+                  thread_id: targetThreadId,
                   input,
                 },
               }
@@ -169,6 +173,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
               console.log('[ChatKit] Thread updated:', newThread);
               updatedThread = newThread;
               setThread(newThread);
+              threadCacheRef.current.set(newThread.id, newThread);
               activeThreadIdRef.current = newThread.id;
               if (threadKey !== getThreadKey(newThread.id)) {
                 abortControllersRef.current.delete(threadKey);
@@ -233,6 +238,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       });
 
       setThread(updatedThread);
+      threadCacheRef.current.set(updatedThread.id, updatedThread);
       activeThreadIdRef.current = updatedThread.id;
       setThreadLoading(updatedThread.id, false);
       onLog?.({ name: 'thread.refresh', data: { thread: updatedThread } });
