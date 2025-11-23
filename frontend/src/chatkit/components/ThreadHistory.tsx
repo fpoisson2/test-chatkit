@@ -15,38 +15,75 @@ export interface ThreadHistoryProps {
   onClose: () => void;
 }
 
+// Cache au niveau du module pour persister les données entre les montages
+let cachedThreads: Thread[] = [];
+let cachedAfter: string | undefined = undefined;
+let cachedHasMore = true;
+
 export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThreadSelect, onThreadDeleted, onClose }: ThreadHistoryProps): JSX.Element {
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [threads, setThreads] = useState<Thread[]>(cachedThreads);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(cachedHasMore);
+  const [after, setAfter] = useState<string | undefined>(cachedAfter);
+
+  const loadThreads = async (isInitial = false, isRefresh = false) => {
+    // Pour le premier chargement sans cache, afficher le spinner
+    if (isInitial && !isRefresh && cachedThreads.length === 0) {
+      setIsLoading(true);
+    } else if (!isInitial) {
+      // Pour "Charger plus"
+      setIsLoadingMore(true);
+    } else if (isRefresh) {
+      // Pour le refresh, on met juste à jour isLoading pour le bouton
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const response = await listThreads({
+        url: api.url,
+        headers: api.headers,
+        limit: 10,
+        order: 'desc',
+        after: isInitial || isRefresh ? undefined : after,
+      });
+
+      const newThreads = response.data || [];
+      const updatedThreads = (isInitial || isRefresh) ? newThreads : [...threads, ...newThreads];
+      const updatedHasMore = newThreads.length === 10;
+      const updatedAfter = newThreads.length > 0 ? newThreads[newThreads.length - 1].id : after;
+
+      // Mettre à jour l'état local
+      setThreads(updatedThreads);
+      setHasMore(updatedHasMore);
+      setAfter(updatedAfter);
+
+      // Mettre à jour le cache
+      cachedThreads = updatedThreads;
+      cachedHasMore = updatedHasMore;
+      cachedAfter = updatedAfter;
+    } catch (err) {
+      console.error('[ThreadHistory] Failed to load threads:', err);
+      setError('Impossible de charger l\'historique');
+      if (isInitial && !isRefresh && cachedThreads.length === 0) {
+        setThreads([]);
+        cachedThreads = [];
+      }
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
-    const loadThreads = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await listThreads({
-          url: api.url,
-          headers: api.headers,
-          limit: 20,
-          order: 'desc',
-        });
-
-        setThreads(response.data || []);
-      } catch (err) {
-        console.error('[ThreadHistory] Failed to load threads:', err);
-        setError('Impossible de charger l\'historique');
-        setThreads([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadThreads();
-  }, [api.url, api.headers]);
+    // Toujours charger en arrière-plan, que le cache existe ou non
+    loadThreads(true, cachedThreads.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleThreadClick = (threadId: string) => {
     onThreadSelect(threadId);
@@ -115,7 +152,10 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
         threadId,
       });
 
-      setThreads((prev) => prev.filter((thread) => thread.id !== threadId));
+      const updatedThreads = threads.filter((thread) => thread.id !== threadId);
+      setThreads(updatedThreads);
+      cachedThreads = updatedThreads;
+
       if (currentThreadId === threadId) {
         onThreadDeleted?.(threadId);
       }
@@ -132,13 +172,23 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
       <div className="thread-history-panel" onClick={(e) => e.stopPropagation()}>
         <div className="thread-history-header">
           <h2>Historique des conversations</h2>
-          <button className="thread-history-close" onClick={onClose} aria-label="Fermer">
-            ×
-          </button>
+          <div className="thread-history-header-actions">
+            <button
+              className={`thread-history-refresh ${isLoading ? 'spinning' : ''}`}
+              onClick={() => loadThreads(true, true)}
+              aria-label="Rafraîchir"
+              disabled={isLoading}
+            >
+              ↻
+            </button>
+            <button className="thread-history-close" onClick={onClose} aria-label="Fermer">
+              ×
+            </button>
+          </div>
         </div>
 
         <div className="thread-history-content">
-          {isLoading && (
+          {isLoading && cachedThreads.length === 0 && (
             <div className="thread-history-loading">
               <div className="thread-history-spinner"></div>
               <p>Chargement...</p>
@@ -163,45 +213,59 @@ export function ThreadHistory({ api, currentThreadId, loadingThreadIds, onThread
             </div>
           )}
 
-          {!isLoading && !error && threads.length > 0 && (
-            <div className="thread-history-list">
-              {threads.map((thread) => {
-                const items = normalizeItems(thread);
-                return (
-                  <div
-                    key={thread.id}
-                    className={`thread-history-item ${thread.id === currentThreadId ? 'active' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handleThreadClick(thread.id)}
-                    onKeyDown={(event) => handleKeyDown(event, thread.id)}
-                  >
-                    <div className="thread-history-item-info">
-                      <div className="thread-history-item-preview">
-                        {getThreadTitle(thread)}
-                      </div>
-                      <div className="thread-history-item-date">
-                        {items.length > 0 && formatDate(items[0].created_at)}
-                      </div>
-                    </div>
-                    {loadingThreadIds?.has(thread.id) && (
-                      <div className="thread-history-item-spinner" />
-                    )}
-                    <button
-                      className="thread-history-item-delete"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleDeleteThread(thread.id);
-                      }}
-                      aria-label="Supprimer cette conversation"
-                      disabled={deletingThreadId === thread.id}
+          {!error && threads.length > 0 && (
+            <>
+              <div className="thread-history-list">
+                {threads.map((thread) => {
+                  const items = normalizeItems(thread);
+                  return (
+                    <div
+                      key={thread.id}
+                      className={`thread-history-item ${thread.id === currentThreadId ? 'active' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleThreadClick(thread.id)}
+                      onKeyDown={(event) => handleKeyDown(event, thread.id)}
                     >
-                      {deletingThreadId === thread.id ? '...' : '×'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                      <div className="thread-history-item-info">
+                        <div className="thread-history-item-preview">
+                          {getThreadTitle(thread)}
+                        </div>
+                        <div className="thread-history-item-date">
+                          {items.length > 0 && formatDate(items[0].created_at)}
+                        </div>
+                      </div>
+                      {loadingThreadIds?.has(thread.id) && (
+                        <div className="thread-history-item-spinner" />
+                      )}
+                      <button
+                        className="thread-history-item-delete"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteThread(thread.id);
+                        }}
+                        aria-label="Supprimer cette conversation"
+                        disabled={deletingThreadId === thread.id}
+                      >
+                        {deletingThreadId === thread.id ? '...' : '×'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {hasMore && (
+                <div className="thread-history-load-more">
+                  <button
+                    className="button button--subtle button--sm"
+                    onClick={() => loadThreads(false)}
+                    disabled={isLoadingMore}
+                  >
+                    {isLoadingMore ? 'Chargement...' : 'Charger plus'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
