@@ -41,6 +41,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const singleLineHeightRef = useRef<number | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
   const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   const {
     header,
@@ -177,6 +178,29 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       setIsMultiline(shouldBeMultiline);
     }
   }, [inputValue, isMultiline]);
+
+  // Ajuster le décalage du clavier virtuel sur mobile pour ne déplacer que le composer
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+
+    const viewport = window.visualViewport;
+
+    const updateKeyboardOffset = () => {
+      const heightDiff = window.innerHeight - viewport.height;
+      const offsetTop = viewport.offsetTop ?? 0;
+      const offset = Math.max(0, heightDiff - offsetTop);
+      setKeyboardOffset(offset);
+    };
+
+    updateKeyboardOffset();
+    viewport.addEventListener('resize', updateKeyboardOffset);
+    viewport.addEventListener('scroll', updateKeyboardOffset);
+
+    return () => {
+      viewport.removeEventListener('resize', updateKeyboardOffset);
+      viewport.removeEventListener('scroll', updateKeyboardOffset);
+    };
+  }, []);
 
   // Gérer l'ajout de fichiers
   const handleFileSelect = useCallback(async (files: FileList | null) => {
@@ -332,7 +356,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   return (
     <div
       className={`chatkit ${className || ''}`}
-      style={style}
+      style={{
+        ...style,
+        ['--chatkit-keyboard-offset' as const]: `${keyboardOffset}px`,
+      }}
       data-theme={theme?.colorScheme}
     >
       {/* Header */}
