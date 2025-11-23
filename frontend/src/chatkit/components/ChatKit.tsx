@@ -2,8 +2,9 @@
  * Composant ChatKit complet avec toutes les fonctionnalités
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { ChatKitControl, ChatKitOptions, StartScreenPrompt, ThreadItem } from '../types';
+import type { ChatKitControl, ChatKitOptions, StartScreenPrompt, ThreadItem, ActionConfig } from '../types';
 import { WidgetRenderer } from '../widgets';
+import type { WidgetContext } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
 import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
@@ -45,6 +46,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const previousKeyboardOffsetRef = useRef(0);
   const lastUserMessageIdRef = useRef<string | null>(null);
+  const formDataRef = useRef<FormData | null>(null);
 
   const {
     header,
@@ -370,6 +372,43 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     setTimeout(() => setCopiedMessageId(null), 2000);
   };
 
+  // Créer un callback pour gérer les actions de widgets
+  const createWidgetContext = useCallback((itemId: string): WidgetContext => ({
+    onAction: (actionConfig: ActionConfig) => {
+      // Convert ActionConfig to Action format expected by customAction
+      // ActionConfig structure: { type, payload, handler?, loadingBehavior? }
+      // handler and loadingBehavior are ActionConfig properties, NOT part of payload
+      const { type, payload, handler, loadingBehavior, ...rest } = actionConfig;
+
+      // Collect form data if available
+      const formData = formDataRef.current ? Object.fromEntries(formDataRef.current.entries()) : {};
+
+      // Build the payload combining all data sources
+      // The payload is stored as-is in raw_payload, so data should be at root level
+      // for workflow access via input.action.raw_payload.fieldName
+      const actionPayload = {
+        ...(payload || {}),
+        ...formData,
+        ...rest, // Include any extra properties that aren't ActionConfig metadata
+      };
+
+      const action = {
+        type,
+        // Use 'data' for frontend Action type, will be converted to 'payload' by API
+        data: actionPayload,
+      };
+
+      // Clear form data after use
+      formDataRef.current = null;
+      // Send the action to the backend
+      control.customAction(itemId, action);
+    },
+    onFormData: (data: FormData) => {
+      // Store form data to be included in the next action
+      formDataRef.current = data;
+    },
+  }), [control]);
+
   // Afficher le start screen si pas de messages ET qu'on n'est pas en train de charger
   const showStartScreen = !control.isLoading && (!control.thread || control.thread.items.length === 0);
 
@@ -536,7 +575,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                             </>
                           )}
                           {content.type === 'widget' && (
-                            <WidgetRenderer widget={content.widget} />
+                            <WidgetRenderer widget={content.widget} context={createWidgetContext(item.id)} />
                           )}
                         </div>
                       ))}
@@ -587,7 +626,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 {/* Widget standalone */}
                 {item.type === 'widget' && (
                   <div className="chatkit-message-content">
-                    <WidgetRenderer widget={item.widget} />
+                    <WidgetRenderer widget={item.widget} context={createWidgetContext(item.id)} />
                   </div>
                 )}
 
