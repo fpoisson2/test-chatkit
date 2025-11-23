@@ -84,10 +84,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
         delete next[getThreadKey(null)];
         return next;
       });
-    } else if (initialThread) {
-      activeThreadIdRef.current = initialThread;
-      visibleThreadIdRef.current = initialThread;
     }
+    // Note: Ne pas mettre à jour les refs quand initialThread change à un ID non-null,
+    // car le deuxième effet (qui charge le thread) va le faire correctement.
   }, [getThreadKey, generateTempThreadId, initialThread]);
 
   // Charger le thread initial
