@@ -933,6 +933,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     yield None
                 return
 
+            logger.debug(
+                "Signalement de l'action au workflow : action_context=%s",
+                action_context,
+            )
+
             await self._signal_widget_action(
                 thread.id,
                 widget_item_id=updated_item.id,
@@ -978,6 +983,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             if False:  # pragma: no cover - satisfait l'interface AsyncIterator
                 yield None
             return
+
+        logger.debug(
+            "Signalement de l'action au workflow : action_context=%s",
+            action_context,
+        )
 
         await self._signal_widget_action(
             thread.id,
