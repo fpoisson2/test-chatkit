@@ -804,10 +804,9 @@
 .chatkit-workflow-loading-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--accent-color-primary);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  background: var(--color-text, #1f2937);
+  animation: scale-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes fadeIn {
@@ -843,12 +842,13 @@
   }
 }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
+@keyframes scale-pulse {
+  0%,
+  100% {
+    transform: scale(0.5);
   }
-  to {
-    transform: rotate(360deg);
+  50% {
+    transform: scale(1);
   }
 }
 
@@ -884,8 +884,7 @@
 }
 
 [data-theme="dark"] .chatkit-workflow-loading-spinner {
-  border-color: var(--color-border);
-  border-top-color: var(--accent-color-primary);
+  background: var(--color-text, #ffffff);
 }
 
 [data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(.chatkit-task--custom)::before,
