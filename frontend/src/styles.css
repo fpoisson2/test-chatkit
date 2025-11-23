@@ -1276,7 +1276,7 @@ button {
   line-height: 1;
   width: 2rem;
   height: 2rem;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1846,7 +1846,7 @@ button {
   flex-direction: column;
   gap: 6px;
   background: var(--surface-strong);
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   border: 1px solid rgba(15, 23, 42, 0.08);
   box-shadow: var(--shadow-soft);
   padding: 12px;
@@ -2873,7 +2873,7 @@ button {
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
-  border-radius: 24px;
+  border-radius: var(--radius-4xl);
   box-shadow: var(--shadow-card);
   border: 1px solid var(--color-border-subtle);
   overflow: hidden;

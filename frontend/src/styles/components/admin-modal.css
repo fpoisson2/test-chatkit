@@ -12,7 +12,7 @@
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   overflow: hidden;
 }
 
@@ -82,7 +82,7 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--color-text-muted);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: all 0.2s ease;
     text-align: left;
@@ -164,7 +164,7 @@
     color: var(--color-text);
     background: var(--form-field-background);
     border: 1px solid var(--color-border-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: all 0.2s ease;
   }
@@ -201,7 +201,7 @@
 .admin-modal__select-content {
   overflow: visible;
   background: var(--color-surface);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border-subtle);
   box-shadow: 0 10px 38px -10px rgba(0, 0, 0, 0.2),
     0 10px 20px -15px rgba(0, 0, 0, 0.1);
@@ -226,12 +226,12 @@
 
 .admin-modal__select-viewport::-webkit-scrollbar-track {
   background: var(--color-surface-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 .admin-modal__select-viewport::-webkit-scrollbar-thumb {
   background: var(--color-text-muted);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 .admin-modal__select-viewport::-webkit-scrollbar-thumb:hover {
@@ -246,7 +246,7 @@
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   color: var(--color-text);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   user-select: none;
   position: relative;
@@ -335,7 +335,7 @@
     align-items: stretch;
     gap: 0.5rem;
     padding: 0;
-    border-radius: clamp(0.75rem, 3vw, 1rem);
+    border-radius: clamp(var(--radius-xl), 3vw, var(--radius-2xl));
     background: transparent;
     backdrop-filter: none;
     border: none;
@@ -355,7 +355,7 @@
   .admin-modal__mobile-content .widget-gallery .widget-preview__basic,
   .admin-modal__mobile-content .widget-gallery .widget-preview__collection {
     padding: clamp(1.1rem, 4vw, 1.35rem);
-    border-radius: clamp(1rem, 5vw, 1.4rem);
+    border-radius: clamp(var(--radius-2xl), 5vw, var(--radius-4xl));
   }
 }
 
