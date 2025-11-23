@@ -1247,6 +1247,7 @@ export const fr: TranslationDictionary = {
     "Importez une image ou saisissez une URL/expression existante. En l'absence de fichier, le texte est utilisé tel quel.",
   "chatkit.thread.newConversation": "Nouvelle conversation",
   "chatkit.thread.conversation": "Conversation",
+  "chatkit.thread.newMessagePending": "Préparation du prochain message",
   "chatkit.message.copy": "Copier",
   "chatkit.message.copied": "Copié",
   "chatkit.code.copy": "Copier le code",
