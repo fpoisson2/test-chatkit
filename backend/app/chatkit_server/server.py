@@ -1205,12 +1205,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     end_state=end_state,
                     context=getattr(agent_context, "request_context", None),
                 )
-                end_message = self._settings.workflow_defaults.default_end_message
                 status_type_raw = (end_state.status_type or "closed").strip().lower()
                 cleaned_reason = (
-                    (end_state.status_reason or end_state.message or end_message) or ""
+                    (end_state.status_reason or end_state.message) or ""
                 ).strip() or None
-                status_reason = cleaned_reason or end_message
+                status_reason = cleaned_reason
 
                 if status_type_raw in {"", "closed"}:
                     thread.status = ClosedStatus(reason=status_reason)
@@ -1256,7 +1255,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                             if applied_status
                             else "inconnu"
                         ),
-                        cleaned_reason or end_message,
+                        cleaned_reason or "<aucune>",
                     )
                 else:
                     logger.info(
@@ -1269,7 +1268,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                             if applied_status
                             else "inconnu"
                         ),
-                        cleaned_reason or end_message,
+                        cleaned_reason or "<aucune>",
                     )
             else:
                 logger.info(

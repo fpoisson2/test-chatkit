@@ -76,7 +76,7 @@ class EndNodeHandler(BaseNodeHandler):
         resolved_message = (
             end_state.message
             or end_state.status_reason
-            or "Workflow terminé"
+            or ""
         )
 
         end_payload: dict[str, Any] = {"message": resolved_message}
