@@ -2,7 +2,7 @@
  * Composant ChatKit complet avec toutes les fonctionnalités
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { ChatKitControl, ChatKitOptions, StartScreenPrompt } from '../types';
+import type { ChatKitControl, ChatKitOptions, StartScreenPrompt, ThreadItem } from '../types';
 import { WidgetRenderer } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
 import { TaskRenderer } from './TaskRenderer';
@@ -44,6 +44,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const previousKeyboardOffsetRef = useRef(0);
+  const lastUserMessageIdRef = useRef<string | null>(null);
 
   const {
     header,
@@ -62,6 +63,24 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [control.thread?.items.length]);
+
+  // Clear the composer once a new user message is added to the thread
+  useEffect(() => {
+    const items = (control.thread?.items || []) as ThreadItem[];
+    if (!items.length) {
+      lastUserMessageIdRef.current = null;
+      return;
+    }
+
+    const lastUserMessage = [...items].reverse().find(item => item.type === 'user_message');
+    if (!lastUserMessage) return;
+
+    if (lastUserMessage.id !== lastUserMessageIdRef.current) {
+      setInputValue('');
+      setAttachments([]);
+      lastUserMessageIdRef.current = lastUserMessage.id;
+    }
+  }, [control.thread?.items]);
 
   // Conserver le dernier screencast actif jusqu'à ce qu'un nouveau arrive ou qu'il se déconnecte
   useEffect(() => {
