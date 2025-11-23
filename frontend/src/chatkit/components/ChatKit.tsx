@@ -380,14 +380,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // handler and loadingBehavior are ActionConfig properties, NOT part of payload
       const { type, payload, handler, loadingBehavior, ...rest } = actionConfig;
 
-      // Build the payload combining:
-      // 1. ActionConfig payload (business data)
-      // 2. Form data if available
-      // 3. Any other properties (excluding ActionConfig metadata)
-      const actionPayload = {
+      // Collect form data if available
+      const formData = formDataRef.current ? Object.fromEntries(formDataRef.current.entries()) : {};
+
+      // Build the values object combining payload and form data
+      // Backend expects values to be in payload.values or payload.variables
+      const values = {
         ...(payload || {}),
-        ...(formDataRef.current ? Object.fromEntries(formDataRef.current.entries()) : {}),
+        ...formData,
         ...rest, // Include any extra properties that aren't ActionConfig metadata
+      };
+
+      // Wrap values in 'values' key for backend extraction
+      const actionPayload = {
+        values,
       };
 
       const action = {
