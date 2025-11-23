@@ -237,6 +237,8 @@ async def patch_appearance_settings(
     kwargs: dict[str, object] = {}
     if "color_scheme" in payload.model_fields_set:
         kwargs["color_scheme"] = payload.color_scheme
+    if "radius_style" in payload.model_fields_set:
+        kwargs["radius_style"] = payload.radius_style
     if "accent_color" in payload.model_fields_set:
         kwargs["accent_color"] = payload.accent_color
     if "use_custom_surface_colors" in payload.model_fields_set:
