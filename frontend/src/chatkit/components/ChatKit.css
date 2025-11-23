@@ -1019,6 +1019,16 @@
   margin-top: 0.5em;
 }
 
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-task-content,
+.chatkit-workflow-last-task .chatkit-task-thought .chatkit-markdown {
+  position: relative;
+  display: block;
+  max-height: 100px;
+  overflow: hidden;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 1) 68%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 1) 68%, rgba(0, 0, 0, 0) 100%);
+}
+
 [data-theme="dark"] .chatkit-task-thought {
   background: transparent;
 }
