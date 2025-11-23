@@ -221,7 +221,15 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           });
 
         if (updatedThread) {
-          setThread(updatedThread);
+          const currentActiveKey = getThreadKey(activeThreadIdRef.current);
+          const streamKey = streamThreadKey;
+
+          // Ne mettre à jour l'UI que si le thread de ce flux est toujours celui
+          // sélectionné par l'utilisateur. Sinon, on garde uniquement le cache
+          // à jour pour éviter de changer de conversation automatiquement.
+          if (currentActiveKey === streamKey) {
+            setThread(updatedThread);
+          }
         }
 
         onResponseEnd?.();
