@@ -57,11 +57,6 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     });
   }, [getThreadKey]);
 
-  // Réinitialiser le thread si initialThread devient null
-  useEffect(() => {
-    visibleThreadIdRef.current = thread?.id ?? null;
-  }, [thread?.id]);
-
   useEffect(() => {
     if (initialThread === null) {
       // Ne pas annuler les autres flux en cours : nous gérons plusieurs conversations
@@ -252,7 +247,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
   // Récupérer les mises à jour du thread
   const fetchUpdates = useCallback(async () => {
-    const targetThreadId = thread?.id ?? activeThreadIdRef.current;
+    const targetThreadId = visibleThreadIdRef.current ?? activeThreadIdRef.current;
 
     if (!targetThreadId) {
       return;
@@ -269,6 +264,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       setThread(updatedThread);
       threadCacheRef.current.set(updatedThread.id, updatedThread);
       activeThreadIdRef.current = updatedThread.id;
+      visibleThreadIdRef.current = updatedThread.id;
       setThreadLoading(updatedThread.id, false);
       onLog?.({ name: 'thread.refresh', data: { thread: updatedThread } });
     } catch (err) {
@@ -278,7 +274,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     } finally {
       setThreadLoading(targetThreadId, false);
     }
-  }, [thread?.id, api.url, api.headers, onError, onLog, setThreadLoading]);
+  }, [api.url, api.headers, onError, onLog, setThreadLoading]);
 
   useEffect(() => {
     return () => {
