@@ -37,6 +37,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   const [error, setError] = useState<Error | null>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const activeThreadIdRef = useRef<string | null>(initialThread || null);
+  const visibleThreadIdRef = useRef<string | null>(initialThread || null);
   const threadCacheRef = useRef<Map<string, Thread>>(new Map());
 
   const getThreadKey = useCallback((threadId: string | null | undefined) => threadId ?? '__new_thread__', []);
@@ -58,6 +59,10 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
   // Réinitialiser le thread si initialThread devient null
   useEffect(() => {
+    visibleThreadIdRef.current = thread?.id ?? null;
+  }, [thread?.id]);
+
+  useEffect(() => {
     if (initialThread === null) {
       // Ne pas annuler les autres flux en cours : nous gérons plusieurs conversations
       // en parallèle et celles qui continuent à streamer doivent rester actives.
@@ -65,6 +70,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       // conversation.
       setThread(null);
       activeThreadIdRef.current = null;
+      visibleThreadIdRef.current = null;
       setLoadingByThread((prev) => {
         const next = { ...prev };
         delete next[getThreadKey(null)];
@@ -72,6 +78,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       });
     } else if (initialThread) {
       activeThreadIdRef.current = initialThread;
+      visibleThreadIdRef.current = initialThread;
     }
   }, [getThreadKey, initialThread]);
 
@@ -92,6 +99,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           setThread(loadedThread);
           threadCacheRef.current.set(loadedThread.id, loadedThread);
           activeThreadIdRef.current = loadedThread.id;
+          visibleThreadIdRef.current = loadedThread.id;
           setThreadLoading(loadedThread.id, false);
           onThreadLoadEnd?.({ threadId: initialThread });
           onLog?.({ name: 'thread.load.end', data: { thread: loadedThread } });
@@ -181,10 +189,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
               updatedThread = newThread;
               threadCacheRef.current.set(newThread.id, newThread);
 
-              const activeKey = getThreadKey(activeThreadIdRef.current);
-              const isSelectedThread = streamThreadKey === activeKey;
-              const isViewingThisStream = threadKey === getThreadKey(thread?.id);
-              const shouldUpdateThreadState = isSelectedThread || isViewingThisStream;
+              const visibleKey = getThreadKey(visibleThreadIdRef.current);
+              const shouldUpdateThreadState = streamThreadKey === visibleKey;
 
               if (threadKey !== getThreadKey(newThread.id)) {
                 abortControllersRef.current.delete(threadKey);
@@ -195,10 +201,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
 
               if (shouldUpdateThreadState) {
                 setThread(newThread);
-              }
-
-              if (isSelectedThread) {
                 activeThreadIdRef.current = newThread.id;
+                visibleThreadIdRef.current = newThread.id;
                 if (!thread || thread.id !== newThread.id) {
                   onThreadChange?.({ threadId: newThread.id });
                 }
@@ -221,13 +225,13 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           });
 
         if (updatedThread) {
-          const currentActiveKey = getThreadKey(activeThreadIdRef.current);
+          const visibleKey = getThreadKey(visibleThreadIdRef.current);
           const streamKey = streamThreadKey;
 
           // Ne mettre à jour l'UI que si le thread de ce flux est toujours celui
-          // sélectionné par l'utilisateur. Sinon, on garde uniquement le cache
+          // affiché par l'utilisateur. Sinon, on garde uniquement le cache
           // à jour pour éviter de changer de conversation automatiquement.
-          if (currentActiveKey === streamKey) {
+          if (visibleKey === streamKey) {
             setThread(updatedThread);
           }
         }
