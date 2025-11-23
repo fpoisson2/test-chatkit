@@ -654,7 +654,8 @@
 
 /* ===== WORKFLOWS ===== */
 .chatkit-workflow {
-  margin: 16px 0;
+  /* Reduce vertical spacing so workflow summaries sit closer to the surrounding messages */
+  margin: 4px 0;
   border: none;
   border-radius: var(--radius-xl);
   background: transparent;
