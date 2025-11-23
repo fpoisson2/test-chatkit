@@ -10,6 +10,8 @@
   position: relative;
   width: 32px;
   height: 32px;
+  display: grid;
+  place-items: center;
 }
 
 .chatkit-loading--small .chatkit-loading__spinner {
@@ -22,37 +24,13 @@
   height: 40px;
 }
 
-.chatkit-loading__arc {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 3px solid transparent;
-  animation: chatkit-spin 1.2s linear infinite;
-}
-
-.chatkit-loading__arc--primary {
-  border-top-color: var(--color-accent, #2563eb);
-  border-right-color: var(--color-accent, #2563eb);
-}
-
-.chatkit-loading__arc--secondary {
-  border-bottom-color: rgba(37, 99, 235, 0.35);
-  border-left-color: rgba(37, 99, 235, 0.35);
-  animation-direction: reverse;
-  animation-duration: 1.6s;
-}
-
-.chatkit-loading__dot {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 9px;
-  height: 9px;
-  transform: translate(-50%, -50%);
+.chatkit-loading__pulse {
+  width: 60%;
+  aspect-ratio: 1;
   border-radius: 50%;
   background: var(--color-accent, #2563eb);
-  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.12);
-  animation: chatkit-pulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 0 10px rgba(37, 99, 235, 0.12);
+  animation: chatkit-breath 1.4s ease-in-out infinite;
 }
 
 .chatkit-loading__label {
@@ -62,20 +40,16 @@
   color: var(--color-text-secondary, #4b5563);
 }
 
-@keyframes chatkit-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes chatkit-pulse {
+@keyframes chatkit-breath {
   0%,
   100% {
-    transform: translate(-50%, -50%) scale(0.9);
-    opacity: 0.5;
+    transform: scale(0.85);
+    opacity: 0.75;
+    box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.08);
   }
   50% {
-    transform: translate(-50%, -50%) scale(1);
+    transform: scale(1.05);
     opacity: 1;
+    box-shadow: 0 0 0 12px rgba(37, 99, 235, 0.18);
   }
 }
