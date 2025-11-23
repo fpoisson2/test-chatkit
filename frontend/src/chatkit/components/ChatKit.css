@@ -1170,7 +1170,7 @@
   opacity: 0.9;
   background-size: 58% 100%;
   background-repeat: no-repeat;
-  background-position: -100% 0;
+  background-position: -150% 0;
   animation: chatkit-last-task-scan 3s linear infinite;
   z-index: 1;
 }
@@ -1193,10 +1193,10 @@
 
 @keyframes chatkit-last-task-scan {
   from {
-    background-position: -100% 0;
+    background-position: -150% 0;
   }
   to {
-    background-position: 200% 0;
+    background-position: 250% 0;
   }
 }
 
