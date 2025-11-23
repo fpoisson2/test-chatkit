@@ -756,10 +756,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           }
 
           return (
-            <div className="chatkit-message chatkit-message-assistant">
+            <div className="chatkit-message chatkit-message-assistant chatkit-reasoning-placeholder">
               <div className="chatkit-message-content">
-                <div className="chatkit-workflow-loading">
-                  <div className="chatkit-workflow-loading-spinner"></div>
+                <div className="chatkit-reasoning-placeholder-body">
+                  <div className="chatkit-reasoning-placeholder-label">
+                    <span className="chatkit-reasoning-placeholder-dot" aria-hidden="true"></span>
+                    <span className="chatkit-reasoning-placeholder-text">
+                      {t('chat.loading')} · {t('chatkit.thread.newMessagePending')}
+                    </span>
+                  </div>
+                  <div className="chatkit-reasoning-placeholder-scan" aria-hidden="true"></div>
                 </div>
               </div>
             </div>
