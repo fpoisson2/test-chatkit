@@ -448,8 +448,33 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         ) : (
           (() => {
             const items = control.thread?.items || [];
-            console.log('[ChatKit Render] Rendering', items.length, 'items:', items);
-            return items.map((item) => {
+
+            // Filtrer les tasks dès qu'un message assistant est arrivé après elles
+            const filteredItems = (() => {
+              let assistantSeen = false;
+              const result: any[] = [];
+
+              for (let i = items.length - 1; i >= 0; i--) {
+                const currentItem = items[i];
+
+                if (currentItem.type === 'assistant_message') {
+                  assistantSeen = true;
+                  result.push(currentItem);
+                  continue;
+                }
+
+                if (currentItem.type === 'task' && assistantSeen) {
+                  continue;
+                }
+
+                result.push(currentItem);
+              }
+
+              return result.reverse();
+            })();
+
+            console.log('[ChatKit Render] Rendering', filteredItems.length, 'items:', filteredItems);
+            return filteredItems.map((item) => {
               // Ne pas afficher end_of_turn
               if (item.type === 'end_of_turn') {
                 return null;
