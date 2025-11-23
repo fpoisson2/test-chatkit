@@ -142,6 +142,27 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     };
   }, []);
 
+  // Masquer la dernière tâche affichée lorsque le workflow est terminé
+  useEffect(() => {
+    if (!isCompleted) {
+      return;
+    }
+
+    const elapsed =
+      minDisplayTimeRef.current !== null
+        ? Date.now() - minDisplayTimeRef.current
+        : 2000;
+    const remaining = Math.max(0, 2000 - elapsed);
+
+    const timeout = setTimeout(() => {
+      setDisplayedTask(null);
+      isProcessingRef.current = false;
+      minDisplayTimeRef.current = null;
+    }, remaining);
+
+    return () => clearTimeout(timeout);
+  }, [isCompleted]);
+
   return (
     <div className={`chatkit-workflow chatkit-workflow--${workflow.type} ${className}`}>
       <div className="chatkit-workflow-header" onClick={toggleExpanded}>
