@@ -351,8 +351,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     setTimeout(() => setCopiedMessageId(null), 2000);
   };
 
-  // Afficher le start screen si pas de messages
-  const showStartScreen = !control.thread || control.thread.items.length === 0;
+  // Afficher le start screen si pas de messages ET qu'on n'est pas en train de charger
+  const showStartScreen = !control.isLoading && (!control.thread || control.thread.items.length === 0);
 
   // Récupérer le titre du thread
   const getThreadTitle = (): string => {
