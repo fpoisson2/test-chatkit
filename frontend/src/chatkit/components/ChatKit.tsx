@@ -1337,7 +1337,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       <div className="chatkit-composer">
         <form
           onSubmit={handleSubmit}
-          className={`chatkit-composer-form ${isMultiline || isModelDropdownOpen ? 'is-multiline' : 'is-singleline'}`}
+          className="chatkit-composer-form is-multiline"
         >
           <div className="chatkit-input-area">
             <textarea
@@ -1371,6 +1371,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   aria-label="Sélectionner un modèle"
                   aria-expanded={isModelDropdownOpen}
                 >
+                  <span className="chatkit-model-dropdown-selected">{selectedModel?.label || 'Modèle'}</span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="6 9 12 15 18 9"></polyline>
                   </svg>
