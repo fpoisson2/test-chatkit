@@ -386,7 +386,37 @@ export function MyChat() {
     activeWorkflow?.active_version_id ?? null
   );
 
-  // useWorkflowVoiceSession: Activated automatically when workflow has voice_agent nodes
+  // Check if current thread is at a voice agent step by looking for VoiceSession widget
+  const isAtVoiceAgentStep = useMemo(() => {
+    if (!hasVoiceAgent || !currentThread) {
+      return false;
+    }
+
+    const items = currentThread.items as unknown[];
+    if (!Array.isArray(items)) {
+      return false;
+    }
+
+    // Look for a WidgetItem with type='widget' containing a VoiceSession widget
+    return items.some((item) => {
+      if (
+        item &&
+        typeof item === "object" &&
+        "type" in item &&
+        item.type === "widget" &&
+        "widget" in item &&
+        item.widget &&
+        typeof item.widget === "object" &&
+        "type" in item.widget &&
+        item.widget.type === "VoiceSession"
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }, [hasVoiceAgent, currentThread]);
+
+  // useWorkflowVoiceSession: Activated only when thread is at a voice_agent step
   const {
     startVoiceSession,
     stopVoiceSession,
@@ -396,7 +426,7 @@ export function MyChat() {
     interruptSession: interruptVoiceSession,
     transportError: voiceTransportError,
   } = useWorkflowVoiceSession({
-    enabled: hasVoiceAgent,
+    enabled: isAtVoiceAgentStep,
     threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
@@ -669,7 +699,7 @@ export function MyChat() {
         },
         widgets: {
           voiceSession: {
-            enabled: hasVoiceAgent,
+            enabled: isAtVoiceAgentStep,
             threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
             status: voiceStatus,
             isListening: voiceIsListening,
@@ -764,6 +794,7 @@ export function MyChat() {
       composerPlaceholder,
       currentThread?.id,
       initialThreadId,
+      isAtVoiceAgentStep,
       openSidebar,
       preferredColorScheme,
       sessionOwner,
