@@ -39,12 +39,13 @@ export const ComputerUseInspectorSection = ({
   };
 
   const handleStartUrlChange = (value: string) => {
-    const trimmed = value.trim();
-    if (trimmed) {
-      onComputerUseConfigChange(nodeId, { ...config, start_url: trimmed });
-    } else {
+    // Allow typing freely, don't trim during input
+    if (value === "") {
+      // If cleared, remove start_url from config
       const { start_url: _, ...rest } = config;
       onComputerUseConfigChange(nodeId, rest);
+    } else {
+      onComputerUseConfigChange(nodeId, { ...config, start_url: value });
     }
   };
 
