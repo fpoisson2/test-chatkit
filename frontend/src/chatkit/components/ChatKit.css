@@ -458,6 +458,10 @@
   text-align: center;
 }
 
+.chatkit-inline-widgets {
+  margin-bottom: 20px;
+}
+
 .chatkit-start-greeting {
   font-size: 24px;
   font-weight: 600;

@@ -51,8 +51,11 @@ export function useWorkflowCapabilities(
 
         // Analyze graph nodes to detect capabilities
         const nodes = version.graph?.nodes || [];
-        const hasVoiceAgent = nodes.some((node) => node.kind === "voice_agent");
-        const hasOutboundCall = nodes.some((node) => node.kind === "outbound_call");
+        const normalizeKind = (kind: unknown) =>
+          typeof kind === "string" ? kind.trim().replace(/[-\s]+/g, "_") : "";
+
+        const hasVoiceAgent = nodes.some((node) => normalizeKind(node.kind) === "voice_agent");
+        const hasOutboundCall = nodes.some((node) => normalizeKind(node.kind) === "outbound_call");
 
         setCapabilities({
           hasVoiceAgent,
