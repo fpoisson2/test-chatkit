@@ -8,13 +8,11 @@ from typing import TYPE_CHECKING, Any
 
 from chatkit.types import (
     ComputerUseTask,
+    ImageTask,
     Workflow,
     WorkflowItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
-    UserMessageItem,
-    UserMessageContent,
-    ImageContentBlock,
 )
 
 from .base import BaseNodeHandler
@@ -74,7 +72,7 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             # Resume from wait - user clicked "Terminer"
             logger.info(f"Resuming from computer_use wait at node {node.slug}")
 
-            # Capture final screenshot and add to conversation
+            # Capture final screenshot and close browser
             on_stream_event = context.runtime_vars.get("on_stream_event")
             if thread and agent_context and on_stream_event:
                 try:
@@ -98,32 +96,37 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                             screenshot_result = await computer_tool.computer.screenshot()
 
                             if screenshot_result and screenshot_result.get("base64_image"):
-                                # Create a user message with the screenshot
-                                from chatkit.types import UserMessageItem, UserMessageContent, ImageContentBlock
+                                # Create data URL for the screenshot
+                                data_url = f"data:image/png;base64,{screenshot_result['base64_image']}"
 
-                                screenshot_message = UserMessageItem(
-                                    id=agent_context.generate_id("message"),
-                                    thread_id=agent_context.thread.id,
-                                    created_at=datetime.now(),
-                                    content=[
-                                        UserMessageContent(
-                                            text="Screenshot finale de la session Computer Use:",
-                                            images=[
-                                                ImageContentBlock(
-                                                    type="image",
-                                                    source={
-                                                        "type": "base64",
-                                                        "media_type": "image/png",
-                                                        "data": screenshot_result["base64_image"]
-                                                    }
-                                                )
-                                            ]
-                                        )
-                                    ],
+                                # Create ImageTask with the screenshot
+                                image_task = ImageTask(
+                                    type="image",
+                                    title="Screenshot finale de la session Computer Use",
+                                    images=[{
+                                        "id": agent_context.generate_id("image"),
+                                        "data_url": data_url,
+                                    }],
+                                    status_indicator="completed",
                                 )
 
-                                await on_stream_event(ThreadItemAddedEvent(item=screenshot_message))
-                                await on_stream_event(ThreadItemDoneEvent(item=screenshot_message))
+                                # Create Workflow and WorkflowItem
+                                workflow = Workflow(
+                                    type="custom",
+                                    tasks=[image_task],
+                                    expanded=True,
+                                )
+
+                                workflow_item = WorkflowItem(
+                                    id=agent_context.generate_id("workflow"),
+                                    thread_id=agent_context.thread.id,
+                                    created_at=datetime.now(),
+                                    workflow=workflow,
+                                )
+
+                                # Emit the workflow item with screenshot
+                                await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
+                                await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
                                 logger.info("Final screenshot captured and added to conversation")
 
                             # Close the browser
