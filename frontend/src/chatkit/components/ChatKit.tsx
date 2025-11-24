@@ -213,6 +213,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       setInputValue('');
       setAttachments([]);
       lastUserMessageIdRef.current = lastUserMessage.id;
+      // Clear dismissed screencast items when a new message is sent
+      // This allows new workflows to auto-start their screencasts
+      setDismissedScreencastItems(new Set());
+      setLastScreencastScreenshot(null);
+      console.log('[ChatKit] Cleared dismissed screencast items and screenshots for new user message');
     }
   }, [control.thread?.items]);
 
