@@ -658,6 +658,9 @@ export function MyChat() {
         composer: {
           placeholder: composerPlaceholder,
           attachments: attachmentsConfig,
+          // TODO: Récupérer userSelection depuis activeWorkflow.user_selection
+          // Pour l'instant, on va laisser undefined jusqu'à ce que le backend soit mis à jour
+          userSelection: undefined,
         },
         onClientTool: async (toolCall) => {
           const { name, params } = toolCall as ClientToolCall;

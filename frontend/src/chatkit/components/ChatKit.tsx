@@ -13,6 +13,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { DevToolsScreencast } from './DevToolsScreencast';
 import { useI18n } from '../../i18n/I18nProvider';
 import { LoadingIndicator } from './LoadingIndicator';
+import { UserSelectionMenu } from './UserSelectionMenu';
 import {
   Attachment,
   uploadAttachment,
@@ -944,6 +945,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             />
           </div>
           <div className="chatkit-composer-actions">
+            {composer?.userSelection && (
+              <UserSelectionMenu
+                tools={composer.userSelection.tools}
+                models={composer.userSelection.models}
+              />
+            )}
             {(composer?.attachments?.enabled || composer?.attachments !== false) && (
               <div className="chatkit-attach-wrapper">
                 <input

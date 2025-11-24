@@ -1064,6 +1064,23 @@ export interface ChatKitOptions {
       maxSize?: number;
       accept?: Record<string, string[]>;
     };
+    userSelection?: {
+      tools?: Array<{
+        id: string;
+        enabled: boolean;
+        config?: Record<string, unknown>;
+      }>;
+      models?: Array<{
+        id: string;
+        name?: string;
+        enabled: boolean;
+        config?: {
+          temperature?: number;
+          max_output_tokens?: number;
+          top_p?: number;
+        };
+      }>;
+    };
   };
   onClientTool?: (toolCall: { name: string; params: unknown }) => Promise<unknown>;
   onError?: (error: { error: Error }) => void;
