@@ -213,6 +213,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       setInputValue('');
       setAttachments([]);
       lastUserMessageIdRef.current = lastUserMessage.id;
+      // Clear dismissed screencast items when a new message is sent
+      // This allows new workflows to auto-start their screencasts
+      setDismissedScreencastItems(new Set());
+      setLastScreencastScreenshot(null);
+      console.log('[ChatKit] Cleared dismissed screencast items and screenshots for new user message');
     }
   }, [control.thread?.items]);
 
@@ -973,9 +978,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   {/* Workflow */}
                   {item.type === 'workflow' && (
                   <>
-                    <div className="chatkit-message-content">
-                      <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
-                    </div>
+                    {/* Hide workflow header if it has a dismissed computer_use task */}
+                    {!dismissedScreencastItems.has(item.id) && (
+                      <div className="chatkit-message-content">
+                        <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
+                      </div>
+                    )}
 
                     {/* Afficher les images (partielles ou finales) après le workflow */}
                     {(() => {
@@ -1117,7 +1125,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
 
                         const isDismissed = dismissedScreencastItems.has(item.id);
-                        const showPreview = !isDismissed && (showLiveScreencast || showScreenshot);
+                        // If dismissed, only hide the live screencast, but still show static screenshot
+                        const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
+                        const shouldShowScreenshot = showScreenshot;
+                        const showPreview = shouldShowLiveScreencast || shouldShowScreenshot;
+                        // If dismissed, don't show loading animation on screenshot
+                        const screenshotIsLoading = isLoading && !isDismissed;
 
                         console.log('[ChatKit] Display decision:', {
                           showLiveScreencast,
@@ -1152,27 +1165,38 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           : null;
 
                         if (showPreview) {
-                          const handleEndSession = async () => {
+                          const handleEndSession = () => {
                             console.log('Ending computer_use session...');
+
+                            // Capture the current frame from the canvas before closing
+                            try {
+                              const canvas = document.querySelector('.chatkit-screencast-canvas') as HTMLCanvasElement;
+                              if (canvas) {
+                                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                                setLastScreencastScreenshot({
+                                  itemId: item.id,
+                                  src: dataUrl,
+                                  action: actionTitle,
+                                });
+                                console.log('[ChatKit] Captured screenshot before closing, length:', dataUrl.length);
+                              } else {
+                                console.warn('[ChatKit] Canvas not found, cannot capture screenshot');
+                              }
+                            } catch (err) {
+                              console.error('[ChatKit] Error capturing screenshot:', err);
+                            }
+
+                            // Mark this item as dismissed to prevent auto-restart
                             setDismissedScreencastItems(prev => {
                               if (prev.has(item.id)) return prev;
                               const next = new Set(prev);
                               next.add(item.id);
                               return next;
                             });
+                            // Close the active screencast
                             setActiveScreencast(current =>
                               current?.itemId === item.id ? null : current
                             );
-                            setLastScreencastScreenshot(current =>
-                              current?.itemId === item.id ? null : current
-                            );
-                            try {
-                              // Send an empty message to trigger workflow resumption
-                              // The backend will detect the wait state and continue the workflow
-                              await sendMessageWithInference('');
-                            } catch (error) {
-                              console.error('Failed to end computer_use session:', error);
-                            }
                           };
 
                           return (
@@ -1181,7 +1205,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                 <div className="chatkit-computer-action-title">{actionTitle}</div>
                               )}
                               {/* Show screencast if this is the active screencast */}
-                              {showLiveScreencast && (
+                              {shouldShowLiveScreencast && (
                                 <>
                                   <DevToolsScreencast
                                     debugUrlToken={debugUrlToken as string}
@@ -1206,13 +1230,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                 </>
                               )}
                               {/* Show screenshot for completed tasks or non-active screencasts */}
-                              {showScreenshot && (
+                              {shouldShowScreenshot && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <div className="chatkit-browser-screenshot-image-wrapper">
                                     <ImageWithBlobUrl
                                       src={src}
                                       alt={actionTitle || "Browser automation"}
-                                      className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                                      className={screenshotIsLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
                                     />
                                     {clickCoordinates && (
                                       <div
