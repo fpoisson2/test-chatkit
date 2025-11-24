@@ -1213,6 +1213,9 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     # Remove voice/realtime-specific parameters that shouldn't be passed to Agent
     kwargs.pop("voice", None)
     kwargs.pop("realtime", None)
+    # Remove model selection UI parameters (only used by frontend composer)
+    kwargs.pop("model_selection_mode", None)
+    kwargs.pop("user_model_options", None)
 
     agent = Agent(**kwargs)
     if response_format is not None:
