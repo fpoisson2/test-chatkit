@@ -387,13 +387,59 @@ export function MyChat() {
     activeWorkflow?.active_version_id ?? null
   );
 
-  // useWorkflowVoiceSession: Activated automatically when workflow has voice_agent nodes
-  const { stopVoiceSession, status: voiceStatus, isListening: voiceIsListening } = useWorkflowVoiceSession({
+  // Check if current thread is at a voice agent step by looking for VoiceSession widget
+  const isAtVoiceAgentStep = useMemo(() => {
+    if (!hasVoiceAgent || !currentThread) {
+      return false;
+    }
+
+    const items = currentThread.items as unknown[];
+    if (!Array.isArray(items)) {
+      return false;
+    }
+
+    // Look for a WidgetItem with type='widget' containing a VoiceSession widget
+    return items.some((item) => {
+      if (
+        item &&
+        typeof item === "object" &&
+        "type" in item &&
+        item.type === "widget" &&
+        "widget" in item &&
+        item.widget &&
+        typeof item.widget === "object" &&
+        "type" in item.widget &&
+        item.widget.type === "VoiceSession"
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }, [hasVoiceAgent, currentThread]);
+
+  // useWorkflowVoiceSession: Activated when workflow has voice_agent nodes
+  // Note: We keep WebSocket connected when workflow has voice agents to avoid timing issues
+  // The lag fix (no reconnection on threadId changes) is in useWorkflowVoiceSession.ts
+  const {
+    startVoiceSession,
+    stopVoiceSession,
+    status: voiceStatus,
+    isListening: voiceIsListening,
+    transcripts: voiceTranscripts,
+    interruptSession: interruptVoiceSession,
+    transportError: voiceTransportError,
+  } = useWorkflowVoiceSession({
     enabled: hasVoiceAgent,
-    threadId: initialThreadId,
+    threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
+      console.log("[MyChat] onTranscriptsUpdated called", {
+        hasRequestRefresh: !!requestRefreshRef.current,
+        currentThreadId: currentThread?.id,
+        initialThreadId,
+      });
       requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
+      console.log("[MyChat] requestRefresh called");
     },
   });
 
@@ -663,6 +709,19 @@ export function MyChat() {
           attachments: attachmentsConfig,
           ...(composerModels ? { models: composerModels } : {}),
         },
+        widgets: {
+          voiceSession: {
+            enabled: hasVoiceAgent,
+            threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
+            status: voiceStatus,
+            isListening: voiceIsListening,
+            transcripts: voiceTranscripts,
+            startVoiceSession,
+            stopVoiceSession,
+            interruptSession: interruptVoiceSession,
+            transportError: voiceTransportError,
+          },
+        },
         onClientTool: async (toolCall) => {
           const { name, params } = toolCall as ClientToolCall;
 
@@ -745,7 +804,9 @@ export function MyChat() {
       apiConfig,
       attachmentsConfig,
       composerPlaceholder,
+      currentThread?.id,
       initialThreadId,
+      isAtVoiceAgentStep,
       openSidebar,
       preferredColorScheme,
       sessionOwner,
@@ -757,6 +818,13 @@ export function MyChat() {
       activeWorkflowSlug,
       persistenceSlug,
       reportError,
+      startVoiceSession,
+      stopVoiceSession,
+      interruptVoiceSession,
+      voiceIsListening,
+      voiceStatus,
+      voiceTranscripts,
+      voiceTransportError,
       user?.email,
     ],
   );
@@ -814,12 +882,6 @@ export function MyChat() {
   const handleRequestRefreshReady = useCallback((requestRefresh: () => Promise<void>) => {
     requestRefreshRef.current = requestRefresh;
   }, []);
-
-  const voiceStatusMessage = voiceStatus === "connected"
-    ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`
-    : voiceStatus === "connecting"
-    ? "Connexion audio en cours..."
-    : null;
 
   // Hide sidebar immediately for LTI users (before workflow loads)
   useEffect(() => {
@@ -899,6 +961,7 @@ export function MyChat() {
               reportError={reportError}
               mode={instance.mode}
               isActive={instanceId === currentWorkflowId}
+              autoStartEnabled={!hasVoiceAgent}
               onRequestRefreshReady={
                 instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
               }
@@ -906,49 +969,6 @@ export function MyChat() {
           ))}
         </div>
       </div>
-      {voiceStatusMessage && (
-        <div style={{
-          position: "fixed",
-          bottom: "20px",
-          right: "20px",
-          padding: "12px 16px",
-          background: voiceStatus === "connected" ? "#10a37f" : "#ff9800",
-          color: "white",
-          borderRadius: "8px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-          fontSize: "14px",
-          fontWeight: 500,
-          zIndex: 1000,
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-        }}>
-          <span style={{
-            width: "8px",
-            height: "8px",
-            borderRadius: "50%",
-            background: "white",
-            animation: voiceIsListening ? "chatkit-voice-pulse 1.5s infinite" : "none",
-          }} />
-          {voiceStatusMessage}
-          <button
-            type="button"
-            onClick={stopVoiceSession}
-            style={{
-              marginLeft: "8px",
-              padding: "4px 8px",
-              background: "rgba(255,255,255,0.2)",
-              border: "none",
-              borderRadius: "4px",
-              color: "white",
-              cursor: "pointer",
-              fontSize: "12px",
-            }}
-          >
-            Arrêter
-          </button>
-        </div>
-      )}
       {outboundCallIsActive && outboundCallId && (
         <OutboundCallAudioPlayer
           callId={outboundCallId}
@@ -956,12 +976,6 @@ export function MyChat() {
           authToken={token}
         />
       )}
-      <style>{`
-        @keyframes chatkit-voice-pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.2); }
-        }
-      `}</style>
     </>
   );
 }

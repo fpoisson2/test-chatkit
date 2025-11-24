@@ -11,6 +11,7 @@ type UseChatkitWorkflowSyncParams = {
   initialThreadId: string | null;
   reportError: (message: string, detail?: unknown) => void;
   enabled?: boolean;
+  autoStartEnabled?: boolean;
 };
 
 type UseChatkitWorkflowSyncResult = {
@@ -28,6 +29,7 @@ export const useChatkitWorkflowSync = ({
   initialThreadId,
   reportError,
   enabled = true,
+  autoStartEnabled = true,
 }: UseChatkitWorkflowSyncParams): UseChatkitWorkflowSyncResult => {
   const [chatkitWorkflowInfo, setChatkitWorkflowInfo] = useState<ChatKitWorkflowInfo | null>(null);
   const autoStartAttemptRef = useRef(false);
@@ -109,6 +111,7 @@ export const useChatkitWorkflowSync = ({
     if (import.meta.env.DEV) {
       console.log("[ChatKit] Auto-start effect triggered", {
         enabled,
+        autoStartEnabled,
         hasWorkflowInfo: !!chatkitWorkflowInfo,
         autoStart: chatkitWorkflowInfo?.auto_start,
         initialThreadId,
@@ -118,6 +121,12 @@ export const useChatkitWorkflowSync = ({
     }
 
     if (!enabled) {
+      autoStartAttemptRef.current = false;
+      previousThreadIdRef.current = initialThreadId;
+      return;
+    }
+
+    if (!autoStartEnabled) {
       autoStartAttemptRef.current = false;
       previousThreadIdRef.current = initialThreadId;
       return;

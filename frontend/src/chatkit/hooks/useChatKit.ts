@@ -128,6 +128,11 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
             const errorMessage = err?.message || String(err);
             if (errorMessage.includes('404')) {
               console.warn('[ChatKit] Initial thread not found, starting with empty thread');
+              // Reset refs to null to prevent fetchUpdates from trying to fetch a non-existent thread
+              const tempId = generateTempThreadId();
+              activeThreadIdRef.current = tempId;
+              visibleThreadIdRef.current = tempId;
+              setThread(null);
               onThreadLoadEnd?.({ threadId: initialThread });
             } else {
               console.error('[ChatKit] Failed to load initial thread:', err);
@@ -139,7 +144,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
           });
       }
     }
-  }, [initialThread, api.url, api.headers, onThreadLoadStart, onThreadLoadEnd, onError, onLog, setThreadLoading]);
+  }, [initialThread, api.url, api.headers, onThreadLoadStart, onThreadLoadEnd, onError, onLog, setThreadLoading, generateTempThreadId]);
 
   // Envoyer un message utilisateur
   const sendUserMessage = useCallback(
