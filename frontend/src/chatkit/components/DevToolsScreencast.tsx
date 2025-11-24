@@ -13,6 +13,15 @@ interface DevToolsScreencastProps {
 // This persists across component remounts (important for React Strict Mode)
 const fatalErrorTokens = new Set<string>();
 
+// Global map to track active WebSocket connections by token
+// This prevents multiple simultaneous connections to the same token
+const activeConnections = new Map<string, WebSocket>();
+
+// Clear fatal error for a token (called when we explicitly want to retry)
+export function clearFatalErrorForToken(token: string): void {
+  fatalErrorTokens.delete(token);
+}
+
 interface ScreencastFrame {
   sessionId: number;
   data: string; // base64 encoded JPEG
@@ -57,6 +66,7 @@ export function DevToolsScreencast({
   useEffect(() => {
     let mounted = true;
     let ws: WebSocket | null = null;
+    let connectionId = 0; // Unique ID for this connection attempt
 
     // Check if this token has already had a fatal error
     // If so, just return without calling onConnectionError (it was already called when we added it to the Set)
@@ -65,7 +75,23 @@ export function DevToolsScreencast({
       return;
     }
 
+    // Close any existing connection for this token before creating a new one
+    const existingConnection = activeConnections.get(debugUrlToken);
+    if (existingConnection) {
+      console.log('[DevToolsScreencast] Closing existing connection for token:', debugUrlToken.substring(0, 8));
+      try {
+        existingConnection.close();
+      } catch (err) {
+        console.error('[DevToolsScreencast] Error closing existing connection:', err);
+      }
+      activeConnections.delete(debugUrlToken);
+    }
+
     const connect = async () => {
+      // Check again if we should abort (component unmounted or token has fatal error)
+      if (!mounted || fatalErrorTokens.has(debugUrlToken)) {
+        return;
+      }
       try {
         // Fetch Chrome DevTools targets via our backend proxy
         console.log('[DevToolsScreencast] Fetching targets via proxy...');
@@ -118,6 +144,9 @@ export function DevToolsScreencast({
         console.log('[DevToolsScreencast] Connecting to proxy WebSocket:', wsUrl);
         ws = new WebSocket(wsUrl);
         wsRef.current = ws;
+
+        // Track this connection globally
+        activeConnections.set(debugUrlToken, ws);
 
         ws.onopen = () => {
           if (!mounted) return;
@@ -251,10 +280,20 @@ export function DevToolsScreencast({
         };
 
         ws.onclose = () => {
-          if (!mounted) return;
-          console.log('[DevToolsScreencast] WebSocket closed');
+          console.log('[DevToolsScreencast] WebSocket closed, mounted:', mounted);
           setIsConnected(false);
           wsRef.current = null;
+
+          // Remove from active connections only if it's the same WebSocket
+          if (activeConnections.get(debugUrlToken) === ws) {
+            activeConnections.delete(debugUrlToken);
+          }
+
+          // Don't do anything if component is unmounted
+          if (!mounted) {
+            console.log('[DevToolsScreencast] Component unmounted, not reconnecting');
+            return;
+          }
 
           // Don't attempt reconnection if this token has a fatal error (like 403)
           if (fatalErrorTokens.has(debugUrlToken)) {
@@ -262,13 +301,18 @@ export function DevToolsScreencast({
             return;
           }
 
-          // Attempt reconnection after 2 seconds
-          if (mounted) {
-            reconnectTimeoutRef.current = setTimeout(() => {
-              console.log('[DevToolsScreencast] Attempting reconnection...');
-              connect();
-            }, 2000);
+          // Don't reconnect if there's already a newer connection for this token
+          if (activeConnections.has(debugUrlToken)) {
+            console.log('[DevToolsScreencast] Newer connection exists, not reconnecting');
+            return;
           }
+
+          // Attempt reconnection after 2 seconds
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (!mounted) return;
+            console.log('[DevToolsScreencast] Attempting reconnection...');
+            connect();
+          }, 2000);
         };
       } catch (err) {
         console.error('[DevToolsScreencast] Connection error:', err);
@@ -299,6 +343,13 @@ export function DevToolsScreencast({
 
     return () => {
       mounted = false;
+      console.log('[DevToolsScreencast] Cleanup: unmounting component for token:', debugUrlToken.substring(0, 8));
+
+      // Clear reconnection timeout first to prevent any pending reconnects
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
 
       // Capture last frame before closing
       if (onLastFrameRef.current && canvasRef.current) {
@@ -324,14 +375,13 @@ export function DevToolsScreencast({
         }
       }
 
-      // Close WebSocket
+      // Close WebSocket and remove from active connections
       if (ws) {
+        // Only remove from activeConnections if it's the same WebSocket
+        if (activeConnections.get(debugUrlToken) === ws) {
+          activeConnections.delete(debugUrlToken);
+        }
         ws.close();
-      }
-
-      // Clear reconnection timeout
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
