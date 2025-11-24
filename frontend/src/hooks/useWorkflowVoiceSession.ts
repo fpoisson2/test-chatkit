@@ -422,7 +422,8 @@ export const useWorkflowVoiceSession = ({
     cleanupCapture();
     setIsListening(false);
     setStatus("idle");
-    currentSessionRef.current = null;
+    // Don't clear currentSessionRef here - let onSessionFinalized do it after refresh
+    // currentSessionRef.current = null;
     sessionThreadRef.current = threadId ?? null;
     startRequestedRef.current = false;
   }, [cleanupCapture, finalizeSession, resampler, sendAudioChunk, threadId]);
