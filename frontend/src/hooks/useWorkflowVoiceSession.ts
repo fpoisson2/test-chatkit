@@ -408,12 +408,12 @@ export const useWorkflowVoiceSession = ({
 
     const sessionThreadId = sessionThreadRef.current ?? threadId ?? undefined;
 
+    // Flush any remaining audio and send with commit flag if there's data
     const tail = resampler.flush();
     if (tail.length > 0) {
       sendAudioChunk(sessionId, tail, { commit: true });
-    } else {
-      sendAudioChunk(sessionId, new Int16Array(), { commit: true });
     }
+    // Don't send empty audio bytes - just finalize the session directly
 
     if (sessionThreadId) {
       finalizeSession(sessionId, sessionThreadId);
