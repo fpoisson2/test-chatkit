@@ -93,12 +93,17 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
                         if computer_tool and hasattr(computer_tool, "computer"):
                             # Capture final screenshot
-                            screenshot_result = await computer_tool.computer.screenshot()
+                            data_url = await computer_tool.computer.screenshot()
 
-                            if screenshot_result and screenshot_result.get("base64_image"):
-                                # Create data URL for the screenshot
-                                data_url = f"data:image/png;base64,{screenshot_result['base64_image']}"
+                            # Close the browser FIRST to stop the screencast
+                            try:
+                                await computer_tool.computer.cleanup()
+                                logger.info("Browser session closed")
+                            except Exception as e:
+                                logger.error(f"Failed to cleanup browser: {e}")
 
+                            # Then display the screenshot
+                            if data_url:
                                 # Create ImageTask with the screenshot
                                 image_task = ImageTask(
                                     type="image",
@@ -128,13 +133,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                                 await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
                                 await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
                                 logger.info("Final screenshot captured and added to conversation")
-
-                            # Close the browser
-                            try:
-                                await computer_tool.computer.cleanup()
-                                logger.info("Browser session closed")
-                            except Exception as e:
-                                logger.error(f"Failed to cleanup browser: {e}")
 
                 except Exception as e:
                     logger.error(f"Failed to capture final screenshot: {e}")
