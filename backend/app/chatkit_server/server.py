@@ -1153,8 +1153,38 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             request_context=context,
         )
 
-        # Emit ComputerUseTask with status="complete"
-        logger.info("Emitting ComputerUseTask with status=complete")
+        # Load thread history to find the existing ComputerUseTask
+        history = await self.store.load_thread_items(
+            thread.id,
+            after=None,
+            limit=1000,
+            order="desc",  # Most recent first
+            context=context,
+        )
+
+        # Find the WorkflowItem with the ComputerUseTask in "loading" state
+        existing_workflow_item_id: str | None = None
+        existing_task_index: int | None = None
+        for item in history.data:
+            if isinstance(item, WorkflowItem) and item.workflow and item.workflow.tasks:
+                for idx, task in enumerate(item.workflow.tasks):
+                    if hasattr(task, 'type') and task.type == 'computer_use':
+                        if hasattr(task, 'status_indicator') and task.status_indicator == 'loading':
+                            existing_workflow_item_id = item.id
+                            existing_task_index = idx
+                            logger.info(
+                                "Found existing ComputerUseTask in WorkflowItem %s at index %d",
+                                existing_workflow_item_id,
+                                existing_task_index,
+                            )
+                            break
+                if existing_workflow_item_id:
+                    break
+
+        # Import ThreadItemUpdated and WorkflowTaskUpdated
+        from chatkit.types import ThreadItemUpdated, WorkflowTaskUpdated
+
+        # Update the existing task or create a new one
         completed_computer_task = ComputerUseTask(
             type="computer_use",
             status_indicator="complete",
@@ -1162,22 +1192,35 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             title="Session Computer Use terminée",
         )
 
-        completed_workflow = Workflow(
-            type="custom",
-            tasks=[completed_computer_task],
-            expanded=False,
-        )
+        if existing_workflow_item_id is not None and existing_task_index is not None:
+            # Update the existing task
+            logger.info("Updating existing ComputerUseTask with status=complete")
+            yield ThreadItemUpdated(
+                item_id=existing_workflow_item_id,
+                update=WorkflowTaskUpdated(
+                    task_index=existing_task_index,
+                    task=completed_computer_task,
+                ),
+            )
+        else:
+            # Create a new WorkflowItem if not found (fallback)
+            logger.info("Creating new ComputerUseTask with status=complete (no existing task found)")
+            completed_workflow = Workflow(
+                type="custom",
+                tasks=[completed_computer_task],
+                expanded=False,
+            )
 
-        completed_workflow_item = WorkflowItem(
-            id=agent_context.generate_id("workflow"),
-            thread_id=thread.id,
-            created_at=datetime.now(),
-            workflow=completed_workflow,
-        )
+            completed_workflow_item = WorkflowItem(
+                id=agent_context.generate_id("workflow"),
+                thread_id=thread.id,
+                created_at=datetime.now(),
+                workflow=completed_workflow,
+            )
 
-        yield ThreadItemAddedEvent(item=completed_workflow_item)
-        await self.store.save_thread_item(completed_workflow_item, context=context)
-        yield ThreadItemDoneEvent(item=completed_workflow_item)
+            yield ThreadItemAddedEvent(item=completed_workflow_item)
+            await self.store.save_thread_item(completed_workflow_item, context=context)
+            yield ThreadItemDoneEvent(item=completed_workflow_item)
 
         # Emit ImageTask with screenshot if available
         if data_url:
