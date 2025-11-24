@@ -412,6 +412,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   // Afficher le start screen si pas de messages ET qu'on n'est pas en train de charger
   const showStartScreen = !control.isLoading && (!control.thread || control.thread.items.length === 0);
 
+  // Vérifier si le thread est fermé ou verrouillé
+  const threadStatus = control.thread?.status;
+  const isThreadClosed = threadStatus?.type === 'closed';
+  const isThreadLocked = threadStatus?.type === 'locked';
+  const isThreadDisabled = isThreadClosed || isThreadLocked;
+  const threadStatusMessage = isThreadDisabled
+    ? (threadStatus?.reason || (isThreadClosed ? t('chatkit.thread.closed') : t('chatkit.thread.locked')))
+    : null;
+
   // Récupérer le titre du thread
   const getThreadTitle = (): string => {
     if (showStartScreen) {
@@ -921,16 +930,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
               onKeyDown={(e) => {
                 // Envoyer avec Entrée (sans Shift)
                 if (e.key === 'Enter' && !e.shiftKey) {
-                  if (control.isLoading) {
+                  if (control.isLoading || isThreadDisabled) {
                     return;
                   }
                   e.preventDefault();
                   handleSubmit(e);
                 }
               }}
-              placeholder={composer?.placeholder || 'Posez votre question...'}
+              placeholder={isThreadDisabled ? threadStatusMessage || '' : (composer?.placeholder || 'Posez votre question...')}
               className="chatkit-input"
               rows={1}
+              disabled={isThreadDisabled}
             />
           </div>
           <div className="chatkit-composer-actions">
@@ -948,7 +958,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   type="button"
                   className="chatkit-attach-button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={control.isLoading || !composer?.attachments?.enabled}
+                  disabled={control.isLoading || !composer?.attachments?.enabled || isThreadDisabled}
                   aria-label="Joindre un fichier"
                   title="Joindre un fichier"
                 >
@@ -960,7 +970,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             )}
             <button
               type="submit"
-              disabled={(!inputValue.trim() && attachments.length === 0) || control.isLoading}
+              disabled={(!inputValue.trim() && attachments.length === 0) || control.isLoading || isThreadDisabled}
               className="chatkit-submit"
               aria-label="Envoyer"
             >

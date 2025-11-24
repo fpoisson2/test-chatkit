@@ -506,6 +506,28 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         input_user_message: UserMessageItem | None,
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        # Validate thread status - block messages if conversation is closed or locked
+        if isinstance(thread.status, (ClosedStatus, LockedStatus)):
+            status_type = getattr(thread.status, "type", "unknown")
+            status_reason = getattr(thread.status, "reason", None)
+            error_message = (
+                f"Cette conversation est {status_type}."
+                if not status_reason
+                else f"Cette conversation est {status_type} : {status_reason}"
+            )
+            logger.info(
+                "Message refusé pour le thread %s : statut=%s, raison=%s",
+                thread.id,
+                status_type,
+                status_reason,
+            )
+            yield ErrorEvent(
+                code=ErrorCode.STREAM_ERROR,
+                message=error_message,
+                allow_retry=False,
+            )
+            return
+
         thread_item_converter = self._thread_item_converter.for_context(context)
         if input_user_message is not None:
             title_task = asyncio.create_task(
@@ -785,6 +807,28 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         sender: WidgetItem | None,
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        # Validate thread status - block actions if conversation is closed or locked
+        if isinstance(thread.status, (ClosedStatus, LockedStatus)):
+            status_type = getattr(thread.status, "type", "unknown")
+            status_reason = getattr(thread.status, "reason", None)
+            error_message = (
+                f"Cette conversation est {status_type}."
+                if not status_reason
+                else f"Cette conversation est {status_type} : {status_reason}"
+            )
+            logger.info(
+                "Action refusée pour le thread %s : statut=%s, raison=%s",
+                thread.id,
+                status_type,
+                status_reason,
+            )
+            yield ErrorEvent(
+                code=ErrorCode.STREAM_ERROR,
+                message=error_message,
+                allow_retry=False,
+            )
+            return
+
         payload = action.payload if isinstance(action.payload, Mapping) else None
         if payload is None:
             logger.warning(
@@ -1161,12 +1205,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     end_state=end_state,
                     context=getattr(agent_context, "request_context", None),
                 )
-                end_message = self._settings.workflow_defaults.default_end_message
                 status_type_raw = (end_state.status_type or "closed").strip().lower()
                 cleaned_reason = (
-                    (end_state.status_reason or end_state.message or end_message) or ""
+                    (end_state.status_reason or end_state.message) or ""
                 ).strip() or None
-                status_reason = cleaned_reason or end_message
+                status_reason = cleaned_reason
 
                 if status_type_raw in {"", "closed"}:
                     thread.status = ClosedStatus(reason=status_reason)
@@ -1212,7 +1255,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                             if applied_status
                             else "inconnu"
                         ),
-                        cleaned_reason or end_message,
+                        cleaned_reason or "<aucune>",
                     )
                 else:
                     logger.info(
@@ -1225,7 +1268,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                             if applied_status
                             else "inconnu"
                         ),
-                        cleaned_reason or end_message,
+                        cleaned_reason or "<aucune>",
                     )
             else:
                 logger.info(
