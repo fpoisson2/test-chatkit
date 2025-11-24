@@ -134,6 +134,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const previousKeyboardOffsetRef = useRef(0);
   const lastUserMessageIdRef = useRef<string | null>(null);
   const formDataRef = useRef<FormData | null>(null);
+  const userEndedScreencastRef = useRef<boolean>(false);
+  const userEndedScreencastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
     header,
@@ -318,11 +320,25 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     }
     // Priorité 2: Activer un nouveau screencast seulement s'il n'y a PAS de computer_use complete
+    // ET si l'utilisateur n'a pas explicitement fermé un screencast récemment
     else if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
-      console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
-      setActiveScreencast(newActiveScreencast);
+      if (userEndedScreencastRef.current) {
+        console.log('[ChatKit] Skipping auto-start of screencast because user explicitly ended previous session');
+      } else {
+        console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
+        setActiveScreencast(newActiveScreencast);
+      }
     }
   }, [activeScreencast?.token, control.isLoading, control.thread?.items, dismissedScreencastItems]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (userEndedScreencastTimeoutRef.current) {
+        clearTimeout(userEndedScreencastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Callback pour capturer le dernier frame du screencast avant sa fermeture
   const handleScreencastLastFrame = useCallback((itemId: string) => {
@@ -1154,6 +1170,21 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         if (showPreview) {
                           const handleEndSession = async () => {
                             console.log('Ending computer_use session...');
+
+                            // Mark that user explicitly ended the screencast
+                            userEndedScreencastRef.current = true;
+
+                            // Clear any existing timeout
+                            if (userEndedScreencastTimeoutRef.current) {
+                              clearTimeout(userEndedScreencastTimeoutRef.current);
+                            }
+
+                            // Reset the flag after 5 seconds to allow auto-start again
+                            userEndedScreencastTimeoutRef.current = setTimeout(() => {
+                              userEndedScreencastRef.current = false;
+                              console.log('[ChatKit] Re-enabling auto-start of screencasts');
+                            }, 5000);
+
                             setDismissedScreencastItems(prev => {
                               if (prev.has(item.id)) return prev;
                               const next = new Set(prev);
