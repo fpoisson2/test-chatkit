@@ -147,7 +147,6 @@ export const useWorkflowVoiceSession = ({
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
   const [transportError, setTransportError] = useState<string | null>(null);
-  const [connectRequested, setConnectRequested] = useState(false);
 
   const currentSessionRef = useRef<string | null>(null);
   const sessionThreadRef = useRef<string | null>(threadId ?? null);
@@ -214,7 +213,6 @@ export const useWorkflowVoiceSession = ({
         currentSessionRef.current = null;
         pendingSessionRef.current = null;
         startRequestedRef.current = false;
-        setConnectRequested(false);
       }
     },
     onTransportError: (error) => {
@@ -414,7 +412,6 @@ export const useWorkflowVoiceSession = ({
     currentSessionRef.current = null;
     sessionThreadRef.current = threadId ?? null;
     startRequestedRef.current = false;
-    setConnectRequested(false);
   }, [cleanupCapture, finalizeSession, resampler, sendAudioChunk, threadId]);
 
   const startVoiceSession = useCallback(async () => {
@@ -422,15 +419,11 @@ export const useWorkflowVoiceSession = ({
     if (!enabled) {
       return;
     }
-    startRequestedRef.current = true;
-    setConnectRequested(true);
     if (!token) {
       const message = "Authentification requise pour la session vocale";
       setStatus("error");
       setTransportError(message);
       onError?.(message);
-      startRequestedRef.current = false;
-      setConnectRequested(false);
       return;
     }
     if (!threadId) {
@@ -438,12 +431,12 @@ export const useWorkflowVoiceSession = ({
       setStatus("error");
       setTransportError(message);
       onError?.(message);
-      startRequestedRef.current = false;
-      setConnectRequested(false);
       return;
     }
 
-    // Check if there's a pending session from the backend
+    startRequestedRef.current = true;
+
+    // Check if there's a pending session from the backend (should always exist in manual start mode)
     const pendingSession = pendingSessionRef.current;
     if (pendingSession && !processedSessionsRef.current.has(pendingSession.sessionId)) {
       logVoice("activating pending session", pendingSession.sessionId);
@@ -469,31 +462,19 @@ export const useWorkflowVoiceSession = ({
           onError?.("Impossible de démarrer la session vocale");
         }
         startRequestedRef.current = false;
-        setConnectRequested(false);
         logVoice("capture failed from pending session", { sessionId: pendingSession.sessionId, error });
         return;
       }
     }
 
-    // No pending session - connect and wait for session_created event
-    try {
-      await connectRealtime({ token });
-    } catch (error) {
-      setStatus("error");
-      startRequestedRef.current = false;
-      setConnectRequested(false);
-      if (error instanceof Error) {
-        onError?.(error.message);
-      } else {
-        onError?.("Connexion au service vocal impossible");
-      }
-      return;
-    }
-    setStatus((current) => (current === "connected" ? current : "connecting"));
-  }, [connectRealtime, enabled, logVoice, onError, startCapture, threadId, token]);
+    // No pending session yet - wait for it to arrive from the auto-connected WebSocket
+    logVoice("waiting for session from backend (auto-connect should provide it)");
+    setStatus("connecting");
+  }, [enabled, logVoice, onError, startCapture, threadId, token]);
 
+  // Auto-connect WebSocket when thread exists (for manual start mode)
   useEffect(() => {
-    if (!enabled || !token || !connectRequested) {
+    if (!enabled || !token || !threadId) {
       disconnectRealtime();
       cleanupCapture();
       setStatus("idle");
@@ -502,13 +483,16 @@ export const useWorkflowVoiceSession = ({
       currentSessionRef.current = null;
       processedSessionsRef.current.clear();
       startRequestedRef.current = false;
+      pendingSessionRef.current = null;
       return;
     }
 
+    logVoice("auto-connecting WebSocket for manual start mode", { threadId });
     let cancelled = false;
     connectRealtime({ token })
       .catch((error) => {
         if (!cancelled) {
+          logVoice("auto-connect failed", error);
           setStatus("error");
           if (error instanceof Error) {
             onError?.(error.message);
@@ -526,10 +510,11 @@ export const useWorkflowVoiceSession = ({
   }, [
     cleanupCapture,
     connectRealtime,
-    connectRequested,
     disconnectRealtime,
     enabled,
+    logVoice,
     onError,
+    threadId,
     token,
   ]);
 
