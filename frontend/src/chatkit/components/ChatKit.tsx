@@ -1,8 +1,15 @@
 /**
  * Composant ChatKit complet avec toutes les fonctionnalités
  */
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { ChatKitControl, ChatKitOptions, StartScreenPrompt, ThreadItem, ActionConfig } from '../types';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type {
+  ChatKitControl,
+  ChatKitOptions,
+  StartScreenPrompt,
+  ThreadItem,
+  ActionConfig,
+  VoiceSessionWidget,
+} from '../types';
 import { WidgetRenderer } from '../widgets';
 import type { WidgetContext } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
@@ -372,6 +379,57 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     setTimeout(() => setCopiedMessageId(null), 2000);
   };
 
+  const inlineVoiceWidget = useMemo<VoiceSessionWidget | null>(() => {
+    const voiceSession = options.widgets?.voiceSession;
+    if (!voiceSession || voiceSession.enabled === false) {
+      return null;
+    }
+
+    const threadId = control.thread?.id ?? null;
+    const voiceThreadMatches = !voiceSession.threadId || voiceSession.threadId === threadId;
+    if (!voiceThreadMatches) {
+      return null;
+    }
+
+    return {
+      type: 'VoiceSession',
+      title: 'Voix',
+      description: "Contrôlez l'écoute et consultez les transcriptions en temps réel.",
+      startLabel: 'Démarrer',
+      stopLabel: 'Arrêter',
+      showTranscripts: true,
+      ...(options.widgets.voiceSessionWidget ?? {}),
+    };
+  }, [control.thread?.id, options.widgets?.voiceSession, options.widgets?.voiceSessionWidget]);
+
+  const isLikelyJson = (value: string): boolean => {
+    const trimmed = value.trim();
+    if (!trimmed || (trimmed[0] !== '{' && trimmed[0] !== '[')) {
+      return false;
+    }
+    try {
+      JSON.parse(trimmed);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const renderInlineWidgets = (
+    widget: VoiceSessionWidget | null,
+    context: WidgetContext,
+  ): React.ReactNode => {
+    if (!widget) {
+      return null;
+    }
+
+    return (
+      <div className="chatkit-inline-widgets">
+        <WidgetRenderer widget={widget} context={context} />
+      </div>
+    );
+  };
+
   // Créer un callback pour gérer les actions de widgets
   const createWidgetContext = useCallback((itemId: string): WidgetContext => ({
     onAction: (actionConfig: ActionConfig) => {
@@ -407,7 +465,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Store form data to be included in the next action
       formDataRef.current = data;
     },
-  }), [control]);
+    voiceSession: options.widgets?.voiceSession,
+  }), [control, options.widgets?.voiceSession]);
 
   // Afficher le start screen si pas de messages ET qu'on n'est pas en train de charger
   const showStartScreen = !control.isLoading && (!control.thread || control.thread.items.length === 0);
@@ -521,28 +580,47 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           (() => {
             const items = control.thread?.items || [];
             console.log('[ChatKit Render] Rendering', items.length, 'items:', items);
-            return items.map((item) => {
+            const inlineVoiceElement = inlineVoiceWidget
+              ? renderInlineWidgets(inlineVoiceWidget, createWidgetContext('inline-voice'))
+              : null;
+            let hasInsertedInlineVoice = false;
+
+            const inlineVoiceAfterItem = (candidate: ThreadItem, idx: number): boolean => {
+              if (!inlineVoiceElement || hasInsertedInlineVoice) {
+                return false;
+              }
+
+              if (candidate.type === 'user_message') {
+                return true;
+              }
+
+              const isLastItem = idx === items.length - 1;
+              return isLastItem;
+            };
+
+            const renderedItems = items.flatMap((item, idx) => {
               // Ne pas afficher end_of_turn
               if (item.type === 'end_of_turn') {
                 return null;
               }
 
-            const messageClass = item.type === 'user_message'
-              ? 'user'
-              : item.type === 'client_tool_call'
-              ? 'tool'
-              : item.type === 'widget' || item.type === 'task' || item.type === 'workflow'
-              ? 'standalone'
-              : 'assistant';
+              const messageClass = item.type === 'user_message'
+                ? 'user'
+                : item.type === 'client_tool_call'
+                ? 'tool'
+                : item.type === 'widget' || item.type === 'task' || item.type === 'workflow'
+                ? 'standalone'
+                : 'assistant';
 
-            return (
-              <div
-                key={item.id}
-                className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}
-              >
-                {/* User message */}
-                {item.type === 'user_message' && (
-                  <div className="chatkit-message-content">
+              const nodes: React.ReactNode[] = [
+                (
+                  <div
+                    key={item.id}
+                    className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}
+                  >
+                  {/* User message */}
+                  {item.type === 'user_message' && (
+                    <div className="chatkit-message-content">
                     {item.content.map((content, idx) => (
                       <div key={idx}>
                         {content.type === 'input_text' && <MarkdownRenderer content={content.text} theme={theme?.colorScheme} />}
@@ -640,14 +718,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 )}
 
                 {/* Task standalone */}
-                {item.type === 'task' && (
-                  <div className="chatkit-message-content">
-                    <TaskRenderer task={item.task} theme={theme?.colorScheme} />
-                  </div>
-                )}
+                {(() => {
+                  if (item.type !== 'task') {
+                    return null;
+                  }
 
-                {/* Workflow */}
-                {item.type === 'workflow' && (
+                  const task = item.task as any;
+                  const hasJsonContent =
+                    task?.type === 'custom' && typeof task?.content === 'string' && isLikelyJson(task.content);
+
+                  if (hasJsonContent && !task?.title && !task?.icon) {
+                    return null;
+                  }
+
+                  const sanitizedTask = hasJsonContent ? { ...task, content: undefined } : task;
+
+                  return (
+                    <div className="chatkit-message-content">
+                      <TaskRenderer task={sanitizedTask} theme={theme?.colorScheme} />
+                    </div>
+                  );
+                })()}
+
+                  {/* Workflow */}
+                  {item.type === 'workflow' && (
                   <>
                     <div className="chatkit-message-content">
                       <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
@@ -851,10 +945,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                       return null;
                     })()}
                   </>
-                )}
-              </div>
-            );
+                  )}
+                  </div>
+                ),
+              ];
+
+              if (inlineVoiceAfterItem(item, idx)) {
+                hasInsertedInlineVoice = true;
+                nodes.push(
+                  <React.Fragment key={`inline-voice-${item.id}`}>
+                    {inlineVoiceElement}
+                  </React.Fragment>,
+                );
+              }
+
+              return nodes;
             });
+
+            if (inlineVoiceElement && !hasInsertedInlineVoice) {
+              renderedItems.push(
+                <React.Fragment key="inline-voice-tail">{inlineVoiceElement}</React.Fragment>,
+              );
+            }
+
+            return renderedItems;
           })()
         )}
 
