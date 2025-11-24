@@ -1219,7 +1219,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
 
             yield ThreadItemAddedEvent(item=completed_workflow_item)
-            await self.store.save_thread_item(completed_workflow_item, context=context)
             yield ThreadItemDoneEvent(item=completed_workflow_item)
 
         # Emit ImageTask with screenshot if available
@@ -1252,7 +1251,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
 
             yield ThreadItemAddedEvent(item=workflow_item)
-            await self.store.save_thread_item(workflow_item, context=context)
             yield ThreadItemDoneEvent(item=workflow_item)
 
         # Clear wait state
