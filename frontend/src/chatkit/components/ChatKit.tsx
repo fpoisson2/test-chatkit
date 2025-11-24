@@ -226,14 +226,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       setInputValue('');
       setAttachments([]);
       lastUserMessageIdRef.current = lastUserMessage.id;
-      // Clear dismissed screencast items when a new message is sent
-      // This allows new workflows to auto-start their screencasts
-      setDismissedScreencastItems(new Set());
-      // NOTE: Do NOT clear failedScreencastTokens here!
-      // Clearing it creates a race condition: the old failed token gets retried
-      // BEFORE the new workflow arrives. New workflows will have new tokens anyway.
+      // NOTE: Do NOT clear dismissedScreencastItems or failedScreencastTokens here!
+      // Clearing them creates a race condition: the old dismissed/failed workflow gets retried
+      // BEFORE the new workflow arrives. New workflows will have new IDs/tokens anyway.
+      // These are only cleared when the thread changes (see useEffect with control.thread?.id).
       setLastScreencastScreenshot(null);
-      console.log('[ChatKit] Cleared dismissed screencast items and screenshots for new user message');
+      console.log('[ChatKit] Cleared screenshot for new user message');
     }
   }, [control.thread?.items]);
 
