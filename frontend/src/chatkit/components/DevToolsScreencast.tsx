@@ -45,6 +45,7 @@ export function DevToolsScreencast({
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
   const shouldAutoFocusRef = useRef(false);
   const onLastFrameRef = useRef(onLastFrame);
+  const hasHandledFatalErrorRef = useRef(false);
 
   // Keep the ref updated with the latest callback
   useEffect(() => {
@@ -55,12 +56,20 @@ export function DevToolsScreencast({
     let mounted = true;
     let ws: WebSocket | null = null;
 
+    // Reset the handled flag when token changes
+    hasHandledFatalErrorRef.current = false;
+
     // Check if this token has already had a fatal error
     if (fatalErrorTokens.has(debugUrlToken)) {
       console.log('[DevToolsScreencast] Token has fatal error, not attempting connection:', debugUrlToken.substring(0, 8));
-      setError('Token invalide ou expiré');
-      if (onConnectionError) {
-        onConnectionError();
+
+      // Only call setError and onConnectionError once to avoid infinite loop
+      if (!hasHandledFatalErrorRef.current) {
+        hasHandledFatalErrorRef.current = true;
+        setError('Token invalide ou expiré');
+        if (onConnectionError) {
+          onConnectionError();
+        }
       }
       return;
     }
