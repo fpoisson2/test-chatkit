@@ -145,6 +145,13 @@ class ChatKitWorkflowResponse(BaseModel):
             "mutuellement exclusif avec auto_start_user_message)."
         ),
     )
+    user_selection: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Configuration de sélection utilisateur pour les outils et modèles disponibles. "
+            "Contient 'tools' (liste de configurations d'outils) et 'models' (liste de configurations de modèles)."
+        ),
+    )
     updated_at: datetime.datetime
 
 

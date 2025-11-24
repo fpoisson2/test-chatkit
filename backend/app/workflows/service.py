@@ -188,6 +188,32 @@ def resolve_start_auto_start_assistant_message(
     return ""
 
 
+def resolve_user_selection(
+    definition: WorkflowDefinition,
+) -> dict[str, Any] | None:
+    """Retourne la configuration user_selection du premier nœud agent trouvé."""
+
+    for step in definition.steps:
+        # Chercher les nœuds de type agent
+        kind = getattr(step, "kind", None)
+        if kind not in ("agent", "agent_v2"):
+            continue
+        if not getattr(step, "is_enabled", True):
+            continue
+
+        parameters = step.parameters
+        if isinstance(parameters, Mapping):
+            user_selection = parameters.get("user_selection")
+            if isinstance(user_selection, Mapping):
+                # Retourner la configuration user_selection
+                return dict(user_selection)
+
+        # On prend le premier agent trouvé
+        break
+
+    return None
+
+
 @dataclass(slots=True, frozen=True)
 class TelephonyRouteOverrides:
     """Overrides optionnels fournis par la configuration téléphonie."""

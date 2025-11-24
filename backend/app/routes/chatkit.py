@@ -116,6 +116,7 @@ from ..workflows import (
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
     resolve_start_hosted_workflows,
+    resolve_user_selection,
 )
 
 router = APIRouter()
@@ -166,6 +167,9 @@ async def get_chatkit_workflow(
     if user_message:
         assistant_message = ""
 
+    # Récupérer la configuration user_selection du workflow
+    user_selection = resolve_user_selection(definition)
+
     return ChatKitWorkflowResponse(
         workflow_id=workflow.id if workflow else definition.workflow_id,
         workflow_slug=workflow.slug if workflow else None,
@@ -177,6 +181,7 @@ async def get_chatkit_workflow(
         auto_start_assistant_message=(
             (assistant_message or None) if not user_message else None
         ),
+        user_selection=user_selection,
         updated_at=definition.updated_at,
     )
 
