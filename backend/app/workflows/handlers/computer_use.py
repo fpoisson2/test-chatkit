@@ -3,7 +3,16 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from chatkit.types import (
+    ComputerUseTask,
+    Workflow,
+    WorkflowItem,
+    WorkflowItemAddedEvent,
+    ThreadItemDoneEvent,
+)
 
 from .base import BaseNodeHandler
 
@@ -59,31 +68,48 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             if hasattr(computer_tool, "computer") and hasattr(computer_tool.computer, "debug_url_token"):
                 debug_url_token = computer_tool.computer.debug_url_token
 
-            # Create a task to display the computer_use environment
+            # Create a workflow item with computer_use task
             on_stream_event = context.runtime_vars.get("on_stream_event")
-            if on_stream_event and debug_url_token:
-                from chatkit.types import WorkflowItemAddedEvent, WorkflowTask
-                from datetime import datetime
+            agent_context = context.runtime_vars.get("agent_context")
 
-                agent_context = context.runtime_vars.get("agent_context")
-                if agent_context:
-                    workflow_item = {
-                        "id": agent_context.generate_id("workflow"),
-                        "thread_id": agent_context.thread.id,
-                        "created_at": datetime.now(),
-                        "workflow": {
-                            "tasks": [{
-                                "type": "computer_use",
-                                "debug_url_token": debug_url_token,
-                                "status": "active",
-                            }]
-                        }
-                    }
+            if on_stream_event and agent_context and debug_url_token:
+                # Create ComputerUseTask
+                computer_task = ComputerUseTask(
+                    type="computer_use",
+                    status_indicator="loading",
+                    debug_url_token=debug_url_token,
+                    title="Environnement Computer Use",
+                )
 
-                    # Emit the workflow item with computer_use task
-                    await on_stream_event(WorkflowItemAddedEvent(item=workflow_item))
+                # Create Workflow
+                workflow = Workflow(
+                    type="custom",
+                    tasks=[computer_task],
+                    expanded=True,
+                )
 
-            logger.info(f"Computer use environment initialized for node {node.slug}")
+                # Create WorkflowItem
+                workflow_item = WorkflowItem(
+                    id=agent_context.generate_id("workflow"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    workflow=workflow,
+                )
+
+                # Emit the workflow item
+                await on_stream_event(WorkflowItemAddedEvent(item=workflow_item))
+
+                # Mark as done immediately so it shows up
+                await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
+
+                logger.info(f"Computer use environment initialized for node {node.slug} with token {debug_url_token}")
+            else:
+                logger.warning(
+                    f"Cannot emit computer_use task: "
+                    f"on_stream_event={on_stream_event is not None}, "
+                    f"agent_context={agent_context is not None}, "
+                    f"debug_url_token={debug_url_token}"
+                )
         else:
             logger.error(f"Failed to initialize computer_use tool for node {node.slug}")
 
