@@ -436,8 +436,20 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 yield event
             return
 
-        async for event in super()._process_streaming_impl(request, context):
-            yield event
+        try:
+            async for event in super()._process_streaming_impl(request, context):
+                yield event
+        except NotFoundError as exc:
+            thread_id = getattr(request, "thread_id", None)
+            logger.warning(
+                "Thread introuvable pour la requête en streaming : %s", thread_id, exc_info=exc
+            )
+            yield ErrorEvent(
+                code=ErrorCode.STREAM_ERROR,
+                message=str(exc),
+                allow_retry=False,
+            )
+            return
 
     async def _wait_for_widget_action(
         self,
