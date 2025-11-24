@@ -316,10 +316,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     // If the current screencast is not the latest computer_use workflow, it should be closed
     // This handles the case where an older workflow is stuck in "loading" but a newer one has started
+    // We close it regardless of whether the latest is terminal or not
     if (currentActiveScreencast && latestComputerUseWorkflow &&
-        currentActiveScreencast.itemId !== latestComputerUseWorkflow.item.id &&
-        !latestComputerUseWorkflow.isTerminal) {
-      console.log('[ChatKit] Current screencast is older, marking for closure');
+        currentActiveScreencast.itemId !== latestComputerUseWorkflow.item.id) {
+      console.log('[ChatKit] Current screencast is older than latest computer_use, marking for closure');
       currentScreencastIsComplete = true;
     }
 
