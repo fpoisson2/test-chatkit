@@ -416,7 +416,9 @@ export function MyChat() {
     });
   }, [hasVoiceAgent, currentThread]);
 
-  // useWorkflowVoiceSession: Activated only when thread is at a voice_agent step
+  // useWorkflowVoiceSession: Activated when workflow has voice_agent nodes
+  // Note: We keep WebSocket connected when workflow has voice agents to avoid timing issues
+  // The lag fix (no reconnection on threadId changes) is in useWorkflowVoiceSession.ts
   const {
     startVoiceSession,
     stopVoiceSession,
@@ -426,7 +428,7 @@ export function MyChat() {
     interruptSession: interruptVoiceSession,
     transportError: voiceTransportError,
   } = useWorkflowVoiceSession({
-    enabled: isAtVoiceAgentStep,
+    enabled: hasVoiceAgent,
     threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
@@ -699,7 +701,7 @@ export function MyChat() {
         },
         widgets: {
           voiceSession: {
-            enabled: isAtVoiceAgentStep,
+            enabled: hasVoiceAgent,
             threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
             status: voiceStatus,
             isListening: voiceIsListening,
