@@ -447,7 +447,7 @@ const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWidget; co
         <div className="space-y-1">
           <h3 className="text-lg font-semibold">{widget.title ?? 'Session vocale'}</h3>
           <p className="text-sm text-secondary">
-            {widget.description ?? 'Contrôlez l'écoute et consultez les transcriptions en temps réel.'}
+            {widget.description ?? "Contrôlez l'écoute et consultez les transcriptions en temps réel."}
           </p>
         </div>
         <div className="flex items-center gap-2">
