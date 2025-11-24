@@ -384,6 +384,32 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       return null;
     }
 
+    const items = (control.thread?.items || []) as ThreadItem[];
+
+    const hasActiveVoiceAgentStep = items.some((item) => {
+      if (item.type === 'task') {
+        const taskType = (item.task as any)?.type;
+        const status = (item.task as any)?.status_indicator;
+        return taskType === 'voice_agent' && status !== 'complete';
+      }
+
+      if (item.type === 'workflow') {
+        const tasks = (item.workflow?.tasks || []) as any[];
+        for (let i = tasks.length - 1; i >= 0; i -= 1) {
+          const task = tasks[i];
+          if (task?.type === 'voice_agent' && task.status_indicator !== 'complete') {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
+
+    if (!hasActiveVoiceAgentStep) {
+      return null;
+    }
+
     return {
       type: 'VoiceSession',
       title: 'Voix',
@@ -393,7 +419,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       showTranscripts: true,
       ...(options.widgets.voiceSessionWidget ?? {}),
     };
-  }, [options.widgets?.voiceSession, options.widgets?.voiceSessionWidget]);
+  }, [control.thread?.items, options.widgets?.voiceSession, options.widgets?.voiceSessionWidget]);
 
   const renderInlineWidgets = (
     widget: VoiceSessionWidget | null,

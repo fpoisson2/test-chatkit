@@ -704,7 +704,20 @@ export interface ComputerUseTask extends BaseTask {
   debug_url_token?: string;
 }
 
-export type Task = CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask;
+export interface VoiceAgentTask extends BaseTask {
+  type: 'voice_agent';
+  title?: string;
+  description?: string;
+}
+
+export type Task =
+  | CustomTask
+  | SearchTask
+  | ThoughtTask
+  | FileTask
+  | ImageTask
+  | ComputerUseTask
+  | VoiceAgentTask;
 
 // ===== Types pour les workflows =====
 
