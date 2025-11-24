@@ -1,7 +1,7 @@
 /**
  * Composant ChatKit complet avec toutes les fonctionnalités
  */
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { ChatKitControl, ChatKitOptions, StartScreenPrompt } from '../types';
 import { WidgetRenderer } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
@@ -53,6 +53,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   // Extract auth token from API headers for DevToolsScreencast
   const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
+  const widgetContext = useMemo(
+    () => ({
+      apiConfig: api,
+      authToken,
+    }),
+    [api, authToken],
+  );
 
   // Auto-scroll vers le bas
   useEffect(() => {
@@ -470,7 +477,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                             </>
                           )}
                           {content.type === 'widget' && (
-                            <WidgetRenderer widget={content.widget} />
+                            <WidgetRenderer widget={content.widget} context={widgetContext} />
                           )}
                         </div>
                       ))}
@@ -527,7 +534,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 {/* Widget standalone */}
                 {item.type === 'widget' && (
                   <div className="chatkit-message-content">
-                    <WidgetRenderer widget={item.widget} />
+                    <WidgetRenderer widget={item.widget} context={widgetContext} />
                   </div>
                 )}
 

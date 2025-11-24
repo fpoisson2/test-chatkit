@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { COMPUTER_USE_WIDGET_DEFAULT_TITLE } from "../../../constants/widgets";
 import type { BlockLibraryItem } from "../components/BlockLibrary";
 import type { NodeKind } from "../types";
 import { labelForKind, NODE_COLORS } from "../utils";
@@ -19,6 +20,7 @@ export interface NodeHandlers {
   handleAddUserMessageNode: () => void;
   handleAddVectorStoreNode: () => void;
   handleAddWidgetNode: () => void;
+  handleAddComputerUseWidgetNode: () => void;
   handleAddEndNode: () => void;
 }
 
@@ -40,6 +42,7 @@ export const useBlockLibraryItems = ({
       kind: NodeKind;
       shortLabel: string;
       onClick: () => void;
+      label?: string;
     }> = [
       { key: "agent", kind: "agent", shortLabel: "A", onClick: nodeHandlers.handleAddAgentNode },
       {
@@ -111,12 +114,19 @@ export const useBlockLibraryItems = ({
         onClick: nodeHandlers.handleAddVectorStoreNode,
       },
       { key: "widget", kind: "widget", shortLabel: "W", onClick: nodeHandlers.handleAddWidgetNode },
+      {
+        key: "computer-use-widget",
+        kind: "widget",
+        shortLabel: "PC",
+        label: COMPUTER_USE_WIDGET_DEFAULT_TITLE,
+        onClick: nodeHandlers.handleAddComputerUseWidgetNode,
+      },
       { key: "end", kind: "end", shortLabel: "F", onClick: nodeHandlers.handleAddEndNode },
     ];
 
     return definitions.map((definition) => ({
       ...definition,
-      label: labelForKind(definition.kind, t),
+      label: definition.label ?? labelForKind(definition.kind, t),
       color: NODE_COLORS[definition.kind],
     }));
   }, [
@@ -136,6 +146,7 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddUserMessageNode,
     nodeHandlers.handleAddVectorStoreNode,
     nodeHandlers.handleAddWidgetNode,
+    nodeHandlers.handleAddComputerUseWidgetNode,
     nodeHandlers.handleAddEndNode,
   ]);
 };

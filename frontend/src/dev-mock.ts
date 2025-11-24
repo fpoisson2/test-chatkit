@@ -11,6 +11,11 @@ import type {
   WorkflowAppearanceOverride,
   WorkflowAppearanceUpdatePayload
 } from './utils/backend';
+import {
+  COMPUTER_USE_WIDGET_DEFAULT_DESCRIPTION,
+  COMPUTER_USE_WIDGET_DEFAULT_TITLE,
+  COMPUTER_USE_WIDGET_SLUG,
+} from './constants/widgets';
 
 // Données mockées pour le développement
 const MOCK_MODELS: AvailableModel[] = [
@@ -68,6 +73,23 @@ const MOCK_WIDGETS: WidgetTemplate[] = [
       children: [
         { type: 'text', content: 'Hello from mock widget!' }
       ]
+    },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    slug: COMPUTER_USE_WIDGET_SLUG,
+    title: COMPUTER_USE_WIDGET_DEFAULT_TITLE,
+    description: COMPUTER_USE_WIDGET_DEFAULT_DESCRIPTION,
+    definition: {
+      type: 'ComputerUse',
+      startUrl: 'https://www.google.com',
+      width: 1280,
+      height: 720,
+      title: COMPUTER_USE_WIDGET_DEFAULT_TITLE,
+      description: COMPUTER_USE_WIDGET_DEFAULT_DESCRIPTION,
+      autoStart: true,
+      enableInput: true,
     },
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

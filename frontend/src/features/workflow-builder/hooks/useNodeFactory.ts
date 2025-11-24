@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { COMPUTER_USE_WIDGET_SLUG } from "../../../constants/widgets";
 import type { AgentParameters, FlowNode, VectorStoreSummary } from "../types";
 import { DEFAULT_WHILE_NODE_SIZE, WHILE_NODE_LAYER_INDEX } from "../utils";
 import {
@@ -404,6 +405,32 @@ const useNodeFactory = ({
     addNodeToGraph(newNode);
   }, [addNodeToGraph, humanizeSlug]);
 
+  const handleAddComputerUseWidgetNode = useCallback(() => {
+    const slug = `computer-use-${Date.now()}`;
+    const parameters = createWidgetNodeParameters({ slug: COMPUTER_USE_WIDGET_SLUG });
+    const displayName = "Computer use";
+
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 520, y: 260 },
+      data: {
+        slug,
+        kind: "widget",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
+
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
   const handleAddEndNode = useCallback(() => {
     const slug = `end-${Date.now()}`;
     const parameters = setEndMessage({}, DEFAULT_END_MESSAGE);
@@ -443,6 +470,7 @@ const useNodeFactory = ({
     handleAddUserMessageNode,
     handleAddVectorStoreNode,
     handleAddWidgetNode,
+    handleAddComputerUseWidgetNode,
     handleAddEndNode,
   };
 };

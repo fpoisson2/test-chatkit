@@ -52,3 +52,6 @@ export {
   resolveMargin,
   resolveBorder,
 } from './utils';
+
+// Computer use
+export { ComputerUseWidgetComponent as ComputerUseWidget } from './ComputerUse';

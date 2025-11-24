@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import {
   type AvailableModel,
   type VectorStoreSummary,
@@ -8,6 +10,11 @@ import {
   useModels,
   useWorkflowWidgets,
 } from "../../../hooks";
+import {
+  COMPUTER_USE_WIDGET_DEFAULT_DESCRIPTION,
+  COMPUTER_USE_WIDGET_DEFAULT_TITLE,
+  COMPUTER_USE_WIDGET_SLUG,
+} from "../../../constants/widgets";
 
 type WorkflowResourceState<T> = {
   data: T;
@@ -49,6 +56,22 @@ const useWorkflowResources = (token: string | null): WorkflowResourcesState => {
     refetch: refetchWidgets,
   } = useWorkflowWidgets(token);
 
+  const widgetsWithComputerUse = useMemo(() => {
+    const hasComputerUse = widgetsData.some((widget) => widget.slug === COMPUTER_USE_WIDGET_SLUG);
+
+    if (hasComputerUse) {
+      return widgetsData;
+    }
+
+    const summary: WidgetTemplateSummary = {
+      slug: COMPUTER_USE_WIDGET_SLUG,
+      title: COMPUTER_USE_WIDGET_DEFAULT_TITLE,
+      description: COMPUTER_USE_WIDGET_DEFAULT_DESCRIPTION,
+    };
+
+    return [...widgetsData, summary];
+  }, [widgetsData]);
+
   return {
     vectorStores: {
       data: vectorStoresData,
@@ -75,7 +98,7 @@ const useWorkflowResources = (token: string | null): WorkflowResourcesState => {
       },
     },
     widgets: {
-      data: widgetsData,
+      data: widgetsWithComputerUse,
       loading: widgetsLoading,
       error: widgetsError instanceof Error
         ? widgetsError.message

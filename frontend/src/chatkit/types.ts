@@ -226,6 +226,17 @@ export interface ImageWidget extends WidgetComponentBase {
   flex?: number | string;
 }
 
+export interface ComputerUseWidget extends WidgetComponentBase {
+  type: 'ComputerUse';
+  startUrl?: string;
+  width?: number;
+  height?: number;
+  title?: string;
+  description?: string;
+  autoStart?: boolean;
+  enableInput?: boolean;
+}
+
 export interface ButtonWidget extends WidgetComponentBase {
   type: 'Button';
   submit?: boolean;
@@ -477,6 +488,7 @@ export type WidgetComponent =
   | DividerWidget
   | IconWidget
   | ImageWidget
+  | ComputerUseWidget
   | ListViewItem
   | ButtonWidget
   | CheckboxWidget

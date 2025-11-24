@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import type { WidgetComponent, WidgetRoot } from '../types';
+import type { ChatKitAPIConfig, WidgetComponent, WidgetRoot } from '../types';
 
 // Import des composants widgets individuels
 import { TextComponent } from './Text';
@@ -11,6 +11,7 @@ import { BoxComponent } from './Box';
 import { RowComponent } from './Row';
 import { ColComponent } from './Col';
 import { CardComponent } from './Card';
+import { ComputerUseWidgetComponent } from './ComputerUse';
 
 // Import des composants simples
 import {
@@ -43,6 +44,8 @@ import {
 export interface WidgetContext {
   onAction?: (action: unknown) => void;
   onFormData?: (data: FormData) => void;
+  apiConfig?: ChatKitAPIConfig;
+  authToken?: string;
 }
 
 const WidgetContextProvider = React.createContext<WidgetContext>({});
@@ -63,77 +66,117 @@ export function WidgetRenderer({ widget, context = {} }: WidgetRendererProps): J
     return null;
   }
 
-  const contextValue = context;
+  let rendered: JSX.Element | null = null;
 
   switch (widget.type) {
     // Texte
     case 'Text':
-      return <TextComponent {...widget} />;
+      rendered = <TextComponent {...widget} />;
+      break;
     case 'Title':
-      return <TitleComponent {...widget} />;
+      rendered = <TitleComponent {...widget} />;
+      break;
     case 'Caption':
-      return <CaptionComponent {...widget} />;
+      rendered = <CaptionComponent {...widget} />;
+      break;
     case 'Markdown':
-      return <MarkdownComponent {...widget} />;
+      rendered = <MarkdownComponent {...widget} />;
+      break;
 
     // Affichage
     case 'Badge':
-      return <BadgeComponent {...widget} />;
+      rendered = <BadgeComponent {...widget} />;
+      break;
     case 'Icon':
-      return <IconComponent {...widget} />;
+      rendered = <IconComponent {...widget} />;
+      break;
     case 'Image':
-      return <ImageComponent {...widget} />;
+      rendered = <ImageComponent {...widget} />;
+      break;
     case 'Divider':
-      return <DividerComponent {...widget} />;
+      rendered = <DividerComponent {...widget} />;
+      break;
     case 'Spacer':
-      return <SpacerComponent {...widget} />;
+      rendered = <SpacerComponent {...widget} />;
+      break;
 
     // Layout
     case 'Box':
-      return <BoxComponent {...widget} />;
+      rendered = <BoxComponent {...widget} />;
+      break;
     case 'Row':
-      return <RowComponent {...widget} />;
+      rendered = <RowComponent {...widget} />;
+      break;
     case 'Col':
-      return <ColComponent {...widget} />;
+      rendered = <ColComponent {...widget} />;
+      break;
     case 'Card':
-      return <CardComponent {...widget} />;
+      rendered = <CardComponent {...widget} />;
+      break;
     case 'ListView':
-      return <ListViewComponent {...widget} />;
+      rendered = <ListViewComponent {...widget} />;
+      break;
+
+    case 'ComputerUse':
+      rendered = <ComputerUseWidgetComponent {...widget} />;
+      break;
 
     // Formulaires
     case 'Form':
-      return <FormComponent {...widget} />;
+      rendered = <FormComponent {...widget} />;
+      break;
     case 'Button':
-      return <ButtonComponent {...widget} />;
+      rendered = <ButtonComponent {...widget} />;
+      break;
     case 'Input':
-      return <InputComponent {...widget} />;
+      rendered = <InputComponent {...widget} />;
+      break;
     case 'Textarea':
-      return <TextareaComponent {...widget} />;
+      rendered = <TextareaComponent {...widget} />;
+      break;
     case 'Select':
-      return <SelectComponent {...widget} />;
+      rendered = <SelectComponent {...widget} />;
+      break;
     case 'Checkbox':
-      return <CheckboxComponent {...widget} />;
+      rendered = <CheckboxComponent {...widget} />;
+      break;
     case 'RadioGroup':
-      return <RadioGroupComponent {...widget} />;
+      rendered = <RadioGroupComponent {...widget} />;
+      break;
     case 'DatePicker':
-      return <DatePickerComponent {...widget} />;
+      rendered = <DatePickerComponent {...widget} />;
+      break;
     case 'Label':
-      return <LabelComponent {...widget} />;
+      rendered = <LabelComponent {...widget} />;
+      break;
 
     // Utilitaires
     case 'Transition':
-      return <TransitionComponent {...widget} />;
+      rendered = <TransitionComponent {...widget} />;
+      break;
     case 'Chart':
-      return <ChartComponent {...widget} />;
+      rendered = <ChartComponent {...widget} />;
+      break;
 
     default:
       console.warn(`[WidgetRenderer] Unknown widget type: ${widget.type}`);
-      return (
+      rendered = (
         <div style={{ padding: '8px', background: '#fee', border: '1px solid #fcc', borderRadius: '4px' }}>
           Unknown widget type: {widget.type}
         </div>
       );
+      break;
   }
+
+  if (!rendered) {
+    return null;
+  }
+
+  if (context && Object.keys(context).length > 0) {
+    return <WidgetContextProvider.Provider value={context}>{rendered}</WidgetContextProvider.Provider>;
+  }
+
+  return rendered;
 }
 
 /**
