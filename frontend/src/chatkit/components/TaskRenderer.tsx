@@ -11,7 +11,6 @@ import type {
   FileSource,
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { DevToolsScreencast } from './DevToolsScreencast';
 import { useI18n } from '../../i18n';
 
 interface TaskRendererProps {
@@ -215,33 +214,10 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
 }
 
 function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
-  const handleEndSession = () => {
-    // TODO: Implement session termination logic
-    // This should call the backend to end the computer_use session
-    // and capture the final screenshot to add to conversation history
-    console.log('Ending computer_use session...');
-  };
-
-  // If we have a debug_url_token, show the screencast without card wrapper
+  // If we have a debug_url_token, the screencast is displayed in ChatKit.tsx
+  // Don't render anything here to avoid duplication
   if (task.debug_url_token) {
-    return (
-      <div className="chatkit-computer-use-standalone">
-        <DevToolsScreencast
-          debugUrlToken={task.debug_url_token}
-          enableInput={true}
-          className="chatkit-task-screencast"
-        />
-        <div className="chatkit-computer-use-actions">
-          <button
-            type="button"
-            onClick={handleEndSession}
-            className="chatkit-end-session-button"
-          >
-            Terminer la session et continuer
-          </button>
-        </div>
-      </div>
-    );
+    return <></>;
   }
 
   // Fallback: show static screenshots in a card

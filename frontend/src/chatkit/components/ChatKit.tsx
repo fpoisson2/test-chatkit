@@ -807,6 +807,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           : null;
 
                         if (showPreview) {
+                          const handleEndSession = () => {
+                            // TODO: Implement session termination logic
+                            // This should call the backend to end the computer_use session
+                            // and capture the final screenshot to add to conversation history
+                            console.log('Ending computer_use session...');
+                          };
+
                           return (
                             <div className="chatkit-computer-use-preview">
                               {actionTitle && (
@@ -814,6 +821,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                               )}
                               {/* Show screencast if this is the active screencast */}
                               {showLiveScreencast && (
+                                <>
                                   <DevToolsScreencast
                                     debugUrlToken={debugUrlToken as string}
                                     authToken={authToken}
@@ -823,7 +831,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                         current?.token === debugUrlToken ? null : current
                                       );
                                     }}
-                                />
+                                  />
+                                  <div className="chatkit-computer-use-actions">
+                                    <button
+                                      type="button"
+                                      onClick={handleEndSession}
+                                      className="chatkit-end-session-button"
+                                    >
+                                      Terminer la session et continuer
+                                    </button>
+                                  </div>
+                                </>
                               )}
                               {/* Show screenshot for completed tasks or non-active screencasts */}
                               {showScreenshot && (
