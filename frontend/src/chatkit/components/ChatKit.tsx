@@ -323,6 +323,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       currentScreencastIsComplete = true;
     }
 
+    // If the current screencast's token has failed, close it immediately
+    if (currentActiveScreencast && failedScreencastTokens.has(currentActiveScreencast.token)) {
+      console.log('[ChatKit] Current screencast token has failed, marking for closure:', currentActiveScreencast.token.substring(0, 8));
+      currentScreencastIsComplete = true;
+    }
+
     const latestComputerUseIsTerminal = latestComputerUseWorkflow?.isTerminal ?? false;
     const hasLoadingComputerUse = computerUseWorkflows.some(w => w.isLoading);
 
