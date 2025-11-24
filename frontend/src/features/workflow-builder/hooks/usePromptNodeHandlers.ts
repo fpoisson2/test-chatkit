@@ -28,6 +28,10 @@ import {
   setAgentTemperature,
   setAgentTextVerbosity,
   setAgentTopP,
+  setAgentUserToolSelectionEnabled,
+  setAgentAvailableTools,
+  setAgentUserModelSelectionEnabled,
+  setAgentAvailableModels,
   setStartAutoRun,
   setStartAutoRunAssistantMessage,
   setStartAutoRunMessage,
@@ -466,6 +470,58 @@ const usePromptNodeHandlers = ({
     [updateNodeData]
   );
 
+  const handleAgentUserToolSelectionEnabledChange = useCallback(
+    (nodeId: string, enabled: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentUserToolSelectionEnabled(data.parameters, enabled);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentAvailableToolsChange = useCallback(
+    (nodeId: string, tools: string[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentAvailableTools(data.parameters, tools);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentUserModelSelectionEnabledChange = useCallback(
+    (nodeId: string, enabled: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentUserModelSelectionEnabled(data.parameters, enabled);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentAvailableModelsChange = useCallback(
+    (nodeId: string, models: string[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentAvailableModels(data.parameters, models);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
   return {
     // Start handlers
     handleStartAutoRunChange,
@@ -496,6 +552,10 @@ const usePromptNodeHandlers = ({
     handleAgentResponseWidgetSlugChange,
     handleAgentResponseWidgetSourceChange,
     handleAgentResponseWidgetDefinitionChange,
+    handleAgentUserToolSelectionEnabledChange,
+    handleAgentAvailableToolsChange,
+    handleAgentUserModelSelectionEnabledChange,
+    handleAgentAvailableModelsChange,
   };
 };
 

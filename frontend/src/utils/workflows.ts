@@ -4180,3 +4180,165 @@ export const setAgentWorkflowValidationToolEnabled = (
   const toolEntry = buildWorkflowValidationFunctionToolEntry();
   return { ...next, tools: [...tools, toolEntry] };
 };
+
+// User Tool Selection Configuration
+
+export const getAgentUserToolSelectionEnabled = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+  const config = (parameters as Record<string, unknown>).user_selection;
+  if (!isPlainRecord(config)) {
+    return false;
+  }
+  const enabled = (config as Record<string, unknown>).tools_enabled;
+  return typeof enabled === "boolean" ? enabled : false;
+};
+
+export const setAgentUserToolSelectionEnabled = (
+  parameters: AgentParameters,
+  enabled: boolean,
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+  const config = isPlainRecord(next.user_selection)
+    ? { ...(next.user_selection as Record<string, unknown>) }
+    : {};
+
+  if (!enabled) {
+    delete config.tools_enabled;
+    if (Object.keys(config).length === 0) {
+      delete next.user_selection;
+    } else {
+      next.user_selection = config;
+    }
+    return stripEmpty(next);
+  }
+
+  config.tools_enabled = true;
+  next.user_selection = config;
+  return stripEmpty(next);
+};
+
+export const getAgentAvailableTools = (
+  parameters: AgentParameters | null | undefined,
+): string[] => {
+  if (!parameters) {
+    return [];
+  }
+  const config = (parameters as Record<string, unknown>).user_selection;
+  if (!isPlainRecord(config)) {
+    return [];
+  }
+  const tools = (config as Record<string, unknown>).available_tools;
+  if (!Array.isArray(tools)) {
+    return [];
+  }
+  return tools.filter((tool): tool is string => typeof tool === "string");
+};
+
+export const setAgentAvailableTools = (
+  parameters: AgentParameters,
+  tools: string[],
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+  const config = isPlainRecord(next.user_selection)
+    ? { ...(next.user_selection as Record<string, unknown>) }
+    : {};
+
+  if (tools.length === 0) {
+    delete config.available_tools;
+    if (Object.keys(config).length === 0) {
+      delete next.user_selection;
+    } else {
+      next.user_selection = config;
+    }
+    return stripEmpty(next);
+  }
+
+  config.available_tools = tools;
+  next.user_selection = config;
+  return stripEmpty(next);
+};
+
+// User Model Selection Configuration
+
+export const getAgentUserModelSelectionEnabled = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+  const config = (parameters as Record<string, unknown>).user_selection;
+  if (!isPlainRecord(config)) {
+    return false;
+  }
+  const enabled = (config as Record<string, unknown>).models_enabled;
+  return typeof enabled === "boolean" ? enabled : false;
+};
+
+export const setAgentUserModelSelectionEnabled = (
+  parameters: AgentParameters,
+  enabled: boolean,
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+  const config = isPlainRecord(next.user_selection)
+    ? { ...(next.user_selection as Record<string, unknown>) }
+    : {};
+
+  if (!enabled) {
+    delete config.models_enabled;
+    if (Object.keys(config).length === 0) {
+      delete next.user_selection;
+    } else {
+      next.user_selection = config;
+    }
+    return stripEmpty(next);
+  }
+
+  config.models_enabled = true;
+  next.user_selection = config;
+  return stripEmpty(next);
+};
+
+export const getAgentAvailableModels = (
+  parameters: AgentParameters | null | undefined,
+): string[] => {
+  if (!parameters) {
+    return [];
+  }
+  const config = (parameters as Record<string, unknown>).user_selection;
+  if (!isPlainRecord(config)) {
+    return [];
+  }
+  const models = (config as Record<string, unknown>).available_models;
+  if (!Array.isArray(models)) {
+    return [];
+  }
+  return models.filter((model): model is string => typeof model === "string");
+};
+
+export const setAgentAvailableModels = (
+  parameters: AgentParameters,
+  models: string[],
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+  const config = isPlainRecord(next.user_selection)
+    ? { ...(next.user_selection as Record<string, unknown>) }
+    : {};
+
+  if (models.length === 0) {
+    delete config.available_models;
+    if (Object.keys(config).length === 0) {
+      delete next.user_selection;
+    } else {
+      next.user_selection = config;
+    }
+    return stripEmpty(next);
+  }
+
+  config.available_models = models;
+  next.user_selection = config;
+  return stripEmpty(next);
+};

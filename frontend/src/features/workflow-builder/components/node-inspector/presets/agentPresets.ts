@@ -33,6 +33,12 @@ export interface AgentPresetConfig {
   show_search_sources?: boolean;
   continue_on_error?: boolean;
   store_responses?: boolean;
+
+  // User selection options
+  user_tool_selection_enabled?: boolean;
+  available_tools?: string[];
+  user_model_selection_enabled?: boolean;
+  available_models?: string[];
 }
 
 export interface AgentPreset {

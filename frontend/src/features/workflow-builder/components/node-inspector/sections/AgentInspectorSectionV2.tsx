@@ -32,6 +32,12 @@ import {
   type McpOAuthSessionStatus,
 } from '../../../../../utils/backend';
 import { collectWidgetBindings } from '../../../../../utils/widgetPreview';
+import {
+  getAgentUserToolSelectionEnabled,
+  getAgentAvailableTools,
+  getAgentUserModelSelectionEnabled,
+  getAgentAvailableModels,
+} from '../../../../../utils/workflows';
 import { useI18n } from '../../../../../i18n';
 import {
   TabSection,
@@ -176,6 +182,10 @@ type AgentInspectorSectionV2Props = {
     slug: string,
     enabled: boolean,
   ) => void;
+  onAgentUserToolSelectionEnabledChange: (nodeId: string, enabled: boolean) => void;
+  onAgentAvailableToolsChange: (nodeId: string, tools: string[]) => void;
+  onAgentUserModelSelectionEnabledChange: (nodeId: string, enabled: boolean) => void;
+  onAgentAvailableModelsChange: (nodeId: string, models: string[]) => void;
 };
 export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = ({
   nodeId,
@@ -226,6 +236,10 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
   onAgentWorkflowToolToggle,
+  onAgentUserToolSelectionEnabledChange,
+  onAgentAvailableToolsChange,
+  onAgentUserModelSelectionEnabledChange,
+  onAgentAvailableModelsChange,
 }) => {
   const { t } = useI18n();
 
@@ -307,6 +321,12 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     isReasoningModel,
     onAgentImageGenerationChange,
   });
+
+  // User selection configuration
+  const userToolSelectionEnabled = getAgentUserToolSelectionEnabled(parameters);
+  const userAvailableTools = getAgentAvailableTools(parameters);
+  const userModelSelectionEnabled = getAgentUserModelSelectionEnabled(parameters);
+  const userAvailableModels = getAgentAvailableModels(parameters);
 
   const handleStartMcpOAuth = useCallback(
     (payload: { url: string; clientId: string | null; scope: string | null }) =>
@@ -468,6 +488,10 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             responseWidgetDefinition={responseWidgetDefinition}
             responseWidgetDefinitionLoading={responseWidgetDefinitionLoading}
             responseWidgetDefinitionError={responseWidgetDefinitionError}
+            userToolSelectionEnabled={userToolSelectionEnabled}
+            userAvailableTools={userAvailableTools}
+            userModelSelectionEnabled={userModelSelectionEnabled}
+            userAvailableModels={userAvailableModels}
             onAgentIncludeChatHistoryChange={onAgentIncludeChatHistoryChange}
             onAgentDisplayResponseInChatChange={onAgentDisplayResponseInChatChange}
             onAgentShowSearchSourcesChange={onAgentShowSearchSourcesChange}
@@ -479,6 +503,10 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             onAgentResponseWidgetSlugChange={onAgentResponseWidgetSlugChange}
             onAgentResponseWidgetSourceChange={onAgentResponseWidgetSourceChange}
             onAgentResponseWidgetDefinitionChange={onAgentResponseWidgetDefinitionChange}
+            onAgentUserToolSelectionEnabledChange={onAgentUserToolSelectionEnabledChange}
+            onAgentAvailableToolsChange={onAgentAvailableToolsChange}
+            onAgentUserModelSelectionEnabledChange={onAgentUserModelSelectionEnabledChange}
+            onAgentAvailableModelsChange={onAgentAvailableModelsChange}
             t={t}
           />
         ),
@@ -2103,6 +2131,10 @@ interface AdvancedSettingsTabProps {
   responseWidgetDefinition: Record<string, unknown> | null;
   responseWidgetDefinitionLoading: boolean;
   responseWidgetDefinitionError: string | null;
+  userToolSelectionEnabled: boolean;
+  userAvailableTools: string[];
+  userModelSelectionEnabled: boolean;
+  userAvailableModels: string[];
   onAgentIncludeChatHistoryChange: (nodeId: string, value: boolean) => void;
   onAgentDisplayResponseInChatChange: (nodeId: string, value: boolean) => void;
   onAgentShowSearchSourcesChange: (nodeId: string, value: boolean) => void;
@@ -2120,6 +2152,10 @@ interface AdvancedSettingsTabProps {
     source: 'library' | 'variable',
   ) => void;
   onAgentResponseWidgetDefinitionChange: (nodeId: string, expression: string) => void;
+  onAgentUserToolSelectionEnabledChange: (nodeId: string, enabled: boolean) => void;
+  onAgentAvailableToolsChange: (nodeId: string, tools: string[]) => void;
+  onAgentUserModelSelectionEnabledChange: (nodeId: string, enabled: boolean) => void;
+  onAgentAvailableModelsChange: (nodeId: string, models: string[]) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
@@ -2148,6 +2184,10 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
   responseWidgetDefinition,
   responseWidgetDefinitionLoading,
   responseWidgetDefinitionError,
+  userToolSelectionEnabled,
+  userAvailableTools,
+  userModelSelectionEnabled,
+  userAvailableModels,
   onAgentIncludeChatHistoryChange,
   onAgentDisplayResponseInChatChange,
   onAgentShowSearchSourcesChange,
@@ -2159,6 +2199,10 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
   onAgentResponseWidgetSlugChange,
   onAgentResponseWidgetSourceChange,
   onAgentResponseWidgetDefinitionChange,
+  onAgentUserToolSelectionEnabledChange,
+  onAgentAvailableToolsChange,
+  onAgentUserModelSelectionEnabledChange,
+  onAgentAvailableModelsChange,
   t,
 }) => {
   const widgetValidationMessage = useMemo(() => {
@@ -2412,6 +2456,80 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
             onChange={(enabled) => onAgentStorePreferenceChange(nodeId, enabled)}
             helpText={t('workflowBuilder.agentInspector.storeResponsesHelp')}
           />
+        </div>
+      </div>
+
+      {/* User Selection Configuration */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h4 className={styles.sectionTitle}>
+            Sélection utilisateur
+          </h4>
+          <p className={styles.sectionDescription}>
+            Configurer les options de sélection d'outils et de modèles pour l'utilisateur
+          </p>
+        </div>
+
+        <div className={styles.toggleGroup}>
+          <ToggleRow
+            label="Permettre à l'utilisateur de choisir les outils"
+            checked={userToolSelectionEnabled}
+            onChange={(enabled) => onAgentUserToolSelectionEnabledChange(nodeId, enabled)}
+            helpText="Lorsqu'activé, l'utilisateur pourra choisir parmi les outils disponibles dans le chat"
+          />
+
+          {userToolSelectionEnabled && (
+            <Field
+              label="Outils disponibles"
+              description="Liste des outils disponibles pour l'utilisateur (séparés par des virgules)"
+              htmlFor={`user-tools-${nodeId}`}
+            >
+              <input
+                id={`user-tools-${nodeId}`}
+                type="text"
+                className={styles.input}
+                value={userAvailableTools.join(', ')}
+                onChange={(e) => {
+                  const tools = e.target.value
+                    .split(',')
+                    .map(t => t.trim())
+                    .filter(t => t.length > 0);
+                  onAgentAvailableToolsChange(nodeId, tools);
+                }}
+                placeholder="web_search, file_search, image_generation"
+              />
+            </Field>
+          )}
+
+          <ToggleRow
+            label="Permettre à l'utilisateur de choisir le modèle"
+            checked={userModelSelectionEnabled}
+            onChange={(enabled) => onAgentUserModelSelectionEnabledChange(nodeId, enabled)}
+            helpText="Lorsqu'activé, l'utilisateur pourra choisir parmi les modèles disponibles dans le chat"
+          />
+
+          {userModelSelectionEnabled && (
+            <Field
+              label="Modèles disponibles"
+              description="Liste des modèles disponibles pour l'utilisateur (séparés par des virgules)"
+              htmlFor={`user-models-${nodeId}`}
+            >
+              <input
+                id={`user-models-${nodeId}`}
+                type="text"
+                className={styles.input}
+                value={userAvailableModels.join(', ')}
+                onChange={(e) => {
+                  const models = e.target.value
+                    .split(',')
+                    .map(m => m.trim())
+                    .filter(m => m.length > 0);
+                  onAgentAvailableModelsChange(nodeId, models);
+                }}
+                placeholder="gpt-4, claude-3-5-sonnet-20241022"
+              />
+            </Field>
+          )}
         </div>
       </div>
     </div>
