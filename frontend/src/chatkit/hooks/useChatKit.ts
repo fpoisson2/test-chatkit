@@ -164,6 +164,9 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       setError(null);
       onResponseStart?.();
 
+      // Déclarer updatedThread AVANT le try pour qu'elle soit accessible dans le finally
+      let updatedThread: Thread | null = null;
+
       try {
         const messageContent = typeof content === 'string'
           ? [{ type: 'input_text' as const, text: content }]
@@ -195,8 +198,6 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
               };
 
           console.log('[ChatKit] Sending message with payload:', payload);
-
-          let updatedThread: Thread | null = null;
 
           // Utiliser une ref mutable pour suivre la clé du thread en cours de streaming
           // Cela permet de gérer le cas où un thread temporaire reçoit son vrai ID

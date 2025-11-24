@@ -95,6 +95,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     let newActiveScreencast: { token: string; itemId: string } | null = null;
     let currentScreencastIsComplete = false;
+    let anyCompleteComputerUse = false;
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
@@ -117,6 +118,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token && !isComplete
       });
 
+      // Détecter si un workflow computer_use complete existe
+      if (isComplete) {
+        anyCompleteComputerUse = true;
+      }
+
       // Si ce workflow est le screencast actuellement actif ET qu'il est complete, on doit le fermer
       if (isComplete && activeScreencast && item.id === activeScreencast.itemId) {
         currentScreencastIsComplete = true;
@@ -132,16 +138,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     });
 
-    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentScreencastIsComplete:', currentScreencastIsComplete, 'currentActiveScreencast:', activeScreencast);
+    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentScreencastIsComplete:', currentScreencastIsComplete, 'anyCompleteComputerUse:', anyCompleteComputerUse, 'currentActiveScreencast:', activeScreencast);
 
     // Mise à jour de activeScreencast :
     // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
     // - Si le screencast ACTUEL est complete, on le ferme (null)
+    // - Si un workflow computer_use complete existe ET qu'il y a un screencast actif, on ferme le screencast
     // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
     if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
       console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
-    } else if (currentScreencastIsComplete) {
+    } else if (currentScreencastIsComplete || (anyCompleteComputerUse && activeScreencast)) {
       console.log('[ChatKit] Closing screencast due to completed computer_use task');
       setActiveScreencast(null);
     }
