@@ -147,28 +147,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
   }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
 
-  // Capturer le dernier screenshot du screencast actif pour l'afficher après la fermeture
-  useEffect(() => {
-    if (!activeScreencast) return;
-
-    const items = control.thread?.items || [];
-    const workflow = items.find((i: any) => i.type === 'workflow' && i.id === activeScreencast.itemId);
-    if (!workflow) return;
-
-    const computerUseTask = workflow.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
-    if (!computerUseTask || !computerUseTask.screenshots || computerUseTask.screenshots.length === 0) return;
-
-    const lastScreenshot = computerUseTask.screenshots[computerUseTask.screenshots.length - 1];
-    const src = lastScreenshot.data_url || (lastScreenshot.b64_image ? `data:image/png;base64,${lastScreenshot.b64_image}` : '');
-
-    if (src) {
+  // Callback pour capturer le dernier frame du screencast avant sa fermeture
+  const handleScreencastLastFrame = useCallback((itemId: string) => {
+    return (frameDataUrl: string) => {
+      console.log('[ChatKit] Captured last screencast frame for item:', itemId);
       setLastScreencastScreenshot({
-        itemId: activeScreencast.itemId,
-        src,
-        action: lastScreenshot.action_description || computerUseTask.current_action,
+        itemId,
+        src: frameDataUrl,
+        action: undefined,
       });
-    }
-  }, [activeScreencast, control.thread?.items]);
+    };
+  }, []);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -881,6 +870,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                         current?.token === debugUrlToken ? null : current
                                       );
                                     }}
+                                    onLastFrame={handleScreencastLastFrame(item.id)}
                                   />
                                   <div className="chatkit-computer-use-actions">
                                     <button

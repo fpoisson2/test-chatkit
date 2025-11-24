@@ -5,6 +5,7 @@ interface DevToolsScreencastProps {
   authToken?: string; // JWT token for authentication
   className?: string;
   onConnectionError?: () => void; // Callback when connection fails
+  onLastFrame?: (frameDataUrl: string) => void; // Callback with last frame before closing
   enableInput?: boolean; // Capture keyboard/mouse events and forward to CDP
 }
 
@@ -24,6 +25,7 @@ export function DevToolsScreencast({
   className = '',
   enableInput = false,
   onConnectionError,
+  onLastFrame,
 }: DevToolsScreencastProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -261,6 +263,17 @@ export function DevToolsScreencast({
     return () => {
       mounted = false;
 
+      // Capture last frame before closing
+      if (onLastFrame && canvasRef.current) {
+        try {
+          const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9);
+          onLastFrame(dataUrl);
+          console.log('[DevToolsScreencast] Captured last frame before closing');
+        } catch (err) {
+          console.error('[DevToolsScreencast] Error capturing last frame:', err);
+        }
+      }
+
       // Stop screencast before closing
       if (ws && ws.readyState === WebSocket.OPEN) {
         try {
@@ -284,7 +297,7 @@ export function DevToolsScreencast({
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [debugUrlToken, authToken]);
+  }, [debugUrlToken, authToken, onLastFrame]);
 
   const sendCdpCommand = (command: Record<string, unknown>) => {
     const ws = wsRef.current;
