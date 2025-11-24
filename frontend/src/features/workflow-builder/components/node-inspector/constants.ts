@@ -93,6 +93,15 @@ export const IMAGE_TOOL_SIZES = [
   { value: "auto", label: "Automatique" },
 ] as const;
 
+// Available tools for user selection
+export const AVAILABLE_USER_TOOLS = [
+  { id: "web_search", label: "workflowBuilder.agentInspector.userSelection.tools.webSearch" },
+  { id: "file_search", label: "workflowBuilder.agentInspector.userSelection.tools.fileSearch" },
+  { id: "computer_use", label: "workflowBuilder.agentInspector.userSelection.tools.computerUse" },
+  { id: "image_generation", label: "workflowBuilder.agentInspector.userSelection.tools.imageGeneration" },
+  { id: "weather", label: "workflowBuilder.agentInspector.userSelection.tools.weather" },
+] as const;
+
 export const IMAGE_TOOL_QUALITIES = [
   { value: "high", label: "Haute" },
   { value: "medium", label: "Moyenne" },

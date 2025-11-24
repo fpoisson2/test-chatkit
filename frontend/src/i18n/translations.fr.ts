@@ -735,6 +735,32 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.storeResponsesLabel": "Enregistrer les réponses",
   "workflowBuilder.agentInspector.storeResponsesHelp":
     "Conserve les réponses de l'agent pour référence ultérieure.",
+  "workflowBuilder.agentInspector.userSelection.title": "Sélection utilisateur",
+  "workflowBuilder.agentInspector.userSelection.description":
+    "Configurez les options disponibles pour l'utilisateur lors de l'interaction avec le chat.",
+  "workflowBuilder.agentInspector.userSelection.toolsEnabledLabel":
+    "Permettre à l'utilisateur de choisir les outils",
+  "workflowBuilder.agentInspector.userSelection.toolsEnabledHelp":
+    "Lorsqu'activé, l'utilisateur pourra sélectionner parmi les outils disponibles dans le composer du chat.",
+  "workflowBuilder.agentInspector.userSelection.availableToolsLabel": "Outils disponibles",
+  "workflowBuilder.agentInspector.userSelection.availableToolsDescription":
+    "Sélectionnez les outils que l'utilisateur pourra activer dans le chat.",
+  "workflowBuilder.agentInspector.userSelection.tools.webSearch": "Recherche Web",
+  "workflowBuilder.agentInspector.userSelection.tools.fileSearch": "Recherche de fichiers",
+  "workflowBuilder.agentInspector.userSelection.tools.computerUse": "Computer Use",
+  "workflowBuilder.agentInspector.userSelection.tools.imageGeneration": "Génération d'images",
+  "workflowBuilder.agentInspector.userSelection.tools.weather": "Météo",
+  "workflowBuilder.agentInspector.userSelection.modelsEnabledLabel":
+    "Permettre à l'utilisateur de choisir le modèle",
+  "workflowBuilder.agentInspector.userSelection.modelsEnabledHelp":
+    "Lorsqu'activé, l'utilisateur pourra sélectionner parmi les modèles disponibles dans le composer du chat.",
+  "workflowBuilder.agentInspector.userSelection.availableModelsLabel": "Modèles disponibles",
+  "workflowBuilder.agentInspector.userSelection.availableModelsDescription":
+    "Entrez les identifiants des modèles disponibles pour l'utilisateur, séparés par des virgules.",
+  "workflowBuilder.agentInspector.userSelection.availableModelsPlaceholder":
+    "gpt-4, claude-3-5-sonnet-20241022",
+  "workflowBuilder.agentInspector.userSelection.availableModelsHint":
+    "Les modèles doivent correspondre aux identifiants exacts des modèles configurés dans votre système.",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
   "workflowBuilder.agentInspector.imageModelHelp":

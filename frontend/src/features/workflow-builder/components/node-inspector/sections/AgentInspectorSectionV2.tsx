@@ -79,6 +79,7 @@ import {
   IMAGE_TOOL_OUTPUT_FORMATS,
   DEFAULT_IMAGE_TOOL_CONFIG,
   DEFAULT_JSON_SCHEMA_TEXT,
+  AVAILABLE_USER_TOOLS,
 } from '../constants';
 import { ToolSettingsPanel } from './ToolSettingsPanel';
 import styles from './AgentInspectorSectionV2.module.css';
@@ -2463,72 +2464,82 @@ const AdvancedSettingsTab: React.FC<AdvancedSettingsTabProps> = ({
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
           <h4 className={styles.sectionTitle}>
-            Sélection utilisateur
+            {t('workflowBuilder.agentInspector.userSelection.title')}
           </h4>
           <p className={styles.sectionDescription}>
-            Configurer les options de sélection d'outils et de modèles pour l'utilisateur
+            {t('workflowBuilder.agentInspector.userSelection.description')}
           </p>
         </div>
 
         <div className={styles.toggleGroup}>
           <ToggleRow
-            label="Permettre à l'utilisateur de choisir les outils"
+            label={t('workflowBuilder.agentInspector.userSelection.toolsEnabledLabel')}
             checked={userToolSelectionEnabled}
             onChange={(enabled) => onAgentUserToolSelectionEnabledChange(nodeId, enabled)}
-            helpText="Lorsqu'activé, l'utilisateur pourra choisir parmi les outils disponibles dans le chat"
+            helpText={t('workflowBuilder.agentInspector.userSelection.toolsEnabledHelp')}
           />
 
           {userToolSelectionEnabled && (
-            <Field
-              label="Outils disponibles"
-              description="Liste des outils disponibles pour l'utilisateur (séparés par des virgules)"
-              htmlFor={`user-tools-${nodeId}`}
-            >
-              <input
-                id={`user-tools-${nodeId}`}
-                type="text"
-                className={styles.input}
-                value={userAvailableTools.join(', ')}
-                onChange={(e) => {
-                  const tools = e.target.value
-                    .split(',')
-                    .map(t => t.trim())
-                    .filter(t => t.length > 0);
-                  onAgentAvailableToolsChange(nodeId, tools);
-                }}
-                placeholder="web_search, file_search, image_generation"
-              />
-            </Field>
+            <div className={styles.nestedOptions}>
+              <Field
+                label={t('workflowBuilder.agentInspector.userSelection.availableToolsLabel')}
+                description={t('workflowBuilder.agentInspector.userSelection.availableToolsDescription')}
+              >
+                <div className={styles.checkboxGroup}>
+                  {AVAILABLE_USER_TOOLS.map((tool) => {
+                    const isChecked = userAvailableTools.includes(tool.id);
+                    return (
+                      <label key={tool.id} className={styles.checkboxLabel}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const newTools = e.target.checked
+                              ? [...userAvailableTools, tool.id]
+                              : userAvailableTools.filter(t => t !== tool.id);
+                            onAgentAvailableToolsChange(nodeId, newTools);
+                          }}
+                        />
+                        <span>{t(tool.label)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </Field>
+            </div>
           )}
 
           <ToggleRow
-            label="Permettre à l'utilisateur de choisir le modèle"
+            label={t('workflowBuilder.agentInspector.userSelection.modelsEnabledLabel')}
             checked={userModelSelectionEnabled}
             onChange={(enabled) => onAgentUserModelSelectionEnabledChange(nodeId, enabled)}
-            helpText="Lorsqu'activé, l'utilisateur pourra choisir parmi les modèles disponibles dans le chat"
+            helpText={t('workflowBuilder.agentInspector.userSelection.modelsEnabledHelp')}
           />
 
           {userModelSelectionEnabled && (
-            <Field
-              label="Modèles disponibles"
-              description="Liste des modèles disponibles pour l'utilisateur (séparés par des virgules)"
-              htmlFor={`user-models-${nodeId}`}
-            >
-              <input
-                id={`user-models-${nodeId}`}
-                type="text"
-                className={styles.input}
-                value={userAvailableModels.join(', ')}
-                onChange={(e) => {
-                  const models = e.target.value
-                    .split(',')
-                    .map(m => m.trim())
-                    .filter(m => m.length > 0);
-                  onAgentAvailableModelsChange(nodeId, models);
-                }}
-                placeholder="gpt-4, claude-3-5-sonnet-20241022"
-              />
-            </Field>
+            <div className={styles.nestedOptions}>
+              <Field
+                label={t('workflowBuilder.agentInspector.userSelection.availableModelsLabel')}
+                description={t('workflowBuilder.agentInspector.userSelection.availableModelsDescription')}
+              >
+                <input
+                  type="text"
+                  className={styles.input}
+                  value={userAvailableModels.join(', ')}
+                  onChange={(e) => {
+                    const models = e.target.value
+                      .split(',')
+                      .map(m => m.trim())
+                      .filter(m => m.length > 0);
+                    onAgentAvailableModelsChange(nodeId, models);
+                  }}
+                  placeholder={t('workflowBuilder.agentInspector.userSelection.availableModelsPlaceholder')}
+                />
+                <InlineHelp>
+                  {t('workflowBuilder.agentInspector.userSelection.availableModelsHint')}
+                </InlineHelp>
+              </Field>
+            </div>
           )}
         </div>
       </div>

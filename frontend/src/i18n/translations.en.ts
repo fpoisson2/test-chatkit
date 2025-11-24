@@ -696,6 +696,32 @@ export const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.continueOnErrorHelp": "Keep executing the workflow even if this agent fails.",
   "workflowBuilder.agentInspector.storeResponsesLabel": "Store responses",
   "workflowBuilder.agentInspector.storeResponsesHelp": "Persist the agent answers for future reference.",
+  "workflowBuilder.agentInspector.userSelection.title": "User Selection",
+  "workflowBuilder.agentInspector.userSelection.description":
+    "Configure the options available to users when interacting with the chat.",
+  "workflowBuilder.agentInspector.userSelection.toolsEnabledLabel":
+    "Allow user to choose tools",
+  "workflowBuilder.agentInspector.userSelection.toolsEnabledHelp":
+    "When enabled, users can select from available tools in the chat composer.",
+  "workflowBuilder.agentInspector.userSelection.availableToolsLabel": "Available tools",
+  "workflowBuilder.agentInspector.userSelection.availableToolsDescription":
+    "Select which tools users can enable in the chat.",
+  "workflowBuilder.agentInspector.userSelection.tools.webSearch": "Web Search",
+  "workflowBuilder.agentInspector.userSelection.tools.fileSearch": "File Search",
+  "workflowBuilder.agentInspector.userSelection.tools.computerUse": "Computer Use",
+  "workflowBuilder.agentInspector.userSelection.tools.imageGeneration": "Image Generation",
+  "workflowBuilder.agentInspector.userSelection.tools.weather": "Weather",
+  "workflowBuilder.agentInspector.userSelection.modelsEnabledLabel":
+    "Allow user to choose model",
+  "workflowBuilder.agentInspector.userSelection.modelsEnabledHelp":
+    "When enabled, users can select from available models in the chat composer.",
+  "workflowBuilder.agentInspector.userSelection.availableModelsLabel": "Available models",
+  "workflowBuilder.agentInspector.userSelection.availableModelsDescription":
+    "Enter the model IDs available to users, separated by commas.",
+  "workflowBuilder.agentInspector.userSelection.availableModelsPlaceholder":
+    "gpt-4, claude-3-5-sonnet-20241022",
+  "workflowBuilder.agentInspector.userSelection.availableModelsHint":
+    "Models must match the exact IDs of models configured in your system.",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
   "workflowBuilder.agentInspector.imageModelHelp":
