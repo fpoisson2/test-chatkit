@@ -762,6 +762,7 @@ export function MyChat() {
       apiConfig,
       attachmentsConfig,
       composerPlaceholder,
+      currentThread?.id,
       initialThreadId,
       openSidebar,
       preferredColorScheme,
