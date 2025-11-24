@@ -1,7 +1,7 @@
 /**
  * Composants widgets simples
  */
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type {
   BadgeWidget,
   DividerWidget,
@@ -13,6 +13,40 @@ import type {
 } from '../types';
 import { resolveColor, resolveSpacingValue, resolveMargin } from './utils';
 import { WidgetRenderer } from './WidgetRenderer';
+
+/**
+ * Component to display images with Blob URL conversion to avoid 414 errors
+ */
+function ImageWithBlobUrl({ src, alt = '', className = '', style = {} }: { src: string; alt?: string; className?: string; style?: React.CSSProperties }): JSX.Element | null {
+  const [blobUrl, setBlobUrl] = useState<string>('');
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    if (src.startsWith('data:')) {
+      // Convert data URL to blob to avoid 414 errors with very long URLs
+      fetch(src)
+        .then(res => res.blob())
+        .then(blob => {
+          objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+        })
+        .catch(err => console.error('[SimpleWidgets] Failed to convert data URL to blob:', err));
+    } else {
+      setBlobUrl(src);
+    }
+
+    return () => {
+      if (objectUrl && objectUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [src]);
+
+  if (!blobUrl) return null;
+
+  return <img src={blobUrl} alt={alt} className={className} style={style} />;
+}
 
 export function BadgeComponent(props: BadgeWidget): JSX.Element {
   const { label, color = 'secondary', variant = 'solid', size = 'md', pill } = props;
