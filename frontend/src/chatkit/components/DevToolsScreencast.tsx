@@ -34,7 +34,10 @@ export function DevToolsScreencast({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Initialize error state based on whether the token has a fatal error
+  const [error, setError] = useState<string | null>(() =>
+    fatalErrorTokens.has(debugUrlToken) ? 'Token invalide ou expiré' : null
+  );
   const [frameCount, setFrameCount] = useState(0);
   const [currentUrl, setCurrentUrl] = useState('');
   const [urlInput, setUrlInput] = useState('');
