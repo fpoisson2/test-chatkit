@@ -182,7 +182,7 @@
   display: grid;
   gap: 3px;
   grid-template-columns: auto auto 1fr auto;
-  grid-template-areas: "model attach input send";
+  grid-template-areas: "attach model input send";
   align-items: end;
   width: 100%;
   max-width: 800px;
@@ -198,7 +198,7 @@
   align-items: center;
   gap: 2px;
   grid-template-columns: auto auto 1fr auto;
-  grid-template-areas: "model attach input send";
+  grid-template-areas: "attach model input send";
   padding: 4px 5px;
 }
 
@@ -213,10 +213,10 @@
 }
 
 .chatkit-composer-form.is-multiline {
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: auto auto 1fr auto;
   grid-template-areas:
-    "input input input"
-    "model attach send";
+    "input input input input"
+    "attach model . send";
   grid-template-rows: auto auto;
   align-items: end;
   row-gap: 2px;
@@ -276,38 +276,82 @@
 
 .chatkit-model-selector {
   grid-area: model;
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 180px;
-  padding: 2px 4px;
+  align-items: center;
+  align-self: center;
 }
 
-.chatkit-model-selector label {
-  font-size: 12px;
+.chatkit-model-dropdown-trigger {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
   color: var(--color-text-secondary);
-  padding-left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.chatkit-model-selector select {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 6px 10px;
-  background: var(--color-surface);
+.chatkit-model-dropdown-trigger:hover:not(:disabled) {
+  background-color: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
   color: var(--color-text);
-  font: inherit;
 }
 
-.chatkit-model-selector select:disabled {
-  opacity: 0.6;
+.chatkit-model-dropdown-trigger:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.chatkit-model-description {
+.chatkit-model-dropdown-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 220px;
+  max-width: 300px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.chatkit-model-dropdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.chatkit-model-dropdown-item:hover {
+  background-color: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
+}
+
+.chatkit-model-dropdown-item.is-selected {
+  background-color: var(--appearance-accent-light, rgba(59, 130, 246, 0.1));
+}
+
+.chatkit-model-dropdown-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.chatkit-model-dropdown-description {
   font-size: 12px;
   color: var(--color-text-secondary);
   line-height: 1.3;
-  padding-left: 4px;
 }
 
 .chatkit-composer-actions .chatkit-attach-wrapper {
@@ -325,7 +369,8 @@
 }
 
 .chatkit-composer-form.is-multiline .chatkit-composer-actions .chatkit-attach-wrapper,
-.chatkit-composer-form.is-multiline .chatkit-composer-actions .chatkit-submit {
+.chatkit-composer-form.is-multiline .chatkit-composer-actions .chatkit-submit,
+.chatkit-composer-form.is-multiline .chatkit-model-selector {
   align-self: end;
 }
 

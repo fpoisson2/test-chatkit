@@ -129,6 +129,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const singleLineHeightRef = useRef<number | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
   const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const previousKeyboardOffsetRef = useRef(0);
@@ -192,6 +194,21 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   // Extract auth token from API headers for DevToolsScreencast
   const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
+
+  // Close model dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    if (isModelDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isModelDropdownOpen]);
 
   // Auto-scroll vers le bas
   useEffect(() => {
@@ -1320,7 +1337,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       <div className="chatkit-composer">
         <form
           onSubmit={handleSubmit}
-          className={`chatkit-composer-form ${isMultiline ? 'is-multiline' : 'is-singleline'}`}
+          className={`chatkit-composer-form ${isMultiline || isModelDropdownOpen ? 'is-multiline' : 'is-singleline'}`}
         >
           <div className="chatkit-input-area">
             <textarea
@@ -1345,23 +1362,38 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           </div>
           <div className="chatkit-composer-actions">
             {isModelSelectorEnabled && availableModels.length > 0 && (
-              <div className="chatkit-model-selector">
-                <label htmlFor="chatkit-model-select">Modèle</label>
-                <select
-                  id="chatkit-model-select"
-                  value={selectedModelId ?? ''}
-                  onChange={(e) => setSelectedModelId(e.target.value || null)}
+              <div className="chatkit-model-selector" ref={modelDropdownRef}>
+                <button
+                  type="button"
+                  className="chatkit-model-dropdown-trigger"
+                  onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
                   disabled={isThreadDisabled}
                   aria-label="Sélectionner un modèle"
+                  aria-expanded={isModelDropdownOpen}
                 >
-                  {availableModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label}
-                    </option>
-                  ))}
-                </select>
-                {selectedModel?.description && (
-                  <div className="chatkit-model-description">{selectedModel.description}</div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                {isModelDropdownOpen && (
+                  <div className="chatkit-model-dropdown-menu">
+                    {availableModels.map((model) => (
+                      <button
+                        key={model.id}
+                        type="button"
+                        className={`chatkit-model-dropdown-item ${selectedModelId === model.id ? 'is-selected' : ''}`}
+                        onClick={() => {
+                          setSelectedModelId(model.id);
+                          setIsModelDropdownOpen(false);
+                        }}
+                      >
+                        <span className="chatkit-model-dropdown-label">{model.label}</span>
+                        {model.description && (
+                          <span className="chatkit-model-dropdown-description">{model.description}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
