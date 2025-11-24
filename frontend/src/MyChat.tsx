@@ -646,8 +646,12 @@ export function MyChat() {
     activeVersionId: activeWorkflow?.active_version_id ?? null,
   });
 
+  console.log("[MyChat] activeWorkflow:", activeWorkflow?.id, activeWorkflow?.active_version_id);
+  console.log("[MyChat] workflowComposerModels:", workflowComposerModels);
+
   // Utiliser les modèles du workflow si disponibles, sinon ceux du localStorage
   const composerModels = workflowComposerModels ?? localStorageComposerModels;
+  console.log("[MyChat] final composerModels:", composerModels);
 
   const chatkitOptions = useMemo(
     () => {

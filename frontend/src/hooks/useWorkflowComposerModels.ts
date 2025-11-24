@@ -33,7 +33,10 @@ export const useWorkflowComposerModels = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log("[useWorkflowComposerModels] params:", { token: !!token, workflowId, activeVersionId });
+
     if (!token || !workflowId || !activeVersionId) {
+      console.log("[useWorkflowComposerModels] Missing params, skipping");
       setComposerModels(null);
       setLoading(false);
       setError(null);
@@ -47,37 +50,55 @@ export const useWorkflowComposerModels = ({
       setError(null);
 
       try {
+        console.log("[useWorkflowComposerModels] Fetching version...");
         const version: WorkflowVersionResponse = await workflowsApi.getVersion(
           token,
           workflowId,
           activeVersionId
         );
 
+        console.log("[useWorkflowComposerModels] Version loaded:", version);
+
         if (cancelled) return;
 
         // Trouver le premier bloc agent dans le workflow
-        const agentNode = version.definition?.nodes?.find(
-          (node: { data?: { kind?: string } }) => node.data?.kind === "agent"
-        );
+        const nodes = (version.definition as { nodes?: unknown[] })?.nodes;
+        console.log("[useWorkflowComposerModels] Nodes:", nodes);
+
+        const agentNode = nodes?.find(
+          (node: unknown) => {
+            const n = node as { data?: { kind?: string } };
+            return n.data?.kind === "agent";
+          }
+        ) as { data?: { kind?: string; parameters?: Record<string, unknown> } } | undefined;
+
+        console.log("[useWorkflowComposerModels] Agent node:", agentNode);
 
         if (!agentNode?.data?.parameters) {
+          console.log("[useWorkflowComposerModels] No agent parameters found");
           setComposerModels(null);
           setLoading(false);
           return;
         }
 
         const parameters = agentNode.data.parameters;
+        console.log("[useWorkflowComposerModels] Parameters:", parameters);
+
         const selectionMode = getAgentModelSelectionMode(parameters);
+        console.log("[useWorkflowComposerModels] Selection mode:", selectionMode);
 
         if (selectionMode !== "user_choice") {
+          console.log("[useWorkflowComposerModels] Not user_choice mode");
           setComposerModels(null);
           setLoading(false);
           return;
         }
 
         const userModelOptions = getAgentUserModelOptions(parameters);
+        console.log("[useWorkflowComposerModels] User model options:", userModelOptions);
 
         if (userModelOptions.length === 0) {
+          console.log("[useWorkflowComposerModels] No user model options");
           setComposerModels(null);
           setLoading(false);
           return;
@@ -93,11 +114,12 @@ export const useWorkflowComposerModels = ({
           })
         );
 
+        console.log("[useWorkflowComposerModels] Setting composer models:", models);
         setComposerModels(models);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
-        console.error("Failed to load workflow composer models:", err);
+        console.error("[useWorkflowComposerModels] Failed to load:", err);
         setError(err instanceof Error ? err.message : "Unknown error");
         setComposerModels(null);
         setLoading(false);
