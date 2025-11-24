@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth";
+import type { TranscriptEntry, VoiceSessionStatus } from "../chatkit/types";
+import { useAudioResampler } from "../voice/resampler";
+import { useVoiceSecret } from "../voice/useVoiceSecret";
 import type { SessionCreatedEvent } from "../voice/useRealtimeSession";
 import { useRealtimeSession } from "../voice/useRealtimeSession";
-import { useAudioResampler } from "../voice/resampler";
-
-export type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
-
-export type TranscriptEntry = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  status?: string;
-};
 
 type UseWorkflowVoiceSessionParams = {
   enabled?: boolean;
@@ -92,6 +85,20 @@ const extractTranscriptsFromHistory = (history: unknown[]): TranscriptEntry[] =>
       entry.status = statusRaw;
     }
 
+    const timestampCandidate = (() => {
+      const createdAtRaw = (typed as { created_at?: unknown }).created_at;
+      if (typeof createdAtRaw === "number") {
+        return createdAtRaw;
+      }
+      if (typeof createdAtRaw === "string") {
+        const parsed = Date.parse(createdAtRaw);
+        return Number.isNaN(parsed) ? null : parsed;
+      }
+      return null;
+    })();
+
+    entry.timestamp = timestampCandidate ?? Date.now();
+
     byId.set(identifier, entry);
     if (!order.includes(identifier)) {
       order.push(identifier);
@@ -115,9 +122,11 @@ export const useWorkflowVoiceSession = ({
   onTranscriptsUpdated,
 }: UseWorkflowVoiceSessionParams) => {
   const { token } = useAuth();
+  const { fetchSecret } = useVoiceSecret();
   const [status, setStatus] = useState<VoiceSessionStatus>("idle");
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
+  const [transportError, setTransportError] = useState<string | null>(null);
 
   const currentSessionRef = useRef<string | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
@@ -176,12 +185,15 @@ export const useWorkflowVoiceSession = ({
       if (value === "disconnected") {
         setStatus("idle");
         setIsListening(false);
+        setTransportError(null);
         cleanupCapture();
         currentSessionRef.current = null;
       }
     },
     onTransportError: (error) => {
-      onError?.("Erreur de connexion au gateway voix");
+      const message = "Erreur de connexion au gateway voix";
+      setTransportError(message);
+      onError?.(message);
       if (import.meta.env.DEV) {
         console.error("[Voice] transport error", error);
       }
@@ -207,6 +219,7 @@ export const useWorkflowVoiceSession = ({
         try {
           setStatus("connecting");
           await startCapture(event.sessionId);
+          setTransportError(null);
           setStatus("connected");
           setIsListening(true);
           logVoice("capture started", event.sessionId);
@@ -285,7 +298,9 @@ export const useWorkflowVoiceSession = ({
           return null;
         }
       })();
-      onError?.(serialized ?? "Erreur lors de la session Realtime");
+      const resolved = serialized ?? "Erreur lors de la session Realtime";
+      setTransportError(resolved);
+      onError?.(resolved);
     },
   });
 
@@ -362,12 +377,39 @@ export const useWorkflowVoiceSession = ({
     currentSessionRef.current = null;
   }, [cleanupCapture, finalizeSession, resampler, sendAudioChunk, threadId]);
 
+  const startVoiceSession = useCallback(async () => {
+    setTransportError(null);
+    if (!enabled) {
+      return;
+    }
+    if (!threadId) {
+      const message = "Thread manquant pour la session vocale";
+      setStatus("error");
+      setTransportError(message);
+      onError?.(message);
+      return;
+    }
+    setStatus((current) => (current === "connected" ? current : "connecting"));
+
+    try {
+      await fetchSecret({ threadId });
+    } catch (error) {
+      setStatus("error");
+      const message =
+        error instanceof Error ? error.message : "Impossible de démarrer la session vocale";
+      setTransportError(message);
+      onError?.(message);
+      throw error instanceof Error ? error : new Error(message);
+    }
+  }, [enabled, fetchSecret, onError, threadId]);
+
   useEffect(() => {
     if (!enabled || !token) {
       disconnectRealtime();
       cleanupCapture();
       setStatus("idle");
       setIsListening(false);
+      setTransportError(null);
       currentSessionRef.current = null;
       processedSessionsRef.current.clear();
       return;
@@ -399,11 +441,13 @@ export const useWorkflowVoiceSession = ({
   }, [cleanupCapture, disconnectRealtime]);
 
   return {
+    startVoiceSession,
     stopVoiceSession,
     status,
     isListening,
     transcripts,
     interruptSession,
+    transportError,
   };
 };
 

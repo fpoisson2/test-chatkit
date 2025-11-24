@@ -84,6 +84,18 @@ export type WidgetStatus = {
   icon?: WidgetIcon;
 };
 
+// ===== Types voix =====
+
+export type VoiceSessionStatus = 'idle' | 'connecting' | 'connected' | 'error';
+
+export type TranscriptEntry = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  status?: string;
+  timestamp?: number;
+};
+
 export interface WidgetComponentBase {
   key?: string;
   id?: string;
@@ -464,6 +476,15 @@ export interface Card extends WidgetComponentBase {
   theme?: 'light' | 'dark';
 }
 
+export interface VoiceSessionWidget extends WidgetComponentBase {
+  type: 'VoiceSession';
+  title?: string;
+  description?: string;
+  startLabel?: string;
+  stopLabel?: string;
+  showTranscripts?: boolean;
+}
+
 export type WidgetComponent =
   | TextWidget
   | TitleWidget
@@ -488,7 +509,8 @@ export type WidgetComponent =
   | LabelWidget
   | RadioGroupWidget
   | TextareaWidget
-  | TransitionWidget;
+  | TransitionWidget
+  | VoiceSessionWidget;
 
 export type WidgetRoot = Card | ListView;
 
@@ -1016,6 +1038,16 @@ export interface StartScreenPrompt {
   icon?: WidgetIcon;
 }
 
+export interface VoiceSessionWidgetContext {
+  status: VoiceSessionStatus;
+  isListening: boolean;
+  transcripts: TranscriptEntry[];
+  startVoiceSession?: () => Promise<void>;
+  stopVoiceSession?: () => void;
+  interruptSession?: () => void;
+  transportError?: string | null;
+}
+
 export interface ChatKitOptions {
   api: ChatKitAPIConfig;
   initialThread?: string | null;
@@ -1064,6 +1096,9 @@ export interface ChatKitOptions {
       maxSize?: number;
       accept?: Record<string, string[]>;
     };
+  };
+  widgets?: {
+    voiceSession?: VoiceSessionWidgetContext;
   };
   onClientTool?: (toolCall: { name: string; params: unknown }) => Promise<unknown>;
   onError?: (error: { error: Error }) => void;

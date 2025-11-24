@@ -22,6 +22,13 @@ const previewContext = {
     // eslint-disable-next-line no-console
     console.info("[WidgetPreview] Données de formulaire :", Object.fromEntries(data.entries()));
   },
+  voiceSession: {
+    status: "idle",
+    isListening: false,
+    transcripts: [],
+    startVoiceSession: async () => console.info("[WidgetPreview] Début de session vocale"),
+    stopVoiceSession: () => console.info("[WidgetPreview] Arrêt de session vocale"),
+  },
 };
 
 type WidgetPreviewProps = {

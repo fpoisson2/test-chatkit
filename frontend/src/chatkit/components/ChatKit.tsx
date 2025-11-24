@@ -407,7 +407,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Store form data to be included in the next action
       formDataRef.current = data;
     },
-  }), [control]);
+    voiceSession: options.widgets?.voiceSession,
+  }), [control, options.widgets?.voiceSession]);
 
   // Afficher le start screen si pas de messages ET qu'on n'est pas en train de charger
   const showStartScreen = !control.isLoading && (!control.thread || control.thread.items.length === 0);
