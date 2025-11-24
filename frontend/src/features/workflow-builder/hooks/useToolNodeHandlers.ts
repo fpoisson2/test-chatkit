@@ -78,7 +78,8 @@ const useToolNodeHandlers = ({
   const handleAgentComputerUseChange = useCallback(
     (nodeId: string, config: ComputerUseConfig | null) => {
       updateNodeData(nodeId, (data) => {
-        if (!isAgentKind(data.kind)) {
+        // Allow computer_use nodes (manual mode) and agent nodes to update computer use config
+        if (!isAgentKind(data.kind) && data.kind !== "computer_use") {
           return data;
         }
         const nextParameters = setAgentComputerUseConfig(data.parameters, config);
