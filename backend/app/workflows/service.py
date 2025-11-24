@@ -48,7 +48,7 @@ _LEGACY_AGENT_KEYS = frozenset(
 )
 _LEGACY_STATE_SLUGS = frozenset({"maj-etat-triage", "maj-etat-validation"})
 
-_AGENT_NODE_KINDS = frozenset({"agent", "voice_agent", "computer_use"})
+_AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 
 _HOSTED_WORKFLOW_SLUG_INVALID_CHARS = re.compile(r"[^0-9a-z_-]+")
 

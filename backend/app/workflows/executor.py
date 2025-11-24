@@ -116,7 +116,7 @@ from .template_utils import render_agent_instructions
 
 logger = logging.getLogger("chatkit.server")
 
-AGENT_NODE_KINDS = frozenset({"agent", "voice_agent", "computer_use"})
+AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 

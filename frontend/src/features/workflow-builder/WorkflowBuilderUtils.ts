@@ -30,10 +30,10 @@ export type WorkflowViewportRecord = {
 export const isValidNodeKind = (value: string): value is NodeKind =>
   Object.prototype.hasOwnProperty.call(NODE_COLORS, value);
 
-export type AgentLikeKind = Extract<NodeKind, "agent" | "voice_agent" | "computer_use">;
+export type AgentLikeKind = Extract<NodeKind, "agent" | "voice_agent">;
 
 export const isAgentKind = (kind: NodeKind): kind is AgentLikeKind =>
-  kind === "agent" || kind === "voice_agent" || kind === "computer_use";
+  kind === "agent" || kind === "voice_agent";
 
 export type ClassValue =
   | string
