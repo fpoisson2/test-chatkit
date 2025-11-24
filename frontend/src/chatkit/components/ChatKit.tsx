@@ -1,8 +1,16 @@
 /**
  * Composant ChatKit complet avec toutes les fonctionnalités
  */
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { ChatKitControl, ChatKitOptions, StartScreenPrompt, ThreadItem, ActionConfig } from '../types';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type {
+  ChatKitControl,
+  ChatKitOptions,
+  StartScreenPrompt,
+  ThreadItem,
+  ActionConfig,
+  ComposerModel,
+  UserMessageContent,
+} from '../types';
 import { WidgetRenderer } from '../widgets';
 import type { WidgetContext } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
@@ -135,6 +143,51 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     theme,
     api,
   } = options;
+
+  const composerModels = composer?.models;
+
+  const availableModels = useMemo<ComposerModel[]>(() => {
+    if (!composerModels) return [];
+    return Array.isArray(composerModels)
+      ? composerModels
+      : composerModels.options || [];
+  }, [composerModels]);
+
+  const isModelSelectorEnabled = useMemo(
+    () => !!composerModels && (Array.isArray(composerModels) || !!composerModels.enabled),
+    [composerModels],
+  );
+
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isModelSelectorEnabled || availableModels.length === 0) {
+      setSelectedModelId(null);
+      return;
+    }
+
+    const currentModelExists = availableModels.some((model) => model.id === selectedModelId);
+    if (currentModelExists) return;
+
+    const defaultModel = availableModels.find((model) => model.default) ?? availableModels[0];
+    setSelectedModelId(defaultModel?.id ?? null);
+  }, [availableModels, isModelSelectorEnabled, selectedModelId]);
+
+  const inferenceOptions = useMemo(
+    () => (isModelSelectorEnabled && selectedModelId ? { model: selectedModelId } : undefined),
+    [isModelSelectorEnabled, selectedModelId],
+  );
+
+  const selectedModel = useMemo(
+    () => availableModels.find((model) => model.id === selectedModelId),
+    [availableModels, selectedModelId],
+  );
+
+  const sendMessageWithInference = useCallback(
+    (content: UserMessageContent[] | string) =>
+      control.sendMessage(content, inferenceOptions ? { inferenceOptions } : undefined),
+    [control, inferenceOptions],
+  );
 
   // Extract auth token from API headers for DevToolsScreencast
   const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
@@ -504,7 +557,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
 
       // Envoyer le message
-      await control.sendMessage(content as any);
+      await sendMessageWithInference(content as any);
 
       // Réinitialiser le formulaire
       setInputValue('');
@@ -515,7 +568,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   };
 
   const handlePromptClick = (prompt: string) => {
-    control.sendMessage(prompt);
+    sendMessageWithInference(prompt);
   };
 
   // Créer un nouveau thread
@@ -1018,7 +1071,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                             try {
                               // Send an empty message to trigger workflow resumption
                               // The backend will detect the wait state and continue the workflow
-                              await control.sendMessage('');
+                              await sendMessageWithInference('');
                             } catch (error) {
                               console.error('Failed to end computer_use session:', error);
                             }
@@ -1173,6 +1226,27 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             />
           </div>
           <div className="chatkit-composer-actions">
+            {isModelSelectorEnabled && availableModels.length > 0 && (
+              <div className="chatkit-model-selector">
+                <label htmlFor="chatkit-model-select">Modèle</label>
+                <select
+                  id="chatkit-model-select"
+                  value={selectedModelId ?? ''}
+                  onChange={(e) => setSelectedModelId(e.target.value || null)}
+                  disabled={isThreadDisabled}
+                  aria-label="Sélectionner un modèle"
+                >
+                  {availableModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedModel?.description && (
+                  <div className="chatkit-model-description">{selectedModel.description}</div>
+                )}
+              </div>
+            )}
             {(composer?.attachments?.enabled || composer?.attachments !== false) && (
               <div className="chatkit-attach-wrapper">
                 <input

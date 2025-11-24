@@ -1064,6 +1064,12 @@ export interface ChatKitOptions {
       maxSize?: number;
       accept?: Record<string, string[]>;
     };
+    models?:
+      | {
+          enabled: boolean;
+          options: ComposerModel[];
+        }
+      | ComposerModel[];
   };
   onClientTool?: (toolCall: { name: string; params: unknown }) => Promise<unknown>;
   onError?: (error: { error: Error }) => void;
@@ -1092,6 +1098,13 @@ export interface ToolChoice {
 }
 
 export type FeedbackKind = 'positive' | 'negative';
+
+export interface ComposerModel {
+  id: string;
+  label: string;
+  description?: string;
+  default?: boolean;
+}
 
 // ===== Control ChatKit =====
 
