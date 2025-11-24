@@ -110,7 +110,33 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                             # Then display the screenshot
                             if data_url:
                                 try:
-                                    # Create GeneratedImage object
+                                    # First, emit a complete ComputerUseTask to signal the screencast should close
+                                    logger.info("Emitting complete ComputerUseTask to close screencast...")
+                                    completed_computer_task = ComputerUseTask(
+                                        type="computer_use",
+                                        status_indicator="complete",
+                                        debug_url_token=None,  # Clear the token
+                                        title="Session Computer Use terminée",
+                                    )
+
+                                    completed_workflow = Workflow(
+                                        type="custom",
+                                        tasks=[completed_computer_task],
+                                        expanded=False,
+                                    )
+
+                                    completed_workflow_item = WorkflowItem(
+                                        id=agent_context.generate_id("workflow"),
+                                        thread_id=agent_context.thread.id,
+                                        created_at=datetime.now(),
+                                        workflow=completed_workflow,
+                                    )
+
+                                    await on_stream_event(ThreadItemAddedEvent(item=completed_workflow_item))
+                                    await on_stream_event(ThreadItemDoneEvent(item=completed_workflow_item))
+                                    logger.info("Complete ComputerUseTask emitted")
+
+                                    # Now create and emit the screenshot
                                     logger.info("Creating GeneratedImage...")
                                     image_id = f"img_{uuid.uuid4().hex[:8]}"
                                     generated_image = GeneratedImage(

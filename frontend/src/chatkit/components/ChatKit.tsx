@@ -93,6 +93,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     console.log('[ChatKit useEffect] Checking for active screencast, control.isLoading:', control.isLoading, 'workflows:', workflows.length);
 
     let newActiveScreencast: { token: string; itemId: string } | null = null;
+    let hasCompletedComputerUse = false;
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
@@ -100,6 +101,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       if (!computerUseTask) return;
 
       const isLoading = computerUseTask.status_indicator === 'loading';
+      const isComplete = computerUseTask.status_indicator === 'complete';
       const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
       const isLastWorkflowAndStreaming = isLastWorkflow && control.isLoading;
 
@@ -107,14 +109,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         hasToken: !!computerUseTask.debug_url_token,
         token: computerUseTask.debug_url_token?.substring(0, 8),
         isLoading,
+        isComplete,
         isLastWorkflow,
         isLastWorkflowAndStreaming,
-        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token
+        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token && !isComplete
       });
 
+      // Si ce ComputerUseTask est complete, on doit fermer le screencast
+      if (isComplete) {
+        hasCompletedComputerUse = true;
+      }
+
       // Capturer le screencast s'il est actuellement actif (en cours de chargement ou dernier workflow pendant le streaming)
-      // ET s'il a un debug_url_token
-      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token) {
+      // ET s'il a un debug_url_token ET qu'il n'est PAS complete
+      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token && !isComplete) {
         newActiveScreencast = {
           token: computerUseTask.debug_url_token,
           itemId: item.id,
@@ -122,14 +130,18 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     });
 
-    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentActiveScreencast:', activeScreencast);
+    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'hasCompletedComputerUse:', hasCompletedComputerUse, 'currentActiveScreencast:', activeScreencast);
 
     // Mise à jour de activeScreencast :
     // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
-    // - Si aucun nouveau screencast actif n'est trouvé, on GARDE l'ancien (persistance)
+    // - Si on a un ComputerUseTask complete, on ferme le screencast (null)
+    // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
     if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
       console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
+    } else if (hasCompletedComputerUse && activeScreencast) {
+      console.log('[ChatKit] Closing screencast due to completed computer_use task');
+      setActiveScreencast(null);
     }
   }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
