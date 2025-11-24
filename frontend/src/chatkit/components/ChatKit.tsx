@@ -144,7 +144,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       console.log('[ChatKit] Closing screencast due to completed computer_use task');
       setActiveScreencast(null);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast, control.isLoading, control.thread]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
