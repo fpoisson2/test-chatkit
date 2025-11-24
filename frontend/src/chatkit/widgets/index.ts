@@ -7,6 +7,7 @@ export { TextComponent } from './Text';
 export { TitleComponent } from './Title';
 export { CaptionComponent } from './Caption';
 export { MarkdownComponent } from './Markdown';
+export { VoiceSessionInfoComponent } from './VoiceSessionInfo';
 
 // Composants de layout
 export { BoxComponent, resolveBoxBaseStyle } from './Box';

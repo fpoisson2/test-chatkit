@@ -464,6 +464,16 @@ export interface Card extends WidgetComponentBase {
   theme?: 'light' | 'dark';
 }
 
+export interface VoiceSessionInfoWidget extends WidgetComponentBase {
+  type: 'VoiceSessionInfo';
+  sessionId: string;
+  model?: string;
+  voice?: string;
+  instructions?: string;
+  stepSlug?: string;
+  stepTitle?: string;
+}
+
 export type WidgetComponent =
   | TextWidget
   | TitleWidget
@@ -488,7 +498,8 @@ export type WidgetComponent =
   | LabelWidget
   | RadioGroupWidget
   | TextareaWidget
-  | TransitionWidget;
+  | TransitionWidget
+  | VoiceSessionInfoWidget;
 
 export type WidgetRoot = Card | ListView;
 

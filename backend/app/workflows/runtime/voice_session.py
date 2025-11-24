@@ -119,13 +119,23 @@ class VoiceSessionManager:
         }
 
         if emit_stream_event is not None and agent_context.thread is not None:
+            # Créer un widget VoiceSessionInfo au lieu d'afficher le JSON brut
+            voice_session_widget = {
+                "type": "VoiceSessionInfo",
+                "sessionId": session_handle.session_id,
+                "model": event_context.get("model"),
+                "voice": event_context.get("voice"),
+                "stepSlug": current_step_slug,
+                "stepTitle": title,
+            }
+
             task_item = TaskItem(
                 id=agent_context.generate_id("task"),
                 thread_id=agent_context.thread.id,
                 created_at=datetime.now(),
                 task=CustomTask(
                     title=title,
-                    content=json.dumps(realtime_event, ensure_ascii=False),
+                    content=json.dumps(voice_session_widget, ensure_ascii=False),
                 ),
             )
             await emit_stream_event(ThreadItemAddedEvent(item=task_item))

@@ -1,6 +1,7 @@
 import React, { Fragment, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { renderWidgetIcon } from '../../components/widgetIcons';
+import { VoiceSessionInfoComponent } from './VoiceSessionInfo';
 import type {
   ActionConfig,
   BadgeWidget,
@@ -28,6 +29,7 @@ import type {
   TextareaWidget,
   TitleWidget,
   TransitionWidget,
+  VoiceSessionInfoWidget,
   WidgetComponent,
   WidgetRoot,
 } from '../types';
@@ -998,6 +1000,8 @@ const renderNode = (node: WidgetNode, context: WidgetContext): React.ReactNode =
       return <div className="h-4" />;
     case 'Chart':
       return <div className="alert alert-info text-sm">Les graphiques ne sont pas pris en charge en prévisualisation.</div>;
+    case 'VoiceSessionInfo':
+      return <VoiceSessionInfoComponent widget={node as VoiceSessionInfoWidget} />;
     default:
       return renderUnsupported(type);
   }

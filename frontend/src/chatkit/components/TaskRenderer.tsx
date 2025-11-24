@@ -11,6 +11,7 @@ import type {
   FileSource,
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { WidgetRenderer } from '../widgets/WidgetRenderer';
 import { useI18n } from '../../i18n';
 
 interface TaskRendererProps {
@@ -39,13 +40,33 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
 }
 
 function CustomTaskRenderer({ task, theme = 'light' }: { task: CustomTask; theme?: 'light' | 'dark' }): JSX.Element {
+  // Essayer de parser le contenu comme un widget JSON
+  let widgetData: any = null;
+  let isWidget = false;
+
+  if (task.content) {
+    try {
+      const parsed = JSON.parse(task.content);
+      if (parsed && typeof parsed === 'object' && parsed.type) {
+        widgetData = parsed;
+        isWidget = true;
+      }
+    } catch {
+      // Pas un JSON valide, on affichera comme avant
+    }
+  }
+
   return (
     <div className="chatkit-task-custom">
       {task.icon && <span className="chatkit-task-icon">{task.icon}</span>}
-      {task.title && <div className="chatkit-task-title">{task.title}</div>}
+      {!isWidget && task.title && <div className="chatkit-task-title">{task.title}</div>}
       {task.content && (
         <div className="chatkit-task-content">
-          <MarkdownRenderer content={task.content} theme={theme} />
+          {isWidget ? (
+            <WidgetRenderer widget={widgetData} />
+          ) : (
+            <MarkdownRenderer content={task.content} theme={theme} />
+          )}
         </div>
       )}
     </div>
