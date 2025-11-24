@@ -814,6 +814,7 @@ export function MyChat() {
       appearanceSettings,
       apiConfig,
       attachmentsConfig,
+      composerModels,
       composerPlaceholder,
       currentThread?.id,
       initialThreadId,
