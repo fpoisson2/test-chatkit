@@ -1213,6 +1213,7 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     # Remove voice/realtime-specific parameters that shouldn't be passed to Agent
     kwargs.pop("voice", None)
     kwargs.pop("realtime", None)
+    kwargs.pop("user_selection", None)
 
     agent = Agent(**kwargs)
     if response_format is not None:
