@@ -973,9 +973,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   {/* Workflow */}
                   {item.type === 'workflow' && (
                   <>
-                    <div className="chatkit-message-content">
-                      <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
-                    </div>
+                    {/* Hide workflow header if it has a dismissed computer_use task */}
+                    {!dismissedScreencastItems.has(item.id) && (
+                      <div className="chatkit-message-content">
+                        <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
+                      </div>
+                    )}
 
                     {/* Afficher les images (partielles ou finales) après le workflow */}
                     {(() => {
@@ -1121,6 +1124,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
                         const shouldShowScreenshot = showScreenshot;
                         const showPreview = shouldShowLiveScreencast || shouldShowScreenshot;
+                        // If dismissed, don't show loading animation on screenshot
+                        const screenshotIsLoading = isLoading && !isDismissed;
 
                         console.log('[ChatKit] Display decision:', {
                           showLiveScreencast,
@@ -1226,7 +1231,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                     <ImageWithBlobUrl
                                       src={src}
                                       alt={actionTitle || "Browser automation"}
-                                      className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                                      className={screenshotIsLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
                                     />
                                     {clickCoordinates && (
                                       <div
