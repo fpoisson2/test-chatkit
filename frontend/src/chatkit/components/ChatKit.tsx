@@ -1,8 +1,15 @@
 /**
  * Composant ChatKit complet avec toutes les fonctionnalités
  */
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { ChatKitControl, ChatKitOptions, StartScreenPrompt, ThreadItem, ActionConfig } from '../types';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type {
+  ChatKitControl,
+  ChatKitOptions,
+  StartScreenPrompt,
+  ThreadItem,
+  ActionConfig,
+  VoiceSessionWidget,
+} from '../types';
 import { WidgetRenderer } from '../widgets';
 import type { WidgetContext } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
@@ -372,6 +379,91 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     setTimeout(() => setCopiedMessageId(null), 2000);
   };
 
+  const inlineVoiceWidget = useMemo<VoiceSessionWidget | null>(() => {
+    const voiceSession = options.widgets?.voiceSession;
+    if (!voiceSession) {
+      return null;
+    }
+
+    const threadId = control.thread?.id ?? null;
+    const voiceThreadMatches = !voiceSession.threadId || voiceSession.threadId === threadId;
+    if (!voiceThreadMatches) {
+      return null;
+    }
+
+    const items = (control.thread?.items || []) as ThreadItem[];
+
+    const isVoiceTaskComplete = (task: any) => {
+      const indicator = task?.status_indicator;
+      if (indicator === 'complete') return true;
+
+      const status = task?.status;
+      if (typeof status === 'string') {
+        return ['complete', 'completed', 'done', 'success'].includes(status.toLowerCase());
+      }
+
+      return false;
+    };
+
+    const hasActiveVoiceAgentStep = items.some((item) => {
+      if (item.type === 'task') {
+        const task = (item.task || {}) as any;
+        return task.type === 'voice_agent' && !isVoiceTaskComplete(task);
+      }
+
+      if (item.type === 'workflow') {
+        const tasks = (item.workflow?.tasks || []) as any[];
+        for (let i = tasks.length - 1; i >= 0; i -= 1) {
+          const task = tasks[i];
+          if (task?.type === 'voice_agent' && !isVoiceTaskComplete(task)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
+
+    const hasVoiceSessionActivity =
+      voiceSession.status !== 'idle' ||
+      voiceSession.isListening ||
+      (voiceSession.transcripts?.length ?? 0) > 0;
+
+    if (!hasActiveVoiceAgentStep && !hasVoiceSessionActivity) {
+      return null;
+    }
+
+    return {
+      type: 'VoiceSession',
+      title: 'Voix',
+      description: "Contrôlez l'écoute et consultez les transcriptions en temps réel.",
+      startLabel: 'Démarrer',
+      stopLabel: 'Arrêter',
+      showTranscripts: true,
+      ...(options.widgets.voiceSessionWidget ?? {}),
+    };
+  }, [
+    control.thread?.id,
+    control.thread?.items,
+    options.widgets?.voiceSession,
+    options.widgets?.voiceSessionWidget,
+  ]);
+
+  const renderInlineWidgets = (
+    widget: VoiceSessionWidget | null,
+    context: WidgetContext,
+  ): React.ReactNode => {
+    if (!widget) {
+      return null;
+    }
+
+    return (
+      <div className="chatkit-inline-widgets">
+        <WidgetRenderer widget={widget} context={context} />
+      </div>
+    );
+  };
+
   // Créer un callback pour gérer les actions de widgets
   const createWidgetContext = useCallback((itemId: string): WidgetContext => ({
     onAction: (actionConfig: ActionConfig) => {
@@ -407,7 +499,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Store form data to be included in the next action
       formDataRef.current = data;
     },
-  }), [control]);
+    voiceSession: options.widgets?.voiceSession,
+  }), [control, options.widgets?.voiceSession]);
 
   // Afficher le start screen si pas de messages ET qu'on n'est pas en train de charger
   const showStartScreen = !control.isLoading && (!control.thread || control.thread.items.length === 0);
@@ -497,6 +590,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       {/* Messages */}
       <div className="chatkit-messages" ref={messagesContainerRef}>
+        {renderInlineWidgets(inlineVoiceWidget, createWidgetContext('inline-voice'))}
         {showStartScreen && startScreen ? (
           <div className="chatkit-start-screen">
             {startScreen.greeting && (

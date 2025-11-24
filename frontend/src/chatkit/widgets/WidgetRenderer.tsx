@@ -1,4 +1,4 @@
-import React, { Fragment, useMemo } from 'react';
+import React, { Fragment, useCallback, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { renderWidgetIcon } from '../../components/widgetIcons';
 import type {
@@ -30,6 +30,8 @@ import type {
   TransitionWidget,
   WidgetComponent,
   WidgetRoot,
+  VoiceSessionWidget,
+  VoiceSessionWidgetContext,
 } from '../types';
 
 type BoxLike = BoxWidget | RowWidget | ColWidget | FormWidget | WidgetRoot;
@@ -337,6 +339,7 @@ const WidgetContextProvider = React.createContext<WidgetContext>({});
 export interface WidgetContext {
   onAction?: (action: ActionConfig) => void;
   onFormData?: (data: FormData) => void;
+  voiceSession?: VoiceSessionWidgetContext;
 }
 
 export const useWidgetContext = () => React.useContext(WidgetContextProvider);
@@ -344,6 +347,146 @@ export const useWidgetContext = () => React.useContext(WidgetContextProvider);
 const renderUnsupported = (type: string) => (
   <div className="alert alert-warning text-sm">Widget non pris en charge : {type}</div>
 );
+
+const formatVoiceTimestamp = (timestamp?: number) => {
+  if (!timestamp) {
+    return '';
+  }
+  return new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
+const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWidget; context: WidgetContext }) => {
+  const voice = context.voiceSession;
+  const [isStarting, setIsStarting] = useState(false);
+
+  const statusLabel = useMemo(() => {
+    if (!voice) {
+      return 'Indisponible';
+    }
+    switch (voice.status) {
+      case 'connecting':
+        return 'Connexion en cours';
+      case 'connected':
+        return voice.isListening ? 'En écoute' : 'Connecté';
+      case 'error':
+        return 'Erreur';
+      default:
+        return 'En veille';
+    }
+  }, [voice]);
+
+  const handleStart = useCallback(async () => {
+    if (!voice?.startVoiceSession) {
+      return;
+    }
+    setIsStarting(true);
+    try {
+      await voice.startVoiceSession();
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('[VoiceSessionWidget] Impossible de démarrer la session vocale', error);
+      }
+    } finally {
+      setIsStarting(false);
+    }
+  }, [voice]);
+
+  const handleStop = useCallback(() => {
+    voice?.interruptSession?.();
+    voice?.stopVoiceSession?.();
+  }, [voice]);
+
+  if (!voice) {
+    return (
+      <div className="alert alert-warning text-sm">
+        Le contexte vocal n'est pas disponible pour ce widget.
+      </div>
+    );
+  }
+
+  const startDisabled =
+    isStarting || voice.status === 'connecting' || voice.status === 'connected' || !voice.startVoiceSession;
+  const stopDisabled = (voice.status === 'idle' && !voice.isListening) || voice.status === 'error';
+
+  const transcriptContent = (() => {
+    if (!(widget.showTranscripts ?? true)) {
+      return null;
+    }
+
+    if (voice.transcripts.length === 0) {
+      return <p className="text-sm text-secondary">Aucune transcription disponible pour le moment.</p>;
+    }
+
+    return (
+      <ul className="space-y-2">
+        {voice.transcripts.map((entry) => (
+          <li key={entry.id} className="rounded-lg border border-slate-200 bg-white/60 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-secondary">
+              <span className="font-semibold">
+                {entry.role === 'assistant' ? 'Assistant' : 'Utilisateur'}
+              </span>
+              <span>{formatVoiceTimestamp(entry.timestamp)}</span>
+              {entry.status ? (
+                <span className="badge badge-soft-secondary capitalize">{entry.status.replace('_', ' ')}</span>
+              ) : null}
+            </div>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{entry.text}</p>
+          </li>
+        ))}
+      </ul>
+    );
+  })();
+
+  return (
+    <section className="flex flex-col gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h3 className="text-lg font-semibold">{widget.title ?? 'Session vocale'}</h3>
+          <p className="text-sm text-secondary">
+            {widget.description ?? "Contrôlez l'écoute et consultez les transcriptions en temps réel."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn btn-primary btn-sm"
+            type="button"
+            disabled={startDisabled}
+            onClick={handleStart}
+          >
+            {isStarting ? 'Connexion…' : widget.startLabel ?? 'Démarrer'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            disabled={stopDisabled}
+            onClick={handleStop}
+          >
+            {widget.stopLabel ?? 'Arrêter'}
+          </button>
+        </div>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="badge badge-soft-info">{statusLabel}</span>
+        {voice.status === 'connected' ? (
+          <span className="badge badge-soft-success">{voice.isListening ? 'En écoute' : 'Pause'}</span>
+        ) : null}
+      </div>
+
+      {voice.transportError ? (
+        <div className="alert alert-danger text-sm" role="status">
+          {voice.transportError}
+        </div>
+      ) : null}
+
+      {transcriptContent}
+    </section>
+  );
+};
 
 const renderStatus = (status?: { text: string; icon?: string; favicon?: string; frame?: boolean }) => {
   if (!status) return null;
@@ -946,8 +1089,16 @@ const renderNode = (node: WidgetNode, context: WidgetContext): React.ReactNode =
   if (!isRecord(node) || typeof node.type !== 'string') {
     return null;
   }
+
+  // Support relaxed casing for widget types coming from templates or stored definitions
   const type = node.type;
-  switch (type) {
+  const normalizedType = type.toLowerCase();
+  const resolvedType =
+    normalizedType === 'voice_session' || normalizedType === 'voicesession' || normalizedType === 'voice'
+      ? 'VoiceSession'
+      : type;
+
+  switch (resolvedType) {
     case 'Card':
       return renderCard(node as CardWidget, context);
     case 'Basic':
@@ -958,6 +1109,8 @@ const renderNode = (node: WidgetNode, context: WidgetContext): React.ReactNode =
     case 'Col':
     case 'Box':
       return renderBox(node as BoxLike & { children?: unknown[] }, context);
+    case 'VoiceSession':
+      return <VoiceSessionPanel widget={node as VoiceSessionWidget} context={context} />;
     case 'Form':
       return renderForm(node as FormWidget, context);
     case 'Text':
@@ -1009,6 +1162,8 @@ const normalizeDefinition = (definition: Record<string, unknown>): WidgetRoot | 
   }
   return definition as WidgetRoot;
 };
+
+export { VoiceSessionPanel };
 
 export interface WidgetRendererProps {
   widget: WidgetComponent | WidgetRoot;
