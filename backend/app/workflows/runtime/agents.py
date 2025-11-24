@@ -239,23 +239,34 @@ def prepare_agents(
                 for option in user_model_options:
                     if isinstance(option, dict) and option.get("model") == model_override:
                         # Appliquer le provider_id et provider_slug de l'option
+                        # IMPORTANT: Remplacer complètement les valeurs existantes
                         option_provider_id = option.get("provider_id")
                         option_provider_slug = option.get("provider_slug")
-                        if option_provider_id or option_provider_slug:
-                            logger.info(
-                                "Applying provider from user_model_options: id=%s, slug=%s",
-                                option_provider_id,
-                                option_provider_slug,
-                            )
-                            # Écraser les valeurs de provider existantes
-                            if option_provider_id:
-                                provider_id = option_provider_id
-                            if option_provider_slug:
-                                provider_slug = option_provider_slug
-                            # Recréer le provider_binding avec les nouvelles valeurs
+                        logger.info(
+                            "Applying provider from user_model_options: id=%s, slug=%s (replacing id=%s, slug=%s)",
+                            option_provider_id,
+                            option_provider_slug,
+                            provider_id,
+                            provider_slug,
+                        )
+                        # Remplacer complètement les valeurs de provider
+                        provider_id = option_provider_id
+                        provider_slug = option_provider_slug
+                        # Recréer le provider_binding avec les nouvelles valeurs
+                        if provider_id or provider_slug:
                             provider_binding = get_agent_provider_binding(provider_id, provider_slug)
                             if provider_binding:
                                 overrides["_provider_binding"] = provider_binding
+                                logger.info(
+                                    "New provider_binding created: credentials=%s, provider=%s",
+                                    provider_binding.credentials is not None,
+                                    provider_binding.provider is not None,
+                                )
+                        else:
+                            # Pas de provider spécifié pour ce modèle, supprimer l'ancien binding
+                            provider_binding = None
+                            overrides.pop("_provider_binding", None)
+                            logger.info("No provider specified for model override, clearing provider_binding")
                         break
 
         if builder is None:
