@@ -113,6 +113,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
   const [lastScreencastScreenshot, setLastScreencastScreenshot] = useState<{ itemId: string; src: string; action?: string } | null>(null);
+  const [dismissedScreencastItems, setDismissedScreencastItems] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,6 +176,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
+      if (dismissedScreencastItems.has(item.id)) {
+        return;
+      }
+
       const computerUseTask = item.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask) return;
 
@@ -238,7 +243,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.token, control.isLoading, control.thread?.items, dismissedScreencastItems]);
 
   // Callback pour capturer le dernier frame du screencast avant sa fermeture
   const handleScreencastLastFrame = useCallback((itemId: string) => {
@@ -970,6 +975,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         if (showPreview) {
                           const handleEndSession = async () => {
                             console.log('Ending computer_use session...');
+                            setDismissedScreencastItems(prev => {
+                              if (prev.has(item.id)) return prev;
+                              const next = new Set(prev);
+                              next.add(item.id);
+                              return next;
+                            });
+                            setActiveScreencast(current =>
+                              current?.itemId === item.id ? null : current
+                            );
                             try {
                               // Send an empty message to trigger workflow resumption
                               // The backend will detect the wait state and continue the workflow
