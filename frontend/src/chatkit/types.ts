@@ -1099,6 +1099,7 @@ export interface ChatKitOptions {
   };
   widgets?: {
     voiceSession?: VoiceSessionWidgetContext;
+    voiceSessionWidget?: Partial<VoiceSessionWidget>;
   };
   onClientTool?: (toolCall: { name: string; params: unknown }) => Promise<unknown>;
   onError?: (error: { error: Error }) => void;

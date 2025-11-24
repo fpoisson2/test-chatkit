@@ -1,8 +1,15 @@
 /**
  * Composant ChatKit complet avec toutes les fonctionnalités
  */
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { ChatKitControl, ChatKitOptions, StartScreenPrompt, ThreadItem, ActionConfig } from '../types';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import type {
+  ChatKitControl,
+  ChatKitOptions,
+  StartScreenPrompt,
+  ThreadItem,
+  ActionConfig,
+  VoiceSessionWidget,
+} from '../types';
 import { WidgetRenderer } from '../widgets';
 import type { WidgetContext } from '../widgets';
 import { WorkflowRenderer } from './WorkflowRenderer';
@@ -372,6 +379,37 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     setTimeout(() => setCopiedMessageId(null), 2000);
   };
 
+  const inlineVoiceWidget = useMemo<VoiceSessionWidget | null>(() => {
+    if (!options.widgets?.voiceSession) {
+      return null;
+    }
+
+    return {
+      type: 'VoiceSession',
+      title: 'Voix',
+      description: "Contrôlez l'écoute et consultez les transcriptions en temps réel.",
+      startLabel: 'Démarrer',
+      stopLabel: 'Arrêter',
+      showTranscripts: true,
+      ...(options.widgets.voiceSessionWidget ?? {}),
+    };
+  }, [options.widgets?.voiceSession, options.widgets?.voiceSessionWidget]);
+
+  const renderInlineWidgets = (
+    widget: VoiceSessionWidget | null,
+    context: WidgetContext,
+  ): React.ReactNode => {
+    if (!widget) {
+      return null;
+    }
+
+    return (
+      <div className="chatkit-inline-widgets">
+        <WidgetRenderer widget={widget} context={context} />
+      </div>
+    );
+  };
+
   // Créer un callback pour gérer les actions de widgets
   const createWidgetContext = useCallback((itemId: string): WidgetContext => ({
     onAction: (actionConfig: ActionConfig) => {
@@ -498,6 +536,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       {/* Messages */}
       <div className="chatkit-messages" ref={messagesContainerRef}>
+        {renderInlineWidgets(inlineVoiceWidget, createWidgetContext('inline-voice'))}
         {showStartScreen && startScreen ? (
           <div className="chatkit-start-screen">
             {startScreen.greeting && (
