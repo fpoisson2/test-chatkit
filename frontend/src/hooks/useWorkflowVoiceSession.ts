@@ -152,6 +152,7 @@ export const useWorkflowVoiceSession = ({
   const currentSessionRef = useRef<string | null>(null);
   const sessionThreadRef = useRef<string | null>(threadId ?? null);
   const startRequestedRef = useRef(false);
+  const pendingSessionRef = useRef<SessionCreatedEvent | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -211,6 +212,7 @@ export const useWorkflowVoiceSession = ({
         setTransportError(null);
         cleanupCapture();
         currentSessionRef.current = null;
+        pendingSessionRef.current = null;
         startRequestedRef.current = false;
         setConnectRequested(false);
       }
@@ -226,10 +228,16 @@ export const useWorkflowVoiceSession = ({
     },
     onSessionCreated: (event: SessionCreatedEvent) => {
       logVoice("sessionCreated", { sessionId: event.sessionId, threadId: event.threadId });
+
+      // Store the session for later use
+      pendingSessionRef.current = event;
+
       if (!startRequestedRef.current) {
-        logVoice("session creation ignored (no manual start requested)", event.sessionId);
+        logVoice("session stored (waiting for manual start)", event.sessionId);
         return;
       }
+
+      // User has clicked "Start" - activate the session
       if (event.threadId && event.threadId !== threadId) {
         logVoice("session thread differs from current thread", {
           expectedThread: threadId,
@@ -434,6 +442,40 @@ export const useWorkflowVoiceSession = ({
       setConnectRequested(false);
       return;
     }
+
+    // Check if there's a pending session from the backend
+    const pendingSession = pendingSessionRef.current;
+    if (pendingSession && !processedSessionsRef.current.has(pendingSession.sessionId)) {
+      logVoice("activating pending session", pendingSession.sessionId);
+      sessionThreadRef.current = pendingSession.threadId ?? threadId ?? null;
+      processedSessionsRef.current.add(pendingSession.sessionId);
+
+      try {
+        setStatus("connecting");
+        await startCapture(pendingSession.sessionId);
+        setTransportError(null);
+        setStatus("connected");
+        setIsListening(true);
+        logVoice("capture started from pending session", pendingSession.sessionId);
+        pendingSessionRef.current = null;
+        return;
+      } catch (error) {
+        setStatus("error");
+        processedSessionsRef.current.delete(pendingSession.sessionId);
+        pendingSessionRef.current = null;
+        if (error instanceof Error) {
+          onError?.(error.message);
+        } else {
+          onError?.("Impossible de démarrer la session vocale");
+        }
+        startRequestedRef.current = false;
+        setConnectRequested(false);
+        logVoice("capture failed from pending session", { sessionId: pendingSession.sessionId, error });
+        return;
+      }
+    }
+
+    // No pending session - connect and wait for session_created event
     try {
       await connectRealtime({ token });
     } catch (error) {
@@ -448,7 +490,7 @@ export const useWorkflowVoiceSession = ({
       return;
     }
     setStatus((current) => (current === "connected" ? current : "connecting"));
-  }, [connectRealtime, enabled, onError, threadId, token]);
+  }, [connectRealtime, enabled, logVoice, onError, startCapture, threadId, token]);
 
   useEffect(() => {
     if (!enabled || !token || !connectRequested) {
