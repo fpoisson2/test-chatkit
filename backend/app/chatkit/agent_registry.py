@@ -104,10 +104,33 @@ def _model_settings(**kwargs: Any) -> ModelSettings:
     return sanitize_model_like(ModelSettings(**kwargs))
 
 
+def _clean_model_settings_dict(value: dict) -> dict:
+    """Nettoie les valeurs vides/invalides d'un dict model_settings."""
+    cleaned = {}
+    for k, v in value.items():
+        # Ignorer les valeurs vides (None, '', etc.)
+        if v is None or v == '':
+            continue
+        # Traitement récursif pour les dicts imbriqués (ex: reasoning)
+        if isinstance(v, dict):
+            nested = _clean_model_settings_dict(v)
+            if nested:  # Ne garder que si non-vide
+                cleaned[k] = nested
+        else:
+            cleaned[k] = v
+    return cleaned
+
+
 def _coerce_model_settings(value: Any) -> Any:
     if isinstance(value, dict):
         logger.debug("Nettoyage model_settings dict: %s", value)
-        result = _model_settings(**value)
+        # Nettoyer les valeurs vides avant de créer le ModelSettings
+        cleaned = _clean_model_settings_dict(value)
+        logger.debug("Après nettoyage des valeurs vides: %s", cleaned)
+        if not cleaned:
+            # Si tout est vide, retourner un ModelSettings vide
+            return _model_settings()
+        result = _model_settings(**cleaned)
         logger.debug(
             "Résultat après nettoyage: %s",
             (
