@@ -380,13 +380,23 @@ const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWidget; co
   }, [voice]);
 
   const handleStart = useCallback(async () => {
+    console.log('[VoiceSessionWidget] handleStart called', {
+      hasVoice: !!voice,
+      hasStartFunction: !!voice?.startVoiceSession,
+      threadId: voice?.threadId,
+      status: voice?.status,
+    });
     if (!voice?.startVoiceSession) {
+      console.warn('[VoiceSessionWidget] No startVoiceSession function available');
       return;
     }
     setIsStarting(true);
     try {
+      console.log('[VoiceSessionWidget] Calling startVoiceSession...');
       await voice.startVoiceSession();
+      console.log('[VoiceSessionWidget] startVoiceSession completed');
     } catch (error) {
+      console.error('[VoiceSessionWidget] Error starting voice session', error);
       if (import.meta.env.DEV) {
         console.error('[VoiceSessionWidget] Impossible de démarrer la session vocale', error);
       }
