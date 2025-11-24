@@ -902,21 +902,6 @@
   background: var(--color-text, #ffffff);
 }
 
-[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(.chatkit-task--custom)::before,
-[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task:not(.chatkit-task--custom)::before {
-  background: var(--color-surface);
-  border-color: var(--color-border);
-}
-
-[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(:last-child):not(.chatkit-task--custom)::after {
-  background: var(--color-border);
-}
-
-[data-theme="dark"] .chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task--custom::after,
-[data-theme="dark"] .chatkit-workflow-last-task .chatkit-task--custom::after {
-  background: var(--color-border);
-}
-
 /* ===== TASKS ===== */
 .chatkit-task {
   padding: 14px 18px;
@@ -924,43 +909,15 @@
   position: relative;
 }
 
-.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(.chatkit-task--custom)::before,
-.chatkit-workflow-last-task .chatkit-task:not(.chatkit-task--custom)::before {
-  content: '';
-  position: absolute;
-  left: -24px;
-  top: 20px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-surface);
-  border: 2px solid var(--color-border);
-  z-index: 1;
+.chatkit-task-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task:not(:last-child):not(.chatkit-task--custom)::after {
-  content: '';
-  position: absolute;
-  left: -20px;
-  top: 30px;
-  bottom: 0;
-  width: 2px;
-  background: var(--color-border);
-  z-index: 0;
-}
-
-/* Pastille pleine en bas pour les tasks custom */
-.chatkit-workflow-tasks:not(.chatkit-workflow-tasks--collapsed) .chatkit-task--custom::after,
-.chatkit-workflow-last-task .chatkit-task--custom::after {
-  content: '';
-  position: absolute;
-  left: -24px;
-  bottom: 14px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-border);
-  z-index: 1;
+.chatkit-task-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .chatkit-task:last-child {
@@ -1020,7 +977,12 @@
 }
 
 .chatkit-task-icon {
-  font-size: 20px;
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  color: var(--color-text-secondary);
 }
 
 /* All Task Types (unified styling) */

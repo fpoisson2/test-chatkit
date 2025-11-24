@@ -19,6 +19,22 @@ interface TaskRendererProps {
   theme?: 'light' | 'dark';
 }
 
+const taskTypeIcons: Record<Exclude<Task['type'], 'custom'>, React.ReactNode> = {
+  thought: '💭',
+  web_search: '🔍',
+  file: '📁',
+  image: '🖼️',
+  computer_use: '🖥️',
+};
+
+function getTaskIcon(task: Task): React.ReactNode | null {
+  if (task.type === 'custom') {
+    return task.icon || null;
+  }
+
+  return taskTypeIcons[task.type] || null;
+}
+
 export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRendererProps): JSX.Element {
   const { t } = useI18n();
   // Ne pas ajouter la classe --loading
@@ -26,33 +42,45 @@ export function TaskRenderer({ task, className = '', theme = 'light' }: TaskRend
     ? `chatkit-task--${task.status_indicator}`
     : '';
 
+  const icon = getTaskIcon(task);
+
   return (
     <div className={`chatkit-task chatkit-task--${task.type} ${statusClass} ${className}`}>
-      {task.type === 'custom' && <CustomTaskRenderer task={task} theme={theme} />}
-      {task.type === 'web_search' && <SearchTaskRenderer task={task} />}
-      {task.type === 'thought' && <ThoughtTaskRenderer task={task} theme={theme} />}
-      {task.type === 'file' && <FileTaskRenderer task={task} />}
-      {task.type === 'image' && <ImageTaskRenderer task={task} t={t} />}
-      {task.type === 'computer_use' && <ComputerUseTaskRenderer task={task} t={t} />}
+      {task.type === 'custom' && <CustomTaskRenderer task={task} theme={theme} icon={icon} />}
+      {task.type === 'web_search' && <SearchTaskRenderer task={task} icon={icon} />}
+      {task.type === 'thought' && <ThoughtTaskRenderer task={task} theme={theme} icon={icon} />}
+      {task.type === 'file' && <FileTaskRenderer task={task} icon={icon} />}
+      {task.type === 'image' && <ImageTaskRenderer task={task} t={t} icon={icon} />}
+      {task.type === 'computer_use' && <ComputerUseTaskRenderer task={task} t={t} icon={icon} />}
     </div>
   );
 }
 
-function CustomTaskRenderer({ task, theme = 'light' }: { task: CustomTask; theme?: 'light' | 'dark' }): JSX.Element {
+function TaskLayout({ icon, children }: { icon?: React.ReactNode | null; children: React.ReactNode }): JSX.Element {
+  return (
+    <div className="chatkit-task-body">
+      {icon && <span className="chatkit-task-icon" aria-hidden="true">{icon}</span>}
+      <div className="chatkit-task-main">{children}</div>
+    </div>
+  );
+}
+
+function CustomTaskRenderer({ task, theme = 'light', icon }: { task: CustomTask; theme?: 'light' | 'dark'; icon?: React.ReactNode | null }): JSX.Element {
   return (
     <div className="chatkit-task-custom">
-      {task.icon && <span className="chatkit-task-icon">{task.icon}</span>}
-      {task.title && <div className="chatkit-task-title">{task.title}</div>}
-      {task.content && (
-        <div className="chatkit-task-content">
-          <MarkdownRenderer content={task.content} theme={theme} />
-        </div>
-      )}
+      <TaskLayout icon={icon}>
+        {task.title && <div className="chatkit-task-title">{task.title}</div>}
+        {task.content && (
+          <div className="chatkit-task-content">
+            <MarkdownRenderer content={task.content} theme={theme} />
+          </div>
+        )}
+      </TaskLayout>
     </div>
   );
 }
 
-function SearchTaskRenderer({ task }: { task: SearchTask }): JSX.Element {
+function SearchTaskRenderer({ task, icon }: { task: SearchTask; icon?: React.ReactNode | null }): JSX.Element {
   const { t } = useI18n();
 
   // Éviter les doublons : filtrer les queries pour enlever title_query
@@ -60,81 +88,90 @@ function SearchTaskRenderer({ task }: { task: SearchTask }): JSX.Element {
 
   return (
     <div className="chatkit-task-search">
-      {task.title && <div className="chatkit-task-title">{task.title}</div>}
-      {task.title_query && (
-        <div className="chatkit-task-query">
-          <strong>{t('chatkit.task.query')}:</strong> {task.title_query}
-        </div>
-      )}
-      {additionalQueries.length > 0 && (
-        <div className="chatkit-task-queries">
-          <strong>{t('chatkit.task.queries')}:</strong>
-          <ul>
-            {additionalQueries.map((query, i) => (
-              <li key={i}>{query}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {task.sources && task.sources.length > 0 && (
-        <div className="chatkit-task-sources">
-          <strong>{t('chatkit.task.sources')}:</strong>
-          <ul>
-            {task.sources.map((source, i) => (
-              <li key={i}>
-                <URLSourceRenderer source={source} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <TaskLayout icon={icon}>
+        {task.title && <div className="chatkit-task-title">{task.title}</div>}
+        {task.title_query && (
+          <div className="chatkit-task-query">
+            <strong>{t('chatkit.task.query')}:</strong> {task.title_query}
+          </div>
+        )}
+        {additionalQueries.length > 0 && (
+          <div className="chatkit-task-queries">
+            <strong>{t('chatkit.task.queries')}:</strong>
+            <ul>
+              {additionalQueries.map((query, i) => (
+                <li key={i}>{query}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {task.sources && task.sources.length > 0 && (
+          <div className="chatkit-task-sources">
+            <strong>{t('chatkit.task.sources')}:</strong>
+            <ul>
+              {task.sources.map((source, i) => (
+                <li key={i}>
+                  <URLSourceRenderer source={source} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </TaskLayout>
     </div>
   );
 }
 
-function ThoughtTaskRenderer({ task, theme = 'light' }: { task: ThoughtTask; theme?: 'light' | 'dark' }): JSX.Element {
+function ThoughtTaskRenderer({ task, theme = 'light', icon }: { task: ThoughtTask; theme?: 'light' | 'dark'; icon?: React.ReactNode | null }): JSX.Element {
   return (
     <div className="chatkit-task-thought">
-      {task.title && <div className="chatkit-task-title">{task.title}</div>}
-      <div className="chatkit-task-content">
-        <MarkdownRenderer content={task.content} theme={theme} />
-      </div>
+      <TaskLayout icon={icon}>
+        {task.title && <div className="chatkit-task-title">{task.title}</div>}
+        <div className="chatkit-task-content">
+          <MarkdownRenderer content={task.content} theme={theme} />
+        </div>
+      </TaskLayout>
     </div>
   );
 }
 
-function FileTaskRenderer({ task }: { task: FileTask }): JSX.Element {
+function FileTaskRenderer({ task, icon }: { task: FileTask; icon?: React.ReactNode | null }): JSX.Element {
   return (
     <div className="chatkit-task-file">
-      {task.title && <div className="chatkit-task-title">{task.title}</div>}
-      {task.sources && task.sources.length > 0 && (
-        <div className="chatkit-task-sources">
-          <ul>
-            {task.sources.map((source, i) => (
-              <li key={i}>
-                <FileSourceRenderer source={source} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <TaskLayout icon={icon}>
+        {task.title && <div className="chatkit-task-title">{task.title}</div>}
+        {task.sources && task.sources.length > 0 && (
+          <div className="chatkit-task-sources">
+            <ul>
+              {task.sources.map((source, i) => (
+                <li key={i}>
+                  <FileSourceRenderer source={source} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </TaskLayout>
     </div>
   );
 }
 
-function ImageTaskRenderer({ task, t }: { task: ImageTask; t: (key: string) => string }): JSX.Element {
+function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
   return (
     <div className="chatkit-task-image">
-      {task.images && task.images.length > 0 && (
-        <div className="chatkit-task-content">
-          {t('chatkit.task.imageCompleted')}
-        </div>
-      )}
+      <TaskLayout icon={icon}>
+        {task.title && <div className="chatkit-task-title">{task.title}</div>}
+        {task.images && task.images.length > 0 && (
+          <div className="chatkit-task-content">
+            {t('chatkit.task.imageCompleted')}
+          </div>
+        )}
+      </TaskLayout>
     </div>
   );
 }
 
-function ComputerUseTaskRenderer({ task, t }: { task: ComputerUseTask; t: (key: string) => string }): JSX.Element {
+function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
   const latestScreenshot = task.screenshots && task.screenshots.length > 0
     ? task.screenshots[task.screenshots.length - 1]
     : null;
@@ -161,26 +198,28 @@ function ComputerUseTaskRenderer({ task, t }: { task: ComputerUseTask; t: (key: 
 
   return (
     <div className="chatkit-task-computer-use">
-      {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
+      <TaskLayout icon={icon}>
+        {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
 
-      {imageSrc && (
-        <div className="chatkit-task-browser-screenshot">
-          <div className="chatkit-browser-screenshot-image-wrapper">
-            <img
-              src={imageSrc}
-              alt={actionTitle || t('chatkit.task.browserScreenshot')}
-              className="chatkit-browser-screenshot-image"
-            />
-            {clickCoordinates && (
-              <div
-                className="chatkit-browser-click-indicator"
-                style={{ left: `${clickCoordinates.x}%`, top: `${clickCoordinates.y}%` }}
-                aria-label={t('chatkit.task.currentAction')}
+        {imageSrc && (
+          <div className="chatkit-task-browser-screenshot">
+            <div className="chatkit-browser-screenshot-image-wrapper">
+              <img
+                src={imageSrc}
+                alt={actionTitle || t('chatkit.task.browserScreenshot')}
+                className="chatkit-browser-screenshot-image"
               />
-            )}
+              {clickCoordinates && (
+                <div
+                  className="chatkit-browser-click-indicator"
+                  style={{ left: `${clickCoordinates.x}%`, top: `${clickCoordinates.y}%` }}
+                  aria-label={t('chatkit.task.currentAction')}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </TaskLayout>
     </div>
   );
 }
