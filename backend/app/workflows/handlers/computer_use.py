@@ -195,7 +195,29 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 next_slug = self._next_slug_or_fallback(node.slug, context)
 
             if not next_slug:
-                # No transition after computer_use - finish workflow in waiting state
+                start_slug = next(
+                    (
+                        step.slug
+                        for step in context.nodes_by_slug.values()
+                        if getattr(step, "kind", None) == "start"
+                    ),
+                    None,
+                )
+
+                if start_slug:
+                    logger.info(
+                        "No transition after computer_use; restarting workflow at start node %s",
+                        start_slug,
+                    )
+                    return NodeResult(
+                        next_slug=start_slug,
+                        context_updates={
+                            "last_step_context": {"computer_use_completed": True},
+                            "final_node_slug": node.slug,
+                        },
+                    )
+
+                # No start node found - finish workflow in waiting state
                 context.runtime_vars["final_end_state"] = WorkflowEndState(
                     slug=node.slug,
                     status_type="waiting",
