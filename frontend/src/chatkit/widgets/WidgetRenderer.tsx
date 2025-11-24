@@ -380,13 +380,23 @@ const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWidget; co
   }, [voice]);
 
   const handleStart = useCallback(async () => {
+    console.log('[VoiceSessionWidget] handleStart called', {
+      hasVoice: !!voice,
+      hasStartFunction: !!voice?.startVoiceSession,
+      threadId: voice?.threadId,
+      status: voice?.status,
+    });
     if (!voice?.startVoiceSession) {
+      console.warn('[VoiceSessionWidget] No startVoiceSession function available');
       return;
     }
     setIsStarting(true);
     try {
+      console.log('[VoiceSessionWidget] Calling startVoiceSession...');
       await voice.startVoiceSession();
+      console.log('[VoiceSessionWidget] startVoiceSession completed');
     } catch (error) {
+      console.error('[VoiceSessionWidget] Error starting voice session', error);
       if (import.meta.env.DEV) {
         console.error('[VoiceSessionWidget] Impossible de démarrer la session vocale', error);
       }
@@ -409,7 +419,7 @@ const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWidget; co
   }
 
   const startDisabled =
-    isStarting || voice.status === 'connecting' || voice.status === 'connected' || !voice.startVoiceSession;
+    isStarting || voice.status === 'connecting' || voice.status === 'connected' || !voice.startVoiceSession || !voice.threadId;
   const stopDisabled = (voice.status === 'idle' && !voice.isListening) || voice.status === 'error';
 
   const transcriptContent = (() => {
@@ -447,7 +457,9 @@ const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWidget; co
         <div className="space-y-1">
           <h3 className="text-lg font-semibold">{widget.title ?? 'Session vocale'}</h3>
           <p className="text-sm text-secondary">
-            {widget.description ?? "Contrôlez l'écoute et consultez les transcriptions en temps réel."}
+            {!voice.threadId
+              ? "Envoyez un premier message pour démarrer une session vocale."
+              : (widget.description ?? "Contrôlez l'écoute et consultez les transcriptions en temps réel.")}
           </p>
         </div>
         <div className="flex items-center gap-2">

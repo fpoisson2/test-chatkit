@@ -147,11 +147,11 @@ export const useWorkflowVoiceSession = ({
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
   const [transportError, setTransportError] = useState<string | null>(null);
-  const [connectRequested, setConnectRequested] = useState(false);
 
   const currentSessionRef = useRef<string | null>(null);
   const sessionThreadRef = useRef<string | null>(threadId ?? null);
   const startRequestedRef = useRef(false);
+  const pendingSessionRef = useRef<SessionCreatedEvent | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -210,9 +210,11 @@ export const useWorkflowVoiceSession = ({
         setIsListening(false);
         setTransportError(null);
         cleanupCapture();
-        currentSessionRef.current = null;
+        // Don't clear currentSessionRef here - it might be needed for onSessionFinalized
+        // Only clear it in the specific handlers that know the session is done
+        // currentSessionRef.current = null;
+        pendingSessionRef.current = null;
         startRequestedRef.current = false;
-        setConnectRequested(false);
       }
     },
     onTransportError: (error) => {
@@ -226,10 +228,16 @@ export const useWorkflowVoiceSession = ({
     },
     onSessionCreated: (event: SessionCreatedEvent) => {
       logVoice("sessionCreated", { sessionId: event.sessionId, threadId: event.threadId });
+
+      // Store the session for later use
+      pendingSessionRef.current = event;
+
       if (!startRequestedRef.current) {
-        logVoice("session creation ignored (no manual start requested)", event.sessionId);
+        logVoice("session stored (waiting for manual start)", event.sessionId);
         return;
       }
+
+      // User has clicked "Start" - activate the session
       if (event.threadId && event.threadId !== threadId) {
         logVoice("session thread differs from current thread", {
           expectedThread: threadId,
@@ -288,7 +296,15 @@ export const useWorkflowVoiceSession = ({
       }
     },
     onSessionFinalized: (event) => {
+      logVoice("onSessionFinalized called", {
+        eventSessionId: event.sessionId,
+        currentSessionId: currentSessionRef.current,
+        threadId: event.threadId,
+        transcriptCount: Array.isArray(event.transcripts) ? event.transcripts.length : 0,
+      });
+
       if (currentSessionRef.current !== event.sessionId) {
+        logVoice("onSessionFinalized: session ID mismatch, ignoring");
         return;
       }
       cleanupCapture();
@@ -299,8 +315,13 @@ export const useWorkflowVoiceSession = ({
       if (Array.isArray(event.transcripts) && event.transcripts.length > 0) {
         const mapped = extractTranscriptsFromHistory(event.transcripts as unknown[]);
         setTranscripts(mapped);
-        onTranscriptsUpdated?.();
       }
+      // Always refresh the thread when session is finalized to show next workflow step
+      logVoice("onSessionFinalized: calling onTranscriptsUpdated", {
+        hasCallback: !!onTranscriptsUpdated,
+      });
+      onTranscriptsUpdated?.();
+      logVoice("onSessionFinalized: completed");
     },
     onSessionError: (sessionId, message) => {
       if (currentSessionRef.current !== sessionId) {
@@ -387,12 +408,12 @@ export const useWorkflowVoiceSession = ({
 
     const sessionThreadId = sessionThreadRef.current ?? threadId ?? undefined;
 
+    // Flush any remaining audio and send with commit flag if there's data
     const tail = resampler.flush();
     if (tail.length > 0) {
       sendAudioChunk(sessionId, tail, { commit: true });
-    } else {
-      sendAudioChunk(sessionId, new Int16Array(), { commit: true });
     }
+    // Don't send empty audio bytes - just finalize the session directly
 
     if (sessionThreadId) {
       finalizeSession(sessionId, sessionThreadId);
@@ -403,10 +424,10 @@ export const useWorkflowVoiceSession = ({
     cleanupCapture();
     setIsListening(false);
     setStatus("idle");
-    currentSessionRef.current = null;
+    // Don't clear currentSessionRef here - let onSessionFinalized do it after refresh
+    // currentSessionRef.current = null;
     sessionThreadRef.current = threadId ?? null;
     startRequestedRef.current = false;
-    setConnectRequested(false);
   }, [cleanupCapture, finalizeSession, resampler, sendAudioChunk, threadId]);
 
   const startVoiceSession = useCallback(async () => {
@@ -414,15 +435,11 @@ export const useWorkflowVoiceSession = ({
     if (!enabled) {
       return;
     }
-    startRequestedRef.current = true;
-    setConnectRequested(true);
     if (!token) {
       const message = "Authentification requise pour la session vocale";
       setStatus("error");
       setTransportError(message);
       onError?.(message);
-      startRequestedRef.current = false;
-      setConnectRequested(false);
       return;
     }
     if (!threadId) {
@@ -430,28 +447,52 @@ export const useWorkflowVoiceSession = ({
       setStatus("error");
       setTransportError(message);
       onError?.(message);
-      startRequestedRef.current = false;
-      setConnectRequested(false);
       return;
     }
-    try {
-      await connectRealtime({ token });
-    } catch (error) {
-      setStatus("error");
-      startRequestedRef.current = false;
-      setConnectRequested(false);
-      if (error instanceof Error) {
-        onError?.(error.message);
-      } else {
-        onError?.("Connexion au service vocal impossible");
-      }
-      return;
-    }
-    setStatus((current) => (current === "connected" ? current : "connecting"));
-  }, [connectRealtime, enabled, onError, threadId, token]);
 
+    startRequestedRef.current = true;
+
+    // Check if there's a pending session from the backend (should always exist in manual start mode)
+    const pendingSession = pendingSessionRef.current;
+    if (pendingSession && !processedSessionsRef.current.has(pendingSession.sessionId)) {
+      logVoice("activating pending session", pendingSession.sessionId);
+      sessionThreadRef.current = pendingSession.threadId ?? threadId ?? null;
+      processedSessionsRef.current.add(pendingSession.sessionId);
+
+      try {
+        setStatus("connecting");
+        await startCapture(pendingSession.sessionId);
+        setTransportError(null);
+        setStatus("connected");
+        setIsListening(true);
+        logVoice("capture started from pending session", pendingSession.sessionId);
+        pendingSessionRef.current = null;
+        return;
+      } catch (error) {
+        setStatus("error");
+        processedSessionsRef.current.delete(pendingSession.sessionId);
+        pendingSessionRef.current = null;
+        if (error instanceof Error) {
+          onError?.(error.message);
+        } else {
+          onError?.("Impossible de démarrer la session vocale");
+        }
+        startRequestedRef.current = false;
+        logVoice("capture failed from pending session", { sessionId: pendingSession.sessionId, error });
+        return;
+      }
+    }
+
+    // No pending session yet - wait for it to arrive from the auto-connected WebSocket
+    logVoice("waiting for session from backend (auto-connect should provide it)");
+    setStatus("connecting");
+  }, [enabled, logVoice, onError, startCapture, threadId, token]);
+
+  // Auto-connect WebSocket when enabled (for manual start mode)
+  // Note: Connection is independent of threadId - one connection can handle multiple threads
+  // This prevents constant reconnections when threadId changes due to multiple workflow instances
   useEffect(() => {
-    if (!enabled || !token || !connectRequested) {
+    if (!enabled || !token) {
       disconnectRealtime();
       cleanupCapture();
       setStatus("idle");
@@ -460,13 +501,16 @@ export const useWorkflowVoiceSession = ({
       currentSessionRef.current = null;
       processedSessionsRef.current.clear();
       startRequestedRef.current = false;
+      pendingSessionRef.current = null;
       return;
     }
 
+    logVoice("auto-connecting WebSocket for manual start mode");
     let cancelled = false;
     connectRealtime({ token })
       .catch((error) => {
         if (!cancelled) {
+          logVoice("auto-connect failed", error);
           setStatus("error");
           if (error instanceof Error) {
             onError?.(error.message);
@@ -478,15 +522,17 @@ export const useWorkflowVoiceSession = ({
 
     return () => {
       cancelled = true;
+      // Don't clear currentSessionRef during cleanup - this effect re-runs on dependency
+      // changes (like callback updates), but we want to preserve session state for finalization
       disconnectRealtime();
       cleanupCapture();
     };
   }, [
     cleanupCapture,
     connectRealtime,
-    connectRequested,
     disconnectRealtime,
     enabled,
+    logVoice,
     onError,
     token,
   ]);

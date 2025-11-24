@@ -386,7 +386,39 @@ export function MyChat() {
     activeWorkflow?.active_version_id ?? null
   );
 
-  // useWorkflowVoiceSession: Activated automatically when workflow has voice_agent nodes
+  // Check if current thread is at a voice agent step by looking for VoiceSession widget
+  const isAtVoiceAgentStep = useMemo(() => {
+    if (!hasVoiceAgent || !currentThread) {
+      return false;
+    }
+
+    const items = currentThread.items as unknown[];
+    if (!Array.isArray(items)) {
+      return false;
+    }
+
+    // Look for a WidgetItem with type='widget' containing a VoiceSession widget
+    return items.some((item) => {
+      if (
+        item &&
+        typeof item === "object" &&
+        "type" in item &&
+        item.type === "widget" &&
+        "widget" in item &&
+        item.widget &&
+        typeof item.widget === "object" &&
+        "type" in item.widget &&
+        item.widget.type === "VoiceSession"
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }, [hasVoiceAgent, currentThread]);
+
+  // useWorkflowVoiceSession: Activated when workflow has voice_agent nodes
+  // Note: We keep WebSocket connected when workflow has voice agents to avoid timing issues
+  // The lag fix (no reconnection on threadId changes) is in useWorkflowVoiceSession.ts
   const {
     startVoiceSession,
     stopVoiceSession,
@@ -400,7 +432,13 @@ export function MyChat() {
     threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
+      console.log("[MyChat] onTranscriptsUpdated called", {
+        hasRequestRefresh: !!requestRefreshRef.current,
+        currentThreadId: currentThread?.id,
+        initialThreadId,
+      });
       requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
+      console.log("[MyChat] requestRefresh called");
     },
   });
 
@@ -762,7 +800,9 @@ export function MyChat() {
       apiConfig,
       attachmentsConfig,
       composerPlaceholder,
+      currentThread?.id,
       initialThreadId,
+      isAtVoiceAgentStep,
       openSidebar,
       preferredColorScheme,
       sessionOwner,
