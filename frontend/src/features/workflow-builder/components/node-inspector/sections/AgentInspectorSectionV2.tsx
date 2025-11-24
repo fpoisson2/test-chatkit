@@ -34,9 +34,11 @@ import {
 import { collectWidgetBindings } from '../../../../../utils/widgetPreview';
 import {
   getAgentUserToolSelectionEnabled,
-  getAgentAvailableTools,
+  getAgentUserTools,
   getAgentUserModelSelectionEnabled,
-  getAgentAvailableModels,
+  getAgentUserModels,
+  type UserToolConfig,
+  type UserModelConfig,
 } from '../../../../../utils/workflows';
 import { useI18n } from '../../../../../i18n';
 import {

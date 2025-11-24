@@ -179,9 +179,9 @@ const NodeInspector = ({
     handleAgentWorkflowValidationToolChange: onAgentWorkflowValidationToolChange,
     handleAgentWorkflowToolToggle: onAgentWorkflowToolToggle,
     handleAgentUserToolSelectionEnabledChange: onAgentUserToolSelectionEnabledChange,
-    handleAgentAvailableToolsChange: onAgentAvailableToolsChange,
+    handleAgentUserToolsChange: onAgentUserToolsChange,
     handleAgentUserModelSelectionEnabledChange: onAgentUserModelSelectionEnabledChange,
-    handleAgentAvailableModelsChange: onAgentAvailableModelsChange,
+    handleAgentUserModelsChange: onAgentUserModelsChange,
     handleStateAssignmentsChange: onStateAssignmentsChange,
     handleEndMessageChange: onEndMessageChange,
     handleEndAgsVariableIdChange: onEndAgsVariableIdChange,
@@ -582,9 +582,9 @@ const NodeInspector = ({
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
           onAgentMcpServersChange={onAgentMcpServersChange}
           onAgentUserToolSelectionEnabledChange={onAgentUserToolSelectionEnabledChange}
-          onAgentAvailableToolsChange={onAgentAvailableToolsChange}
+          onAgentUserToolsChange={onAgentUserToolsChange}
           onAgentUserModelSelectionEnabledChange={onAgentUserModelSelectionEnabledChange}
-          onAgentAvailableModelsChange={onAgentAvailableModelsChange}
+          onAgentUserModelsChange={onAgentUserModelsChange}
         />
       ) : null}
 

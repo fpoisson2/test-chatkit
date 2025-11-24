@@ -29,9 +29,9 @@ import {
   setAgentTextVerbosity,
   setAgentTopP,
   setAgentUserToolSelectionEnabled,
-  setAgentAvailableTools,
+  setAgentUserTools,
   setAgentUserModelSelectionEnabled,
-  setAgentAvailableModels,
+  setAgentUserModels,
   setStartAutoRun,
   setStartAutoRunAssistantMessage,
   setStartAutoRunMessage,
@@ -39,6 +39,8 @@ import {
   setStartTelephonySipAccountId,
   setStartTelephonySpeakFirst,
   stringifyAgentParameters,
+  type UserToolConfig,
+  type UserModelConfig,
 } from "../../../utils/workflows";
 import { updateNodeParameters, type UpdateNodeDataFn } from "./nodeHandlerUtils";
 
@@ -483,13 +485,13 @@ const usePromptNodeHandlers = ({
     [updateNodeData]
   );
 
-  const handleAgentAvailableToolsChange = useCallback(
-    (nodeId: string, tools: string[]) => {
+  const handleAgentUserToolsChange = useCallback(
+    (nodeId: string, tools: UserToolConfig[]) => {
       updateNodeData(nodeId, (data) => {
         if (!isAgentKind(data.kind)) {
           return data;
         }
-        const nextParameters = setAgentAvailableTools(data.parameters, tools);
+        const nextParameters = setAgentUserTools(data.parameters, tools);
         return updateNodeParameters(data, nextParameters);
       });
     },
@@ -509,13 +511,13 @@ const usePromptNodeHandlers = ({
     [updateNodeData]
   );
 
-  const handleAgentAvailableModelsChange = useCallback(
-    (nodeId: string, models: string[]) => {
+  const handleAgentUserModelsChange = useCallback(
+    (nodeId: string, models: UserModelConfig[]) => {
       updateNodeData(nodeId, (data) => {
         if (!isAgentKind(data.kind)) {
           return data;
         }
-        const nextParameters = setAgentAvailableModels(data.parameters, models);
+        const nextParameters = setAgentUserModels(data.parameters, models);
         return updateNodeParameters(data, nextParameters);
       });
     },
@@ -553,9 +555,9 @@ const usePromptNodeHandlers = ({
     handleAgentResponseWidgetSourceChange,
     handleAgentResponseWidgetDefinitionChange,
     handleAgentUserToolSelectionEnabledChange,
-    handleAgentAvailableToolsChange,
+    handleAgentUserToolsChange,
     handleAgentUserModelSelectionEnabledChange,
-    handleAgentAvailableModelsChange,
+    handleAgentUserModelsChange,
   };
 };
 

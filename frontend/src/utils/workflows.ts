@@ -38,6 +38,23 @@ export type WorkflowToolConfig = {
   initialMessage?: string;
 };
 
+export type UserToolConfig = {
+  id: string;
+  enabled: boolean;
+  config?: Record<string, unknown>;
+};
+
+export type UserModelConfig = {
+  id: string;
+  name?: string;
+  enabled: boolean;
+  config?: {
+    temperature?: number;
+    max_output_tokens?: number;
+    top_p?: number;
+  };
+};
+
 export const DEFAULT_END_MESSAGE = "Workflow terminé";
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -4193,8 +4210,8 @@ export const getAgentUserToolSelectionEnabled = (
   if (!isPlainRecord(config)) {
     return false;
   }
-  const enabled = (config as Record<string, unknown>).tools_enabled;
-  return typeof enabled === "boolean" ? enabled : false;
+  const tools = (config as Record<string, unknown>).tools;
+  return Array.isArray(tools) && tools.length > 0;
 };
 
 export const setAgentUserToolSelectionEnabled = (
@@ -4207,7 +4224,7 @@ export const setAgentUserToolSelectionEnabled = (
     : {};
 
   if (!enabled) {
-    delete config.tools_enabled;
+    delete config.tools;
     if (Object.keys(config).length === 0) {
       delete next.user_selection;
     } else {
@@ -4216,14 +4233,17 @@ export const setAgentUserToolSelectionEnabled = (
     return stripEmpty(next);
   }
 
-  config.tools_enabled = true;
+  // If enabling but no tools configured, initialize empty array
+  if (!Array.isArray(config.tools)) {
+    config.tools = [];
+  }
   next.user_selection = config;
   return stripEmpty(next);
 };
 
-export const getAgentAvailableTools = (
+export const getAgentUserTools = (
   parameters: AgentParameters | null | undefined,
-): string[] => {
+): UserToolConfig[] => {
   if (!parameters) {
     return [];
   }
@@ -4231,16 +4251,20 @@ export const getAgentAvailableTools = (
   if (!isPlainRecord(config)) {
     return [];
   }
-  const tools = (config as Record<string, unknown>).available_tools;
+  const tools = (config as Record<string, unknown>).tools;
   if (!Array.isArray(tools)) {
     return [];
   }
-  return tools.filter((tool): tool is string => typeof tool === "string");
+  return tools.filter((tool): tool is UserToolConfig =>
+    isPlainRecord(tool) &&
+    typeof (tool as any).id === "string" &&
+    typeof (tool as any).enabled === "boolean"
+  );
 };
 
-export const setAgentAvailableTools = (
+export const setAgentUserTools = (
   parameters: AgentParameters,
-  tools: string[],
+  tools: UserToolConfig[],
 ): AgentParameters => {
   const next = { ...(parameters as Record<string, unknown>) };
   const config = isPlainRecord(next.user_selection)
@@ -4248,7 +4272,7 @@ export const setAgentAvailableTools = (
     : {};
 
   if (tools.length === 0) {
-    delete config.available_tools;
+    delete config.tools;
     if (Object.keys(config).length === 0) {
       delete next.user_selection;
     } else {
@@ -4257,9 +4281,31 @@ export const setAgentAvailableTools = (
     return stripEmpty(next);
   }
 
-  config.available_tools = tools;
+  config.tools = tools;
   next.user_selection = config;
   return stripEmpty(next);
+};
+
+// Keep for backward compatibility
+export const getAgentAvailableTools = (
+  parameters: AgentParameters | null | undefined,
+): string[] => {
+  return getAgentUserTools(parameters)
+    .filter(tool => tool.enabled)
+    .map(tool => tool.id);
+};
+
+// Keep for backward compatibility
+export const setAgentAvailableTools = (
+  parameters: AgentParameters,
+  toolIds: string[],
+): AgentParameters => {
+  const existingTools = getAgentUserTools(parameters);
+  const updatedTools = toolIds.map(id => {
+    const existing = existingTools.find(t => t.id === id);
+    return existing || { id, enabled: true };
+  });
+  return setAgentUserTools(parameters, updatedTools);
 };
 
 // User Model Selection Configuration
@@ -4274,8 +4320,8 @@ export const getAgentUserModelSelectionEnabled = (
   if (!isPlainRecord(config)) {
     return false;
   }
-  const enabled = (config as Record<string, unknown>).models_enabled;
-  return typeof enabled === "boolean" ? enabled : false;
+  const models = (config as Record<string, unknown>).models;
+  return Array.isArray(models) && models.length > 0;
 };
 
 export const setAgentUserModelSelectionEnabled = (
@@ -4288,7 +4334,7 @@ export const setAgentUserModelSelectionEnabled = (
     : {};
 
   if (!enabled) {
-    delete config.models_enabled;
+    delete config.models;
     if (Object.keys(config).length === 0) {
       delete next.user_selection;
     } else {
@@ -4297,14 +4343,17 @@ export const setAgentUserModelSelectionEnabled = (
     return stripEmpty(next);
   }
 
-  config.models_enabled = true;
+  // If enabling but no models configured, initialize empty array
+  if (!Array.isArray(config.models)) {
+    config.models = [];
+  }
   next.user_selection = config;
   return stripEmpty(next);
 };
 
-export const getAgentAvailableModels = (
+export const getAgentUserModels = (
   parameters: AgentParameters | null | undefined,
-): string[] => {
+): UserModelConfig[] => {
   if (!parameters) {
     return [];
   }
@@ -4312,16 +4361,20 @@ export const getAgentAvailableModels = (
   if (!isPlainRecord(config)) {
     return [];
   }
-  const models = (config as Record<string, unknown>).available_models;
+  const models = (config as Record<string, unknown>).models;
   if (!Array.isArray(models)) {
     return [];
   }
-  return models.filter((model): model is string => typeof model === "string");
+  return models.filter((model): model is UserModelConfig =>
+    isPlainRecord(model) &&
+    typeof (model as any).id === "string" &&
+    typeof (model as any).enabled === "boolean"
+  );
 };
 
-export const setAgentAvailableModels = (
+export const setAgentUserModels = (
   parameters: AgentParameters,
-  models: string[],
+  models: UserModelConfig[],
 ): AgentParameters => {
   const next = { ...(parameters as Record<string, unknown>) };
   const config = isPlainRecord(next.user_selection)
@@ -4329,7 +4382,7 @@ export const setAgentAvailableModels = (
     : {};
 
   if (models.length === 0) {
-    delete config.available_models;
+    delete config.models;
     if (Object.keys(config).length === 0) {
       delete next.user_selection;
     } else {
@@ -4338,7 +4391,29 @@ export const setAgentAvailableModels = (
     return stripEmpty(next);
   }
 
-  config.available_models = models;
+  config.models = models;
   next.user_selection = config;
   return stripEmpty(next);
+};
+
+// Keep for backward compatibility
+export const getAgentAvailableModels = (
+  parameters: AgentParameters | null | undefined,
+): string[] => {
+  return getAgentUserModels(parameters)
+    .filter(model => model.enabled)
+    .map(model => model.id);
+};
+
+// Keep for backward compatibility
+export const setAgentAvailableModels = (
+  parameters: AgentParameters,
+  modelIds: string[],
+): AgentParameters => {
+  const existingModels = getAgentUserModels(parameters);
+  const updatedModels = modelIds.map(id => {
+    const existing = existingModels.find(m => m.id === id);
+    return existing || { id, enabled: true };
+  });
+  return setAgentUserModels(parameters, updatedModels);
 };
