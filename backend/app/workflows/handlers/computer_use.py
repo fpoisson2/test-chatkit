@@ -95,7 +95,9 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
                         if computer_tool and hasattr(computer_tool, "computer"):
                             # Capture final screenshot
+                            logger.info("Capturing final screenshot...")
                             data_url = await computer_tool.computer.screenshot()
+                            logger.info(f"Screenshot captured, data_url length: {len(data_url) if data_url else 0}")
 
                             # Close the browser FIRST to stop the screencast
                             try:
@@ -106,38 +108,51 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
                             # Then display the screenshot
                             if data_url:
-                                # Create GeneratedImage object
-                                generated_image = GeneratedImage(
-                                    id=agent_context.generate_id("image"),
-                                    data_url=data_url,
-                                )
+                                try:
+                                    # Create GeneratedImage object
+                                    logger.info("Creating GeneratedImage...")
+                                    generated_image = GeneratedImage(
+                                        id=agent_context.generate_id("image"),
+                                        data_url=data_url,
+                                    )
+                                    logger.info(f"GeneratedImage created: {generated_image.id}")
 
-                                # Create ImageTask with the screenshot
-                                image_task = ImageTask(
-                                    type="image",
-                                    title="Screenshot finale de la session Computer Use",
-                                    images=[generated_image],
-                                    status_indicator="completed",
-                                )
+                                    # Create ImageTask with the screenshot
+                                    logger.info("Creating ImageTask...")
+                                    image_task = ImageTask(
+                                        type="image",
+                                        title="Screenshot finale de la session Computer Use",
+                                        images=[generated_image],
+                                        status_indicator="completed",
+                                    )
+                                    logger.info("ImageTask created")
 
-                                # Create Workflow and WorkflowItem
-                                workflow = Workflow(
-                                    type="custom",
-                                    tasks=[image_task],
-                                    expanded=True,
-                                )
+                                    # Create Workflow and WorkflowItem
+                                    logger.info("Creating Workflow and WorkflowItem...")
+                                    workflow = Workflow(
+                                        type="custom",
+                                        tasks=[image_task],
+                                        expanded=True,
+                                    )
+                                    logger.info("Workflow created")
 
-                                workflow_item = WorkflowItem(
-                                    id=agent_context.generate_id("workflow"),
-                                    thread_id=agent_context.thread.id,
-                                    created_at=datetime.now(),
-                                    workflow=workflow,
-                                )
+                                    workflow_item = WorkflowItem(
+                                        id=agent_context.generate_id("workflow"),
+                                        thread_id=agent_context.thread.id,
+                                        created_at=datetime.now(),
+                                        workflow=workflow,
+                                    )
+                                    logger.info("WorkflowItem created")
 
-                                # Emit the workflow item with screenshot
-                                await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
-                                await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
-                                logger.info("Final screenshot captured and added to conversation")
+                                    # Emit the workflow item with screenshot
+                                    logger.info("Emitting ThreadItemAddedEvent...")
+                                    await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
+                                    logger.info("Emitting ThreadItemDoneEvent...")
+                                    await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
+                                    logger.info("Final screenshot captured and added to conversation")
+                                except Exception as screenshot_error:
+                                    logger.error(f"Error in screenshot display: {screenshot_error}", exc_info=True)
+                                    raise
 
                 except Exception as e:
                     logger.error(f"Failed to capture final screenshot: {e}")
