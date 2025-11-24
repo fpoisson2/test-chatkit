@@ -436,6 +436,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 yield event
             return
 
+        # For requests that require loading an existing thread, validate the thread
+        # exists BEFORE starting the streaming response. This ensures that NotFoundError
+        # is raised before HTTP headers are sent, allowing proper error handling with
+        # CORS headers.
+        thread_id = getattr(request, "thread_id", None)
+        if thread_id:
+            # Pre-validate thread existence to fail fast before streaming starts
+            await self.store.load_thread(thread_id, context)
+
         async for event in super()._process_streaming_impl(request, context):
             yield event
 
