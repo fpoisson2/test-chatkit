@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { workflowsApi, type WorkflowVersionResponse } from "../utils/backend";
+import {
+  workflowsApi,
+  modelRegistryApi,
+  type WorkflowVersionResponse,
+  type AvailableModel,
+} from "../utils/backend";
 import {
   getAgentModelSelectionMode,
   getAgentUserModelOptions,
@@ -107,14 +112,37 @@ export const useWorkflowComposerModels = ({
           return;
         }
 
+        // Récupérer les modèles disponibles pour obtenir display_name et description
+        let availableModels: AvailableModel[] = [];
+        try {
+          availableModels = await modelRegistryApi.list(token);
+          console.log("[useWorkflowComposerModels] Available models:", availableModels);
+        } catch (err) {
+          console.warn("[useWorkflowComposerModels] Failed to fetch available models:", err);
+        }
+
+        if (cancelled) return;
+
+        // Créer une map pour un accès rapide par nom de modèle
+        const modelsByName = new Map<string, AvailableModel>();
+        for (const model of availableModels) {
+          modelsByName.set(model.name, model);
+        }
+
         // Convertir UserModelOption[] en ComposerModel[]
+        // Utiliser display_name et description de la BD si disponibles
         const models: ComposerModel[] = userModelOptions.map(
-          (option: UserModelOption) => ({
-            id: option.model,
-            label: option.label,
-            description: option.description,
-            default: option.default,
-          })
+          (option: UserModelOption) => {
+            const dbModel = modelsByName.get(option.model);
+            return {
+              id: option.model,
+              // Utiliser display_name de la BD, sinon le label configuré, sinon le nom du modèle
+              label: dbModel?.display_name || option.label || option.model,
+              // Utiliser description de la BD, sinon la description configurée
+              description: dbModel?.description || option.description,
+              default: option.default,
+            };
+          }
         );
 
         console.log("[useWorkflowComposerModels] Setting composer models:", models);
