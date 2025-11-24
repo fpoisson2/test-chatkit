@@ -4186,9 +4186,13 @@ export type ModelSelectionMode = 'specific' | 'user_choice';
 
 export type UserModelOptionSettings = {
   temperature?: number;
+  top_p?: number;
+  max_output_tokens?: number;
   reasoning?: {
     effort?: string;
+    summary?: string;
   };
+  text_verbosity?: string;
   truncation?: string;
 };
 

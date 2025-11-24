@@ -130,16 +130,18 @@ export const useWorkflowComposerModels = ({
         }
 
         // Convertir UserModelOption[] en ComposerModel[]
-        // Utiliser display_name et description de la BD si disponibles
+        // Utiliser l'ID unique de l'option pour différencier les modèles avec différents paramètres
         const models: ComposerModel[] = userModelOptions.map(
           (option: UserModelOption) => {
             const dbModel = modelsByName.get(option.model);
             return {
-              id: option.model,
-              // Utiliser display_name de la BD, sinon le label configuré, sinon le nom du modèle
-              label: dbModel?.display_name || option.label || option.model,
-              // Utiliser description de la BD, sinon la description configurée
-              description: dbModel?.description || option.description,
+              // Utiliser l'ID unique de l'option (pas le nom du modèle)
+              // pour permettre plusieurs configurations du même modèle
+              id: option.id,
+              // Utiliser le label configuré, sinon display_name de la BD, sinon le nom du modèle
+              label: option.label || dbModel?.display_name || option.model,
+              // Utiliser la description configurée, sinon celle de la BD
+              description: option.description || dbModel?.description,
               default: option.default,
             };
           }

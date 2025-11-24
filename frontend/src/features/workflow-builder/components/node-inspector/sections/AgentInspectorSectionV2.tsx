@@ -1319,11 +1319,45 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   const handleAddUserModelOption = useCallback(() => {
     // Construire les model_settings à partir des valeurs actuelles
     const modelSettings: UserModelOption['model_settings'] = {};
-    if (temperatureValue !== null && temperatureValue !== undefined) {
-      modelSettings.temperature = temperatureValue;
+
+    // Température (string -> number, ignorer si vide)
+    if (temperatureValue && temperatureValue !== '') {
+      const tempNum = parseFloat(temperatureValue);
+      if (!isNaN(tempNum)) {
+        modelSettings.temperature = tempNum;
+      }
     }
+
+    // Top P (string -> number, ignorer si vide)
+    if (topPValue && topPValue !== '') {
+      const topPNum = parseFloat(topPValue);
+      if (!isNaN(topPNum)) {
+        modelSettings.top_p = topPNum;
+      }
+    }
+
+    // Max output tokens (string -> number, ignorer si vide)
+    if (maxOutputTokensValue && maxOutputTokensValue !== '') {
+      const maxTokensNum = parseInt(maxOutputTokensValue, 10);
+      if (!isNaN(maxTokensNum)) {
+        modelSettings.max_output_tokens = maxTokensNum;
+      }
+    }
+
+    // Reasoning (effort et summary)
     if (reasoningEffort && reasoningEffort !== '') {
       modelSettings.reasoning = { effort: reasoningEffort };
+    }
+    if (reasoningSummaryValue && reasoningSummaryValue !== '') {
+      modelSettings.reasoning = {
+        ...modelSettings.reasoning,
+        summary: reasoningSummaryValue,
+      };
+    }
+
+    // Text verbosity
+    if (textVerbosityValue && textVerbosityValue !== '') {
+      modelSettings.text_verbosity = textVerbosityValue;
     }
 
     const newOption: UserModelOption = {
@@ -1337,7 +1371,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
       model_settings: Object.keys(modelSettings).length > 0 ? modelSettings : undefined,
     };
     onAgentUserModelOptionsChange(nodeId, [...userModelOptions, newOption]);
-  }, [nodeId, agentModel, agentProviderId, agentProviderSlug, matchedModel, userModelOptions, onAgentUserModelOptionsChange, temperatureValue, reasoningEffort]);
+  }, [nodeId, agentModel, agentProviderId, agentProviderSlug, matchedModel, userModelOptions, onAgentUserModelOptionsChange, temperatureValue, topPValue, maxOutputTokensValue, reasoningEffort, reasoningSummaryValue, textVerbosityValue]);
 
   const handleRemoveUserModelOption = useCallback(
     (optionId: string) => {
@@ -1511,8 +1545,20 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
                 if (option.model_settings?.temperature !== undefined) {
                   settingsBadges.push(`T=${option.model_settings.temperature}`);
                 }
+                if (option.model_settings?.top_p !== undefined) {
+                  settingsBadges.push(`P=${option.model_settings.top_p}`);
+                }
+                if (option.model_settings?.max_output_tokens !== undefined) {
+                  settingsBadges.push(`max=${option.model_settings.max_output_tokens}`);
+                }
                 if (option.model_settings?.reasoning?.effort) {
                   settingsBadges.push(`R=${option.model_settings.reasoning.effort}`);
+                }
+                if (option.model_settings?.reasoning?.summary) {
+                  settingsBadges.push(`S=${option.model_settings.reasoning.summary}`);
+                }
+                if (option.model_settings?.text_verbosity) {
+                  settingsBadges.push(`V=${option.model_settings.text_verbosity}`);
                 }
                 return (
                   <div key={option.id} className={styles.userModelOption}>
