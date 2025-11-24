@@ -217,16 +217,21 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentScreencastIsComplete:', currentScreencastIsComplete, 'anyCompleteComputerUse:', anyCompleteComputerUse, 'currentActiveScreencast:', activeScreencast);
 
     // Mise à jour de activeScreencast :
-    // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
-    // - Si le screencast ACTUEL est complete, on le ferme (null)
-    // - Si un workflow computer_use complete existe ET qu'il y a un screencast actif, on ferme le screencast
+    // - Si le screencast ACTUEL est complete OU s'il y a un computer_use complete, on ferme d'abord
+    // - Sinon, si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
     // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
-    if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
+
+    // Priorité 1: Fermer le screencast s'il y a un computer_use task complete (empêche la boucle infinie)
+    if (currentScreencastIsComplete || anyCompleteComputerUse) {
+      if (activeScreencast) {
+        console.log('[ChatKit] Closing screencast due to completed computer_use task');
+        setActiveScreencast(null);
+      }
+    }
+    // Priorité 2: Activer un nouveau screencast seulement s'il n'y a PAS de computer_use complete
+    else if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
       console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
-    } else if (currentScreencastIsComplete || (anyCompleteComputerUse && activeScreencast)) {
-      console.log('[ChatKit] Closing screencast due to completed computer_use task');
-      setActiveScreencast(null);
     }
   }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
 
