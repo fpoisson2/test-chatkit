@@ -40,6 +40,12 @@ export function DevToolsScreencast({
   const messageIdRef = useRef(1);
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
   const shouldAutoFocusRef = useRef(false);
+  const onLastFrameRef = useRef(onLastFrame);
+
+  // Keep the ref updated with the latest callback
+  useEffect(() => {
+    onLastFrameRef.current = onLastFrame;
+  }, [onLastFrame]);
 
   useEffect(() => {
     let mounted = true;
@@ -264,10 +270,10 @@ export function DevToolsScreencast({
       mounted = false;
 
       // Capture last frame before closing
-      if (onLastFrame && canvasRef.current) {
+      if (onLastFrameRef.current && canvasRef.current) {
         try {
           const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9);
-          onLastFrame(dataUrl);
+          onLastFrameRef.current(dataUrl);
           console.log('[DevToolsScreencast] Captured last frame before closing');
         } catch (err) {
           console.error('[DevToolsScreencast] Error capturing last frame:', err);
