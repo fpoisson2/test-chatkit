@@ -20,6 +20,7 @@ import {
   getAgentIncludeChatHistory,
   getAgentMaxOutputTokens,
   getAgentMessage,
+  getAgentModelSelectionMode,
   getAgentNestedWorkflow,
   getAgentModel,
   getAgentModelProviderId,
@@ -32,6 +33,7 @@ import {
   getAgentTemperature,
   getAgentTextVerbosity,
   getAgentTopP,
+  getAgentUserModelOptions,
   getAgentWeatherToolEnabled,
   getAgentWebSearchConfig,
   getAgentWorkflowValidationToolEnabled,
@@ -78,6 +80,8 @@ type AgentInspectorState = {
   agentModel: string;
   agentProviderId: string;
   agentProviderSlug: string;
+  modelSelectionMode: ReturnType<typeof getAgentModelSelectionMode>;
+  userModelOptions: ReturnType<typeof getAgentUserModelOptions>;
   nestedWorkflowId: number | null;
   nestedWorkflowSlug: string;
   nestedWorkflowMode: "local" | "hosted" | "custom";
@@ -174,6 +178,8 @@ export const useAgentInspectorState = ({
   const agentModel = getAgentModel(parameters);
   const agentProviderId = getAgentModelProviderId(parameters).trim();
   const agentProviderSlug = getAgentModelProviderSlug(parameters).trim().toLowerCase();
+  const modelSelectionMode = getAgentModelSelectionMode(parameters);
+  const userModelOptions = getAgentUserModelOptions(parameters);
   const nestedWorkflow = getAgentNestedWorkflow(parameters);
   const availableNestedWorkflows = useMemo(
     () => workflows.filter((workflow) => workflow.id !== currentWorkflowId),
@@ -577,6 +583,8 @@ export const useAgentInspectorState = ({
     agentModel,
     agentProviderId,
     agentProviderSlug,
+    modelSelectionMode,
+    userModelOptions,
     nestedWorkflowId: nestedWorkflow.id,
     nestedWorkflowSlug: nestedWorkflow.slug,
     nestedWorkflowMode,

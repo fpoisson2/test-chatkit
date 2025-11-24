@@ -22,6 +22,7 @@ import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
 import { loadComposerModelsConfig } from "./utils/composerModels";
+import { useWorkflowComposerModels } from "./hooks/useWorkflowComposerModels";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import { workflowsApi } from "./utils/backend";
 import {
@@ -636,7 +637,17 @@ export function MyChat() {
       : "Posez votre question...";
   }, [appearanceSettings.start_screen_placeholder]);
 
-  const composerModels = useMemo(() => loadComposerModelsConfig(), []);
+  const localStorageComposerModels = useMemo(() => loadComposerModelsConfig(), []);
+
+  // Charger les modèles configurés dans le workflow si disponibles
+  const { composerModels: workflowComposerModels } = useWorkflowComposerModels({
+    token,
+    workflowId: activeWorkflow?.id ?? null,
+    activeVersionId: activeWorkflow?.active_version_id ?? null,
+  });
+
+  // Utiliser les modèles du workflow si disponibles, sinon ceux du localStorage
+  const composerModels = workflowComposerModels ?? localStorageComposerModels;
 
   const chatkitOptions = useMemo(
     () => {

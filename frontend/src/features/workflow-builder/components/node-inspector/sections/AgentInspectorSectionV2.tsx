@@ -74,6 +74,7 @@ import {
   DEFAULT_IMAGE_TOOL_CONFIG,
   DEFAULT_JSON_SCHEMA_TEXT,
 } from '../constants';
+import type { ModelSelectionMode, UserModelOption } from '../../../../../utils/workflows';
 import { ToolSettingsPanel } from './ToolSettingsPanel';
 import styles from './AgentInspectorSectionV2.module.css';
 
@@ -176,6 +177,8 @@ type AgentInspectorSectionV2Props = {
     slug: string,
     enabled: boolean,
   ) => void;
+  onAgentModelSelectionModeChange: (nodeId: string, mode: ModelSelectionMode) => void;
+  onAgentUserModelOptionsChange: (nodeId: string, options: UserModelOption[]) => void;
 };
 export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = ({
   nodeId,
@@ -226,6 +229,8 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
   onAgentWorkflowToolToggle,
+  onAgentModelSelectionModeChange,
+  onAgentUserModelOptionsChange,
 }) => {
   const { t } = useI18n();
 
@@ -234,6 +239,8 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     agentModel,
     agentProviderId,
     agentProviderSlug,
+    modelSelectionMode,
+    userModelOptions,
     nestedWorkflowId,
     nestedWorkflowSlug,
     nestedWorkflowMode,
@@ -362,11 +369,14 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             agentModel={agentModel}
             agentProviderId={agentProviderId}
             agentProviderSlug={agentProviderSlug}
+            modelSelectionMode={modelSelectionMode}
+            userModelOptions={userModelOptions}
             selectedProviderValue={selectedProviderValue}
             selectedModelOption={selectedModelOption}
             providerOptions={providerOptions}
             modelsForProvider={modelsForProvider}
             matchedModel={matchedModel}
+            availableModels={availableModels}
             availableModelsLoading={availableModelsLoading}
             availableModelsError={availableModelsError}
             supportsReasoning={supportsReasoning}
@@ -384,6 +394,8 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             onAgentTemperatureChange={onAgentTemperatureChange}
             onAgentTopPChange={onAgentTopPChange}
             onAgentMaxOutputTokensChange={onAgentMaxOutputTokensChange}
+            onAgentModelSelectionModeChange={onAgentModelSelectionModeChange}
+            onAgentUserModelOptionsChange={onAgentUserModelOptionsChange}
             t={t}
           />
         ),
@@ -1145,11 +1157,14 @@ interface ModelSettingsTabProps {
   agentModel: string;
   agentProviderId: string;
   agentProviderSlug: string;
+  modelSelectionMode: ModelSelectionMode;
+  userModelOptions: UserModelOption[];
   selectedProviderValue: string;
   selectedModelOption: string;
   providerOptions: Array<{ value: string; label: string; id: string | null; slug: string | null }>;
   modelsForProvider: AvailableModel[];
   matchedModel: AvailableModel | undefined;
+  availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
   supportsReasoning: boolean;
@@ -1178,6 +1193,8 @@ interface ModelSettingsTabProps {
   onAgentTemperatureChange: (nodeId: string, value: string) => void;
   onAgentTopPChange: (nodeId: string, value: string) => void;
   onAgentMaxOutputTokensChange: (nodeId: string, value: string) => void;
+  onAgentModelSelectionModeChange: (nodeId: string, mode: ModelSelectionMode) => void;
+  onAgentUserModelOptionsChange: (nodeId: string, options: UserModelOption[]) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
@@ -1186,11 +1203,14 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   agentModel,
   agentProviderId,
   agentProviderSlug,
+  modelSelectionMode,
+  userModelOptions,
   selectedProviderValue,
   selectedModelOption,
   providerOptions,
   modelsForProvider,
   matchedModel,
+  availableModels,
   availableModelsLoading,
   availableModelsError,
   supportsReasoning,
@@ -1208,6 +1228,8 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   onAgentTemperatureChange,
   onAgentTopPChange,
   onAgentMaxOutputTokensChange,
+  onAgentModelSelectionModeChange,
+  onAgentUserModelOptionsChange,
   t,
 }) => {
   const handleProviderChange = useCallback(
@@ -1287,8 +1309,83 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
     [t],
   );
 
+  const handleModeChange = useCallback(
+    (mode: ModelSelectionMode) => {
+      onAgentModelSelectionModeChange(nodeId, mode);
+    },
+    [nodeId, onAgentModelSelectionModeChange],
+  );
+
+  const handleAddUserModelOption = useCallback(() => {
+    const newOption: UserModelOption = {
+      id: `model-${Date.now()}`,
+      label: agentModel || 'Nouveau modèle',
+      description: matchedModel?.description || '',
+      model: agentModel,
+      provider_id: agentProviderId || undefined,
+      provider_slug: agentProviderSlug || undefined,
+      default: userModelOptions.length === 0,
+    };
+    onAgentUserModelOptionsChange(nodeId, [...userModelOptions, newOption]);
+  }, [nodeId, agentModel, agentProviderId, agentProviderSlug, matchedModel, userModelOptions, onAgentUserModelOptionsChange]);
+
+  const handleRemoveUserModelOption = useCallback(
+    (optionId: string) => {
+      const newOptions = userModelOptions.filter((opt) => opt.id !== optionId);
+      // Si on supprime le défaut, mettre le premier comme défaut
+      if (newOptions.length > 0 && !newOptions.some((opt) => opt.default)) {
+        newOptions[0].default = true;
+      }
+      onAgentUserModelOptionsChange(nodeId, newOptions);
+    },
+    [nodeId, userModelOptions, onAgentUserModelOptionsChange],
+  );
+
+  const handleSetDefaultUserModelOption = useCallback(
+    (optionId: string) => {
+      const newOptions = userModelOptions.map((opt) => ({
+        ...opt,
+        default: opt.id === optionId,
+      }));
+      onAgentUserModelOptionsChange(nodeId, newOptions);
+    },
+    [nodeId, userModelOptions, onAgentUserModelOptionsChange],
+  );
+
   return (
     <div className={styles.tabContent}>
+      {/* Mode de sélection du modèle */}
+      <div className={styles.sectionCard}>
+        <div className={styles.sectionHeader}>
+          <h4 className={styles.sectionTitle}>
+            {t('workflowBuilder.agentInspector.modelSelectionModeTitle') || 'Mode de sélection'}
+          </h4>
+        </div>
+        <div className={styles.radioGroup}>
+          <label className={styles.radioLabel}>
+            <input
+              type="radio"
+              name="modelSelectionMode"
+              value="specific"
+              checked={modelSelectionMode === 'specific'}
+              onChange={() => handleModeChange('specific')}
+            />
+            <span>{t('workflowBuilder.agentInspector.modelSelectionModeSpecific') || 'Modèle spécifique'}</span>
+          </label>
+          <label className={styles.radioLabel}>
+            <input
+              type="radio"
+              name="modelSelectionMode"
+              value="user_choice"
+              checked={modelSelectionMode === 'user_choice'}
+              onChange={() => handleModeChange('user_choice')}
+            />
+            <span>{t('workflowBuilder.agentInspector.modelSelectionModeUserChoice') || 'Donner le choix à l\'utilisateur'}</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Configuration du modèle spécifique ou liste des modèles pour l'utilisateur */}
       <div className={styles.sectionCard}>
         <Field
           label={t('workflowBuilder.agentInspector.providerLabel')}
@@ -1368,7 +1465,70 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
         ) : matchedModel?.description ? (
           <p className={styles.mutedMessage}>{matchedModel.description}</p>
         ) : null}
+
+        {/* Bouton pour ajouter le modèle à la liste (mode user_choice) */}
+        {modelSelectionMode === 'user_choice' && agentModel.trim() && (
+          <button
+            type="button"
+            className={styles.addButton}
+            onClick={handleAddUserModelOption}
+          >
+            {t('workflowBuilder.agentInspector.addModelToList') || 'Ajouter à la liste'}
+          </button>
+        )}
       </div>
+
+      {/* Liste des modèles configurés pour l'utilisateur */}
+      {modelSelectionMode === 'user_choice' && (
+        <div className={styles.sectionCard}>
+          <div className={styles.sectionHeader}>
+            <h4 className={styles.sectionTitle}>
+              {t('workflowBuilder.agentInspector.userModelOptionsTitle') || 'Modèles disponibles pour l\'utilisateur'}
+            </h4>
+            <p className={styles.sectionDescription}>
+              {t('workflowBuilder.agentInspector.userModelOptionsDescription') || 'Ces modèles seront disponibles dans le sélecteur du chat.'}
+            </p>
+          </div>
+          {userModelOptions.length === 0 ? (
+            <p className={styles.mutedMessage}>
+              {t('workflowBuilder.agentInspector.noUserModelOptions') || 'Aucun modèle configuré. Sélectionnez un modèle ci-dessus et cliquez sur "Ajouter à la liste".'}
+            </p>
+          ) : (
+            <div className={styles.userModelOptionsList}>
+              {userModelOptions.map((option) => (
+                <div key={option.id} className={styles.userModelOption}>
+                  <div className={styles.userModelOptionInfo}>
+                    <span className={styles.userModelOptionLabel}>{option.label}</span>
+                    {option.description && (
+                      <span className={styles.userModelOptionDescription}>{option.description}</span>
+                    )}
+                    <span className={styles.userModelOptionModel}>{option.model}</span>
+                  </div>
+                  <div className={styles.userModelOptionActions}>
+                    <label className={styles.defaultCheckbox}>
+                      <input
+                        type="radio"
+                        name="defaultModel"
+                        checked={option.default === true}
+                        onChange={() => handleSetDefaultUserModelOption(option.id)}
+                      />
+                      <span>{t('workflowBuilder.agentInspector.defaultModel') || 'Par défaut'}</span>
+                    </label>
+                    <button
+                      type="button"
+                      className={styles.removeButton}
+                      onClick={() => handleRemoveUserModelOption(option.id)}
+                      aria-label={t('workflowBuilder.agentInspector.removeModel') || 'Supprimer'}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className={styles.sectionCard}>
         <div className={styles.sectionHeader}>
