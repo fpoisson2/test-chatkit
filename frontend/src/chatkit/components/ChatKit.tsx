@@ -277,11 +277,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     // Second pass: determine the active screencast
     // IMPORTANT: Only consider the LATEST computer_use workflow to avoid older ones blocking newer ones
+    // ALSO: If ANY workflow exists after the computer_use workflow, the computer_use is considered done
     computerUseWorkflows.forEach((cuWorkflow, index) => {
       const { item, task: computerUseTask, isLoading, isTerminal } = cuWorkflow;
       const isLastComputerUseWorkflow = index === computerUseWorkflows.length - 1;
       const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
       const isLastWorkflowAndStreaming = isLastWorkflow && control.isLoading;
+
+      // Check if there's ANY workflow after this one (not just computer_use workflows)
+      // If so, this computer_use workflow should be considered done
+      const workflowIndex = workflows.findIndex((w: any) => w.id === item.id);
+      const hasNewerWorkflow = workflowIndex >= 0 && workflowIndex < workflows.length - 1;
 
       console.log('[ChatKit useEffect] Workflow:', item.id, {
         hasToken: !!computerUseTask.debug_url_token,
@@ -291,18 +297,23 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         isLastComputerUseWorkflow,
         isLastWorkflow,
         isLastWorkflowAndStreaming,
+        hasNewerWorkflow,
         isCurrentScreencast: currentActiveScreencast?.itemId === item.id,
       });
 
-      // Si ce workflow est le screencast actuellement actif ET qu'il est complete, on doit le fermer
-      if (isTerminal && currentActiveScreencast && item.id === currentActiveScreencast.itemId) {
+      // Consider workflow as "done" if it's terminal OR if there's a newer workflow after it
+      const isEffectivelyDone = isTerminal || hasNewerWorkflow;
+
+      // Si ce workflow est le screencast actuellement actif ET qu'il est done, on doit le fermer
+      if (isEffectivelyDone && currentActiveScreencast && item.id === currentActiveScreencast.itemId) {
         currentScreencastIsComplete = true;
       }
 
       // ONLY select the LATEST computer_use workflow as the active screencast
       // This prevents older workflows stuck in "loading" from blocking newer ones
       // Also skip tokens that have failed connection to prevent reactivation loops
-      if (isLastComputerUseWorkflow && computerUseTask.debug_url_token && !isTerminal &&
+      // Also skip if there's a newer workflow (even non-computer_use) after this one
+      if (isLastComputerUseWorkflow && computerUseTask.debug_url_token && !isEffectivelyDone &&
           !failedScreencastTokens.has(computerUseTask.debug_url_token)) {
         // Select if it's loading OR if it's the last workflow while streaming
         if (isLoading || isLastWorkflowAndStreaming) {
