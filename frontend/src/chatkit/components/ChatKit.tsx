@@ -150,14 +150,38 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   // Callback pour capturer le dernier frame du screencast avant sa fermeture
   const handleScreencastLastFrame = useCallback((itemId: string) => {
     return (frameDataUrl: string) => {
-      console.log('[ChatKit] Captured last screencast frame for item:', itemId);
+      console.log('[ChatKit] Captured last screencast frame for item:', itemId, 'dataUrl length:', frameDataUrl.length);
       setLastScreencastScreenshot({
         itemId,
         src: frameDataUrl,
         action: undefined,
       });
+      console.log('[ChatKit] lastScreencastScreenshot state updated');
     };
   }, []);
+
+  // Debug: Logger les changements dans les items
+  useEffect(() => {
+    if (!control.thread?.items) return;
+
+    console.log('[ChatKit] Thread items changed:', {
+      count: control.thread.items.length,
+      types: control.thread.items.map(item => item.type),
+      lastItem: control.thread.items[control.thread.items.length - 1],
+    });
+
+    // Logger spécifiquement les workflows et leurs tâches
+    control.thread.items.forEach((item, idx) => {
+      if (item.type === 'workflow') {
+        console.log(`[ChatKit] Workflow item ${idx}:`, {
+          taskCount: item.workflow.tasks.length,
+          taskTypes: item.workflow.tasks.map(t => t.type),
+          tasks: item.workflow.tasks,
+        });
+      }
+    });
+  }, [control.thread?.items]);
+
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -801,7 +825,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         // Si on n'a pas de screenshot mais qu'on a un screenshot sauvegardé pour ce workflow, l'utiliser
                         if (!src && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
+                          console.log('[ChatKit] Using saved screenshot for item:', item.id);
                           src = lastScreencastScreenshot.src;
+                        } else if (!src && lastScreencastScreenshot) {
+                          console.log('[ChatKit] Have saved screenshot but item IDs do not match:', {
+                            savedItemId: lastScreencastScreenshot.itemId,
+                            currentItemId: item.id,
+                          });
                         }
 
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
