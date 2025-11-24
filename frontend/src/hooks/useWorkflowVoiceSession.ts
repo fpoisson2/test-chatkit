@@ -294,7 +294,15 @@ export const useWorkflowVoiceSession = ({
       }
     },
     onSessionFinalized: (event) => {
+      logVoice("onSessionFinalized called", {
+        eventSessionId: event.sessionId,
+        currentSessionId: currentSessionRef.current,
+        threadId: event.threadId,
+        transcriptCount: Array.isArray(event.transcripts) ? event.transcripts.length : 0,
+      });
+
       if (currentSessionRef.current !== event.sessionId) {
+        logVoice("onSessionFinalized: session ID mismatch, ignoring");
         return;
       }
       cleanupCapture();
@@ -307,7 +315,11 @@ export const useWorkflowVoiceSession = ({
         setTranscripts(mapped);
       }
       // Always refresh the thread when session is finalized to show next workflow step
+      logVoice("onSessionFinalized: calling onTranscriptsUpdated", {
+        hasCallback: !!onTranscriptsUpdated,
+      });
       onTranscriptsUpdated?.();
+      logVoice("onSessionFinalized: completed");
     },
     onSessionError: (sessionId, message) => {
       if (currentSessionRef.current !== sessionId) {

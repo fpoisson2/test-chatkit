@@ -432,7 +432,13 @@ export function MyChat() {
     threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
+      console.log("[MyChat] onTranscriptsUpdated called", {
+        hasRequestRefresh: !!requestRefreshRef.current,
+        currentThreadId: currentThread?.id,
+        initialThreadId,
+      });
       requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
+      console.log("[MyChat] requestRefresh called");
     },
   });
 
