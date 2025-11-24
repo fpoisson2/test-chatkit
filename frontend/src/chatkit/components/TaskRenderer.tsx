@@ -36,9 +36,9 @@ const iconProps = {
 const taskTypeIcons: Record<IconKey, React.ReactNode> = {
   thought: (
     <svg {...iconProps}>
-      <path d="M6.5 8a3.5 3.5 0 0 1 3.4-3 3.5 3.5 0 0 1 3.6 3.2c1.1.1 2.1 1 2.1 2.3 0 1.2-.9 2.3-2.1 2.3H8" />
-      <circle cx="6" cy="12.5" r="1.3" />
-      <circle cx="4.4" cy="14.4" r="0.9" />
+      <path d="M10 3.5a4.5 4.5 0 0 0-2.4 8.3c.2.1.4.4.4.6v1.1c0 .3.2.5.5.5h3c.3 0 .5-.2.5-.5V12c0-.3.2-.5.4-.6A4.5 4.5 0 0 0 10 3.5Z" />
+      <path d="M8.5 14h3" />
+      <path d="M9 16h2" />
     </svg>
   ),
   web_search: (
