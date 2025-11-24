@@ -41,6 +41,7 @@ export function DevToolsScreencast({
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
   const shouldAutoFocusRef = useRef(false);
   const onLastFrameRef = useRef(onLastFrame);
+  const hasFatalErrorRef = useRef(false);
 
   // Keep the ref updated with the latest callback
   useEffect(() => {
@@ -50,6 +51,7 @@ export function DevToolsScreencast({
   useEffect(() => {
     let mounted = true;
     let ws: WebSocket | null = null;
+    hasFatalErrorRef.current = false; // Reset on mount
 
     const connect = async () => {
       try {
@@ -242,6 +244,12 @@ export function DevToolsScreencast({
           setIsConnected(false);
           wsRef.current = null;
 
+          // Don't attempt reconnection if we had a fatal error (like 403)
+          if (hasFatalErrorRef.current) {
+            console.log('[DevToolsScreencast] Not reconnecting due to fatal error');
+            return;
+          }
+
           // Attempt reconnection after 2 seconds
           if (mounted) {
             reconnectTimeoutRef.current = setTimeout(() => {
@@ -252,9 +260,20 @@ export function DevToolsScreencast({
         };
       } catch (err) {
         console.error('[DevToolsScreencast] Connection error:', err);
-        setError(`Failed to connect: ${err instanceof Error ? err.message : String(err)}`);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        setError(`Failed to connect: ${errorMessage}`);
 
-        // Retry on error
+        // Don't retry if it's a 403 (Forbidden) - token is likely invalid/expired
+        if (errorMessage.includes('403')) {
+          console.log('[DevToolsScreencast] Got 403 Forbidden - token invalid/expired, not retrying');
+          hasFatalErrorRef.current = true;
+          if (onConnectionError) {
+            onConnectionError();
+          }
+          return;
+        }
+
+        // Retry on other errors
         if (mounted) {
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log('[DevToolsScreencast] Retrying connection...');
