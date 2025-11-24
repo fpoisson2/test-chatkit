@@ -375,9 +375,12 @@
 }
 
 .chatkit-composer-form.is-multiline .chatkit-composer-actions .chatkit-attach-wrapper,
-.chatkit-composer-form.is-multiline .chatkit-composer-actions .chatkit-submit,
-.chatkit-composer-form.is-multiline .chatkit-model-selector {
+.chatkit-composer-form.is-multiline .chatkit-composer-actions .chatkit-submit {
   align-self: end;
+}
+
+.chatkit-composer-form.is-multiline .chatkit-model-selector {
+  align-self: center;
 }
 
 .chatkit-submit {
