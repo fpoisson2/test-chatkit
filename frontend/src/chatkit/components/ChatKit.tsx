@@ -36,6 +36,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [showHistory, setShowHistory] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
+  const [lastScreencastScreenshot, setLastScreencastScreenshot] = useState<{ itemId: string; src: string; action?: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -144,7 +145,30 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       console.log('[ChatKit] Closing screencast due to completed computer_use task');
       setActiveScreencast(null);
     }
-  }, [activeScreencast, control.isLoading, control.thread]);
+  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+
+  // Capturer le dernier screenshot du screencast actif pour l'afficher après la fermeture
+  useEffect(() => {
+    if (!activeScreencast) return;
+
+    const items = control.thread?.items || [];
+    const workflow = items.find((i: any) => i.type === 'workflow' && i.id === activeScreencast.itemId);
+    if (!workflow) return;
+
+    const computerUseTask = workflow.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
+    if (!computerUseTask || !computerUseTask.screenshots || computerUseTask.screenshots.length === 0) return;
+
+    const lastScreenshot = computerUseTask.screenshots[computerUseTask.screenshots.length - 1];
+    const src = lastScreenshot.data_url || (lastScreenshot.b64_image ? `data:image/png;base64,${lastScreenshot.b64_image}` : '');
+
+    if (src) {
+      setLastScreencastScreenshot({
+        itemId: activeScreencast.itemId,
+        src,
+        action: lastScreenshot.action_description || computerUseTask.current_action,
+      });
+    }
+  }, [activeScreencast, control.thread?.items]);
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -774,7 +798,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           });
                         }
 
-                        const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
+                        let src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
                         // Vérifier si ce workflow contient le screencast actuellement actif
                         const debugUrlToken =
@@ -785,6 +809,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         // Afficher le screencast live seulement si c'est le screencast actif
                         const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
+
+                        // Si on n'a pas de screenshot mais qu'on a un screenshot sauvegardé pour ce workflow, l'utiliser
+                        if (!src && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
+                          src = lastScreencastScreenshot.src;
+                        }
 
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
                         const showScreenshot = !!src && !showLiveScreencast;
@@ -804,7 +833,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           screenshotId: screenshot?.id
                         });
 
-                        const actionTitle = computerUseTask.current_action || screenshot?.action_description;
+                        let actionTitle = computerUseTask.current_action || screenshot?.action_description;
+                        // Si on utilise le screenshot sauvegardé, utiliser son action
+                        if (!screenshot && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
+                          actionTitle = actionTitle || lastScreencastScreenshot.action;
+                        }
                         const clickPosition = screenshot?.click_position || screenshot?.click;
 
                         const toPercent = (value: number): number => {
