@@ -227,6 +227,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         console.log('[ChatKit] Closing screencast due to completed computer_use task');
         setActiveScreencast(null);
       }
+      // Nettoyer aussi le dernier screenshot sauvegardé pour éviter qu'il persiste
+      if (lastScreencastScreenshot && activeScreencast?.itemId === lastScreencastScreenshot.itemId) {
+        console.log('[ChatKit] Clearing last screencast screenshot for completed task');
+        setLastScreencastScreenshot(null);
+      }
     }
     // Priorité 2: Activer un nouveau screencast seulement s'il n'y a PAS de computer_use complete
     else if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
@@ -924,7 +929,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         }
 
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
-                        const showScreenshot = !!src && !showLiveScreencast;
+                        // MAIS seulement si la tâche n'est pas complete (sinon on cache tout pour retourner au début)
+                        const isComplete = computerUseTask.status_indicator === 'complete';
+                        const showScreenshot = !!src && !showLiveScreencast && !isComplete;
 
                         const showPreview = showLiveScreencast || showScreenshot;
 
