@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from chatkit.types import (
     ComputerUseTask,
+    GeneratedImage,
     ImageTask,
     Workflow,
     WorkflowItem,
@@ -105,24 +106,17 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
                             # Then display the screenshot
                             if data_url:
-                                # Create a dict that also supports attribute access
-                                class AttrDict(dict):
-                                    """Dict that supports attribute access"""
-                                    def __getattr__(self, key):
-                                        return self.get(key)
-                                    def __setattr__(self, key, value):
-                                        self[key] = value
-
-                                image_data = AttrDict({
-                                    "id": agent_context.generate_id("image"),
-                                    "data_url": data_url,
-                                })
+                                # Create GeneratedImage object
+                                generated_image = GeneratedImage(
+                                    id=agent_context.generate_id("image"),
+                                    data_url=data_url,
+                                )
 
                                 # Create ImageTask with the screenshot
                                 image_task = ImageTask(
                                     type="image",
                                     title="Screenshot finale de la session Computer Use",
-                                    images=[image_data],
+                                    images=[generated_image],
                                     status_indicator="completed",
                                 )
 
