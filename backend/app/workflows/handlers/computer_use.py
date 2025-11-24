@@ -10,7 +10,7 @@ from chatkit.types import (
     ComputerUseTask,
     Workflow,
     WorkflowItem,
-    WorkflowItemAddedEvent,
+    ThreadItemAddedEvent,
     ThreadItemDoneEvent,
 )
 
@@ -97,7 +97,7 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 )
 
                 # Emit the workflow item
-                await on_stream_event(WorkflowItemAddedEvent(item=workflow_item))
+                await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
 
                 # Mark as done immediately so it shows up
                 await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
