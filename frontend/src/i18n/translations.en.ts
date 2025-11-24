@@ -722,6 +722,12 @@ export const en: TranslationDictionary = {
     "gpt-4, claude-3-5-sonnet-20241022",
   "workflowBuilder.agentInspector.userSelection.availableModelsHint":
     "Models must match the exact IDs of models configured in your system.",
+  "workflowBuilder.agentInspector.userSelection.allowUserChoiceLabel":
+    "Allow user choice",
+  "workflowBuilder.agentInspector.userSelection.allowUserChoiceHelp":
+    "When enabled, this tool will be available in the user's selection menu with the parameters configured above.",
+  "workflowBuilder.agentInspector.userSelection.noModelsAvailable":
+    "No models available. Please select a provider first.",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
   "workflowBuilder.agentInspector.imageModelHelp":

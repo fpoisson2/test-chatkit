@@ -761,6 +761,12 @@ export const fr: TranslationDictionary = {
     "gpt-4, claude-3-5-sonnet-20241022",
   "workflowBuilder.agentInspector.userSelection.availableModelsHint":
     "Les modèles doivent correspondre aux identifiants exacts des modèles configurés dans votre système.",
+  "workflowBuilder.agentInspector.userSelection.allowUserChoiceLabel":
+    "Donner le choix à l'utilisateur",
+  "workflowBuilder.agentInspector.userSelection.allowUserChoiceHelp":
+    "Lorsqu'activé, cet outil sera disponible dans le menu de sélection de l'utilisateur avec les paramètres configurés ci-dessus.",
+  "workflowBuilder.agentInspector.userSelection.noModelsAvailable":
+    "Aucun modèle disponible. Sélectionnez d'abord un fournisseur.",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
   "workflowBuilder.agentInspector.imageModelHelp":

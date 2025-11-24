@@ -35,8 +35,10 @@ import { collectWidgetBindings } from '../../../../../utils/widgetPreview';
 import {
   getAgentUserToolSelectionEnabled,
   getAgentUserTools,
+  getAgentAvailableTools,
   getAgentUserModelSelectionEnabled,
   getAgentUserModels,
+  getAgentAvailableModels,
   type UserToolConfig,
   type UserModelConfig,
 } from '../../../../../utils/workflows';
@@ -187,8 +189,10 @@ type AgentInspectorSectionV2Props = {
   ) => void;
   onAgentUserToolSelectionEnabledChange: (nodeId: string, enabled: boolean) => void;
   onAgentAvailableToolsChange: (nodeId: string, tools: string[]) => void;
+  onAgentUserToolsChange: (nodeId: string, tools: UserToolConfig[]) => void;
   onAgentUserModelSelectionEnabledChange: (nodeId: string, enabled: boolean) => void;
   onAgentAvailableModelsChange: (nodeId: string, models: string[]) => void;
+  onAgentUserModelsChange: (nodeId: string, models: UserModelConfig[]) => void;
 };
 export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = ({
   nodeId,
@@ -241,8 +245,10 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
   onAgentWorkflowToolToggle,
   onAgentUserToolSelectionEnabledChange,
   onAgentAvailableToolsChange,
+  onAgentUserToolsChange,
   onAgentUserModelSelectionEnabledChange,
   onAgentAvailableModelsChange,
+  onAgentUserModelsChange,
 }) => {
   const { t } = useI18n();
 
@@ -328,8 +334,10 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
   // User selection configuration
   const userToolSelectionEnabled = getAgentUserToolSelectionEnabled(parameters);
   const userAvailableTools = getAgentAvailableTools(parameters);
+  const userTools = getAgentUserTools(parameters);
   const userModelSelectionEnabled = getAgentUserModelSelectionEnabled(parameters);
   const userAvailableModels = getAgentAvailableModels(parameters);
+  const userModels = getAgentUserModels(parameters);
 
   const handleStartMcpOAuth = useCallback(
     (payload: { url: string; clientId: string | null; scope: string | null }) =>
@@ -351,6 +359,44 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     (state: string) => cancelMcpOAuthSession({ token: token ?? null, state }),
     [token],
   );
+
+  // Helper functions for managing user tool selection
+  const isToolAvailableToUser = useCallback(
+    (toolId: string): boolean => {
+      return userTools.some((tool) => tool.id === toolId && tool.enabled);
+    },
+    [userTools],
+  );
+
+  const toggleToolAvailability = useCallback(
+    (toolId: string, config: Record<string, unknown> | null, enabled: boolean) => {
+      if (enabled) {
+        // Add tool to user selection with its current configuration
+        const existingTool = userTools.find((tool) => tool.id === toolId);
+        if (existingTool) {
+          // Tool already exists, just enable it
+          const updatedTools = userTools.map((tool) =>
+            tool.id === toolId ? { ...tool, enabled: true } : tool,
+          );
+          onAgentUserToolsChange(nodeId, updatedTools);
+        } else {
+          // Add new tool with config
+          const newTool: UserToolConfig = {
+            id: toolId,
+            enabled: true,
+            config: config ?? undefined,
+          };
+          onAgentUserToolsChange(nodeId, [...userTools, newTool]);
+        }
+      } else {
+        // Remove tool from user selection
+        const updatedTools = userTools.filter((tool) => tool.id !== toolId);
+        onAgentUserToolsChange(nodeId, updatedTools);
+      }
+    },
+    [nodeId, userTools, onAgentUserToolsChange],
+  );
+
   const tabs = useMemo(
     () => [
       {
@@ -407,6 +453,8 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             onAgentTemperatureChange={onAgentTemperatureChange}
             onAgentTopPChange={onAgentTopPChange}
             onAgentMaxOutputTokensChange={onAgentMaxOutputTokensChange}
+            userModels={userModels}
+            onAgentUserModelsChange={onAgentUserModelsChange}
             t={t}
           />
         ),
@@ -1209,6 +1257,8 @@ interface ModelSettingsTabProps {
   onAgentTemperatureChange: (nodeId: string, value: string) => void;
   onAgentTopPChange: (nodeId: string, value: string) => void;
   onAgentMaxOutputTokensChange: (nodeId: string, value: string) => void;
+  userModels: UserModelConfig[];
+  onAgentUserModelsChange: (nodeId: string, models: UserModelConfig[]) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
@@ -1239,6 +1289,8 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   onAgentTemperatureChange,
   onAgentTopPChange,
   onAgentMaxOutputTokensChange,
+  userModels,
+  onAgentUserModelsChange,
   t,
 }) => {
   const handleProviderChange = useCallback(
@@ -1316,6 +1368,41 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
         ),
       })),
     [t],
+  );
+
+  const isModelAvailableToUser = useCallback(
+    (modelId: string): boolean => {
+      return userModels.some((model) => model.id === modelId && model.enabled);
+    },
+    [userModels],
+  );
+
+  const toggleModelAvailability = useCallback(
+    (modelId: string, enabled: boolean) => {
+      if (enabled) {
+        // Add model to user selection
+        const existingModel = userModels.find((model) => model.id === modelId);
+        if (existingModel) {
+          // Model already exists, just enable it
+          const updatedModels = userModels.map((model) =>
+            model.id === modelId ? { ...model, enabled: true } : model,
+          );
+          onAgentUserModelsChange(nodeId, updatedModels);
+        } else {
+          // Add new model
+          const newModel: UserModelConfig = {
+            id: modelId,
+            enabled: true,
+          };
+          onAgentUserModelsChange(nodeId, [...userModels, newModel]);
+        }
+      } else {
+        // Remove model from user selection
+        const updatedModels = userModels.filter((model) => model.id !== modelId);
+        onAgentUserModelsChange(nodeId, updatedModels);
+      }
+    },
+    [nodeId, userModels, onAgentUserModelsChange],
   );
 
   return (
@@ -1511,6 +1598,47 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
             )}
           />
         </Field>
+      </div>
+
+      <div className={styles.sectionCard}>
+        <div className={styles.sectionHeader}>
+          <h4 className={styles.sectionTitle}>
+            {t('workflowBuilder.agentInspector.userSelection.title')}
+          </h4>
+          <p className={styles.sectionDescription}>
+            {t('workflowBuilder.agentInspector.userSelection.availableModelsDescription')}
+          </p>
+        </div>
+
+        {modelsForProvider.length > 0 ? (
+          <div className={styles.checkboxGroup}>
+            {modelsForProvider.map((model) => {
+              const displayLabel = model.display_name?.trim()
+                ? `${model.display_name.trim()} (${model.name})`
+                : model.name;
+              const isChecked = isModelAvailableToUser(model.name);
+              return (
+                <label
+                  key={`${model.id}:${model.name}`}
+                  className={styles.checkboxLabel}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(event) =>
+                      toggleModelAvailability(model.name, event.target.checked)
+                    }
+                  />
+                  <span>{displayLabel}</span>
+                </label>
+              );
+            })}
+          </div>
+        ) : (
+          <p className={styles.mutedMessage}>
+            {t('workflowBuilder.agentInspector.userSelection.noModelsAvailable')}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1736,6 +1864,17 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
           onToggle={handleWebSearchToggle}
           expandedByDefault={webSearchEnabled}
         >
+          <ToggleRow
+            label={t('workflowBuilder.agentInspector.userSelection.allowUserChoiceLabel')}
+            checked={isToolAvailableToUser('web_search')}
+            onChange={(enabled) => toggleToolAvailability('web_search', webSearchConfig, enabled)}
+            help={t('workflowBuilder.agentInspector.userSelection.allowUserChoiceHelp')}
+            disabled={!webSearchEnabled}
+            className={styles.toggleRow}
+          />
+
+          <div className={styles.divider} />
+
           <Field
             label={t('workflowBuilder.agentInspector.webSearch.contextLabel')}
             hint={t('workflowBuilder.agentInspector.webSearch.contextHint')}
@@ -1838,6 +1977,17 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
           onToggle={handleFileSearchToggle}
           expandedByDefault={fileSearchEnabled}
         >
+          <ToggleRow
+            label={t('workflowBuilder.agentInspector.userSelection.allowUserChoiceLabel')}
+            checked={isToolAvailableToUser('file_search')}
+            onChange={(enabled) => toggleToolAvailability('file_search', fileSearchConfig, enabled)}
+            help={t('workflowBuilder.agentInspector.userSelection.allowUserChoiceHelp')}
+            disabled={!fileSearchEnabled}
+            className={styles.toggleRow}
+          />
+
+          <div className={styles.divider} />
+
           <Field
             label={t('workflowBuilder.agentInspector.fileSearch.vectorStoreLabel')}
             required
@@ -1890,6 +2040,17 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
           }
           expandedByDefault={computerUseEnabled}
         >
+          <ToggleRow
+            label={t('workflowBuilder.agentInspector.userSelection.allowUserChoiceLabel')}
+            checked={isToolAvailableToUser('computer_use')}
+            onChange={(enabled) => toggleToolAvailability('computer_use', computerUseConfig, enabled)}
+            help={t('workflowBuilder.agentInspector.userSelection.allowUserChoiceHelp')}
+            disabled={!computerUseEnabled}
+            className={styles.toggleRow}
+          />
+
+          <div className={styles.divider} />
+
           <div className={styles.inlineFields}>
             <Field label={t('workflowBuilder.agentInspector.computerUseWidthLabel')}>
               <input
@@ -1975,6 +2136,17 @@ const ToolsTab: React.FC<ToolsTabProps> = ({
           }
           expandedByDefault={imageGenerationEnabled}
         >
+          <ToggleRow
+            label={t('workflowBuilder.agentInspector.userSelection.allowUserChoiceLabel')}
+            checked={isToolAvailableToUser('image_generation')}
+            onChange={(enabled) => toggleToolAvailability('image_generation', imageGenerationConfig, enabled)}
+            help={t('workflowBuilder.agentInspector.userSelection.allowUserChoiceHelp')}
+            disabled={!imageGenerationEnabled}
+            className={styles.toggleRow}
+          />
+
+          <div className={styles.divider} />
+
           <Field label={t('workflowBuilder.agentInspector.image.modelLabel')}>
             <select
               value={imageModelValue}
