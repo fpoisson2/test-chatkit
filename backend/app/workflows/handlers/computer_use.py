@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from chatkit.types import (
@@ -104,11 +105,11 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
                             # Then display the screenshot
                             if data_url:
-                                # Create a simple dict structure for the image
-                                image_data = {
-                                    "id": agent_context.generate_id("image"),
-                                    "data_url": data_url,
-                                }
+                                # Create an object with attributes (not a dict) for the image
+                                image_data = SimpleNamespace(
+                                    id=agent_context.generate_id("image"),
+                                    data_url=data_url,
+                                )
 
                                 # Create ImageTask with the screenshot
                                 image_task = ImageTask(
