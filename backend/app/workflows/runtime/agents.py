@@ -49,6 +49,7 @@ def prepare_agents(
     service: WorkflowService,
     agent_steps_ordered: Sequence[WorkflowStep],
     nodes_by_slug: Mapping[str, WorkflowStep],
+    model_override: str | None = None,
 ) -> AgentSetupResult:
     """Build agent instances and helper caches for workflow execution."""
 
@@ -221,6 +222,41 @@ def prepare_agents(
             else:
                 # Add provider_binding to overrides so it's passed to the agent
                 overrides["_provider_binding"] = provider_binding
+
+        # Appliquer le model_override si fourni
+        if model_override:
+            logger.info(
+                "Applying model override '%s' for step %s (original: %s)",
+                model_override,
+                step.slug,
+                overrides.get("model"),
+            )
+            overrides["model"] = model_override
+
+            # Chercher les paramètres du provider dans user_model_options
+            user_model_options = (step.parameters or {}).get("user_model_options", [])
+            if isinstance(user_model_options, list):
+                for option in user_model_options:
+                    if isinstance(option, dict) and option.get("model") == model_override:
+                        # Appliquer le provider_id et provider_slug de l'option
+                        option_provider_id = option.get("provider_id")
+                        option_provider_slug = option.get("provider_slug")
+                        if option_provider_id or option_provider_slug:
+                            logger.info(
+                                "Applying provider from user_model_options: id=%s, slug=%s",
+                                option_provider_id,
+                                option_provider_slug,
+                            )
+                            # Écraser les valeurs de provider existantes
+                            if option_provider_id:
+                                provider_id = option_provider_id
+                            if option_provider_slug:
+                                provider_slug = option_provider_slug
+                            # Recréer le provider_binding avec les nouvelles valeurs
+                            provider_binding = get_agent_provider_binding(provider_id, provider_slug)
+                            if provider_binding:
+                                overrides["_provider_binding"] = provider_binding
+                        break
 
         if builder is None:
             if agent_key:

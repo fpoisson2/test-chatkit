@@ -638,11 +638,21 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 assistant_text=assistant_stream_text,
             )
         else:
+            # Capturer le model override depuis les inference_options
+            model_override: str | None = None
+            if input_user_message is not None:
+                inference_opts = getattr(input_user_message, "inference_options", None)
+                if inference_opts is not None:
+                    model_override = getattr(inference_opts, "model", None)
+                    if model_override:
+                        logger.debug("Model override from inference_options: %s", model_override)
+
             workflow_input = WorkflowInput(
                 input_as_text=user_text,
                 auto_start_was_triggered=False,
                 auto_start_assistant_message=None,
                 source_item_id=source_item_id,
+                model_override=model_override,
             )
             pre_stream_events = []
 

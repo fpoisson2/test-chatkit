@@ -166,6 +166,7 @@ async def run_workflow_v2(
         service=initialization.service,
         agent_steps_ordered=agent_steps_ordered,
         nodes_by_slug=nodes_by_slug,
+        model_override=workflow_input.model_override,
     )
 
     agent_instances = agent_setup.agent_instances
