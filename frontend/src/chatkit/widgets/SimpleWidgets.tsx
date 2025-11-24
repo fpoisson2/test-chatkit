@@ -156,7 +156,7 @@ export function ImageComponent(props: ImageWidget): JSX.Element {
     flex,
   };
 
-  return <img src={src} alt={alt || ''} className="chatkit-image" style={style} />;
+  return <ImageWithBlobUrl src={src} alt={alt || ''} className="chatkit-image" style={style} />;
 }
 
 export function ListViewItemComponent(props: ListViewItem): JSX.Element {
