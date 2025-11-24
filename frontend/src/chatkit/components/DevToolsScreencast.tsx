@@ -9,6 +9,10 @@ interface DevToolsScreencastProps {
   enableInput?: boolean; // Capture keyboard/mouse events and forward to CDP
 }
 
+// Global map to track tokens that have fatal errors (like 403)
+// This persists across component remounts (important for React Strict Mode)
+const fatalErrorTokens = new Set<string>();
+
 interface ScreencastFrame {
   sessionId: number;
   data: string; // base64 encoded JPEG
@@ -41,7 +45,6 @@ export function DevToolsScreencast({
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
   const shouldAutoFocusRef = useRef(false);
   const onLastFrameRef = useRef(onLastFrame);
-  const hasFatalErrorRef = useRef(false);
 
   // Keep the ref updated with the latest callback
   useEffect(() => {
@@ -51,7 +54,16 @@ export function DevToolsScreencast({
   useEffect(() => {
     let mounted = true;
     let ws: WebSocket | null = null;
-    hasFatalErrorRef.current = false; // Reset on mount
+
+    // Check if this token has already had a fatal error
+    if (fatalErrorTokens.has(debugUrlToken)) {
+      console.log('[DevToolsScreencast] Token has fatal error, not attempting connection:', debugUrlToken.substring(0, 8));
+      setError('Token invalide ou expiré');
+      if (onConnectionError) {
+        onConnectionError();
+      }
+      return;
+    }
 
     const connect = async () => {
       try {
@@ -244,8 +256,8 @@ export function DevToolsScreencast({
           setIsConnected(false);
           wsRef.current = null;
 
-          // Don't attempt reconnection if we had a fatal error (like 403)
-          if (hasFatalErrorRef.current) {
+          // Don't attempt reconnection if this token has a fatal error (like 403)
+          if (fatalErrorTokens.has(debugUrlToken)) {
             console.log('[DevToolsScreencast] Not reconnecting due to fatal error');
             return;
           }
@@ -265,8 +277,8 @@ export function DevToolsScreencast({
 
         // Don't retry if it's a 403 (Forbidden) - token is likely invalid/expired
         if (errorMessage.includes('403')) {
-          console.log('[DevToolsScreencast] Got 403 Forbidden - token invalid/expired, not retrying');
-          hasFatalErrorRef.current = true;
+          console.log('[DevToolsScreencast] Got 403 Forbidden - token invalid/expired, marking token as fatal and not retrying');
+          fatalErrorTokens.add(debugUrlToken); // Mark this token as having a fatal error
           if (onConnectionError) {
             onConnectionError();
           }
