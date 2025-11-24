@@ -209,11 +209,23 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                         "No transition after computer_use; restarting workflow at start node %s",
                         start_slug,
                     )
+
+                    wait_reason = (
+                        "Redémarrage du workflow au nœud de début, en attente d'un "
+                        "nouveau message utilisateur."
+                    )
+                    context.runtime_vars["final_end_state"] = WorkflowEndState(
+                        slug=start_slug,
+                        status_type="waiting",
+                        status_reason=wait_reason,
+                        message=wait_reason,
+                    )
+
                     return NodeResult(
-                        next_slug=start_slug,
+                        finished=True,
                         context_updates={
                             "last_step_context": {"computer_use_completed": True},
-                            "final_node_slug": node.slug,
+                            "final_node_slug": start_slug,
                         },
                     )
 
