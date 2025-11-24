@@ -1260,80 +1260,80 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         _set_wait_state_metadata(thread, None)
         await self.store.save_thread(thread, context=context)
 
-        # Continue workflow to next step
-        if next_step_slug:
-            logger.info("Continuing workflow to next step: %s", next_step_slug)
+        # Continue workflow to next step (or start node if no next_step_slug)
+        logger.info("Continuing workflow to next step: %s", next_step_slug or "(start node)")
 
-            # Load thread history
-            history = await self.store.load_thread_items(
-                thread.id,
-                after=None,
-                limit=1000,
-                order="asc",
-                context=context,
+        # Reload thread history in ascending order for workflow execution
+        history_asc = await self.store.load_thread_items(
+            thread.id,
+            after=None,
+            limit=1000,
+            order="asc",
+            context=context,
+        )
+
+        # Create workflow input for continuation
+        from ..workflows.executor import WorkflowInput, WorkflowRuntimeSnapshot
+
+        # Get saved state from wait_state
+        saved_state = wait_state.get("state", {})
+        conversation_history = wait_state.get("conversation_history", [])
+
+        # If no next_step_slug, run_workflow_v2 will find the start node automatically
+        runtime_snapshot = WorkflowRuntimeSnapshot(
+            state=saved_state if isinstance(saved_state, dict) else {},
+            conversation_history=conversation_history,
+            last_step_context={"computer_use_completed": True},
+            steps=[],
+            current_slug=next_step_slug,  # Can be None - run_workflow will find start node
+        )
+
+        workflow_input = WorkflowInput(
+            input_as_text="",
+            auto_start_was_triggered=False,
+            auto_start_assistant_message=None,
+            source_item_id=None,
+            model_override=None,
+        )
+
+        event_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        # Execute workflow continuation
+        workflow_task = asyncio.create_task(
+            self._execute_workflow(
+                thread=thread,
+                agent_context=agent_context,
+                workflow_input=workflow_input,
+                event_queue=event_queue,
+                thread_items_history=history_asc.data,
+                thread_item_converter=self._thread_item_converter,
+                input_user_message=None,
+                runtime_snapshot=runtime_snapshot,
             )
+        )
 
-            # Create workflow input for continuation
-            from ..workflows.executor import WorkflowInput, WorkflowRuntimeSnapshot
-
-            # Get saved state from wait_state
-            saved_state = wait_state.get("state", {})
-            conversation_history = wait_state.get("conversation_history", [])
-
-            runtime_snapshot = WorkflowRuntimeSnapshot(
-                state=saved_state if isinstance(saved_state, dict) else {},
-                conversation_history=conversation_history,
-                last_step_context={"computer_use_completed": True},
-                steps=[],
-                current_slug=next_step_slug,
-            )
-
-            workflow_input = WorkflowInput(
-                input_as_text="",
-                auto_start_was_triggered=False,
-                auto_start_assistant_message=None,
-                source_item_id=None,
-                model_override=None,
-            )
-
-            event_queue: asyncio.Queue[Any] = asyncio.Queue()
-
-            # Execute workflow continuation
-            workflow_task = asyncio.create_task(
-                self._execute_workflow(
-                    thread=thread,
-                    agent_context=agent_context,
-                    workflow_input=workflow_input,
-                    event_queue=event_queue,
-                    thread_items_history=history.data,
-                    thread_item_converter=self._thread_item_converter,
-                    input_user_message=None,
-                    runtime_snapshot=runtime_snapshot,
-                )
-            )
-
-            # Stream events from the workflow
-            while True:
-                try:
-                    event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
-                    if event is _STREAM_DONE:
-                        break
-                    yield event
-                except asyncio.TimeoutError:
-                    if workflow_task.done():
-                        # Drain remaining events
-                        while not event_queue.empty():
-                            event = event_queue.get_nowait()
-                            if event is _STREAM_DONE:
-                                break
-                            yield event
-                        break
-
-            # Wait for workflow task to complete
+        # Stream events from the workflow
+        while True:
             try:
-                await workflow_task
-            except Exception as e:
-                logger.error("Workflow execution failed: %s", e)
+                event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
+                if event is _STREAM_DONE:
+                    break
+                yield event
+            except asyncio.TimeoutError:
+                if workflow_task.done():
+                    # Drain remaining events
+                    while not event_queue.empty():
+                        event = event_queue.get_nowait()
+                        if event is _STREAM_DONE:
+                            break
+                        yield event
+                    break
+
+        # Wait for workflow task to complete
+        try:
+            await workflow_task
+        except Exception as e:
+            logger.error("Workflow execution failed: %s", e)
 
         logger.info("Continue workflow completed for thread %s", thread.id)
 
