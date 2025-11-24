@@ -62,26 +62,29 @@ export const useWorkflowComposerModels = ({
         if (cancelled) return;
 
         // Trouver le premier bloc agent dans le workflow
-        const nodes = (version.definition as { nodes?: unknown[] })?.nodes;
+        // Les nœuds sont dans version.graph.nodes (pas version.definition)
+        // et les propriétés sont directement sur le nœud (pas dans node.data)
+        const versionWithGraph = version as unknown as { graph?: { nodes?: unknown[] } };
+        const nodes = versionWithGraph.graph?.nodes;
         console.log("[useWorkflowComposerModels] Nodes:", nodes);
 
         const agentNode = nodes?.find(
           (node: unknown) => {
-            const n = node as { data?: { kind?: string } };
-            return n.data?.kind === "agent";
+            const n = node as { kind?: string };
+            return n.kind === "agent";
           }
-        ) as { data?: { kind?: string; parameters?: Record<string, unknown> } } | undefined;
+        ) as { kind?: string; parameters?: Record<string, unknown> } | undefined;
 
         console.log("[useWorkflowComposerModels] Agent node:", agentNode);
 
-        if (!agentNode?.data?.parameters) {
+        if (!agentNode?.parameters) {
           console.log("[useWorkflowComposerModels] No agent parameters found");
           setComposerModels(null);
           setLoading(false);
           return;
         }
 
-        const parameters = agentNode.data.parameters;
+        const parameters = agentNode.parameters;
         console.log("[useWorkflowComposerModels] Parameters:", parameters);
 
         const selectionMode = getAgentModelSelectionMode(parameters);
