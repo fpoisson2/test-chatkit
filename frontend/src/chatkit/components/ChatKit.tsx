@@ -123,6 +123,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
   const [lastScreencastScreenshot, setLastScreencastScreenshot] = useState<{ itemId: string; src: string; action?: string } | null>(null);
   const [dismissedScreencastItems, setDismissedScreencastItems] = useState<Set<string>>(new Set());
+  // Track tokens that have failed connection (to prevent reactivation loops)
+  const [failedScreencastTokens, setFailedScreencastTokens] = useState<Set<string>>(new Set());
+  // Ref to track activeScreencast without triggering useEffect re-runs
+  const activeScreencastRef = useRef<{ token: string; itemId: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -215,6 +219,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [control.thread?.items.length]);
 
+  // Clear failed tokens when thread changes (new thread or switching threads)
+  useEffect(() => {
+    setFailedScreencastTokens(new Set());
+    setDismissedScreencastItems(new Set());
+    setLastScreencastScreenshot(null);
+    setActiveScreencast(null);
+    console.log('[ChatKit] Thread changed, cleared all screencast state');
+  }, [control.thread?.id]);
+
   // Clear the composer once a new user message is added to the thread
   useEffect(() => {
     const items = (control.thread?.items || []) as ThreadItem[];
@@ -230,13 +243,18 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       setInputValue('');
       setAttachments([]);
       lastUserMessageIdRef.current = lastUserMessage.id;
-      // Clear dismissed screencast items when a new message is sent
-      // This allows new workflows to auto-start their screencasts
-      setDismissedScreencastItems(new Set());
-      setLastScreencastScreenshot(null);
-      console.log('[ChatKit] Cleared dismissed screencast items and screenshots for new user message');
+      // NOTE: Do NOT clear dismissedScreencastItems, failedScreencastTokens, or lastScreencastScreenshot here!
+      // Clearing them creates a race condition: the old dismissed/failed workflow gets retried
+      // BEFORE the new workflow arrives. New workflows will have new IDs/tokens anyway.
+      // lastScreencastScreenshot is associated with a specific itemId, so it won't show on wrong workflows.
+      // These are only cleared when the thread changes (see useEffect with control.thread?.id).
     }
   }, [control.thread?.items]);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    activeScreencastRef.current = activeScreencast;
+  }, [activeScreencast]);
 
   // Conserver le dernier screencast actif jusqu'à ce qu'un nouveau arrive ou qu'il se déconnecte
   useEffect(() => {
@@ -244,66 +262,127 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     const workflows = items.filter((i: any) => i.type === 'workflow');
     const lastWorkflow = workflows[workflows.length - 1];
 
+    // Use ref to avoid re-running this effect when activeScreencast changes
+    const currentActiveScreencast = activeScreencastRef.current;
+
     console.log('[ChatKit useEffect] Checking for active screencast, control.isLoading:', control.isLoading, 'workflows:', workflows.length);
 
-    let newActiveScreencast: { token: string; itemId: string } | null = null;
-    let currentScreencastIsComplete = false;
-    let latestComputerUseTask: { itemId: string; status: string } | null = null;
-    let hasLoadingComputerUse = false;
+    // First pass: find ALL computer_use tasks across all workflows
+    // A single workflow can have multiple computer_use tasks (multiple screencasts)
+    const allComputerUseTasks: Array<{
+      item: any;
+      task: any;
+      taskIndex: number;
+      workflowIndex: number;
+      isLoading: boolean;
+      isTerminal: boolean;
+    }> = [];
 
-    // Parcourir tous les workflows pour trouver celui qui est actuellement actif
-    workflows.forEach((item: any) => {
+    workflows.forEach((item: any, workflowIdx: number) => {
       if (dismissedScreencastItems.has(item.id)) {
         return;
       }
 
-      const computerUseTask = item.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
-      if (!computerUseTask) return;
+      // Collect ALL computer_use tasks from this workflow, not just the first one
+      const tasks = item.workflow?.tasks || [];
+      tasks.forEach((task: any, taskIdx: number) => {
+        if (task.type !== 'computer_use') return;
 
-      const isLoading = computerUseTask.status_indicator === 'loading';
-      const isComplete = computerUseTask.status_indicator === 'complete';
-      const isError = computerUseTask.status_indicator === 'error';
-      const isTerminal = isComplete || isError;
+        const isLoading = task.status_indicator === 'loading';
+        const isComplete = task.status_indicator === 'complete';
+        const isError = task.status_indicator === 'error';
+        const isTerminal = isComplete || isError;
+
+        allComputerUseTasks.push({
+          item,
+          task,
+          taskIndex: taskIdx,
+          workflowIndex: workflowIdx,
+          isLoading,
+          isTerminal,
+        });
+      });
+    });
+
+    // Get the latest (most recent) computer_use task
+    const latestComputerUseEntry = allComputerUseTasks[allComputerUseTasks.length - 1];
+    const latestComputerUseTask = latestComputerUseEntry
+      ? { itemId: latestComputerUseEntry.item.id, token: latestComputerUseEntry.task.debug_url_token, status: latestComputerUseEntry.task.status_indicator }
+      : null;
+
+    let newActiveScreencast: { token: string; itemId: string } | null = null;
+    let currentScreencastIsComplete = false;
+
+    // Second pass: determine the active screencast
+    // IMPORTANT: Only consider the LATEST computer_use task (across all workflows) to avoid older ones blocking newer ones
+    // ALSO: If ANY workflow exists after the computer_use task's workflow, the task is considered done
+    // ALSO: If there's a newer task in the SAME workflow, the older task is considered done
+    allComputerUseTasks.forEach((cuEntry, index) => {
+      const { item, task: computerUseTask, taskIndex, workflowIndex, isLoading, isTerminal } = cuEntry;
+      const isLastComputerUseTask = index === allComputerUseTasks.length - 1;
       const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
       const isLastWorkflowAndStreaming = isLastWorkflow && control.isLoading;
 
-      console.log('[ChatKit useEffect] Workflow:', item.id, {
+      // Check if there's ANY workflow after this one (not just computer_use workflows)
+      // If so, this computer_use task should be considered done
+      const hasNewerWorkflow = workflowIndex >= 0 && workflowIndex < workflows.length - 1;
+
+      // Check if there's a newer computer_use task (either in a later workflow or later in the same workflow)
+      const hasNewerComputerUseTask = index < allComputerUseTasks.length - 1;
+
+      console.log('[ChatKit useEffect] Task:', item.id, 'taskIndex:', taskIndex, {
         hasToken: !!computerUseTask.debug_url_token,
         token: computerUseTask.debug_url_token?.substring(0, 8),
         isLoading,
-        isComplete,
-        isError,
         isTerminal,
+        isLastComputerUseTask,
         isLastWorkflow,
         isLastWorkflowAndStreaming,
-        isCurrentScreencast: activeScreencast?.itemId === item.id,
-        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token && !isTerminal
+        hasNewerWorkflow,
+        hasNewerComputerUseTask,
+        isCurrentScreencast: currentActiveScreencast?.token === computerUseTask.debug_url_token,
       });
 
-      // Garder une trace du dernier workflow computer_use rencontré (le plus récent)
-      latestComputerUseTask = { itemId: item.id, status: computerUseTask.status_indicator };
-      if (isLoading) {
-        hasLoadingComputerUse = true;
-      }
+      // Consider task as "done" if it's terminal OR if there's a newer workflow OR if there's a newer computer_use task
+      const isEffectivelyDone = isTerminal || hasNewerWorkflow || hasNewerComputerUseTask;
 
-      // Si ce workflow est le screencast actuellement actif ET qu'il est complete, on doit le fermer
-      if (isTerminal && activeScreencast && item.id === activeScreencast.itemId) {
+      // Si cette tâche est le screencast actuellement actif ET qu'elle est done, on doit le fermer
+      if (isEffectivelyDone && currentActiveScreencast && computerUseTask.debug_url_token === currentActiveScreencast.token) {
         currentScreencastIsComplete = true;
       }
 
-      // Capturer le screencast s'il est actuellement actif (en cours de chargement ou dernier workflow pendant le streaming)
-      // ET s'il a un debug_url_token ET qu'il n'est PAS complete
-      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token && !isTerminal) {
-        newActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
+      // ONLY select the LATEST computer_use task as the active screencast
+      // This prevents older tasks (even in the same workflow) from blocking newer ones
+      // Also skip tokens that have failed connection to prevent reactivation loops
+      // Also skip if there's a newer workflow or task after this one
+      if (isLastComputerUseTask && computerUseTask.debug_url_token && !isEffectivelyDone &&
+          !failedScreencastTokens.has(computerUseTask.debug_url_token)) {
+        // Select if it's loading OR if it's the last workflow while streaming
+        if (isLoading || isLastWorkflowAndStreaming) {
+          newActiveScreencast = {
+            token: computerUseTask.debug_url_token,
+            itemId: item.id,
+          };
+        }
       }
     });
 
-    const latestComputerUseIsTerminal =
-      latestComputerUseTask &&
-      (latestComputerUseTask.status === 'complete' || latestComputerUseTask.status === 'error');
+    // If the current screencast token is not the latest computer_use task's token, it should be closed
+    // This handles the case where an older task is stuck in "loading" but a newer one has started
+    if (currentActiveScreencast && latestComputerUseTask &&
+        currentActiveScreencast.token !== latestComputerUseTask.token) {
+      console.log('[ChatKit] Current screencast is older than latest computer_use task, marking for closure');
+      currentScreencastIsComplete = true;
+    }
+
+    // If the current screencast's token has failed, close it immediately
+    if (currentActiveScreencast && failedScreencastTokens.has(currentActiveScreencast.token)) {
+      console.log('[ChatKit] Current screencast token has failed, marking for closure:', currentActiveScreencast.token.substring(0, 8));
+      currentScreencastIsComplete = true;
+    }
+
+    const latestComputerUseIsTerminal = latestComputerUseEntry?.isTerminal ?? false;
+    const hasLoadingComputerUse = allComputerUseTasks.some(t => t.isLoading);
 
     console.log(
       '[ChatKit useEffect] Result - newActiveScreencast:',
@@ -317,7 +396,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       'latestComputerUseTask:',
       latestComputerUseTask,
       'currentActiveScreencast:',
-      activeScreencast
+      currentActiveScreencast
     );
 
     // Mise à jour de activeScreencast :
@@ -325,26 +404,35 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // - Sinon, si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
     // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
 
-    // Priorité 1: Fermer le screencast seulement si le flux actuel est terminé et qu'aucun autre workflow n'est en cours
-    // (évite qu'un ancien workflow terminal ferme un screencast plus récent en cours de chargement)
+    // Priorité 1: Fermer le screencast si nécessaire
     if (currentScreencastIsComplete || (latestComputerUseIsTerminal && !newActiveScreencast && !hasLoadingComputerUse)) {
-      if (activeScreencast) {
+      if (currentActiveScreencast) {
         console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
         setActiveScreencast(null);
       }
-      // Nettoyer aussi le dernier screenshot sauvegardé pour éviter qu'il persiste
-      const terminalItemId = latestComputerUseTask?.itemId || activeScreencast?.itemId;
-      if (terminalItemId && lastScreencastScreenshot && terminalItemId === lastScreencastScreenshot.itemId) {
-        console.log('[ChatKit] Clearing last screencast screenshot for completed task');
-        setLastScreencastScreenshot(null);
+      // Only clear the screenshot when the task's ACTUAL status_indicator is terminal
+      // NOT just because there's a newer workflow (which would lose the image in history)
+      // The display logic already handles not showing screenshots for terminal tasks
+      if (lastScreencastScreenshot) {
+        const screenshotWorkflow = workflows.find((w: any) => w.id === lastScreencastScreenshot.itemId);
+        const screenshotTask = screenshotWorkflow?.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
+        if (screenshotTask) {
+          const isActuallyTerminal = screenshotTask.status_indicator === 'complete' || screenshotTask.status_indicator === 'error';
+          if (isActuallyTerminal) {
+            console.log('[ChatKit] Clearing last screencast screenshot for actually terminal task');
+            setLastScreencastScreenshot(null);
+          }
+        }
       }
     }
-    // Priorité 2: Activer un nouveau screencast seulement s'il n'y a PAS de computer_use complete
-    else if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
+    // Priorité 2: Activer un nouveau screencast seulement s'il est différent de l'actuel (token OU itemId)
+    else if (newActiveScreencast &&
+             (newActiveScreencast.token !== currentActiveScreencast?.token ||
+              newActiveScreencast.itemId !== currentActiveScreencast?.itemId)) {
       console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items, dismissedScreencastItems]);
+  }, [control.isLoading, control.thread?.items, dismissedScreencastItems, failedScreencastTokens, lastScreencastScreenshot]);
 
   // Callback pour capturer le dernier frame du screencast avant sa fermeture
   const handleScreencastLastFrame = useCallback((itemId: string) => {
@@ -1246,6 +1334,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                     authToken={authToken}
                                     enableInput
                                     onConnectionError={() => {
+                                      console.log('[ChatKit] Screencast connection error, marking token as failed:', (debugUrlToken as string).substring(0, 8));
+                                      // Mark this token as failed to prevent reactivation loops
+                                      setFailedScreencastTokens(prev => {
+                                        if (prev.has(debugUrlToken as string)) return prev;
+                                        const next = new Set(prev);
+                                        next.add(debugUrlToken as string);
+                                        return next;
+                                      });
                                       setActiveScreencast(current =>
                                         current?.token === debugUrlToken ? null : current
                                       );
