@@ -56,8 +56,26 @@ function ImageWithBlobUrl({ src, alt = '', className = '' }: { src: string; alt?
       } catch (err) {
         console.error('[ChatKit] Failed to convert data URL to blob:', err);
       }
-    } else {
+    } else if (src.startsWith('http')) {
+      // Regular URL, use as is
       setBlobUrl(src);
+    } else {
+      // Assume it's a raw base64 string, try to convert it
+      try {
+        const bstr = atob(src);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i);
+        }
+        const blob = new Blob([u8arr], { type: 'image/png' });
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch (err) {
+        console.error('[ChatKit] Failed to convert raw base64 to blob:', err);
+        // Fallback: treat as regular src
+        setBlobUrl(src);
+      }
     }
 
     return () => {
@@ -808,7 +826,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         // Afficher l'image finale
                         if (!isLoading) {
-                          const src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
+                          let src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
+                          // Ensure proper data URL format
+                          if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+                            src = `data:image/png;base64,${src}`;
+                          }
                           if (src) {
                             console.log('[ChatKit] Showing final image');
                             return <FinalImageDisplay src={src} />;
@@ -869,6 +891,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         }
 
                         let src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
+
+                        // Ensure proper data URL format for screenshot
+                        if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+                          src = `data:image/png;base64,${src}`;
+                        }
 
                         // Vérifier si ce workflow contient le screencast actuellement actif
                         const debugUrlToken =
