@@ -12,6 +12,9 @@ from chatkit.types import (
     WorkflowItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
+    UserMessageItem,
+    UserMessageContent,
+    ImageContentBlock,
 )
 
 from .base import BaseNodeHandler
@@ -70,6 +73,68 @@ class ComputerUseNodeHandler(BaseNodeHandler):
         if resumed:
             # Resume from wait - user clicked "Terminer"
             logger.info(f"Resuming from computer_use wait at node {node.slug}")
+
+            # Capture final screenshot and add to conversation
+            on_stream_event = context.runtime_vars.get("on_stream_event")
+            if thread and agent_context and on_stream_event:
+                try:
+                    # Get the computer_use config from saved state
+                    parameters = node.parameters or {}
+                    tools = parameters.get("tools", [])
+                    computer_use_config = None
+                    for tool in tools:
+                        if isinstance(tool, dict) and tool.get("type") == "computer_use":
+                            computer_use_config = tool.get("computer_use", tool)
+                            break
+
+                    if computer_use_config:
+                        # Rebuild the tool to get the browser instance
+                        computer_use_config = {**computer_use_config, "thread_id": thread.id}
+                        from ...tool_factory import build_computer_use_tool
+                        computer_tool = build_computer_use_tool({"computer_use": computer_use_config})
+
+                        if computer_tool and hasattr(computer_tool, "computer"):
+                            # Capture final screenshot
+                            screenshot_result = await computer_tool.computer.screenshot()
+
+                            if screenshot_result and screenshot_result.get("base64_image"):
+                                # Create a user message with the screenshot
+                                from chatkit.types import UserMessageItem, UserMessageContent, ImageContentBlock
+
+                                screenshot_message = UserMessageItem(
+                                    id=agent_context.generate_id("message"),
+                                    thread_id=agent_context.thread.id,
+                                    created_at=datetime.now(),
+                                    content=[
+                                        UserMessageContent(
+                                            text="Screenshot finale de la session Computer Use:",
+                                            images=[
+                                                ImageContentBlock(
+                                                    type="image",
+                                                    source={
+                                                        "type": "base64",
+                                                        "media_type": "image/png",
+                                                        "data": screenshot_result["base64_image"]
+                                                    }
+                                                )
+                                            ]
+                                        )
+                                    ],
+                                )
+
+                                await on_stream_event(ThreadItemAddedEvent(item=screenshot_message))
+                                await on_stream_event(ThreadItemDoneEvent(item=screenshot_message))
+                                logger.info("Final screenshot captured and added to conversation")
+
+                            # Close the browser
+                            try:
+                                await computer_tool.computer.cleanup()
+                                logger.info("Browser session closed")
+                            except Exception as e:
+                                logger.error(f"Failed to cleanup browser: {e}")
+
+                except Exception as e:
+                    logger.error(f"Failed to capture final screenshot: {e}")
 
             # Clear wait state
             if thread is not None:
