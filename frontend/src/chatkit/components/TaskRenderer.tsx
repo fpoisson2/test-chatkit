@@ -53,19 +53,24 @@ function CustomTaskRenderer({ task, theme = 'light' }: { task: CustomTask; theme
 }
 
 function SearchTaskRenderer({ task }: { task: SearchTask }): JSX.Element {
+  const { t } = useI18n();
+
+  // Éviter les doublons : filtrer les queries pour enlever title_query
+  const additionalQueries = task.queries.filter(query => query !== task.title_query);
+
   return (
     <div className="chatkit-task-search">
       {task.title && <div className="chatkit-task-title">{task.title}</div>}
       {task.title_query && (
         <div className="chatkit-task-query">
-          <strong>Query:</strong> {task.title_query}
+          <strong>{t('chatkit.task.query')}:</strong> {task.title_query}
         </div>
       )}
-      {task.queries && task.queries.length > 0 && (
+      {additionalQueries.length > 0 && (
         <div className="chatkit-task-queries">
-          <strong>Queries:</strong>
+          <strong>{t('chatkit.task.queries')}:</strong>
           <ul>
-            {task.queries.map((query, i) => (
+            {additionalQueries.map((query, i) => (
               <li key={i}>{query}</li>
             ))}
           </ul>
@@ -73,7 +78,7 @@ function SearchTaskRenderer({ task }: { task: SearchTask }): JSX.Element {
       )}
       {task.sources && task.sources.length > 0 && (
         <div className="chatkit-task-sources">
-          <strong>Sources:</strong>
+          <strong>{t('chatkit.task.sources')}:</strong>
           <ul>
             {task.sources.map((source, i) => (
               <li key={i}>
