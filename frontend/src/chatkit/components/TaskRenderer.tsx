@@ -11,6 +11,7 @@ import type {
   FileSource,
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { DevToolsScreencast } from './DevToolsScreencast';
 import { useI18n } from '../../i18n';
 
 interface TaskRendererProps {
@@ -214,6 +215,23 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
 }
 
 function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
+  // If we have a debug_url_token, show the live screencast with navigation controls
+  if (task.debug_url_token) {
+    return (
+      <div className="chatkit-task-computer-use">
+        <TaskLayout icon={icon}>
+          {task.title && <div className="chatkit-task-title">{task.title}</div>}
+          <DevToolsScreencast
+            debugUrlToken={task.debug_url_token}
+            enableInput={true}
+            className="chatkit-task-screencast"
+          />
+        </TaskLayout>
+      </div>
+    );
+  }
+
+  // Otherwise, fall back to showing static screenshots
   const latestScreenshot = task.screenshots && task.screenshots.length > 0
     ? task.screenshots[task.screenshots.length - 1]
     : null;

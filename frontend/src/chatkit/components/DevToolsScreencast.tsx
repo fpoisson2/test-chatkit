@@ -30,6 +30,10 @@ export function DevToolsScreencast({
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [frameCount, setFrameCount] = useState(0);
+  const [currentUrl, setCurrentUrl] = useState('');
+  const [urlInput, setUrlInput] = useState('');
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageIdRef = useRef(1);
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
@@ -99,6 +103,13 @@ export function DevToolsScreencast({
           setIsConnected(true);
           setError(null);
 
+          // Enable Page domain events
+          const enablePageCommand = {
+            id: messageIdRef.current++,
+            method: 'Page.enable',
+          };
+          ws?.send(JSON.stringify(enablePageCommand));
+
           // Start screencast with CDP command
           const startScreencastCommand = {
             id: messageIdRef.current++,
@@ -165,6 +176,25 @@ export function DevToolsScreencast({
                 },
               };
               ws?.send(JSON.stringify(ackCommand));
+            }
+
+            // Handle frame navigation to update URL
+            if (message.method === 'Page.frameNavigated') {
+              const frame = message.params?.frame;
+              if (frame && frame.url) {
+                setCurrentUrl(frame.url);
+                setUrlInput(frame.url);
+              }
+            }
+
+            // Handle navigation history updates
+            if (message.method === 'Page.navigationHistoryUpdated') {
+              const history = message.params?.history;
+              const currentIndex = message.params?.currentIndex;
+              if (history && typeof currentIndex === 'number') {
+                setCanGoBack(currentIndex > 0);
+                setCanGoForward(currentIndex < history.entries.length - 1);
+              }
             }
           } catch (err) {
             console.error('[DevToolsScreencast] Error processing message:', err);
@@ -239,6 +269,55 @@ export function DevToolsScreencast({
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(command));
     }
+  };
+
+  const navigateToUrl = (url: string) => {
+    if (!url.trim()) return;
+
+    // Add protocol if missing
+    let normalizedUrl = url.trim();
+    if (!normalizedUrl.match(/^https?:\/\//i)) {
+      normalizedUrl = 'https://' + normalizedUrl;
+    }
+
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Page.navigate',
+      params: { url: normalizedUrl },
+    };
+    sendCdpCommand(command);
+    setUrlInput(normalizedUrl);
+    setCurrentUrl(normalizedUrl);
+  };
+
+  const goBack = () => {
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Page.goBack',
+    };
+    sendCdpCommand(command);
+  };
+
+  const goForward = () => {
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Page.goForward',
+    };
+    sendCdpCommand(command);
+  };
+
+  const refresh = () => {
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Page.reload',
+      params: { ignoreCache: false },
+    };
+    sendCdpCommand(command);
+  };
+
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    navigateToUrl(urlInput);
   };
 
   const mapPointerToPage = (clientX: number, clientY: number) => {
@@ -394,6 +473,59 @@ export function DevToolsScreencast({
           ⚠️ {error}
         </div>
       )}
+
+      <div className="chatkit-screencast-navigation">
+        <button
+          type="button"
+          onClick={goBack}
+          disabled={!isConnected || !canGoBack}
+          className="chatkit-nav-button"
+          title="Page précédente"
+          aria-label="Page précédente"
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          onClick={goForward}
+          disabled={!isConnected || !canGoForward}
+          className="chatkit-nav-button"
+          title="Page suivante"
+          aria-label="Page suivante"
+        >
+          →
+        </button>
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={!isConnected}
+          className="chatkit-nav-button"
+          title="Actualiser"
+          aria-label="Actualiser"
+        >
+          ↻
+        </button>
+        <form onSubmit={handleUrlSubmit} className="chatkit-url-form">
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            disabled={!isConnected}
+            className="chatkit-url-input"
+            placeholder="Entrez une URL..."
+            aria-label="Barre d'adresse"
+          />
+          <button
+            type="submit"
+            disabled={!isConnected}
+            className="chatkit-nav-button"
+            title="Aller"
+            aria-label="Aller"
+          >
+            →
+          </button>
+        </form>
+      </div>
 
       <div className="chatkit-screencast-canvas-container">
         <canvas
