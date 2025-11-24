@@ -408,6 +408,23 @@ export type ChatKitWorkflowInfo = {
   auto_start: boolean;
   auto_start_user_message: string | null;
   auto_start_assistant_message: string | null;
+  user_selection?: {
+    tools?: Array<{
+      id: string;
+      enabled: boolean;
+      config?: Record<string, unknown>;
+    }>;
+    models?: Array<{
+      id: string;
+      name?: string;
+      enabled: boolean;
+      config?: {
+        temperature?: number;
+        max_output_tokens?: number;
+        top_p?: number;
+      };
+    }>;
+  } | null;
   updated_at: string;
 };
 

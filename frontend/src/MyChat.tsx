@@ -22,7 +22,7 @@ import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
-import { workflowsApi } from "./utils/backend";
+import { workflowsApi, chatkitApi, type ChatKitWorkflowInfo } from "./utils/backend";
 import {
   clearStoredThreadId,
   loadStoredThreadId,
@@ -246,6 +246,9 @@ export function MyChat() {
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
 
+  // Load workflow info for user selection configuration
+  const [workflowInfo, setWorkflowInfo] = useState<ChatKitWorkflowInfo | null>(null);
+
   // Detect LTI user early so we can use it in chatkitOptions
   const isLtiUser = user?.is_lti ?? false;
 
@@ -256,6 +259,33 @@ export function MyChat() {
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
+
+  // Load workflow info to get user_selection configuration
+  useEffect(() => {
+    if (!token) {
+      setWorkflowInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    chatkitApi.getWorkflow(token)
+      .then((info) => {
+        if (!cancelled) {
+          setWorkflowInfo(info);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn("[MyChat] Failed to load workflow info for user_selection", err);
+          setWorkflowInfo(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Detect outbound calls via WebSocket events (like voice sessions)
   const handleOutboundTranscript = useCallback(() => {
@@ -658,9 +688,7 @@ export function MyChat() {
         composer: {
           placeholder: composerPlaceholder,
           attachments: attachmentsConfig,
-          // TODO: Récupérer userSelection depuis activeWorkflow.user_selection
-          // Pour l'instant, on va laisser undefined jusqu'à ce que le backend soit mis à jour
-          userSelection: undefined,
+          userSelection: workflowInfo?.user_selection || undefined,
         },
         onClientTool: async (toolCall) => {
           const { name, params } = toolCall as ClientToolCall;
@@ -757,6 +785,7 @@ export function MyChat() {
       persistenceSlug,
       reportError,
       user?.email,
+      workflowInfo,
     ],
   );
 
