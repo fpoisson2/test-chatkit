@@ -113,6 +113,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
   const [lastScreencastScreenshot, setLastScreencastScreenshot] = useState<{ itemId: string; src: string; action?: string } | null>(null);
+  const [ignoredScreencastTokens, setIgnoredScreencastTokens] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -178,6 +179,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       const computerUseTask = item.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask) return;
 
+      const isIgnoredToken =
+        computerUseTask.debug_url_token && ignoredScreencastTokens.includes(computerUseTask.debug_url_token);
+
+      if (isIgnoredToken) {
+        console.log('[ChatKit useEffect] Ignoring screencast with token marked as failed');
+        return;
+      }
+
       const isLoading = computerUseTask.status_indicator === 'loading';
       const isComplete = computerUseTask.status_indicator === 'complete';
       const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
@@ -228,7 +237,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       console.log('[ChatKit] Closing screencast due to completed computer_use task');
       setActiveScreencast(null);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.token, control.isLoading, control.thread?.items, ignoredScreencastTokens]);
+
+  const handleScreencastConnectionError = useCallback((token: string) => {
+    setIgnoredScreencastTokens(prev => (prev.includes(token) ? prev : [...prev, token]));
+    setActiveScreencast(current => (current?.token === token ? null : current));
+  }, []);
 
   // Callback pour capturer le dernier frame du screencast avant sa fermeture
   const handleScreencastLastFrame = useCallback((itemId: string) => {
@@ -979,11 +993,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                     debugUrlToken={debugUrlToken as string}
                                     authToken={authToken}
                                     enableInput
-                                    onConnectionError={() => {
-                                      setActiveScreencast(current =>
-                                        current?.token === debugUrlToken ? null : current
-                                      );
-                                    }}
+                                    onConnectionError={() => handleScreencastConnectionError(debugUrlToken as string)}
                                     onLastFrame={handleScreencastLastFrame(item.id)}
                                   />
                                   <div className="chatkit-computer-use-actions">
