@@ -4180,3 +4180,116 @@ export const setAgentWorkflowValidationToolEnabled = (
   const toolEntry = buildWorkflowValidationFunctionToolEntry();
   return { ...next, tools: [...tools, toolEntry] };
 };
+
+// Model selection mode: 'specific' (default) or 'user_choice'
+export type ModelSelectionMode = 'specific' | 'user_choice';
+
+export type UserModelOptionSettings = {
+  temperature?: number;
+  top_p?: number;
+  max_output_tokens?: number;
+  reasoning?: {
+    effort?: string;
+    summary?: string;
+  };
+  text_verbosity?: string;
+  truncation?: string;
+};
+
+export type UserModelOption = {
+  id: string;
+  label: string;
+  description?: string;
+  model: string;
+  provider_id?: string;
+  provider_slug?: string;
+  default?: boolean;
+  model_settings?: UserModelOptionSettings;
+};
+
+export const getAgentModelSelectionMode = (
+  parameters: AgentParameters | null | undefined,
+): ModelSelectionMode => {
+  if (!parameters) {
+    return 'specific';
+  }
+  const mode = (parameters as Record<string, unknown>).model_selection_mode;
+  if (mode === 'user_choice') {
+    return 'user_choice';
+  }
+  return 'specific';
+};
+
+export const setAgentModelSelectionMode = (
+  parameters: AgentParameters,
+  mode: ModelSelectionMode,
+): AgentParameters => {
+  if (mode === 'specific') {
+    const { model_selection_mode: _ignored, ...rest } = parameters;
+    return stripEmpty(rest);
+  }
+  return { ...parameters, model_selection_mode: mode };
+};
+
+export const getAgentUserModelOptions = (
+  parameters: AgentParameters | null | undefined,
+): UserModelOption[] => {
+  if (!parameters) {
+    return [];
+  }
+  const options = (parameters as Record<string, unknown>).user_model_options;
+  if (!Array.isArray(options)) {
+    return [];
+  }
+  return options.filter(
+    (opt): opt is UserModelOption =>
+      isPlainRecord(opt) &&
+      typeof (opt as Record<string, unknown>).id === 'string' &&
+      typeof (opt as Record<string, unknown>).label === 'string' &&
+      typeof (opt as Record<string, unknown>).model === 'string',
+  );
+};
+
+export const setAgentUserModelOptions = (
+  parameters: AgentParameters,
+  options: UserModelOption[],
+): AgentParameters => {
+  if (options.length === 0) {
+    const { user_model_options: _ignored, ...rest } = parameters;
+    return stripEmpty(rest);
+  }
+  return { ...parameters, user_model_options: options };
+};
+
+export const addAgentUserModelOption = (
+  parameters: AgentParameters,
+  option: UserModelOption,
+): AgentParameters => {
+  const existing = getAgentUserModelOptions(parameters);
+  return setAgentUserModelOptions(parameters, [...existing, option]);
+};
+
+export const removeAgentUserModelOption = (
+  parameters: AgentParameters,
+  optionId: string,
+): AgentParameters => {
+  const existing = getAgentUserModelOptions(parameters);
+  return setAgentUserModelOptions(
+    parameters,
+    existing.filter((opt) => opt.id !== optionId),
+  );
+};
+
+export const updateAgentUserModelOption = (
+  parameters: AgentParameters,
+  optionId: string,
+  updates: Partial<UserModelOption>,
+): AgentParameters => {
+  const existing = getAgentUserModelOptions(parameters);
+  return setAgentUserModelOptions(
+    parameters,
+    existing.map((opt) =>
+      opt.id === optionId ? { ...opt, ...updates } : opt,
+    ),
+  );
+};

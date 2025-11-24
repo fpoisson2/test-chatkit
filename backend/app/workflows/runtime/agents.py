@@ -49,6 +49,7 @@ def prepare_agents(
     service: WorkflowService,
     agent_steps_ordered: Sequence[WorkflowStep],
     nodes_by_slug: Mapping[str, WorkflowStep],
+    model_override: str | None = None,
 ) -> AgentSetupResult:
     """Build agent instances and helper caches for workflow execution."""
 
@@ -221,6 +222,90 @@ def prepare_agents(
             else:
                 # Add provider_binding to overrides so it's passed to the agent
                 overrides["_provider_binding"] = provider_binding
+
+        # Appliquer le model_override si fourni
+        # IMPORTANT: model_override contient l'ID unique de l'option (pas le nom du modèle)
+        # On doit chercher l'option par son ID et utiliser option.model comme nom de modèle
+        if model_override:
+            logger.info(
+                "Applying model override (option_id='%s') for step %s (original model: %s)",
+                model_override,
+                step.slug,
+                overrides.get("model"),
+            )
+
+            # Chercher l'option par son ID dans user_model_options
+            user_model_options = (step.parameters or {}).get("user_model_options", [])
+            found_option = None
+            if isinstance(user_model_options, list):
+                for option in user_model_options:
+                    if isinstance(option, dict) and option.get("id") == model_override:
+                        found_option = option
+                        break
+
+            if found_option:
+                # Utiliser le nom du modèle de l'option trouvée
+                actual_model_name = found_option.get("model")
+                if actual_model_name:
+                    overrides["model"] = actual_model_name
+                    logger.info(
+                        "Found option id='%s', using model='%s'",
+                        model_override,
+                        actual_model_name,
+                    )
+            else:
+                # Fallback: si l'option n'est pas trouvée, utiliser model_override comme nom de modèle
+                # (pour compatibilité avec l'ancien comportement)
+                logger.warning(
+                    "Option id='%s' not found in user_model_options, using as model name",
+                    model_override,
+                )
+                overrides["model"] = model_override
+
+            if found_option:
+                # Appliquer le provider_id et provider_slug de l'option
+                # IMPORTANT: Remplacer complètement les valeurs existantes
+                option_provider_id = found_option.get("provider_id")
+                option_provider_slug = found_option.get("provider_slug")
+                logger.info(
+                    "Applying provider from user_model_options: id=%s, slug=%s (replacing id=%s, slug=%s)",
+                    option_provider_id,
+                    option_provider_slug,
+                    provider_id,
+                    provider_slug,
+                )
+                # Remplacer complètement les valeurs de provider
+                provider_id = option_provider_id
+                provider_slug = option_provider_slug
+                # Recréer le provider_binding avec les nouvelles valeurs
+                if provider_id or provider_slug:
+                    provider_binding = get_agent_provider_binding(provider_id, provider_slug)
+                    if provider_binding:
+                        overrides["_provider_binding"] = provider_binding
+                        logger.info(
+                            "New provider_binding created: credentials=%s, provider=%s",
+                            provider_binding.credentials is not None,
+                            provider_binding.provider is not None,
+                        )
+                else:
+                    # Pas de provider spécifié pour ce modèle, supprimer l'ancien binding
+                    provider_binding = None
+                    overrides.pop("_provider_binding", None)
+                    logger.info("No provider specified for model override, clearing provider_binding")
+
+                # Appliquer les model_settings de l'option si présents
+                option_model_settings = found_option.get("model_settings")
+                if isinstance(option_model_settings, dict):
+                    logger.info(
+                        "Applying model_settings from user_model_options: %s",
+                        option_model_settings,
+                    )
+                    # Fusionner les model_settings avec ceux existants
+                    existing_settings = overrides.get("model_settings", {})
+                    if not isinstance(existing_settings, dict):
+                        existing_settings = {}
+                    merged_settings = {**existing_settings, **option_model_settings}
+                    overrides["model_settings"] = merged_settings
 
         if builder is None:
             if agent_key:

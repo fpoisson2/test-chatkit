@@ -104,10 +104,33 @@ def _model_settings(**kwargs: Any) -> ModelSettings:
     return sanitize_model_like(ModelSettings(**kwargs))
 
 
+def _clean_model_settings_dict(value: dict) -> dict:
+    """Nettoie les valeurs vides/invalides d'un dict model_settings."""
+    cleaned = {}
+    for k, v in value.items():
+        # Ignorer les valeurs vides (None, '', etc.)
+        if v is None or v == '':
+            continue
+        # Traitement récursif pour les dicts imbriqués (ex: reasoning)
+        if isinstance(v, dict):
+            nested = _clean_model_settings_dict(v)
+            if nested:  # Ne garder que si non-vide
+                cleaned[k] = nested
+        else:
+            cleaned[k] = v
+    return cleaned
+
+
 def _coerce_model_settings(value: Any) -> Any:
     if isinstance(value, dict):
         logger.debug("Nettoyage model_settings dict: %s", value)
-        result = _model_settings(**value)
+        # Nettoyer les valeurs vides avant de créer le ModelSettings
+        cleaned = _clean_model_settings_dict(value)
+        logger.debug("Après nettoyage des valeurs vides: %s", cleaned)
+        if not cleaned:
+            # Si tout est vide, retourner un ModelSettings vide
+            return _model_settings()
+        result = _model_settings(**cleaned)
         logger.debug(
             "Résultat après nettoyage: %s",
             (
@@ -225,7 +248,7 @@ def create_litellm_model(
     the correct provider (OpenAI, Anthropic, Groq, etc.) based on the model name.
 
     Args:
-        model_name: Model name with provider prefix (e.g., "litellm/groq/llama-3.1-8b")
+        model_name: Model name (e.g., "llama-3.1-8b" or "groq/llama-3.1-8b")
         provider_binding: Provider binding with credentials (no api_base)
 
     Returns:
@@ -241,21 +264,34 @@ def create_litellm_model(
 
     if provider_binding and provider_binding.credentials:
         api_key = provider_binding.credentials.api_key
+        provider_slug = provider_binding.provider_slug
 
         logger.debug(
-            "Credentials trouvées: provider_id=%s, api_key=%s",
+            "Credentials trouvées: provider_id=%s, provider_slug=%s, api_key=%s",
             provider_binding.credentials.id,
+            provider_slug,
             "***" if api_key else None,
         )
 
         if api_key:
+            # Ajouter le préfixe du provider si nécessaire pour le routage LiteLLM
+            effective_model_name = model_name
+            if provider_slug and "/" not in model_name:
+                # Le nom du modèle n'a pas de préfixe, ajouter le provider_slug
+                effective_model_name = f"{provider_slug}/{model_name}"
+                logger.debug(
+                    "Ajout du préfixe provider au nom du modèle: %s -> %s",
+                    model_name,
+                    effective_model_name,
+                )
+
             # Create LitellmModel with API key only - auto-routing based on model name
             logger.debug(
                 "Création de LitellmModel pour auto-routing: model=%s, api_key=%s",
-                model_name,
+                effective_model_name,
                 "***",
             )
-            return LitellmModel(model=model_name, api_key=api_key)
+            return LitellmModel(model=effective_model_name, api_key=api_key)
         else:
             logger.warning(
                 "api_key vide ou None pour provider_id=%s - retour du nom de modèle",
@@ -1213,6 +1249,9 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     # Remove voice/realtime-specific parameters that shouldn't be passed to Agent
     kwargs.pop("voice", None)
     kwargs.pop("realtime", None)
+    # Remove model selection UI parameters (only used by frontend composer)
+    kwargs.pop("model_selection_mode", None)
+    kwargs.pop("user_model_options", None)
 
     agent = Agent(**kwargs)
     if response_format is not None:

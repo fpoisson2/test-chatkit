@@ -14,6 +14,7 @@ import {
   setAgentMessage,
   setAgentModel,
   setAgentModelProvider,
+  setAgentModelSelectionMode,
   setAgentNestedWorkflow,
   setAgentReasoningEffort,
   setAgentReasoningSummary,
@@ -28,6 +29,7 @@ import {
   setAgentTemperature,
   setAgentTextVerbosity,
   setAgentTopP,
+  setAgentUserModelOptions,
   setStartAutoRun,
   setStartAutoRunAssistantMessage,
   setStartAutoRunMessage,
@@ -35,6 +37,8 @@ import {
   setStartTelephonySipAccountId,
   setStartTelephonySpeakFirst,
   stringifyAgentParameters,
+  type ModelSelectionMode,
+  type UserModelOption,
 } from "../../../utils/workflows";
 import { updateNodeParameters, type UpdateNodeDataFn } from "./nodeHandlerUtils";
 
@@ -466,6 +470,32 @@ const usePromptNodeHandlers = ({
     [updateNodeData]
   );
 
+  const handleAgentModelSelectionModeChange = useCallback(
+    (nodeId: string, mode: ModelSelectionMode) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentModelSelectionMode(data.parameters, mode);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentUserModelOptionsChange = useCallback(
+    (nodeId: string, options: UserModelOption[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentUserModelOptions(data.parameters, options);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
   return {
     // Start handlers
     handleStartAutoRunChange,
@@ -496,6 +526,8 @@ const usePromptNodeHandlers = ({
     handleAgentResponseWidgetSlugChange,
     handleAgentResponseWidgetSourceChange,
     handleAgentResponseWidgetDefinitionChange,
+    handleAgentModelSelectionModeChange,
+    handleAgentUserModelOptionsChange,
   };
 };
 

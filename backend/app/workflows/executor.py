@@ -285,6 +285,7 @@ class WorkflowInput(BaseModel):
     auto_start_was_triggered: bool | None = None
     auto_start_assistant_message: str | None = None
     source_item_id: str | None = None
+    model_override: str | None = None
 
 
 @dataclass
