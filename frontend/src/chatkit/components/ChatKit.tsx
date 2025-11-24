@@ -172,7 +172,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     let newActiveScreencast: { token: string; itemId: string } | null = null;
     let currentScreencastIsComplete = false;
-    let anyCompleteComputerUse = false;
+    let anyTerminalComputerUse = false;
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
@@ -185,6 +185,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       const isLoading = computerUseTask.status_indicator === 'loading';
       const isComplete = computerUseTask.status_indicator === 'complete';
+      const isError = computerUseTask.status_indicator === 'error';
+      const isTerminal = isComplete || isError;
       const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
       const isLastWorkflowAndStreaming = isLastWorkflow && control.isLoading;
 
@@ -193,25 +195,27 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         token: computerUseTask.debug_url_token?.substring(0, 8),
         isLoading,
         isComplete,
+        isError,
+        isTerminal,
         isLastWorkflow,
         isLastWorkflowAndStreaming,
         isCurrentScreencast: activeScreencast?.itemId === item.id,
-        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token && !isComplete
+        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token && !isTerminal
       });
 
-      // Détecter si un workflow computer_use complete existe
-      if (isComplete) {
-        anyCompleteComputerUse = true;
+      // Détecter si un workflow computer_use complete ou en erreur existe
+      if (isTerminal) {
+        anyTerminalComputerUse = true;
       }
 
       // Si ce workflow est le screencast actuellement actif ET qu'il est complete, on doit le fermer
-      if (isComplete && activeScreencast && item.id === activeScreencast.itemId) {
+      if (isTerminal && activeScreencast && item.id === activeScreencast.itemId) {
         currentScreencastIsComplete = true;
       }
 
       // Capturer le screencast s'il est actuellement actif (en cours de chargement ou dernier workflow pendant le streaming)
       // ET s'il a un debug_url_token ET qu'il n'est PAS complete
-      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token && !isComplete) {
+      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token && !isTerminal) {
         newActiveScreencast = {
           token: computerUseTask.debug_url_token,
           itemId: item.id,
@@ -219,7 +223,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     });
 
-    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentScreencastIsComplete:', currentScreencastIsComplete, 'anyCompleteComputerUse:', anyCompleteComputerUse, 'currentActiveScreencast:', activeScreencast);
+    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentScreencastIsComplete:', currentScreencastIsComplete, 'anyTerminalComputerUse:', anyTerminalComputerUse, 'currentActiveScreencast:', activeScreencast);
 
     // Mise à jour de activeScreencast :
     // - Si le screencast ACTUEL est complete OU s'il y a un computer_use complete, on ferme d'abord
@@ -227,9 +231,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
 
     // Priorité 1: Fermer le screencast s'il y a un computer_use task complete (empêche la boucle infinie)
-    if (currentScreencastIsComplete || anyCompleteComputerUse) {
+    if (currentScreencastIsComplete || anyTerminalComputerUse) {
       if (activeScreencast) {
-        console.log('[ChatKit] Closing screencast due to completed computer_use task');
+        console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
         setActiveScreencast(null);
       }
       // Nettoyer aussi le dernier screenshot sauvegardé pour éviter qu'il persiste
@@ -936,9 +940,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
                         // MAIS seulement si la tâche n'est pas complete (sinon on cache tout pour retourner au début)
                         const isComplete = computerUseTask.status_indicator === 'complete';
-                        const showScreenshot = !!src && !showLiveScreencast && !isComplete;
+                        const isError = computerUseTask.status_indicator === 'error';
+                        const isTerminal = isComplete || isError;
+                        const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
 
-                        const showPreview = showLiveScreencast || showScreenshot;
+                        const isDismissed = dismissedScreencastItems.has(item.id);
+                        const showPreview = !isDismissed && (showLiveScreencast || showScreenshot);
 
                         console.log('[ChatKit] Display decision:', {
                           showLiveScreencast,
@@ -982,6 +989,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                               return next;
                             });
                             setActiveScreencast(current =>
+                              current?.itemId === item.id ? null : current
+                            );
+                            setLastScreencastScreenshot(current =>
                               current?.itemId === item.id ? null : current
                             );
                             try {
