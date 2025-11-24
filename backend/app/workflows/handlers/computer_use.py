@@ -125,7 +125,7 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                                         type="image",
                                         title="Screenshot finale de la session Computer Use",
                                         images=[generated_image],
-                                        status_indicator="completed",
+                                        status_indicator="complete",
                                     )
                                     logger.info("ImageTask created")
 
