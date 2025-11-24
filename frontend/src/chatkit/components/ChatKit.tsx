@@ -40,13 +40,22 @@ function ImageWithBlobUrl({ src, alt = '', className = '' }: { src: string; alt?
 
     if (src.startsWith('data:')) {
       // Convert data URL to blob to avoid 414 errors with very long URLs
-      fetch(src)
-        .then(res => res.blob())
-        .then(blob => {
-          objectUrl = URL.createObjectURL(blob);
-          setBlobUrl(objectUrl);
-        })
-        .catch(err => console.error('[ChatKit] Failed to convert data URL to blob:', err));
+      try {
+        const parts = src.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : '';
+        const bstr = atob(parts[1]);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch (err) {
+        console.error('[ChatKit] Failed to convert data URL to blob:', err);
+      }
     } else {
       setBlobUrl(src);
     }
