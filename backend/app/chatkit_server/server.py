@@ -6,6 +6,7 @@ import asyncio
 import base64
 import logging
 import re
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import datetime
 from pathlib import Path
@@ -27,9 +28,11 @@ from chatkit.types import (
     AssistantMessageItem,
     Attachment,
     ClosedStatus,
+    ComputerUseTask,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
+    GeneratedImage,
     ImageTask,
     InferenceOptions,
     LockedStatus,
@@ -52,6 +55,7 @@ from chatkit.types import (
     UserMessageTextContent,
     WidgetItem,
     WidgetRootUpdated,
+    Workflow,
     WorkflowItem,
 )
 from openai.types.responses import (
@@ -92,7 +96,9 @@ from .ags import (
 from .context import (
     AutoStartConfiguration,
     ChatKitRequestContext,
+    _get_wait_state_metadata,
     _resolve_user_input_text,
+    _set_wait_state_metadata,
 )
 from ..workflows.utils import _normalize_user_text
 from .widget_waiters import WidgetWaiterRegistry
@@ -851,6 +857,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
+        # Handle continue_workflow action - continue workflow from wait state
+        if action.type == "continue_workflow":
+            async for event in self._handle_continue_workflow(thread, context):
+                yield event
+            return
+
         payload = action.payload if isinstance(action.payload, Mapping) else None
         if payload is None:
             logger.warning(
@@ -1071,6 +1083,217 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         yield ThreadItemDoneEvent(item=new_item)
 
+    async def _handle_continue_workflow(
+        self,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        """Handle continue_workflow action - capture screenshot, close browser, continue workflow.
+
+        This is called when the user clicks "Terminer la session" on a computer_use step.
+        It performs the cleanup that would normally happen when resuming from a wait state,
+        then continues the workflow to the next step.
+        """
+        from ..tool_builders.computer_use import get_thread_browsers, cleanup_browser_cache
+        from chatkit.agents import AgentContext
+
+        logger.info("Handling continue_workflow action for thread %s", thread.id)
+
+        # Get wait state
+        wait_state = _get_wait_state_metadata(thread)
+        if not wait_state:
+            logger.warning("No wait state found for thread %s", thread.id)
+            return
+
+        wait_type = wait_state.get("wait_type")
+        if wait_type != "computer_use":
+            logger.warning(
+                "Wait state type is %s, not computer_use for thread %s",
+                wait_type,
+                thread.id,
+            )
+            return
+
+        next_step_slug = wait_state.get("next_step_slug")
+        logger.info(
+            "Continue workflow: wait_type=%s, next_step_slug=%s",
+            wait_type,
+            next_step_slug,
+        )
+
+        # Get cached browsers for this thread
+        browsers = get_thread_browsers(thread.id)
+        data_url: str | None = None
+
+        if browsers:
+            # Capture screenshot from first browser and close all
+            for cache_key, browser in list(browsers.items()):
+                try:
+                    if data_url is None:
+                        logger.info("Capturing final screenshot from browser %s", cache_key)
+                        data_url = await browser.screenshot()
+                        logger.info(
+                            "Screenshot captured, length: %d",
+                            len(data_url) if data_url else 0,
+                        )
+
+                    logger.info("Closing browser %s", cache_key)
+                    await browser.close()
+                    logger.info("Browser %s closed", cache_key)
+                except Exception as e:
+                    logger.error("Error with browser %s: %s", cache_key, e)
+
+            # Clean up browser cache for this thread
+            cleanup_browser_cache(thread.id)
+
+        # Create agent context for generating IDs
+        agent_context = AgentContext(
+            thread=thread,
+            store=self.store,
+            request_context=context,
+        )
+
+        # Emit ComputerUseTask with status="complete"
+        logger.info("Emitting ComputerUseTask with status=complete")
+        completed_computer_task = ComputerUseTask(
+            type="computer_use",
+            status_indicator="complete",
+            debug_url_token=None,
+            title="Session Computer Use terminée",
+        )
+
+        completed_workflow = Workflow(
+            type="custom",
+            tasks=[completed_computer_task],
+            expanded=False,
+        )
+
+        completed_workflow_item = WorkflowItem(
+            id=agent_context.generate_id("workflow"),
+            thread_id=thread.id,
+            created_at=datetime.now(),
+            workflow=completed_workflow,
+        )
+
+        yield ThreadItemAddedEvent(item=completed_workflow_item)
+        await self.store.save_thread_item(completed_workflow_item, context=context)
+        yield ThreadItemDoneEvent(item=completed_workflow_item)
+
+        # Emit ImageTask with screenshot if available
+        if data_url:
+            logger.info("Emitting ImageTask with screenshot")
+            image_id = f"img_{uuid.uuid4().hex[:8]}"
+            generated_image = GeneratedImage(
+                id=image_id,
+                data_url=data_url,
+            )
+
+            image_task = ImageTask(
+                type="image",
+                title="Screenshot finale de la session Computer Use",
+                images=[generated_image],
+                status_indicator="complete",
+            )
+
+            workflow = Workflow(
+                type="custom",
+                tasks=[image_task],
+                expanded=True,
+            )
+
+            workflow_item = WorkflowItem(
+                id=agent_context.generate_id("workflow"),
+                thread_id=thread.id,
+                created_at=datetime.now(),
+                workflow=workflow,
+            )
+
+            yield ThreadItemAddedEvent(item=workflow_item)
+            await self.store.save_thread_item(workflow_item, context=context)
+            yield ThreadItemDoneEvent(item=workflow_item)
+
+        # Clear wait state
+        logger.info("Clearing wait state for thread %s", thread.id)
+        _set_wait_state_metadata(thread, None)
+        await self.store.save_thread(thread, context=context)
+
+        # Continue workflow to next step
+        if next_step_slug:
+            logger.info("Continuing workflow to next step: %s", next_step_slug)
+
+            # Load thread history
+            history = await self.store.load_thread_items(
+                thread.id,
+                after=None,
+                limit=1000,
+                order="asc",
+                context=context,
+            )
+
+            # Create workflow input for continuation
+            from ..workflows.executor import WorkflowInput, WorkflowRuntimeSnapshot
+
+            # Get saved state from wait_state
+            saved_state = wait_state.get("state", {})
+            conversation_history = wait_state.get("conversation_history", [])
+
+            runtime_snapshot = WorkflowRuntimeSnapshot(
+                state=saved_state if isinstance(saved_state, dict) else {},
+                conversation_history=conversation_history,
+                last_step_context={"computer_use_completed": True},
+                steps=[],
+                current_slug=next_step_slug,
+            )
+
+            workflow_input = WorkflowInput(
+                input_as_text="",
+                auto_start_was_triggered=False,
+                auto_start_assistant_message=None,
+                source_item_id=None,
+                model_override=None,
+            )
+
+            event_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+            # Execute workflow continuation
+            workflow_task = asyncio.create_task(
+                self._execute_workflow(
+                    thread=thread,
+                    agent_context=agent_context,
+                    workflow_input=workflow_input,
+                    event_queue=event_queue,
+                    thread_items_history=history.data,
+                    thread_item_converter=self._thread_item_converter,
+                    input_user_message=None,
+                    runtime_snapshot=runtime_snapshot,
+                )
+            )
+
+            # Stream events from the workflow
+            while True:
+                try:
+                    event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
+                    if event is _STREAM_DONE:
+                        break
+                    yield event
+                except asyncio.TimeoutError:
+                    if workflow_task.done():
+                        # Drain remaining events
+                        while not event_queue.empty():
+                            event = event_queue.get_nowait()
+                            if event is _STREAM_DONE:
+                                break
+                            yield event
+                        break
+
+            # Wait for workflow task to complete
+            try:
+                await workflow_task
+            except Exception as e:
+                logger.error("Workflow execution failed: %s", e)
+
+        logger.info("Continue workflow completed for thread %s", thread.id)
+
     async def _execute_workflow(
         self,
         *,
@@ -1081,6 +1304,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         thread_items_history: list[ThreadItem] | None = None,
         thread_item_converter: ThreadItemConverter | None = None,
         input_user_message: UserMessageItem | None = None,
+        runtime_snapshot: Any = None,
     ) -> None:
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
@@ -1215,6 +1439,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 thread_item_converter=converter,
                 thread_items_history=thread_items_history,
                 current_user_message=input_user_message,
+                runtime_snapshot=runtime_snapshot,
             )
 
             end_state = summary.end_state
