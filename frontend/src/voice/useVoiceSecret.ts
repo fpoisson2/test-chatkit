@@ -25,9 +25,9 @@ const VOICE_SESSION_ENDPOINTS = VOICE_SESSION_IS_ABSOLUTE
     );
 
 const VOICE_REQUEST_DEFAULTS = {
-  model: sanitizeEnvValue(import.meta.env.VITE_VOICE_DEFAULT_MODEL),
-  instructions: sanitizeEnvValue(import.meta.env.VITE_VOICE_DEFAULT_INSTRUCTIONS),
-  voice: sanitizeEnvValue(import.meta.env.VITE_VOICE_DEFAULT_VOICE),
+  model: sanitizeEnvValue(import.meta.env.VITE_VOICE_DEFAULT_MODEL) ?? "gpt-realtime",
+  instructions: sanitizeEnvValue(import.meta.env.VITE_VOICE_DEFAULT_INSTRUCTIONS) ?? "",
+  voice: sanitizeEnvValue(import.meta.env.VITE_VOICE_DEFAULT_VOICE) ?? "alloy",
 };
 
 export const VOICE_SESSION_UNAUTHORIZED_MESSAGE = "Session expirée, veuillez vous reconnecter.";
@@ -63,15 +63,9 @@ export const useVoiceSecret = (): UseVoiceSecretResult => {
     }
 
     const payload: Record<string, string> = {};
-    if (VOICE_REQUEST_DEFAULTS.model) {
-      payload.model = VOICE_REQUEST_DEFAULTS.model;
-    }
-    if (VOICE_REQUEST_DEFAULTS.instructions) {
-      payload.instructions = VOICE_REQUEST_DEFAULTS.instructions;
-    }
-    if (VOICE_REQUEST_DEFAULTS.voice) {
-      payload.voice = VOICE_REQUEST_DEFAULTS.voice;
-    }
+    payload.model = VOICE_REQUEST_DEFAULTS.model;
+    payload.instructions = VOICE_REQUEST_DEFAULTS.instructions;
+    payload.voice = VOICE_REQUEST_DEFAULTS.voice;
     if (options?.threadId) {
       payload.thread_id = options.threadId;
     }
