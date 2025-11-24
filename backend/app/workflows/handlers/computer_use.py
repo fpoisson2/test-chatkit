@@ -63,10 +63,22 @@ class ComputerUseNodeHandler(BaseNodeHandler):
         computer_tool = build_computer_use_tool({"computer_use": computer_use_config})
 
         if computer_tool:
-            # Get the debug_url_token from the HostedBrowser
+            # Get the debug_url from the HostedBrowser
+            debug_url = None
+            if hasattr(computer_tool, "computer"):
+                debug_url = computer_tool.computer.debug_url
+
+            # Register the debug session to get a token
             debug_url_token = None
-            if hasattr(computer_tool, "computer") and hasattr(computer_tool.computer, "debug_url_token"):
-                debug_url_token = computer_tool.computer.debug_url_token
+            if debug_url:
+                try:
+                    from ...routes.computer import register_debug_session
+                    # Get user_id from agent_context
+                    agent_context = context.runtime_vars.get("agent_context")
+                    user_id = agent_context.user.id if agent_context and hasattr(agent_context, "user") else None
+                    debug_url_token = register_debug_session(debug_url, user_id)
+                except Exception as e:
+                    logger.error(f"Failed to register debug session: {e}")
 
             # Create a workflow item with computer_use task
             on_stream_event = context.runtime_vars.get("on_stream_event")
@@ -108,6 +120,7 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                     f"Cannot emit computer_use task: "
                     f"on_stream_event={on_stream_event is not None}, "
                     f"agent_context={agent_context is not None}, "
+                    f"debug_url={debug_url}, "
                     f"debug_url_token={debug_url_token}"
                 )
         else:
