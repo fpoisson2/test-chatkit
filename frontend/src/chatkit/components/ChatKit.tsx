@@ -386,18 +386,29 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     const items = (control.thread?.items || []) as ThreadItem[];
 
+    const isVoiceTaskComplete = (task: any) => {
+      const indicator = task?.status_indicator;
+      if (indicator === 'complete') return true;
+
+      const status = task?.status;
+      if (typeof status === 'string') {
+        return ['complete', 'completed', 'done', 'success'].includes(status.toLowerCase());
+      }
+
+      return false;
+    };
+
     const hasActiveVoiceAgentStep = items.some((item) => {
       if (item.type === 'task') {
-        const taskType = (item.task as any)?.type;
-        const status = (item.task as any)?.status_indicator;
-        return taskType === 'voice_agent' && status !== 'complete';
+        const task = (item.task || {}) as any;
+        return task.type === 'voice_agent' && !isVoiceTaskComplete(task);
       }
 
       if (item.type === 'workflow') {
         const tasks = (item.workflow?.tasks || []) as any[];
         for (let i = tasks.length - 1; i >= 0; i -= 1) {
           const task = tasks[i];
-          if (task?.type === 'voice_agent' && task.status_indicator !== 'complete') {
+          if (task?.type === 'voice_agent' && !isVoiceTaskComplete(task)) {
             return true;
           }
         }
