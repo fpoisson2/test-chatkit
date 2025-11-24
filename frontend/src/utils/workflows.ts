@@ -4184,6 +4184,14 @@ export const setAgentWorkflowValidationToolEnabled = (
 // Model selection mode: 'specific' (default) or 'user_choice'
 export type ModelSelectionMode = 'specific' | 'user_choice';
 
+export type UserModelOptionSettings = {
+  temperature?: number;
+  reasoning?: {
+    effort?: string;
+  };
+  truncation?: string;
+};
+
 export type UserModelOption = {
   id: string;
   label: string;
@@ -4192,6 +4200,7 @@ export type UserModelOption = {
   provider_id?: string;
   provider_slug?: string;
   default?: boolean;
+  model_settings?: UserModelOptionSettings;
 };
 
 export const getAgentModelSelectionMode = (

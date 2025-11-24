@@ -267,6 +267,20 @@ def prepare_agents(
                             provider_binding = None
                             overrides.pop("_provider_binding", None)
                             logger.info("No provider specified for model override, clearing provider_binding")
+
+                        # Appliquer les model_settings de l'option si présents
+                        option_model_settings = option.get("model_settings")
+                        if isinstance(option_model_settings, dict):
+                            logger.info(
+                                "Applying model_settings from user_model_options: %s",
+                                option_model_settings,
+                            )
+                            # Fusionner les model_settings avec ceux existants
+                            existing_settings = overrides.get("model_settings", {})
+                            if not isinstance(existing_settings, dict):
+                                existing_settings = {}
+                            merged_settings = {**existing_settings, **option_model_settings}
+                            overrides["model_settings"] = merged_settings
                         break
 
         if builder is None:
