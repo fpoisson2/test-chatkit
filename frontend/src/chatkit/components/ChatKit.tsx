@@ -226,12 +226,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       setInputValue('');
       setAttachments([]);
       lastUserMessageIdRef.current = lastUserMessage.id;
-      // NOTE: Do NOT clear dismissedScreencastItems or failedScreencastTokens here!
+      // NOTE: Do NOT clear dismissedScreencastItems, failedScreencastTokens, or lastScreencastScreenshot here!
       // Clearing them creates a race condition: the old dismissed/failed workflow gets retried
       // BEFORE the new workflow arrives. New workflows will have new IDs/tokens anyway.
+      // lastScreencastScreenshot is associated with a specific itemId, so it won't show on wrong workflows.
       // These are only cleared when the thread changes (see useEffect with control.thread?.id).
-      setLastScreencastScreenshot(null);
-      console.log('[ChatKit] Cleared screenshot for new user message');
     }
   }, [control.thread?.items]);
 
@@ -394,11 +393,19 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
         setActiveScreencast(null);
       }
-      // Nettoyer aussi le dernier screenshot sauvegardé pour éviter qu'il persiste
-      const terminalItemId = latestComputerUseTask?.itemId || currentActiveScreencast?.itemId;
-      if (terminalItemId && lastScreencastScreenshot && terminalItemId === lastScreencastScreenshot.itemId) {
-        console.log('[ChatKit] Clearing last screencast screenshot for completed task');
-        setLastScreencastScreenshot(null);
+      // Only clear the screenshot when the task's ACTUAL status_indicator is terminal
+      // NOT just because there's a newer workflow (which would lose the image in history)
+      // The display logic already handles not showing screenshots for terminal tasks
+      if (lastScreencastScreenshot) {
+        const screenshotWorkflow = workflows.find((w: any) => w.id === lastScreencastScreenshot.itemId);
+        const screenshotTask = screenshotWorkflow?.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
+        if (screenshotTask) {
+          const isActuallyTerminal = screenshotTask.status_indicator === 'complete' || screenshotTask.status_indicator === 'error';
+          if (isActuallyTerminal) {
+            console.log('[ChatKit] Clearing last screencast screenshot for actually terminal task');
+            setLastScreencastScreenshot(null);
+          }
+        }
       }
     }
     // Priorité 2: Activer un nouveau screencast seulement s'il est différent de l'actuel (token OU itemId)
