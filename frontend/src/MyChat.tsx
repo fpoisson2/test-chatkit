@@ -669,6 +669,8 @@ export function MyChat() {
         },
         widgets: {
           voiceSession: {
+            enabled: hasVoiceAgent,
+            threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
             status: voiceStatus,
             isListening: voiceIsListening,
             transcripts: voiceTranscripts,

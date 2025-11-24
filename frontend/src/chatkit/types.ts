@@ -1055,6 +1055,8 @@ export interface VoiceSessionWidgetContext {
   status: VoiceSessionStatus;
   isListening: boolean;
   transcripts: TranscriptEntry[];
+  enabled?: boolean;
+  threadId?: string | null;
   startVoiceSession?: () => Promise<void>;
   stopVoiceSession?: () => void;
   interruptSession?: () => void;

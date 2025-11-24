@@ -380,7 +380,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   };
 
   const inlineVoiceWidget = useMemo<VoiceSessionWidget | null>(() => {
-    if (!options.widgets?.voiceSession) {
+    const voiceSession = options.widgets?.voiceSession;
+    if (!voiceSession) {
+      return null;
+    }
+
+    const threadId = control.thread?.id ?? null;
+    const voiceThreadMatches = !voiceSession.threadId || voiceSession.threadId === threadId;
+    if (!voiceThreadMatches) {
       return null;
     }
 
@@ -417,7 +424,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       return false;
     });
 
-    if (!hasActiveVoiceAgentStep) {
+    const hasVoiceSessionActivity =
+      voiceSession.status !== 'idle' ||
+      voiceSession.isListening ||
+      (voiceSession.transcripts?.length ?? 0) > 0;
+
+    if (!hasActiveVoiceAgentStep && !hasVoiceSessionActivity) {
       return null;
     }
 
@@ -430,7 +442,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       showTranscripts: true,
       ...(options.widgets.voiceSessionWidget ?? {}),
     };
-  }, [control.thread?.items, options.widgets?.voiceSession, options.widgets?.voiceSessionWidget]);
+  }, [
+    control.thread?.id,
+    control.thread?.items,
+    options.widgets?.voiceSession,
+    options.widgets?.voiceSessionWidget,
+  ]);
 
   const renderInlineWidgets = (
     widget: VoiceSessionWidget | null,
