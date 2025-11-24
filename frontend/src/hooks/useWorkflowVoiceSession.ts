@@ -305,8 +305,9 @@ export const useWorkflowVoiceSession = ({
       if (Array.isArray(event.transcripts) && event.transcripts.length > 0) {
         const mapped = extractTranscriptsFromHistory(event.transcripts as unknown[]);
         setTranscripts(mapped);
-        onTranscriptsUpdated?.();
       }
+      // Always refresh the thread when session is finalized to show next workflow step
+      onTranscriptsUpdated?.();
     },
     onSessionError: (sessionId, message) => {
       if (currentSessionRef.current !== sessionId) {
