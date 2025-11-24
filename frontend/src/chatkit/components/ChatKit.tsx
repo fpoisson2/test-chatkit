@@ -172,7 +172,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     let newActiveScreencast: { token: string; itemId: string } | null = null;
     let currentScreencastIsComplete = false;
-    let anyTerminalComputerUse = false;
+    let latestComputerUseTask: { itemId: string; status: string } | null = null;
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
@@ -203,10 +203,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token && !isTerminal
       });
 
-      // Détecter si un workflow computer_use complete ou en erreur existe
-      if (isTerminal) {
-        anyTerminalComputerUse = true;
-      }
+      // Garder une trace du dernier workflow computer_use rencontré (le plus récent)
+      latestComputerUseTask = { itemId: item.id, status: computerUseTask.status_indicator };
 
       // Si ce workflow est le screencast actuellement actif ET qu'il est complete, on doit le fermer
       if (isTerminal && activeScreencast && item.id === activeScreencast.itemId) {
@@ -223,7 +221,22 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     });
 
-    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentScreencastIsComplete:', currentScreencastIsComplete, 'anyTerminalComputerUse:', anyTerminalComputerUse, 'currentActiveScreencast:', activeScreencast);
+    const latestComputerUseIsTerminal =
+      latestComputerUseTask &&
+      (latestComputerUseTask.status === 'complete' || latestComputerUseTask.status === 'error');
+
+    console.log(
+      '[ChatKit useEffect] Result - newActiveScreencast:',
+      newActiveScreencast,
+      'currentScreencastIsComplete:',
+      currentScreencastIsComplete,
+      'latestComputerUseIsTerminal:',
+      latestComputerUseIsTerminal,
+      'latestComputerUseTask:',
+      latestComputerUseTask,
+      'currentActiveScreencast:',
+      activeScreencast
+    );
 
     // Mise à jour de activeScreencast :
     // - Si le screencast ACTUEL est complete OU s'il y a un computer_use complete, on ferme d'abord
@@ -231,13 +244,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
 
     // Priorité 1: Fermer le screencast s'il y a un computer_use task complete (empêche la boucle infinie)
-    if (currentScreencastIsComplete || anyTerminalComputerUse) {
+    if (currentScreencastIsComplete || latestComputerUseIsTerminal) {
       if (activeScreencast) {
         console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
         setActiveScreencast(null);
       }
       // Nettoyer aussi le dernier screenshot sauvegardé pour éviter qu'il persiste
-      if (lastScreencastScreenshot && activeScreencast?.itemId === lastScreencastScreenshot.itemId) {
+      const terminalItemId = latestComputerUseTask?.itemId || activeScreencast?.itemId;
+      if (terminalItemId && lastScreencastScreenshot && terminalItemId === lastScreencastScreenshot.itemId) {
         console.log('[ChatKit] Clearing last screencast screenshot for completed task');
         setLastScreencastScreenshot(null);
       }
