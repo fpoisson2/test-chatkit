@@ -195,12 +195,73 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 next_slug = self._next_slug_or_fallback(node.slug, context)
 
             if not next_slug:
-                # No transition after computer_use - finish workflow
+                start_slug = next(
+                    (
+                        step.slug
+                        for step in context.nodes_by_slug.values()
+                        if getattr(step, "kind", None) == "start"
+                    ),
+                    None,
+                )
+
+                if start_slug:
+                    logger.info(
+                        "No transition after computer_use; restarting workflow at start node %s",
+                        start_slug,
+                    )
+
+                    wait_reason = (
+                        "Redémarrage du workflow au nœud de début, en attente d'un "
+                        "nouveau message utilisateur."
+                    )
+
+                    # Persist a new wait state at the start node so we don't immediately
+                    # auto-run the workflow before the user sends a new message.
+                    if thread is not None:
+                        restart_wait_state: dict[str, Any] = {
+                            "slug": start_slug,
+                            "input_item_id": current_input_item_id,
+                            "wait_type": "computer_use_restart",
+                        }
+
+                        conversation_snapshot = _clone_conversation_history_snapshot(
+                            context.conversation_history
+                        )
+                        if conversation_snapshot:
+                            restart_wait_state["conversation_history"] = (
+                                conversation_snapshot
+                            )
+
+                        next_after_start = self._next_slug_or_fallback(start_slug, context)
+                        if next_after_start is not None:
+                            restart_wait_state["next_step_slug"] = next_after_start
+
+                        if context.state:
+                            restart_wait_state["state"] = _json_safe_copy(context.state)
+
+                        _set_wait_state_metadata(thread, restart_wait_state)
+
+                    context.runtime_vars["final_end_state"] = WorkflowEndState(
+                        slug=start_slug,
+                        status_type="waiting",
+                        status_reason=wait_reason,
+                        message=wait_reason,
+                    )
+
+                    return NodeResult(
+                        finished=True,
+                        context_updates={
+                            "last_step_context": {"computer_use_completed": True},
+                            "final_node_slug": start_slug,
+                        },
+                    )
+
+                # No start node found - finish workflow in waiting state
                 context.runtime_vars["final_end_state"] = WorkflowEndState(
                     slug=node.slug,
-                    status_type="closed",
-                    status_reason="Aucune transition disponible après le nœud computer_use.",
-                    message="Session computer_use terminée.",
+                    status_type="waiting",
+                    status_reason="En attente d'un nouveau message utilisateur.",
+                    message="En attente d'un nouveau message utilisateur.",
                 )
                 return NodeResult(
                     finished=True,
