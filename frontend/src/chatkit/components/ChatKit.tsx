@@ -807,11 +807,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           : null;
 
                         if (showPreview) {
-                          const handleEndSession = () => {
-                            // TODO: Implement session termination logic
-                            // This should call the backend to end the computer_use session
-                            // and capture the final screenshot to add to conversation history
+                          const handleEndSession = async () => {
                             console.log('Ending computer_use session...');
+                            try {
+                              // Send an empty message to trigger workflow resumption
+                              // The backend will detect the wait state and continue the workflow
+                              await control.sendMessage('');
+                            } catch (error) {
+                              console.error('Failed to end computer_use session:', error);
+                            }
                           };
 
                           return (

@@ -34,10 +34,75 @@ class ComputerUseNodeHandler(BaseNodeHandler):
     async def execute(
         self, node: WorkflowStep, context: ExecutionContext
     ) -> NodeResult:
-        """Execute computer_use node - initialize environment and continue."""
+        """Execute computer_use node - initialize environment and wait for user to finish."""
         from ..runtime.state_machine import NodeResult
         from ...tool_factory import build_computer_use_tool
+        from ...chatkit_server.context import (
+            _get_wait_state_metadata,
+            _set_wait_state_metadata,
+        )
+        from ..executor import WorkflowEndState
+        from ..utils import (
+            _clone_conversation_history_snapshot,
+            _json_safe_copy,
+        )
 
+        thread = context.runtime_vars.get("thread")
+        agent_context = context.runtime_vars.get("agent_context")
+        current_input_item_id = context.runtime_vars.get("current_input_item_id")
+
+        # Check if we're resuming from computer_use wait
+        pending_wait_state = (
+            _get_wait_state_metadata(thread) if thread is not None else None
+        )
+        waiting_slug = (
+            pending_wait_state.get("slug") if pending_wait_state else None
+        )
+        waiting_type = (
+            pending_wait_state.get("wait_type") if pending_wait_state else None
+        )
+        resumed = (
+            pending_wait_state is not None
+            and waiting_slug == node.slug
+            and waiting_type == "computer_use"
+        )
+
+        if resumed:
+            # Resume from wait - user clicked "Terminer"
+            logger.info(f"Resuming from computer_use wait at node {node.slug}")
+
+            # Clear wait state
+            if thread is not None:
+                _set_wait_state_metadata(thread, None)
+
+            # Get next slug from saved state
+            next_slug = pending_wait_state.get("next_step_slug")
+            if next_slug is None:
+                next_slug = self._next_slug_or_fallback(node.slug, context)
+
+            if not next_slug:
+                # No transition after computer_use - finish workflow
+                context.runtime_vars["final_end_state"] = WorkflowEndState(
+                    slug=node.slug,
+                    status_type="closed",
+                    status_reason="Aucune transition disponible après le nœud computer_use.",
+                    message="Session computer_use terminée.",
+                )
+                return NodeResult(
+                    finished=True,
+                    context_updates={
+                        "last_step_context": {"computer_use_completed": True},
+                        "final_node_slug": node.slug,
+                    },
+                )
+
+            # Continue to next node
+            return NodeResult(
+                next_slug=next_slug,
+                context_updates={"last_step_context": {"computer_use_completed": True}},
+            )
+
+        # First time - initialize computer_use environment and pause
         # Get computer_use config from node parameters
         parameters = node.parameters or {}
         tools = parameters.get("tools", [])
@@ -55,7 +120,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             return NodeResult(next_slug=self._next_slug_or_fallback(node.slug, context))
 
         # Add thread_id to config for browser persistence
-        thread = context.runtime_vars.get("thread")
         if thread:
             computer_use_config = {**computer_use_config, "thread_id": thread.id}
 
@@ -81,7 +145,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 try:
                     from ...routes.computer import register_debug_session
                     # Get user_id from agent_context
-                    agent_context = context.runtime_vars.get("agent_context")
                     user_id = agent_context.user.id if agent_context and hasattr(agent_context, "user") else None
                     debug_url_token = register_debug_session(debug_url, user_id)
                 except Exception as e:
@@ -89,7 +152,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
             # Create a workflow item with computer_use task
             on_stream_event = context.runtime_vars.get("on_stream_event")
-            agent_context = context.runtime_vars.get("agent_context")
 
             if on_stream_event and agent_context and debug_url_token:
                 # Create ComputerUseTask
@@ -139,15 +201,57 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             await context.record_step(
                 node.slug,
                 title,
-                "Environnement Computer Use initialisé - Mode manuel"
+                "Environnement Computer Use initialisé - En attente de l'utilisateur"
             )
 
-        # Continue to next node
-        next_slug = self._next_slug_or_fallback(node.slug, context)
+        # Build and save wait state
+        wait_state_payload: dict[str, Any] = {
+            "slug": node.slug,
+            "input_item_id": current_input_item_id,
+            "wait_type": "computer_use",  # Identifier for this type of wait
+        }
 
+        conversation_snapshot = _clone_conversation_history_snapshot(
+            context.conversation_history
+        )
+        if conversation_snapshot:
+            wait_state_payload["conversation_history"] = conversation_snapshot
+
+        # Store next slug with fallback logic
+        next_slug_after_wait = self._next_slug_or_fallback(node.slug, context)
+        if next_slug_after_wait is not None:
+            wait_state_payload["next_step_slug"] = next_slug_after_wait
+
+        if context.state:
+            wait_state_payload["state"] = _json_safe_copy(context.state)
+
+        # Add snapshot for workflow monitoring
+        snapshot_payload: dict[str, Any] = {
+            "current_slug": node.slug,
+            "steps": [
+                {"key": step.key, "title": step.title}
+                for step in context.steps
+            ],
+        }
+        wait_state_payload["snapshot"] = snapshot_payload
+
+        if thread is not None:
+            _set_wait_state_metadata(thread, wait_state_payload)
+
+        # Set final end state to waiting
+        wait_reason = "En attente que l'utilisateur termine la session Computer Use"
+        context.runtime_vars["final_end_state"] = WorkflowEndState(
+            slug=node.slug,
+            status_type="waiting",
+            status_reason=wait_reason,
+            message=wait_reason,
+        )
+
+        # Return finished=True to pause execution
         return NodeResult(
-            next_slug=next_slug,
+            finished=True,
             context_updates={
-                "last_step_context": {"computer_use_initialized": True}
+                "last_step_context": {"computer_use_waiting": True},
+                "final_node_slug": node.slug,
             },
         )
