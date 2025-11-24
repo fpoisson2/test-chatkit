@@ -29,6 +29,48 @@ export interface ChatKitProps {
   style?: React.CSSProperties;
 }
 
+/**
+ * Component to display final images with Blob URL conversion to avoid 414 errors
+ */
+function FinalImageDisplay({ src }: { src: string }): JSX.Element | null {
+  const [blobUrl, setBlobUrl] = useState<string>('');
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    if (src.startsWith('data:')) {
+      // Convert data URL to blob to avoid 414 errors with very long URLs
+      fetch(src)
+        .then(res => res.blob())
+        .then(blob => {
+          objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+        })
+        .catch(err => console.error('[ChatKit] Failed to convert data URL to blob:', err));
+    } else {
+      setBlobUrl(src);
+    }
+
+    return () => {
+      if (objectUrl && objectUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [src]);
+
+  if (!blobUrl) return null;
+
+  return (
+    <div className="chatkit-image-generation-preview">
+      <img
+        src={blobUrl}
+        alt="Image générée"
+        className="chatkit-generated-image-final"
+      />
+    </div>
+  );
+}
+
 export function ChatKit({ control, options, className, style }: ChatKitProps): JSX.Element {
   const { t } = useI18n();
   const [inputValue, setInputValue] = useState('');
@@ -753,15 +795,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           const src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
                           if (src) {
                             console.log('[ChatKit] Showing final image');
-                            return (
-                              <div className="chatkit-image-generation-preview">
-                                <img
-                                  src={src}
-                                  alt="Image générée"
-                                  className="chatkit-generated-image-final"
-                                />
-                              </div>
-                            );
+                            return <FinalImageDisplay src={src} />;
                           }
                         }
                       }
