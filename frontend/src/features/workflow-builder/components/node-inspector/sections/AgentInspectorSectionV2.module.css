@@ -736,6 +736,20 @@ textarea[data-schema-editor="true"] {
   font-family: monospace;
 }
 
+.userModelOptionSettings {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #6b7280);
+  background-color: var(--bg-secondary, #f3f4f6);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: monospace;
+}
+
+:global(:root[data-theme='dark' i]) :local(.userModelOptionSettings) {
+  background-color: var(--bg-tertiary, #374151);
+  color: var(--text-secondary, #9ca3af);
+}
+
 .userModelOptionActions {
   display: flex;
   align-items: center;

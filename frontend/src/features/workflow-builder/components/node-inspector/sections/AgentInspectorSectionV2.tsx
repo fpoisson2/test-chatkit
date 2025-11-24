@@ -1317,6 +1317,15 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   );
 
   const handleAddUserModelOption = useCallback(() => {
+    // Construire les model_settings à partir des valeurs actuelles
+    const modelSettings: UserModelOption['model_settings'] = {};
+    if (temperatureValue !== null && temperatureValue !== undefined) {
+      modelSettings.temperature = temperatureValue;
+    }
+    if (reasoningEffort && reasoningEffort !== '') {
+      modelSettings.reasoning = { effort: reasoningEffort };
+    }
+
     const newOption: UserModelOption = {
       id: `model-${Date.now()}`,
       label: agentModel || 'Nouveau modèle',
@@ -1325,9 +1334,10 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
       provider_id: agentProviderId || undefined,
       provider_slug: agentProviderSlug || undefined,
       default: userModelOptions.length === 0,
+      model_settings: Object.keys(modelSettings).length > 0 ? modelSettings : undefined,
     };
     onAgentUserModelOptionsChange(nodeId, [...userModelOptions, newOption]);
-  }, [nodeId, agentModel, agentProviderId, agentProviderSlug, matchedModel, userModelOptions, onAgentUserModelOptionsChange]);
+  }, [nodeId, agentModel, agentProviderId, agentProviderSlug, matchedModel, userModelOptions, onAgentUserModelOptionsChange, temperatureValue, reasoningEffort]);
 
   const handleRemoveUserModelOption = useCallback(
     (optionId: string) => {
@@ -1495,36 +1505,51 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
             </p>
           ) : (
             <div className={styles.userModelOptionsList}>
-              {userModelOptions.map((option) => (
-                <div key={option.id} className={styles.userModelOption}>
-                  <div className={styles.userModelOptionInfo}>
-                    <span className={styles.userModelOptionLabel}>{option.label}</span>
-                    {option.description && (
-                      <span className={styles.userModelOptionDescription}>{option.description}</span>
-                    )}
-                    <span className={styles.userModelOptionModel}>{option.model}</span>
+              {userModelOptions.map((option) => {
+                // Construire les badges de paramètres
+                const settingsBadges: string[] = [];
+                if (option.model_settings?.temperature !== undefined) {
+                  settingsBadges.push(`T=${option.model_settings.temperature}`);
+                }
+                if (option.model_settings?.reasoning?.effort) {
+                  settingsBadges.push(`R=${option.model_settings.reasoning.effort}`);
+                }
+                return (
+                  <div key={option.id} className={styles.userModelOption}>
+                    <div className={styles.userModelOptionInfo}>
+                      <span className={styles.userModelOptionLabel}>{option.label}</span>
+                      {option.description && (
+                        <span className={styles.userModelOptionDescription}>{option.description}</span>
+                      )}
+                      <span className={styles.userModelOptionModel}>{option.model}</span>
+                      {settingsBadges.length > 0 && (
+                        <span className={styles.userModelOptionSettings}>
+                          {settingsBadges.join(' | ')}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.userModelOptionActions}>
+                      <label className={styles.defaultCheckbox}>
+                        <input
+                          type="radio"
+                          name="defaultModel"
+                          checked={option.default === true}
+                          onChange={() => handleSetDefaultUserModelOption(option.id)}
+                        />
+                        <span>{t('workflowBuilder.agentInspector.defaultModel') || 'Par défaut'}</span>
+                      </label>
+                      <button
+                        type="button"
+                        className={styles.removeButton}
+                        onClick={() => handleRemoveUserModelOption(option.id)}
+                        aria-label={t('workflowBuilder.agentInspector.removeModel') || 'Supprimer'}
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
-                  <div className={styles.userModelOptionActions}>
-                    <label className={styles.defaultCheckbox}>
-                      <input
-                        type="radio"
-                        name="defaultModel"
-                        checked={option.default === true}
-                        onChange={() => handleSetDefaultUserModelOption(option.id)}
-                      />
-                      <span>{t('workflowBuilder.agentInspector.defaultModel') || 'Par défaut'}</span>
-                    </label>
-                    <button
-                      type="button"
-                      className={styles.removeButton}
-                      onClick={() => handleRemoveUserModelOption(option.id)}
-                      aria-label={t('workflowBuilder.agentInspector.removeModel') || 'Supprimer'}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
