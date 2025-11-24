@@ -128,7 +128,13 @@ export function DevToolsScreencast({
           : null;
 
         if (!pageTarget || !pageTarget.webSocketDebuggerUrl) {
+          console.log('[DevToolsScreencast] No page target found, marking token as fatal:', debugUrlToken.substring(0, 8));
           setError('No page target with WebSocket URL found');
+          // Mark this token as having a fatal error to prevent reconnection loops
+          fatalErrorTokens.add(debugUrlToken);
+          if (onConnectionError) {
+            onConnectionError();
+          }
           return;
         }
 

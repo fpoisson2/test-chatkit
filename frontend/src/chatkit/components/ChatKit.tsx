@@ -123,6 +123,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
   const [lastScreencastScreenshot, setLastScreencastScreenshot] = useState<{ itemId: string; src: string; action?: string } | null>(null);
   const [dismissedScreencastItems, setDismissedScreencastItems] = useState<Set<string>>(new Set());
+  // Track tokens that have failed connection (to prevent reactivation loops)
+  const [failedScreencastTokens, setFailedScreencastTokens] = useState<Set<string>>(new Set());
   // Ref to track activeScreencast without triggering useEffect re-runs
   const activeScreencastRef = useRef<{ token: string; itemId: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -218,8 +220,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Clear dismissed screencast items when a new message is sent
       // This allows new workflows to auto-start their screencasts
       setDismissedScreencastItems(new Set());
+      setFailedScreencastTokens(new Set());
       setLastScreencastScreenshot(null);
-      console.log('[ChatKit] Cleared dismissed screencast items and screenshots for new user message');
+      console.log('[ChatKit] Cleared dismissed screencast items, failed tokens and screenshots for new user message');
     }
   }, [control.thread?.items]);
 
@@ -298,7 +301,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       // ONLY select the LATEST computer_use workflow as the active screencast
       // This prevents older workflows stuck in "loading" from blocking newer ones
-      if (isLastComputerUseWorkflow && computerUseTask.debug_url_token && !isTerminal) {
+      // Also skip tokens that have failed connection to prevent reactivation loops
+      if (isLastComputerUseWorkflow && computerUseTask.debug_url_token && !isTerminal &&
+          !failedScreencastTokens.has(computerUseTask.debug_url_token)) {
         // Select if it's loading OR if it's the last workflow while streaming
         if (isLoading || isLastWorkflowAndStreaming) {
           newActiveScreencast = {
@@ -361,7 +366,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
     }
-  }, [control.isLoading, control.thread?.items, dismissedScreencastItems, lastScreencastScreenshot]);
+  }, [control.isLoading, control.thread?.items, dismissedScreencastItems, failedScreencastTokens, lastScreencastScreenshot]);
 
   // Callback pour capturer le dernier frame du screencast avant sa fermeture
   const handleScreencastLastFrame = useCallback((itemId: string) => {
@@ -1246,6 +1251,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                     authToken={authToken}
                                     enableInput
                                     onConnectionError={() => {
+                                      console.log('[ChatKit] Screencast connection error, marking token as failed:', (debugUrlToken as string).substring(0, 8));
+                                      // Mark this token as failed to prevent reactivation loops
+                                      setFailedScreencastTokens(prev => {
+                                        if (prev.has(debugUrlToken as string)) return prev;
+                                        const next = new Set(prev);
+                                        next.add(debugUrlToken as string);
+                                        return next;
+                                      });
                                       setActiveScreencast(current =>
                                         current?.token === debugUrlToken ? null : current
                                       );
