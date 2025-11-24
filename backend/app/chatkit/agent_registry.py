@@ -225,7 +225,7 @@ def create_litellm_model(
     the correct provider (OpenAI, Anthropic, Groq, etc.) based on the model name.
 
     Args:
-        model_name: Model name with provider prefix (e.g., "litellm/groq/llama-3.1-8b")
+        model_name: Model name (e.g., "llama-3.1-8b" or "groq/llama-3.1-8b")
         provider_binding: Provider binding with credentials (no api_base)
 
     Returns:
@@ -241,21 +241,34 @@ def create_litellm_model(
 
     if provider_binding and provider_binding.credentials:
         api_key = provider_binding.credentials.api_key
+        provider_slug = provider_binding.provider_slug
 
         logger.debug(
-            "Credentials trouvées: provider_id=%s, api_key=%s",
+            "Credentials trouvées: provider_id=%s, provider_slug=%s, api_key=%s",
             provider_binding.credentials.id,
+            provider_slug,
             "***" if api_key else None,
         )
 
         if api_key:
+            # Ajouter le préfixe du provider si nécessaire pour le routage LiteLLM
+            effective_model_name = model_name
+            if provider_slug and "/" not in model_name:
+                # Le nom du modèle n'a pas de préfixe, ajouter le provider_slug
+                effective_model_name = f"{provider_slug}/{model_name}"
+                logger.debug(
+                    "Ajout du préfixe provider au nom du modèle: %s -> %s",
+                    model_name,
+                    effective_model_name,
+                )
+
             # Create LitellmModel with API key only - auto-routing based on model name
             logger.debug(
                 "Création de LitellmModel pour auto-routing: model=%s, api_key=%s",
-                model_name,
+                effective_model_name,
                 "***",
             )
-            return LitellmModel(model=model_name, api_key=api_key)
+            return LitellmModel(model=effective_model_name, api_key=api_key)
         else:
             logger.warning(
                 "api_key vide ou None pour provider_id=%s - retour du nom de modèle",
