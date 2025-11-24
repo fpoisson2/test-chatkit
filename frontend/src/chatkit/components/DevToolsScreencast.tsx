@@ -297,7 +297,8 @@ export function DevToolsScreencast({
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [debugUrlToken, authToken, onLastFrame]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugUrlToken, authToken]);
 
   const sendCdpCommand = (command: Record<string, unknown>) => {
     const ws = wsRef.current;
