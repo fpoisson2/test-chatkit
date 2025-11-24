@@ -1089,8 +1089,16 @@ const renderNode = (node: WidgetNode, context: WidgetContext): React.ReactNode =
   if (!isRecord(node) || typeof node.type !== 'string') {
     return null;
   }
+
+  // Support relaxed casing for widget types coming from templates or stored definitions
   const type = node.type;
-  switch (type) {
+  const normalizedType = type.toLowerCase();
+  const resolvedType =
+    normalizedType === 'voice_session' || normalizedType === 'voicesession' || normalizedType === 'voice'
+      ? 'VoiceSession'
+      : type;
+
+  switch (resolvedType) {
     case 'Card':
       return renderCard(node as CardWidget, context);
     case 'Basic':
