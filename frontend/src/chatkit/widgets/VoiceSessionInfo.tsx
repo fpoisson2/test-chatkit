@@ -1,18 +1,38 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { VoiceSessionInfoWidget } from '../types';
+import { useVoiceSessionContext } from '../../contexts/VoiceSessionContext';
 
 interface VoiceSessionInfoComponentProps {
   widget: VoiceSessionInfoWidget;
 }
 
 /**
- * Widget pour afficher les informations d'une session vocale
+ * Widget pour contrôler une session vocale active
  */
 export function VoiceSessionInfoComponent({ widget }: VoiceSessionInfoComponentProps): JSX.Element {
-  const { sessionId, model, voice, stepTitle, stepSlug } = widget;
+  const { stepTitle } = widget;
+  const voiceContext = useVoiceSessionContext();
+
+  const statusLabel = useMemo(() => {
+    if (!voiceContext) return 'En attente...';
+
+    switch (voiceContext.status) {
+      case 'connecting':
+        return 'Connexion en cours...';
+      case 'connected':
+        return voiceContext.isListening ? 'En écoute' : 'Connecté';
+      case 'error':
+        return 'Erreur de connexion';
+      default:
+        return 'En attente...';
+    }
+  }, [voiceContext]);
+
+  const isActive = voiceContext?.status === 'connected';
+  const canStop = voiceContext && (voiceContext.status === 'connected' || voiceContext.status === 'connecting');
 
   return (
-    <div className="voice-session-info">
+    <div className={`voice-session-info ${isActive ? 'voice-session-info--active' : ''}`}>
       <div className="voice-session-info__header">
         <span className="voice-session-info__icon" aria-hidden="true">
           🎤
@@ -21,40 +41,42 @@ export function VoiceSessionInfoComponent({ widget }: VoiceSessionInfoComponentP
           {stepTitle || 'Session vocale'}
         </span>
       </div>
-      <div className="voice-session-info__content">
-        {model && (
-          <div className="voice-session-info__row">
-            <span className="voice-session-info__label">Modèle :</span>
-            <span className="voice-session-info__value">{model}</span>
-          </div>
-        )}
-        {voice && (
-          <div className="voice-session-info__row">
-            <span className="voice-session-info__label">Voix :</span>
-            <span className="voice-session-info__value">{voice}</span>
-          </div>
-        )}
-        <div className="voice-session-info__row">
-          <span className="voice-session-info__label">ID de session :</span>
-          <span className="voice-session-info__value voice-session-info__value--mono">
-            {sessionId.slice(0, 8)}...
-          </span>
+
+      <div className="voice-session-info__status-container">
+        <div className="voice-session-info__status-row">
+          <span
+            className={`voice-session-info__status-indicator ${
+              isActive && voiceContext?.isListening
+                ? 'voice-session-info__status-indicator--listening'
+                : isActive
+                  ? 'voice-session-info__status-indicator--connected'
+                  : ''
+            }`}
+            aria-label={statusLabel}
+          />
+          <span className="voice-session-info__status-text">{statusLabel}</span>
         </div>
-        {stepSlug && (
-          <div className="voice-session-info__row">
-            <span className="voice-session-info__label">Étape :</span>
-            <span className="voice-session-info__value voice-session-info__value--mono">
-              {stepSlug}
-            </span>
-          </div>
-        )}
       </div>
-      <div className="voice-session-info__footer">
-        <span className="voice-session-info__status">
-          <span className="voice-session-info__status-indicator" aria-label="Actif" />
-          Session active
-        </span>
-      </div>
+
+      {canStop && (
+        <div className="voice-session-info__controls">
+          <button
+            type="button"
+            className="voice-session-info__button voice-session-info__button--stop"
+            onClick={voiceContext.stopVoiceSession}
+            aria-label="Arrêter la session vocale"
+          >
+            <span className="voice-session-info__button-icon">⏹</span>
+            Arrêter
+          </button>
+        </div>
+      )}
+
+      {!voiceContext && (
+        <div className="voice-session-info__message">
+          La session vocale démarrera automatiquement lors de l'activation.
+        </div>
+      )}
     </div>
   );
 }

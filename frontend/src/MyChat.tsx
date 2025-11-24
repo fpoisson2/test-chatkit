@@ -20,6 +20,7 @@ import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
 import { useWorkflowCapabilities } from "./hooks/useWorkflowCapabilities";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
+import { VoiceSessionProvider } from "./contexts/VoiceSessionContext";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import { workflowsApi } from "./utils/backend";
@@ -811,11 +812,14 @@ export function MyChat() {
     requestRefreshRef.current = requestRefresh;
   }, []);
 
-  const voiceStatusMessage = voiceStatus === "connected"
-    ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`
-    : voiceStatus === "connecting"
-    ? "Connexion audio en cours..."
-    : null;
+  const voiceSessionContextValue = useMemo(
+    () => ({
+      status: voiceStatus,
+      isListening: voiceIsListening,
+      stopVoiceSession,
+    }),
+    [voiceStatus, voiceIsListening, stopVoiceSession]
+  );
 
   // Hide sidebar immediately for LTI users (before workflow loads)
   useEffect(() => {
@@ -870,7 +874,7 @@ export function MyChat() {
   const shouldShowLoadingOverlay = isLtiContext && !ltiReady;
 
   return (
-    <>
+    <VoiceSessionProvider value={voiceSessionContextValue}>
       <LoadingOverlay
         isVisible={shouldShowLoadingOverlay}
         message="Chargement..."
@@ -902,49 +906,6 @@ export function MyChat() {
           ))}
         </div>
       </div>
-      {voiceStatusMessage && (
-        <div style={{
-          position: "fixed",
-          bottom: "20px",
-          right: "20px",
-          padding: "12px 16px",
-          background: voiceStatus === "connected" ? "#10a37f" : "#ff9800",
-          color: "white",
-          borderRadius: "8px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-          fontSize: "14px",
-          fontWeight: 500,
-          zIndex: 1000,
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-        }}>
-          <span style={{
-            width: "8px",
-            height: "8px",
-            borderRadius: "50%",
-            background: "white",
-            animation: voiceIsListening ? "chatkit-voice-pulse 1.5s infinite" : "none",
-          }} />
-          {voiceStatusMessage}
-          <button
-            type="button"
-            onClick={stopVoiceSession}
-            style={{
-              marginLeft: "8px",
-              padding: "4px 8px",
-              background: "rgba(255,255,255,0.2)",
-              border: "none",
-              borderRadius: "4px",
-              color: "white",
-              cursor: "pointer",
-              fontSize: "12px",
-            }}
-          >
-            Arrêter
-          </button>
-        </div>
-      )}
       {outboundCallIsActive && outboundCallId && (
         <OutboundCallAudioPlayer
           callId={outboundCallId}
@@ -952,12 +913,6 @@ export function MyChat() {
           authToken={token}
         />
       )}
-      <style>{`
-        @keyframes chatkit-voice-pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.2); }
-        }
-      `}</style>
-    </>
+    </VoiceSessionProvider>
   );
 }
