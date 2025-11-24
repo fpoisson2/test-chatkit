@@ -14,6 +14,7 @@ import {
 } from "../../../../utils/backend";
 import { useI18n } from "../../../../i18n";
 import {
+  getAgentComputerUseConfig,
   getAssistantMessage,
   getAssistantMessageStreamDelay,
   getAssistantMessageStreamEnabled,
@@ -62,6 +63,7 @@ import { EndInspectorSection } from "./sections/EndInspectorSection";
 import { JsonVectorStoreInspectorSection } from "./sections/JsonVectorStoreInspectorSection";
 import { VoiceAgentInspectorSection } from "./sections/VoiceAgentInspectorSection";
 import { OutboundCallInspectorSection } from "./sections/OutboundCallInspectorSection";
+import { ComputerUseInspectorSection } from "./sections/ComputerUseInspectorSection";
 import { StartInspectorSection } from "./sections/StartInspectorSection";
 import { StateInspectorSection } from "./sections/StateInspectorSection";
 import { TransformInspectorSection } from "./sections/TransformInspectorSection";
@@ -340,6 +342,8 @@ const NodeInspector = ({
   const whileMaxIterations = kind === "while" ? getWhileMaxIterations(parameters) : 100;
   const whileIterationVar = kind === "while" ? getWhileIterationVar(parameters) : "";
 
+  const computerUseConfig = kind === "computer_use" ? getAgentComputerUseConfig(parameters) : null;
+
   const vectorStoreNodeConfig = useMemo(() => getVectorStoreNodeConfig(parameters), [parameters]);
   const vectorStoreNodeSlug = vectorStoreNodeConfig.vector_store_slug.trim();
   const vectorStoreNodeDocIdExpression = vectorStoreNodeConfig.doc_id_expression.trim();
@@ -612,6 +616,14 @@ const NodeInspector = ({
           nodeId={node.id}
           parameters={parameters}
           onParametersChange={onParametersChange}
+        />
+      ) : null}
+
+      {kind === "computer_use" ? (
+        <ComputerUseInspectorSection
+          nodeId={node.id}
+          computerUseConfig={computerUseConfig}
+          onComputerUseConfigChange={onAgentComputerUseChange}
         />
       ) : null}
 

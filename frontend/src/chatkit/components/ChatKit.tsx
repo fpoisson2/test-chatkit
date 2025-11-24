@@ -8,6 +8,8 @@ import type {
   StartScreenPrompt,
   ThreadItem,
   ActionConfig,
+  ComposerModel,
+  UserMessageContent,
   VoiceSessionWidget,
 } from '../types';
 import { WidgetRenderer } from '../widgets';
@@ -36,6 +38,82 @@ export interface ChatKitProps {
   style?: React.CSSProperties;
 }
 
+/**
+ * Component to display images with Blob URL conversion to avoid 414 errors
+ */
+function ImageWithBlobUrl({ src, alt = '', className = '' }: { src: string; alt?: string; className?: string }): JSX.Element | null {
+  const [blobUrl, setBlobUrl] = useState<string>('');
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    if (src.startsWith('data:')) {
+      // Convert data URL to blob to avoid 414 errors with very long URLs
+      try {
+        const parts = src.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : '';
+        const bstr = atob(parts[1]);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch (err) {
+        console.error('[ChatKit] Failed to convert data URL to blob:', err);
+      }
+    } else if (src.startsWith('http')) {
+      // Regular URL, use as is
+      setBlobUrl(src);
+    } else {
+      // Assume it's a raw base64 string, try to convert it
+      try {
+        const bstr = atob(src);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i);
+        }
+        const blob = new Blob([u8arr], { type: 'image/png' });
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch (err) {
+        console.error('[ChatKit] Failed to convert raw base64 to blob:', err);
+        // Fallback: treat as regular src
+        setBlobUrl(src);
+      }
+    }
+
+    return () => {
+      if (objectUrl && objectUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [src]);
+
+  if (!blobUrl) return null;
+
+  return <img src={blobUrl} alt={alt} className={className} />;
+}
+
+/**
+ * Component to display final images with wrapper
+ */
+function FinalImageDisplay({ src }: { src: string }): JSX.Element | null {
+  return (
+    <div className="chatkit-image-generation-preview">
+      <ImageWithBlobUrl
+        src={src}
+        alt="Image générée"
+        className="chatkit-generated-image-final"
+      />
+    </div>
+  );
+}
+
 export function ChatKit({ control, options, className, style }: ChatKitProps): JSX.Element {
   const { t } = useI18n();
   const [inputValue, setInputValue] = useState('');
@@ -43,6 +121,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [showHistory, setShowHistory] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
+  const [lastScreencastScreenshot, setLastScreencastScreenshot] = useState<{ itemId: string; src: string; action?: string } | null>(null);
+  const [dismissedScreencastItems, setDismissedScreencastItems] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,6 +144,51 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     theme,
     api,
   } = options;
+
+  const composerModels = composer?.models;
+
+  const availableModels = useMemo<ComposerModel[]>(() => {
+    if (!composerModels) return [];
+    return Array.isArray(composerModels)
+      ? composerModels
+      : composerModels.options || [];
+  }, [composerModels]);
+
+  const isModelSelectorEnabled = useMemo(
+    () => !!composerModels && (Array.isArray(composerModels) || !!composerModels.enabled),
+    [composerModels],
+  );
+
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isModelSelectorEnabled || availableModels.length === 0) {
+      setSelectedModelId(null);
+      return;
+    }
+
+    const currentModelExists = availableModels.some((model) => model.id === selectedModelId);
+    if (currentModelExists) return;
+
+    const defaultModel = availableModels.find((model) => model.default) ?? availableModels[0];
+    setSelectedModelId(defaultModel?.id ?? null);
+  }, [availableModels, isModelSelectorEnabled, selectedModelId]);
+
+  const inferenceOptions = useMemo(
+    () => (isModelSelectorEnabled && selectedModelId ? { model: selectedModelId } : undefined),
+    [isModelSelectorEnabled, selectedModelId],
+  );
+
+  const selectedModel = useMemo(
+    () => availableModels.find((model) => model.id === selectedModelId),
+    [availableModels, selectedModelId],
+  );
+
+  const sendMessageWithInference = useCallback(
+    (content: UserMessageContent[] | string) =>
+      control.sendMessage(content, inferenceOptions ? { inferenceOptions } : undefined),
+    [control, inferenceOptions],
+  );
 
   // Extract auth token from API headers for DevToolsScreencast
   const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
@@ -100,13 +225,23 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     console.log('[ChatKit useEffect] Checking for active screencast, control.isLoading:', control.isLoading, 'workflows:', workflows.length);
 
     let newActiveScreencast: { token: string; itemId: string } | null = null;
+    let currentScreencastIsComplete = false;
+    let latestComputerUseTask: { itemId: string; status: string } | null = null;
+    let hasLoadingComputerUse = false;
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
+      if (dismissedScreencastItems.has(item.id)) {
+        return;
+      }
+
       const computerUseTask = item.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
       if (!computerUseTask) return;
 
       const isLoading = computerUseTask.status_indicator === 'loading';
+      const isComplete = computerUseTask.status_indicator === 'complete';
+      const isError = computerUseTask.status_indicator === 'error';
+      const isTerminal = isComplete || isError;
       const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
       const isLastWorkflowAndStreaming = isLastWorkflow && control.isLoading;
 
@@ -114,14 +249,29 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         hasToken: !!computerUseTask.debug_url_token,
         token: computerUseTask.debug_url_token?.substring(0, 8),
         isLoading,
+        isComplete,
+        isError,
+        isTerminal,
         isLastWorkflow,
         isLastWorkflowAndStreaming,
-        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token
+        isCurrentScreencast: activeScreencast?.itemId === item.id,
+        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token && !isTerminal
       });
 
+      // Garder une trace du dernier workflow computer_use rencontré (le plus récent)
+      latestComputerUseTask = { itemId: item.id, status: computerUseTask.status_indicator };
+      if (isLoading) {
+        hasLoadingComputerUse = true;
+      }
+
+      // Si ce workflow est le screencast actuellement actif ET qu'il est complete, on doit le fermer
+      if (isTerminal && activeScreencast && item.id === activeScreencast.itemId) {
+        currentScreencastIsComplete = true;
+      }
+
       // Capturer le screencast s'il est actuellement actif (en cours de chargement ou dernier workflow pendant le streaming)
-      // ET s'il a un debug_url_token
-      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token) {
+      // ET s'il a un debug_url_token ET qu'il n'est PAS complete
+      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token && !isTerminal) {
         newActiveScreencast = {
           token: computerUseTask.debug_url_token,
           itemId: item.id,
@@ -129,16 +279,86 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     });
 
-    console.log('[ChatKit useEffect] Result - newActiveScreencast:', newActiveScreencast, 'currentActiveScreencast:', activeScreencast);
+    const latestComputerUseIsTerminal =
+      latestComputerUseTask &&
+      (latestComputerUseTask.status === 'complete' || latestComputerUseTask.status === 'error');
+
+    console.log(
+      '[ChatKit useEffect] Result - newActiveScreencast:',
+      newActiveScreencast,
+      'currentScreencastIsComplete:',
+      currentScreencastIsComplete,
+      'latestComputerUseIsTerminal:',
+      latestComputerUseIsTerminal,
+      'hasLoadingComputerUse:',
+      hasLoadingComputerUse,
+      'latestComputerUseTask:',
+      latestComputerUseTask,
+      'currentActiveScreencast:',
+      activeScreencast
+    );
 
     // Mise à jour de activeScreencast :
-    // - Si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
-    // - Si aucun nouveau screencast actif n'est trouvé, on GARDE l'ancien (persistance)
-    if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
+    // - Si le screencast ACTUEL est complete OU s'il y a un computer_use complete, on ferme d'abord
+    // - Sinon, si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
+    // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
+
+    // Priorité 1: Fermer le screencast seulement si le flux actuel est terminé et qu'aucun autre workflow n'est en cours
+    // (évite qu'un ancien workflow terminal ferme un screencast plus récent en cours de chargement)
+    if (currentScreencastIsComplete || (latestComputerUseIsTerminal && !newActiveScreencast && !hasLoadingComputerUse)) {
+      if (activeScreencast) {
+        console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
+        setActiveScreencast(null);
+      }
+      // Nettoyer aussi le dernier screenshot sauvegardé pour éviter qu'il persiste
+      const terminalItemId = latestComputerUseTask?.itemId || activeScreencast?.itemId;
+      if (terminalItemId && lastScreencastScreenshot && terminalItemId === lastScreencastScreenshot.itemId) {
+        console.log('[ChatKit] Clearing last screencast screenshot for completed task');
+        setLastScreencastScreenshot(null);
+      }
+    }
+    // Priorité 2: Activer un nouveau screencast seulement s'il n'y a PAS de computer_use complete
+    else if (newActiveScreencast && newActiveScreencast.token !== activeScreencast?.token) {
       console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
     }
-  }, [activeScreencast?.token, control.isLoading, control.thread?.items]);
+  }, [activeScreencast?.token, control.isLoading, control.thread?.items, dismissedScreencastItems]);
+
+  // Callback pour capturer le dernier frame du screencast avant sa fermeture
+  const handleScreencastLastFrame = useCallback((itemId: string) => {
+    return (frameDataUrl: string) => {
+      console.log('[ChatKit] Captured last screencast frame for item:', itemId, 'dataUrl length:', frameDataUrl.length);
+      setLastScreencastScreenshot({
+        itemId,
+        src: frameDataUrl,
+        action: undefined,
+      });
+      console.log('[ChatKit] lastScreencastScreenshot state updated');
+    };
+  }, []);
+
+  // Debug: Logger les changements dans les items
+  useEffect(() => {
+    if (!control.thread?.items) return;
+
+    console.log('[ChatKit] Thread items changed:', {
+      count: control.thread.items.length,
+      types: control.thread.items.map(item => item.type),
+      lastItem: control.thread.items[control.thread.items.length - 1],
+    });
+
+    // Logger spécifiquement les workflows et leurs tâches
+    control.thread.items.forEach((item, idx) => {
+      if (item.type === 'workflow') {
+        console.log(`[ChatKit] Workflow item ${idx}:`, {
+          taskCount: item.workflow.tasks.length,
+          taskTypes: item.workflow.tasks.map(t => t.type),
+          tasks: item.workflow.tasks,
+        });
+      }
+    });
+  }, [control.thread?.items]);
+
   // Ajuster automatiquement la hauteur du textarea
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -338,7 +558,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
 
       // Envoyer le message
-      await control.sendMessage(content as any);
+      await sendMessageWithInference(content as any);
 
       // Réinitialiser le formulaire
       setInputValue('');
@@ -349,7 +569,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   };
 
   const handlePromptClick = (prompt: string) => {
-    control.sendMessage(prompt);
+    sendMessageWithInference(prompt);
   };
 
   // Créer un nouveau thread
@@ -627,7 +847,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         {content.type === 'input_tag' && (
                           <span className="chatkit-tag">{content.text}</span>
                         )}
-                        {content.type === 'image' && <img src={content.image} alt="" />}
+                        {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" />}
                         {content.type === 'file' && (
                           <div className="chatkit-file">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -786,7 +1006,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           console.log('[ChatKit] Showing partial preview, count:', image.partials.length);
                           return (
                             <div className="chatkit-image-generation-preview">
-                              <img
+                              <ImageWithBlobUrl
                                 src={src}
                                 alt="Génération en cours..."
                                 className="chatkit-generating-image"
@@ -797,18 +1017,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         // Afficher l'image finale
                         if (!isLoading) {
-                          const src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
+                          let src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
+                          // Ensure proper data URL format
+                          if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+                            src = `data:image/png;base64,${src}`;
+                          }
                           if (src) {
                             console.log('[ChatKit] Showing final image');
-                            return (
-                              <div className="chatkit-image-generation-preview">
-                                <img
-                                  src={src}
-                                  alt="Image générée"
-                                  className="chatkit-generated-image-final"
-                                />
-                              </div>
-                            );
+                            return <FinalImageDisplay src={src} />;
                           }
                         }
                       }
@@ -865,7 +1081,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           });
                         }
 
-                        const src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
+                        let src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
+
+                        // Ensure proper data URL format for screenshot
+                        if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+                          src = `data:image/png;base64,${src}`;
+                        }
 
                         // Vérifier si ce workflow contient le screencast actuellement actif
                         const debugUrlToken =
@@ -877,10 +1098,26 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         // Afficher le screencast live seulement si c'est le screencast actif
                         const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
 
-                        // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
-                        const showScreenshot = !!src && !showLiveScreencast;
+                        // Si on n'a pas de screenshot mais qu'on a un screenshot sauvegardé pour ce workflow, l'utiliser
+                        if (!src && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
+                          console.log('[ChatKit] Using saved screenshot for item:', item.id);
+                          src = lastScreencastScreenshot.src;
+                        } else if (!src && lastScreencastScreenshot) {
+                          console.log('[ChatKit] Have saved screenshot but item IDs do not match:', {
+                            savedItemId: lastScreencastScreenshot.itemId,
+                            currentItemId: item.id,
+                          });
+                        }
 
-                        const showPreview = showLiveScreencast || showScreenshot;
+                        // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
+                        // MAIS seulement si la tâche n'est pas complete (sinon on cache tout pour retourner au début)
+                        const isComplete = computerUseTask.status_indicator === 'complete';
+                        const isError = computerUseTask.status_indicator === 'error';
+                        const isTerminal = isComplete || isError;
+                        const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
+
+                        const isDismissed = dismissedScreencastItems.has(item.id);
+                        const showPreview = !isDismissed && (showLiveScreencast || showScreenshot);
 
                         console.log('[ChatKit] Display decision:', {
                           showLiveScreencast,
@@ -895,7 +1132,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           screenshotId: screenshot?.id
                         });
 
-                        const actionTitle = computerUseTask.current_action || screenshot?.action_description;
+                        let actionTitle = computerUseTask.current_action || screenshot?.action_description;
+                        // Si on utilise le screenshot sauvegardé, utiliser son action
+                        if (!screenshot && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
+                          actionTitle = actionTitle || lastScreencastScreenshot.action;
+                        }
                         const clickPosition = screenshot?.click_position || screenshot?.click;
 
                         const toPercent = (value: number): number => {
@@ -911,6 +1152,29 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           : null;
 
                         if (showPreview) {
+                          const handleEndSession = async () => {
+                            console.log('Ending computer_use session...');
+                            setDismissedScreencastItems(prev => {
+                              if (prev.has(item.id)) return prev;
+                              const next = new Set(prev);
+                              next.add(item.id);
+                              return next;
+                            });
+                            setActiveScreencast(current =>
+                              current?.itemId === item.id ? null : current
+                            );
+                            setLastScreencastScreenshot(current =>
+                              current?.itemId === item.id ? null : current
+                            );
+                            try {
+                              // Send an empty message to trigger workflow resumption
+                              // The backend will detect the wait state and continue the workflow
+                              await sendMessageWithInference('');
+                            } catch (error) {
+                              console.error('Failed to end computer_use session:', error);
+                            }
+                          };
+
                           return (
                             <div className="chatkit-computer-use-preview">
                               {actionTitle && (
@@ -918,6 +1182,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                               )}
                               {/* Show screencast if this is the active screencast */}
                               {showLiveScreencast && (
+                                <>
                                   <DevToolsScreencast
                                     debugUrlToken={debugUrlToken as string}
                                     authToken={authToken}
@@ -927,13 +1192,24 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                         current?.token === debugUrlToken ? null : current
                                       );
                                     }}
-                                />
+                                    onLastFrame={handleScreencastLastFrame(item.id)}
+                                  />
+                                  <div className="chatkit-computer-use-actions">
+                                    <button
+                                      type="button"
+                                      onClick={handleEndSession}
+                                      className="chatkit-end-session-button"
+                                    >
+                                      Terminer la session et continuer
+                                    </button>
+                                  </div>
+                                </>
                               )}
                               {/* Show screenshot for completed tasks or non-active screencasts */}
                               {showScreenshot && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <div className="chatkit-browser-screenshot-image-wrapper">
-                                    <img
+                                    <ImageWithBlobUrl
                                       src={src}
                                       alt={actionTitle || "Browser automation"}
                                       className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
@@ -1018,7 +1294,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         <div className="chatkit-attachments-preview">
           {attachments.map(att => (
             <div key={att.id} className={`chatkit-attachment chatkit-attachment-${att.status}`}>
-              {att.preview && <img src={att.preview} alt={att.file.name} />}
+              {att.preview && <ImageWithBlobUrl src={att.preview} alt={att.file.name} />}
               {!att.preview && (
                 <div className="chatkit-attachment-icon">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1068,6 +1344,27 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
             />
           </div>
           <div className="chatkit-composer-actions">
+            {isModelSelectorEnabled && availableModels.length > 0 && (
+              <div className="chatkit-model-selector">
+                <label htmlFor="chatkit-model-select">Modèle</label>
+                <select
+                  id="chatkit-model-select"
+                  value={selectedModelId ?? ''}
+                  onChange={(e) => setSelectedModelId(e.target.value || null)}
+                  disabled={isThreadDisabled}
+                  aria-label="Sélectionner un modèle"
+                >
+                  {availableModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedModel?.description && (
+                  <div className="chatkit-model-description">{selectedModel.description}</div>
+                )}
+              </div>
+            )}
             {(composer?.attachments?.enabled || composer?.attachments !== false) && (
               <div className="chatkit-attach-wrapper">
                 <input

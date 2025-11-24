@@ -1111,6 +1111,12 @@ export interface ChatKitOptions {
       maxSize?: number;
       accept?: Record<string, string[]>;
     };
+    models?:
+      | {
+          enabled: boolean;
+          options: ComposerModel[];
+        }
+      | ComposerModel[];
   };
   widgets?: {
     voiceSession?: VoiceSessionWidgetContext;
@@ -1143,6 +1149,13 @@ export interface ToolChoice {
 }
 
 export type FeedbackKind = 'positive' | 'negative';
+
+export interface ComposerModel {
+  id: string;
+  label: string;
+  description?: string;
+  default?: boolean;
+}
 
 // ===== Control ChatKit =====
 

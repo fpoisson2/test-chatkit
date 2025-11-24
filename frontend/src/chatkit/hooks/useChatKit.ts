@@ -169,6 +169,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       setError(null);
       onResponseStart?.();
 
+      // Déclarer updatedThread AVANT le try pour qu'elle soit accessible dans le finally
       let updatedThread: Thread | null = null;
 
       try {

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from ..runtime.state_machine import WorkflowStateMachine
 from .agent import AgentNodeHandler
 from .assign import AssignNodeHandler
+from .computer_use import ComputerUseNodeHandler
 from .condition import ConditionNodeHandler
 from .end import EndNodeHandler
 from .message import AssistantMessageNodeHandler, UserMessageNodeHandler
@@ -62,6 +63,9 @@ def create_state_machine(
     # Note: In v2, agent_executor is optional as dependencies come from runtime_vars
     agent_handler = AgentNodeHandler(agent_executor)
     machine.register_handler("agent", agent_handler)
+
+    # Computer Use handler (manual mode - no agent execution)
+    machine.register_handler("computer_use", ComputerUseNodeHandler())
 
     # Voice agent handler (separate from regular agent handler)
     machine.register_handler("voice_agent", VoiceAgentNodeHandler())

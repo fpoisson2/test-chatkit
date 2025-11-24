@@ -36,6 +36,10 @@ export function resolveNodeParameters(
     case "voice_agent":
       return resolveVoiceAgentParameters(parameters);
 
+    case "computer_use":
+      // Computer use nodes have their tools pre-configured, just preserve parameters
+      return { ...(parameters ?? {}) } as AgentParameters;
+
     case "state":
       return resolveStateParameters(slug, parameters);
 

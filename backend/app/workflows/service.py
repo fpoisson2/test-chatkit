@@ -705,6 +705,7 @@ class WorkflowGraphValidator:
                 "agent",
                 "voice_agent",
                 "outbound_call",
+                "computer_use",
                 "condition",
                 "while",
                 "state",
@@ -927,17 +928,21 @@ class WorkflowGraphValidator:
         has_enabled_user_message = any(
             node.kind == "user_message" and node.is_enabled for node in normalized_nodes
         )
+        has_enabled_computer_use = any(
+            node.kind == "computer_use" and node.is_enabled for node in normalized_nodes
+        )
         if not (
             enabled_agent_slugs
             or has_enabled_widget
             or has_enabled_assistant_message
             or has_enabled_user_message
+            or has_enabled_computer_use
             or allow_empty
             or minimal_skeleton
         ):
             raise WorkflowValidationError(
                 "Le workflow doit activer au moins un agent, un message "
-                "(assistant ou utilisateur) ou un widget."
+                "(assistant ou utilisateur), un widget ou un nœud computer_use."
             )
 
         self.validate_graph_structure(normalized_nodes, normalized_edges)

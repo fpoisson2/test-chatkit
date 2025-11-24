@@ -1,7 +1,7 @@
 /**
  * Composants widgets simples
  */
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type {
   BadgeWidget,
   DividerWidget,
@@ -13,6 +13,49 @@ import type {
 } from '../types';
 import { resolveColor, resolveSpacingValue, resolveMargin } from './utils';
 import { WidgetRenderer } from './WidgetRenderer';
+
+/**
+ * Component to display images with Blob URL conversion to avoid 414 errors
+ */
+function ImageWithBlobUrl({ src, alt = '', className = '', style = {} }: { src: string; alt?: string; className?: string; style?: React.CSSProperties }): JSX.Element | null {
+  const [blobUrl, setBlobUrl] = useState<string>('');
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    if (src.startsWith('data:')) {
+      // Convert data URL to blob to avoid 414 errors with very long URLs
+      try {
+        const parts = src.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : '';
+        const bstr = atob(parts[1]);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch (err) {
+        console.error('[SimpleWidgets] Failed to convert data URL to blob:', err);
+      }
+    } else {
+      setBlobUrl(src);
+    }
+
+    return () => {
+      if (objectUrl && objectUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [src]);
+
+  if (!blobUrl) return null;
+
+  return <img src={blobUrl} alt={alt} className={className} style={style} />;
+}
 
 export function BadgeComponent(props: BadgeWidget): JSX.Element {
   const { label, color = 'secondary', variant = 'solid', size = 'md', pill } = props;
@@ -122,7 +165,7 @@ export function ImageComponent(props: ImageWidget): JSX.Element {
     flex,
   };
 
-  return <img src={src} alt={alt || ''} className="chatkit-image" style={style} />;
+  return <ImageWithBlobUrl src={src} alt={alt || ''} className="chatkit-image" style={style} />;
 }
 
 export function ListViewItemComponent(props: ListViewItem): JSX.Element {

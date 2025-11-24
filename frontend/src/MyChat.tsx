@@ -21,6 +21,7 @@ import { useWorkflowCapabilities } from "./hooks/useWorkflowCapabilities";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { getOrCreateDeviceId } from "./utils/device";
+import { loadComposerModelsConfig } from "./utils/composerModels";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import { workflowsApi } from "./utils/backend";
 import {
@@ -635,6 +636,8 @@ export function MyChat() {
       : "Posez votre question...";
   }, [appearanceSettings.start_screen_placeholder]);
 
+  const composerModels = useMemo(() => loadComposerModelsConfig(), []);
+
   const chatkitOptions = useMemo(
     () => {
       const colorScheme = resolveThemeColorScheme(
@@ -704,6 +707,7 @@ export function MyChat() {
         composer: {
           placeholder: composerPlaceholder,
           attachments: attachmentsConfig,
+          ...(composerModels ? { models: composerModels } : {}),
         },
         widgets: {
           voiceSession: {

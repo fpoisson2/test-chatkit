@@ -8,10 +8,12 @@ import {
   createVectorStoreNodeParameters,
   createVoiceAgentParameters,
   createWidgetNodeParameters,
+  setAgentComputerUseConfig,
   setEndMessage,
   stringifyAgentParameters,
 } from "../../../utils/workflows";
 import { resolveAgentParameters } from "../../../utils/agentPresets";
+import { DEFAULT_COMPUTER_USE_CONFIG } from "../components/node-inspector/constants";
 
 export type UseNodeFactoryParams = {
   addNodeToGraph: (node: FlowNode) => void;
@@ -100,6 +102,31 @@ const useNodeFactory = ({
         parametersError: null,
         isPreviewActive: false,
         isPreviewDimmed: false,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, humanizeSlug]);
+
+  const handleAddComputerUseNode = useCallback(() => {
+    const slug = `computer-use-${Date.now()}`;
+    const baseParameters: AgentParameters = {};
+    const parameters = setAgentComputerUseConfig(baseParameters, DEFAULT_COMPUTER_USE_CONFIG);
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 300, y: 260 },
+      data: {
+        slug,
+        kind: "computer_use",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
         metadata: {},
       },
       draggable: true,
@@ -431,6 +458,7 @@ const useNodeFactory = ({
     handleAddAgentNode,
     handleAddVoiceAgentNode,
     handleAddOutboundCallNode,
+    handleAddComputerUseNode,
     handleAddConditionNode,
     handleAddWhileNode,
     handleAddParallelSplitNode,

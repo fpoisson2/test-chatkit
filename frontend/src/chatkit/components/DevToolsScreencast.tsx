@@ -5,8 +5,13 @@ interface DevToolsScreencastProps {
   authToken?: string; // JWT token for authentication
   className?: string;
   onConnectionError?: () => void; // Callback when connection fails
+  onLastFrame?: (frameDataUrl: string) => void; // Callback with last frame before closing
   enableInput?: boolean; // Capture keyboard/mouse events and forward to CDP
 }
+
+// Global map to track tokens that have fatal errors (like 403)
+// This persists across component remounts (important for React Strict Mode)
+const fatalErrorTokens = new Set<string>();
 
 interface ScreencastFrame {
   sessionId: number;
@@ -24,20 +29,41 @@ export function DevToolsScreencast({
   className = '',
   enableInput = false,
   onConnectionError,
+  onLastFrame,
 }: DevToolsScreencastProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Initialize error state based on whether the token has a fatal error
+  const [error, setError] = useState<string | null>(() =>
+    fatalErrorTokens.has(debugUrlToken) ? 'Token invalide ou expiré' : null
+  );
   const [frameCount, setFrameCount] = useState(0);
+  const [currentUrl, setCurrentUrl] = useState('');
+  const [urlInput, setUrlInput] = useState('');
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageIdRef = useRef(1);
   const lastMetadataRef = useRef<ScreencastFrame['metadata'] | null>(null);
   const shouldAutoFocusRef = useRef(false);
+  const onLastFrameRef = useRef(onLastFrame);
+
+  // Keep the ref updated with the latest callback
+  useEffect(() => {
+    onLastFrameRef.current = onLastFrame;
+  }, [onLastFrame]);
 
   useEffect(() => {
     let mounted = true;
     let ws: WebSocket | null = null;
+
+    // Check if this token has already had a fatal error
+    // If so, just return without calling onConnectionError (it was already called when we added it to the Set)
+    if (fatalErrorTokens.has(debugUrlToken)) {
+      console.log('[DevToolsScreencast] Token has fatal error, not attempting connection:', debugUrlToken.substring(0, 8));
+      return;
+    }
 
     const connect = async () => {
       try {
@@ -98,6 +124,20 @@ export function DevToolsScreencast({
           console.log('[DevToolsScreencast] WebSocket connected');
           setIsConnected(true);
           setError(null);
+
+          // Enable Page domain events
+          const enablePageCommand = {
+            id: messageIdRef.current++,
+            method: 'Page.enable',
+          };
+          ws?.send(JSON.stringify(enablePageCommand));
+
+          // Get current navigation history
+          const getNavigationHistoryCommand = {
+            id: messageIdRef.current++,
+            method: 'Page.getNavigationHistory',
+          };
+          ws?.send(JSON.stringify(getNavigationHistoryCommand));
 
           // Start screencast with CDP command
           const startScreencastCommand = {
@@ -166,6 +206,40 @@ export function DevToolsScreencast({
               };
               ws?.send(JSON.stringify(ackCommand));
             }
+
+            // Handle frame navigation to update URL
+            if (message.method === 'Page.frameNavigated') {
+              const frame = message.params?.frame;
+              if (frame && frame.url) {
+                setCurrentUrl(frame.url);
+                setUrlInput(frame.url);
+
+                // Request updated navigation history after navigation
+                const getNavigationHistoryCommand = {
+                  id: messageIdRef.current++,
+                  method: 'Page.getNavigationHistory',
+                };
+                ws?.send(JSON.stringify(getNavigationHistoryCommand));
+              }
+            }
+
+            // Handle Page.getNavigationHistory response
+            if (message.result && message.result.entries) {
+              const currentIndex = message.result.currentIndex;
+              const entries = message.result.entries;
+
+              if (typeof currentIndex === 'number' && Array.isArray(entries)) {
+                setCanGoBack(currentIndex > 0);
+                setCanGoForward(currentIndex < entries.length - 1);
+
+                // Update current URL from history if available
+                if (entries[currentIndex] && entries[currentIndex].url) {
+                  const url = entries[currentIndex].url;
+                  setCurrentUrl(url);
+                  setUrlInput(url);
+                }
+              }
+            }
           } catch (err) {
             console.error('[DevToolsScreencast] Error processing message:', err);
           }
@@ -182,6 +256,12 @@ export function DevToolsScreencast({
           setIsConnected(false);
           wsRef.current = null;
 
+          // Don't attempt reconnection if this token has a fatal error (like 403)
+          if (fatalErrorTokens.has(debugUrlToken)) {
+            console.log('[DevToolsScreencast] Not reconnecting due to fatal error');
+            return;
+          }
+
           // Attempt reconnection after 2 seconds
           if (mounted) {
             reconnectTimeoutRef.current = setTimeout(() => {
@@ -192,9 +272,20 @@ export function DevToolsScreencast({
         };
       } catch (err) {
         console.error('[DevToolsScreencast] Connection error:', err);
-        setError(`Failed to connect: ${err instanceof Error ? err.message : String(err)}`);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        setError(`Failed to connect: ${errorMessage}`);
 
-        // Retry on error
+        // Don't retry if it's a 403 (Forbidden) - token is likely invalid/expired
+        if (errorMessage.includes('403')) {
+          console.log('[DevToolsScreencast] Got 403 Forbidden - token invalid/expired, marking token as fatal and not retrying');
+          fatalErrorTokens.add(debugUrlToken); // Mark this token as having a fatal error
+          if (onConnectionError) {
+            onConnectionError();
+          }
+          return;
+        }
+
+        // Retry on other errors
         if (mounted) {
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log('[DevToolsScreencast] Retrying connection...');
@@ -208,6 +299,17 @@ export function DevToolsScreencast({
 
     return () => {
       mounted = false;
+
+      // Capture last frame before closing
+      if (onLastFrameRef.current && canvasRef.current) {
+        try {
+          const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9);
+          onLastFrameRef.current(dataUrl);
+          console.log('[DevToolsScreencast] Captured last frame before closing');
+        } catch (err) {
+          console.error('[DevToolsScreencast] Error capturing last frame:', err);
+        }
+      }
 
       // Stop screencast before closing
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -232,6 +334,7 @@ export function DevToolsScreencast({
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debugUrlToken, authToken]);
 
   const sendCdpCommand = (command: Record<string, unknown>) => {
@@ -239,6 +342,73 @@ export function DevToolsScreencast({
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(command));
     }
+  };
+
+  const navigateToUrl = (url: string) => {
+    if (!url.trim()) return;
+
+    // Add protocol if missing
+    let normalizedUrl = url.trim();
+    if (!normalizedUrl.match(/^https?:\/\//i)) {
+      normalizedUrl = 'https://' + normalizedUrl;
+    }
+
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Page.navigate',
+      params: { url: normalizedUrl },
+    };
+    sendCdpCommand(command);
+    setUrlInput(normalizedUrl);
+    setCurrentUrl(normalizedUrl);
+  };
+
+  const goBack = () => {
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Page.goBack',
+    };
+    sendCdpCommand(command);
+
+    // Request updated navigation history
+    setTimeout(() => {
+      const getHistoryCommand = {
+        id: messageIdRef.current++,
+        method: 'Page.getNavigationHistory',
+      };
+      sendCdpCommand(getHistoryCommand);
+    }, 100);
+  };
+
+  const goForward = () => {
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Page.goForward',
+    };
+    sendCdpCommand(command);
+
+    // Request updated navigation history
+    setTimeout(() => {
+      const getHistoryCommand = {
+        id: messageIdRef.current++,
+        method: 'Page.getNavigationHistory',
+      };
+      sendCdpCommand(getHistoryCommand);
+    }, 100);
+  };
+
+  const refresh = () => {
+    const command = {
+      id: messageIdRef.current++,
+      method: 'Page.reload',
+      params: { ignoreCache: false },
+    };
+    sendCdpCommand(command);
+  };
+
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    navigateToUrl(urlInput);
   };
 
   const mapPointerToPage = (clientX: number, clientY: number) => {
@@ -373,27 +543,76 @@ export function DevToolsScreencast({
 
   return (
     <div className={`chatkit-devtools-screencast ${className}`}>
-      <div className="chatkit-screencast-header">
-        <span className="chatkit-screencast-status">
-          {isConnected ? (
-            <>
-              <span className="chatkit-status-indicator chatkit-status-connected">●</span>
-              Live ({frameCount} frames)
-            </>
-          ) : (
-            <>
-              <span className="chatkit-status-indicator chatkit-status-disconnected">●</span>
-              Connecting...
-            </>
-          )}
-        </span>
-      </div>
-
       {error && (
         <div className="chatkit-screencast-error">
           ⚠️ {error}
         </div>
       )}
+
+      <div className="chatkit-browser-toolbar">
+        <div className="chatkit-browser-controls">
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={!isConnected || !canGoBack}
+            className="chatkit-browser-button"
+            title="Page précédente"
+            aria-label="Page précédente"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M10 12L6 8l4-4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={goForward}
+            disabled={!isConnected || !canGoForward}
+            className="chatkit-browser-button"
+            title="Page suivante"
+            aria-label="Page suivante"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 12l4-4-4-4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={!isConnected}
+            className="chatkit-browser-button"
+            title="Actualiser"
+            aria-label="Actualiser"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M13 4L13 7L10 7M3 12L3 9L6 9M13 7C12.5 5.5 11.5 4 9.5 3.5C6.5 2.5 3.5 4 2.5 7M3 9C3.5 10.5 4.5 12 6.5 12.5C9.5 13.5 12.5 12 13.5 9" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleUrlSubmit} className="chatkit-address-bar">
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            disabled={!isConnected}
+            className="chatkit-address-input"
+            placeholder="Entrez une URL..."
+            aria-label="Barre d'adresse"
+          />
+        </form>
+
+        <div className="chatkit-browser-status">
+          {isConnected ? (
+            <span className="chatkit-status-badge chatkit-status-live" title={`${frameCount} frames reçues`}>
+              Live
+            </span>
+          ) : (
+            <span className="chatkit-status-badge chatkit-status-connecting">
+              Connexion...
+            </span>
+          )}
+        </div>
+      </div>
 
       <div className="chatkit-screencast-canvas-container">
         <canvas

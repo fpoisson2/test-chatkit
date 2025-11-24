@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type {
   Task,
   CustomTask,
@@ -12,6 +12,49 @@ import type {
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useI18n } from '../../i18n';
+
+/**
+ * Component to display images with Blob URL conversion to avoid 414 errors
+ */
+function ImageWithBlobUrl({ src, alt, className }: { src: string; alt?: string; className?: string }): JSX.Element | null {
+  const [blobUrl, setBlobUrl] = useState<string>('');
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    if (src.startsWith('data:')) {
+      // Convert data URL to blob to avoid 414 errors with very long URLs
+      try {
+        const parts = src.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : '';
+        const bstr = atob(parts[1]);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch (err) {
+        console.error('[TaskRenderer] Failed to convert data URL to blob:', err);
+      }
+    } else {
+      setBlobUrl(src);
+    }
+
+    return () => {
+      if (objectUrl && objectUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [src]);
+
+  if (!blobUrl) return null;
+
+  return <img src={blobUrl} alt={alt} className={className} />;
+}
 
 interface TaskRendererProps {
   task: Task;
@@ -214,6 +257,13 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
 }
 
 function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
+  // If we have a debug_url_token, the screencast is displayed in ChatKit.tsx
+  // Don't render anything here to avoid duplication
+  if (task.debug_url_token) {
+    return <></>;
+  }
+
+  // Fallback: show static screenshots in a card
   const latestScreenshot = task.screenshots && task.screenshots.length > 0
     ? task.screenshots[task.screenshots.length - 1]
     : null;
@@ -224,41 +274,17 @@ function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: 
 
   const actionTitle = task.current_action || latestScreenshot?.action_description || task.title;
 
-  const clickPosition = latestScreenshot?.click_position || latestScreenshot?.click;
-
-  const toPercent = (value: number): number => {
-    const scaled = value <= 1 ? value * 100 : value;
-    return Math.min(100, Math.max(0, scaled));
-  };
-
-  const clickCoordinates = clickPosition
-    ? {
-        x: toPercent(clickPosition.x),
-        y: toPercent(clickPosition.y),
-      }
-    : null;
-
   return (
     <div className="chatkit-task-computer-use">
       <TaskLayout icon={icon}>
         {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
-
         {imageSrc && (
           <div className="chatkit-task-browser-screenshot">
-            <div className="chatkit-browser-screenshot-image-wrapper">
-              <img
-                src={imageSrc}
-                alt={actionTitle || t('chatkit.task.browserScreenshot')}
-                className="chatkit-browser-screenshot-image"
-              />
-              {clickCoordinates && (
-                <div
-                  className="chatkit-browser-click-indicator"
-                  style={{ left: `${clickCoordinates.x}%`, top: `${clickCoordinates.y}%` }}
-                  aria-label={t('chatkit.task.currentAction')}
-                />
-              )}
-            </div>
+            <ImageWithBlobUrl
+              src={imageSrc}
+              alt={actionTitle || t('chatkit.task.browserScreenshot')}
+              className="chatkit-browser-screenshot-image"
+            />
           </div>
         )}
       </TaskLayout>
