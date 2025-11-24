@@ -30,9 +30,9 @@ export interface ChatKitProps {
 }
 
 /**
- * Component to display final images with Blob URL conversion to avoid 414 errors
+ * Component to display images with Blob URL conversion to avoid 414 errors
  */
-function FinalImageDisplay({ src }: { src: string }): JSX.Element | null {
+function ImageWithBlobUrl({ src, alt = '', className = '' }: { src: string; alt?: string; className?: string }): JSX.Element | null {
   const [blobUrl, setBlobUrl] = useState<string>('');
 
   useEffect(() => {
@@ -60,10 +60,17 @@ function FinalImageDisplay({ src }: { src: string }): JSX.Element | null {
 
   if (!blobUrl) return null;
 
+  return <img src={blobUrl} alt={alt} className={className} />;
+}
+
+/**
+ * Component to display final images with wrapper
+ */
+function FinalImageDisplay({ src }: { src: string }): JSX.Element | null {
   return (
     <div className="chatkit-image-generation-preview">
-      <img
-        src={blobUrl}
+      <ImageWithBlobUrl
+        src={src}
         alt="Image générée"
         className="chatkit-generated-image-final"
       />
@@ -648,7 +655,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         {content.type === 'input_tag' && (
                           <span className="chatkit-tag">{content.text}</span>
                         )}
-                        {content.type === 'image' && <img src={content.image} alt="" />}
+                        {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" />}
                         {content.type === 'file' && (
                           <div className="chatkit-file">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -781,7 +788,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           console.log('[ChatKit] Showing partial preview, count:', image.partials.length);
                           return (
                             <div className="chatkit-image-generation-preview">
-                              <img
+                              <ImageWithBlobUrl
                                 src={src}
                                 alt="Génération en cours..."
                                 className="chatkit-generating-image"
@@ -958,7 +965,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                               {showScreenshot && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <div className="chatkit-browser-screenshot-image-wrapper">
-                                    <img
+                                    <ImageWithBlobUrl
                                       src={src}
                                       alt={actionTitle || "Browser automation"}
                                       className={isLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
@@ -1023,7 +1030,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         <div className="chatkit-attachments-preview">
           {attachments.map(att => (
             <div key={att.id} className={`chatkit-attachment chatkit-attachment-${att.status}`}>
-              {att.preview && <img src={att.preview} alt={att.file.name} />}
+              {att.preview && <ImageWithBlobUrl src={att.preview} alt={att.file.name} />}
               {!att.preview && (
                 <div className="chatkit-attachment-icon">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

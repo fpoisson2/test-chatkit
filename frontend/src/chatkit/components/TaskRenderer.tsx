@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type {
   Task,
   CustomTask,
@@ -12,6 +12,40 @@ import type {
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useI18n } from '../../i18n';
+
+/**
+ * Component to display images with Blob URL conversion to avoid 414 errors
+ */
+function ImageWithBlobUrl({ src, alt, className }: { src: string; alt?: string; className?: string }): JSX.Element | null {
+  const [blobUrl, setBlobUrl] = useState<string>('');
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    if (src.startsWith('data:')) {
+      // Convert data URL to blob to avoid 414 errors with very long URLs
+      fetch(src)
+        .then(res => res.blob())
+        .then(blob => {
+          objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+        })
+        .catch(err => console.error('[TaskRenderer] Failed to convert data URL to blob:', err));
+    } else {
+      setBlobUrl(src);
+    }
+
+    return () => {
+      if (objectUrl && objectUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [src]);
+
+  if (!blobUrl) return null;
+
+  return <img src={blobUrl} alt={alt} className={className} />;
+}
 
 interface TaskRendererProps {
   task: Task;
@@ -237,7 +271,7 @@ function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: 
         {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
         {imageSrc && (
           <div className="chatkit-task-browser-screenshot">
-            <img
+            <ImageWithBlobUrl
               src={imageSrc}
               alt={actionTitle || t('chatkit.task.browserScreenshot')}
               className="chatkit-browser-screenshot-image"
