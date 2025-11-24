@@ -1648,62 +1648,54 @@
   color: var(--color-text-default);
 }
 
-/* Computer Use Task - Minimal Layout */
-.chatkit-task-header-only {
-  flex: 1;
-  min-width: 0;
-}
-
-.chatkit-computer-use-info {
-  margin-top: 12px;
+/* Computer Use Task - Standalone Layout (No Card) */
+.chatkit-computer-use-standalone {
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.chatkit-computer-use-message {
-  margin: 0;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.6);
-  font-style: italic;
-}
-
-[data-theme="dark"] .chatkit-computer-use-message {
-  color: rgba(255, 255, 255, 0.5);
+.chatkit-computer-use-actions {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
 }
 
 .chatkit-end-session-button {
-  align-self: flex-start;
-  padding: 8px 16px;
+  padding: 10px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #3b82f6;
   color: #fff;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .chatkit-end-session-button:hover {
   background: #2563eb;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
 }
 
 .chatkit-end-session-button:active {
   background: #1d4ed8;
-  transform: translateY(1px);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
 }
 
 [data-theme="dark"] .chatkit-end-session-button {
   background: #3b82f6;
   color: #fff;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
 }
 
 [data-theme="dark"] .chatkit-end-session-button:hover {
   background: #60a5fa;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
 }
 
 .chatkit-screencast-canvas-container {

@@ -11,6 +11,7 @@ import type {
   FileSource,
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { DevToolsScreencast } from './DevToolsScreencast';
 import { useI18n } from '../../i18n';
 
 interface TaskRendererProps {
@@ -221,28 +222,53 @@ function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: 
     console.log('Ending computer_use session...');
   };
 
-  return (
-    <div className="chatkit-task-computer-use">
-      <div className="chatkit-task-body">
-        {icon && <span className="chatkit-task-icon" aria-hidden="true">{icon}</span>}
-        <div className="chatkit-task-header-only">
-          {task.title && <div className="chatkit-task-title">{task.title}</div>}
-          {task.debug_url_token && (
-            <div className="chatkit-computer-use-info">
-              <p className="chatkit-computer-use-message">
-                Session en cours d'exécution
-              </p>
-              <button
-                type="button"
-                onClick={handleEndSession}
-                className="chatkit-end-session-button"
-              >
-                Terminer la session et continuer
-              </button>
-            </div>
-          )}
+  // If we have a debug_url_token, show the screencast without card wrapper
+  if (task.debug_url_token) {
+    return (
+      <div className="chatkit-computer-use-standalone">
+        <DevToolsScreencast
+          debugUrlToken={task.debug_url_token}
+          enableInput={true}
+          className="chatkit-task-screencast"
+        />
+        <div className="chatkit-computer-use-actions">
+          <button
+            type="button"
+            onClick={handleEndSession}
+            className="chatkit-end-session-button"
+          >
+            Terminer la session et continuer
+          </button>
         </div>
       </div>
+    );
+  }
+
+  // Fallback: show static screenshots in a card
+  const latestScreenshot = task.screenshots && task.screenshots.length > 0
+    ? task.screenshots[task.screenshots.length - 1]
+    : null;
+
+  const imageSrc = latestScreenshot
+    ? (latestScreenshot.data_url || (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : null))
+    : null;
+
+  const actionTitle = task.current_action || latestScreenshot?.action_description || task.title;
+
+  return (
+    <div className="chatkit-task-computer-use">
+      <TaskLayout icon={icon}>
+        {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
+        {imageSrc && (
+          <div className="chatkit-task-browser-screenshot">
+            <img
+              src={imageSrc}
+              alt={actionTitle || t('chatkit.task.browserScreenshot')}
+              className="chatkit-browser-screenshot-image"
+            />
+          </div>
+        )}
+      </TaskLayout>
     </div>
   );
 }
