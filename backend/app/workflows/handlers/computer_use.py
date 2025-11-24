@@ -64,9 +64,16 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
         if computer_tool:
             # Get the debug_url from the HostedBrowser
+            # We need to ensure the browser is started first by taking a screenshot
             debug_url = None
             if hasattr(computer_tool, "computer"):
-                debug_url = computer_tool.computer.debug_url
+                try:
+                    # Force browser initialization by taking a screenshot
+                    await computer_tool.computer.screenshot()
+                    debug_url = computer_tool.computer.debug_url
+                    logger.info(f"Browser initialized with debug_url: {debug_url}")
+                except Exception as e:
+                    logger.error(f"Failed to initialize browser: {e}")
 
             # Register the debug session to get a token
             debug_url_token = None
