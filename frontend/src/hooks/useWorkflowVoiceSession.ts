@@ -473,9 +473,11 @@ export const useWorkflowVoiceSession = ({
     setStatus("connecting");
   }, [enabled, logVoice, onError, startCapture, threadId, token]);
 
-  // Auto-connect WebSocket when thread exists (for manual start mode)
+  // Auto-connect WebSocket when enabled (for manual start mode)
+  // Note: Connection is independent of threadId - one connection can handle multiple threads
+  // This prevents constant reconnections when threadId changes due to multiple workflow instances
   useEffect(() => {
-    if (!enabled || !token || !threadId) {
+    if (!enabled || !token) {
       disconnectRealtime();
       cleanupCapture();
       setStatus("idle");
@@ -488,7 +490,7 @@ export const useWorkflowVoiceSession = ({
       return;
     }
 
-    logVoice("auto-connecting WebSocket for manual start mode", { threadId });
+    logVoice("auto-connecting WebSocket for manual start mode");
     let cancelled = false;
     connectRealtime({ token })
       .catch((error) => {
@@ -515,7 +517,6 @@ export const useWorkflowVoiceSession = ({
     enabled,
     logVoice,
     onError,
-    threadId,
     token,
   ]);
 
