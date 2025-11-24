@@ -162,27 +162,6 @@
   z-index: 9;
 }
 
-.chatkit-thread-status-message {
-  position: absolute;
-  bottom: 120px;
-  left: 16px;
-  right: 16px;
-  padding: 12px 16px;
-  background: #fef3c7;
-  border: 1px solid #fde68a;
-  border-radius: 8px;
-  color: #92400e;
-  font-size: 14px;
-  text-align: center;
-  z-index: 9;
-}
-
-[data-theme="dark"] .chatkit-thread-status-message {
-  background: #422006;
-  border-color: #713f12;
-  color: #fde68a;
-}
-
 .chatkit-composer {
   position: absolute;
   bottom: 0;

@@ -916,13 +916,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         </div>
       )}
 
-      {/* Thread status message */}
-      {isThreadDisabled && threadStatusMessage && (
-        <div className="chatkit-thread-status-message">
-          {threadStatusMessage}
-        </div>
-      )}
-
       {/* Composer */}
       <div className="chatkit-composer">
         <form
