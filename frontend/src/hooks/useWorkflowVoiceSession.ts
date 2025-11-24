@@ -210,7 +210,9 @@ export const useWorkflowVoiceSession = ({
         setIsListening(false);
         setTransportError(null);
         cleanupCapture();
-        currentSessionRef.current = null;
+        // Don't clear currentSessionRef here - it might be needed for onSessionFinalized
+        // Only clear it in the specific handlers that know the session is done
+        // currentSessionRef.current = null;
         pendingSessionRef.current = null;
         startRequestedRef.current = false;
       }
@@ -520,6 +522,8 @@ export const useWorkflowVoiceSession = ({
 
     return () => {
       cancelled = true;
+      // Don't clear currentSessionRef during cleanup - this effect re-runs on dependency
+      // changes (like callback updates), but we want to preserve session state for finalization
       disconnectRealtime();
       cleanupCapture();
     };
