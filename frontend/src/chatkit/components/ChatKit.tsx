@@ -1154,16 +1154,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         if (showPreview) {
                           const handleEndSession = () => {
                             console.log('Ending computer_use session...');
-                            setDismissedScreencastItems(prev => {
-                              if (prev.has(item.id)) return prev;
-                              const next = new Set(prev);
-                              next.add(item.id);
-                              return next;
-                            });
+                            // Just close the active screencast, but don't dismiss the item
+                            // This allows the screenshot to still be displayed
                             setActiveScreencast(current =>
-                              current?.itemId === item.id ? null : current
-                            );
-                            setLastScreencastScreenshot(current =>
                               current?.itemId === item.id ? null : current
                             );
                           };
