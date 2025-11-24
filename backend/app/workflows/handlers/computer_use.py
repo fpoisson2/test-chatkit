@@ -195,12 +195,12 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 next_slug = self._next_slug_or_fallback(node.slug, context)
 
             if not next_slug:
-                # No transition after computer_use - finish workflow
+                # No transition after computer_use - finish workflow in waiting state
                 context.runtime_vars["final_end_state"] = WorkflowEndState(
                     slug=node.slug,
-                    status_type="closed",
-                    status_reason="Aucune transition disponible après le nœud computer_use.",
-                    message="Session computer_use terminée.",
+                    status_type="waiting",
+                    status_reason="En attente d'un nouveau message utilisateur.",
+                    message="En attente d'un nouveau message utilisateur.",
                 )
                 return NodeResult(
                     finished=True,
