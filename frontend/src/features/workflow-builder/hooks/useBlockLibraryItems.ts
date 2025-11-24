@@ -7,6 +7,7 @@ export interface NodeHandlers {
   handleAddAgentNode: () => void;
   handleAddVoiceAgentNode: () => void;
   handleAddOutboundCallNode: () => void;
+  handleAddComputerUseNode: () => void;
   handleAddConditionNode: () => void;
   handleAddWhileNode: () => void;
   handleAddParallelSplitNode: () => void;
@@ -53,6 +54,12 @@ export const useBlockLibraryItems = ({
         kind: "outbound_call",
         shortLabel: "AS",
         onClick: nodeHandlers.handleAddOutboundCallNode,
+      },
+      {
+        key: "computer-use",
+        kind: "computer_use",
+        shortLabel: "CU",
+        onClick: nodeHandlers.handleAddComputerUseNode,
       },
       {
         key: "condition",
@@ -124,6 +131,7 @@ export const useBlockLibraryItems = ({
     nodeHandlers.handleAddAgentNode,
     nodeHandlers.handleAddVoiceAgentNode,
     nodeHandlers.handleAddOutboundCallNode,
+    nodeHandlers.handleAddComputerUseNode,
     nodeHandlers.handleAddConditionNode,
     nodeHandlers.handleAddWhileNode,
     nodeHandlers.handleAddParallelSplitNode,

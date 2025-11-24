@@ -14,6 +14,7 @@ export type NodeKind =
   | "agent"
   | "voice_agent"
   | "outbound_call"
+  | "computer_use"
   | "condition"
   | "state"
   | "transform"

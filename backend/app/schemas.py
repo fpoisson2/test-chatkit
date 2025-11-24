@@ -1001,6 +1001,8 @@ KNOWN_WORKFLOW_NODE_KINDS = (
     "start",
     "agent",
     "voice_agent",
+    "outbound_call",
+    "computer_use",
     "condition",
     "while",
     "state",

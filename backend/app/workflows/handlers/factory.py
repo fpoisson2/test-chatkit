@@ -63,6 +63,9 @@ def create_state_machine(
     agent_handler = AgentNodeHandler(agent_executor)
     machine.register_handler("agent", agent_handler)
 
+    # Computer Use handler (reuses agent handler as it's just an agent with computer_use tool)
+    machine.register_handler("computer_use", agent_handler)
+
     # Voice agent handler (separate from regular agent handler)
     machine.register_handler("voice_agent", VoiceAgentNodeHandler())
 
