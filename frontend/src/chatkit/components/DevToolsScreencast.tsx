@@ -239,6 +239,18 @@ export function DevToolsScreencast({
         ws.onclose = () => {
           if (!mounted) return;
           console.log('[DevToolsScreencast] WebSocket closed');
+
+          // Capture last frame AVANT de nettoyer, car le canvas sera détruit
+          if (onLastFrameRef.current && canvasRef.current) {
+            try {
+              const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9);
+              onLastFrameRef.current(dataUrl);
+              console.log('[DevToolsScreencast] Captured last frame on close');
+            } catch (err) {
+              console.error('[DevToolsScreencast] Error capturing last frame:', err);
+            }
+          }
+
           setIsConnected(false);
           wsRef.current = null;
 
@@ -268,17 +280,6 @@ export function DevToolsScreencast({
 
     return () => {
       mounted = false;
-
-      // Capture last frame before closing
-      if (onLastFrameRef.current && canvasRef.current) {
-        try {
-          const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9);
-          onLastFrameRef.current(dataUrl);
-          console.log('[DevToolsScreencast] Captured last frame before closing');
-        } catch (err) {
-          console.error('[DevToolsScreencast] Error capturing last frame:', err);
-        }
-      }
 
       // Stop screencast before closing
       if (ws && ws.readyState === WebSocket.OPEN) {
