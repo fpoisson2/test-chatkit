@@ -41,7 +41,7 @@ export {
 } from './FormWidgets';
 
 // Renderer
-export { WidgetRenderer, WidgetListRenderer, useWidgetContext } from './WidgetRenderer';
+export { WidgetRenderer, WidgetListRenderer, VoiceSessionPanel as VoiceSessionComponent, useWidgetContext } from './WidgetRenderer';
 export type { WidgetRendererProps, WidgetListRendererProps, WidgetContext } from './WidgetRenderer';
 
 // Utils
