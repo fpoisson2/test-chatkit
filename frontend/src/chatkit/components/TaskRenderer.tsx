@@ -11,7 +11,6 @@ import type {
   FileSource,
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { DevToolsScreencast } from './DevToolsScreencast';
 import { useI18n } from '../../i18n';
 
 interface TaskRendererProps {
@@ -215,71 +214,35 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
 }
 
 function ComputerUseTaskRenderer({ task, t, icon }: { task: ComputerUseTask; t: (key: string) => string; icon?: React.ReactNode | null }): JSX.Element {
-  // If we have a debug_url_token, show the live screencast with navigation controls
-  if (task.debug_url_token) {
-    return (
-      <div className="chatkit-task-computer-use">
-        <TaskLayout icon={icon}>
-          {task.title && <div className="chatkit-task-title">{task.title}</div>}
-          <DevToolsScreencast
-            debugUrlToken={task.debug_url_token}
-            enableInput={true}
-            className="chatkit-task-screencast"
-          />
-        </TaskLayout>
-      </div>
-    );
-  }
-
-  // Otherwise, fall back to showing static screenshots
-  const latestScreenshot = task.screenshots && task.screenshots.length > 0
-    ? task.screenshots[task.screenshots.length - 1]
-    : null;
-
-  const imageSrc = latestScreenshot
-    ? (latestScreenshot.data_url || (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : null))
-    : null;
-
-  const actionTitle = task.current_action || latestScreenshot?.action_description || task.title;
-
-  const clickPosition = latestScreenshot?.click_position || latestScreenshot?.click;
-
-  const toPercent = (value: number): number => {
-    const scaled = value <= 1 ? value * 100 : value;
-    return Math.min(100, Math.max(0, scaled));
+  const handleEndSession = () => {
+    // TODO: Implement session termination logic
+    // This should call the backend to end the computer_use session
+    // and capture the final screenshot to add to conversation history
+    console.log('Ending computer_use session...');
   };
-
-  const clickCoordinates = clickPosition
-    ? {
-        x: toPercent(clickPosition.x),
-        y: toPercent(clickPosition.y),
-      }
-    : null;
 
   return (
     <div className="chatkit-task-computer-use">
-      <TaskLayout icon={icon}>
-        {actionTitle && <div className="chatkit-task-title">{actionTitle}</div>}
-
-        {imageSrc && (
-          <div className="chatkit-task-browser-screenshot">
-            <div className="chatkit-browser-screenshot-image-wrapper">
-              <img
-                src={imageSrc}
-                alt={actionTitle || t('chatkit.task.browserScreenshot')}
-                className="chatkit-browser-screenshot-image"
-              />
-              {clickCoordinates && (
-                <div
-                  className="chatkit-browser-click-indicator"
-                  style={{ left: `${clickCoordinates.x}%`, top: `${clickCoordinates.y}%` }}
-                  aria-label={t('chatkit.task.currentAction')}
-                />
-              )}
+      <div className="chatkit-task-body">
+        {icon && <span className="chatkit-task-icon" aria-hidden="true">{icon}</span>}
+        <div className="chatkit-task-header-only">
+          {task.title && <div className="chatkit-task-title">{task.title}</div>}
+          {task.debug_url_token && (
+            <div className="chatkit-computer-use-info">
+              <p className="chatkit-computer-use-message">
+                Session en cours d'exécution
+              </p>
+              <button
+                type="button"
+                onClick={handleEndSession}
+                className="chatkit-end-session-button"
+              >
+                Terminer la session et continuer
+              </button>
             </div>
-          </div>
-        )}
-      </TaskLayout>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
