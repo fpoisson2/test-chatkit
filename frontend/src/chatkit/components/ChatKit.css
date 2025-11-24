@@ -1484,6 +1484,164 @@
   color: #ffb74d;
 }
 
+/* Browser Toolbar */
+.chatkit-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .chatkit-browser-toolbar {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.chatkit-browser-controls {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.chatkit-browser-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.6);
+  transition: all 0.15s ease;
+}
+
+.chatkit-browser-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.8);
+}
+
+.chatkit-browser-button:active:not(:disabled) {
+  background: rgba(0, 0, 0, 0.1);
+  transform: scale(0.95);
+}
+
+.chatkit-browser-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .chatkit-browser-button {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="dark"] .chatkit-browser-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="dark"] .chatkit-browser-button:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.chatkit-address-bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.chatkit-address-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: rgba(0, 0, 0, 0.85);
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.chatkit-address-input:focus {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.chatkit-address-input:disabled {
+  background: rgba(0, 0, 0, 0.02);
+  color: rgba(0, 0, 0, 0.4);
+  cursor: not-allowed;
+}
+
+.chatkit-address-input::placeholder {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .chatkit-address-input {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="dark"] .chatkit-address-input:focus {
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .chatkit-address-input:disabled {
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="dark"] .chatkit-address-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.chatkit-browser-status {
+  flex-shrink: 0;
+}
+
+.chatkit-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.chatkit-status-live {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.chatkit-status-connecting {
+  background: rgba(168, 85, 247, 0.12);
+  color: #9333ea;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+[data-theme="dark"] .chatkit-status-live {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+[data-theme="dark"] .chatkit-status-connecting {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
 .chatkit-computer-action-title {
   margin-bottom: 10px;
   font-weight: 600;

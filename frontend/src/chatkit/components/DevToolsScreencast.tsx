@@ -110,6 +110,13 @@ export function DevToolsScreencast({
           };
           ws?.send(JSON.stringify(enablePageCommand));
 
+          // Get current navigation history
+          const getNavigationHistoryCommand = {
+            id: messageIdRef.current++,
+            method: 'Page.getNavigationHistory',
+          };
+          ws?.send(JSON.stringify(getNavigationHistoryCommand));
+
           // Start screencast with CDP command
           const startScreencastCommand = {
             id: messageIdRef.current++,
@@ -184,16 +191,31 @@ export function DevToolsScreencast({
               if (frame && frame.url) {
                 setCurrentUrl(frame.url);
                 setUrlInput(frame.url);
+
+                // Request updated navigation history after navigation
+                const getNavigationHistoryCommand = {
+                  id: messageIdRef.current++,
+                  method: 'Page.getNavigationHistory',
+                };
+                ws?.send(JSON.stringify(getNavigationHistoryCommand));
               }
             }
 
-            // Handle navigation history updates
-            if (message.method === 'Page.navigationHistoryUpdated') {
-              const history = message.params?.history;
-              const currentIndex = message.params?.currentIndex;
-              if (history && typeof currentIndex === 'number') {
+            // Handle Page.getNavigationHistory response
+            if (message.result && message.result.entries) {
+              const currentIndex = message.result.currentIndex;
+              const entries = message.result.entries;
+
+              if (typeof currentIndex === 'number' && Array.isArray(entries)) {
                 setCanGoBack(currentIndex > 0);
-                setCanGoForward(currentIndex < history.entries.length - 1);
+                setCanGoForward(currentIndex < entries.length - 1);
+
+                // Update current URL from history if available
+                if (entries[currentIndex] && entries[currentIndex].url) {
+                  const url = entries[currentIndex].url;
+                  setCurrentUrl(url);
+                  setUrlInput(url);
+                }
               }
             }
           } catch (err) {
@@ -296,6 +318,15 @@ export function DevToolsScreencast({
       method: 'Page.goBack',
     };
     sendCdpCommand(command);
+
+    // Request updated navigation history
+    setTimeout(() => {
+      const getHistoryCommand = {
+        id: messageIdRef.current++,
+        method: 'Page.getNavigationHistory',
+      };
+      sendCdpCommand(getHistoryCommand);
+    }, 100);
   };
 
   const goForward = () => {
@@ -304,6 +335,15 @@ export function DevToolsScreencast({
       method: 'Page.goForward',
     };
     sendCdpCommand(command);
+
+    // Request updated navigation history
+    setTimeout(() => {
+      const getHistoryCommand = {
+        id: messageIdRef.current++,
+        method: 'Page.getNavigationHistory',
+      };
+      sendCdpCommand(getHistoryCommand);
+    }, 100);
   };
 
   const refresh = () => {
@@ -452,79 +492,75 @@ export function DevToolsScreencast({
 
   return (
     <div className={`chatkit-devtools-screencast ${className}`}>
-      <div className="chatkit-screencast-header">
-        <span className="chatkit-screencast-status">
-          {isConnected ? (
-            <>
-              <span className="chatkit-status-indicator chatkit-status-connected">●</span>
-              Live ({frameCount} frames)
-            </>
-          ) : (
-            <>
-              <span className="chatkit-status-indicator chatkit-status-disconnected">●</span>
-              Connecting...
-            </>
-          )}
-        </span>
-      </div>
-
       {error && (
         <div className="chatkit-screencast-error">
           ⚠️ {error}
         </div>
       )}
 
-      <div className="chatkit-screencast-navigation">
-        <button
-          type="button"
-          onClick={goBack}
-          disabled={!isConnected || !canGoBack}
-          className="chatkit-nav-button"
-          title="Page précédente"
-          aria-label="Page précédente"
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          onClick={goForward}
-          disabled={!isConnected || !canGoForward}
-          className="chatkit-nav-button"
-          title="Page suivante"
-          aria-label="Page suivante"
-        >
-          →
-        </button>
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={!isConnected}
-          className="chatkit-nav-button"
-          title="Actualiser"
-          aria-label="Actualiser"
-        >
-          ↻
-        </button>
-        <form onSubmit={handleUrlSubmit} className="chatkit-url-form">
+      <div className="chatkit-browser-toolbar">
+        <div className="chatkit-browser-controls">
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={!isConnected || !canGoBack}
+            className="chatkit-browser-button"
+            title="Page précédente"
+            aria-label="Page précédente"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M10 12L6 8l4-4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={goForward}
+            disabled={!isConnected || !canGoForward}
+            className="chatkit-browser-button"
+            title="Page suivante"
+            aria-label="Page suivante"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 12l4-4-4-4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={!isConnected}
+            className="chatkit-browser-button"
+            title="Actualiser"
+            aria-label="Actualiser"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M13 4L13 7L10 7M3 12L3 9L6 9M13 7C12.5 5.5 11.5 4 9.5 3.5C6.5 2.5 3.5 4 2.5 7M3 9C3.5 10.5 4.5 12 6.5 12.5C9.5 13.5 12.5 12 13.5 9" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleUrlSubmit} className="chatkit-address-bar">
           <input
             type="text"
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             disabled={!isConnected}
-            className="chatkit-url-input"
+            className="chatkit-address-input"
             placeholder="Entrez une URL..."
             aria-label="Barre d'adresse"
           />
-          <button
-            type="submit"
-            disabled={!isConnected}
-            className="chatkit-nav-button"
-            title="Aller"
-            aria-label="Aller"
-          >
-            →
-          </button>
         </form>
+
+        <div className="chatkit-browser-status">
+          {isConnected ? (
+            <span className="chatkit-status-badge chatkit-status-live" title={`${frameCount} frames reçues`}>
+              Live
+            </span>
+          ) : (
+            <span className="chatkit-status-badge chatkit-status-connecting">
+              Connexion...
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="chatkit-screencast-canvas-container">
