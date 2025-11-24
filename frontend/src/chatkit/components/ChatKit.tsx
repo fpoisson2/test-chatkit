@@ -1337,7 +1337,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       <div className="chatkit-composer">
         <form
           onSubmit={handleSubmit}
-          className="chatkit-composer-form is-multiline"
+          className={`chatkit-composer-form ${isModelSelectorEnabled && availableModels.length > 0 ? 'is-multiline' : 'is-singleline'}`}
         >
           <div className="chatkit-input-area">
             <textarea
