@@ -202,6 +202,15 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [control.thread?.items.length]);
 
+  // Clear failed tokens when thread changes (new thread or switching threads)
+  useEffect(() => {
+    setFailedScreencastTokens(new Set());
+    setDismissedScreencastItems(new Set());
+    setLastScreencastScreenshot(null);
+    setActiveScreencast(null);
+    console.log('[ChatKit] Thread changed, cleared all screencast state');
+  }, [control.thread?.id]);
+
   // Clear the composer once a new user message is added to the thread
   useEffect(() => {
     const items = (control.thread?.items || []) as ThreadItem[];
@@ -220,9 +229,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Clear dismissed screencast items when a new message is sent
       // This allows new workflows to auto-start their screencasts
       setDismissedScreencastItems(new Set());
-      setFailedScreencastTokens(new Set());
+      // NOTE: Do NOT clear failedScreencastTokens here!
+      // Clearing it creates a race condition: the old failed token gets retried
+      // BEFORE the new workflow arrives. New workflows will have new tokens anyway.
       setLastScreencastScreenshot(null);
-      console.log('[ChatKit] Cleared dismissed screencast items, failed tokens and screenshots for new user message');
+      console.log('[ChatKit] Cleared dismissed screencast items and screenshots for new user message');
     }
   }, [control.thread?.items]);
 
