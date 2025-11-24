@@ -129,6 +129,7 @@ export const useWorkflowVoiceSession = ({
   const [transportError, setTransportError] = useState<string | null>(null);
 
   const currentSessionRef = useRef<string | null>(null);
+  const sessionThreadRef = useRef<string | null>(threadId ?? null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -201,15 +202,14 @@ export const useWorkflowVoiceSession = ({
     },
     onSessionCreated: (event: SessionCreatedEvent) => {
       logVoice("sessionCreated", { sessionId: event.sessionId, threadId: event.threadId });
-      const threadMatches =
-        threadId == null || event.threadId == null || event.threadId === threadId;
-      if (!threadMatches) {
-        logVoice("skip session (thread mismatch)", {
+      if (event.threadId && event.threadId !== threadId) {
+        logVoice("session thread differs from current thread", {
           expectedThread: threadId,
           receivedThread: event.threadId,
         });
-        return;
       }
+
+      sessionThreadRef.current = event.threadId ?? threadId ?? null;
       if (processedSessionsRef.current.has(event.sessionId)) {
         logVoice("skip session (already processed)", event.sessionId);
         return;
@@ -265,6 +265,7 @@ export const useWorkflowVoiceSession = ({
       }
       cleanupCapture();
       currentSessionRef.current = null;
+      sessionThreadRef.current = threadId ?? null;
       setStatus("idle");
       setIsListening(false);
       if (Array.isArray(event.transcripts) && event.transcripts.length > 0) {
@@ -279,6 +280,7 @@ export const useWorkflowVoiceSession = ({
       }
       cleanupCapture();
       currentSessionRef.current = null;
+      sessionThreadRef.current = threadId ?? null;
       setIsListening(false);
       setStatus("error");
       const serialized = (() => {
@@ -306,9 +308,6 @@ export const useWorkflowVoiceSession = ({
 
   const startCapture = useCallback(
     async (sessionId: string) => {
-      if (!threadId) {
-        throw new Error("Thread manquant pour la session vocale");
-      }
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("API microphone non disponible");
       }
@@ -358,6 +357,8 @@ export const useWorkflowVoiceSession = ({
       return;
     }
 
+    const sessionThreadId = sessionThreadRef.current ?? threadId ?? undefined;
+
     const tail = resampler.flush();
     if (tail.length > 0) {
       sendAudioChunk(sessionId, tail, { commit: true });
@@ -365,8 +366,8 @@ export const useWorkflowVoiceSession = ({
       sendAudioChunk(sessionId, new Int16Array(), { commit: true });
     }
 
-    if (threadId) {
-      finalizeSession(sessionId, threadId);
+    if (sessionThreadId) {
+      finalizeSession(sessionId, sessionThreadId);
     } else {
       finalizeSession(sessionId);
     }
@@ -375,6 +376,7 @@ export const useWorkflowVoiceSession = ({
     setIsListening(false);
     setStatus("idle");
     currentSessionRef.current = null;
+    sessionThreadRef.current = threadId ?? null;
   }, [cleanupCapture, finalizeSession, resampler, sendAudioChunk, threadId]);
 
   const startVoiceSession = useCallback(async () => {
@@ -439,6 +441,12 @@ export const useWorkflowVoiceSession = ({
     cleanupCapture();
     disconnectRealtime();
   }, [cleanupCapture, disconnectRealtime]);
+
+  useEffect(() => {
+    if (!currentSessionRef.current) {
+      sessionThreadRef.current = threadId ?? null;
+    }
+  }, [threadId]);
 
   return {
     startVoiceSession,
