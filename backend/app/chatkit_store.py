@@ -172,10 +172,20 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         workflow_metadata = metadata.get("workflow")
         matches = self._workflow_matches(workflow_metadata, expected_workflow)
-        if not matches and not self._has_complete_workflow_metadata(workflow_metadata):
-            metadata["workflow"] = dict(expected_workflow)
-            matches = True
-            changed = True
+        if not matches:
+            if (
+                isinstance(workflow_metadata, Mapping)
+                and workflow_metadata.get("slug") == expected_workflow.get("slug")
+            ):
+                # Le workflow a été mis à jour (nouveau definition_id) mais le slug
+                # reste le même : conserver le fil en l'alignant sur la version active
+                metadata["workflow"] = dict(expected_workflow)
+                matches = True
+                changed = True
+            elif not self._has_complete_workflow_metadata(workflow_metadata):
+                metadata["workflow"] = dict(expected_workflow)
+                matches = True
+                changed = True
 
         payload["metadata"] = metadata
 
