@@ -377,9 +377,26 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   }, [control.thread?.items]);
 
   // Ajuster automatiquement la hauteur du textarea
+  // Forcer le mode multiline quand le sélecteur de modèle est activé
+  const forceMultiline = isModelSelectorEnabled && availableModels.length > 0;
+
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
+
+    // Si le sélecteur de modèle est activé, forcer le mode multiline
+    if (forceMultiline) {
+      const form = textarea.closest('.chatkit-composer-form');
+      if (form) {
+        form.classList.add('is-multiline');
+        form.classList.remove('is-singleline');
+      }
+      // Ajuster la hauteur du textarea
+      textarea.style.height = 'auto';
+      const scrollHeight = textarea.scrollHeight;
+      textarea.style.height = `${Math.min(Math.max(scrollHeight, 24), 200)}px`;
+      return;
+    }
 
     // Calculer la hauteur minimale basée sur le style réel du textarea
     const styles = window.getComputedStyle(textarea);
@@ -444,7 +461,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       setIsMultiline(shouldBeMultiline);
     }
-  }, [inputValue, isMultiline]);
+  }, [inputValue, isMultiline, forceMultiline]);
 
   // Ajuster le décalage du clavier virtuel sur mobile pour ne déplacer que le composer
   useEffect(() => {
