@@ -639,14 +639,28 @@ export function MyChat() {
 
   const localStorageComposerModels = useMemo(() => loadComposerModelsConfig(), []);
 
+  // Trouver le workflow à utiliser pour les modèles du composer:
+  // 1. Workflow actif sélectionné
+  // 2. Workflow par défaut (is_chatkit_default)
+  // 3. Workflow sélectionné dans le provider
+  const workflowForComposer = useMemo(() => {
+    if (activeWorkflow) return activeWorkflow;
+    const defaultWorkflow = workflows.find((w) => w.is_chatkit_default);
+    if (defaultWorkflow) return defaultWorkflow;
+    if (providerSelectedWorkflowId) {
+      return workflows.find((w) => w.id === providerSelectedWorkflowId) ?? null;
+    }
+    return null;
+  }, [activeWorkflow, workflows, providerSelectedWorkflowId]);
+
   // Charger les modèles configurés dans le workflow si disponibles
   const { composerModels: workflowComposerModels } = useWorkflowComposerModels({
     token,
-    workflowId: activeWorkflow?.id ?? null,
-    activeVersionId: activeWorkflow?.active_version_id ?? null,
+    workflowId: workflowForComposer?.id ?? null,
+    activeVersionId: workflowForComposer?.active_version_id ?? null,
   });
 
-  console.log("[MyChat] activeWorkflow:", activeWorkflow?.id, activeWorkflow?.active_version_id);
+  console.log("[MyChat] workflowForComposer:", workflowForComposer?.id, workflowForComposer?.active_version_id);
   console.log("[MyChat] workflowComposerModels:", workflowComposerModels);
 
   // Utiliser les modèles du workflow si disponibles, sinon ceux du localStorage
