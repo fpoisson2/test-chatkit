@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -111,8 +112,9 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                                 try:
                                     # Create GeneratedImage object
                                     logger.info("Creating GeneratedImage...")
+                                    image_id = f"img_{uuid.uuid4().hex[:8]}"
                                     generated_image = GeneratedImage(
-                                        id=agent_context.generate_id("image"),
+                                        id=image_id,
                                         data_url=data_url,
                                     )
                                     logger.info(f"GeneratedImage created: {generated_image.id}")
