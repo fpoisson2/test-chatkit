@@ -1117,7 +1117,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
 
                         const isDismissed = dismissedScreencastItems.has(item.id);
-                        const showPreview = !isDismissed && (showLiveScreencast || showScreenshot);
+                        // If dismissed, only hide the live screencast, but still show static screenshot
+                        const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
+                        const shouldShowScreenshot = showScreenshot;
+                        const showPreview = shouldShowLiveScreencast || shouldShowScreenshot;
 
                         console.log('[ChatKit] Display decision:', {
                           showLiveScreencast,
@@ -1154,8 +1157,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         if (showPreview) {
                           const handleEndSession = () => {
                             console.log('Ending computer_use session...');
-                            // Just close the active screencast, but don't dismiss the item
-                            // This allows the screenshot to still be displayed
+                            // Mark this item as dismissed to prevent auto-restart
+                            setDismissedScreencastItems(prev => {
+                              if (prev.has(item.id)) return prev;
+                              const next = new Set(prev);
+                              next.add(item.id);
+                              return next;
+                            });
+                            // Close the active screencast
                             setActiveScreencast(current =>
                               current?.itemId === item.id ? null : current
                             );
@@ -1167,7 +1176,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                 <div className="chatkit-computer-action-title">{actionTitle}</div>
                               )}
                               {/* Show screencast if this is the active screencast */}
-                              {showLiveScreencast && (
+                              {shouldShowLiveScreencast && (
                                 <>
                                   <DevToolsScreencast
                                     debugUrlToken={debugUrlToken as string}
@@ -1192,7 +1201,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                 </>
                               )}
                               {/* Show screenshot for completed tasks or non-active screencasts */}
-                              {showScreenshot && (
+                              {shouldShowScreenshot && (
                                 <div className="chatkit-browser-screenshot-container">
                                   <div className="chatkit-browser-screenshot-image-wrapper">
                                     <ImageWithBlobUrl
