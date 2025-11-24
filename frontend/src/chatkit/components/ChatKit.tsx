@@ -239,12 +239,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     console.log('[ChatKit useEffect] Checking for active screencast, control.isLoading:', control.isLoading, 'workflows:', workflows.length);
 
-    let newActiveScreencast: { token: string; itemId: string } | null = null;
-    let currentScreencastIsComplete = false;
-    let latestComputerUseTask: { itemId: string; status: string } | null = null;
-    let hasLoadingComputerUse = false;
+    // First pass: find all computer_use workflows and identify the latest one
+    const computerUseWorkflows: Array<{
+      item: any;
+      task: any;
+      isLoading: boolean;
+      isTerminal: boolean;
+    }> = [];
 
-    // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
       if (dismissedScreencastItems.has(item.id)) {
         return;
@@ -257,6 +259,24 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       const isComplete = computerUseTask.status_indicator === 'complete';
       const isError = computerUseTask.status_indicator === 'error';
       const isTerminal = isComplete || isError;
+
+      computerUseWorkflows.push({ item, task: computerUseTask, isLoading, isTerminal });
+    });
+
+    // Get the latest (most recent) computer_use workflow
+    const latestComputerUseWorkflow = computerUseWorkflows[computerUseWorkflows.length - 1];
+    const latestComputerUseTask = latestComputerUseWorkflow
+      ? { itemId: latestComputerUseWorkflow.item.id, status: latestComputerUseWorkflow.task.status_indicator }
+      : null;
+
+    let newActiveScreencast: { token: string; itemId: string } | null = null;
+    let currentScreencastIsComplete = false;
+
+    // Second pass: determine the active screencast
+    // IMPORTANT: Only consider the LATEST computer_use workflow to avoid older ones blocking newer ones
+    computerUseWorkflows.forEach((cuWorkflow, index) => {
+      const { item, task: computerUseTask, isLoading, isTerminal } = cuWorkflow;
+      const isLastComputerUseWorkflow = index === computerUseWorkflows.length - 1;
       const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
       const isLastWorkflowAndStreaming = isLastWorkflow && control.isLoading;
 
@@ -264,39 +284,42 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         hasToken: !!computerUseTask.debug_url_token,
         token: computerUseTask.debug_url_token?.substring(0, 8),
         isLoading,
-        isComplete,
-        isError,
         isTerminal,
+        isLastComputerUseWorkflow,
         isLastWorkflow,
         isLastWorkflowAndStreaming,
         isCurrentScreencast: currentActiveScreencast?.itemId === item.id,
-        willCapture: (isLoading || isLastWorkflowAndStreaming) && !!computerUseTask.debug_url_token && !isTerminal
       });
-
-      // Garder une trace du dernier workflow computer_use rencontré (le plus récent)
-      latestComputerUseTask = { itemId: item.id, status: computerUseTask.status_indicator };
-      if (isLoading) {
-        hasLoadingComputerUse = true;
-      }
 
       // Si ce workflow est le screencast actuellement actif ET qu'il est complete, on doit le fermer
       if (isTerminal && currentActiveScreencast && item.id === currentActiveScreencast.itemId) {
         currentScreencastIsComplete = true;
       }
 
-      // Capturer le screencast s'il est actuellement actif (en cours de chargement ou dernier workflow pendant le streaming)
-      // ET s'il a un debug_url_token ET qu'il n'est PAS complete
-      if ((isLoading || isLastWorkflowAndStreaming) && computerUseTask.debug_url_token && !isTerminal) {
-        newActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
+      // ONLY select the LATEST computer_use workflow as the active screencast
+      // This prevents older workflows stuck in "loading" from blocking newer ones
+      if (isLastComputerUseWorkflow && computerUseTask.debug_url_token && !isTerminal) {
+        // Select if it's loading OR if it's the last workflow while streaming
+        if (isLoading || isLastWorkflowAndStreaming) {
+          newActiveScreencast = {
+            token: computerUseTask.debug_url_token,
+            itemId: item.id,
+          };
+        }
       }
     });
 
-    const latestComputerUseIsTerminal =
-      latestComputerUseTask &&
-      (latestComputerUseTask.status === 'complete' || latestComputerUseTask.status === 'error');
+    // If the current screencast is not the latest computer_use workflow, it should be closed
+    // This handles the case where an older workflow is stuck in "loading" but a newer one has started
+    if (currentActiveScreencast && latestComputerUseWorkflow &&
+        currentActiveScreencast.itemId !== latestComputerUseWorkflow.item.id &&
+        !latestComputerUseWorkflow.isTerminal) {
+      console.log('[ChatKit] Current screencast is older, marking for closure');
+      currentScreencastIsComplete = true;
+    }
+
+    const latestComputerUseIsTerminal = latestComputerUseWorkflow?.isTerminal ?? false;
+    const hasLoadingComputerUse = computerUseWorkflows.some(w => w.isLoading);
 
     console.log(
       '[ChatKit useEffect] Result - newActiveScreencast:',
@@ -318,8 +341,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // - Sinon, si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
     // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
 
-    // Priorité 1: Fermer le screencast seulement si le flux actuel est terminé et qu'aucun autre workflow n'est en cours
-    // (évite qu'un ancien workflow terminal ferme un screencast plus récent en cours de chargement)
+    // Priorité 1: Fermer le screencast si nécessaire
     if (currentScreencastIsComplete || (latestComputerUseIsTerminal && !newActiveScreencast && !hasLoadingComputerUse)) {
       if (currentActiveScreencast) {
         console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
