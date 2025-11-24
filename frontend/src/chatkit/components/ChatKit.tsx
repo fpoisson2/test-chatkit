@@ -1157,6 +1157,25 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         if (showPreview) {
                           const handleEndSession = () => {
                             console.log('Ending computer_use session...');
+
+                            // Capture the current frame from the canvas before closing
+                            try {
+                              const canvas = document.querySelector('.chatkit-screencast-canvas') as HTMLCanvasElement;
+                              if (canvas) {
+                                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                                setLastScreencastScreenshot({
+                                  itemId: item.id,
+                                  src: dataUrl,
+                                  action: actionTitle,
+                                });
+                                console.log('[ChatKit] Captured screenshot before closing, length:', dataUrl.length);
+                              } else {
+                                console.warn('[ChatKit] Canvas not found, cannot capture screenshot');
+                              }
+                            } catch (err) {
+                              console.error('[ChatKit] Error capturing screenshot:', err);
+                            }
+
                             // Mark this item as dismissed to prevent auto-restart
                             setDismissedScreencastItems(prev => {
                               if (prev.has(item.id)) return prev;
