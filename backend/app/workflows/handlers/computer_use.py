@@ -97,21 +97,24 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
                             # Close the browser FIRST to stop the screencast
                             try:
-                                await computer_tool.computer.cleanup()
+                                await computer_tool.computer.close()
                                 logger.info("Browser session closed")
                             except Exception as e:
-                                logger.error(f"Failed to cleanup browser: {e}")
+                                logger.error(f"Failed to close browser: {e}")
 
                             # Then display the screenshot
                             if data_url:
+                                # Create a simple dict structure for the image
+                                image_data = {
+                                    "id": agent_context.generate_id("image"),
+                                    "data_url": data_url,
+                                }
+
                                 # Create ImageTask with the screenshot
                                 image_task = ImageTask(
                                     type="image",
                                     title="Screenshot finale de la session Computer Use",
-                                    images=[{
-                                        "id": agent_context.generate_id("image"),
-                                        "data_url": data_url,
-                                    }],
+                                    images=[image_data],
                                     status_indicator="completed",
                                 )
 
