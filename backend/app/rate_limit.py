@@ -53,8 +53,8 @@ RATE_LIMITS = {
     # File uploads - strict limits
     "file_upload": "10/minute",
 
-    # AI/LLM endpoints - very strict limits (expensive operations)
-    "ai_chat": "30/minute",
+    # AI/LLM endpoints - moderate limits for authenticated users
+    "ai_chat": "100/minute",  # Increased for better user experience
     "ai_voice": "10/minute",
 }
 
