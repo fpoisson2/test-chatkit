@@ -173,6 +173,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     let newActiveScreencast: { token: string; itemId: string } | null = null;
     let currentScreencastIsComplete = false;
     let latestComputerUseTask: { itemId: string; status: string } | null = null;
+    let hasLoadingComputerUse = false;
 
     // Parcourir tous les workflows pour trouver celui qui est actuellement actif
     workflows.forEach((item: any) => {
@@ -205,6 +206,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       // Garder une trace du dernier workflow computer_use rencontré (le plus récent)
       latestComputerUseTask = { itemId: item.id, status: computerUseTask.status_indicator };
+      if (isLoading) {
+        hasLoadingComputerUse = true;
+      }
 
       // Si ce workflow est le screencast actuellement actif ET qu'il est complete, on doit le fermer
       if (isTerminal && activeScreencast && item.id === activeScreencast.itemId) {
@@ -232,6 +236,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       currentScreencastIsComplete,
       'latestComputerUseIsTerminal:',
       latestComputerUseIsTerminal,
+      'hasLoadingComputerUse:',
+      hasLoadingComputerUse,
       'latestComputerUseTask:',
       latestComputerUseTask,
       'currentActiveScreencast:',
@@ -243,8 +249,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // - Sinon, si on trouve un nouveau screencast actif différent de l'actuel, on le met à jour
     // - Si aucun nouveau screencast actif n'est trouvé et pas de complete, on GARDE l'ancien (persistance)
 
-    // Priorité 1: Fermer le screencast s'il y a un computer_use task complete (empêche la boucle infinie)
-    if (currentScreencastIsComplete || latestComputerUseIsTerminal) {
+    // Priorité 1: Fermer le screencast seulement si le flux actuel est terminé et qu'aucun autre workflow n'est en cours
+    // (évite qu'un ancien workflow terminal ferme un screencast plus récent en cours de chargement)
+    if (currentScreencastIsComplete || (latestComputerUseIsTerminal && !newActiveScreencast && !hasLoadingComputerUse)) {
       if (activeScreencast) {
         console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
         setActiveScreencast(null);
