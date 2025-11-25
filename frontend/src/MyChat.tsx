@@ -445,9 +445,19 @@ export function MyChat() {
   });
 
   // useOutboundCallSession: Activated automatically when workflow has outbound_call nodes
-  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession({
+  const {
+    callId: outboundCallId,
+    isActive: outboundCallIsActive,
+    status: outboundCallStatus,
+    toNumber: outboundCallToNumber,
+    transcripts: outboundCallTranscripts,
+    error: outboundCallError,
+    hangupCall: hangupOutboundCall,
+  } = useOutboundCallSession({
     enabled: hasOutboundCall,
+    authToken: token,
     onTranscript: handleOutboundTranscript,
+    onCallEnd: handleOutboundCallEnd,
   });
 
   // Garder stopVoiceSession dans un ref pour éviter les dépendances circulaires
@@ -750,6 +760,16 @@ export function MyChat() {
             interruptSession: interruptVoiceSession,
             transportError: voiceTransportError,
           },
+          outboundCall: {
+            enabled: hasOutboundCall,
+            callId: outboundCallId,
+            isActive: outboundCallIsActive,
+            status: outboundCallStatus,
+            toNumber: outboundCallToNumber,
+            transcripts: outboundCallTranscripts,
+            hangupCall: hangupOutboundCall,
+            error: outboundCallError,
+          },
         },
         onClientTool: async (toolCall) => {
           const { name, params } = toolCall as ClientToolCall;
@@ -855,6 +875,14 @@ export function MyChat() {
       voiceStatus,
       voiceTranscripts,
       voiceTransportError,
+      hasOutboundCall,
+      outboundCallId,
+      outboundCallIsActive,
+      outboundCallStatus,
+      outboundCallToNumber,
+      outboundCallTranscripts,
+      outboundCallError,
+      hangupOutboundCall,
       user?.email,
     ],
   );

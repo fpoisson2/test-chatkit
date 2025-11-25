@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { OutboundCallStatus, OutboundCallTranscript } from "../chatkit/types";
 
 const WS_RECONNECT_DELAY = 3000; // 3 seconds
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -47,21 +48,33 @@ type OutboundCallTranscriptPayload = {
 
 type UseOutboundCallSessionOptions = {
   enabled?: boolean;
+  authToken?: string | null;
   onTranscript?: (payload: OutboundCallTranscriptPayload) => void;
+  onCallEnd?: () => void;
 };
 
 export function useOutboundCallSession(options?: UseOutboundCallSessionOptions): {
   callId: string | null;
   isActive: boolean;
+  status: OutboundCallStatus;
+  toNumber: string | null;
+  transcripts: OutboundCallTranscript[];
+  error: string | null;
   sendCommand: (command: { type: string; [key: string]: any }) => void;
+  hangupCall: () => Promise<void>;
 } {
   const [callId, setCallId] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(false);
+  const [status, setStatus] = useState<OutboundCallStatus>("idle");
+  const [toNumber, setToNumber] = useState<string | null>(null);
+  const [transcripts, setTranscripts] = useState<OutboundCallTranscript[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const isActiveRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldConnectRef = useRef(true);
+  const transcriptIdCounterRef = useRef(0);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -76,6 +89,41 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
       console.error("[OutboundCallSession] WebSocket not connected, cannot send command");
     }
   }, []);
+
+  const hangupCall = useCallback(async () => {
+    const currentCallId = callId;
+    const authToken = options?.authToken;
+
+    if (!currentCallId) {
+      console.error("[OutboundCallSession] No active call to hangup");
+      return;
+    }
+
+    if (!authToken) {
+      setError("Token d'authentification manquant");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/outbound/call/${currentCallId}/hangup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Erreur inconnue" }));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      console.log("[OutboundCallSession] Call hung up successfully");
+    } catch (err) {
+      console.error("[OutboundCallSession] Failed to hang up call:", err);
+      setError(`Échec du raccrochage: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [callId, options?.authToken]);
 
   const connectWebSocket = useCallback(() => {
     // Close existing connection if any
@@ -109,14 +157,35 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
           case "call_started":
             setCallId(message.call_id);
             setIsActive(true);
+            setStatus("initiating");
+            setError(null);
+            setTranscripts([]);
+            if (typeof message.to_number === "string") {
+              setToNumber(message.to_number);
+            }
             console.log(`[OutboundCallSession] Call started: ${message.call_id}`);
+            break;
+
+          case "call_status":
+            if (typeof message.status === "string") {
+              setStatus(message.status as OutboundCallStatus);
+            }
+            if (typeof message.to_number === "string") {
+              setToNumber(message.to_number);
+            }
             break;
 
           case "call_ended":
             console.log(`[OutboundCallSession] Call ended: ${message.call_id}`);
             setIsActive(false);
+            setStatus("completed");
+            options?.onCallEnd?.();
             // Reset callId after a short delay to allow UI to update
-            setTimeout(() => setCallId(null), 500);
+            setTimeout(() => {
+              setCallId(null);
+              setStatus("idle");
+              setToNumber(null);
+            }, 2000);
             break;
 
           case "hangup_response":
@@ -135,6 +204,19 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
               text: typeof message.text === "string" ? message.text : "",
               threadId: typeof message.thread_id === "string" ? message.thread_id : null,
             };
+
+            // Add to transcripts list
+            if (payload.text && payload.role) {
+              transcriptIdCounterRef.current += 1;
+              const newTranscript: OutboundCallTranscript = {
+                id: payload.messageId || `transcript-${transcriptIdCounterRef.current}`,
+                role: payload.role === "assistant" ? "assistant" : "user",
+                text: payload.text,
+                timestamp: Date.now(),
+              };
+              setTranscripts((prev) => [...prev, newTranscript]);
+            }
+
             if (options?.onTranscript) {
               try {
                 options.onTranscript(payload);
@@ -144,6 +226,13 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
             }
             break;
           }
+
+          case "error":
+            if (typeof message.message === "string") {
+              setError(message.message);
+            }
+            setStatus("failed");
+            break;
 
           default:
             // Silent - ignore unknown event types
@@ -225,7 +314,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     };
   }, [connectWebSocket, options?.enabled]); // connectWebSocket depends on options
 
-  return { callId, isActive, sendCommand };
+  return { callId, isActive, status, toNumber, transcripts, error, sendCommand, hangupCall };
 }
 
 export type { UseOutboundCallSessionOptions, OutboundCallTranscriptPayload };
