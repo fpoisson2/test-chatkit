@@ -453,7 +453,7 @@ export function MyChat() {
     error: outboundCallError,
     hangupCall: hangupOutboundCall,
   } = useOutboundCallSession({
-    enabled: hasOutboundCall,
+    enabled: true, // Always connect to receive events immediately when calls start
     authToken: token,
     onTranscript: handleOutboundTranscript,
     onCallEnd: handleOutboundCallEnd,

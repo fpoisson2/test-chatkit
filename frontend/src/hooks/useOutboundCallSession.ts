@@ -156,6 +156,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
 
     ws.onopen = () => {
       reconnectAttemptsRef.current = 0; // Reset reconnect attempts on successful connection
+      console.log("[OutboundCallSession] WebSocket connected to", wsUrl);
 
       // Activate Wake Lock to keep connection alive
       requestWakeLock().catch(() => {
@@ -260,7 +261,8 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
       console.error("[OutboundCallSession] WebSocket error:", error);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      console.log("[OutboundCallSession] WebSocket closed:", event.code, event.reason);
       wsRef.current = null;
 
       // Attempt reconnection if component is still mounted
