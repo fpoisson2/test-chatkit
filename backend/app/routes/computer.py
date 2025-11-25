@@ -761,8 +761,17 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
     """
     import asyncio
 
-    # Accept the client WebSocket connection first
-    await websocket.accept()
+    # Check if client requested a subprotocol (noVNC requires "binary")
+    requested_protocols = websocket.headers.get("sec-websocket-protocol", "")
+    logger.info(f"VNC WebSocket: client requested subprotocols: {requested_protocols}")
+
+    # Accept with "binary" subprotocol if client requested it (required by noVNC)
+    if "binary" in requested_protocols.lower():
+        await websocket.accept(subprotocol="binary")
+        logger.info("VNC WebSocket: accepted with 'binary' subprotocol")
+    else:
+        await websocket.accept()
+        logger.info("VNC WebSocket: accepted without subprotocol")
 
     # Get VNC session
     session = get_vnc_session(token, user_id=None)
