@@ -1216,6 +1216,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         task=updated_computer_task,
                     ),
                 )
+                await asyncio.sleep(0)  # Allow event to be sent
                 logger.info("ComputerUseTask marked as complete")
 
                 # 2. Create and add ImageTask with the screenshot
@@ -1244,6 +1245,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         task=image_task,
                     ),
                 )
+                await asyncio.sleep(0)  # Allow event to be sent
                 logger.info("ImageTask added to workflow")
 
                 # Set duration summary and collapse workflow
@@ -1275,6 +1277,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 # Emit done event with full updated item
                 logger.info("Emitting ThreadItemDoneEvent with summary=%s", computer_use_item.workflow.summary)
                 yield ThreadItemDoneEvent(item=computer_use_item)
+                # Allow event loop to flush the event before continuing
+                await asyncio.sleep(0)
                 logger.info("Workflow completed with screenshot, duration=%ds", duration)
             else:
                 logger.warning("Could not find ComputerUseTask workflow to add screenshot")
