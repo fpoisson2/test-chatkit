@@ -1,18 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-
-// noVNC RFB type for TypeScript
-interface RFBType {
-  viewOnly: boolean;
-  scaleViewport: boolean;
-  resizeSession: boolean;
-  showDotCursor: boolean;
-  sendCtrlAltDel: () => void;
-  disconnect: () => void;
-  addEventListener: (event: string, handler: (e: CustomEvent) => void) => void;
-}
-
-// Dynamic import to handle noVNC's module structure
-let RFBClass: new (target: HTMLElement, url: string, options?: object) => RFBType;
+import { VncScreen, VncScreenHandle } from 'react-vnc';
 
 interface VNCScreencastProps {
   vncToken: string;
@@ -26,32 +13,6 @@ interface VNCScreencastProps {
 // Global map to track tokens that have fatal errors
 const fatalErrorTokens = new Set<string>();
 
-// Global map to track active RFB connections by token
-const activeConnections = new Map<string, RFBType>();
-
-// Flag to track if noVNC has been loaded
-let noVNCLoaded = false;
-let noVNCLoadPromise: Promise<void> | null = null;
-
-async function loadNoVNC(): Promise<void> {
-  if (noVNCLoaded) return;
-  if (noVNCLoadPromise) return noVNCLoadPromise;
-
-  noVNCLoadPromise = (async () => {
-    try {
-      // Use novnc-next which is compatible with modern bundlers like Vite
-      const module = await import('novnc-next');
-      RFBClass = module.default || module;
-      noVNCLoaded = true;
-    } catch (e) {
-      console.error('[VNCScreencast] Failed to load noVNC:', e);
-      throw new Error('Failed to load noVNC library');
-    }
-  })();
-
-  return noVNCLoadPromise;
-}
-
 export function clearFatalErrorForToken(token: string): void {
   fatalErrorTokens.delete(token);
 }
@@ -64,8 +25,8 @@ export function VNCScreencast({
   onConnectionError,
   onLastFrame,
 }: VNCScreencastProps): JSX.Element {
+  const vncRef = useRef<VncScreenHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const rfbRef = useRef<RFBType | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(() =>
     fatalErrorTokens.has(vncToken) ? 'Token invalide ou expire' : null
@@ -73,9 +34,10 @@ export function VNCScreencast({
   const [vncInfo, setVncInfo] = useState<{
     vnc_host: string;
     vnc_port: number;
+    websocket_path: string;
     dimensions: { width: number; height: number };
   } | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [wsUrl, setWsUrl] = useState<string | null>(null);
   const onLastFrameRef = useRef(onLastFrame);
 
   useEffect(() => {
@@ -86,7 +48,7 @@ export function VNCScreencast({
   const captureLastFrame = useCallback(() => {
     if (!onLastFrameRef.current) return;
 
-    // noVNC creates a canvas inside the container
+    // react-vnc creates a canvas inside the container
     const canvas = containerRef.current?.querySelector('canvas');
     if (canvas) {
       try {
@@ -99,34 +61,17 @@ export function VNCScreencast({
     }
   }, []);
 
+  // Fetch VNC info on mount
   useEffect(() => {
     let mounted = true;
-    let rfb: RFBType | null = null;
 
     if (fatalErrorTokens.has(vncToken)) {
       console.log('[VNCScreencast] Token has fatal error, not attempting connection:', vncToken.substring(0, 8));
       return;
     }
 
-    // Close any existing connection for this token
-    const existingConnection = activeConnections.get(vncToken);
-    if (existingConnection) {
-      console.log('[VNCScreencast] Closing existing connection for token:', vncToken.substring(0, 8));
+    const fetchVncInfo = async () => {
       try {
-        existingConnection.disconnect();
-      } catch (err) {
-        console.error('[VNCScreencast] Error closing existing connection:', err);
-      }
-      activeConnections.delete(vncToken);
-    }
-
-    const connect = async () => {
-      if (!mounted || fatalErrorTokens.has(vncToken) || !containerRef.current) {
-        return;
-      }
-
-      try {
-        // First, fetch VNC session info
         console.log('[VNCScreencast] Fetching VNC info...');
 
         const infoUrl = `/api/computer/vnc/info/${encodeURIComponent(vncToken)}`;
@@ -152,157 +97,46 @@ export function VNCScreencast({
           if (onConnectionError) {
             onConnectionError();
           }
-          throw new Error(errorMsg);
+          return;
         }
 
         const info = await response.json();
         console.log('[VNCScreencast] VNC info:', info);
+
+        if (!mounted) return;
+
         setVncInfo(info);
 
-        // Build WebSocket URL for noVNC
+        // Build WebSocket URL for VNC
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
-        const wsUrl = `${protocol}//${host}${info.websocket_path}`;
-
-        console.log('[VNCScreencast] Connecting to VNC via noVNC:', wsUrl);
-
-        // Load noVNC library dynamically
-        await loadNoVNC();
-
-        if (!mounted || !containerRef.current) {
-          return;
-        }
-
-        // Clear the container before creating a new RFB connection
-        if (containerRef.current) {
-          containerRef.current.innerHTML = '';
-        }
-
-        // Create noVNC RFB connection
-        rfb = new RFBClass(containerRef.current, wsUrl, {
-          credentials: { password: '' }, // Password handled by backend
-          wsProtocols: ['binary'],
-        });
-
-        rfbRef.current = rfb;
-        activeConnections.set(vncToken, rfb);
-
-        // Configure RFB options
-        rfb.viewOnly = !enableInput;
-        rfb.scaleViewport = true;
-        rfb.resizeSession = false;
-        rfb.showDotCursor = enableInput;
-
-        // Event handlers
-        rfb.addEventListener('connect', () => {
-          if (!mounted) return;
-          console.log('[VNCScreencast] noVNC connected');
-          setIsConnected(true);
-          setError(null);
-        });
-
-        rfb.addEventListener('disconnect', (event: CustomEvent) => {
-          console.log('[VNCScreencast] noVNC disconnected:', event.detail);
-          setIsConnected(false);
-
-          if (activeConnections.get(vncToken) === rfb) {
-            activeConnections.delete(vncToken);
-          }
-
-          if (!mounted) return;
-
-          // Check if it was a clean disconnect or an error
-          if (event.detail.clean === false) {
-            const errorMsg = 'Connexion VNC perdue';
-            setError(errorMsg);
-
-            if (!fatalErrorTokens.has(vncToken) && !activeConnections.has(vncToken)) {
-              // Attempt reconnection after 2 seconds
-              reconnectTimeoutRef.current = setTimeout(() => {
-                if (!mounted) return;
-                console.log('[VNCScreencast] Attempting reconnection...');
-                connect();
-              }, 2000);
-            }
-          }
-        });
-
-        rfb.addEventListener('securityfailure', (event: CustomEvent) => {
-          console.error('[VNCScreencast] Security failure:', event.detail);
-          const errorMsg = `Echec d'authentification VNC: ${event.detail.reason || 'Unknown'}`;
-          setError(errorMsg);
-          fatalErrorTokens.add(vncToken);
-          if (onConnectionError) {
-            onConnectionError();
-          }
-        });
-
-        rfb.addEventListener('credentialsrequired', () => {
-          console.log('[VNCScreencast] Credentials required');
-          // The password is handled by the backend (websockify)
-          // If we get here, it means the VNC server requires auth that wasn't provided
-          setError('Authentification VNC requise');
-        });
-
-        rfb.addEventListener('desktopname', (event: CustomEvent) => {
-          console.log('[VNCScreencast] Desktop name:', event.detail.name);
-        });
+        const url = `${protocol}//${host}${info.websocket_path}`;
+        console.log('[VNCScreencast] WebSocket URL:', url);
+        setWsUrl(url);
 
       } catch (err) {
-        console.error('[VNCScreencast] Connection error:', err);
+        console.error('[VNCScreencast] Error fetching VNC info:', err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         setError(`Echec de connexion: ${errorMessage}`);
-
-        if (errorMessage.includes('403') || errorMessage.includes('404')) {
-          fatalErrorTokens.add(vncToken);
-          if (onConnectionError) {
-            onConnectionError();
-          }
-          return;
-        }
-
-        if (mounted && !fatalErrorTokens.has(vncToken)) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            console.log('[VNCScreencast] Retrying connection...');
-            connect();
-          }, 3000);
+        if (onConnectionError) {
+          onConnectionError();
         }
       }
     };
 
-    connect();
+    fetchVncInfo();
 
     return () => {
       mounted = false;
-      console.log('[VNCScreencast] Cleanup: unmounting component for token:', vncToken.substring(0, 8));
-
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-
-      // Capture last frame before closing
+      // Capture last frame before unmounting
       captureLastFrame();
-
-      if (rfb) {
-        if (activeConnections.get(vncToken) === rfb) {
-          activeConnections.delete(vncToken);
-        }
-        try {
-          rfb.disconnect();
-        } catch (err) {
-          console.error('[VNCScreencast] Error disconnecting RFB:', err);
-        }
-        rfbRef.current = null;
-      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vncToken, authToken, enableInput, captureLastFrame]);
+  }, [vncToken, authToken, onConnectionError, captureLastFrame]);
 
   // Handle Ctrl+Alt+Del
   const sendCtrlAltDel = () => {
-    if (rfbRef.current && isConnected) {
-      rfbRef.current.sendCtrlAltDel();
+    if (vncRef.current && isConnected) {
+      vncRef.current.sendCtrlAltDel();
     }
   };
 
@@ -317,8 +151,39 @@ export function VNCScreencast({
     }
   };
 
+  // Connection handlers
+  const handleConnect = useCallback(() => {
+    console.log('[VNCScreencast] Connected');
+    setIsConnected(true);
+    setError(null);
+  }, []);
+
+  const handleDisconnect = useCallback((e?: { detail: { clean: boolean } }) => {
+    console.log('[VNCScreencast] Disconnected:', e?.detail);
+    setIsConnected(false);
+
+    if (e?.detail?.clean === false) {
+      setError('Connexion VNC perdue');
+    }
+  }, []);
+
+  const handleSecurityFailure = useCallback((e?: { detail: { reason?: string } }) => {
+    console.error('[VNCScreencast] Security failure:', e?.detail);
+    const errorMsg = `Echec d'authentification VNC: ${e?.detail?.reason || 'Unknown'}`;
+    setError(errorMsg);
+    fatalErrorTokens.add(vncToken);
+    if (onConnectionError) {
+      onConnectionError();
+    }
+  }, [vncToken, onConnectionError]);
+
+  const handleCredentialsRequired = useCallback(() => {
+    console.log('[VNCScreencast] Credentials required');
+    setError('Authentification VNC requise');
+  }, []);
+
   return (
-    <div className={`chatkit-vnc-screencast ${className}`}>
+    <div className={`chatkit-vnc-screencast ${className}`} ref={containerRef}>
       {error && (
         <div className="chatkit-screencast-error">
           {error}
@@ -369,21 +234,40 @@ export function VNCScreencast({
             </span>
           ) : (
             <span className="chatkit-status-badge chatkit-status-connecting">
-              Connexion...
+              {wsUrl ? 'Connexion...' : 'Chargement...'}
             </span>
           )}
         </div>
       </div>
 
       <div
-        ref={containerRef}
         className="chatkit-vnc-canvas-container"
         style={{
           width: '100%',
           height: vncInfo?.dimensions ? `${Math.min(vncInfo.dimensions.height, 600)}px` : '400px',
           backgroundColor: '#1a1a1a',
         }}
-      />
+      >
+        {wsUrl && (
+          <VncScreen
+            url={wsUrl}
+            ref={vncRef}
+            scaleViewport
+            viewOnly={!enableInput}
+            showDotCursor={enableInput}
+            background="#1a1a1a"
+            style={{
+              width: '100%',
+              height: '100%',
+            }}
+            retryDuration={3000}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onSecurityFailure={handleSecurityFailure}
+            onCredentialsRequired={handleCredentialsRequired}
+          />
+        )}
+      </div>
     </div>
   );
 }
