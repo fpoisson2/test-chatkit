@@ -9,6 +9,7 @@ import type {
   ActionConfig,
   UserMessageContent,
   VoiceSessionWidget,
+  OutboundCallWidget,
 } from '../types';
 import { WidgetRenderer } from '../widgets';
 import type { WidgetContext } from '../widgets';
@@ -211,17 +212,41 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     };
   }, [control.thread?.id, options.widgets?.voiceSession, options.widgets?.voiceSessionWidget]);
 
+  const inlineOutboundCallWidget = useMemo<OutboundCallWidget | null>(() => {
+    const outboundCall = options.widgets?.outboundCall;
+    if (!outboundCall || outboundCall.enabled === false) {
+      return null;
+    }
+
+    // Only show when there's an active call
+    if (!outboundCall.isActive && outboundCall.status === 'idle') {
+      return null;
+    }
+
+    return {
+      type: 'OutboundCall',
+      title: 'Appel sortant',
+      description: "Appel en cours. Les transcriptions apparaissent ci-dessous.",
+      hangupLabel: 'Raccrocher',
+      showTranscripts: true,
+      showAudioPlayer: false, // Audio player is rendered separately
+      ...(options.widgets.outboundCallWidget ?? {}),
+    };
+  }, [options.widgets?.outboundCall, options.widgets?.outboundCallWidget]);
+
   const renderInlineWidgets = (
-    widget: VoiceSessionWidget | null,
+    voiceWidget: VoiceSessionWidget | null,
+    outboundCallWidgetProp: OutboundCallWidget | null,
     context: WidgetContext,
   ): React.ReactNode => {
-    if (!widget) {
+    if (!voiceWidget && !outboundCallWidgetProp) {
       return null;
     }
 
     return (
       <div className="chatkit-inline-widgets">
-        <WidgetRenderer widget={widget} context={context} />
+        {voiceWidget && <WidgetRenderer widget={voiceWidget} context={context} />}
+        {outboundCallWidgetProp && <WidgetRenderer widget={outboundCallWidgetProp} context={context} />}
       </div>
     );
   };
@@ -262,7 +287,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       formDataRef.current = data;
     },
     voiceSession: options.widgets?.voiceSession,
-  }), [control, options.widgets?.voiceSession]);
+    outboundCall: options.widgets?.outboundCall,
+  }), [control, options.widgets?.voiceSession, options.widgets?.outboundCall]);
 
   // Afficher le start screen si pas de messages ET qu'on n'est pas en train de charger
   const showStartScreen = !control.isLoading && (!control.thread || control.thread.items.length === 0);
@@ -337,13 +363,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         ) : (
           (() => {
             const items = control.thread?.items || [];
-            const inlineVoiceElement = inlineVoiceWidget
-              ? renderInlineWidgets(inlineVoiceWidget, createWidgetContext('inline-voice'))
+            const inlineWidgetsElement = (inlineVoiceWidget || inlineOutboundCallWidget)
+              ? renderInlineWidgets(inlineVoiceWidget, inlineOutboundCallWidget, createWidgetContext('inline-widgets'))
               : null;
-            let hasInsertedInlineVoice = false;
+            let hasInsertedInlineWidgets = false;
 
-            const inlineVoiceAfterItem = (candidate: ThreadItem, idx: number): boolean => {
-              if (!inlineVoiceElement || hasInsertedInlineVoice) {
+            const inlineWidgetsAfterItem = (candidate: ThreadItem, idx: number): boolean => {
+              if (!inlineWidgetsElement || hasInsertedInlineWidgets) {
                 return false;
               }
 
@@ -382,11 +408,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 />,
               ];
 
-              if (inlineVoiceAfterItem(item, idx)) {
-                hasInsertedInlineVoice = true;
+              if (inlineWidgetsAfterItem(item, idx)) {
+                hasInsertedInlineWidgets = true;
                 nodes.push(
-                  <React.Fragment key={`inline-voice-${item.id}`}>
-                    {inlineVoiceElement}
+                  <React.Fragment key={`inline-widgets-${item.id}`}>
+                    {inlineWidgetsElement}
                   </React.Fragment>,
                 );
               }
@@ -394,9 +420,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
               return nodes;
             });
 
-            if (inlineVoiceElement && !hasInsertedInlineVoice) {
+            if (inlineWidgetsElement && !hasInsertedInlineWidgets) {
               renderedItems.push(
-                <React.Fragment key="inline-voice-tail">{inlineVoiceElement}</React.Fragment>,
+                <React.Fragment key="inline-widgets-tail">{inlineWidgetsElement}</React.Fragment>,
               );
             }
 

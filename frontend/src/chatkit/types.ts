@@ -96,6 +96,17 @@ export type TranscriptEntry = {
   timestamp?: number;
 };
 
+// ===== Types appels sortants =====
+
+export type OutboundCallStatus = 'idle' | 'queued' | 'initiating' | 'ringing' | 'answered' | 'completed' | 'failed' | 'busy' | 'no_answer';
+
+export type OutboundCallTranscript = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp?: number;
+};
+
 export interface WidgetComponentBase {
   key?: string;
   id?: string;
@@ -485,6 +496,16 @@ export interface VoiceSessionWidget extends WidgetComponentBase {
   showTranscripts?: boolean;
 }
 
+export interface OutboundCallWidget extends WidgetComponentBase {
+  type: 'OutboundCall';
+  title?: string;
+  description?: string;
+  toNumber?: string;
+  hangupLabel?: string;
+  showTranscripts?: boolean;
+  showAudioPlayer?: boolean;
+}
+
 export type WidgetComponent =
   | TextWidget
   | TitleWidget
@@ -510,7 +531,8 @@ export type WidgetComponent =
   | RadioGroupWidget
   | TextareaWidget
   | TransitionWidget
-  | VoiceSessionWidget;
+  | VoiceSessionWidget
+  | OutboundCallWidget;
 
 export type WidgetRoot = Card | ListView;
 
@@ -710,6 +732,15 @@ export interface VoiceAgentTask extends BaseTask {
   description?: string;
 }
 
+export interface OutboundCallTask extends BaseTask {
+  type: 'outbound_call';
+  title?: string;
+  description?: string;
+  toNumber?: string;
+  callId?: string;
+  status?: OutboundCallStatus;
+}
+
 export type Task =
   | CustomTask
   | SearchTask
@@ -717,7 +748,8 @@ export type Task =
   | FileTask
   | ImageTask
   | ComputerUseTask
-  | VoiceAgentTask;
+  | VoiceAgentTask
+  | OutboundCallTask;
 
 // ===== Types pour les workflows =====
 
@@ -1063,6 +1095,17 @@ export interface VoiceSessionWidgetContext {
   transportError?: string | null;
 }
 
+export interface OutboundCallWidgetContext {
+  enabled?: boolean;
+  callId: string | null;
+  isActive: boolean;
+  status: OutboundCallStatus;
+  toNumber?: string | null;
+  transcripts: OutboundCallTranscript[];
+  hangupCall?: () => void;
+  error?: string | null;
+}
+
 export interface ChatKitOptions {
   api: ChatKitAPIConfig;
   initialThread?: string | null;
@@ -1121,6 +1164,8 @@ export interface ChatKitOptions {
   widgets?: {
     voiceSession?: VoiceSessionWidgetContext;
     voiceSessionWidget?: Partial<VoiceSessionWidget>;
+    outboundCall?: OutboundCallWidgetContext;
+    outboundCallWidget?: Partial<OutboundCallWidget>;
   };
   onClientTool?: (toolCall: { name: string; params: unknown }) => Promise<unknown>;
   onError?: (error: { error: Error }) => void;

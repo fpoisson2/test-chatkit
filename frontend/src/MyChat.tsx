@@ -7,7 +7,6 @@ import { LoadingOverlay } from "./components/feedback/LoadingOverlay";
 import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
 import { ChatWorkflowSidebar, type WorkflowActivation } from "./features/workflows/WorkflowSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
-import { OutboundCallAudioPlayer } from "./components/my-chat/OutboundCallAudioPlayer";
 import {
   useAppearanceSettings,
   type AppearanceWorkflowReference,
@@ -445,9 +444,19 @@ export function MyChat() {
   });
 
   // useOutboundCallSession: Activated automatically when workflow has outbound_call nodes
-  const { callId: outboundCallId, isActive: outboundCallIsActive } = useOutboundCallSession({
-    enabled: hasOutboundCall,
+  const {
+    callId: outboundCallId,
+    isActive: outboundCallIsActive,
+    status: outboundCallStatus,
+    toNumber: outboundCallToNumber,
+    transcripts: outboundCallTranscripts,
+    error: outboundCallError,
+    hangupCall: hangupOutboundCall,
+  } = useOutboundCallSession({
+    enabled: true, // Always connect to receive events immediately when calls start
+    authToken: token,
     onTranscript: handleOutboundTranscript,
+    onCallEnd: handleOutboundCallEnd,
   });
 
   // Garder stopVoiceSession dans un ref pour éviter les dépendances circulaires
@@ -750,6 +759,16 @@ export function MyChat() {
             interruptSession: interruptVoiceSession,
             transportError: voiceTransportError,
           },
+          outboundCall: {
+            enabled: hasOutboundCall,
+            callId: outboundCallId,
+            isActive: outboundCallIsActive,
+            status: outboundCallStatus,
+            toNumber: outboundCallToNumber,
+            transcripts: outboundCallTranscripts,
+            hangupCall: hangupOutboundCall,
+            error: outboundCallError,
+          },
         },
         onClientTool: async (toolCall) => {
           const { name, params } = toolCall as ClientToolCall;
@@ -855,6 +874,14 @@ export function MyChat() {
       voiceStatus,
       voiceTranscripts,
       voiceTransportError,
+      hasOutboundCall,
+      outboundCallId,
+      outboundCallIsActive,
+      outboundCallStatus,
+      outboundCallToNumber,
+      outboundCallTranscripts,
+      outboundCallError,
+      hangupOutboundCall,
       user?.email,
     ],
   );
@@ -999,13 +1026,6 @@ export function MyChat() {
           ))}
         </div>
       </div>
-      {outboundCallIsActive && outboundCallId && (
-        <OutboundCallAudioPlayer
-          callId={outboundCallId}
-          onCallEnd={handleOutboundCallEnd}
-          authToken={token}
-        />
-      )}
     </>
   );
 }

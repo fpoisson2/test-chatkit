@@ -26,6 +26,7 @@ import type {
   WidgetComponent,
   WidgetRoot,
   VoiceSessionWidget,
+  OutboundCallWidget,
 } from '../types';
 import { isRecord } from '../utils';
 
@@ -60,11 +61,13 @@ import {
   renderDivider,
 } from './renderers/UIRenderers';
 import { VoiceSessionPanel } from './renderers/VoiceSessionPanel';
+import { OutboundCallPanel } from './renderers/OutboundCallPanel';
 import type { WidgetContext, WidgetNode } from './renderers/types';
 
 // Re-export types and components for external use
 export type { WidgetContext } from './renderers/types';
 export { VoiceSessionPanel } from './renderers/VoiceSessionPanel';
+export { OutboundCallPanel } from './renderers/OutboundCallPanel';
 
 type BoxLike = BoxWidget | RowWidget | ColWidget | FormWidget | WidgetRoot;
 
@@ -94,10 +97,12 @@ const renderNode = (node: WidgetNode, context: WidgetContext): React.ReactNode =
   // Support relaxed casing for widget types coming from templates or stored definitions
   const type = node.type;
   const normalizedType = type.toLowerCase();
-  const resolvedType =
-    normalizedType === 'voice_session' || normalizedType === 'voicesession' || normalizedType === 'voice'
-      ? 'VoiceSession'
-      : type;
+  let resolvedType = type;
+  if (normalizedType === 'voice_session' || normalizedType === 'voicesession' || normalizedType === 'voice') {
+    resolvedType = 'VoiceSession';
+  } else if (normalizedType === 'outbound_call' || normalizedType === 'outboundcall') {
+    resolvedType = 'OutboundCall';
+  }
 
   switch (resolvedType) {
     case 'Card':
@@ -112,6 +117,8 @@ const renderNode = (node: WidgetNode, context: WidgetContext): React.ReactNode =
       return renderBox(node as BoxLike & { children?: unknown[] }, context, renderChildren);
     case 'VoiceSession':
       return <VoiceSessionPanel widget={node as VoiceSessionWidget} context={context} />;
+    case 'OutboundCall':
+      return <OutboundCallPanel widget={node as OutboundCallWidget} context={context} />;
     case 'Form':
       return renderForm(node as FormWidget, context, renderChildren);
     case 'Text':
