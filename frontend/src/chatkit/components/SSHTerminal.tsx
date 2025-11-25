@@ -220,7 +220,6 @@ export function SSHTerminal({
         className="chatkit-ssh-terminal"
         style={{
           width: "100%",
-          minWidth: "600px",
           height: "400px",
           backgroundColor: "#1e1e1e",
           borderRadius: "0 0 8px 8px",
