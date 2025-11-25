@@ -196,6 +196,11 @@ RUN ldconfig
 
 WORKDIR /app
 
+# Copier chatkit-python et le réinstaller pour s'assurer qu'il est à jour
+# (le cache du stage python-deps peut être stale)
+COPY chatkit-python /tmp/chatkit-python
+RUN pip install --force-reinstall --no-deps /tmp/chatkit-python && rm -rf /tmp/chatkit-python
+
 # Copie du code backend (écrasé en dev par le volume monté)
 COPY backend/ .
 

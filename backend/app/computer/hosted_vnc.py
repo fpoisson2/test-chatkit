@@ -1,11 +1,19 @@
-"""Async computer implementation backed by a VNC connection via noVNC."""
+"""Async computer implementation backed by a VNC connection via websockify.
+
+This module provides VNC-based computer control by proxying WebSocket connections
+to a VNC server. It uses websockify (the official noVNC WebSocket-to-TCP proxy)
+to handle the protocol translation.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import base64
 import logging
+import os
+import shutil
 import struct
+import subprocess
 import zlib
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -14,10 +22,19 @@ from agents.computer import AsyncComputer, Button, Environment
 
 logger = logging.getLogger("chatkit.computer.hosted_vnc")
 
-try:  # pragma: no cover - novnc n'est pas toujours installe
-    from novnc import Server as NoVNCServer
-except ImportError:  # pragma: no cover - compatibilite sans novnc
-    NoVNCServer = None  # type: ignore[assignment,misc]
+# Check if websockify is available (either as a module or CLI)
+_WEBSOCKIFY_AVAILABLE = False
+_WEBSOCKIFY_CLI_PATH: str | None = None
+
+try:
+    # Try importing websockify as a module first
+    import websockify  # noqa: F401
+    _WEBSOCKIFY_AVAILABLE = True
+except ImportError:
+    # Check if websockify CLI is available
+    _WEBSOCKIFY_CLI_PATH = shutil.which("websockify")
+    if _WEBSOCKIFY_CLI_PATH:
+        _WEBSOCKIFY_AVAILABLE = True
 
 
 class HostedVNCError(RuntimeError):
@@ -37,12 +54,40 @@ class VNCConfig:
     host: str
     port: int = 5900
     password: str | None = None
-    # noVNC server settings
-    novnc_port: int = 6080  # Port for the noVNC web interface
+    # websockify server port (for the WebSocket proxy)
+    novnc_port: int = 6080
+
+
+# Track allocated ports to avoid conflicts
+_allocated_ports: set[int] = set()
+_port_lock = asyncio.Lock()
+
+
+async def _allocate_port(preferred: int = 6080) -> int:
+    """Allocate an available port for websockify, avoiding conflicts."""
+    async with _port_lock:
+        port = preferred
+        while port in _allocated_ports:
+            port += 1
+            if port > 65535:
+                raise HostedVNCError("No available ports for websockify")
+        _allocated_ports.add(port)
+        return port
+
+
+async def _release_port(port: int) -> None:
+    """Release a previously allocated port."""
+    async with _port_lock:
+        _allocated_ports.discard(port)
 
 
 class _VNCDriver:
-    """Driver for VNC-based computer control via noVNC."""
+    """Driver for VNC-based computer control via websockify.
+
+    This driver manages a websockify subprocess that proxies WebSocket
+    connections to a VNC server. The frontend (noVNC JS client) connects
+    to the websockify WebSocket endpoint.
+    """
 
     def __init__(
         self,
@@ -51,19 +96,19 @@ class _VNCDriver:
         height: int,
         config: VNCConfig,
     ) -> None:
-        if NoVNCServer is None:  # pragma: no cover - dependance optionnelle
+        if not _WEBSOCKIFY_AVAILABLE:
             raise HostedVNCError(
-                "novnc n'est pas disponible. Installez-le avec: pip install novnc"
+                "websockify n'est pas disponible. Installez-le avec: pip install websockify"
             )
         self.width = width
         self.height = height
         self.config = config
         self._lock = asyncio.Lock()
-        self._server: NoVNCServer | None = None
+        self._process: subprocess.Popen | None = None
         self._ready = False
         self._last_action: str = ""
         self._placeholder_cache: str | None = None
-        self._novnc_url: str | None = None
+        self._websockify_port: int | None = None
 
     async def ensure_ready(self) -> None:
         if self._ready:
@@ -71,36 +116,68 @@ class _VNCDriver:
         async with self._lock:
             if self._ready:
                 return
-            await self._start_novnc()
+            await self._start_websockify()
 
-    async def _start_novnc(self) -> None:
-        """Start noVNC server to proxy VNC connection."""
+    async def _start_websockify(self) -> None:
+        """Start websockify subprocess to proxy WebSocket to VNC."""
         try:
-            # Create noVNC server instance
-            # The novnc package creates a web server that proxies to VNC
-            self._server = NoVNCServer(
-                vnc_host=self.config.host,
-                vnc_port=self.config.port,
-                listen_port=self.config.novnc_port,
+            # Allocate a port for websockify
+            self._websockify_port = await _allocate_port(self.config.novnc_port)
+
+            # Build websockify command
+            # websockify [options] [source_host:]source_port target_host:target_port
+            target = f"{self.config.host}:{self.config.port}"
+            listen = f"0.0.0.0:{self._websockify_port}"
+
+            cmd = [
+                "websockify",
+                "--verbose",
+                listen,
+                target,
+            ]
+
+            logger.info(f"Starting websockify: {' '.join(cmd)}")
+
+            # Start websockify as a subprocess
+            self._process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                # Don't inherit signals - we'll manage lifecycle explicitly
+                preexec_fn=os.setpgrp if hasattr(os, 'setpgrp') else None,
             )
 
-            # Start the server in a background thread
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._server.start)
+            # Wait a moment for websockify to start
+            await asyncio.sleep(0.5)
 
-            self._novnc_url = f"http://127.0.0.1:{self.config.novnc_port}"
+            # Check if process started successfully
+            if self._process.poll() is not None:
+                stderr = self._process.stderr.read().decode() if self._process.stderr else ""
+                raise HostedVNCError(f"websockify failed to start: {stderr}")
+
             self._ready = True
 
             logger.info(
-                f"Serveur noVNC demarre sur le port {self.config.novnc_port}, "
+                f"Serveur websockify demarre sur le port {self._websockify_port}, "
                 f"connecte a VNC {self.config.host}:{self.config.port}"
             )
+        except HostedVNCError:
+            raise
         except Exception as exc:
-            raise HostedVNCError(f"Echec du demarrage du serveur noVNC: {exc}") from exc
+            if self._websockify_port:
+                await _release_port(self._websockify_port)
+            raise HostedVNCError(f"Echec du demarrage de websockify: {exc}") from exc
 
     def debug_url(self) -> str | None:
-        """Return the noVNC web interface URL."""
-        return self._novnc_url
+        """Return a URL for debugging (points to local websockify)."""
+        if self._websockify_port:
+            return f"http://127.0.0.1:{self._websockify_port}"
+        return None
+
+    @property
+    def websockify_port(self) -> int | None:
+        """Return the port websockify is listening on."""
+        return self._websockify_port
 
     def vnc_websocket_path(self) -> str:
         """Return the WebSocket path for VNC connection."""
@@ -134,8 +211,8 @@ class _VNCDriver:
 
         metadata_parts: list[str] = []
         metadata_parts.append(f"VNC: {self.config.host}:{self.config.port}")
-        if self._novnc_url:
-            metadata_parts.append(f"noVNC: {self._novnc_url}")
+        if self._websockify_port:
+            metadata_parts.append(f"websockify: port {self._websockify_port}")
         if self._last_action:
             metadata_parts.append(f"Action: {self._last_action[:100]}")
 
@@ -222,22 +299,35 @@ class _VNCDriver:
         logger.debug(f"VNC: Navigate request to {url} (not applicable for VNC)")
 
     async def close(self) -> None:
-        """Close the noVNC server and VNC connection."""
-        if self._server is not None:
+        """Close the websockify subprocess and release resources."""
+        if self._process is not None:
             try:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, self._server.stop)
+                # Try graceful termination first
+                self._process.terminate()
+                try:
+                    # Wait up to 2 seconds for graceful shutdown
+                    self._process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    # Force kill if it doesn't stop
+                    self._process.kill()
+                    self._process.wait(timeout=1)
             except Exception as exc:
-                logger.warning(f"Error stopping noVNC server: {exc}")
-            self._server = None
+                logger.warning(f"Error stopping websockify: {exc}")
+            finally:
+                self._process = None
+
+        # Release the allocated port
+        if self._websockify_port is not None:
+            await _release_port(self._websockify_port)
+            self._websockify_port = None
+
         self._ready = False
         self._placeholder_cache = None
-        self._novnc_url = None
-        logger.info("Serveur noVNC arrete")
+        logger.info("Serveur websockify arrete")
 
 
 class HostedVNC(AsyncComputer):
-    """AsyncComputer implementation that connects via VNC using noVNC."""
+    """AsyncComputer implementation that connects via VNC using websockify."""
 
     def __init__(
         self,
@@ -275,7 +365,13 @@ class HostedVNC(AsyncComputer):
 
     @property
     def novnc_port(self) -> int:
-        """Return the noVNC server port."""
+        """Return the websockify server port.
+
+        Returns the actual port the websockify subprocess is listening on,
+        or the configured port if the driver hasn't started yet.
+        """
+        if self._driver and self._driver.websockify_port:
+            return self._driver.websockify_port
         return self._config.novnc_port
 
     async def _get_driver(self) -> _VNCDriver:

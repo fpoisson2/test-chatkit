@@ -9,6 +9,7 @@ import { AnnotationRenderer } from './AnnotationRenderer';
 import { LoadingIndicator } from './LoadingIndicator';
 import { DevToolsScreencast } from './DevToolsScreencast';
 import { SSHTerminal } from './SSHTerminal';
+import { VNCScreencast } from './VNCScreencast';
 import { ImageWithBlobUrl } from '../utils';
 
 export interface MessageRendererProps {
@@ -308,11 +309,11 @@ function WorkflowContent({
         const computerUseTasks = item.workflow.tasks.filter((task: any) => task.type === 'computer_use');
 
         let computerUseTask = computerUseTasks.find(
-          (task: any) => task.status_indicator === 'loading' && task.debug_url_token
+          (task: any) => task.status_indicator === 'loading' && (task.debug_url_token || task.ssh_token || task.vnc_token)
         );
 
         if (!computerUseTask) {
-          const tasksWithToken = computerUseTasks.filter((task: any) => task.debug_url_token);
+          const tasksWithToken = computerUseTasks.filter((task: any) => task.debug_url_token || task.ssh_token || task.vnc_token);
           computerUseTask = tasksWithToken[tasksWithToken.length - 1];
         }
 
@@ -336,10 +337,12 @@ function WorkflowContent({
             computerUseTask.debug_url_token ||
             (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
           const sshToken = computerUseTask.ssh_token;
+          const vncToken = computerUseTask.vnc_token;
 
           const isActiveScreencast = activeScreencast?.itemId === item.id && !!debugUrlToken;
           const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
           const showSSHTerminal = !!sshToken;
+          const showVNCScreencast = !!vncToken;
 
           if (!src && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
             src = lastScreencastScreenshot.src;
@@ -348,14 +351,15 @@ function WorkflowContent({
           const isComplete = computerUseTask.status_indicator === 'complete';
           const isError = computerUseTask.status_indicator === 'error';
           const isTerminal = isComplete || isError;
-          // Never show screenshots for SSH sessions (SSH has no meaningful screenshots)
-          const showScreenshot = !!src && !showLiveScreencast && !showSSHTerminal && !isTerminal && !sshToken;
+          // Never show screenshots for SSH/VNC sessions (they have no meaningful screenshots)
+          const showScreenshot = !!src && !showLiveScreencast && !showSSHTerminal && !showVNCScreencast && !isTerminal && !sshToken && !vncToken;
 
           const isDismissed = dismissedScreencastItems.has(item.id);
           const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
           const shouldShowSSHTerminal = showSSHTerminal && !isDismissed && !isTerminal;
+          const shouldShowVNCScreencast = showVNCScreencast && !isDismissed && !isTerminal;
           const shouldShowScreenshot = showScreenshot;
-          const showPreview = shouldShowLiveScreencast || shouldShowSSHTerminal || shouldShowScreenshot;
+          const showPreview = shouldShowLiveScreencast || shouldShowSSHTerminal || shouldShowVNCScreencast || shouldShowScreenshot;
           const screenshotIsLoading = isLoading && !isDismissed;
 
           let actionTitle = computerUseTask.current_action || screenshot?.action_description;
@@ -430,6 +434,28 @@ function WorkflowContent({
                         className="chatkit-end-session-button"
                       >
                         Terminer la session SSH et continuer
+                      </button>
+                    </div>
+                  </>
+                )}
+                {shouldShowVNCScreencast && vncToken && (
+                  <>
+                    <VNCScreencast
+                      vncToken={vncToken}
+                      authToken={authToken}
+                      enableInput
+                      onConnectionError={() => {
+                        console.error('VNC connection error');
+                      }}
+                      onLastFrame={onScreencastLastFrame(item.id)}
+                    />
+                    <div className="chatkit-computer-use-actions">
+                      <button
+                        type="button"
+                        onClick={handleEndSession}
+                        className="chatkit-end-session-button"
+                      >
+                        Terminer la session VNC et continuer
                       </button>
                     </div>
                   </>

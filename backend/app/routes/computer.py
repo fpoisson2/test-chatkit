@@ -747,22 +747,31 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         logger.info(f"SSH WebSocket closed for session {token[:8]}...")
 
 
-# VNC WebSocket endpoint for noVNC proxy
+# VNC WebSocket endpoint - direct WebSocket to TCP proxy
 @router.websocket("/vnc/ws")
 async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
     """
-    WebSocket endpoint for VNC via noVNC.
+    WebSocket endpoint for VNC - proxies directly to VNC server via TCP.
 
-    Proxies WebSocket connections to the noVNC server which handles
-    the VNC protocol translation.
+    This is a WebSocket-to-TCP proxy that translates noVNC/RFB WebSocket
+    messages directly to the VNC server, without going through websockify.
 
     Args:
         token: The VNC session token
     """
     import asyncio
 
-    # Accept the client WebSocket connection first
-    await websocket.accept()
+    # Check if client requested a subprotocol (noVNC requires "binary")
+    requested_protocols = websocket.headers.get("sec-websocket-protocol", "")
+    logger.info(f"VNC WebSocket: client requested subprotocols: {requested_protocols}")
+
+    # Accept with "binary" subprotocol if client requested it (required by noVNC)
+    if "binary" in requested_protocols.lower():
+        await websocket.accept(subprotocol="binary")
+        logger.info("VNC WebSocket: accepted with 'binary' subprotocol")
+    else:
+        await websocket.accept()
+        logger.info("VNC WebSocket: accepted without subprotocol")
 
     # Get VNC session
     session = get_vnc_session(token, user_id=None)
@@ -775,63 +784,89 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
         await websocket.close(code=1011, reason="VNC instance not found")
         return
 
-    logger.info(f"VNC WebSocket connected for session {token[:8]}...")
+    # Get VNC server connection details
+    vnc_config = vnc_instance.config
+    vnc_host = vnc_config.host
+    vnc_port = vnc_config.port
+
+    logger.info(f"VNC WebSocket connected for session {token[:8]}..., connecting to {vnc_host}:{vnc_port}")
+
+    reader: asyncio.StreamReader | None = None
+    writer: asyncio.StreamWriter | None = None
 
     try:
-        # Get the noVNC WebSocket URL
-        novnc_port = vnc_instance.novnc_port
-        vnc_config = vnc_instance.config
-
-        # Connect to the local noVNC WebSocket server
-        import websockets
-
-        # noVNC uses websockify to proxy VNC connections
-        # The WebSocket URL format is: ws://localhost:novnc_port/websockify
-        novnc_ws_url = f"ws://127.0.0.1:{novnc_port}/websockify"
-
-        logger.info(f"Connecting to noVNC WebSocket: {novnc_ws_url}")
-
-        async with websockets.connect(novnc_ws_url) as novnc_ws:
-            async def forward_vnc_to_client() -> None:
-                """Forward VNC data from noVNC to WebSocket client."""
-                try:
-                    async for message in novnc_ws:
-                        if isinstance(message, bytes):
-                            await websocket.send_bytes(message)
-                        else:
-                            await websocket.send_text(message)
-                except WebSocketDisconnect:
-                    logger.debug("VNC client WebSocket disconnected")
-                except Exception as exc:
-                    logger.debug(f"VNC to client forward ended: {exc}")
-
-            async def forward_client_to_vnc() -> None:
-                """Forward WebSocket input from client to noVNC."""
-                try:
-                    while True:
-                        message = await websocket.receive()
-                        if message["type"] == "websocket.disconnect":
-                            break
-                        if "bytes" in message:
-                            await novnc_ws.send(message["bytes"])
-                        elif "text" in message:
-                            await novnc_ws.send(message["text"])
-                except WebSocketDisconnect:
-                    logger.debug("Client WebSocket disconnected")
-                except Exception as exc:
-                    logger.debug(f"Client to VNC forward ended: {exc}")
-
-            # Run both forwarding tasks concurrently
-            await asyncio.gather(
-                forward_vnc_to_client(),
-                forward_client_to_vnc(),
-                return_exceptions=True,
+        # Connect directly to VNC server via TCP
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(vnc_host, vnc_port),
+                timeout=10.0
             )
+            logger.info(f"Connected to VNC server {vnc_host}:{vnc_port} via TCP")
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout connecting to VNC server {vnc_host}:{vnc_port}")
+            await websocket.close(code=1011, reason="VNC server connection timeout")
+            return
+        except Exception as connect_exc:
+            logger.error(f"Failed to connect to VNC server: {connect_exc}", exc_info=True)
+            await websocket.close(code=1011, reason=f"Cannot connect to VNC: {connect_exc}")
+            return
+
+        async def forward_vnc_to_client() -> None:
+            """Forward VNC TCP data to WebSocket client."""
+            try:
+                while True:
+                    # Read from VNC TCP connection
+                    data = await reader.read(65536)
+                    if not data:
+                        logger.debug("VNC server closed connection")
+                        break
+                    # Send as binary WebSocket message
+                    await websocket.send_bytes(data)
+            except WebSocketDisconnect:
+                logger.debug("VNC client WebSocket disconnected")
+            except Exception as exc:
+                logger.debug(f"VNC to client forward ended: {exc}")
+
+        async def forward_client_to_vnc() -> None:
+            """Forward WebSocket input from client to VNC TCP."""
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if message["type"] == "websocket.disconnect":
+                        break
+                    if "bytes" in message:
+                        writer.write(message["bytes"])
+                        await writer.drain()
+                    elif "text" in message:
+                        # noVNC sends binary data, but handle text just in case
+                        writer.write(message["text"].encode("latin-1"))
+                        await writer.drain()
+            except WebSocketDisconnect:
+                logger.debug("Client WebSocket disconnected")
+            except Exception as exc:
+                logger.debug(f"Client to VNC forward ended: {exc}")
+
+        # Run both forwarding tasks concurrently
+        await asyncio.gather(
+            forward_vnc_to_client(),
+            forward_client_to_vnc(),
+            return_exceptions=True,
+        )
 
     except Exception as exc:
-        logger.error(f"VNC WebSocket error: {exc}")
-        await websocket.close(code=1011, reason=str(exc))
+        logger.error(f"VNC WebSocket error: {exc}", exc_info=True)
+        try:
+            await websocket.close(code=1011, reason=str(exc)[:120])
+        except Exception:
+            pass  # WebSocket might already be closed
     finally:
+        # Close the TCP connection
+        if writer is not None:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
         logger.info(f"VNC WebSocket closed for session {token[:8]}...")
 
 
@@ -855,7 +890,18 @@ async def get_vnc_info(
     if not session:
         raise HTTPException(status_code=404, detail="VNC session not found")
 
-    if session.get("user_id") != current_user.id:
+    # Allow access if session has no user_id (created without user context)
+    # or if the user_id matches the current user
+    session_user_id = session.get("user_id")
+    logger.info(f"VNC info request: token={token[:8]}..., session_user_id={session_user_id} (type={type(session_user_id).__name__}), current_user.id={current_user.id} (type={type(current_user.id).__name__})")
+    # Convert to int for comparison if needed
+    if session_user_id is not None:
+        try:
+            session_user_id = int(session_user_id)
+        except (ValueError, TypeError):
+            pass
+    if session_user_id is not None and session_user_id != current_user.id:
+        logger.warning(f"VNC access denied: session_user_id={session_user_id} != current_user.id={current_user.id}")
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     vnc_instance = session.get("vnc")
@@ -893,7 +939,16 @@ async def close_vnc_session(
     if not session:
         raise HTTPException(status_code=404, detail="VNC session not found")
 
-    if session.get("user_id") != current_user.id:
+    # Allow access if session has no user_id (created without user context)
+    # or if the user_id matches the current user
+    session_user_id = session.get("user_id")
+    # Convert to int for comparison if needed
+    if session_user_id is not None:
+        try:
+            session_user_id = int(session_user_id)
+        except (ValueError, TypeError):
+            pass
+    if session_user_id is not None and session_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     vnc_instance = session.get("vnc")

@@ -194,6 +194,7 @@ export interface ComputerUseTask extends BaseTask {
   debug_url?: string;
   debug_url_token?: string;
   ssh_token?: string;
+  vnc_token?: string;
 }
 
 export interface VoiceAgentTask extends BaseTask {
