@@ -790,13 +790,20 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
 
         logger.info(f"Connecting to websockify WebSocket: {websockify_ws_url}")
 
-        # Connect with binary subprotocol (required by noVNC/websockify)
-        async with websockets.connect(
-            websockify_ws_url,
-            subprotocols=["binary"],
-            open_timeout=10,
-        ) as vnc_ws:
-            logger.info(f"Connected to websockify successfully")
+        try:
+            # Connect with binary subprotocol (required by noVNC/websockify)
+            vnc_ws = await websockets.connect(
+                websockify_ws_url,
+                subprotocols=["binary"],
+                open_timeout=10,
+            )
+            logger.info(f"Connected to websockify successfully, subprotocol={vnc_ws.subprotocol}")
+        except Exception as connect_exc:
+            logger.error(f"Failed to connect to websockify: {connect_exc}", exc_info=True)
+            await websocket.close(code=1011, reason=f"Cannot connect to VNC: {connect_exc}")
+            return
+
+        try:
             async def forward_vnc_to_client() -> None:
                 """Forward VNC data from websockify to WebSocket client."""
                 try:
@@ -832,6 +839,9 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
                 forward_client_to_vnc(),
                 return_exceptions=True,
             )
+        finally:
+            # Close the websockify connection
+            await vnc_ws.close()
 
     except Exception as exc:
         logger.error(f"VNC WebSocket error: {exc}", exc_info=True)
