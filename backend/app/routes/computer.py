@@ -747,14 +747,14 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         logger.info(f"SSH WebSocket closed for session {token[:8]}...")
 
 
-# VNC WebSocket endpoint for noVNC proxy
+# VNC WebSocket endpoint for websockify proxy
 @router.websocket("/vnc/ws")
 async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
     """
-    WebSocket endpoint for VNC via noVNC.
+    WebSocket endpoint for VNC via websockify.
 
-    Proxies WebSocket connections to the noVNC server which handles
-    the VNC protocol translation.
+    Proxies WebSocket connections to the websockify server which handles
+    the WebSocket-to-TCP (VNC) protocol translation.
 
     Args:
         token: The VNC session token
@@ -778,24 +778,23 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
     logger.info(f"VNC WebSocket connected for session {token[:8]}...")
 
     try:
-        # Get the noVNC WebSocket URL
-        novnc_port = vnc_instance.novnc_port
-        vnc_config = vnc_instance.config
+        # Get the websockify port
+        websockify_port = vnc_instance.novnc_port
 
-        # Connect to the local noVNC WebSocket server
+        # Connect to the local websockify WebSocket server
         import websockets
 
-        # noVNC uses websockify to proxy VNC connections
-        # The WebSocket URL format is: ws://localhost:novnc_port/websockify
-        novnc_ws_url = f"ws://127.0.0.1:{novnc_port}/websockify"
+        # websockify proxies WebSocket connections to TCP (VNC)
+        # The WebSocket URL format is: ws://localhost:port/
+        websockify_ws_url = f"ws://127.0.0.1:{websockify_port}/"
 
-        logger.info(f"Connecting to noVNC WebSocket: {novnc_ws_url}")
+        logger.info(f"Connecting to websockify WebSocket: {websockify_ws_url}")
 
-        async with websockets.connect(novnc_ws_url) as novnc_ws:
+        async with websockets.connect(websockify_ws_url) as vnc_ws:
             async def forward_vnc_to_client() -> None:
-                """Forward VNC data from noVNC to WebSocket client."""
+                """Forward VNC data from websockify to WebSocket client."""
                 try:
-                    async for message in novnc_ws:
+                    async for message in vnc_ws:
                         if isinstance(message, bytes):
                             await websocket.send_bytes(message)
                         else:
@@ -806,16 +805,16 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
                     logger.debug(f"VNC to client forward ended: {exc}")
 
             async def forward_client_to_vnc() -> None:
-                """Forward WebSocket input from client to noVNC."""
+                """Forward WebSocket input from client to websockify."""
                 try:
                     while True:
                         message = await websocket.receive()
                         if message["type"] == "websocket.disconnect":
                             break
                         if "bytes" in message:
-                            await novnc_ws.send(message["bytes"])
+                            await vnc_ws.send(message["bytes"])
                         elif "text" in message:
-                            await novnc_ws.send(message["text"])
+                            await vnc_ws.send(message["text"])
                 except WebSocketDisconnect:
                     logger.debug("Client WebSocket disconnected")
                 except Exception as exc:
