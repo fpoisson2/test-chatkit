@@ -76,6 +76,20 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
   const shouldConnectRef = useRef(true);
   const transcriptIdCounterRef = useRef(0);
 
+  // Store callbacks in refs to avoid reconnection loops
+  const onTranscriptRef = useRef(options?.onTranscript);
+  const onCallEndRef = useRef(options?.onCallEnd);
+  const authTokenRef = useRef(options?.authToken);
+  const enabledRef = useRef(options?.enabled ?? true);
+
+  // Update refs when options change
+  useEffect(() => {
+    onTranscriptRef.current = options?.onTranscript;
+    onCallEndRef.current = options?.onCallEnd;
+    authTokenRef.current = options?.authToken;
+    enabledRef.current = options?.enabled ?? true;
+  }, [options?.onTranscript, options?.onCallEnd, options?.authToken, options?.enabled]);
+
   // Keep ref in sync with state
   useEffect(() => {
     isActiveRef.current = isActive;
@@ -92,7 +106,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
 
   const hangupCall = useCallback(async () => {
     const currentCallId = callId;
-    const authToken = options?.authToken;
+    const authToken = authTokenRef.current;
 
     if (!currentCallId) {
       console.error("[OutboundCallSession] No active call to hangup");
@@ -123,7 +137,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
       console.error("[OutboundCallSession] Failed to hang up call:", err);
       setError(`Échec du raccrochage: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [callId, options?.authToken]);
+  }, [callId]);
 
   const connectWebSocket = useCallback(() => {
     // Close existing connection if any
@@ -179,7 +193,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
             console.log(`[OutboundCallSession] Call ended: ${message.call_id}`);
             setIsActive(false);
             setStatus("completed");
-            options?.onCallEnd?.();
+            onCallEndRef.current?.();
             // Reset callId after a short delay to allow UI to update
             setTimeout(() => {
               setCallId(null);
@@ -217,9 +231,9 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
               setTranscripts((prev) => [...prev, newTranscript]);
             }
 
-            if (options?.onTranscript) {
+            if (onTranscriptRef.current) {
               try {
-                options.onTranscript(payload);
+                onTranscriptRef.current(payload);
               } catch (err) {
                 console.error("[OutboundCallSession] Transcript callback failed", err);
               }
@@ -259,12 +273,10 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
         }, WS_RECONNECT_DELAY);
       }
     };
-  }, [options]);
+  }, []);
 
   useEffect(() => {
-    const enabled = options?.enabled ?? true;
-
-    if (!enabled) {
+    if (!enabledRef.current) {
       return;
     }
 
@@ -312,7 +324,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
         // Silent - no logging needed
       });
     };
-  }, [connectWebSocket, options?.enabled]); // connectWebSocket depends on options
+  }, [connectWebSocket]);
 
   return { callId, isActive, status, toNumber, transcripts, error, sendCommand, hangupCall };
 }
