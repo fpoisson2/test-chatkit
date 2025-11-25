@@ -1,5 +1,18 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import RFB from '@novnc/novnc/core/rfb';
+
+// noVNC RFB type for TypeScript
+interface RFBType {
+  viewOnly: boolean;
+  scaleViewport: boolean;
+  resizeSession: boolean;
+  showDotCursor: boolean;
+  sendCtrlAltDel: () => void;
+  disconnect: () => void;
+  addEventListener: (event: string, handler: (e: CustomEvent) => void) => void;
+}
+
+// Dynamic import to handle noVNC's module structure
+let RFBClass: new (target: HTMLElement, url: string, options?: object) => RFBType;
 
 interface VNCScreencastProps {
   vncToken: string;
@@ -14,7 +27,37 @@ interface VNCScreencastProps {
 const fatalErrorTokens = new Set<string>();
 
 // Global map to track active RFB connections by token
-const activeConnections = new Map<string, RFB>();
+const activeConnections = new Map<string, RFBType>();
+
+// Flag to track if noVNC has been loaded
+let noVNCLoaded = false;
+let noVNCLoadPromise: Promise<void> | null = null;
+
+async function loadNoVNC(): Promise<void> {
+  if (noVNCLoaded) return;
+  if (noVNCLoadPromise) return noVNCLoadPromise;
+
+  noVNCLoadPromise = (async () => {
+    try {
+      // Try the lib path first (newer versions)
+      const module = await import('@novnc/novnc/lib/rfb');
+      RFBClass = module.default || module;
+      noVNCLoaded = true;
+    } catch (e) {
+      try {
+        // Fallback to core path (older versions)
+        const module = await import('@novnc/novnc/core/rfb');
+        RFBClass = module.default || module;
+        noVNCLoaded = true;
+      } catch (e2) {
+        console.error('[VNCScreencast] Failed to load noVNC:', e2);
+        throw new Error('Failed to load noVNC library');
+      }
+    }
+  })();
+
+  return noVNCLoadPromise;
+}
 
 export function clearFatalErrorForToken(token: string): void {
   fatalErrorTokens.delete(token);
@@ -29,7 +72,7 @@ export function VNCScreencast({
   onLastFrame,
 }: VNCScreencastProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
-  const rfbRef = useRef<RFB | null>(null);
+  const rfbRef = useRef<RFBType | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(() =>
     fatalErrorTokens.has(vncToken) ? 'Token invalide ou expire' : null
@@ -65,7 +108,7 @@ export function VNCScreencast({
 
   useEffect(() => {
     let mounted = true;
-    let rfb: RFB | null = null;
+    let rfb: RFBType | null = null;
 
     if (fatalErrorTokens.has(vncToken)) {
       console.log('[VNCScreencast] Token has fatal error, not attempting connection:', vncToken.substring(0, 8));
@@ -130,13 +173,20 @@ export function VNCScreencast({
 
         console.log('[VNCScreencast] Connecting to VNC via noVNC:', wsUrl);
 
+        // Load noVNC library dynamically
+        await loadNoVNC();
+
+        if (!mounted || !containerRef.current) {
+          return;
+        }
+
         // Clear the container before creating a new RFB connection
         if (containerRef.current) {
           containerRef.current.innerHTML = '';
         }
 
         // Create noVNC RFB connection
-        rfb = new RFB(containerRef.current, wsUrl, {
+        rfb = new RFBClass(containerRef.current, wsUrl, {
           credentials: { password: '' }, // Password handled by backend
           wsProtocols: ['binary'],
         });
