@@ -39,20 +39,13 @@ async function loadNoVNC(): Promise<void> {
 
   noVNCLoadPromise = (async () => {
     try {
-      // Try the lib path first (newer versions)
-      const module = await import('@novnc/novnc/lib/rfb');
+      // Use novnc-next which is compatible with modern bundlers like Vite
+      const module = await import('novnc-next');
       RFBClass = module.default || module;
       noVNCLoaded = true;
     } catch (e) {
-      try {
-        // Fallback to core path (older versions)
-        const module = await import('@novnc/novnc/core/rfb');
-        RFBClass = module.default || module;
-        noVNCLoaded = true;
-      } catch (e2) {
-        console.error('[VNCScreencast] Failed to load noVNC:', e2);
-        throw new Error('Failed to load noVNC library');
-      }
+      console.error('[VNCScreencast] Failed to load noVNC:', e);
+      throw new Error('Failed to load noVNC library');
     }
   })();
 
