@@ -1,6 +1,6 @@
 import React from 'react';
 import type { TextWidget } from '../types';
-import { resolveColor, resolveSpacingValue } from './utils';
+import { applyTextStyles } from '../utils/styleHelpers';
 
 export function TextComponent(props: TextWidget): JSX.Element {
   const {
@@ -19,29 +19,19 @@ export function TextComponent(props: TextWidget): JSX.Element {
     editable,
   } = props;
 
-  const style: React.CSSProperties = {
-    color: resolveColor(color),
-    fontWeight: weight,
-    width: resolveSpacingValue(width),
-    fontSize: size ? `var(--text-size-${size})` : undefined,
+  const style = applyTextStyles({
+    color,
+    weight,
+    size,
+    sizePrefix: 'text',
     textAlign,
-    fontStyle: italic ? 'italic' : undefined,
-    textDecoration: lineThrough ? 'line-through' : undefined,
-    ...(truncate ? {
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    } : {}),
-    ...(maxLines ? {
-      display: '-webkit-box',
-      WebkitLineClamp: maxLines,
-      WebkitBoxOrient: 'vertical',
-      overflow: 'hidden',
-    } : {}),
-    ...(minLines ? {
-      minHeight: `calc(${minLines} * 1.5em)`,
-    } : {}),
-  };
+    italic,
+    lineThrough,
+    truncate,
+    minLines,
+    maxLines,
+    width,
+  });
 
   if (editable && editable !== false) {
     return (

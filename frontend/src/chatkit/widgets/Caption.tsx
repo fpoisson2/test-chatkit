@@ -1,6 +1,6 @@
 import React from 'react';
 import type { CaptionWidget } from '../types';
-import { resolveColor } from './utils';
+import { applyTextStyles } from '../utils/styleHelpers';
 
 export function CaptionComponent(props: CaptionWidget): JSX.Element {
   const {
@@ -13,23 +13,15 @@ export function CaptionComponent(props: CaptionWidget): JSX.Element {
     maxLines,
   } = props;
 
-  const style: React.CSSProperties = {
-    color: resolveColor(color),
-    fontWeight: weight,
-    fontSize: `var(--caption-size-${size})`,
+  const style = applyTextStyles({
+    color,
+    weight,
+    size,
+    sizePrefix: 'caption',
     textAlign,
-    ...(truncate ? {
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    } : {}),
-    ...(maxLines ? {
-      display: '-webkit-box',
-      WebkitLineClamp: maxLines,
-      WebkitBoxOrient: 'vertical',
-      overflow: 'hidden',
-    } : {}),
-  };
+    truncate,
+    maxLines,
+  });
 
   return (
     <span className="chatkit-caption" style={style}>

@@ -21,4 +21,6 @@ export {
   applyBorderStyles,
   applyBlockProps,
   applyBoxStyles,
+  applyTextStyles,
 } from './styleHelpers';
+export type { TextStyleProps } from './styleHelpers';

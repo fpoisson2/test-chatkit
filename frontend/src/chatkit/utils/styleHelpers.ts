@@ -2,7 +2,24 @@
  * Fonctions utilitaires pour la gestion des styles dans les widgets
  */
 import { RADIUS_MAP, DEFAULT_BORDER_COLOR } from './constants';
-import type { ThemeColor, Spacing, Border, Borders, BoxBase } from '../types';
+import type { ThemeColor, Spacing, Border, Borders, BoxBase, TextAlign } from '../types';
+
+/**
+ * Propriétés communes pour les styles de texte
+ */
+export interface TextStyleProps {
+  color?: string | ThemeColor;
+  weight?: 'normal' | 'medium' | 'semibold' | 'bold';
+  size?: string;
+  sizePrefix?: 'text' | 'title' | 'caption';
+  textAlign?: TextAlign;
+  italic?: boolean;
+  lineThrough?: boolean;
+  truncate?: boolean;
+  minLines?: number;
+  maxLines?: number;
+  width?: number | string;
+}
 
 /**
  * Vérifie si une valeur est un objet Record
@@ -315,5 +332,120 @@ export function applyBoxStyles(box: BoxLike): React.CSSProperties {
   if (box.border !== undefined) {
     applyBorderStyles(styles, box.border);
   }
+  return styles;
+}
+
+/**
+ * Résout une couleur pour les styles de texte
+ */
+function resolveTextColor(color: string | ThemeColor | undefined): string | undefined {
+  if (!color) return undefined;
+
+  if (typeof color === 'string') {
+    // Si c'est un token de couleur avec tiret, utiliser la variable CSS
+    if (color.includes('-')) {
+      return `var(--color-${color})`;
+    }
+    return color;
+  }
+
+  // Pour ThemeColor, utiliser la couleur light par défaut
+  return color.light;
+}
+
+/**
+ * Applique les styles de texte communs à un objet de styles CSS
+ *
+ * Cette fonction centralise la logique de style pour les composants textuels
+ * (Text, Title, Caption) et évite la duplication de code.
+ *
+ * @param props - Les propriétés de style de texte
+ * @returns Un objet React.CSSProperties avec les styles appliqués
+ *
+ * @example
+ * ```tsx
+ * const styles = applyTextStyles({
+ *   color: 'primary',
+ *   weight: 'bold',
+ *   size: 'lg',
+ *   sizePrefix: 'text',
+ *   textAlign: 'center',
+ *   truncate: true,
+ * });
+ * ```
+ */
+export function applyTextStyles(props: TextStyleProps): React.CSSProperties {
+  const {
+    color,
+    weight,
+    size,
+    sizePrefix = 'text',
+    textAlign,
+    italic,
+    lineThrough,
+    truncate,
+    minLines,
+    maxLines,
+    width,
+  } = props;
+
+  const styles: React.CSSProperties = {};
+
+  // Couleur du texte
+  const resolvedColor = resolveTextColor(color);
+  if (resolvedColor) {
+    styles.color = resolvedColor;
+  }
+
+  // Poids de la police
+  if (weight) {
+    styles.fontWeight = weight;
+  }
+
+  // Taille de la police via variable CSS
+  if (size) {
+    styles.fontSize = `var(--${sizePrefix}-size-${size})`;
+  }
+
+  // Alignement du texte
+  if (textAlign) {
+    styles.textAlign = textAlign;
+  }
+
+  // Style italique
+  if (italic) {
+    styles.fontStyle = 'italic';
+  }
+
+  // Texte barré
+  if (lineThrough) {
+    styles.textDecoration = 'line-through';
+  }
+
+  // Largeur
+  if (width !== undefined) {
+    styles.width = typeof width === 'number' ? `${width}px` : width;
+  }
+
+  // Troncature sur une ligne
+  if (truncate) {
+    styles.overflow = 'hidden';
+    styles.textOverflow = 'ellipsis';
+    styles.whiteSpace = 'nowrap';
+  }
+
+  // Limite de lignes (multiline ellipsis)
+  if (maxLines && !truncate) {
+    styles.display = '-webkit-box';
+    styles.WebkitLineClamp = maxLines;
+    styles.WebkitBoxOrient = 'vertical';
+    styles.overflow = 'hidden';
+  }
+
+  // Hauteur minimum en lignes
+  if (minLines) {
+    styles.minHeight = `calc(${minLines} * 1.5em)`;
+  }
+
   return styles;
 }
