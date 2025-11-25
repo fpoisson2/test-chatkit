@@ -208,6 +208,9 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             debug_url_token = None
             ssh_token = None
 
+            # Check if this is an SSH environment (no debug_url)
+            is_ssh = computer_use_config.get("environment") == "ssh"
+
             if debug_url:
                 try:
                     from ...routes.computer import register_debug_session
@@ -232,9 +235,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
             # Create a workflow item with computer_use task
             on_stream_event = context.runtime_vars.get("on_stream_event")
-
-            # Check if this is an SSH environment (no debug_url)
-            is_ssh = computer_use_config.get("environment") == "ssh"
 
             if on_stream_event and agent_context and (debug_url_token or ssh_token):
                 # Create ComputerUseTask

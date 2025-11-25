@@ -6,9 +6,9 @@
  */
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { Terminal } from "xterm";
+import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 
 export interface SSHTerminalProps {
   /** Token for authenticating the SSH session */
