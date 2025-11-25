@@ -1319,6 +1319,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                             setActiveScreencast(current =>
                               current?.itemId === item.id ? null : current
                             );
+
+                            // Trigger workflow continuation
+                            control.customAction(null, { type: 'continue_workflow' });
                           };
 
                           return (

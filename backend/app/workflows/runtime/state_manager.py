@@ -71,6 +71,11 @@ class StateInitializer:
 
         current_input_item_id = workflow_payload.get("source_item_id")
 
+        logger.info(
+            ">>> StateInitializer.initialize: runtime_snapshot is None = %s",
+            runtime_snapshot is None,
+        )
+
         if runtime_snapshot is None:
             auto_started = bool(workflow_payload.get("auto_start_was_triggered"))
             initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])

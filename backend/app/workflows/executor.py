@@ -327,6 +327,7 @@ class WorkflowRuntimeSnapshot:
     stop_at_slug: str | None = None
     branch_id: str | None = None
     branch_label: str | None = None
+    wait_state: dict[str, Any] | None = None
 
 
 @dataclass

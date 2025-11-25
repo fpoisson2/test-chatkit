@@ -13,7 +13,7 @@ from ..computer.hosted_browser import HostedBrowser, HostedBrowserError
 
 logger = logging.getLogger("chatkit.server")
 
-__all__ = ["build_computer_use_tool", "cleanup_browser_cache", "set_current_thread_id"]
+__all__ = ["build_computer_use_tool", "cleanup_browser_cache", "get_thread_browsers", "set_current_thread_id"]
 
 _DEFAULT_COMPUTER_USE_DISPLAY_WIDTH = 1024
 _DEFAULT_COMPUTER_USE_DISPLAY_HEIGHT = 768
@@ -85,6 +85,19 @@ def cleanup_browser_cache(thread_id: str | None = None) -> None:
         total = sum(len(cache) for cache in _browser_cache_by_thread.values())
         logger.info(f"Nettoyage de {total} navigateur(s) pour tous les threads")
         _browser_cache_by_thread.clear()
+
+
+def get_thread_browsers(thread_id: str) -> dict[str, HostedBrowser]:
+    """
+    Get all cached browsers for a specific thread.
+
+    Args:
+        thread_id: The thread ID to get browsers for.
+
+    Returns:
+        Dict mapping cache_key to HostedBrowser instances.
+    """
+    return _browser_cache_by_thread.get(thread_id, {})
 
 
 def _coerce_computer_dimension(value: Any, *, fallback: int) -> int:
