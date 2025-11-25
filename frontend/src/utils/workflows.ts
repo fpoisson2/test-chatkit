@@ -25,6 +25,11 @@ export type ComputerUseConfig = {
   ssh_username?: string;
   ssh_password?: string;
   ssh_private_key?: string;
+  // VNC-specific configuration
+  vnc_host?: string;
+  vnc_port?: number;
+  vnc_password?: string;
+  novnc_port?: number;
 };
 
 export type McpSseToolConfig = {

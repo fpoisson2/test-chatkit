@@ -13,6 +13,7 @@ export type { HeaderProps, HeaderConfig, HeaderAction } from './Header';
 export { MarkdownRenderer } from './MarkdownRenderer';
 export { AnnotationRenderer } from './AnnotationRenderer';
 export { DevToolsScreencast } from './DevToolsScreencast';
+export { VNCScreencast } from './VNCScreencast';
 export { LoadingIndicator } from './LoadingIndicator';
 export { WorkflowRenderer } from './WorkflowRenderer';
 export { TaskRenderer } from './TaskRenderer';

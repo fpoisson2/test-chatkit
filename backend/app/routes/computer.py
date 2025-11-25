@@ -54,6 +54,10 @@ _DEBUG_SESSIONS: dict[str, dict[str, Any]] = {}
 # Format: {token: {"ssh": HostedSSH, "user_id": int, "config": SSHConfig}}
 _SSH_SESSIONS: dict[str, dict[str, Any]] = {}
 
+# Store VNC sessions per token
+# Format: {token: {"vnc": HostedVNC, "user_id": int, "config": VNCConfig}}
+_VNC_SESSIONS: dict[str, dict[str, Any]] = {}
+
 
 def register_debug_session(debug_url: str, user_id: int | None = None) -> str:
     """
@@ -169,6 +173,67 @@ def cleanup_ssh_session(token: str) -> None:
     if token in _SSH_SESSIONS:
         del _SSH_SESSIONS[token]
         logger.info(f"Cleaned up SSH session {token[:8]}...")
+
+
+def register_vnc_session(
+    vnc_instance: Any,
+    vnc_config: Any,
+    user_id: int | None = None,
+) -> str:
+    """
+    Register a VNC session and return a session token.
+
+    Args:
+        vnc_instance: The HostedVNC instance
+        vnc_config: The VNCConfig used
+        user_id: Optional user ID for authorization
+
+    Returns:
+        A unique session token
+    """
+    token = secrets.token_urlsafe(32)
+    _VNC_SESSIONS[token] = {
+        "vnc": vnc_instance,
+        "config": vnc_config,
+        "user_id": user_id,
+    }
+    logger.info(f"Registered VNC session {token[:8]}... for user {user_id}")
+    return token
+
+
+def get_vnc_session(token: str, user_id: int | None = None) -> dict[str, Any] | None:
+    """
+    Get the VNC session for a token.
+
+    Args:
+        token: The session token
+        user_id: Optional user ID for authorization check
+
+    Returns:
+        The session dict if found and authorized, None otherwise
+    """
+    session = _VNC_SESSIONS.get(token)
+    if not session:
+        return None
+
+    # Check authorization if user_id is provided
+    session_user_id = session.get("user_id")
+    if user_id is not None and session_user_id is not None:
+        if user_id != session_user_id:
+            logger.warning(
+                f"User {user_id} attempted to access VNC session "
+                f"belonging to user {session_user_id}"
+            )
+            return None
+
+    return session
+
+
+def cleanup_vnc_session(token: str) -> None:
+    """Remove a VNC session."""
+    if token in _VNC_SESSIONS:
+        del _VNC_SESSIONS[token]
+        logger.info(f"Cleaned up VNC session {token[:8]}...")
 
 
 @router.get("/cdp/json")
@@ -680,3 +745,166 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         await websocket.close(code=1011, reason=str(exc))
     finally:
         logger.info(f"SSH WebSocket closed for session {token[:8]}...")
+
+
+# VNC WebSocket endpoint for noVNC proxy
+@router.websocket("/vnc/ws")
+async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
+    """
+    WebSocket endpoint for VNC via noVNC.
+
+    Proxies WebSocket connections to the noVNC server which handles
+    the VNC protocol translation.
+
+    Args:
+        token: The VNC session token
+    """
+    import asyncio
+
+    # Accept the client WebSocket connection first
+    await websocket.accept()
+
+    # Get VNC session
+    session = get_vnc_session(token, user_id=None)
+    if not session:
+        await websocket.close(code=1008, reason="Invalid or unauthorized VNC session")
+        return
+
+    vnc_instance = session.get("vnc")
+    if not vnc_instance:
+        await websocket.close(code=1011, reason="VNC instance not found")
+        return
+
+    logger.info(f"VNC WebSocket connected for session {token[:8]}...")
+
+    try:
+        # Get the noVNC WebSocket URL
+        novnc_port = vnc_instance.novnc_port
+        vnc_config = vnc_instance.config
+
+        # Connect to the local noVNC WebSocket server
+        import websockets
+
+        # noVNC uses websockify to proxy VNC connections
+        # The WebSocket URL format is: ws://localhost:novnc_port/websockify
+        novnc_ws_url = f"ws://127.0.0.1:{novnc_port}/websockify"
+
+        logger.info(f"Connecting to noVNC WebSocket: {novnc_ws_url}")
+
+        async with websockets.connect(novnc_ws_url) as novnc_ws:
+            async def forward_vnc_to_client() -> None:
+                """Forward VNC data from noVNC to WebSocket client."""
+                try:
+                    async for message in novnc_ws:
+                        if isinstance(message, bytes):
+                            await websocket.send_bytes(message)
+                        else:
+                            await websocket.send_text(message)
+                except WebSocketDisconnect:
+                    logger.debug("VNC client WebSocket disconnected")
+                except Exception as exc:
+                    logger.debug(f"VNC to client forward ended: {exc}")
+
+            async def forward_client_to_vnc() -> None:
+                """Forward WebSocket input from client to noVNC."""
+                try:
+                    while True:
+                        message = await websocket.receive()
+                        if message["type"] == "websocket.disconnect":
+                            break
+                        if "bytes" in message:
+                            await novnc_ws.send(message["bytes"])
+                        elif "text" in message:
+                            await novnc_ws.send(message["text"])
+                except WebSocketDisconnect:
+                    logger.debug("Client WebSocket disconnected")
+                except Exception as exc:
+                    logger.debug(f"Client to VNC forward ended: {exc}")
+
+            # Run both forwarding tasks concurrently
+            await asyncio.gather(
+                forward_vnc_to_client(),
+                forward_client_to_vnc(),
+                return_exceptions=True,
+            )
+
+    except Exception as exc:
+        logger.error(f"VNC WebSocket error: {exc}")
+        await websocket.close(code=1011, reason=str(exc))
+    finally:
+        logger.info(f"VNC WebSocket closed for session {token[:8]}...")
+
+
+# VNC session info endpoint
+@router.get("/vnc/info/{token}")
+async def get_vnc_info(
+    token: str,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Get VNC session information.
+
+    Args:
+        token: VNC session token
+        current_user: Authenticated user
+
+    Returns:
+        VNC connection info including WebSocket URL
+    """
+    session = _VNC_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(status_code=404, detail="VNC session not found")
+
+    if session.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    vnc_instance = session.get("vnc")
+    if not vnc_instance:
+        raise HTTPException(status_code=500, detail="VNC instance not available")
+
+    return {
+        "vnc_host": vnc_instance.config.host,
+        "vnc_port": vnc_instance.config.port,
+        "novnc_port": vnc_instance.novnc_port,
+        "websocket_path": f"/api/computer/vnc/ws?token={token}",
+        "dimensions": {
+            "width": vnc_instance.dimensions[0],
+            "height": vnc_instance.dimensions[1],
+        },
+    }
+
+
+@router.delete("/vnc/close/{token}")
+async def close_vnc_session(
+    token: str,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Close a VNC session and clean up resources.
+
+    Args:
+        token: VNC session token
+        current_user: Authenticated user
+
+    Returns:
+        Success message
+    """
+    session = _VNC_SESSIONS.get(token)
+    if not session:
+        raise HTTPException(status_code=404, detail="VNC session not found")
+
+    if session.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    vnc_instance = session.get("vnc")
+    if vnc_instance:
+        try:
+            await vnc_instance.close()
+            logger.info(f"Closed VNC session {token[:8]}... for user {current_user.id}")
+        except Exception as exc:
+            logger.warning(f"Error closing VNC session: {exc}")
+
+    # Clean up session
+    cleanup_vnc_session(token)
+
+    return {"status": "success", "message": "VNC session closed"}
