@@ -28,7 +28,9 @@ from chatkit.types import (
     AssistantMessageItem,
     Attachment,
     ClosedStatus,
+    ComputerUseScreenshot,
     ComputerUseTask,
+    DurationSummary,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
@@ -57,6 +59,8 @@ from chatkit.types import (
     WidgetRootUpdated,
     Workflow,
     WorkflowItem,
+    WorkflowTaskAdded,
+    WorkflowTaskUpdated,
 )
 from openai.types.responses import (
     ResponseInputContentParam,
@@ -859,7 +863,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         # Handle continue_workflow action - continue workflow from wait state
         if action.type == "continue_workflow":
-            async for event in self._handle_continue_workflow(thread, context):
+            async for event in self._process_events(
+                thread,
+                context,
+                lambda: self._handle_continue_workflow(thread, context),
+            ):
                 yield event
             return
 
@@ -1161,22 +1169,131 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             request_context=context,
         )
 
-        # Note: We intentionally do NOT emit any new WorkflowItems here.
-        # The existing ComputerUseTask will stay with its current status.
-        # Emitting items was causing accumulation of empty/duplicate items.
-        logger.info(">>> Skipping item emission to avoid duplicates")
+        # Find the existing workflow and add screenshot as ImageTask
+        if data_url:
+            logger.info("Adding screenshot ImageTask to existing workflow")
+            from datetime import datetime
+
+            # Load thread items to find the ComputerUseTask workflow
+            thread_items = await self.store.load_thread_items(
+                thread.id, after=None, limit=100, order="desc", context=context
+            )
+
+            # Find the workflow item with a ComputerUseTask
+            computer_use_item: WorkflowItem | None = None
+            computer_use_task_index: int = -1
+
+            for item in thread_items.data:
+                if item.type == "workflow":
+                    workflow_item = item
+                    for idx, task in enumerate(workflow_item.workflow.tasks):
+                        if isinstance(task, ComputerUseTask) or (hasattr(task, "type") and task.type == "computer_use"):
+                            computer_use_item = workflow_item
+                            computer_use_task_index = idx
+                            break
+                    if computer_use_item:
+                        break
+
+            if computer_use_item and computer_use_task_index >= 0:
+                # Get the existing ComputerUseTask
+                existing_task = computer_use_item.workflow.tasks[computer_use_task_index]
+
+                # 1. Update ComputerUseTask to complete status
+                updated_computer_task = ComputerUseTask(
+                    type="computer_use",
+                    title=existing_task.title if hasattr(existing_task, "title") else "Session Computer Use",
+                    status_indicator="complete",
+                    debug_url_token=None,  # Clear the token
+                    current_action="Session terminée",
+                )
+                computer_use_item.workflow.tasks[computer_use_task_index] = updated_computer_task
+
+                # Emit update for ComputerUseTask
+                yield ThreadItemUpdated(
+                    item_id=computer_use_item.id,
+                    update=WorkflowTaskUpdated(
+                        task_index=computer_use_task_index,
+                        task=updated_computer_task,
+                    ),
+                )
+                await asyncio.sleep(0)  # Allow event to be sent
+                logger.info("ComputerUseTask marked as complete")
+
+                # 2. Create and add ImageTask with the screenshot
+                image_id = f"img_{uuid.uuid4().hex[:8]}"
+                generated_image = GeneratedImage(
+                    id=image_id,
+                    data_url=data_url,
+                )
+
+                image_task = ImageTask(
+                    type="image",
+                    title="Screenshot finale",
+                    images=[generated_image],
+                    status_indicator="complete",
+                )
+
+                # Add to workflow tasks
+                computer_use_item.workflow.tasks.append(image_task)
+                new_task_index = len(computer_use_item.workflow.tasks) - 1
+
+                # Emit add event for ImageTask
+                yield ThreadItemUpdated(
+                    item_id=computer_use_item.id,
+                    update=WorkflowTaskAdded(
+                        task_index=new_task_index,
+                        task=image_task,
+                    ),
+                )
+                await asyncio.sleep(0)  # Allow event to be sent
+                logger.info("ImageTask added to workflow")
+
+                # Set duration summary and collapse workflow
+                try:
+                    if isinstance(computer_use_item.created_at, str):
+                        from dateutil import parser
+                        created_at = parser.parse(computer_use_item.created_at)
+                    else:
+                        created_at = computer_use_item.created_at
+
+                    # Make both datetimes timezone-naive for comparison
+                    now = datetime.now()
+                    if hasattr(created_at, 'tzinfo') and created_at.tzinfo is not None:
+                        created_at = created_at.replace(tzinfo=None)
+
+                    delta = now - created_at
+                    duration = max(1, int(delta.total_seconds()))
+                except Exception as e:
+                    logger.warning("Could not calculate duration: %s, using default", e)
+                    duration = 1
+
+                computer_use_item.workflow.summary = DurationSummary(duration=duration)
+                computer_use_item.workflow.expanded = False
+                logger.info("Setting workflow summary: duration=%ds, expanded=%s", duration, computer_use_item.workflow.expanded)
+
+                # Save to store
+                await self.store.add_thread_item(thread.id, computer_use_item, context=context)
+
+                # Emit done event with full updated item
+                logger.info("Emitting ThreadItemDoneEvent with summary=%s", computer_use_item.workflow.summary)
+                yield ThreadItemDoneEvent(item=computer_use_item)
+                # Allow event loop to flush the event before continuing
+                await asyncio.sleep(0)
+                logger.info("Workflow completed with screenshot, duration=%ds", duration)
+            else:
+                logger.warning("Could not find ComputerUseTask workflow to add screenshot")
 
         # Clear wait state
         logger.info(">>> Clearing wait state for thread %s", thread.id)
         _set_wait_state_metadata(thread, None)
         await self.store.save_thread(thread, context=context)
 
-        # Verify wait state is cleared
-        verify_wait_state = _get_wait_state_metadata(thread)
-        logger.info(">>> Wait state after clearing: %s", verify_wait_state)
+        # Continue workflow to next step if there is one
+        if not next_step_slug:
+            logger.info("No next step, workflow complete for thread %s", thread.id)
+            return
 
-        # Continue workflow to next step (or start node if no next_step_slug)
-        logger.info(">>> Starting workflow continuation to: %s", next_step_slug or "(start node)")
+        logger.info(">>> Continuing workflow to: %s", next_step_slug)
 
         # Reload thread history in ascending order for workflow execution
         history_asc = await self.store.load_thread_items(
@@ -1194,33 +1311,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         saved_state = wait_state.get("state", {})
         conversation_history = wait_state.get("conversation_history", [])
 
-        # Find the target slug - either next_step_slug or the start node
-        target_slug = next_step_slug
-        if not target_slug:
-            # Find the start node
-            try:
-                definition = self._workflow_service.get_current()
-                for step in definition.steps:
-                    if step.kind == "start" and step.is_enabled:
-                        target_slug = step.slug
-                        logger.info(">>> Found start node: %s", target_slug)
-                        break
-            except Exception as e:
-                logger.warning("Could not find start node: %s", e)
-
-        if not target_slug:
-            logger.error("No target slug found for workflow continuation")
-            return
-
         # Create runtime snapshot with explicit current_slug
         runtime_snapshot = WorkflowRuntimeSnapshot(
             state=saved_state if isinstance(saved_state, dict) else {},
             conversation_history=conversation_history,
             last_step_context={"computer_use_completed": True},
             steps=[],
-            current_slug=target_slug,
+            current_slug=next_step_slug,
         )
-        logger.info(">>> Created runtime_snapshot with current_slug=%s", target_slug)
+        logger.info(">>> Created runtime_snapshot with current_slug=%s", next_step_slug)
 
         workflow_input = WorkflowInput(
             input_as_text="",

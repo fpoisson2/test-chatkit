@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from datetime import datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from chatkit.types import (
     ComputerUseTask,
-    GeneratedImage,
-    ImageTask,
     Workflow,
     WorkflowItem,
     ThreadItemAddedEvent,
@@ -82,12 +79,13 @@ class ComputerUseNodeHandler(BaseNodeHandler):
         )
 
         if resumed:
-            # Resume from wait - user clicked "Terminer"
+            # Resume from wait - user clicked "Terminer" or sent a message
             logger.info(f"Resuming from computer_use wait at node {node.slug}")
 
-            # Capture final screenshot and close browser
-            on_stream_event = context.runtime_vars.get("on_stream_event")
-            if thread and agent_context and on_stream_event:
+            # Close browser if still open (cleanup only, no screenshot emission)
+            # Note: Screenshots are emitted by _handle_continue_workflow in server.py
+            # We don't emit any items here to avoid duplicate screenshots.
+            if thread:
                 try:
                     # Get the computer_use config from saved state
                     parameters = node.parameters or {}
@@ -105,95 +103,15 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                         computer_tool = build_computer_use_tool({"computer_use": computer_use_config})
 
                         if computer_tool and hasattr(computer_tool, "computer"):
-                            # Capture final screenshot
-                            logger.info("Capturing final screenshot...")
-                            data_url = await computer_tool.computer.screenshot()
-                            logger.info(f"Screenshot captured, data_url length: {len(data_url) if data_url else 0}")
-
-                            # Close the browser FIRST to stop the screencast
+                            # Close the browser to stop the screencast
                             try:
                                 await computer_tool.computer.close()
                                 logger.info("Browser session closed")
                             except Exception as e:
                                 logger.error(f"Failed to close browser: {e}")
 
-                            # Then display the screenshot
-                            if data_url:
-                                try:
-                                    # First, emit a complete ComputerUseTask to signal the screencast should close
-                                    logger.info("Emitting complete ComputerUseTask to close screencast...")
-                                    completed_computer_task = ComputerUseTask(
-                                        type="computer_use",
-                                        status_indicator="complete",
-                                        debug_url_token=None,  # Clear the token
-                                        title="Session Computer Use terminée",
-                                    )
-
-                                    completed_workflow = Workflow(
-                                        type="custom",
-                                        tasks=[completed_computer_task],
-                                        expanded=False,
-                                    )
-
-                                    completed_workflow_item = WorkflowItem(
-                                        id=agent_context.generate_id("workflow"),
-                                        thread_id=agent_context.thread.id,
-                                        created_at=datetime.now(),
-                                        workflow=completed_workflow,
-                                    )
-
-                                    await on_stream_event(ThreadItemAddedEvent(item=completed_workflow_item))
-                                    await on_stream_event(ThreadItemDoneEvent(item=completed_workflow_item))
-                                    logger.info("Complete ComputerUseTask emitted")
-
-                                    # Now create and emit the screenshot
-                                    logger.info("Creating GeneratedImage...")
-                                    image_id = f"img_{uuid.uuid4().hex[:8]}"
-                                    generated_image = GeneratedImage(
-                                        id=image_id,
-                                        data_url=data_url,
-                                    )
-                                    logger.info(f"GeneratedImage created: {generated_image.id}")
-
-                                    # Create ImageTask with the screenshot
-                                    logger.info("Creating ImageTask...")
-                                    image_task = ImageTask(
-                                        type="image",
-                                        title="Screenshot finale de la session Computer Use",
-                                        images=[generated_image],
-                                        status_indicator="complete",
-                                    )
-                                    logger.info("ImageTask created")
-
-                                    # Create Workflow and WorkflowItem
-                                    logger.info("Creating Workflow and WorkflowItem...")
-                                    workflow = Workflow(
-                                        type="custom",
-                                        tasks=[image_task],
-                                        expanded=True,
-                                    )
-                                    logger.info("Workflow created")
-
-                                    workflow_item = WorkflowItem(
-                                        id=agent_context.generate_id("workflow"),
-                                        thread_id=agent_context.thread.id,
-                                        created_at=datetime.now(),
-                                        workflow=workflow,
-                                    )
-                                    logger.info("WorkflowItem created")
-
-                                    # Emit the workflow item with screenshot
-                                    logger.info("Emitting ThreadItemAddedEvent...")
-                                    await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
-                                    logger.info("Emitting ThreadItemDoneEvent...")
-                                    await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
-                                    logger.info("Final screenshot captured and added to conversation")
-                                except Exception as screenshot_error:
-                                    logger.error(f"Error in screenshot display: {screenshot_error}", exc_info=True)
-                                    raise
-
                 except Exception as e:
-                    logger.error(f"Failed to capture final screenshot: {e}")
+                    logger.error(f"Failed to close browser during resume: {e}")
 
             # Clear wait state
             if thread is not None:
