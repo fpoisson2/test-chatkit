@@ -36,6 +36,7 @@ from ..models import (
     Language,
     LanguageGenerationTask,
     LTIRegistration,
+    OutboundCall,
     SipAccount,
     TelephonyRoute,
     User,
@@ -1909,8 +1910,9 @@ async def delete_workflow_history(
 ):
     """
     Delete workflow version history, keeping only the active version for each workflow.
+    OutboundCall records referencing old versions are updated to point to the active version.
     """
-    from sqlalchemy import func
+    from sqlalchemy import func, update
 
     try:
         # Find all workflow definitions that are not the active version
@@ -1922,9 +1924,31 @@ async def delete_workflow_history(
 
         count = len(old_versions)
 
-        # Delete old versions
-        for version in old_versions:
-            session.delete(version)
+        if count > 0:
+            # Build a mapping from old version IDs to active version IDs
+            old_to_active = {}
+            for old_version in old_versions:
+                workflow = session.get(Workflow, old_version.workflow_id)
+                if workflow and workflow.active_version_id:
+                    old_to_active[old_version.id] = workflow.active_version_id
+
+            # Update OutboundCall.workflow_id for each old version
+            for old_id, active_id in old_to_active.items():
+                session.execute(
+                    update(OutboundCall)
+                    .where(OutboundCall.workflow_id == old_id)
+                    .values(workflow_id=active_id)
+                )
+                # Also update triggered_by_workflow_id (nullable)
+                session.execute(
+                    update(OutboundCall)
+                    .where(OutboundCall.triggered_by_workflow_id == old_id)
+                    .values(triggered_by_workflow_id=active_id)
+                )
+
+            # Now delete old versions
+            for version in old_versions:
+                session.delete(version)
 
         session.commit()
 
@@ -1949,12 +1973,16 @@ async def delete_all_workflows(
 ):
     """
     Delete all workflows and their versions.
+    Also deletes associated outbound call records.
     """
     from sqlalchemy import func
 
     try:
         # Count before deletion
         count = session.scalar(select(func.count()).select_from(Workflow)) or 0
+
+        # Delete outbound calls first (they reference workflow_definitions)
+        session.execute(OutboundCall.__table__.delete())
 
         # Delete all workflows (CASCADE will handle versions, steps, transitions)
         session.execute(Workflow.__table__.delete())
@@ -2043,6 +2071,9 @@ async def factory_reset(
 
         # Delete all viewports
         session.execute(WorkflowViewport.__table__.delete())
+
+        # Delete outbound calls first (they reference workflow_definitions)
+        session.execute(OutboundCall.__table__.delete())
 
         # Delete all workflows (CASCADE handles versions, steps, transitions)
         session.execute(Workflow.__table__.delete())

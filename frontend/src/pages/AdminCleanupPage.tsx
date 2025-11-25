@@ -233,7 +233,7 @@ export const AdminCleanupPage = () => {
                 onClick={() => setConfirmAction("conversations")}
                 disabled={isBusy || !stats?.conversations_count}
               >
-                {t("admin.cleanup.actions.delete")}
+                {deleteConversations.isPending ? t("admin.cleanup.actions.deleting") : t("admin.cleanup.actions.delete")}
               </button>
             </div>
 
@@ -249,7 +249,7 @@ export const AdminCleanupPage = () => {
                 onClick={() => setConfirmAction("workflow-history")}
                 disabled={isBusy || !stats?.workflow_old_versions_count}
               >
-                {t("admin.cleanup.actions.delete")}
+                {deleteWorkflowHistory.isPending ? t("admin.cleanup.actions.deleting") : t("admin.cleanup.actions.delete")}
               </button>
             </div>
 
@@ -265,7 +265,7 @@ export const AdminCleanupPage = () => {
                 onClick={() => setConfirmAction("workflows")}
                 disabled={isBusy || !stats?.workflows_count}
               >
-                {t("admin.cleanup.actions.delete")}
+                {deleteWorkflows.isPending ? t("admin.cleanup.actions.deleting") : t("admin.cleanup.actions.delete")}
               </button>
             </div>
 
@@ -281,7 +281,7 @@ export const AdminCleanupPage = () => {
                 onClick={() => setConfirmAction("viewports")}
                 disabled={isBusy || !stats?.viewports_count}
               >
-                {t("admin.cleanup.actions.delete")}
+                {deleteViewports.isPending ? t("admin.cleanup.actions.deleting") : t("admin.cleanup.actions.delete")}
               </button>
             </div>
           </div>
@@ -304,7 +304,7 @@ export const AdminCleanupPage = () => {
               onClick={() => setConfirmAction("factory-reset")}
               disabled={isBusy}
             >
-              {t("admin.cleanup.factoryReset.button")}
+              {factoryReset.isPending ? t("admin.cleanup.actions.deleting") : t("admin.cleanup.factoryReset.button")}
             </button>
           </div>
         </FormSection>

@@ -1323,6 +1323,7 @@ export const fr: TranslationDictionary = {
   "admin.cleanup.actions.title": "Actions de nettoyage",
   "admin.cleanup.actions.subtitle": "Supprimer des types de donnees specifiques pour tous les utilisateurs. Ces actions sont irreversibles.",
   "admin.cleanup.actions.delete": "Supprimer",
+  "admin.cleanup.actions.deleting": "Suppression...",
   "admin.cleanup.actions.conversations.title": "Supprimer toutes les conversations",
   "admin.cleanup.actions.conversations.description": "Supprime tous les fils de discussion, messages et pieces jointes pour tous les utilisateurs.",
   "admin.cleanup.actions.workflowHistory.title": "Supprimer l'historique des workflows",

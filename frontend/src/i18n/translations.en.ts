@@ -1270,6 +1270,7 @@ export const en: TranslationDictionary = {
   "admin.cleanup.actions.title": "Cleanup Actions",
   "admin.cleanup.actions.subtitle": "Delete specific data types for all users. These actions cannot be undone.",
   "admin.cleanup.actions.delete": "Delete",
+  "admin.cleanup.actions.deleting": "Deleting...",
   "admin.cleanup.actions.conversations.title": "Delete All Conversations",
   "admin.cleanup.actions.conversations.description": "Remove all chat threads, messages, and attachments for all users.",
   "admin.cleanup.actions.workflowHistory.title": "Delete Workflow History",
