@@ -1,6 +1,7 @@
 /**
  * Composant partagé pour afficher des images avec conversion d'URL data vers Blob
  * Évite les erreurs 414 (Request-URI Too Long) avec les URLs base64 très longues
+ * Supporte le chargement authentifié des images via API
  */
 import React, { useState, useEffect } from 'react';
 
@@ -9,6 +10,8 @@ export interface ImageWithBlobUrlProps {
   alt?: string;
   className?: string;
   style?: React.CSSProperties;
+  /** Token d'authentification pour charger les images via API */
+  authToken?: string;
 }
 
 /**
@@ -50,51 +53,100 @@ function convertRawBase64ToBlob(base64: string, mimeType = 'image/png'): Blob | 
 }
 
 /**
+ * Charge une image via fetch avec authentification et retourne un Blob URL
+ */
+async function fetchImageAsBlob(url: string, authToken: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+      },
+    });
+    if (!response.ok) {
+      console.warn(`[ImageWithBlobUrl] Failed to fetch image: ${response.status}`);
+      return null;
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    console.warn('[ImageWithBlobUrl] Error fetching image:', error);
+    return null;
+  }
+}
+
+/**
  * Composant pour afficher des images avec conversion automatique
  * des URLs data/base64 en Blob URLs
+ * Supporte le chargement authentifié des images via API
  */
 export function ImageWithBlobUrl({
   src,
   alt = '',
   className = '',
   style = {},
+  authToken,
 }: ImageWithBlobUrlProps): JSX.Element | null {
   const [blobUrl, setBlobUrl] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
+    let cancelled = false;
 
-    if (src.startsWith('data:')) {
-      // Convertir l'URL data en blob pour éviter les erreurs 414
-      const blob = convertDataUrlToBlob(src);
-      if (blob) {
-        objectUrl = URL.createObjectURL(blob);
-        setBlobUrl(objectUrl);
-      }
-    } else if (src.startsWith('http') || src.startsWith('/')) {
-      // URL normale ou relative, utiliser telle quelle
-      setBlobUrl(src);
-    } else if (src.startsWith('blob:')) {
-      // Déjà une Blob URL
-      setBlobUrl(src);
-    } else {
-      // Supposer que c'est une chaîne base64 brute
-      const blob = convertRawBase64ToBlob(src);
-      if (blob) {
-        objectUrl = URL.createObjectURL(blob);
-        setBlobUrl(objectUrl);
-      } else {
-        // Fallback: utiliser la source telle quelle
+    const processSource = async () => {
+      if (src.startsWith('data:')) {
+        // Convertir l'URL data en blob pour éviter les erreurs 414
+        const blob = convertDataUrlToBlob(src);
+        if (blob && !cancelled) {
+          objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+        }
+      } else if (src.startsWith('/api/') && authToken) {
+        // URL d'API relative nécessitant authentification
+        setLoading(true);
+        const fetchedUrl = await fetchImageAsBlob(src, authToken);
+        if (!cancelled) {
+          if (fetchedUrl) {
+            objectUrl = fetchedUrl;
+            setBlobUrl(fetchedUrl);
+          } else {
+            // Fallback: essayer sans authentification (au cas où)
+            setBlobUrl(src);
+          }
+          setLoading(false);
+        }
+      } else if (src.startsWith('http') || src.startsWith('/')) {
+        // URL normale ou relative, utiliser telle quelle
         setBlobUrl(src);
+      } else if (src.startsWith('blob:')) {
+        // Déjà une Blob URL
+        setBlobUrl(src);
+      } else {
+        // Supposer que c'est une chaîne base64 brute
+        const blob = convertRawBase64ToBlob(src);
+        if (blob && !cancelled) {
+          objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+        } else if (!cancelled) {
+          // Fallback: utiliser la source telle quelle
+          setBlobUrl(src);
+        }
       }
-    }
+    };
+
+    processSource();
 
     return () => {
+      cancelled = true;
       if (objectUrl && objectUrl.startsWith('blob:')) {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [src]);
+  }, [src, authToken]);
+
+  if (loading) {
+    return <div className={className} style={{ ...style, background: '#f0f0f0' }} />;
+  }
 
   if (!blobUrl) return null;
 

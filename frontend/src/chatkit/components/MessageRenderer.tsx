@@ -32,13 +32,14 @@ export interface MessageRendererProps {
 /**
  * Component to display final images with wrapper
  */
-function FinalImageDisplay({ src }: { src: string }): JSX.Element | null {
+function FinalImageDisplay({ src, authToken }: { src: string; authToken?: string }): JSX.Element | null {
   return (
     <div className="chatkit-image-generation-preview">
       <ImageWithBlobUrl
         src={src}
         alt="Image générée"
         className="chatkit-generated-image-final"
+        authToken={authToken}
       />
     </div>
   );
@@ -281,6 +282,7 @@ function WorkflowContent({
                   src={src}
                   alt="Génération en cours..."
                   className="chatkit-generating-image"
+                  authToken={authToken}
                 />
               </div>
             );
@@ -293,7 +295,7 @@ function WorkflowContent({
               src = `data:image/png;base64,${src}`;
             }
             if (src) {
-              return <FinalImageDisplay src={src} />;
+              return <FinalImageDisplay src={src} authToken={authToken} />;
             }
           }
         }
@@ -411,6 +413,7 @@ function WorkflowContent({
                         src={src}
                         alt={actionTitle || "Browser automation"}
                         className={screenshotIsLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                        authToken={authToken}
                       />
                       {clickCoordinates && (
                         <div
