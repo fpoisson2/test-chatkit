@@ -1439,7 +1439,8 @@
 
 /* Computer Use Browser Automation Preview */
 .chatkit-computer-use-preview {
-  max-width: 800px;
+  width: 100%;
+  max-width: 900px;
   margin: 0 auto 8px auto;
 }
 
@@ -1818,6 +1819,7 @@
 /* SSH Terminal Styles */
 .chatkit-ssh-terminal-container {
   width: 100%;
+  min-width: 600px;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);

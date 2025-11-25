@@ -75,11 +75,15 @@ export function SSHTerminal({
 
     // Open terminal in container
     terminal.open(terminalRef.current);
-    fitAddon.fit();
 
     // Store refs
     terminalInstanceRef.current = terminal;
     fitAddonRef.current = fitAddon;
+
+    // Delay fit to ensure container has proper dimensions
+    const fitTimeout = setTimeout(() => {
+      fitAddon.fit();
+    }, 100);
 
     // Handle window resize
     const handleResize = () => {
@@ -91,6 +95,7 @@ export function SSHTerminal({
 
     // Cleanup
     return () => {
+      clearTimeout(fitTimeout);
       window.removeEventListener("resize", handleResize);
       terminal.dispose();
       terminalInstanceRef.current = null;
@@ -119,7 +124,10 @@ export function SSHTerminal({
       setConnectionError(null);
       terminal.writeln("\x1b[32mConnecte!\x1b[0m\r\n");
 
-      // Focus terminal
+      // Fit and focus terminal
+      if (fitAddonRef.current) {
+        fitAddonRef.current.fit();
+      }
       terminal.focus();
     };
 
@@ -212,6 +220,7 @@ export function SSHTerminal({
         className="chatkit-ssh-terminal"
         style={{
           width: "100%",
+          minWidth: "600px",
           height: "400px",
           backgroundColor: "#1e1e1e",
           borderRadius: "0 0 8px 8px",
