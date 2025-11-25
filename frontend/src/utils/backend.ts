@@ -55,6 +55,18 @@ export class ApiError extends Error {
 export const isUnauthorizedError = (error: unknown): boolean =>
   error instanceof ApiError && error.status === 401;
 
+// Global event for 401 errors - allows components to subscribe to auth failures
+type UnauthorizedHandler = () => void;
+let globalUnauthorizedHandler: UnauthorizedHandler | null = null;
+
+export const setGlobalUnauthorizedHandler = (handler: UnauthorizedHandler | null): void => {
+  globalUnauthorizedHandler = handler;
+};
+
+const notifyUnauthorized = (): void => {
+  globalUnauthorizedHandler?.();
+};
+
 const extractErrorMessage = async (response: Response): Promise<string> => {
   try {
     const payload = await response.clone().json();
@@ -92,6 +104,11 @@ const requestWithFallback = async (
         detail: await response.clone().json().catch(() => undefined),
       });
 
+      // Notify global handler on 401 errors
+      if (apiError.status === 401) {
+        notifyUnauthorized();
+      }
+
       const isSameOrigin = endpoint.startsWith("/");
       if (isSameOrigin && endpoints.length > 1) {
         lastError = apiError;
@@ -101,6 +118,10 @@ const requestWithFallback = async (
       throw apiError;
     } catch (error) {
       if (error instanceof ApiError) {
+        // Also check for 401 when re-throwing
+        if (error.status === 401) {
+          notifyUnauthorized();
+        }
         throw error;
       }
       lastError = error instanceof Error ? error : new Error("Erreur réseau");
@@ -108,6 +129,10 @@ const requestWithFallback = async (
   }
 
   if (lastError instanceof ApiError) {
+    // Check for 401 when throwing lastError
+    if (lastError.status === 401) {
+      notifyUnauthorized();
+    }
     throw lastError;
   }
 
