@@ -12,6 +12,7 @@ from .models import (
     LTIRegistration,
     LTIResourceLink,
     LTIUserSession,
+    WorkflowShare,
 )
 
 logger = logging.getLogger(__name__)
@@ -294,6 +295,18 @@ def _add_workflows_multi_user_columns(connection) -> None:
         )
 
 
+def _workflow_shares_table_exists(connection) -> bool:
+    inspector = inspect(connection)
+    return inspector.has_table("workflow_shares")
+
+
+def _create_workflow_shares_table(connection) -> None:
+    Base.metadata.create_all(
+        bind=connection,
+        tables=[WorkflowShare.__table__],
+    )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -361,6 +374,12 @@ def check_and_apply_migrations():
             "description": "Add multi-user conversation settings to workflows table",
             "check_fn": _workflows_has_multi_user_columns,
             "apply_fn": _add_workflows_multi_user_columns,
+        },
+        {
+            "id": "009_create_workflow_shares_table",
+            "description": "Create workflow_shares table for workflow sharing permissions",
+            "check_fn": _workflow_shares_table_exists,
+            "apply_fn": _create_workflow_shares_table,
         },
     ]
 

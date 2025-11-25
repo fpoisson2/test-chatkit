@@ -3229,6 +3229,199 @@ class WorkflowService:
         session.refresh(definition)
         return self._fully_load_definition(definition)
 
+    # =========================================================================
+    # Workflow Sharing Methods
+    # =========================================================================
+
+    def list_workflow_shares(
+        self, workflow_id: int, *, session: Session | None = None
+    ) -> list[dict[str, Any]]:
+        """List all shares for a workflow."""
+        from ..models import User, WorkflowShare
+
+        owns_session = session is None
+        db = session or SessionLocal()
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if not workflow:
+                raise WorkflowNotFoundError(f"Workflow {workflow_id} not found")
+
+            stmt = (
+                select(WorkflowShare)
+                .where(WorkflowShare.workflow_id == workflow_id)
+                .options(selectinload(WorkflowShare.user))
+            )
+            shares = db.scalars(stmt).all()
+
+            return [
+                {
+                    "id": share.id,
+                    "workflow_id": share.workflow_id,
+                    "user_id": share.user_id,
+                    "user": {
+                        "id": share.user.id,
+                        "email": share.user.email,
+                        "is_admin": share.user.is_admin,
+                    },
+                    "permission": share.permission,
+                    "created_at": share.created_at,
+                    "updated_at": share.updated_at,
+                }
+                for share in shares
+            ]
+        finally:
+            if owns_session:
+                db.close()
+
+    def create_workflow_share(
+        self,
+        workflow_id: int,
+        user_id: int,
+        permission: str = "read",
+        *,
+        session: Session | None = None,
+    ) -> dict[str, Any]:
+        """Create a new workflow share."""
+        from ..models import User, WorkflowShare
+
+        if permission not in ("read", "write"):
+            raise WorkflowValidationError("Permission must be 'read' or 'write'")
+
+        owns_session = session is None
+        db = session or SessionLocal()
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if not workflow:
+                raise WorkflowNotFoundError(f"Workflow {workflow_id} not found")
+
+            user = db.get(User, user_id)
+            if not user:
+                raise WorkflowValidationError(f"User {user_id} not found")
+
+            # Check if share already exists
+            existing = db.scalar(
+                select(WorkflowShare).where(
+                    WorkflowShare.workflow_id == workflow_id,
+                    WorkflowShare.user_id == user_id,
+                )
+            )
+            if existing:
+                raise WorkflowValidationError(
+                    f"Workflow is already shared with user {user_id}"
+                )
+
+            share = WorkflowShare(
+                workflow_id=workflow_id,
+                user_id=user_id,
+                permission=permission,
+            )
+            db.add(share)
+            db.commit()
+            db.refresh(share)
+
+            return {
+                "id": share.id,
+                "workflow_id": share.workflow_id,
+                "user_id": share.user_id,
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "is_admin": user.is_admin,
+                },
+                "permission": share.permission,
+                "created_at": share.created_at,
+                "updated_at": share.updated_at,
+            }
+        finally:
+            if owns_session:
+                db.close()
+
+    def update_workflow_share(
+        self,
+        workflow_id: int,
+        share_id: int,
+        permission: str,
+        *,
+        session: Session | None = None,
+    ) -> dict[str, Any]:
+        """Update a workflow share permission."""
+        from ..models import WorkflowShare
+
+        if permission not in ("read", "write"):
+            raise WorkflowValidationError("Permission must be 'read' or 'write'")
+
+        owns_session = session is None
+        db = session or SessionLocal()
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if not workflow:
+                raise WorkflowNotFoundError(f"Workflow {workflow_id} not found")
+
+            share = db.scalar(
+                select(WorkflowShare)
+                .where(
+                    WorkflowShare.id == share_id,
+                    WorkflowShare.workflow_id == workflow_id,
+                )
+                .options(selectinload(WorkflowShare.user))
+            )
+            if not share:
+                raise WorkflowNotFoundError(f"Share {share_id} not found")
+
+            share.permission = permission
+            db.commit()
+            db.refresh(share)
+
+            return {
+                "id": share.id,
+                "workflow_id": share.workflow_id,
+                "user_id": share.user_id,
+                "user": {
+                    "id": share.user.id,
+                    "email": share.user.email,
+                    "is_admin": share.user.is_admin,
+                },
+                "permission": share.permission,
+                "created_at": share.created_at,
+                "updated_at": share.updated_at,
+            }
+        finally:
+            if owns_session:
+                db.close()
+
+    def delete_workflow_share(
+        self,
+        workflow_id: int,
+        share_id: int,
+        *,
+        session: Session | None = None,
+    ) -> None:
+        """Delete a workflow share."""
+        from ..models import WorkflowShare
+
+        owns_session = session is None
+        db = session or SessionLocal()
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if not workflow:
+                raise WorkflowNotFoundError(f"Workflow {workflow_id} not found")
+
+            share = db.scalar(
+                select(WorkflowShare).where(
+                    WorkflowShare.id == share_id,
+                    WorkflowShare.workflow_id == workflow_id,
+                )
+            )
+            if not share:
+                raise WorkflowNotFoundError(f"Share {share_id} not found")
+
+            db.delete(share)
+            db.commit()
+        finally:
+            if owns_session:
+                db.close()
+
+
 class WorkflowPersistenceService(WorkflowService):
     """Alias explicite pour les opérations de persistance de workflows."""
 

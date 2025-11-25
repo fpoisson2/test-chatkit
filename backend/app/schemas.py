@@ -1546,3 +1546,50 @@ class ActiveWorkflowSessionsResponse(BaseModel):
 
     sessions: list[ActiveWorkflowSession]
     total_count: int
+
+
+# ============================================================================
+# Workflow Sharing
+# ============================================================================
+
+
+class WorkflowShareUserResponse(BaseModel):
+    """Information utilisateur pour le partage de workflow."""
+
+    id: int
+    email: str
+    is_admin: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkflowShareCreateRequest(BaseModel):
+    """Requête de création d'un partage de workflow."""
+
+    user_id: int = Field(..., description="ID de l'utilisateur avec qui partager")
+    permission: Literal["read", "write"] = Field(
+        default="read",
+        description="Niveau de permission (read ou write)",
+    )
+
+
+class WorkflowShareUpdateRequest(BaseModel):
+    """Requête de mise à jour d'un partage de workflow."""
+
+    permission: Literal["read", "write"] = Field(
+        ..., description="Nouveau niveau de permission"
+    )
+
+
+class WorkflowShareResponse(BaseModel):
+    """Réponse contenant les détails d'un partage de workflow."""
+
+    id: int
+    workflow_id: int
+    user_id: int
+    user: WorkflowShareUserResponse
+    permission: Literal["read", "write"]
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)

@@ -31,6 +31,7 @@ import { useDuplicateWorkflow } from "../../hooks/useWorkflows";
 import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
 import type { WorkflowAppearanceTarget } from "./WorkflowAppearanceModal";
+import { ShareWorkflowModal } from "./ShareWorkflowModal";
 import type {
   ActionMenuPlacement,
   WorkflowActionMenuItem,
@@ -400,6 +401,8 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const duplicateWorkflowMutation = useDuplicateWorkflow();
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [workflowToShare, setWorkflowToShare] = useState<WorkflowSummary | null>(null);
 
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
@@ -985,6 +988,20 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     [navigate],
   );
 
+  const handleOpenShare = useCallback(
+    (workflow: WorkflowSummary) => {
+      setWorkflowToShare(workflow);
+      setShareModalOpen(true);
+      closeWorkflowMenu();
+    },
+    [closeWorkflowMenu],
+  );
+
+  const handleCloseShare = useCallback(() => {
+    setShareModalOpen(false);
+    setWorkflowToShare(null);
+  }, []);
+
   const localMenuItems = useCallback(
     ({ workflow, isPinned, t, onTogglePin, onCloseMenu }: {
       workflow: WorkflowSummary;
@@ -1043,6 +1060,14 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           disabled: !canExport || loading,
         },
         {
+          key: "share",
+          label: "Partager",
+          onSelect: () => {
+            handleOpenShare(workflow);
+          },
+          disabled: loading,
+        },
+        {
           key: "appearance",
           label: t("workflowBuilder.localSection.customizeAction"),
           onSelect: () => {
@@ -1069,6 +1094,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       handleDeleteWorkflow,
       handleExportWorkflow,
       handleOpenAppearance,
+      handleOpenShare,
       isAdmin,
       loading,
       token,
@@ -1286,7 +1312,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     sidebarContent,
   ]);
 
-  return null;
+  return (
+    <ShareWorkflowModal
+      isOpen={shareModalOpen}
+      onClose={handleCloseShare}
+      workflow={workflowToShare}
+    />
+  );
 };
 
 // ============================================================================

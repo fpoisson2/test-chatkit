@@ -23,6 +23,9 @@ from ..schemas import (
     WorkflowDuplicateRequest,
     WorkflowImportRequest,
     WorkflowProductionUpdate,
+    WorkflowShareCreateRequest,
+    WorkflowShareResponse,
+    WorkflowShareUpdateRequest,
     WorkflowSummaryResponse,
     WorkflowUpdateRequest,
     WorkflowVersionCreateRequest,
@@ -570,3 +573,127 @@ async def update_workflow_appearance(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
     return WorkflowAppearanceResponse.model_validate(data)
+
+
+# ============================================================================
+# Workflow Sharing Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/api/workflows/{workflow_id}/shares",
+    response_model=list[WorkflowShareResponse],
+)
+async def list_workflow_shares(
+    workflow_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
+) -> list[WorkflowShareResponse]:
+    """List all shares for a workflow."""
+    _ensure_admin(current_user)
+    try:
+        shares = service.list_workflow_shares(workflow_id, session=session)
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    return [WorkflowShareResponse.model_validate(share) for share in shares]
+
+
+@router.post(
+    "/api/workflows/{workflow_id}/shares",
+    response_model=WorkflowShareResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_workflow_share(
+    workflow_id: int,
+    payload: WorkflowShareCreateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
+) -> WorkflowShareResponse:
+    """Share a workflow with a user."""
+    _ensure_admin(current_user)
+    try:
+        share = service.create_workflow_share(
+            workflow_id=workflow_id,
+            user_id=payload.user_id,
+            permission=payload.permission,
+            session=session,
+        )
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+    return WorkflowShareResponse.model_validate(share)
+
+
+@router.patch(
+    "/api/workflows/{workflow_id}/shares/{share_id}",
+    response_model=WorkflowShareResponse,
+)
+async def update_workflow_share(
+    workflow_id: int,
+    share_id: int,
+    payload: WorkflowShareUpdateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
+) -> WorkflowShareResponse:
+    """Update a workflow share permission."""
+    _ensure_admin(current_user)
+    try:
+        share = service.update_workflow_share(
+            workflow_id=workflow_id,
+            share_id=share_id,
+            permission=payload.permission,
+            session=session,
+        )
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+    return WorkflowShareResponse.model_validate(share)
+
+
+@router.delete(
+    "/api/workflows/{workflow_id}/shares/{share_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_workflow_share(
+    workflow_id: int,
+    share_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+    service: WorkflowPersistenceService = Depends(
+        get_workflow_persistence_service
+    ),
+) -> Response:
+    """Remove a workflow share."""
+    _ensure_admin(current_user)
+    try:
+        service.delete_workflow_share(
+            workflow_id=workflow_id,
+            share_id=share_id,
+            session=session,
+        )
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

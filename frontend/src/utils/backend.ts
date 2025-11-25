@@ -193,6 +193,22 @@ export type CreateUserPayload = {
   is_admin: boolean;
 };
 
+export type WorkflowShareUser = {
+  id: number;
+  email: string;
+  is_admin: boolean;
+};
+
+export type WorkflowShare = {
+  id: number;
+  workflow_id: number;
+  user_id: number;
+  user: WorkflowShareUser;
+  permission: "read" | "write";
+  created_at: string;
+  updated_at: string;
+};
+
 export type McpTestConnectionPayload = {
   type: "mcp";
   transport: "http_sse";
@@ -1697,6 +1713,49 @@ export const workflowsApi = {
       body: JSON.stringify({ version_id: versionId }),
     });
     return response.json();
+  },
+
+  // Workflow sharing methods
+  async listShares(token: string | null, workflowId: number): Promise<WorkflowShare[]> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async createShare(
+    token: string | null,
+    workflowId: number,
+    userId: number,
+    permission: "read" | "write",
+  ): Promise<WorkflowShare> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ user_id: userId, permission }),
+    });
+    return response.json();
+  },
+
+  async updateShare(
+    token: string | null,
+    workflowId: number,
+    shareId: number,
+    permission: "read" | "write",
+  ): Promise<WorkflowShare> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/shares/${shareId}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ permission }),
+    });
+    return response.json();
+  },
+
+  async deleteShare(token: string | null, workflowId: number, shareId: number): Promise<void> {
+    await requestWithFallback(`/api/workflows/${workflowId}/shares/${shareId}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
   },
 };
 

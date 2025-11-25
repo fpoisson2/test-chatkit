@@ -454,6 +454,11 @@ class Workflow(Base):
         secondary=workflow_lti_registrations,
         back_populates="workflows",
     )
+    shares: Mapped[list["WorkflowShare"]] = relationship(
+        "WorkflowShare",
+        back_populates="workflow",
+        cascade="all, delete-orphan",
+    )
 
 
 class WorkflowAppearance(Base):
@@ -1212,6 +1217,51 @@ class LanguageGenerationTask(Base):
 
     # Relations
     language: Mapped[Language | None] = relationship("Language")
+
+
+class WorkflowShare(Base):
+    """Partage d'un workflow avec un utilisateur.
+
+    Permet de partager un workflow en lecture ou lecture-écriture.
+    """
+
+    __tablename__ = "workflow_shares"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id", "user_id", name="uq_workflow_shares_workflow_user"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workflow_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    permission: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="read"
+    )  # 'read' or 'write'
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    workflow: Mapped[Workflow] = relationship("Workflow", back_populates="shares")
+    user: Mapped[User] = relationship("User")
 
 
 Index("ix_json_documents_metadata", JsonDocument.metadata_json, postgresql_using="gin")
