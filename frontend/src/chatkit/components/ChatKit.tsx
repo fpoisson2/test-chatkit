@@ -1096,12 +1096,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   {/* Workflow */}
                   {item.type === 'workflow' && (
                   <>
-                    {/* Hide workflow header if it has a dismissed computer_use task */}
-                    {!dismissedScreencastItems.has(item.id) && (
-                      <div className="chatkit-message-content">
-                        <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
-                      </div>
-                    )}
+                    {/* Always show workflow header - completion is handled by backend */}
+                    <div className="chatkit-message-content">
+                      <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
+                    </div>
 
                     {/* Afficher les images (partielles ou finales) après le workflow */}
                     {(() => {
@@ -1286,16 +1284,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           const handleEndSession = () => {
                             console.log('Ending computer_use session...');
 
-                            // Note: Screenshot is now captured and emitted by the backend
-                            // in _handle_continue_workflow (server.py)
+                            // Note: Screenshot is captured and workflow completion is handled
+                            // by the backend in _handle_continue_workflow (server.py)
 
-                            // Mark this item as dismissed to prevent auto-restart
-                            setDismissedScreencastItems(prev => {
-                              if (prev.has(item.id)) return prev;
-                              const next = new Set(prev);
-                              next.add(item.id);
-                              return next;
-                            });
                             // Close the active screencast
                             setActiveScreencast(current =>
                               current?.itemId === item.id ? null : current
