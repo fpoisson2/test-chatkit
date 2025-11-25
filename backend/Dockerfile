@@ -161,8 +161,9 @@ COPY --from=pjsip-builder /usr/local /usr/local
 COPY --from=playwright-deps /usr/local/lib/python3.11/site-packages/playwright /usr/local/lib/python3.11/site-packages/playwright
 COPY --from=playwright-deps /root/.cache/ms-playwright /root/.cache/ms-playwright
 
-# Récupérer les modules Python installés (site-packages)
+# Récupérer les modules Python installés (site-packages) et les scripts (celery, etc.)
 COPY --from=python-deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=python-deps /usr/local/bin /usr/local/bin
 
 # Installer les libs runtime requises par Chromium (noms corrigés pour Debian Trixie)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
