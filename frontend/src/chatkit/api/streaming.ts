@@ -12,4 +12,3 @@
  * - streaming/index.ts - Point d'entrée et fonction principale
  */
 export * from './streaming';
-export { StreamOptions } from './streaming';
