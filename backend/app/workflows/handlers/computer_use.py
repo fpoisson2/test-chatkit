@@ -267,7 +267,14 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 if vnc_token:
                     task_kwargs["vnc_token"] = vnc_token
 
+                # Debug: Log task_kwargs before creating ComputerUseTask
+                logger.info(f"task_kwargs before ComputerUseTask: {task_kwargs}")
+
                 computer_task = ComputerUseTask(**task_kwargs)
+
+                # Debug: Check if vnc_token attribute exists on the model
+                logger.info(f"ComputerUseTask has vnc_token attr: {hasattr(computer_task, 'vnc_token')}")
+                logger.info(f"ComputerUseTask.vnc_token value: {getattr(computer_task, 'vnc_token', 'NOT_FOUND')}")
 
                 # Debug: Log the serialized task to verify vnc_token is present
                 logger.info(f"ComputerUseTask created: {computer_task.model_dump_json(exclude_none=True)}")
