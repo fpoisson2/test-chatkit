@@ -482,11 +482,13 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     is_admin: bool = False
+    role: Literal["admin", "teacher", "student"] = "student"
 
 
 class UserUpdate(BaseModel):
     password: str | None = None
     is_admin: bool | None = None
+    role: Literal["admin", "teacher", "student"] | None = None
 
 
 class LoginRequest(BaseModel):
@@ -499,6 +501,7 @@ class UserResponse(BaseModel):
     email: str  # Changed from EmailStr to allow LTI synthetic emails like user@lti.local
     is_admin: bool
     is_lti: bool
+    role: Literal["admin", "teacher", "student"] = "student"
     created_at: datetime.datetime
     updated_at: datetime.datetime
 

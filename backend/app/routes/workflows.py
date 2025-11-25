@@ -58,6 +58,61 @@ def _ensure_admin(user: User) -> None:
         )
 
 
+def _get_workflow_permission(
+    user: User, workflow_id: int, session: Session
+) -> str | None:
+    """
+    Check if a user has access to a workflow and return the permission level.
+
+    Returns:
+        'admin' - User is admin, full access
+        'write' - User has write permission via sharing
+        'read' - User has read permission via sharing
+        None - No access
+    """
+    from ..models import WorkflowShare
+    from sqlalchemy import select
+
+    if user.is_admin:
+        return "admin"
+
+    # Check for shared access
+    share = session.scalar(
+        select(WorkflowShare).where(
+            WorkflowShare.workflow_id == workflow_id,
+            WorkflowShare.user_id == user.id,
+        )
+    )
+
+    if share:
+        return share.permission
+
+    return None
+
+
+def _ensure_workflow_read_access(
+    user: User, workflow_id: int, session: Session
+) -> None:
+    """Ensure user has at least read access to a workflow."""
+    permission = _get_workflow_permission(user, workflow_id, session)
+    if permission is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Accès refusé à ce workflow"
+        )
+
+
+def _ensure_workflow_write_access(
+    user: User, workflow_id: int, session: Session
+) -> None:
+    """Ensure user has write access to a workflow."""
+    permission = _get_workflow_permission(user, workflow_id, session)
+    if permission not in ("admin", "write"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission d'écriture requise pour ce workflow",
+        )
+
+
 @router.get("/api/workflows/current", response_model=WorkflowDefinitionResponse)
 async def get_current_workflow(
     session: Session = Depends(get_session),
@@ -98,6 +153,10 @@ async def list_workflows(
         get_workflow_persistence_service
     ),
 ) -> list[WorkflowSummaryResponse]:
+    from ..models import LTIUserSession, Workflow, WorkflowShare
+    from sqlalchemy import select, desc
+    from sqlalchemy.orm import selectinload
+
     # Admin users can see all workflows
     if current_user.is_admin:
         workflows = service.list_workflows(session)
@@ -109,9 +168,6 @@ async def list_workflows(
     # LTI users can only see workflows from their LTI resource links
     # They should only access the specific workflow assigned via deeplink
     if current_user.is_lti:
-        from ..models import LTIUserSession, Workflow
-        from sqlalchemy import select, desc
-
         # Get the most recent launched LTI session for this user
         # This represents the current deeplink context
         latest_session_stmt = (
@@ -138,10 +194,32 @@ async def list_workflows(
 
         return []
 
-    # Other non-admin users have no access
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis"
+    # Teachers and students: show only shared workflows
+    # Get workflows shared with this user
+    shared_workflow_ids_stmt = (
+        select(WorkflowShare.workflow_id)
+        .where(WorkflowShare.user_id == current_user.id)
     )
+    shared_workflow_ids = session.scalars(shared_workflow_ids_stmt).all()
+
+    if not shared_workflow_ids:
+        return []
+
+    # Get the actual workflows
+    workflows_stmt = (
+        select(Workflow)
+        .where(
+            Workflow.id.in_(shared_workflow_ids),
+            Workflow.active_version_id.isnot(None),  # Only published workflows
+        )
+        .options(selectinload(Workflow.active_version))
+    )
+    workflows = session.scalars(workflows_stmt).all()
+
+    return [
+        WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
+        for w in workflows
+    ]
 
 
 @router.get(

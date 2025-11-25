@@ -179,10 +179,13 @@ export const fetchChatkitSession = async ({
   return response.json();
 };
 
+export type UserRole = "admin" | "teacher" | "student";
+
 export type EditableUser = {
   id: number;
   email: string;
   is_admin: boolean;
+  role: UserRole;
   created_at: string;
   updated_at: string;
 };
@@ -191,6 +194,7 @@ export type CreateUserPayload = {
   email: string;
   password: string;
   is_admin: boolean;
+  role: UserRole;
 };
 
 export type WorkflowShareUser = {

@@ -469,6 +469,7 @@ async def create_user(
         email=email,
         password_hash=hash_password(payload.password),
         is_admin=payload.is_admin,
+        role=payload.role,
     )
     session.add(user)
     session.commit()
@@ -495,6 +496,9 @@ async def update_user(
         updated = True
     if payload.is_admin is not None:
         user.is_admin = payload.is_admin
+        updated = True
+    if payload.role is not None:
+        user.role = payload.role
         updated = True
 
     if updated:

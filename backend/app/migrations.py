@@ -307,6 +307,46 @@ def _create_workflow_shares_table(connection) -> None:
     )
 
 
+def _users_has_role_column(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("users"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("users")}
+    return "role" in columns
+
+
+def _add_users_role_column(connection) -> None:
+    inspector = inspect(connection)
+
+    if not inspector.has_table("users"):
+        logger.warning(
+            "Cannot add role column to users because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("users")
+    }
+
+    if "role" in existing_columns:
+        return
+
+    # Add role column with default value 'student'
+    connection.execute(
+        text("ALTER TABLE users ADD COLUMN role VARCHAR(32) NOT NULL DEFAULT 'student'")
+    )
+
+    # Update existing admin users to have 'admin' role
+    connection.execute(
+        text("UPDATE users SET role = 'admin' WHERE is_admin = TRUE")
+    )
+
+    # Create index for faster role queries
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
+    )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -380,6 +420,12 @@ def check_and_apply_migrations():
             "description": "Create workflow_shares table for workflow sharing permissions",
             "check_fn": _workflow_shares_table_exists,
             "apply_fn": _create_workflow_shares_table,
+        },
+        {
+            "id": "010_add_users_role_column",
+            "description": "Add role column to users table for teacher/student distinction",
+            "check_fn": _users_has_role_column,
+            "apply_fn": _add_users_role_column,
         },
     ]
 
