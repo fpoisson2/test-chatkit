@@ -54,93 +54,78 @@ export const AdminCleanupPage = () => {
     }
   };
 
-  const handleDeleteConversations = async () => {
+  const handleConfirm = () => {
+    const action = confirmAction;
     setConfirmAction(null);
     setError(null);
     setSuccess(null);
 
-    deleteConversations.mutate(
-      { token },
-      {
-        onSuccess: (result) => {
-          setSuccess(t("admin.cleanup.success.conversations", { count: result.deleted_count }));
-          refetch();
-        },
-        onError: handleError,
-      }
-    );
-  };
-
-  const handleDeleteWorkflowHistory = async () => {
-    setConfirmAction(null);
-    setError(null);
-    setSuccess(null);
-
-    deleteWorkflowHistory.mutate(
-      { token },
-      {
-        onSuccess: (result) => {
-          setSuccess(t("admin.cleanup.success.workflowHistory", { count: result.deleted_count }));
-          refetch();
-        },
-        onError: handleError,
-      }
-    );
-  };
-
-  const handleDeleteWorkflows = async () => {
-    setConfirmAction(null);
-    setError(null);
-    setSuccess(null);
-
-    deleteWorkflows.mutate(
-      { token },
-      {
-        onSuccess: (result) => {
-          setSuccess(t("admin.cleanup.success.workflows", { count: result.deleted_count }));
-          refetch();
-        },
-        onError: handleError,
-      }
-    );
-  };
-
-  const handleDeleteViewports = async () => {
-    setConfirmAction(null);
-    setError(null);
-    setSuccess(null);
-
-    deleteViewports.mutate(
-      { token },
-      {
-        onSuccess: (result) => {
-          setSuccess(t("admin.cleanup.success.viewports", { count: result.deleted_count }));
-          refetch();
-        },
-        onError: handleError,
-      }
-    );
-  };
-
-  const handleFactoryReset = async () => {
-    setConfirmAction(null);
-    setError(null);
-    setSuccess(null);
-
-    factoryReset.mutate(
-      { token },
-      {
-        onSuccess: (result) => {
-          setSuccess(t("admin.cleanup.success.factoryReset", {
-            conversations: result.conversations_deleted,
-            workflows: result.workflows_deleted,
-            viewports: result.viewports_deleted,
-          }));
-          refetch();
-        },
-        onError: handleError,
-      }
-    );
+    switch (action) {
+      case "conversations":
+        deleteConversations.mutate(
+          { token },
+          {
+            onSuccess: (result) => {
+              setSuccess(t("admin.cleanup.success.conversations", { count: result.deleted_count }));
+              refetch();
+            },
+            onError: handleError,
+          }
+        );
+        break;
+      case "workflow-history":
+        deleteWorkflowHistory.mutate(
+          { token },
+          {
+            onSuccess: (result) => {
+              setSuccess(t("admin.cleanup.success.workflowHistory", { count: result.deleted_count }));
+              refetch();
+            },
+            onError: handleError,
+          }
+        );
+        break;
+      case "workflows":
+        deleteWorkflows.mutate(
+          { token },
+          {
+            onSuccess: (result) => {
+              setSuccess(t("admin.cleanup.success.workflows", { count: result.deleted_count }));
+              refetch();
+            },
+            onError: handleError,
+          }
+        );
+        break;
+      case "viewports":
+        deleteViewports.mutate(
+          { token },
+          {
+            onSuccess: (result) => {
+              setSuccess(t("admin.cleanup.success.viewports", { count: result.deleted_count }));
+              refetch();
+            },
+            onError: handleError,
+          }
+        );
+        break;
+      case "factory-reset":
+        factoryReset.mutate(
+          { token },
+          {
+            onSuccess: (result) => {
+              setSuccess(t("admin.cleanup.success.factoryReset", {
+                conversations: result.conversations_deleted,
+                workflows: result.workflows_deleted,
+                viewports: result.viewports_deleted,
+              }));
+              refetch();
+            },
+            onError: handleError,
+          }
+        );
+        break;
+    }
   };
 
   const isBusy =
@@ -151,44 +136,39 @@ export const AdminCleanupPage = () => {
     deleteViewports.isPending ||
     factoryReset.isPending;
 
-  const getConfirmConfig = () => {
+  const getConfirmTitle = () => {
     switch (confirmAction) {
       case "conversations":
-        return {
-          title: t("admin.cleanup.confirm.conversations.title"),
-          message: t("admin.cleanup.confirm.conversations.message", { count: stats?.conversations_count ?? 0 }),
-          onConfirm: handleDeleteConversations,
-        };
+        return t("admin.cleanup.confirm.conversations.title");
       case "workflow-history":
-        return {
-          title: t("admin.cleanup.confirm.workflowHistory.title"),
-          message: t("admin.cleanup.confirm.workflowHistory.message", { count: stats?.workflow_old_versions_count ?? 0 }),
-          onConfirm: handleDeleteWorkflowHistory,
-        };
+        return t("admin.cleanup.confirm.workflowHistory.title");
       case "workflows":
-        return {
-          title: t("admin.cleanup.confirm.workflows.title"),
-          message: t("admin.cleanup.confirm.workflows.message", { count: stats?.workflows_count ?? 0 }),
-          onConfirm: handleDeleteWorkflows,
-        };
+        return t("admin.cleanup.confirm.workflows.title");
       case "viewports":
-        return {
-          title: t("admin.cleanup.confirm.viewports.title"),
-          message: t("admin.cleanup.confirm.viewports.message", { count: stats?.viewports_count ?? 0 }),
-          onConfirm: handleDeleteViewports,
-        };
+        return t("admin.cleanup.confirm.viewports.title");
       case "factory-reset":
-        return {
-          title: t("admin.cleanup.confirm.factoryReset.title"),
-          message: t("admin.cleanup.confirm.factoryReset.message"),
-          onConfirm: handleFactoryReset,
-        };
+        return t("admin.cleanup.confirm.factoryReset.title");
       default:
-        return null;
+        return "";
     }
   };
 
-  const confirmConfig = getConfirmConfig();
+  const getConfirmMessage = () => {
+    switch (confirmAction) {
+      case "conversations":
+        return t("admin.cleanup.confirm.conversations.message", { count: stats?.conversations_count ?? 0 });
+      case "workflow-history":
+        return t("admin.cleanup.confirm.workflowHistory.message", { count: stats?.workflow_old_versions_count ?? 0 });
+      case "workflows":
+        return t("admin.cleanup.confirm.workflows.message", { count: stats?.workflows_count ?? 0 });
+      case "viewports":
+        return t("admin.cleanup.confirm.viewports.message", { count: stats?.viewports_count ?? 0 });
+      case "factory-reset":
+        return t("admin.cleanup.confirm.factoryReset.message");
+      default:
+        return "";
+    }
+  };
 
   return (
     <>
@@ -327,13 +307,13 @@ export const AdminCleanupPage = () => {
       </div>
 
       {/* Confirmation Dialog */}
-      {confirmConfig && (
+      {confirmAction && (
         <ConfirmDialog
-          title={confirmConfig.title}
-          message={confirmConfig.message}
+          title={getConfirmTitle()}
+          message={getConfirmMessage()}
           confirmLabel={t("admin.cleanup.confirm.confirmButton")}
           cancelLabel={t("admin.cleanup.confirm.cancelButton")}
-          onConfirm={confirmConfig.onConfirm}
+          onConfirm={handleConfirm}
           onCancel={() => setConfirmAction(null)}
           variant="danger"
         />
