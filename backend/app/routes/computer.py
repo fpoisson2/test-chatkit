@@ -790,7 +790,13 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
 
         logger.info(f"Connecting to websockify WebSocket: {websockify_ws_url}")
 
-        async with websockets.connect(websockify_ws_url) as vnc_ws:
+        # Connect with binary subprotocol (required by noVNC/websockify)
+        async with websockets.connect(
+            websockify_ws_url,
+            subprotocols=["binary"],
+            open_timeout=10,
+        ) as vnc_ws:
+            logger.info(f"Connected to websockify successfully")
             async def forward_vnc_to_client() -> None:
                 """Forward VNC data from websockify to WebSocket client."""
                 try:
@@ -828,8 +834,11 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
             )
 
     except Exception as exc:
-        logger.error(f"VNC WebSocket error: {exc}")
-        await websocket.close(code=1011, reason=str(exc))
+        logger.error(f"VNC WebSocket error: {exc}", exc_info=True)
+        try:
+            await websocket.close(code=1011, reason=str(exc)[:120])
+        except Exception:
+            pass  # WebSocket might already be closed
     finally:
         logger.info(f"VNC WebSocket closed for session {token[:8]}...")
 
