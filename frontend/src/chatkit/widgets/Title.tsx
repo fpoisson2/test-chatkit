@@ -1,6 +1,6 @@
 import React from 'react';
 import type { TitleWidget } from '../types';
-import { resolveColor } from './utils';
+import { applyTextStyles } from '../utils/styleHelpers';
 
 export function TitleComponent(props: TitleWidget): JSX.Element {
   const {
@@ -14,22 +14,16 @@ export function TitleComponent(props: TitleWidget): JSX.Element {
   } = props;
 
   const style: React.CSSProperties = {
-    color: resolveColor(color),
-    fontWeight: weight,
-    fontSize: `var(--title-size-${size})`,
-    textAlign,
+    ...applyTextStyles({
+      color,
+      weight,
+      size,
+      sizePrefix: 'title',
+      textAlign,
+      truncate,
+      maxLines,
+    }),
     margin: 0,
-    ...(truncate ? {
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    } : {}),
-    ...(maxLines ? {
-      display: '-webkit-box',
-      WebkitLineClamp: maxLines,
-      WebkitBoxOrient: 'vertical',
-      overflow: 'hidden',
-    } : {}),
   };
 
   return (
