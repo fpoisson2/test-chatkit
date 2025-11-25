@@ -121,8 +121,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const [showHistory, setShowHistory] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activeScreencast, setActiveScreencast] = useState<{ token: string; itemId: string } | null>(null);
-  const [lastScreencastScreenshot, setLastScreencastScreenshot] = useState<{ itemId: string; src: string; action?: string } | null>(null);
-  const [dismissedScreencastItems, setDismissedScreencastItems] = useState<Set<string>>(new Set());
   // Track tokens that have failed connection (to prevent reactivation loops)
   const [failedScreencastTokens, setFailedScreencastTokens] = useState<Set<string>>(new Set());
   // Ref to track activeScreencast without triggering useEffect re-runs
@@ -222,8 +220,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   // Clear failed tokens when thread changes (new thread or switching threads)
   useEffect(() => {
     setFailedScreencastTokens(new Set());
-    setDismissedScreencastItems(new Set());
-    setLastScreencastScreenshot(null);
     setActiveScreencast(null);
     console.log('[ChatKit] Thread changed, cleared all screencast state');
   }, [control.thread?.id]);
@@ -243,10 +239,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       setInputValue('');
       setAttachments([]);
       lastUserMessageIdRef.current = lastUserMessage.id;
-      // NOTE: Do NOT clear dismissedScreencastItems, failedScreencastTokens, or lastScreencastScreenshot here!
-      // Clearing them creates a race condition: the old dismissed/failed workflow gets retried
+      // NOTE: Do NOT clear failedScreencastTokens here!
+      // Clearing them creates a race condition: the old failed workflow gets retried
       // BEFORE the new workflow arrives. New workflows will have new IDs/tokens anyway.
-      // lastScreencastScreenshot is associated with a specific itemId, so it won't show on wrong workflows.
       // These are only cleared when the thread changes (see useEffect with control.thread?.id).
     }
   }, [control.thread?.items]);
@@ -279,10 +274,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }> = [];
 
     workflows.forEach((item: any, workflowIdx: number) => {
-      if (dismissedScreencastItems.has(item.id)) {
-        return;
-      }
-
       // Collect ALL computer_use tasks from this workflow, not just the first one
       const tasks = item.workflow?.tasks || [];
       tasks.forEach((task: any, taskIdx: number) => {
@@ -410,20 +401,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
         setActiveScreencast(null);
       }
-      // Only clear the screenshot when the task's ACTUAL status_indicator is terminal
-      // NOT just because there's a newer workflow (which would lose the image in history)
-      // The display logic already handles not showing screenshots for terminal tasks
-      if (lastScreencastScreenshot) {
-        const screenshotWorkflow = workflows.find((w: any) => w.id === lastScreencastScreenshot.itemId);
-        const screenshotTask = screenshotWorkflow?.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
-        if (screenshotTask) {
-          const isActuallyTerminal = screenshotTask.status_indicator === 'complete' || screenshotTask.status_indicator === 'error';
-          if (isActuallyTerminal) {
-            console.log('[ChatKit] Clearing last screencast screenshot for actually terminal task');
-            setLastScreencastScreenshot(null);
-          }
-        }
-      }
     }
     // Priorité 2: Activer un nouveau screencast seulement s'il est différent de l'actuel (token OU itemId)
     else if (newActiveScreencast &&
@@ -432,20 +409,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
     }
-  }, [control.isLoading, control.thread?.items, dismissedScreencastItems, failedScreencastTokens, lastScreencastScreenshot]);
-
-  // Callback pour capturer le dernier frame du screencast avant sa fermeture
-  const handleScreencastLastFrame = useCallback((itemId: string) => {
-    return (frameDataUrl: string) => {
-      console.log('[ChatKit] Captured last screencast frame for item:', itemId, 'dataUrl length:', frameDataUrl.length);
-      setLastScreencastScreenshot({
-        itemId,
-        src: frameDataUrl,
-        action: undefined,
-      });
-      console.log('[ChatKit] lastScreencastScreenshot state updated');
-    };
-  }, []);
+  }, [control.isLoading, control.thread?.items, failedScreencastTokens]);
 
   // Debug: Logger les changements dans les items
   useEffect(() => {
@@ -1100,12 +1064,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   {/* Workflow */}
                   {item.type === 'workflow' && (
                   <>
-                    {/* Hide workflow header if it has a dismissed computer_use task */}
-                    {!dismissedScreencastItems.has(item.id) && (
-                      <div className="chatkit-message-content">
-                        <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
-                      </div>
-                    )}
+                    <div className="chatkit-message-content">
+                      <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
+                    </div>
 
                     {/* Afficher les images (partielles ou finales) après le workflow */}
                     {(() => {
@@ -1228,17 +1189,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         // Afficher le screencast live seulement si c'est le screencast actif
                         const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
 
-                        // Si on n'a pas de screenshot mais qu'on a un screenshot sauvegardé pour ce workflow, l'utiliser
-                        if (!src && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
-                          console.log('[ChatKit] Using saved screenshot for item:', item.id);
-                          src = lastScreencastScreenshot.src;
-                        } else if (!src && lastScreencastScreenshot) {
-                          console.log('[ChatKit] Have saved screenshot but item IDs do not match:', {
-                            savedItemId: lastScreencastScreenshot.itemId,
-                            currentItemId: item.id,
-                          });
-                        }
-
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
                         // MAIS seulement si la tâche n'est pas complete (sinon on cache tout pour retourner au début)
                         const isComplete = computerUseTask.status_indicator === 'complete';
@@ -1246,13 +1196,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const isTerminal = isComplete || isError;
                         const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
 
-                        const isDismissed = dismissedScreencastItems.has(item.id);
-                        // If dismissed, only hide the live screencast, but still show static screenshot
-                        const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
+                        const shouldShowLiveScreencast = showLiveScreencast;
                         const shouldShowScreenshot = showScreenshot;
                         const showPreview = shouldShowLiveScreencast || shouldShowScreenshot;
-                        // If dismissed, don't show loading animation on screenshot
-                        const screenshotIsLoading = isLoading && !isDismissed;
+                        const screenshotIsLoading = isLoading;
 
                         console.log('[ChatKit] Display decision:', {
                           showLiveScreencast,
@@ -1268,10 +1215,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         });
 
                         let actionTitle = computerUseTask.current_action || screenshot?.action_description;
-                        // Si on utilise le screenshot sauvegardé, utiliser son action
-                        if (!screenshot && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
-                          actionTitle = actionTitle || lastScreencastScreenshot.action;
-                        }
                         const clickPosition = screenshot?.click_position || screenshot?.click;
 
                         const toPercent = (value: number): number => {
@@ -1289,32 +1232,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         if (showPreview) {
                           const handleEndSession = () => {
                             console.log('Ending computer_use session...');
-
-                            // Capture the current frame from the canvas before closing
-                            try {
-                              const canvas = document.querySelector('.chatkit-screencast-canvas') as HTMLCanvasElement;
-                              if (canvas) {
-                                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                                setLastScreencastScreenshot({
-                                  itemId: item.id,
-                                  src: dataUrl,
-                                  action: actionTitle,
-                                });
-                                console.log('[ChatKit] Captured screenshot before closing, length:', dataUrl.length);
-                              } else {
-                                console.warn('[ChatKit] Canvas not found, cannot capture screenshot');
-                              }
-                            } catch (err) {
-                              console.error('[ChatKit] Error capturing screenshot:', err);
-                            }
-
-                            // Mark this item as dismissed to prevent auto-restart
-                            setDismissedScreencastItems(prev => {
-                              if (prev.has(item.id)) return prev;
-                              const next = new Set(prev);
-                              next.add(item.id);
-                              return next;
-                            });
                             // Close the active screencast
                             setActiveScreencast(current =>
                               current?.itemId === item.id ? null : current
@@ -1349,7 +1266,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                         current?.token === debugUrlToken ? null : current
                                       );
                                     }}
-                                    onLastFrame={handleScreencastLastFrame(item.id)}
                                   />
                                   <div className="chatkit-computer-use-actions">
                                     <button
