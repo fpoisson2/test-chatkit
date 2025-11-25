@@ -103,7 +103,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       # Fonts (noms corrigés pour Debian Trixie)
       fonts-unifont \
-      fonts-ubuntu \
       fonts-liberation \
       fonts-noto-color-emoji \
       fontconfig \
