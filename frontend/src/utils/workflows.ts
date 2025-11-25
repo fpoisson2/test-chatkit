@@ -19,6 +19,12 @@ export type ComputerUseConfig = {
   display_height: number;
   environment: string;
   start_url?: string;
+  // SSH-specific configuration
+  ssh_host?: string;
+  ssh_port?: number;
+  ssh_username?: string;
+  ssh_password?: string;
+  ssh_private_key?: string;
 };
 
 export type McpSseToolConfig = {
@@ -2941,6 +2947,7 @@ const SUPPORTED_COMPUTER_ENVIRONMENTS = new Set([
   "mac",
   "windows",
   "ubuntu",
+  "ssh",
 ]);
 
 const sanitizeComputerDimension = (value: unknown, fallback: number): number => {
@@ -2998,6 +3005,23 @@ const sanitizeComputerUseConfig = (
 
   if (typeof config.start_url === "string" && config.start_url.trim()) {
     payload.start_url = config.start_url.trim();
+  }
+
+  // SSH-specific fields
+  if (typeof config.ssh_host === "string" && config.ssh_host.trim()) {
+    payload.ssh_host = config.ssh_host.trim();
+  }
+  if (typeof config.ssh_port === "number" && config.ssh_port > 0 && config.ssh_port <= 65535) {
+    payload.ssh_port = config.ssh_port;
+  }
+  if (typeof config.ssh_username === "string" && config.ssh_username.trim()) {
+    payload.ssh_username = config.ssh_username.trim();
+  }
+  if (typeof config.ssh_password === "string" && config.ssh_password) {
+    payload.ssh_password = config.ssh_password;
+  }
+  if (typeof config.ssh_private_key === "string" && config.ssh_private_key.trim()) {
+    payload.ssh_private_key = config.ssh_private_key.trim();
   }
 
   return payload;
@@ -3835,6 +3859,28 @@ export const getAgentComputerUseConfig = (
       (source as Record<string, unknown>).url;
     if (typeof startUrlCandidate === "string" && startUrlCandidate.trim()) {
       result.start_url = startUrlCandidate.trim();
+    }
+
+    // SSH-specific fields
+    const sshHost = (source as Record<string, unknown>).ssh_host;
+    if (typeof sshHost === "string" && sshHost.trim()) {
+      result.ssh_host = sshHost.trim();
+    }
+    const sshPort = (source as Record<string, unknown>).ssh_port;
+    if (typeof sshPort === "number" && sshPort > 0 && sshPort <= 65535) {
+      result.ssh_port = sshPort;
+    }
+    const sshUsername = (source as Record<string, unknown>).ssh_username;
+    if (typeof sshUsername === "string" && sshUsername.trim()) {
+      result.ssh_username = sshUsername.trim();
+    }
+    const sshPassword = (source as Record<string, unknown>).ssh_password;
+    if (typeof sshPassword === "string" && sshPassword) {
+      result.ssh_password = sshPassword;
+    }
+    const sshPrivateKey = (source as Record<string, unknown>).ssh_private_key;
+    if (typeof sshPrivateKey === "string" && sshPrivateKey.trim()) {
+      result.ssh_private_key = sshPrivateKey.trim();
     }
 
     return result;

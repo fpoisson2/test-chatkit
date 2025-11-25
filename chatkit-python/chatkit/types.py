@@ -860,6 +860,9 @@ class ComputerUseTask(BaseTask):
     debug_url_token: str | None = None
     """Secure token for accessing the debug session via proxy."""
 
+    ssh_token: str | None = None
+    """Secure token for accessing an SSH terminal session via WebSocket."""
+
 
 Task = Annotated[
     CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask,

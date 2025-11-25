@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "aiosip",
     "aiortc",
+    "asyncssh",
     "fastapi",
     "openai",
     "openai-agents[litellm]",

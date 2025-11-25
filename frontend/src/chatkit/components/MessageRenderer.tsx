@@ -8,6 +8,7 @@ import { TaskRenderer } from './TaskRenderer';
 import { AnnotationRenderer } from './AnnotationRenderer';
 import { LoadingIndicator } from './LoadingIndicator';
 import { DevToolsScreencast } from './DevToolsScreencast';
+import { SSHTerminal } from './SSHTerminal';
 import { ImageWithBlobUrl } from '../utils';
 
 export interface MessageRendererProps {
@@ -334,9 +335,11 @@ function WorkflowContent({
           const debugUrlToken =
             computerUseTask.debug_url_token ||
             (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
+          const sshToken = computerUseTask.ssh_token;
 
           const isActiveScreencast = activeScreencast?.itemId === item.id && !!debugUrlToken;
           const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
+          const showSSHTerminal = !!sshToken;
 
           if (!src && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
             src = lastScreencastScreenshot.src;
@@ -345,12 +348,14 @@ function WorkflowContent({
           const isComplete = computerUseTask.status_indicator === 'complete';
           const isError = computerUseTask.status_indicator === 'error';
           const isTerminal = isComplete || isError;
-          const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
+          // Never show screenshots for SSH sessions (SSH has no meaningful screenshots)
+          const showScreenshot = !!src && !showLiveScreencast && !showSSHTerminal && !isTerminal && !sshToken;
 
           const isDismissed = dismissedScreencastItems.has(item.id);
           const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
+          const shouldShowSSHTerminal = showSSHTerminal && !isDismissed && !isTerminal;
           const shouldShowScreenshot = showScreenshot;
-          const showPreview = shouldShowLiveScreencast || shouldShowScreenshot;
+          const showPreview = shouldShowLiveScreencast || shouldShowSSHTerminal || shouldShowScreenshot;
           const screenshotIsLoading = isLoading && !isDismissed;
 
           let actionTitle = computerUseTask.current_action || screenshot?.action_description;
@@ -402,6 +407,29 @@ function WorkflowContent({
                         className="chatkit-end-session-button"
                       >
                         Terminer la session et continuer
+                      </button>
+                    </div>
+                  </>
+                )}
+                {shouldShowSSHTerminal && sshToken && (
+                  <>
+                    <SSHTerminal
+                      sshToken={sshToken}
+                      authToken={authToken}
+                      onConnectionError={(error) => {
+                        console.error('SSH connection error:', error);
+                      }}
+                      onClose={() => {
+                        console.log('SSH session closed');
+                      }}
+                    />
+                    <div className="chatkit-computer-use-actions">
+                      <button
+                        type="button"
+                        onClick={handleEndSession}
+                        className="chatkit-end-session-button"
+                      >
+                        Terminer la session SSH et continuer
                       </button>
                     </div>
                   </>

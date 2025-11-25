@@ -10,6 +10,7 @@ from weakref import WeakKeyDictionary
 from agents.tool import ComputerTool
 
 from ..computer.hosted_browser import HostedBrowser, HostedBrowserError
+from ..computer.hosted_ssh import HostedSSH, HostedSSHError, SSHConfig
 
 logger = logging.getLogger("chatkit.server")
 
@@ -17,7 +18,7 @@ __all__ = ["build_computer_use_tool", "cleanup_browser_cache", "get_thread_brows
 
 _DEFAULT_COMPUTER_USE_DISPLAY_WIDTH = 1024
 _DEFAULT_COMPUTER_USE_DISPLAY_HEIGHT = 768
-_SUPPORTED_COMPUTER_ENVIRONMENTS = frozenset({"browser", "mac", "windows", "ubuntu"})
+_SUPPORTED_COMPUTER_ENVIRONMENTS = frozenset({"browser", "mac", "windows", "ubuntu", "ssh"})
 
 # Global cache for browser instances, keyed by thread_id
 # Format: {thread_id: {cache_key: HostedBrowser}}
@@ -189,54 +190,135 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
         f"📦 Cache global: {len(_browser_cache_by_thread)} threads → {list(_browser_cache_by_thread.keys())}"
     )
 
-    # Create a cache key based on browser configuration
-    # Each chat thread has its own isolated cache that persists across requests
-    cache_key = f"{environment}:{width}x{height}"
+    # Handle SSH environment separately
+    if environment == "ssh":
+        # Extract SSH-specific configuration
+        ssh_host = config.get("ssh_host")
+        if not isinstance(ssh_host, str) or not ssh_host.strip():
+            logger.warning("Configuration SSH manquante: ssh_host est requis")
+            return None
 
-    # Check if we already have a cached browser for this configuration
-    # in the current chat thread
-    cache = _get_browser_cache(thread_id)
-    cached_browser = cache.get(cache_key)
+        ssh_port_raw = config.get("ssh_port", 22)
+        ssh_port = 22
+        if isinstance(ssh_port_raw, int):
+            ssh_port = ssh_port_raw
+        elif isinstance(ssh_port_raw, str):
+            try:
+                ssh_port = int(ssh_port_raw)
+            except ValueError:
+                ssh_port = 22
 
-    if cached_browser is not None:
-        thread_info = f"thread={thread_id}" if thread_id else "sans thread_id"
-        logger.info(
-            f"♻️ RÉUTILISATION navigateur en cache ({thread_info}): {cache_key}"
+        ssh_username = config.get("ssh_username", "root")
+        if not isinstance(ssh_username, str):
+            ssh_username = "root"
+
+        ssh_password = config.get("ssh_password")
+        if not isinstance(ssh_password, str) or not ssh_password.strip():
+            ssh_password = None
+
+        ssh_private_key = config.get("ssh_private_key")
+        if not isinstance(ssh_private_key, str) or not ssh_private_key.strip():
+            ssh_private_key = None
+
+        if not ssh_password and not ssh_private_key:
+            logger.warning(
+                "Configuration SSH incomplète: un mot de passe ou une clé privée est requis"
+            )
+            return None
+
+        ssh_config = SSHConfig(
+            host=ssh_host.strip(),
+            port=ssh_port,
+            username=ssh_username.strip() if ssh_username else "root",
+            password=ssh_password.strip() if ssh_password else None,
+            private_key=ssh_private_key.strip() if ssh_private_key else None,
         )
-        computer = cached_browser
-        # Don't navigate when reusing - keep browser at its current page
-        logger.info(
-            f"✓ Navigateur réutilisé pour thread {thread_id}, conservation de la page actuelle"
-        )
+
+        # Create SSH cache key
+        cache_key = f"ssh:{ssh_config.host}:{ssh_config.port}:{ssh_config.username}"
+        cache = _get_browser_cache(thread_id)
+        cached_ssh = cache.get(cache_key)
+
+        if cached_ssh is not None and isinstance(cached_ssh, HostedSSH):
+            thread_info = f"thread={thread_id}" if thread_id else "sans thread_id"
+            logger.info(
+                f"♻️ RÉUTILISATION connexion SSH en cache ({thread_info}): {cache_key}"
+            )
+            computer = cached_ssh
+        else:
+            try:
+                computer = HostedSSH(
+                    width=width,
+                    height=height,
+                    config=ssh_config,
+                )
+                if thread_id:
+                    cache[cache_key] = computer  # type: ignore[assignment]
+                    logger.info(
+                        f"🆕 CRÉATION nouvelle connexion SSH (thread={thread_id}): {cache_key}"
+                    )
+                else:
+                    logger.info(
+                        f"⚠️ CRÉATION connexion SSH SANS CACHE (thread_id manquant): {cache_key}"
+                    )
+            except HostedSSHError as exc:
+                logger.warning("Impossible d'initialiser la connexion SSH : %s", exc)
+                return None
+            except Exception as exc:
+                logger.exception(
+                    "Erreur inattendue lors de la création de la connexion SSH",
+                    exc_info=exc,
+                )
+                return None
     else:
-        # Create new browser instance for this context
-        try:
-            computer = HostedBrowser(
-                width=width,
-                height=height,
-                environment=environment,
-                start_url=start_url,
+        # Create a cache key based on browser configuration
+        # Each chat thread has its own isolated cache that persists across requests
+        cache_key = f"{environment}:{width}x{height}"
+
+        # Check if we already have a cached browser for this configuration
+        # in the current chat thread
+        cache = _get_browser_cache(thread_id)
+        cached_browser = cache.get(cache_key)
+
+        if cached_browser is not None:
+            thread_info = f"thread={thread_id}" if thread_id else "sans thread_id"
+            logger.info(
+                f"♻️ RÉUTILISATION navigateur en cache ({thread_info}): {cache_key}"
             )
-            # Cache the browser for reuse within this chat thread (if thread_id provided)
-            if thread_id:
-                cache[cache_key] = computer
-                logger.info(
-                    f"🆕 CRÉATION nouveau navigateur (thread={thread_id}): {cache_key} | "
-                    f"Mise en cache pour réutilisation future"
-                )
-            else:
-                logger.info(
-                    f"⚠️ CRÉATION navigateur SANS CACHE (thread_id manquant): {cache_key}"
-                )
-        except HostedBrowserError as exc:  # pragma: no cover - dépend de l'environnement
-            logger.warning("Impossible d'initialiser le navigateur hébergé : %s", exc)
-            return None
-        except Exception as exc:  # pragma: no cover - robuste face aux erreurs inattendues
-            logger.exception(
-                "Erreur inattendue lors de la création du navigateur hébergé",
-                exc_info=exc,
+            computer = cached_browser
+            # Don't navigate when reusing - keep browser at its current page
+            logger.info(
+                f"✓ Navigateur réutilisé pour thread {thread_id}, conservation de la page actuelle"
             )
-            return None
+        else:
+            # Create new browser instance for this context
+            try:
+                computer = HostedBrowser(
+                    width=width,
+                    height=height,
+                    environment=environment,
+                    start_url=start_url,
+                )
+                # Cache the browser for reuse within this chat thread (if thread_id provided)
+                if thread_id:
+                    cache[cache_key] = computer
+                    logger.info(
+                        f"🆕 CRÉATION nouveau navigateur (thread={thread_id}): {cache_key} | "
+                        f"Mise en cache pour réutilisation future"
+                    )
+                else:
+                    logger.info(
+                        f"⚠️ CRÉATION navigateur SANS CACHE (thread_id manquant): {cache_key}"
+                    )
+            except HostedBrowserError as exc:  # pragma: no cover - dépend de l'environnement
+                logger.warning("Impossible d'initialiser le navigateur hébergé : %s", exc)
+                return None
+            except Exception as exc:  # pragma: no cover - robuste face aux erreurs inattendues
+                logger.exception(
+                    "Erreur inattendue lors de la création du navigateur hébergé",
+                    exc_info=exc,
+                )
+                return None
 
     def _acknowledge_safety_check(data: Any) -> bool:
         safety = getattr(data, "safety_check", None)
