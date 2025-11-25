@@ -1315,6 +1315,7 @@ export const fr: TranslationDictionary = {
   "admin.cleanup.stats.title": "Statistiques des donnees actuelles",
   "admin.cleanup.stats.subtitle": "Apercu des donnees stockees dans le systeme pour tous les utilisateurs.",
   "admin.cleanup.stats.loading": "Chargement des statistiques...",
+  "admin.cleanup.stats.error": "Impossible de charger les statistiques. Veuillez reessayer.",
   "admin.cleanup.stats.conversations": "Conversations",
   "admin.cleanup.stats.workflows": "Workflows",
   "admin.cleanup.stats.oldVersions": "Anciennes versions",

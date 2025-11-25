@@ -188,6 +188,10 @@ export const AdminCleanupPage = () => {
           <div className="flex flex-col gap-4">
             {isLoading ? (
               <LoadingSpinner text={t("admin.cleanup.stats.loading")} />
+            ) : statsError ? (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {t("admin.cleanup.stats.error")}
+              </p>
             ) : stats ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-surface-elevated rounded-lg border text-center">
