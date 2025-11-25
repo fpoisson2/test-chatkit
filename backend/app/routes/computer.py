@@ -876,7 +876,13 @@ async def get_vnc_info(
     # Allow access if session has no user_id (created without user context)
     # or if the user_id matches the current user
     session_user_id = session.get("user_id")
-    logger.info(f"VNC info request: token={token[:8]}..., session_user_id={session_user_id}, current_user.id={current_user.id}")
+    logger.info(f"VNC info request: token={token[:8]}..., session_user_id={session_user_id} (type={type(session_user_id).__name__}), current_user.id={current_user.id} (type={type(current_user.id).__name__})")
+    # Convert to int for comparison if needed
+    if session_user_id is not None:
+        try:
+            session_user_id = int(session_user_id)
+        except (ValueError, TypeError):
+            pass
     if session_user_id is not None and session_user_id != current_user.id:
         logger.warning(f"VNC access denied: session_user_id={session_user_id} != current_user.id={current_user.id}")
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -919,6 +925,12 @@ async def close_vnc_session(
     # Allow access if session has no user_id (created without user context)
     # or if the user_id matches the current user
     session_user_id = session.get("user_id")
+    # Convert to int for comparison if needed
+    if session_user_id is not None:
+        try:
+            session_user_id = int(session_user_id)
+        except (ValueError, TypeError):
+            pass
     if session_user_id is not None and session_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
