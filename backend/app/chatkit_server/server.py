@@ -1198,12 +1198,16 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 # Get the existing ComputerUseTask
                 existing_task = computer_use_item.workflow.tasks[computer_use_task_index]
 
+                # Check if this is an SSH session (no screenshot needed)
+                is_ssh_session = hasattr(existing_task, "ssh_token") and existing_task.ssh_token
+
                 # 1. Update ComputerUseTask to complete status
                 updated_computer_task = ComputerUseTask(
                     type="computer_use",
                     title=existing_task.title if hasattr(existing_task, "title") else "Session Computer Use",
                     status_indicator="complete",
                     debug_url_token=None,  # Clear the token
+                    ssh_token=None,  # Clear SSH token too
                     current_action="Session terminée",
                 )
                 computer_use_item.workflow.tasks[computer_use_task_index] = updated_computer_task
@@ -1219,34 +1223,37 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 await asyncio.sleep(0)  # Allow event to be sent
                 logger.info("ComputerUseTask marked as complete")
 
-                # 2. Create and add ImageTask with the screenshot
-                image_id = f"img_{uuid.uuid4().hex[:8]}"
-                generated_image = GeneratedImage(
-                    id=image_id,
-                    data_url=data_url,
-                )
+                # 2. Create and add ImageTask with the screenshot (skip for SSH sessions)
+                if not is_ssh_session:
+                    image_id = f"img_{uuid.uuid4().hex[:8]}"
+                    generated_image = GeneratedImage(
+                        id=image_id,
+                        data_url=data_url,
+                    )
 
-                image_task = ImageTask(
-                    type="image",
-                    title="Screenshot finale",
-                    images=[generated_image],
-                    status_indicator="complete",
-                )
+                    image_task = ImageTask(
+                        type="image",
+                        title="Screenshot finale",
+                        images=[generated_image],
+                        status_indicator="complete",
+                    )
 
-                # Add to workflow tasks
-                computer_use_item.workflow.tasks.append(image_task)
-                new_task_index = len(computer_use_item.workflow.tasks) - 1
+                    # Add to workflow tasks
+                    computer_use_item.workflow.tasks.append(image_task)
+                    new_task_index = len(computer_use_item.workflow.tasks) - 1
 
-                # Emit add event for ImageTask
-                yield ThreadItemUpdated(
-                    item_id=computer_use_item.id,
-                    update=WorkflowTaskAdded(
-                        task_index=new_task_index,
-                        task=image_task,
-                    ),
-                )
-                await asyncio.sleep(0)  # Allow event to be sent
-                logger.info("ImageTask added to workflow")
+                    # Emit add event for ImageTask
+                    yield ThreadItemUpdated(
+                        item_id=computer_use_item.id,
+                        update=WorkflowTaskAdded(
+                            task_index=new_task_index,
+                            task=image_task,
+                        ),
+                    )
+                    await asyncio.sleep(0)  # Allow event to be sent
+                    logger.info("ImageTask added to workflow")
+                else:
+                    logger.info("Skipping ImageTask for SSH session")
 
                 # Set duration summary and collapse workflow
                 try:
