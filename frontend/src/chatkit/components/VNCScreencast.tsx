@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import RFB from '@novnc/novnc/core/rfb';
 
 interface VNCScreencastProps {
   vncToken: string;
@@ -12,8 +13,8 @@ interface VNCScreencastProps {
 // Global map to track tokens that have fatal errors
 const fatalErrorTokens = new Set<string>();
 
-// Global map to track active WebSocket connections by token
-const activeConnections = new Map<string, WebSocket>();
+// Global map to track active RFB connections by token
+const activeConnections = new Map<string, RFB>();
 
 export function clearFatalErrorForToken(token: string): void {
   fatalErrorTokens.delete(token);
@@ -27,8 +28,8 @@ export function VNCScreencast({
   onConnectionError,
   onLastFrame,
 }: VNCScreencastProps): JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const rfbRef = useRef<RFB | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(() =>
     fatalErrorTokens.has(vncToken) ? 'Token invalide ou expire' : null
@@ -45,9 +46,26 @@ export function VNCScreencast({
     onLastFrameRef.current = onLastFrame;
   }, [onLastFrame]);
 
+  // Capture last frame from the canvas
+  const captureLastFrame = useCallback(() => {
+    if (!onLastFrameRef.current) return;
+
+    // noVNC creates a canvas inside the container
+    const canvas = containerRef.current?.querySelector('canvas');
+    if (canvas) {
+      try {
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        onLastFrameRef.current(dataUrl);
+        console.log('[VNCScreencast] Captured last frame before closing');
+      } catch (err) {
+        console.error('[VNCScreencast] Error capturing last frame:', err);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
-    let ws: WebSocket | null = null;
+    let rfb: RFB | null = null;
 
     if (fatalErrorTokens.has(vncToken)) {
       console.log('[VNCScreencast] Token has fatal error, not attempting connection:', vncToken.substring(0, 8));
@@ -59,7 +77,7 @@ export function VNCScreencast({
     if (existingConnection) {
       console.log('[VNCScreencast] Closing existing connection for token:', vncToken.substring(0, 8));
       try {
-        existingConnection.close();
+        existingConnection.disconnect();
       } catch (err) {
         console.error('[VNCScreencast] Error closing existing connection:', err);
       }
@@ -67,7 +85,7 @@ export function VNCScreencast({
     }
 
     const connect = async () => {
-      if (!mounted || fatalErrorTokens.has(vncToken)) {
+      if (!mounted || fatalErrorTokens.has(vncToken) || !containerRef.current) {
         return;
       }
 
@@ -105,73 +123,87 @@ export function VNCScreencast({
         console.log('[VNCScreencast] VNC info:', info);
         setVncInfo(info);
 
-        // Connect to VNC WebSocket proxy
+        // Build WebSocket URL for noVNC
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         const wsUrl = `${protocol}//${host}${info.websocket_path}`;
 
-        console.log('[VNCScreencast] Connecting to VNC WebSocket:', wsUrl);
-        ws = new WebSocket(wsUrl, ['binary']);
-        wsRef.current = ws;
-        activeConnections.set(vncToken, ws);
+        console.log('[VNCScreencast] Connecting to VNC via noVNC:', wsUrl);
 
-        ws.binaryType = 'arraybuffer';
+        // Clear the container before creating a new RFB connection
+        if (containerRef.current) {
+          containerRef.current.innerHTML = '';
+        }
 
-        ws.onopen = () => {
+        // Create noVNC RFB connection
+        rfb = new RFB(containerRef.current, wsUrl, {
+          credentials: { password: '' }, // Password handled by backend
+          wsProtocols: ['binary'],
+        });
+
+        rfbRef.current = rfb;
+        activeConnections.set(vncToken, rfb);
+
+        // Configure RFB options
+        rfb.viewOnly = !enableInput;
+        rfb.scaleViewport = true;
+        rfb.resizeSession = false;
+        rfb.showDotCursor = enableInput;
+
+        // Event handlers
+        rfb.addEventListener('connect', () => {
           if (!mounted) return;
-          console.log('[VNCScreencast] VNC WebSocket connected');
+          console.log('[VNCScreencast] noVNC connected');
           setIsConnected(true);
           setError(null);
+        });
 
-          // Initialize canvas with dimensions
-          if (canvasRef.current && info.dimensions) {
-            canvasRef.current.width = info.dimensions.width;
-            canvasRef.current.height = info.dimensions.height;
-          }
-        };
-
-        ws.onmessage = (event) => {
-          if (!mounted) return;
-
-          // Handle VNC frame data (RFB protocol)
-          // noVNC sends binary data representing the VNC framebuffer
-          if (event.data instanceof ArrayBuffer) {
-            handleVNCFrame(event.data);
-          }
-        };
-
-        ws.onerror = (event) => {
-          console.error('[VNCScreencast] WebSocket error:', event);
-          setError('Erreur de connexion VNC');
-        };
-
-        ws.onclose = () => {
-          console.log('[VNCScreencast] WebSocket closed, mounted:', mounted);
+        rfb.addEventListener('disconnect', (event: CustomEvent) => {
+          console.log('[VNCScreencast] noVNC disconnected:', event.detail);
           setIsConnected(false);
-          wsRef.current = null;
 
-          if (activeConnections.get(vncToken) === ws) {
+          if (activeConnections.get(vncToken) === rfb) {
             activeConnections.delete(vncToken);
           }
 
           if (!mounted) return;
 
-          if (fatalErrorTokens.has(vncToken)) {
-            console.log('[VNCScreencast] Not reconnecting due to fatal error');
-            return;
-          }
+          // Check if it was a clean disconnect or an error
+          if (event.detail.clean === false) {
+            const errorMsg = 'Connexion VNC perdue';
+            setError(errorMsg);
 
-          if (activeConnections.has(vncToken)) {
-            console.log('[VNCScreencast] Newer connection exists, not reconnecting');
-            return;
+            if (!fatalErrorTokens.has(vncToken) && !activeConnections.has(vncToken)) {
+              // Attempt reconnection after 2 seconds
+              reconnectTimeoutRef.current = setTimeout(() => {
+                if (!mounted) return;
+                console.log('[VNCScreencast] Attempting reconnection...');
+                connect();
+              }, 2000);
+            }
           }
+        });
 
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (!mounted) return;
-            console.log('[VNCScreencast] Attempting reconnection...');
-            connect();
-          }, 2000);
-        };
+        rfb.addEventListener('securityfailure', (event: CustomEvent) => {
+          console.error('[VNCScreencast] Security failure:', event.detail);
+          const errorMsg = `Echec d'authentification VNC: ${event.detail.reason || 'Unknown'}`;
+          setError(errorMsg);
+          fatalErrorTokens.add(vncToken);
+          if (onConnectionError) {
+            onConnectionError();
+          }
+        });
+
+        rfb.addEventListener('credentialsrequired', () => {
+          console.log('[VNCScreencast] Credentials required');
+          // The password is handled by the backend (websockify)
+          // If we get here, it means the VNC server requires auth that wasn't provided
+          setError('Authentification VNC requise');
+        });
+
+        rfb.addEventListener('desktopname', (event: CustomEvent) => {
+          console.log('[VNCScreencast] Desktop name:', event.detail.name);
+        });
 
       } catch (err) {
         console.error('[VNCScreencast] Connection error:', err);
@@ -186,7 +218,7 @@ export function VNCScreencast({
           return;
         }
 
-        if (mounted) {
+        if (mounted && !fatalErrorTokens.has(vncToken)) {
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log('[VNCScreencast] Retrying connection...');
             connect();
@@ -207,97 +239,39 @@ export function VNCScreencast({
       }
 
       // Capture last frame before closing
-      if (onLastFrameRef.current && canvasRef.current) {
-        try {
-          const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9);
-          onLastFrameRef.current(dataUrl);
-        } catch (err) {
-          console.error('[VNCScreencast] Error capturing last frame:', err);
-        }
-      }
+      captureLastFrame();
 
-      if (ws) {
-        if (activeConnections.get(vncToken) === ws) {
+      if (rfb) {
+        if (activeConnections.get(vncToken) === rfb) {
           activeConnections.delete(vncToken);
         }
-        ws.close();
+        try {
+          rfb.disconnect();
+        } catch (err) {
+          console.error('[VNCScreencast] Error disconnecting RFB:', err);
+        }
+        rfbRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vncToken, authToken]);
+  }, [vncToken, authToken, enableInput, captureLastFrame]);
 
-  const handleVNCFrame = (data: ArrayBuffer) => {
-    // Basic RFB frame handling
-    // In a real implementation, we would use noVNC's RFB library
-    // For now, we'll just draw a placeholder or raw pixels
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // This is a simplified handler - noVNC library handles the complex RFB protocol
-    // The actual implementation should use @novnc/novnc library on the frontend
-    try {
-      // If the data is a raw framebuffer update (simplified)
-      const uint8Array = new Uint8Array(data);
-      if (uint8Array.length >= 4) {
-        // Draw received data as image data if it matches canvas size
-        const expectedSize = canvas.width * canvas.height * 4; // RGBA
-        if (uint8Array.length === expectedSize) {
-          const imageData = new ImageData(
-            new Uint8ClampedArray(uint8Array),
-            canvas.width,
-            canvas.height
-          );
-          ctx.putImageData(imageData, 0, 0);
-        }
-      }
-    } catch (err) {
-      console.error('[VNCScreencast] Error handling VNC frame:', err);
+  // Handle Ctrl+Alt+Del
+  const sendCtrlAltDel = () => {
+    if (rfbRef.current && isConnected) {
+      rfbRef.current.sendCtrlAltDel();
     }
   };
 
-  const sendKeyEvent = (key: string, down: boolean) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-    // RFB Key Event message (simplified)
-    // In production, use noVNC's RFB library
-    console.log(`[VNCScreencast] Key ${down ? 'down' : 'up'}: ${key}`);
-  };
-
-  const sendPointerEvent = (x: number, y: number, buttons: number) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-    // RFB Pointer Event message (simplified)
-    console.log(`[VNCScreencast] Pointer: (${x}, ${y}) buttons=${buttons}`);
-  };
-
-  const handleMouseEvent = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!enableInput || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const x = Math.floor((event.clientX - rect.left) * scaleX);
-    const y = Math.floor((event.clientY - rect.top) * scaleY);
-
-    let buttons = 0;
-    if (event.buttons & 1) buttons |= 1; // Left button
-    if (event.buttons & 2) buttons |= 4; // Right button
-    if (event.buttons & 4) buttons |= 2; // Middle button
-
-    sendPointerEvent(x, y, buttons);
-  };
-
-  const handleKeyEvent = (event: React.KeyboardEvent<HTMLCanvasElement>, down: boolean) => {
-    if (!enableInput) return;
-    event.preventDefault();
-    sendKeyEvent(event.key, down);
+  // Toggle fullscreen
+  const toggleFullscreen = () => {
+    if (containerRef.current) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        containerRef.current.requestFullscreen();
+      }
+    }
   };
 
   return (
@@ -317,6 +291,34 @@ export function VNCScreencast({
           )}
         </div>
 
+        <div className="chatkit-vnc-controls">
+          {enableInput && (
+            <button
+              type="button"
+              onClick={sendCtrlAltDel}
+              disabled={!isConnected}
+              className="chatkit-vnc-button"
+              title="Ctrl+Alt+Del"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="2" y="4" width="12" height="8" rx="1" />
+                <path d="M5 7h6M8 7v3" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            disabled={!isConnected}
+            className="chatkit-vnc-button"
+            title="Plein ecran"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M2 5V3a1 1 0 011-1h2M11 2h2a1 1 0 011 1v2M14 11v2a1 1 0 01-1 1h-2M5 14H3a1 1 0 01-1-1v-2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+
         <div className="chatkit-vnc-status">
           {isConnected ? (
             <span className="chatkit-status-badge chatkit-status-live" title="Connecte">
@@ -330,18 +332,15 @@ export function VNCScreencast({
         </div>
       </div>
 
-      <div className="chatkit-screencast-canvas-container">
-        <canvas
-          ref={canvasRef}
-          className="chatkit-screencast-canvas"
-          tabIndex={enableInput ? 0 : -1}
-          onMouseDown={handleMouseEvent}
-          onMouseUp={handleMouseEvent}
-          onMouseMove={handleMouseEvent}
-          onKeyDown={(e) => handleKeyEvent(e, true)}
-          onKeyUp={(e) => handleKeyEvent(e, false)}
-        />
-      </div>
+      <div
+        ref={containerRef}
+        className="chatkit-vnc-canvas-container"
+        style={{
+          width: '100%',
+          height: vncInfo?.dimensions ? `${Math.min(vncInfo.dimensions.height, 600)}px` : '400px',
+          backgroundColor: '#1a1a1a',
+        }}
+      />
     </div>
   );
 }
