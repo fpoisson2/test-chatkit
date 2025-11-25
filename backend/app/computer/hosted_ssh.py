@@ -17,10 +17,11 @@ logger = logging.getLogger("chatkit.computer.hosted_ssh")
 
 try:  # pragma: no cover - asyncssh n'est pas toujours installé
     import asyncssh
-    from asyncssh import SSHClientConnection
+    from asyncssh import SSHClientConnection, SSHClientProcess
 except ImportError:  # pragma: no cover - compatibilité sans asyncssh
     asyncssh = None  # type: ignore[assignment]
     SSHClientConnection = None  # type: ignore[assignment,misc]
+    SSHClientProcess = None  # type: ignore[assignment,misc]
 
 
 class HostedSSHError(RuntimeError):
@@ -377,6 +378,48 @@ class HostedSSH(AsyncComputer):
             await self._driver.close()
         finally:
             self._driver = None
+
+    async def create_interactive_shell(
+        self,
+        term_type: str = "xterm-256color",
+        term_size: tuple[int, int] | None = None,
+    ) -> SSHClientProcess | None:
+        """
+        Create an interactive shell session with PTY.
+
+        Args:
+            term_type: Terminal type (default: xterm-256color)
+            term_size: Terminal size (width, height) or None for auto
+
+        Returns:
+            SSHClientProcess for interactive I/O, or None on failure
+        """
+        if asyncssh is None:
+            logger.error("asyncssh not available for interactive shell")
+            return None
+
+        driver = await self._get_driver()
+        conn = driver._require_connection()
+
+        if term_size is None:
+            term_size = (self._width // 8, self._height // 16)  # Approximate char size
+
+        try:
+            process = await conn.create_process(
+                term_type=term_type,
+                term_size=term_size,
+                encoding=None,  # Binary mode for raw terminal data
+            )
+            logger.info(f"Interactive shell created for {self.ssh_info}")
+            return process
+        except asyncssh.Error as exc:
+            logger.error(f"Failed to create interactive shell: {exc}")
+            return None
+
+    @property
+    def config(self) -> SSHConfig:
+        """Return the SSH configuration."""
+        return self._config
 
 
 __all__ = ["HostedSSH", "HostedSSHError", "SSHConfig"]

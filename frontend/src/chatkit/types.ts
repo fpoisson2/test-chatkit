@@ -702,6 +702,7 @@ export interface ComputerUseTask extends BaseTask {
   call_id?: string;
   debug_url?: string;
   debug_url_token?: string;
+  ssh_token?: string;
 }
 
 export interface VoiceAgentTask extends BaseTask {

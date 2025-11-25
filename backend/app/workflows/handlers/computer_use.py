@@ -206,6 +206,8 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
             # Register the debug session to get a token
             debug_url_token = None
+            ssh_token = None
+
             if debug_url:
                 try:
                     from ...routes.computer import register_debug_session
@@ -214,6 +216,19 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                     debug_url_token = register_debug_session(debug_url, user_id)
                 except Exception as e:
                     logger.error(f"Failed to register debug session: {e}")
+            elif is_ssh and hasattr(computer_tool, "computer"):
+                # Register SSH session for interactive terminal
+                try:
+                    from ...routes.computer import register_ssh_session
+                    user_id = agent_context.user.id if agent_context and hasattr(agent_context, "user") else None
+                    ssh_token = register_ssh_session(
+                        ssh_instance=computer_tool.computer,
+                        ssh_config=computer_tool.computer.config,
+                        user_id=user_id,
+                    )
+                    logger.info(f"Registered SSH session with token {ssh_token[:8]}...")
+                except Exception as e:
+                    logger.error(f"Failed to register SSH session: {e}")
 
             # Create a workflow item with computer_use task
             on_stream_event = context.runtime_vars.get("on_stream_event")
@@ -221,14 +236,19 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             # Check if this is an SSH environment (no debug_url)
             is_ssh = computer_use_config.get("environment") == "ssh"
 
-            if on_stream_event and agent_context and (debug_url_token or is_ssh):
+            if on_stream_event and agent_context and (debug_url_token or ssh_token):
                 # Create ComputerUseTask
-                computer_task = ComputerUseTask(
-                    type="computer_use",
-                    status_indicator="loading",
-                    debug_url_token=debug_url_token,  # Will be None for SSH
-                    title="Session SSH" if is_ssh else "Environnement Computer Use",
-                )
+                task_kwargs: dict[str, Any] = {
+                    "type": "computer_use",
+                    "status_indicator": "loading",
+                    "title": "Session SSH" if is_ssh else "Environnement Computer Use",
+                }
+                if debug_url_token:
+                    task_kwargs["debug_url_token"] = debug_url_token
+                if ssh_token:
+                    task_kwargs["ssh_token"] = ssh_token
+
+                computer_task = ComputerUseTask(**task_kwargs)
 
                 # Create Workflow
                 workflow = Workflow(

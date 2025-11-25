@@ -50,6 +50,10 @@ class BrowserHistoryDirection(str, Enum):
 # Format: {token: {"debug_url": str, "user_id": int, "browser": HostedBrowser | None, "driver": _BaseBrowserDriver | None}}
 _DEBUG_SESSIONS: dict[str, dict[str, Any]] = {}
 
+# Store SSH sessions per token
+# Format: {token: {"ssh": HostedSSH, "user_id": int, "config": SSHConfig}}
+_SSH_SESSIONS: dict[str, dict[str, Any]] = {}
+
 
 def register_debug_session(debug_url: str, user_id: int | None = None) -> str:
     """
@@ -104,6 +108,67 @@ def cleanup_debug_session(token: str) -> None:
     if token in _DEBUG_SESSIONS:
         del _DEBUG_SESSIONS[token]
         logger.info(f"Cleaned up debug session {token[:8]}...")
+
+
+def register_ssh_session(
+    ssh_instance: Any,
+    ssh_config: Any,
+    user_id: int | None = None,
+) -> str:
+    """
+    Register an SSH session and return a session token.
+
+    Args:
+        ssh_instance: The HostedSSH instance
+        ssh_config: The SSHConfig used
+        user_id: Optional user ID for authorization
+
+    Returns:
+        A unique session token
+    """
+    token = secrets.token_urlsafe(32)
+    _SSH_SESSIONS[token] = {
+        "ssh": ssh_instance,
+        "config": ssh_config,
+        "user_id": user_id,
+    }
+    logger.info(f"Registered SSH session {token[:8]}... for user {user_id}")
+    return token
+
+
+def get_ssh_session(token: str, user_id: int | None = None) -> dict[str, Any] | None:
+    """
+    Get the SSH session for a token.
+
+    Args:
+        token: The session token
+        user_id: Optional user ID for authorization check
+
+    Returns:
+        The session dict if found and authorized, None otherwise
+    """
+    session = _SSH_SESSIONS.get(token)
+    if not session:
+        return None
+
+    # Check authorization if user_id is provided
+    session_user_id = session.get("user_id")
+    if user_id is not None and session_user_id is not None:
+        if user_id != session_user_id:
+            logger.warning(
+                f"User {user_id} attempted to access SSH session "
+                f"belonging to user {session_user_id}"
+            )
+            return None
+
+    return session
+
+
+def cleanup_ssh_session(token: str) -> None:
+    """Remove an SSH session."""
+    if token in _SSH_SESSIONS:
+        del _SSH_SESSIONS[token]
+        logger.info(f"Cleaned up SSH session {token[:8]}...")
 
 
 @router.get("/cdp/json")
@@ -530,3 +595,88 @@ async def close_test_browser(
     cleanup_debug_session(token)
 
     return {"status": "success", "message": "Browser closed"}
+
+
+# SSH WebSocket endpoint for interactive terminal
+@router.websocket("/ssh/ws")
+async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
+    """
+    WebSocket endpoint for interactive SSH terminal.
+
+    The client sends input data, and the server sends back terminal output.
+    Uses xterm.js on the frontend to render the terminal.
+
+    Args:
+        token: The SSH session token
+    """
+    import asyncio
+
+    # Accept the client WebSocket connection first
+    await websocket.accept()
+
+    # Get SSH session
+    session = get_ssh_session(token, user_id=None)
+    if not session:
+        await websocket.close(code=1008, reason="Invalid or unauthorized SSH session")
+        return
+
+    ssh_instance = session.get("ssh")
+    if not ssh_instance:
+        await websocket.close(code=1011, reason="SSH instance not found")
+        return
+
+    logger.info(f"SSH WebSocket connected for session {token[:8]}...")
+
+    try:
+        # Create interactive shell
+        process = await ssh_instance.create_interactive_shell()
+        if not process:
+            await websocket.close(code=1011, reason="Failed to create SSH shell")
+            return
+
+        async def forward_ssh_to_client() -> None:
+            """Forward SSH output to WebSocket client."""
+            try:
+                while True:
+                    # Read from SSH process stdout
+                    data = await process.stdout.read(4096)
+                    if not data:
+                        break
+                    # Send as binary to preserve terminal escape sequences
+                    await websocket.send_bytes(data)
+            except Exception as exc:
+                logger.debug(f"SSH to client forward ended: {exc}")
+
+        async def forward_client_to_ssh() -> None:
+            """Forward WebSocket input to SSH process."""
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if message["type"] == "websocket.disconnect":
+                        break
+                    if "bytes" in message:
+                        data = message["bytes"]
+                    elif "text" in message:
+                        data = message["text"].encode("utf-8")
+                    else:
+                        continue
+                    # Write to SSH process stdin
+                    process.stdin.write(data)
+                    await process.stdin.drain()
+            except WebSocketDisconnect:
+                logger.debug("Client WebSocket disconnected")
+            except Exception as exc:
+                logger.debug(f"Client to SSH forward ended: {exc}")
+
+        # Run both forwarding tasks concurrently
+        await asyncio.gather(
+            forward_ssh_to_client(),
+            forward_client_to_ssh(),
+            return_exceptions=True,
+        )
+
+    except Exception as exc:
+        logger.error(f"SSH WebSocket error: {exc}")
+        await websocket.close(code=1011, reason=str(exc))
+    finally:
+        logger.info(f"SSH WebSocket closed for session {token[:8]}...")
