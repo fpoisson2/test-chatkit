@@ -2286,3 +2286,225 @@
 [data-theme="dark"] .chatkit-disclaimer {
   background: var(--chatkit-dark-bg-primary);
 }
+
+/* ===== ADD USER MODAL ===== */
+.chatkit-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: chatkit-fade-in 0.15s ease-out;
+}
+
+@keyframes chatkit-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.chatkit-add-user-modal {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  animation: chatkit-slide-up 0.2s ease-out;
+}
+
+@keyframes chatkit-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chatkit-add-user-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.chatkit-add-user-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.chatkit-add-user-modal-close {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #6b7280;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.chatkit-add-user-modal-close:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.chatkit-add-user-modal-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #9ca3af;
+}
+
+.chatkit-add-user-modal-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  color: #111827;
+  background: transparent;
+}
+
+.chatkit-add-user-modal-search-input::placeholder {
+  color: #9ca3af;
+}
+
+.chatkit-add-user-modal-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  max-height: 400px;
+}
+
+.chatkit-add-user-modal-loading,
+.chatkit-add-user-modal-empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.chatkit-add-user-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.chatkit-add-user-modal-item:hover {
+  background: #f3f4f6;
+}
+
+.chatkit-add-user-modal-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.chatkit-add-user-modal-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chatkit-add-user-modal-user-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chatkit-add-user-modal-user-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chatkit-add-user-modal-user-email {
+  font-size: 13px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chatkit-add-user-modal-add-icon {
+  color: #9ca3af;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.chatkit-add-user-modal-item:hover .chatkit-add-user-modal-add-icon {
+  opacity: 1;
+  color: #3b82f6;
+}
+
+/* Dark mode for modal */
+[data-theme="dark"] .chatkit-add-user-modal {
+  background: var(--chatkit-dark-bg-secondary);
+}
+
+[data-theme="dark"] .chatkit-add-user-modal-header {
+  border-color: var(--chatkit-dark-border);
+}
+
+[data-theme="dark"] .chatkit-add-user-modal-title {
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .chatkit-add-user-modal-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .chatkit-add-user-modal-search {
+  border-color: var(--chatkit-dark-border);
+}
+
+[data-theme="dark"] .chatkit-add-user-modal-search-input {
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .chatkit-add-user-modal-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .chatkit-add-user-modal-user-name {
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .chatkit-add-user-modal-user-email {
+  color: #9ca3af;
+}
