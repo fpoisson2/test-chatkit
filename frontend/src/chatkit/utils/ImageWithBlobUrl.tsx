@@ -71,8 +71,8 @@ export function ImageWithBlobUrl({
         objectUrl = URL.createObjectURL(blob);
         setBlobUrl(objectUrl);
       }
-    } else if (src.startsWith('http')) {
-      // URL normale, utiliser telle quelle
+    } else if (src.startsWith('http') || src.startsWith('/')) {
+      // URL normale ou relative, utiliser telle quelle
       setBlobUrl(src);
     } else if (src.startsWith('blob:')) {
       // Déjà une Blob URL

@@ -288,7 +288,8 @@ function WorkflowContent({
 
           if (!isLoading) {
             let src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
-            if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+            // Ne pas traiter les URLs relatives (/api/...) comme du base64
+            if (src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('/')) {
               src = `data:image/png;base64,${src}`;
             }
             if (src) {
@@ -321,9 +322,10 @@ function WorkflowContent({
           const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
           const isLoading = computerUseTask.status_indicator === 'loading';
 
-          let src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
+          let src = screenshot ? (screenshot.data_url || screenshot.image_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
-          if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+          // Ne pas traiter les URLs relatives (/api/...) comme du base64
+          if (src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('/')) {
             src = `data:image/png;base64,${src}`;
           }
 

@@ -18,6 +18,10 @@ from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
 from .models import ChatAttachment, ChatThread, ChatThreadItem
 from .workflows import WorkflowService
 
+# Taille minimale d'une image base64 pour être remplacée par une URL (en caractères)
+# ~10KB en base64 = ~13KB en caractères
+_IMAGE_BASE64_THRESHOLD = 10000
+
 if TYPE_CHECKING:
     from .chatkit import ChatKitRequestContext
 else:  # pragma: no cover - utilisé uniquement pour éviter les imports circulaires
@@ -121,6 +125,238 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             normalized_payload["content"] = normalized_content
 
         return normalized_payload if updated else dict(payload)
+
+    def _strip_image_data_for_response(
+        self,
+        payload: dict[str, Any],
+        thread_id: str,
+        item_id: str,
+    ) -> dict[str, Any]:
+        """
+        Transforme les données d'image base64 volumineuses en références d'URL
+        pour réduire la taille du payload envoyé au frontend.
+
+        Les données originales restent en base de données et sont servies
+        via l'endpoint /api/chatkit/thread-images/{thread_id}/{item_id}/{image_id}
+        """
+        # Traiter les items de type workflow qui contiennent des ImageTask
+        if payload.get("type") != "workflow":
+            return payload
+
+        workflow = payload.get("workflow")
+        if not isinstance(workflow, dict):
+            return payload
+
+        tasks = workflow.get("tasks")
+        if not isinstance(tasks, list):
+            return payload
+
+        modified = False
+        new_tasks = []
+
+        for task in tasks:
+            if not isinstance(task, dict):
+                new_tasks.append(task)
+                continue
+
+            task_type = task.get("type")
+
+            # Traiter les ImageTask
+            if task_type == "image":
+                images = task.get("images")
+                if isinstance(images, list):
+                    new_images = []
+                    for image in images:
+                        if not isinstance(image, dict):
+                            new_images.append(image)
+                            continue
+
+                        image_id = image.get("id")
+                        if not image_id:
+                            new_images.append(image)
+                            continue
+
+                        # Vérifier si l'image a des données base64 volumineuses
+                        data_url = image.get("data_url") or ""
+                        b64_json = image.get("b64_json") or ""
+
+                        has_large_data = (
+                            len(data_url) > _IMAGE_BASE64_THRESHOLD or
+                            len(b64_json) > _IMAGE_BASE64_THRESHOLD
+                        )
+
+                        if has_large_data:
+                            # Créer une copie sans les données volumineuses
+                            new_image = dict(image)
+                            new_image.pop("data_url", None)
+                            new_image.pop("b64_json", None)
+                            new_image.pop("partials", None)
+                            # Ajouter l'URL de référence
+                            new_image["image_url"] = (
+                                f"/api/chatkit/thread-images/{thread_id}/{item_id}/{image_id}"
+                            )
+                            new_images.append(new_image)
+                            modified = True
+                        else:
+                            new_images.append(image)
+
+                    if modified:
+                        task = dict(task)
+                        task["images"] = new_images
+
+            # Traiter les ComputerUseTask (screenshots)
+            elif task_type == "computer_use":
+                screenshots = task.get("screenshots")
+                if isinstance(screenshots, list):
+                    new_screenshots = []
+                    for idx, screenshot in enumerate(screenshots):
+                        if not isinstance(screenshot, dict):
+                            new_screenshots.append(screenshot)
+                            continue
+
+                        # Vérifier si le screenshot a des données volumineuses
+                        data_url = screenshot.get("data_url") or ""
+                        b64_image = screenshot.get("b64_image") or ""
+
+                        has_large_data = (
+                            len(data_url) > _IMAGE_BASE64_THRESHOLD or
+                            len(b64_image) > _IMAGE_BASE64_THRESHOLD
+                        )
+
+                        if has_large_data:
+                            new_screenshot = dict(screenshot)
+                            new_screenshot.pop("data_url", None)
+                            new_screenshot.pop("b64_image", None)
+                            # Utiliser l'index comme ID pour les screenshots
+                            screenshot_id = f"screenshot_{idx}"
+                            new_screenshot["image_url"] = (
+                                f"/api/chatkit/thread-images/{thread_id}/{item_id}/{screenshot_id}"
+                            )
+                            new_screenshots.append(new_screenshot)
+                            modified = True
+                        else:
+                            new_screenshots.append(screenshot)
+
+                    if modified:
+                        task = dict(task)
+                        task["screenshots"] = new_screenshots
+
+            new_tasks.append(task)
+
+        if not modified:
+            return payload
+
+        # Créer une copie du payload avec les tâches modifiées
+        result = dict(payload)
+        result["workflow"] = dict(workflow)
+        result["workflow"]["tasks"] = new_tasks
+        return result
+
+    async def get_thread_image_data(
+        self,
+        thread_id: str,
+        item_id: str,
+        image_id: str,
+        context: ChatKitRequestContext,
+    ) -> tuple[bytes, str] | None:
+        """
+        Récupère les données binaires d'une image stockée dans un item.
+
+        Retourne un tuple (données, mime_type) ou None si non trouvé.
+        """
+        owner_id = self._require_user_id(context)
+
+        def _load(session: Session) -> tuple[bytes, str] | None:
+            expected = self._current_workflow_metadata()
+            self._require_thread_record(
+                session,
+                thread_id,
+                owner_id,
+                expected,
+            )
+
+            stmt = select(ChatThreadItem).where(
+                ChatThreadItem.id == item_id,
+                ChatThreadItem.thread_id == thread_id,
+                ChatThreadItem.owner_id == owner_id,
+            )
+            record = session.execute(stmt).scalar_one_or_none()
+            if record is None:
+                return None
+
+            payload = record.payload
+            if not isinstance(payload, dict):
+                return None
+
+            # Chercher dans les workflows
+            if payload.get("type") == "workflow":
+                workflow = payload.get("workflow")
+                if isinstance(workflow, dict):
+                    tasks = workflow.get("tasks")
+                    if isinstance(tasks, list):
+                        for task in tasks:
+                            if not isinstance(task, dict):
+                                continue
+
+                            task_type = task.get("type")
+
+                            # Chercher dans ImageTask
+                            if task_type == "image":
+                                images = task.get("images")
+                                if isinstance(images, list):
+                                    for image in images:
+                                        if not isinstance(image, dict):
+                                            continue
+                                        if image.get("id") == image_id:
+                                            return self._extract_image_bytes(image)
+
+                            # Chercher dans ComputerUseTask screenshots
+                            elif task_type == "computer_use":
+                                screenshots = task.get("screenshots")
+                                if isinstance(screenshots, list):
+                                    for idx, screenshot in enumerate(screenshots):
+                                        if not isinstance(screenshot, dict):
+                                            continue
+                                        expected_id = f"screenshot_{idx}"
+                                        if expected_id == image_id:
+                                            return self._extract_image_bytes(screenshot)
+
+            return None
+
+        return await self._run(_load)
+
+    @staticmethod
+    def _extract_image_bytes(image_data: dict[str, Any]) -> tuple[bytes, str] | None:
+        """Extrait les données binaires et le type MIME d'une image."""
+        import base64
+
+        # Essayer data_url d'abord
+        data_url = image_data.get("data_url")
+        if isinstance(data_url, str) and data_url.startswith("data:"):
+            try:
+                # Format: data:image/png;base64,xxxxx
+                header, data = data_url.split(",", 1)
+                mime_type = header.split(":")[1].split(";")[0]
+                return base64.b64decode(data), mime_type
+            except (ValueError, IndexError):
+                pass
+
+        # Essayer b64_json ou b64_image
+        b64_data = image_data.get("b64_json") or image_data.get("b64_image")
+        if isinstance(b64_data, str) and b64_data:
+            try:
+                # Déterminer le format à partir des premiers octets
+                raw_bytes = base64.b64decode(b64_data)
+                mime_type = "image/png"  # Par défaut
+                if raw_bytes.startswith(b"\xff\xd8\xff"):
+                    mime_type = "image/jpeg"
+                elif raw_bytes.startswith(b"RIFF") and b"WEBP" in raw_bytes[:12]:
+                    mime_type = "image/webp"
+                return raw_bytes, mime_type
+            except Exception:
+                pass
+
+        return None
 
     def _current_workflow_metadata(self) -> dict[str, Any]:
         definition = self._workflow_service.get_current()
@@ -339,7 +575,12 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                     record.payload = payload
                     changed_records.append(record)
 
-                items.append(self._thread_item_adapter.validate_python(payload))
+                # Transformer les données d'image volumineuses en URLs de référence
+                # (sans modifier les données stockées en base)
+                response_payload = self._strip_image_data_for_response(
+                    payload, thread_id, record.id
+                )
+                items.append(self._thread_item_adapter.validate_python(response_payload))
 
             if changed_records:
                 session.add_all(changed_records)
