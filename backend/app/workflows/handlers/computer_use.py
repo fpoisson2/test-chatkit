@@ -188,14 +188,16 @@ class ComputerUseNodeHandler(BaseNodeHandler):
         if thread:
             computer_use_config = {**computer_use_config, "thread_id": thread.id}
 
+        # Check if this is an SSH environment
+        is_ssh = computer_use_config.get("environment") == "ssh"
+
         # Build the computer_use tool to initialize the environment
         computer_tool = build_computer_use_tool({"computer_use": computer_use_config})
 
         if computer_tool:
-            # Get the debug_url from the HostedBrowser
-            # We need to ensure the browser is started first by taking a screenshot
+            # Get the debug_url from the HostedBrowser (not applicable for SSH)
             debug_url = None
-            if hasattr(computer_tool, "computer"):
+            if not is_ssh and hasattr(computer_tool, "computer"):
                 try:
                     # Force browser initialization by taking a screenshot
                     await computer_tool.computer.screenshot()
@@ -207,9 +209,6 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             # Register the debug session to get a token
             debug_url_token = None
             ssh_token = None
-
-            # Check if this is an SSH environment (no debug_url)
-            is_ssh = computer_use_config.get("environment") == "ssh"
 
             if debug_url:
                 try:
