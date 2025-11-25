@@ -876,7 +876,9 @@ async def get_vnc_info(
     # Allow access if session has no user_id (created without user context)
     # or if the user_id matches the current user
     session_user_id = session.get("user_id")
+    logger.info(f"VNC info request: token={token[:8]}..., session_user_id={session_user_id}, current_user.id={current_user.id}")
     if session_user_id is not None and session_user_id != current_user.id:
+        logger.warning(f"VNC access denied: session_user_id={session_user_id} != current_user.id={current_user.id}")
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     vnc_instance = session.get("vnc")
