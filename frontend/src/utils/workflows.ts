@@ -3903,6 +3903,24 @@ export const getAgentComputerUseConfig = (
       result.ssh_private_key = sshPrivateKey.trim();
     }
 
+    // VNC-specific fields
+    const vncHost = (source as Record<string, unknown>).vnc_host;
+    if (typeof vncHost === "string" && vncHost.trim()) {
+      result.vnc_host = vncHost.trim();
+    }
+    const vncPort = (source as Record<string, unknown>).vnc_port;
+    if (typeof vncPort === "number" && vncPort > 0 && vncPort <= 65535) {
+      result.vnc_port = vncPort;
+    }
+    const vncPassword = (source as Record<string, unknown>).vnc_password;
+    if (typeof vncPassword === "string" && vncPassword) {
+      result.vnc_password = vncPassword;
+    }
+    const novncPort = (source as Record<string, unknown>).novnc_port;
+    if (typeof novncPort === "number" && novncPort > 0 && novncPort <= 65535) {
+      result.novnc_port = novncPort;
+    }
+
     return result;
   }
 
