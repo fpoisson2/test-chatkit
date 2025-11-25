@@ -733,34 +733,33 @@ button {
 }
 
 .chatkit-sidebar__section-icon-button {
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border: none;
   background: transparent;
   color: var(--text-color);
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.75rem;
+  padding: 10px;
+  border-radius: var(--radius-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
-  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease,
-    transform 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .chatkit-sidebar__section-icon-button:hover,
 .chatkit-sidebar__section-icon-button:focus-visible {
-  background: transparent;
-  border-color: rgba(37, 99, 235, 0.35);
-  color: var(--primary-hover);
-  transform: translateY(-1px);
+  background: var(--color-surface-secondary);
+  color: var(--text-color);
+}
+
+.chatkit-sidebar__section-icon-button svg {
+  display: block;
+  width: 20px;
+  height: 20px;
 }
 
 .chatkit-sidebar__section-icon-button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-  transform: none;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__section-button {
