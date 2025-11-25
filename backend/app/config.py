@@ -528,6 +528,9 @@ class Settings:
                     "when MODEL_PROVIDER=litellm"
                 )
             model_api_base = litellm_base.rstrip("/")
+        elif model_provider == "groq":
+            groq_base = get_stripped("GROQ_API_BASE")
+            model_api_base = (groq_base or "https://api.groq.com/openai").rstrip("/")
         else:
             raise RuntimeError(
                 "MODEL_API_BASE environment variable is required when MODEL_PROVIDER="
@@ -546,6 +549,8 @@ class Settings:
             model_api_key_env = "OPENAI_API_KEY"
         elif model_provider == "litellm":
             model_api_key_env = "LITELLM_API_KEY"
+        elif model_provider == "groq":
+            model_api_key_env = "GROQ_API_KEY"
         else:
             raise RuntimeError(
                 "MODEL_API_KEY_ENV environment variable is required when "

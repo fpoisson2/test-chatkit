@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from .groq import configure_groq_client
 from .litellm import configure_litellm_client
 from .openai import configure_openai_client
 
@@ -17,6 +18,7 @@ __all__ = [
     "configure_model_provider",
     "configure_openai_client",
     "configure_litellm_client",
+    "configure_groq_client",
 ]
 
 
@@ -30,6 +32,8 @@ def configure_model_provider(settings: Settings) -> None:
         configure_litellm_client(settings)
     elif provider == "openai":
         configure_openai_client(settings)
+    elif provider == "groq":
+        configure_groq_client(settings)
     else:
         logger.warning(
             "Fournisseur de modèles %s non pris en charge pour la "
