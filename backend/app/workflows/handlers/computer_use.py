@@ -213,32 +213,33 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             ssh_token = None
             vnc_token = None
 
+            # Get user_id from request_context (set by chatkit routes)
+            request_context = getattr(agent_context, "request_context", None) if agent_context else None
+            user_id = getattr(request_context, "user_id", None) if request_context else None
+
             if debug_url:
                 try:
                     from ...routes.computer import register_debug_session
-                    # Get user_id from agent_context
-                    user_id = agent_context.user.id if agent_context and hasattr(agent_context, "user") else None
                     debug_url_token = register_debug_session(debug_url, user_id)
+                    logger.info(f"Registered debug session with token {debug_url_token[:8]}... for user {user_id}")
                 except Exception as e:
                     logger.error(f"Failed to register debug session: {e}")
             elif is_ssh and hasattr(computer_tool, "computer"):
                 # Register SSH session for interactive terminal
                 try:
                     from ...routes.computer import register_ssh_session
-                    user_id = agent_context.user.id if agent_context and hasattr(agent_context, "user") else None
                     ssh_token = register_ssh_session(
                         ssh_instance=computer_tool.computer,
                         ssh_config=computer_tool.computer.config,
                         user_id=user_id,
                     )
-                    logger.info(f"Registered SSH session with token {ssh_token[:8]}...")
+                    logger.info(f"Registered SSH session with token {ssh_token[:8]}... for user {user_id}")
                 except Exception as e:
                     logger.error(f"Failed to register SSH session: {e}")
             elif is_vnc and hasattr(computer_tool, "computer"):
                 # Register VNC session for remote desktop
                 try:
                     from ...routes.computer import register_vnc_session
-                    user_id = agent_context.user.id if agent_context and hasattr(agent_context, "user") else None
                     # Force VNC initialization by taking a screenshot (starts websockify)
                     await computer_tool.computer.screenshot()
                     vnc_token = register_vnc_session(
@@ -246,7 +247,7 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                         vnc_config=computer_tool.computer.config,
                         user_id=user_id,
                     )
-                    logger.info(f"Registered VNC session with token {vnc_token[:8]}...")
+                    logger.info(f"Registered VNC session with token {vnc_token[:8]}... for user {user_id}")
                 except Exception as e:
                     logger.error(f"Failed to register VNC session: {e}")
 
