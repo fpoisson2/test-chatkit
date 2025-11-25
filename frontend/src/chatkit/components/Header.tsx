@@ -15,8 +15,10 @@ export interface HeaderProps {
   title: string;
   showNewThreadButton?: boolean;
   showHistoryButton?: boolean;
+  showAddUserButton?: boolean;
   onNewThread: () => void;
   onToggleHistory: () => void;
+  onAddUser?: () => void;
 }
 
 /**
@@ -27,8 +29,10 @@ export function Header({
   title,
   showNewThreadButton = true,
   showHistoryButton = true,
+  showAddUserButton = false,
   onNewThread,
   onToggleHistory,
+  onAddUser,
 }: HeaderProps): JSX.Element | null {
   // Don't render if header is disabled
   if (config === false || config?.enabled === false) {
@@ -65,6 +69,21 @@ export function Header({
             <path d="M12 5v14M5 12h14"></path>
           </svg>
         </button>
+        {showAddUserButton && onAddUser && (
+          <button
+            className="chatkit-header-action"
+            onClick={onAddUser}
+            aria-label="Ajouter un utilisateur"
+            title="Ajouter un utilisateur à la conversation"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="8.5" cy="7" r="4"></circle>
+              <line x1="20" y1="8" x2="20" y2="14"></line>
+              <line x1="23" y1="11" x2="17" y2="11"></line>
+            </svg>
+          </button>
+        )}
         {showHistoryButton && (
           <button
             className="chatkit-header-action"
