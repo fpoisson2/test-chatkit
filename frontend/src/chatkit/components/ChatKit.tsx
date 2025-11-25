@@ -12,17 +12,12 @@ import type {
 } from '../types';
 import { WidgetRenderer } from '../widgets';
 import type { WidgetContext } from '../widgets';
-import { WorkflowRenderer } from './WorkflowRenderer';
-import { TaskRenderer } from './TaskRenderer';
-import { AnnotationRenderer } from './AnnotationRenderer';
 import { ThreadHistory } from './ThreadHistory';
-import { MarkdownRenderer } from './MarkdownRenderer';
-import { DevToolsScreencast } from './DevToolsScreencast';
 import { Composer } from './Composer';
+import { MessageRenderer } from './MessageRenderer';
 import { useI18n } from '../../i18n/I18nProvider';
-import { LoadingIndicator } from './LoadingIndicator';
 import type { Attachment } from '../api/attachments';
-import { ImageWithBlobUrl, COPY_FEEDBACK_DELAY_MS } from '../utils';
+import { COPY_FEEDBACK_DELAY_MS } from '../utils';
 import './ChatKit.css';
 
 export interface ChatKitProps {
@@ -30,21 +25,6 @@ export interface ChatKitProps {
   options: ChatKitOptions;
   className?: string;
   style?: React.CSSProperties;
-}
-
-/**
- * Component to display final images with wrapper
- */
-function FinalImageDisplay({ src }: { src: string }): JSX.Element | null {
-  return (
-    <div className="chatkit-image-generation-preview">
-      <ImageWithBlobUrl
-        src={src}
-        alt="Image générée"
-        className="chatkit-generated-image-final"
-      />
-    </div>
-  );
 }
 
 export function ChatKit({ control, options, className, style }: ChatKitProps): JSX.Element {
@@ -272,6 +252,21 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     };
   }, []);
 
+  // Callback for screencast connection errors
+  const handleScreencastConnectionError = useCallback((token: string) => {
+    setFailedScreencastTokens(prev => {
+      if (prev.has(token)) return prev;
+      const next = new Set(prev);
+      next.add(token);
+      return next;
+    });
+  }, []);
+
+  // Callback to continue workflow
+  const handleContinueWorkflow = useCallback(() => {
+    control.customAction(null, { type: 'continue_workflow' });
+  }, [control]);
+
   // Ajuster le décalage du clavier virtuel sur mobile pour ne déplacer que le composer
   useEffect(() => {
     if (typeof window === 'undefined' || !window.visualViewport) return;
@@ -384,19 +379,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       ...(options.widgets.voiceSessionWidget ?? {}),
     };
   }, [control.thread?.id, options.widgets?.voiceSession, options.widgets?.voiceSessionWidget]);
-
-  const isLikelyJson = (value: string): boolean => {
-    const trimmed = value.trim();
-    if (!trimmed || (trimmed[0] !== '{' && trimmed[0] !== '[')) {
-      return false;
-    }
-    try {
-      JSON.parse(trimmed);
-      return true;
-    } catch {
-      return false;
-    }
-  };
 
   const renderInlineWidgets = (
     widget: VoiceSessionWidget | null,
@@ -586,366 +568,25 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                 return null;
               }
 
-              const messageClass = item.type === 'user_message'
-                ? 'user'
-                : item.type === 'client_tool_call'
-                ? 'tool'
-                : item.type === 'widget' || item.type === 'task' || item.type === 'workflow'
-                ? 'standalone'
-                : 'assistant';
-
               const nodes: React.ReactNode[] = [
-                (
-                  <div
-                    key={item.id}
-                    className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}
-                  >
-                  {/* User message */}
-                  {item.type === 'user_message' && (
-                    <div className="chatkit-message-content">
-                    {item.content.map((content, idx) => (
-                      <div key={idx}>
-                        {content.type === 'input_text' && <MarkdownRenderer content={content.text} theme={theme?.colorScheme} />}
-                        {content.type === 'input_tag' && (
-                          <span className="chatkit-tag">{content.text}</span>
-                        )}
-                        {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" />}
-                        {content.type === 'file' && (
-                          <div className="chatkit-file">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                              <polyline points="14 2 14 8 20 8"></polyline>
-                            </svg>
-                            {content.file}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {item.quoted_text && (
-                      <div className="chatkit-quoted-text">
-                        <blockquote>{item.quoted_text}</blockquote>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Assistant message */}
-                {item.type === 'assistant_message' && (
-                  <>
-                    <div className="chatkit-message-content">
-                      {item.content
-                        .filter((content) => {
-                          if (content.type !== 'output_text') {
-                            return true;
-                          }
-
-                          const rawText = content.text ?? '';
-                          return !isLikelyJson(rawText);
-                        })
-                        .map((content, idx) => (
-                          <div key={idx}>
-                            {content.type === 'output_text' && (
-                              <>
-                                <MarkdownRenderer content={content.text} theme={theme?.colorScheme} />
-                                {content.annotations && content.annotations.length > 0 && (
-                                  <AnnotationRenderer annotations={content.annotations} />
-                                )}
-                              </>
-                            )}
-                          {content.type === 'widget' && (
-                            <WidgetRenderer widget={content.widget} context={createWidgetContext(item.id)} />
-                          )}
-                        </div>
-                        ))}
-                      {item.status === 'in_progress' && <LoadingIndicator label={t('chat.loading')} />}
-                    </div>
-                    {item.status !== 'in_progress' && (
-                      <button
-                        className={`chatkit-copy-button ${copiedMessageId === item.id ? 'copied' : ''}`}
-                        onClick={() => {
-                          const textContent = item.content
-                            .filter((c: any) => c.type === 'output_text')
-                            .map((c: any) => c.text)
-                            .join('\n\n');
-                          handleCopyMessage(item.id, textContent);
-                        }}
-                      >
-                        {copiedMessageId === item.id ? (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
-                        ) : (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                          </svg>
-                        )}
-                      </button>
-                    )}
-                  </>
-                )}
-
-                {/* Client tool call */}
-                {item.type === 'client_tool_call' && (
-                  <div className="chatkit-message-content chatkit-tool-call">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-                    </svg>
-                    <span>{item.name}</span>
-                    {item.status === 'pending' && <span className="chatkit-tool-status"> (en cours...)</span>}
-                    {item.status === 'completed' && (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="chatkit-tool-check">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    )}
-                  </div>
-                )}
-
-                {/* Widget standalone */}
-                {item.type === 'widget' && (
-                  <div className="chatkit-message-content">
-                    <WidgetRenderer widget={item.widget} context={createWidgetContext(item.id)} />
-                  </div>
-                )}
-
-                {/* Task standalone */}
-                {(() => {
-                  if (item.type !== 'task') {
-                    return null;
-                  }
-
-                  const task = item.task as any;
-                  const hasJsonContent =
-                    task?.type === 'custom' && typeof task?.content === 'string' && isLikelyJson(task.content);
-
-                  if (hasJsonContent) {
-                    // Hide opaque payloads entirely from the transcript while keeping any accompanying widgets/metadata
-                    return null;
-                  }
-
-                  const sanitizedTask = task;
-
-                  return (
-                    <div className="chatkit-message-content">
-                      <TaskRenderer task={sanitizedTask} theme={theme?.colorScheme} />
-                    </div>
-                  );
-                })()}
-
-                  {/* Workflow */}
-                  {item.type === 'workflow' && (
-                  <>
-                    {/* Always show workflow header - completion is handled by backend */}
-                    <div className="chatkit-message-content">
-                      <WorkflowRenderer workflow={item.workflow} theme={theme?.colorScheme} />
-                    </div>
-
-                    {/* Afficher les images (partielles ou finales) après le workflow */}
-                    {(() => {
-                      const imageTask = item.workflow.tasks.find(
-                        (task: any) => task.type === 'image'
-                      );
-                      if (imageTask && imageTask.images && imageTask.images.length > 0) {
-                        const image = imageTask.images[0];
-                        const isLoading = imageTask.status_indicator === 'loading';
-
-                        // Afficher le partial pendant le loading
-                        if (isLoading && image.partials && image.partials.length > 0) {
-                          const lastPartial = image.partials[image.partials.length - 1];
-                          const src = lastPartial.startsWith('data:')
-                            ? lastPartial
-                            : `data:image/png;base64,${lastPartial}`;
-                          return (
-                            <div className="chatkit-image-generation-preview">
-                              <ImageWithBlobUrl
-                                src={src}
-                                alt="Génération en cours..."
-                                className="chatkit-generating-image"
-                              />
-                            </div>
-                          );
-                        }
-
-                        // Afficher l'image finale
-                        if (!isLoading) {
-                          let src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
-                          // Ensure proper data URL format
-                          if (src && !src.startsWith('data:') && !src.startsWith('http')) {
-                            src = `data:image/png;base64,${src}`;
-                          }
-                          if (src) {
-                            return <FinalImageDisplay src={src} />;
-                          }
-                        }
-                      }
-                      return null;
-                    })()}
-
-                    {/* Afficher les screenshots du browser automation (computer_use) */}
-                    {(() => {
-                      // Find the computer_use task that is currently loading with a debug token,
-                      // or the last computer_use task with a debug token, or the last computer_use task
-                      const computerUseTasks = item.workflow.tasks.filter(
-                        (task: any) => task.type === 'computer_use'
-                      );
-
-                      let computerUseTask = computerUseTasks.find(
-                        (task: any) => task.status_indicator === 'loading' && task.debug_url_token
-                      );
-
-                      if (!computerUseTask) {
-                        // Find last task with debug_url_token
-                        const tasksWithToken = computerUseTasks.filter((task: any) => task.debug_url_token);
-                        computerUseTask = tasksWithToken[tasksWithToken.length - 1];
-                      }
-
-                      if (!computerUseTask && computerUseTasks.length > 0) {
-                        // Fallback to last computer_use task
-                        computerUseTask = computerUseTasks[computerUseTasks.length - 1];
-                      }
-
-                      if (computerUseTask) {
-                        const hasScreenshots = computerUseTask.screenshots && computerUseTask.screenshots.length > 0;
-                        const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
-                        // Check if THIS SPECIFIC task is loading (not the workflow)
-                        const isLoading = computerUseTask.status_indicator === 'loading';
-
-                        let src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
-
-                        // Ensure proper data URL format for screenshot
-                        if (src && !src.startsWith('data:') && !src.startsWith('http')) {
-                          src = `data:image/png;base64,${src}`;
-                        }
-
-                        // Vérifier si ce workflow contient le screencast actuellement actif
-                        const debugUrlToken =
-                          computerUseTask.debug_url_token ||
-                          (activeScreencast?.itemId === item.id ? activeScreencast.token : undefined);
-
-                        const isActiveScreencast = activeScreencast?.itemId === item.id && !!debugUrlToken;
-
-                        // Afficher le screencast live seulement si c'est le screencast actif
-                        const showLiveScreencast = isActiveScreencast && !!debugUrlToken;
-
-                        // Si on n'a pas de screenshot mais qu'on a un screenshot sauvegardé pour ce workflow, l'utiliser
-                        if (!src && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
-                          src = lastScreencastScreenshot.src;
-                        }
-
-                        // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
-                        // MAIS seulement si la tâche n'est pas complete (sinon on cache tout pour retourner au début)
-                        const isComplete = computerUseTask.status_indicator === 'complete';
-                        const isError = computerUseTask.status_indicator === 'error';
-                        const isTerminal = isComplete || isError;
-                        const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
-
-                        const isDismissed = dismissedScreencastItems.has(item.id);
-                        // If dismissed, only hide the live screencast, but still show static screenshot
-                        const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
-                        const shouldShowScreenshot = showScreenshot;
-                        const showPreview = shouldShowLiveScreencast || shouldShowScreenshot;
-                        // If dismissed, don't show loading animation on screenshot
-                        const screenshotIsLoading = isLoading && !isDismissed;
-
-                        let actionTitle = computerUseTask.current_action || screenshot?.action_description;
-                        // Si on utilise le screenshot sauvegardé, utiliser son action
-                        if (!screenshot && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
-                          actionTitle = actionTitle || lastScreencastScreenshot.action;
-                        }
-                        const clickPosition = screenshot?.click_position || screenshot?.click;
-
-                        const toPercent = (value: number): number => {
-                          const scaled = value <= 1 ? value * 100 : value;
-                          return Math.min(100, Math.max(0, scaled));
-                        };
-
-                        const clickCoordinates = clickPosition
-                          ? {
-                              x: toPercent(clickPosition.x),
-                              y: toPercent(clickPosition.y),
-                            }
-                          : null;
-
-                        if (showPreview) {
-                          const handleEndSession = () => {
-                            // Note: Screenshot is captured and workflow completion is handled
-                            // by the backend in _handle_continue_workflow (server.py)
-
-                            // Close the active screencast
-                            setActiveScreencast(current =>
-                              current?.itemId === item.id ? null : current
-                            );
-
-                            // Trigger workflow continuation
-                            control.customAction(null, { type: 'continue_workflow' });
-                          };
-
-                          return (
-                            <div className="chatkit-computer-use-preview">
-                              {actionTitle && (
-                                <div className="chatkit-computer-action-title">{actionTitle}</div>
-                              )}
-                              {/* Show screencast if this is the active screencast */}
-                              {shouldShowLiveScreencast && (
-                                <>
-                                  <DevToolsScreencast
-                                    debugUrlToken={debugUrlToken as string}
-                                    authToken={authToken}
-                                    enableInput
-                                    onConnectionError={() => {
-                                      // Mark this token as failed to prevent reactivation loops
-                                      setFailedScreencastTokens(prev => {
-                                        if (prev.has(debugUrlToken as string)) return prev;
-                                        const next = new Set(prev);
-                                        next.add(debugUrlToken as string);
-                                        return next;
-                                      });
-                                      setActiveScreencast(current =>
-                                        current?.token === debugUrlToken ? null : current
-                                      );
-                                    }}
-                                    onLastFrame={handleScreencastLastFrame(item.id)}
-                                  />
-                                  <div className="chatkit-computer-use-actions">
-                                    <button
-                                      type="button"
-                                      onClick={handleEndSession}
-                                      className="chatkit-end-session-button"
-                                    >
-                                      Terminer la session et continuer
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                              {/* Show screenshot for completed tasks or non-active screencasts */}
-                              {shouldShowScreenshot && (
-                                <div className="chatkit-browser-screenshot-container">
-                                  <div className="chatkit-browser-screenshot-image-wrapper">
-                                    <ImageWithBlobUrl
-                                      src={src}
-                                      alt={actionTitle || "Browser automation"}
-                                      className={screenshotIsLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
-                                    />
-                                    {clickCoordinates && (
-                                      <div
-                                        className="chatkit-browser-click-indicator"
-                                        style={{ left: `${clickCoordinates.x}%`, top: `${clickCoordinates.y}%` }}
-                                        aria-label={actionTitle || "Browser automation"}
-                                      />
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        }
-                      }
-                      return null;
-                    })()}
-                  </>
-                  )}
-                  </div>
-                ),
+                <MessageRenderer
+                  key={item.id}
+                  item={item}
+                  theme={theme?.colorScheme}
+                  copiedMessageId={copiedMessageId}
+                  onCopyMessage={handleCopyMessage}
+                  createWidgetContext={createWidgetContext}
+                  loadingLabel={t('chat.loading')}
+                  activeScreencast={activeScreencast}
+                  lastScreencastScreenshot={lastScreencastScreenshot}
+                  dismissedScreencastItems={dismissedScreencastItems}
+                  failedScreencastTokens={failedScreencastTokens}
+                  authToken={authToken}
+                  onScreencastLastFrame={handleScreencastLastFrame}
+                  onScreencastConnectionError={handleScreencastConnectionError}
+                  onActiveScreencastChange={setActiveScreencast}
+                  onContinueWorkflow={handleContinueWorkflow}
+                />,
               ];
 
               if (inlineVoiceAfterItem(item, idx)) {
