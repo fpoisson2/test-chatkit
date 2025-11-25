@@ -95,7 +95,38 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     pip install --upgrade pip && \
     pip install playwright==${PLAYWRIGHT_VERSION}
 
-RUN python -m playwright install --with-deps chromium
+# Installer les dépendances Playwright manuellement (certains packages ont été
+# renommés dans Debian Trixie: ttf-unifont -> fonts-unifont, etc.)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      # Fonts (noms corrigés pour Debian Trixie)
+      fonts-unifont \
+      fonts-ubuntu \
+      fonts-liberation \
+      fonts-noto-color-emoji \
+      fontconfig \
+      # Libs requises par Chromium
+      libnss3 \
+      libnspr4 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libcups2 \
+      libdrm2 \
+      libxkbcommon0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxrandr2 \
+      libgbm1 \
+      libasound2 \
+      libpango-1.0-0 \
+      libcairo2 \
+      libatspi2.0-0
+
+# Installer Chromium (sans --with-deps car on a déjà installé les deps)
+RUN python -m playwright install chromium
 
 
 # -----------------------------------------------------------------------------
@@ -133,6 +164,32 @@ COPY --from=playwright-deps /root/.cache/ms-playwright /root/.cache/ms-playwrigh
 
 # Récupérer les modules Python installés (site-packages)
 COPY --from=python-deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+
+# Installer les libs runtime requises par Chromium (noms corrigés pour Debian Trixie)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      fonts-unifont \
+      fonts-liberation \
+      fonts-noto-color-emoji \
+      fontconfig \
+      libnss3 \
+      libnspr4 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libcups2 \
+      libdrm2 \
+      libxkbcommon0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxrandr2 \
+      libgbm1 \
+      libasound2 \
+      libpango-1.0-0 \
+      libcairo2 \
+      libatspi2.0-0
 
 # S'assurer que les libs partagées sont trouvées
 RUN ldconfig
