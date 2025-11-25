@@ -1234,11 +1234,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         }
 
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
-                        // MAIS seulement si la tâche n'est pas complete (sinon on cache tout pour retourner au début)
+                        // Afficher aussi le screenshot final quand la tâche est complete
                         const isComplete = computerUseTask.status_indicator === 'complete';
                         const isError = computerUseTask.status_indicator === 'error';
                         const isTerminal = isComplete || isError;
-                        const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
+                        // Show screenshot even when task is complete (final screenshot)
+                        const showScreenshot = !!src && !showLiveScreencast;
 
                         const isDismissed = dismissedScreencastItems.has(item.id);
                         // If dismissed, only hide the live screencast, but still show static screenshot

@@ -1198,13 +1198,23 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 # Get the existing ComputerUseTask
                 existing_task = computer_use_item.workflow.tasks[computer_use_task_index]
 
-                # 1. Update ComputerUseTask to complete status
+                # Create a screenshot for the final state
+                screenshot_id = f"screenshot_{uuid.uuid4().hex[:8]}"
+                final_screenshot = ComputerUseScreenshot(
+                    id=screenshot_id,
+                    data_url=f"data:image/png;base64,{data_url}" if not data_url.startswith("data:") else data_url,
+                    b64_image=data_url if not data_url.startswith("data:") else None,
+                    action_description="Session terminée",
+                )
+
+                # 1. Update ComputerUseTask to complete status with the final screenshot
                 updated_computer_task = ComputerUseTask(
                     type="computer_use",
                     title=existing_task.title if hasattr(existing_task, "title") else "Session Computer Use",
                     status_indicator="complete",
                     debug_url_token=None,  # Clear the token
                     current_action="Session terminée",
+                    screenshots=[final_screenshot],  # Include the final screenshot
                 )
                 computer_use_item.workflow.tasks[computer_use_task_index] = updated_computer_task
 
