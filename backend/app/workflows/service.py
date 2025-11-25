@@ -917,34 +917,6 @@ class WorkflowGraphValidator:
                 )
             )
 
-        minimal_skeleton = self.is_minimal_skeleton(normalized_nodes, normalized_edges)
-        has_enabled_widget = any(
-            node.kind == "widget" and node.is_enabled for node in normalized_nodes
-        )
-        has_enabled_assistant_message = any(
-            node.kind == "assistant_message" and node.is_enabled
-            for node in normalized_nodes
-        )
-        has_enabled_user_message = any(
-            node.kind == "user_message" and node.is_enabled for node in normalized_nodes
-        )
-        has_enabled_computer_use = any(
-            node.kind == "computer_use" and node.is_enabled for node in normalized_nodes
-        )
-        if not (
-            enabled_agent_slugs
-            or has_enabled_widget
-            or has_enabled_assistant_message
-            or has_enabled_user_message
-            or has_enabled_computer_use
-            or allow_empty
-            or minimal_skeleton
-        ):
-            raise WorkflowValidationError(
-                "Le workflow doit activer au moins un agent, un message "
-                "(assistant ou utilisateur), un widget ou un nœud computer_use."
-            )
-
         self.validate_graph_structure(normalized_nodes, normalized_edges)
         return normalized_nodes, normalized_edges
 
@@ -1164,34 +1136,6 @@ class WorkflowGraphValidator:
                     raise WorkflowValidationError(
                         f"Le nœud {node.slug} ne peut pas exécuter son propre workflow."
                     )
-
-    def is_minimal_skeleton(
-        self,
-        nodes: Iterable[NormalizedNode],
-        edges: Iterable[NormalizedEdge],
-    ) -> bool:
-        enabled_nodes = [node for node in nodes if node.is_enabled]
-        if not enabled_nodes:
-            return False
-
-        start_nodes = [node for node in enabled_nodes if node.kind == "start"]
-        end_nodes = [node for node in enabled_nodes if node.kind == "end"]
-        if len(start_nodes) != 1:
-            return False
-
-        if len(enabled_nodes) > 2:
-            return False
-
-        start_slug = start_nodes[0].slug
-        if not end_nodes:
-            return all(edge.source_slug != start_slug for edge in edges)
-
-        end_slug = end_nodes[0].slug
-
-        for edge in edges:
-            if edge.source_slug == start_slug and edge.target_slug == end_slug:
-                return True
-        return False
 
     def validate_graph_structure(
         self,
