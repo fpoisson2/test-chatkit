@@ -1189,9 +1189,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if existing_workflow_item:
                     break
 
-        # Import ThreadItemUpdated and WorkflowTaskUpdated/Added
-        from chatkit.types import ThreadItemUpdated, WorkflowTaskUpdated, WorkflowTaskAdded
-
         # Update the existing task or create a new one
         completed_computer_task = ComputerUseTask(
             type="computer_use",
@@ -1201,20 +1198,19 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
 
         if existing_workflow_item is not None and existing_task_index is not None:
-            # Update the existing task to completed
-            logger.info(">>> [1/2] Yielding ThreadItemUpdated for completed ComputerUseTask")
-            yield ThreadItemUpdated(
-                item_id=existing_workflow_item.id,
-                update=WorkflowTaskUpdated(
-                    task_index=existing_task_index,
-                    task=completed_computer_task,
-                ),
-            )
-            logger.info(">>> [1/2] ThreadItemUpdated yielded")
+            # Build updated tasks list
+            updated_tasks = list(existing_workflow_item.workflow.tasks) if existing_workflow_item.workflow else []
 
-            # Add ImageTask to the SAME WorkflowItem (not a new one) if screenshot available
+            # Update the task at existing_task_index to completed
+            if existing_task_index < len(updated_tasks):
+                updated_tasks[existing_task_index] = completed_computer_task
+            else:
+                updated_tasks.append(completed_computer_task)
+
+            # Add ImageTask if screenshot available
+            image_task = None
             if data_url:
-                logger.info(">>> [2/2] Adding ImageTask to existing WorkflowItem")
+                logger.info(">>> Adding ImageTask with screenshot")
                 image_id = f"img_{uuid.uuid4().hex[:8]}"
                 generated_image = GeneratedImage(
                     id=image_id,
@@ -1227,20 +1223,28 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     images=[generated_image],
                     status_indicator="complete",
                 )
+                updated_tasks.append(image_task)
 
-                # Add the image task to the existing workflow item
-                yield ThreadItemUpdated(
-                    item_id=existing_workflow_item.id,
-                    update=WorkflowTaskAdded(
-                        task_index=existing_task_index + 1,
-                        task=image_task,
-                    ),
-                )
-                logger.info(">>> [2/2] ImageTask added to existing WorkflowItem")
+            # Create updated workflow with new tasks
+            updated_workflow = Workflow(
+                type=existing_workflow_item.workflow.type if existing_workflow_item.workflow else "custom",
+                tasks=updated_tasks,
+                expanded=True,
+            )
 
-            # Emit ThreadItemDoneEvent to ensure the item remains visible
-            yield ThreadItemDoneEvent(item=existing_workflow_item)
-            logger.info(">>> ThreadItemDoneEvent emitted for WorkflowItem")
+            # Create updated WorkflowItem
+            updated_workflow_item = WorkflowItem(
+                id=existing_workflow_item.id,
+                thread_id=existing_workflow_item.thread_id,
+                created_at=existing_workflow_item.created_at,
+                workflow=updated_workflow,
+            )
+
+            # Emit as ThreadItemAddedEvent (replaces existing) and ThreadItemDoneEvent
+            logger.info(">>> Emitting updated WorkflowItem with completed task and screenshot")
+            yield ThreadItemAddedEvent(item=updated_workflow_item)
+            yield ThreadItemDoneEvent(item=updated_workflow_item)
+            logger.info(">>> Updated WorkflowItem emitted")
         else:
             # Create a new WorkflowItem if not found (fallback)
             logger.info("Creating new ComputerUseTask with status=complete (no existing task found)")
