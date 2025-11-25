@@ -1189,8 +1189,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if existing_workflow_item_id:
                     break
 
-        # Import ThreadItemUpdated and WorkflowTaskUpdated
-        from chatkit.types import ThreadItemUpdated, WorkflowTaskUpdated
+        # Import ThreadItemUpdated and WorkflowTaskUpdated/Added
+        from chatkit.types import ThreadItemUpdated, WorkflowTaskUpdated, WorkflowTaskAdded
 
         # Update the existing task or create a new one
         completed_computer_task = ComputerUseTask(
@@ -1201,8 +1201,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
 
         if existing_workflow_item_id is not None and existing_task_index is not None:
-            # Update the existing task
-            logger.info(">>> [1/3] Yielding ThreadItemUpdated for completed ComputerUseTask")
+            # Update the existing task to completed
+            logger.info(">>> [1/2] Yielding ThreadItemUpdated for completed ComputerUseTask")
             yield ThreadItemUpdated(
                 item_id=existing_workflow_item_id,
                 update=WorkflowTaskUpdated(
@@ -1210,14 +1210,58 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     task=completed_computer_task,
                 ),
             )
-            logger.info(">>> [1/3] ThreadItemUpdated yielded")
+            logger.info(">>> [1/2] ThreadItemUpdated yielded")
+
+            # Add ImageTask to the SAME WorkflowItem (not a new one) if screenshot available
+            if data_url:
+                logger.info(">>> [2/2] Adding ImageTask to existing WorkflowItem")
+                image_id = f"img_{uuid.uuid4().hex[:8]}"
+                generated_image = GeneratedImage(
+                    id=image_id,
+                    data_url=data_url,
+                )
+
+                image_task = ImageTask(
+                    type="image",
+                    title="Screenshot finale",
+                    images=[generated_image],
+                    status_indicator="complete",
+                )
+
+                # Add the image task to the existing workflow item
+                yield ThreadItemUpdated(
+                    item_id=existing_workflow_item_id,
+                    update=WorkflowTaskAdded(
+                        task_index=existing_task_index + 1,
+                        task=image_task,
+                    ),
+                )
+                logger.info(">>> [2/2] ImageTask added to existing WorkflowItem")
         else:
             # Create a new WorkflowItem if not found (fallback)
             logger.info("Creating new ComputerUseTask with status=complete (no existing task found)")
+
+            tasks_list = [completed_computer_task]
+
+            # Add screenshot if available
+            if data_url:
+                image_id = f"img_{uuid.uuid4().hex[:8]}"
+                generated_image = GeneratedImage(
+                    id=image_id,
+                    data_url=data_url,
+                )
+                image_task = ImageTask(
+                    type="image",
+                    title="Screenshot finale",
+                    images=[generated_image],
+                    status_indicator="complete",
+                )
+                tasks_list.append(image_task)
+
             completed_workflow = Workflow(
                 type="custom",
-                tasks=[completed_computer_task],
-                expanded=False,
+                tasks=tasks_list,
+                expanded=True,
             )
 
             completed_workflow_item = WorkflowItem(
@@ -1230,50 +1274,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             yield ThreadItemAddedEvent(item=completed_workflow_item)
             yield ThreadItemDoneEvent(item=completed_workflow_item)
 
-        # Emit ImageTask with screenshot if available
-        if data_url:
-            logger.info(">>> [2/3] Emitting ImageTask with screenshot")
-            image_id = f"img_{uuid.uuid4().hex[:8]}"
-            generated_image = GeneratedImage(
-                id=image_id,
-                data_url=data_url,
-            )
-
-            image_task = ImageTask(
-                type="image",
-                title="Screenshot finale de la session Computer Use",
-                images=[generated_image],
-                status_indicator="complete",
-            )
-
-            workflow = Workflow(
-                type="custom",
-                tasks=[image_task],
-                expanded=True,
-            )
-
-            workflow_item = WorkflowItem(
-                id=agent_context.generate_id("workflow"),
-                thread_id=thread.id,
-                created_at=datetime.now(),
-                workflow=workflow,
-            )
-
-            yield ThreadItemAddedEvent(item=workflow_item)
-            yield ThreadItemDoneEvent(item=workflow_item)
-            logger.info(">>> [2/3] ImageTask yielded")
-
         # Clear wait state
-        logger.info(">>> [3/3] Clearing wait state for thread %s", thread.id)
+        logger.info(">>> Clearing wait state for thread %s", thread.id)
         _set_wait_state_metadata(thread, None)
         await self.store.save_thread(thread, context=context)
 
         # Verify wait state is cleared
         verify_wait_state = _get_wait_state_metadata(thread)
-        logger.info(">>> [3/3] Wait state after clearing: %s", verify_wait_state)
+        logger.info(">>> Wait state after clearing: %s", verify_wait_state)
 
         # Continue workflow to next step (or start node if no next_step_slug)
-        logger.info(">>> [3/3] Starting workflow continuation to: %s", next_step_slug or "(start node)")
+        logger.info(">>> Starting workflow continuation to: %s", next_step_slug or "(start node)")
 
         # Reload thread history in ascending order for workflow execution
         history_asc = await self.store.load_thread_items(
