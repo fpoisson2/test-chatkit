@@ -1194,7 +1194,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         if existing_workflow_item_id is not None and existing_task_index is not None:
             # Update the existing task
-            logger.info("Updating existing ComputerUseTask with status=complete")
+            logger.info(">>> [1/3] Yielding ThreadItemUpdated for completed ComputerUseTask")
             yield ThreadItemUpdated(
                 item_id=existing_workflow_item_id,
                 update=WorkflowTaskUpdated(
@@ -1202,6 +1202,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     task=completed_computer_task,
                 ),
             )
+            logger.info(">>> [1/3] ThreadItemUpdated yielded")
         else:
             # Create a new WorkflowItem if not found (fallback)
             logger.info("Creating new ComputerUseTask with status=complete (no existing task found)")
@@ -1223,7 +1224,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         # Emit ImageTask with screenshot if available
         if data_url:
-            logger.info("Emitting ImageTask with screenshot")
+            logger.info(">>> [2/3] Emitting ImageTask with screenshot")
             image_id = f"img_{uuid.uuid4().hex[:8]}"
             generated_image = GeneratedImage(
                 id=image_id,
@@ -1252,14 +1253,19 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
             yield ThreadItemAddedEvent(item=workflow_item)
             yield ThreadItemDoneEvent(item=workflow_item)
+            logger.info(">>> [2/3] ImageTask yielded")
 
         # Clear wait state
-        logger.info("Clearing wait state for thread %s", thread.id)
+        logger.info(">>> [3/3] Clearing wait state for thread %s", thread.id)
         _set_wait_state_metadata(thread, None)
         await self.store.save_thread(thread, context=context)
 
+        # Verify wait state is cleared
+        verify_wait_state = _get_wait_state_metadata(thread)
+        logger.info(">>> [3/3] Wait state after clearing: %s", verify_wait_state)
+
         # Continue workflow to next step (or start node if no next_step_slug)
-        logger.info("Continuing workflow to next step: %s", next_step_slug or "(start node)")
+        logger.info(">>> [3/3] Starting workflow continuation to: %s", next_step_slug or "(start node)")
 
         # Reload thread history in ascending order for workflow execution
         history_asc = await self.store.load_thread_items(

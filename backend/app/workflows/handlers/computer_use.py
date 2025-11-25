@@ -71,6 +71,16 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             and waiting_type == "computer_use"
         )
 
+        logger.info(
+            ">>> ComputerUseHandler.execute: node=%s, pending_wait_state=%s, "
+            "waiting_slug=%s, waiting_type=%s, resumed=%s",
+            node.slug,
+            pending_wait_state is not None,
+            waiting_slug,
+            waiting_type,
+            resumed,
+        )
+
         if resumed:
             # Resume from wait - user clicked "Terminer"
             logger.info(f"Resuming from computer_use wait at node {node.slug}")
