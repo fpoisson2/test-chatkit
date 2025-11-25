@@ -119,7 +119,11 @@ const WorkflowSidebarSection = ({
               title={floatingAction.title ?? floatingAction.label}
               disabled={floatingAction.disabled}
             >
-              {floatingAction.icon ?? <span aria-hidden="true">+</span>}
+              {floatingAction.icon ?? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14"></path>
+                </svg>
+              )}
             </button>
           </div>
         ) : null}
