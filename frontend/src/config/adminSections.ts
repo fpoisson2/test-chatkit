@@ -14,6 +14,7 @@ export type AdminSectionKey =
   | "appearance"
   | "languages"
   | "lti"
+  | "cleanup"
   | "docs"
   | "preferences";
 
@@ -151,6 +152,16 @@ export const ADMIN_SECTIONS: AdminSection[] = [
     Component: lazy(() =>
       import("../pages/AdminLtiPage").then((module) => ({
         default: module.AdminLtiPage,
+      })),
+    ),
+    requireAdmin: true,
+  },
+  {
+    key: "cleanup",
+    labelKey: "admin.tabs.cleanup",
+    Component: lazy(() =>
+      import("../pages/AdminCleanupPage").then((module) => ({
+        default: module.AdminCleanupPage,
       })),
     ),
     requireAdmin: true,
