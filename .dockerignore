@@ -1,0 +1,94 @@
+# =============================================================================
+# .dockerignore - Fichiers à exclure du contexte Docker
+# =============================================================================
+# Ces fichiers ne sont pas envoyés au daemon Docker lors du build,
+# ce qui accélère considérablement le processus.
+# =============================================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!requirements.md
+LICENSE
+docs/
+
+# IDE et éditeurs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environnements virtuels Python
+venv/
+.venv/
+backend/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.eggs/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+
+# Coverage et tests
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.tox/
+
+# Node.js / Frontend (pas besoin pour le backend)
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.npm-cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+.vite/
+dist/
+build/
+
+# Fichiers d'environnement (secrets)
+.env
+.env.*
+!.env.example
+test_config.env
+*.pem
+
+# Logs
+logs/
+*.log
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker/
+
+# Scripts de dev (pas besoin dans l'image)
+scripts/
+Makefile
+
+# Cache pip
+.pip-cache/
+.cache/
+
+# Données locales
+*.db
+*.sqlite3
+postgres-data/
+redis-data/
