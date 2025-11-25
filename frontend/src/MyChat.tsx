@@ -7,7 +7,6 @@ import { LoadingOverlay } from "./components/feedback/LoadingOverlay";
 import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
 import { ChatWorkflowSidebar, type WorkflowActivation } from "./features/workflows/WorkflowSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
-import { OutboundCallAudioPlayer } from "./components/my-chat/OutboundCallAudioPlayer";
 import {
   useAppearanceSettings,
   type AppearanceWorkflowReference,
@@ -1027,13 +1026,6 @@ export function MyChat() {
           ))}
         </div>
       </div>
-      {outboundCallIsActive && outboundCallId && (
-        <OutboundCallAudioPlayer
-          callId={outboundCallId}
-          onCallEnd={handleOutboundCallEnd}
-          authToken={token}
-        />
-      )}
     </>
   );
 }
