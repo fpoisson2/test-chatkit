@@ -201,8 +201,6 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
                 },
               };
 
-          console.log('[ChatKit] Sending message with payload:', payload);
-
           // Utiliser une ref mutable pour suivre la clé du thread en cours de streaming
           // Cela permet de gérer le cas où un thread temporaire reçoit son vrai ID
           const streamThreadKeyRef = { current: threadKey };
@@ -217,7 +215,6 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
               onLog?.({ name: `event.${event.type}`, data: { event } });
             },
             onThreadUpdate: (newThread: Thread) => {
-              console.log('[ChatKit] Thread updated:', newThread);
               updatedThread = newThread;
               threadCacheRef.current.set(newThread.id, newThread);
 
