@@ -1229,7 +1229,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         floatingAction={
           isAdmin
             ? {
-              icon: <span aria-hidden="true">+</span>,
               label: t("workflowBuilder.createWorkflow.openModal"),
               onClick: handleOpenBuilder,
             }
@@ -1652,7 +1651,6 @@ export const WorkflowBuilderSidebar = ({
         pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
         defaultSectionTitle={t("workflows.defaultSectionTitle")}
         floatingAction={{
-          icon: <span aria-hidden="true">+</span>,
           label: t("workflowBuilder.createWorkflow.openModal"),
           onClick: onOpenCreateModal,
           disabled: isCreatingWorkflow,
