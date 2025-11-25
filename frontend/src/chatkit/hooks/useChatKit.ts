@@ -6,7 +6,6 @@ import type { ChatKitOptions, Thread, ThreadStreamEvent, ChatKitControl, UserMes
 import {
   streamChatKitEvents,
   fetchThread,
-  sendCustomAction,
   retryAfterItem as retryAfterItemAPI,
   submitFeedback as submitFeedbackAPI,
   updateThreadMetadata as updateThreadMetadataAPI,
@@ -342,24 +341,54 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
       }
 
       try {
-        await sendCustomAction({
+        // Convert 'data' to 'payload' for backend compatibility
+        const backendAction = {
+          type: action.type,
+          payload: (action as any).data,
+        };
+
+        // Use streamChatKitEvents to properly handle SSE events
+        const updatedThread = await streamChatKitEvents({
           url: api.url,
           headers: api.headers,
-          threadId: thread.id,
-          itemId,
-          action,
+          body: {
+            type: 'threads.custom_action',
+            params: {
+              thread_id: thread.id,
+              item_id: itemId,
+              action: backendAction,
+            },
+          },
+          initialThread: thread,
+          onEvent: (event) => {
+            onLog?.({ name: 'custom_action.event', data: { event } });
+          },
+          onThreadUpdate: (updatedThread) => {
+            // Update thread state in real-time as events come in
+            setThread(updatedThread);
+            threadCacheRef.current.set(updatedThread.id, updatedThread);
+            onThreadChange?.({ thread: updatedThread });
+          },
+          onError: (err) => {
+            console.error('[ChatKit] Custom action stream error:', err);
+            onError?.({ error: err });
+          },
         });
+
         onLog?.({ name: 'custom_action.sent', data: { itemId, action } });
 
-        // Rafraîchir le thread après l'action
-        await fetchUpdates();
+        // Final update with the complete thread
+        if (updatedThread) {
+          setThread(updatedThread);
+          threadCacheRef.current.set(updatedThread.id, updatedThread);
+        }
       } catch (err) {
         console.error('[ChatKit] Failed to send custom action:', err);
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.({ error });
       }
     },
-    [thread?.id, api.url, api.headers, fetchUpdates, onError, onLog]
+    [thread, api.url, api.headers, onError, onLog, onThreadChange]
   );
 
   // Réessayer après un item
