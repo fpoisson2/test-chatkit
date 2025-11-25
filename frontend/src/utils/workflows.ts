@@ -2953,6 +2953,7 @@ const SUPPORTED_COMPUTER_ENVIRONMENTS = new Set([
   "windows",
   "ubuntu",
   "ssh",
+  "vnc",
 ]);
 
 const sanitizeComputerDimension = (value: unknown, fallback: number): number => {
@@ -3027,6 +3028,20 @@ const sanitizeComputerUseConfig = (
   }
   if (typeof config.ssh_private_key === "string" && config.ssh_private_key.trim()) {
     payload.ssh_private_key = config.ssh_private_key.trim();
+  }
+
+  // VNC-specific fields
+  if (typeof config.vnc_host === "string" && config.vnc_host.trim()) {
+    payload.vnc_host = config.vnc_host.trim();
+  }
+  if (typeof config.vnc_port === "number" && config.vnc_port > 0 && config.vnc_port <= 65535) {
+    payload.vnc_port = config.vnc_port;
+  }
+  if (typeof config.vnc_password === "string" && config.vnc_password) {
+    payload.vnc_password = config.vnc_password;
+  }
+  if (typeof config.novnc_port === "number" && config.novnc_port > 0 && config.novnc_port <= 65535) {
+    payload.novnc_port = config.novnc_port;
   }
 
   return payload;
