@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import type {
   Task,
   CustomTask,
@@ -12,49 +12,7 @@ import type {
 } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useI18n } from '../../i18n';
-
-/**
- * Component to display images with Blob URL conversion to avoid 414 errors
- */
-function ImageWithBlobUrl({ src, alt, className }: { src: string; alt?: string; className?: string }): JSX.Element | null {
-  const [blobUrl, setBlobUrl] = useState<string>('');
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-
-    if (src.startsWith('data:')) {
-      // Convert data URL to blob to avoid 414 errors with very long URLs
-      try {
-        const parts = src.split(',');
-        const mimeMatch = parts[0].match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : '';
-        const bstr = atob(parts[1]);
-        const n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        for (let i = 0; i < n; i++) {
-          u8arr[i] = bstr.charCodeAt(i);
-        }
-        const blob = new Blob([u8arr], { type: mime });
-        objectUrl = URL.createObjectURL(blob);
-        setBlobUrl(objectUrl);
-      } catch (err) {
-        console.error('[TaskRenderer] Failed to convert data URL to blob:', err);
-      }
-    } else {
-      setBlobUrl(src);
-    }
-
-    return () => {
-      if (objectUrl && objectUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [src]);
-
-  if (!blobUrl) return null;
-
-  return <img src={blobUrl} alt={alt} className={className} />;
-}
+import { ImageWithBlobUrl } from '../utils';
 
 interface TaskRendererProps {
   task: Task;

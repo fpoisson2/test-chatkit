@@ -29,6 +29,7 @@ import {
   generateAttachmentId,
   validateFile
 } from '../api/attachments';
+import { ImageWithBlobUrl, COPY_FEEDBACK_DELAY_MS, TEXTAREA_MAX_HEIGHT_PX } from '../utils';
 import './ChatKit.css';
 
 export interface ChatKitProps {
@@ -36,67 +37,6 @@ export interface ChatKitProps {
   options: ChatKitOptions;
   className?: string;
   style?: React.CSSProperties;
-}
-
-/**
- * Component to display images with Blob URL conversion to avoid 414 errors
- */
-function ImageWithBlobUrl({ src, alt = '', className = '' }: { src: string; alt?: string; className?: string }): JSX.Element | null {
-  const [blobUrl, setBlobUrl] = useState<string>('');
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-
-    if (src.startsWith('data:')) {
-      // Convert data URL to blob to avoid 414 errors with very long URLs
-      try {
-        const parts = src.split(',');
-        const mimeMatch = parts[0].match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : '';
-        const bstr = atob(parts[1]);
-        const n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        for (let i = 0; i < n; i++) {
-          u8arr[i] = bstr.charCodeAt(i);
-        }
-        const blob = new Blob([u8arr], { type: mime });
-        objectUrl = URL.createObjectURL(blob);
-        setBlobUrl(objectUrl);
-      } catch (err) {
-        console.error('[ChatKit] Failed to convert data URL to blob:', err);
-      }
-    } else if (src.startsWith('http')) {
-      // Regular URL, use as is
-      setBlobUrl(src);
-    } else {
-      // Assume it's a raw base64 string, try to convert it
-      try {
-        const bstr = atob(src);
-        const n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        for (let i = 0; i < n; i++) {
-          u8arr[i] = bstr.charCodeAt(i);
-        }
-        const blob = new Blob([u8arr], { type: 'image/png' });
-        objectUrl = URL.createObjectURL(blob);
-        setBlobUrl(objectUrl);
-      } catch (err) {
-        console.error('[ChatKit] Failed to convert raw base64 to blob:', err);
-        // Fallback: treat as regular src
-        setBlobUrl(src);
-      }
-    }
-
-    return () => {
-      if (objectUrl && objectUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [src]);
-
-  if (!blobUrl) return null;
-
-  return <img src={blobUrl} alt={alt} className={className} />;
 }
 
 /**
@@ -225,7 +165,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     setDismissedScreencastItems(new Set());
     setLastScreencastScreenshot(null);
     setActiveScreencast(null);
-    console.log('[ChatKit] Thread changed, cleared all screencast state');
   }, [control.thread?.id]);
 
   // Clear the composer once a new user message is added to the thread
@@ -264,8 +203,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     // Use ref to avoid re-running this effect when activeScreencast changes
     const currentActiveScreencast = activeScreencastRef.current;
-
-    console.log('[ChatKit useEffect] Checking for active screencast, control.isLoading:', control.isLoading, 'workflows:', workflows.length);
 
     // First pass: find ALL computer_use tasks across all workflows
     // A single workflow can have multiple computer_use tasks (multiple screencasts)
@@ -330,19 +267,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Check if there's a newer computer_use task (either in a later workflow or later in the same workflow)
       const hasNewerComputerUseTask = index < allComputerUseTasks.length - 1;
 
-      console.log('[ChatKit useEffect] Task:', item.id, 'taskIndex:', taskIndex, {
-        hasToken: !!computerUseTask.debug_url_token,
-        token: computerUseTask.debug_url_token?.substring(0, 8),
-        isLoading,
-        isTerminal,
-        isLastComputerUseTask,
-        isLastWorkflow,
-        isLastWorkflowAndStreaming,
-        hasNewerWorkflow,
-        hasNewerComputerUseTask,
-        isCurrentScreencast: currentActiveScreencast?.token === computerUseTask.debug_url_token,
-      });
-
       // Consider task as "done" if it's terminal OR if there's a newer workflow OR if there's a newer computer_use task
       const isEffectivelyDone = isTerminal || hasNewerWorkflow || hasNewerComputerUseTask;
 
@@ -371,33 +295,16 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // This handles the case where an older task is stuck in "loading" but a newer one has started
     if (currentActiveScreencast && latestComputerUseTask &&
         currentActiveScreencast.token !== latestComputerUseTask.token) {
-      console.log('[ChatKit] Current screencast is older than latest computer_use task, marking for closure');
       currentScreencastIsComplete = true;
     }
 
     // If the current screencast's token has failed, close it immediately
     if (currentActiveScreencast && failedScreencastTokens.has(currentActiveScreencast.token)) {
-      console.log('[ChatKit] Current screencast token has failed, marking for closure:', currentActiveScreencast.token.substring(0, 8));
       currentScreencastIsComplete = true;
     }
 
     const latestComputerUseIsTerminal = latestComputerUseEntry?.isTerminal ?? false;
     const hasLoadingComputerUse = allComputerUseTasks.some(t => t.isLoading);
-
-    console.log(
-      '[ChatKit useEffect] Result - newActiveScreencast:',
-      newActiveScreencast,
-      'currentScreencastIsComplete:',
-      currentScreencastIsComplete,
-      'latestComputerUseIsTerminal:',
-      latestComputerUseIsTerminal,
-      'hasLoadingComputerUse:',
-      hasLoadingComputerUse,
-      'latestComputerUseTask:',
-      latestComputerUseTask,
-      'currentActiveScreencast:',
-      currentActiveScreencast
-    );
 
     // Mise à jour de activeScreencast :
     // - Si le screencast ACTUEL est complete OU s'il y a un computer_use complete, on ferme d'abord
@@ -407,7 +314,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     // Priorité 1: Fermer le screencast si nécessaire
     if (currentScreencastIsComplete || (latestComputerUseIsTerminal && !newActiveScreencast && !hasLoadingComputerUse)) {
       if (currentActiveScreencast) {
-        console.log('[ChatKit] Closing screencast due to completed or errored computer_use task');
         setActiveScreencast(null);
       }
       // Only clear the screenshot when the task's ACTUAL status_indicator is terminal
@@ -419,7 +325,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         if (screenshotTask) {
           const isActuallyTerminal = screenshotTask.status_indicator === 'complete' || screenshotTask.status_indicator === 'error';
           if (isActuallyTerminal) {
-            console.log('[ChatKit] Clearing last screencast screenshot for actually terminal task');
             setLastScreencastScreenshot(null);
           }
         }
@@ -429,41 +334,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     else if (newActiveScreencast &&
              (newActiveScreencast.token !== currentActiveScreencast?.token ||
               newActiveScreencast.itemId !== currentActiveScreencast?.itemId)) {
-      console.log('[ChatKit] Activating new screencast:', newActiveScreencast);
       setActiveScreencast(newActiveScreencast);
     }
   }, [control.isLoading, control.thread?.items, dismissedScreencastItems, failedScreencastTokens, lastScreencastScreenshot]);
 
-  // Callback pour le dernier frame du screencast (logging seulement)
+  // Callback pour le dernier frame du screencast
   // Note: Screenshots are now captured and emitted by the backend
   const handleScreencastLastFrame = useCallback((itemId: string) => {
-    return (frameDataUrl: string) => {
-      console.log('[ChatKit] Last screencast frame received for item:', itemId, 'dataUrl length:', frameDataUrl.length);
+    return (_frameDataUrl: string) => {
       // Screenshot is now emitted by backend, no need to store it here
     };
   }, []);
-
-  // Debug: Logger les changements dans les items
-  useEffect(() => {
-    if (!control.thread?.items) return;
-
-    console.log('[ChatKit] Thread items changed:', {
-      count: control.thread.items.length,
-      types: control.thread.items.map(item => item.type),
-      lastItem: control.thread.items[control.thread.items.length - 1],
-    });
-
-    // Logger spécifiquement les workflows et leurs tâches
-    control.thread.items.forEach((item, idx) => {
-      if (item.type === 'workflow') {
-        console.log(`[ChatKit] Workflow item ${idx}:`, {
-          taskCount: item.workflow.tasks.length,
-          taskTypes: item.workflow.tasks.map(t => t.type),
-          tasks: item.workflow.tasks,
-        });
-      }
-    });
-  }, [control.thread?.items]);
 
   // Ajuster automatiquement la hauteur du textarea
   // Forcer le mode multiline quand le sélecteur de modèle est activé
@@ -483,7 +364,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       // Ajuster la hauteur du textarea
       textarea.style.height = 'auto';
       const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${Math.min(Math.max(scrollHeight, 24), 200)}px`;
+      textarea.style.height = `${Math.min(Math.max(scrollHeight, 24), TEXTAREA_MAX_HEIGHT_PX)}px`;
       return;
     }
 
@@ -538,7 +419,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
     // Ajuster la hauteur immédiatement en fonction du contenu effectif
     const nextHeight = Math.max(isMultiline ? multilineContentHeight : singleLineContentHeight, baseHeight);
-    textarea.style.height = `${Math.min(nextHeight, 200)}px`;
+    textarea.style.height = `${Math.min(nextHeight, TEXTAREA_MAX_HEIGHT_PX)}px`;
 
     // Changer le mode si nécessaire
     if (shouldBeMultiline !== isMultiline) {
@@ -719,7 +600,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const handleCopyMessage = (messageId: string, content: string) => {
     navigator.clipboard.writeText(content);
     setCopiedMessageId(messageId);
-    setTimeout(() => setCopiedMessageId(null), 2000);
+    setTimeout(() => setCopiedMessageId(null), COPY_FEEDBACK_DELAY_MS);
   };
 
   const inlineVoiceWidget = useMemo<VoiceSessionWidget | null>(() => {
@@ -922,7 +803,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         ) : (
           (() => {
             const items = control.thread?.items || [];
-            console.log('[ChatKit Render] Rendering', items.length, 'items:', items);
             const inlineVoiceElement = inlineVoiceWidget
               ? renderInlineWidgets(inlineVoiceWidget, createWidgetContext('inline-voice'))
               : null;
@@ -1106,20 +986,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                       const imageTask = item.workflow.tasks.find(
                         (task: any) => task.type === 'image'
                       );
-                      console.log('[ChatKit] Checking for images in workflow:', item.id, 'imageTask:', imageTask);
                       if (imageTask && imageTask.images && imageTask.images.length > 0) {
                         const image = imageTask.images[0];
                         const isLoading = imageTask.status_indicator === 'loading';
-                        console.log('[ChatKit] Image found:', {
-                          id: image.id,
-                          status: imageTask.status_indicator,
-                          isLoading: isLoading,
-                          hasPartials: image.partials && image.partials.length > 0,
-                          partialsCount: image.partials ? image.partials.length : 0,
-                          hasB64: !!image.b64_json,
-                          hasUrl: !!image.image_url,
-                          hasDataUrl: !!image.data_url
-                        });
 
                         // Afficher le partial pendant le loading
                         if (isLoading && image.partials && image.partials.length > 0) {
@@ -1127,7 +996,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           const src = lastPartial.startsWith('data:')
                             ? lastPartial
                             : `data:image/png;base64,${lastPartial}`;
-                          console.log('[ChatKit] Showing partial preview, count:', image.partials.length);
                           return (
                             <div className="chatkit-image-generation-preview">
                               <ImageWithBlobUrl
@@ -1147,7 +1015,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                             src = `data:image/png;base64,${src}`;
                           }
                           if (src) {
-                            console.log('[ChatKit] Showing final image');
                             return <FinalImageDisplay src={src} />;
                           }
                         }
@@ -1178,32 +1045,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         computerUseTask = computerUseTasks[computerUseTasks.length - 1];
                       }
 
-                      console.log('[ChatKit] Checking for computer_use in workflow:', item.id, 'computerUseTask:', computerUseTask);
                       if (computerUseTask) {
                         const hasScreenshots = computerUseTask.screenshots && computerUseTask.screenshots.length > 0;
                         const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
                         // Check if THIS SPECIFIC task is loading (not the workflow)
                         const isLoading = computerUseTask.status_indicator === 'loading';
-
-                        // Debug: log all relevant info
-                        console.log('[ChatKit] Computer use task details:', {
-                          hasDebugToken: !!computerUseTask.debug_url_token,
-                          debugToken: computerUseTask.debug_url_token ? `${computerUseTask.debug_url_token.substring(0, 8)}...` : 'none',
-                          debugUrl: computerUseTask.debug_url,
-                          status: computerUseTask.status_indicator,
-                          isLoading: isLoading,
-                          screenshotsCount: computerUseTask.screenshots ? computerUseTask.screenshots.length : 0,
-                          currentAction: computerUseTask.current_action,
-                        });
-
-                        if (hasScreenshots) {
-                          console.log('[ChatKit] Screenshot info:', {
-                            id: screenshot.id,
-                            hasB64: !!screenshot.b64_image,
-                            hasDataUrl: !!screenshot.data_url,
-                            action: screenshot.action_description
-                          });
-                        }
 
                         let src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
@@ -1224,13 +1070,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         // Si on n'a pas de screenshot mais qu'on a un screenshot sauvegardé pour ce workflow, l'utiliser
                         if (!src && lastScreencastScreenshot && lastScreencastScreenshot.itemId === item.id) {
-                          console.log('[ChatKit] Using saved screenshot for item:', item.id);
                           src = lastScreencastScreenshot.src;
-                        } else if (!src && lastScreencastScreenshot) {
-                          console.log('[ChatKit] Have saved screenshot but item IDs do not match:', {
-                            savedItemId: lastScreencastScreenshot.itemId,
-                            currentItemId: item.id,
-                          });
                         }
 
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
@@ -1247,19 +1087,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         const showPreview = shouldShowLiveScreencast || shouldShowScreenshot;
                         // If dismissed, don't show loading animation on screenshot
                         const screenshotIsLoading = isLoading && !isDismissed;
-
-                        console.log('[ChatKit] Display decision:', {
-                          showLiveScreencast,
-                          showScreenshot,
-                          showPreview,
-                          isActiveScreencast,
-                          hasDebugToken: !!computerUseTask.debug_url_token,
-                          isLoading,
-                          hasScreenshot: !!src,
-                          screenshotCount: computerUseTask.screenshots?.length || 0,
-                          screenshotIndex: screenshot ? computerUseTask.screenshots?.indexOf(screenshot) : -1,
-                          screenshotId: screenshot?.id
-                        });
 
                         let actionTitle = computerUseTask.current_action || screenshot?.action_description;
                         // Si on utilise le screenshot sauvegardé, utiliser son action
@@ -1282,8 +1109,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
                         if (showPreview) {
                           const handleEndSession = () => {
-                            console.log('Ending computer_use session...');
-
                             // Note: Screenshot is captured and workflow completion is handled
                             // by the backend in _handle_continue_workflow (server.py)
 
@@ -1309,7 +1134,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                                     authToken={authToken}
                                     enableInput
                                     onConnectionError={() => {
-                                      console.log('[ChatKit] Screencast connection error, marking token as failed:', (debugUrlToken as string).substring(0, 8));
                                       // Mark this token as failed to prevent reactivation loops
                                       setFailedScreencastTokens(prev => {
                                         if (prev.has(debugUrlToken as string)) return prev;

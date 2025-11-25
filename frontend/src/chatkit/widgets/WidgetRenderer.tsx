@@ -33,349 +33,23 @@ import type {
   VoiceSessionWidget,
   VoiceSessionWidgetContext,
 } from '../types';
+import {
+  ImageWithBlobUrl,
+  BUTTON_ICON_SIZE_MAP,
+  SEMANTIC_COLORS,
+  isRecord,
+  formatSpacing,
+  formatDimension,
+  formatRadius,
+  toThemeColor,
+  applySpacing,
+  applyBlockProps,
+  applyBoxStyles,
+} from '../utils';
 
 type BoxLike = BoxWidget | RowWidget | ColWidget | FormWidget | WidgetRoot;
 
 type WidgetNode = WidgetComponent | WidgetRoot | TransitionWidget | ListViewItem;
-
-/**
- * Component to display images with Blob URL conversion to avoid 414 errors
- */
-function ImageWithBlobUrl({ src, alt = '', className = '', style = {} }: { src: string; alt?: string; className?: string; style?: React.CSSProperties }): JSX.Element | null {
-  const [blobUrl, setBlobUrl] = useState<string>('');
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-
-    if (src.startsWith('data:')) {
-      // Convert data URL to blob to avoid 414 errors with very long URLs
-      try {
-        const parts = src.split(',');
-        const mimeMatch = parts[0].match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : '';
-        const bstr = atob(parts[1]);
-        const n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        for (let i = 0; i < n; i++) {
-          u8arr[i] = bstr.charCodeAt(i);
-        }
-        const blob = new Blob([u8arr], { type: mime });
-        objectUrl = URL.createObjectURL(blob);
-        setBlobUrl(objectUrl);
-      } catch (err) {
-        console.error('[WidgetRenderer] Failed to convert data URL to blob:', err);
-      }
-    } else {
-      setBlobUrl(src);
-    }
-
-    return () => {
-      if (objectUrl && objectUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [src]);
-
-  if (!blobUrl) return null;
-
-  return <img src={blobUrl} alt={alt} className={className} style={style} />;
-}
-
-const DEFAULT_BORDER_COLOR = 'rgba(148, 163, 184, 0.38)';
-
-const radiusMap: Record<string, string> = {
-  '2xs': '6px',
-  xs: '8px',
-  sm: '10px',
-  md: '14px',
-  lg: '18px',
-  xl: '22px',
-  '2xl': '26px',
-  '3xl': '32px',
-  '4xl': '40px',
-  full: '9999px',
-  '100%': '100%',
-  none: '0px',
-};
-
-const buttonIconSizeMap: Record<NonNullable<ButtonWidget['iconSize']>, string> = {
-  sm: '0.9rem',
-  md: '1rem',
-  lg: '1.1rem',
-  xl: '1.25rem',
-  '2xl': '1.4rem',
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-
-const formatSpacing = (value: unknown): string | undefined => {
-  if (typeof value === 'number') {
-    return `calc(var(--spacing, 4px) * ${value})`;
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  return undefined;
-};
-
-const formatDimension = (value: unknown): string | undefined => {
-  if (typeof value === 'number') {
-    return `${value}px`;
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  return undefined;
-};
-
-const formatRadius = (value: unknown): string | undefined => {
-  if (typeof value === 'number') {
-    return `${value}px`;
-  }
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  return radiusMap[value] ?? value;
-};
-
-const applySpacing = (
-  target: React.CSSProperties,
-  prefix: 'padding' | 'margin',
-  spacing: unknown,
-) => {
-  if (!spacing) {
-    return;
-  }
-  if (typeof spacing === 'number' || typeof spacing === 'string') {
-    target[prefix] = formatSpacing(spacing);
-    return;
-  }
-  if (!isRecord(spacing)) {
-    return;
-  }
-  const { top, right, bottom, left, x, y } = spacing as Record<string, unknown>;
-  const xValue = formatSpacing(x);
-  const yValue = formatSpacing(y);
-  const topValue = formatSpacing(top) ?? yValue;
-  const bottomValue = formatSpacing(bottom) ?? yValue;
-  const leftValue = formatSpacing(left) ?? xValue;
-  const rightValue = formatSpacing(right) ?? xValue;
-  if (topValue) {
-    target[`${prefix}Top`] = topValue;
-  }
-  if (rightValue) {
-    target[`${prefix}Right`] = rightValue;
-  }
-  if (bottomValue) {
-    target[`${prefix}Bottom`] = bottomValue;
-  }
-  if (leftValue) {
-    target[`${prefix}Left`] = leftValue;
-  }
-};
-
-const toThemeColor = (value: unknown): string | undefined => {
-  if (!value) {
-    return undefined;
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (isRecord(value)) {
-    const light = value.light;
-    return typeof light === 'string' ? light : undefined;
-  }
-  return undefined;
-};
-
-const formatBorderValue = (value: unknown): string | undefined => {
-  if (typeof value === 'number') {
-    return `${value}px solid ${DEFAULT_BORDER_COLOR}`;
-  }
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const size = typeof value.size === 'number' ? value.size : undefined;
-  if (typeof size !== 'number') {
-    return undefined;
-  }
-  const style = typeof value.style === 'string' ? value.style : 'solid';
-  const colorCandidate = value.color;
-  const color =
-    toThemeColor(colorCandidate) ??
-    (typeof colorCandidate === 'string' ? colorCandidate : DEFAULT_BORDER_COLOR);
-  return `${size}px ${style} ${color}`;
-};
-
-const applyBorderStyles = (styles: React.CSSProperties, border: unknown) => {
-  if (!border) {
-    return;
-  }
-  const apply = (property: keyof React.CSSProperties, value: unknown) => {
-    const formatted = formatBorderValue(value);
-    if (formatted) {
-      styles[property] = formatted;
-    }
-  };
-
-  if (typeof border === 'number' || (isRecord(border) && typeof border.size === 'number')) {
-    const formatted = formatBorderValue(border);
-    if (formatted) {
-      styles.border = formatted;
-    }
-    return;
-  }
-
-  if (!isRecord(border)) {
-    return;
-  }
-
-  const segments = border as Record<string, unknown>;
-  if (segments.x !== undefined) {
-    const formatted = formatBorderValue(segments.x);
-    if (formatted) {
-      styles.borderLeft = formatted;
-      styles.borderRight = formatted;
-    }
-  }
-  if (segments.y !== undefined) {
-    const formatted = formatBorderValue(segments.y);
-    if (formatted) {
-      styles.borderTop = formatted;
-      styles.borderBottom = formatted;
-    }
-  }
-
-  apply('borderTop', segments.top);
-  apply('borderRight', segments.right);
-  apply('borderBottom', segments.bottom);
-  apply('borderLeft', segments.left);
-};
-
-const applyBlockProps = (styles: React.CSSProperties, props: Record<string, unknown>) => {
-  if (props.height !== undefined) {
-    const formatted = formatDimension(props.height);
-    if (formatted) {
-      styles.height = formatted;
-    }
-  }
-  if (props.width !== undefined) {
-    const formatted = formatDimension(props.width);
-    if (formatted) {
-      styles.width = formatted;
-    }
-  }
-  if (props.size !== undefined) {
-    const formatted = formatDimension(props.size);
-    if (formatted) {
-      styles.width = formatted;
-      styles.height = formatted;
-    }
-  }
-  if (props.minHeight !== undefined) {
-    const formatted = formatDimension(props.minHeight);
-    if (formatted) {
-      styles.minHeight = formatted;
-    }
-  }
-  if (props.minWidth !== undefined) {
-    const formatted = formatDimension(props.minWidth);
-    if (formatted) {
-      styles.minWidth = formatted;
-    }
-  }
-  if (props.minSize !== undefined) {
-    const formatted = formatDimension(props.minSize);
-    if (formatted) {
-      styles.minWidth = formatted;
-      styles.minHeight = formatted;
-    }
-  }
-  if (props.maxHeight !== undefined) {
-    const formatted = formatDimension(props.maxHeight);
-    if (formatted) {
-      styles.maxHeight = formatted;
-    }
-  }
-  if (props.maxWidth !== undefined) {
-    const formatted = formatDimension(props.maxWidth);
-    if (formatted) {
-      styles.maxWidth = formatted;
-    }
-  }
-  if (props.maxSize !== undefined) {
-    const formatted = formatDimension(props.maxSize);
-    if (formatted) {
-      styles.maxWidth = formatted;
-      styles.maxHeight = formatted;
-    }
-  }
-  if (props.aspectRatio !== undefined) {
-    if (typeof props.aspectRatio === 'number') {
-      styles.aspectRatio = `${props.aspectRatio}`;
-    } else if (typeof props.aspectRatio === 'string') {
-      styles.aspectRatio = props.aspectRatio;
-    }
-  }
-  if (props.radius !== undefined) {
-    const formatted = formatRadius(props.radius);
-    if (formatted) {
-      styles.borderRadius = formatted;
-    }
-  }
-  if (props.margin !== undefined) {
-    applySpacing(styles, 'margin', props.margin);
-  }
-};
-
-const applyBoxStyles = (box: BoxLike): React.CSSProperties => {
-  const styles: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: box.type === 'Row' ? 'row' : 'column',
-  };
-  applyBlockProps(styles, box as unknown as Record<string, unknown>);
-
-  if ('direction' in box && box.direction) {
-    styles.flexDirection = box.direction === 'row' ? 'row' : 'column';
-  }
-  if ('align' in box && box.align) {
-    styles.alignItems = box.align === 'start' ? 'flex-start' : box.align === 'end' ? 'flex-end' : box.align;
-  }
-  if ('justify' in box && box.justify) {
-    styles.justifyContent =
-      box.justify === 'start'
-        ? 'flex-start'
-        : box.justify === 'end'
-          ? 'flex-end'
-          : box.justify;
-  }
-  if ('wrap' in box && box.wrap) {
-    styles.flexWrap = box.wrap;
-  }
-  if ('flex' in box && box.flex !== undefined) {
-    styles.flex = box.flex as number | string;
-  }
-  if ('gap' in box && box.gap !== undefined) {
-    const formatted = formatSpacing(box.gap);
-    if (formatted) {
-      styles.gap = formatted;
-    }
-  }
-  if ('padding' in box && box.padding !== undefined) {
-    applySpacing(styles, 'padding', box.padding);
-  }
-  if ('background' in box && box.background) {
-    const background = toThemeColor(box.background) ?? (typeof box.background === 'string' ? box.background : undefined);
-    if (background) {
-      styles.background = background;
-    }
-  }
-  if ('border' in box && box.border !== undefined) {
-    applyBorderStyles(styles, box.border);
-  }
-  return styles;
-};
 
 const WidgetContextProvider = React.createContext<WidgetContext>({});
 
@@ -423,26 +97,14 @@ const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWidget; co
   }, [voice]);
 
   const handleStart = useCallback(async () => {
-    console.log('[VoiceSessionWidget] handleStart called', {
-      hasVoice: !!voice,
-      hasStartFunction: !!voice?.startVoiceSession,
-      threadId: voice?.threadId,
-      status: voice?.status,
-    });
     if (!voice?.startVoiceSession) {
-      console.warn('[VoiceSessionWidget] No startVoiceSession function available');
       return;
     }
     setIsStarting(true);
     try {
-      console.log('[VoiceSessionWidget] Calling startVoiceSession...');
       await voice.startVoiceSession();
-      console.log('[VoiceSessionWidget] startVoiceSession completed');
     } catch (error) {
       console.error('[VoiceSessionWidget] Error starting voice session', error);
-      if (import.meta.env.DEV) {
-        console.error('[VoiceSessionWidget] Impossible de démarrer la session vocale', error);
-      }
     } finally {
       setIsStarting(false);
     }
@@ -600,8 +262,7 @@ const renderText = (component: TextWidget) => {
 
   if (component.color) {
     if (typeof component.color === 'string') {
-      const semanticColors = ['prose', 'primary', 'emphasis', 'secondary', 'tertiary', 'success', 'warning', 'danger'];
-      if (semanticColors.includes(component.color)) {
+      if (SEMANTIC_COLORS.includes(component.color as any)) {
         classNames.push(`text-${component.color}`);
       } else if (component.color.startsWith('alpha-')) {
         style.color = `var(--${component.color})`;
@@ -679,8 +340,7 @@ const renderTitle = (component: TitleWidget) => {
 
   if (component.color) {
     if (typeof component.color === 'string') {
-      const semanticColors = ['prose', 'primary', 'emphasis', 'secondary', 'tertiary', 'success', 'warning', 'danger'];
-      if (semanticColors.includes(component.color)) {
+      if (SEMANTIC_COLORS.includes(component.color as any)) {
         classNames.push(`text-${component.color}`);
       } else if (component.color.startsWith('alpha-')) {
         style.color = `var(--${component.color})`;
@@ -794,7 +454,7 @@ const renderButton = (component: ButtonWidget, context: WidgetContext) => {
     classNames.push('w-full');
   }
 
-  const iconStyle = component.iconSize ? { fontSize: buttonIconSizeMap[component.iconSize] } : undefined;
+  const iconStyle = component.iconSize ? { fontSize: BUTTON_ICON_SIZE_MAP[component.iconSize] } : undefined;
   return (
     <button
       className={classNames.join(' ')}

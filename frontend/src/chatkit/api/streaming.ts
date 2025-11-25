@@ -50,8 +50,6 @@ function parseSSELine(line: string): ThreadStreamEvent | null {
  * Applique un événement delta à un thread
  */
 function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
-  console.log('[ChatKit applyDelta] Event type:', event.type, 'has update:', 'update' in event);
-
   // Gestion des événements wrapper thread.item.updated
   // Le backend envoie des événements dans un format wrapper avec l'événement réel dans 'update'
   if (event.type === 'thread.item.updated' && 'update' in event) {
@@ -60,8 +58,6 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
       ...wrappedEvent.update,
       item_id: wrappedEvent.item_id,
     } as ThreadStreamEvent;
-
-    console.log('[ChatKit] Unwrapping thread.item.updated event:', realEvent);
     return applyDelta(thread, realEvent);
   }
 
@@ -339,7 +335,6 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
       // Si les items sont vides dans la réponse, préserver les items locaux existants
       // pour éviter de perdre les items accumulés via thread.item.added et deltas
       if (normalizedItems.length === 0 && thread.items.length > 0) {
-        console.log('[ChatKit] Preserving local items on thread.updated with empty remote items');
         normalizedItems = thread.items;
       }
     } else if (Array.isArray(threadItems)) {
@@ -578,7 +573,6 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
   const { url, headers = {}, body, initialThread, onEvent, onThreadUpdate, onError, onClientToolCall, signal } = options;
 
   let currentThread: Thread | null = initialThread || null;
-  console.log('[ChatKit streamChatKitEvents] Starting with initialThread:', currentThread?.id || 'null');
 
   try {
     const response = await fetch(url, {
@@ -597,14 +591,11 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
     }
 
     const contentType = response.headers.get('content-type') || '';
-    console.log('[ChatKit] Response Content-Type:', contentType);
 
     // Si la réponse est du JSON (non-streaming), parser directement
     if (contentType.includes('application/json')) {
       try {
         const data = await response.json();
-        console.log('[ChatKit] Received JSON response:', data);
-
         const thread = data.thread || data;
 
         // Normaliser le thread
@@ -637,13 +628,11 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
       const { done, value } = await reader.read();
 
       if (done) {
-        console.log('[ChatKit] SSE stream ended after', chunkCount, 'chunks');
         break;
       }
 
       chunkCount++;
       const chunk = decoder.decode(value, { stream: true });
-      console.log('[ChatKit] Received SSE chunk', chunkCount, ':', chunk.substring(0, 200));
       buffer += chunk;
 
       // Traiter toutes les lignes complètes
@@ -656,14 +645,10 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
           continue;
         }
 
-        console.log('[ChatKit] Parsing SSE line:', trimmed.substring(0, 100));
         const event = parseSSELine(trimmed);
         if (!event) {
-          console.log('[ChatKit] Failed to parse SSE line (not an event)');
           continue;
         }
-
-        console.log('[ChatKit] Received SSE event:', event.type, event);
 
         // Appliquer l'événement au thread
         if (currentThread || event.type === 'thread.created') {
