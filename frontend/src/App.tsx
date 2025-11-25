@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, Outlet } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { AppLayout } from "./components/AppLayout";
+import { AuthErrorHandler } from "./components/AuthErrorHandler";
 import { WorkflowSidebarProvider } from "./features/workflows/WorkflowSidebarProvider";
 import { SuspenseRoute } from "./components/SuspenseRoute";
 import { useAuth } from "./auth";
@@ -86,6 +87,7 @@ const AuthenticatedAppLayout = () => (
 
 export const App = () => (
   <QueryClientProvider client={queryClient}>
+    <AuthErrorHandler />
     <Routes>
       <Route
         path="/login"
