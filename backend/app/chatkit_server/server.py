@@ -1247,15 +1247,33 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 logger.info("ImageTask added to workflow")
 
                 # Set duration summary and collapse workflow
-                delta = datetime.now() - computer_use_item.created_at
-                duration = int(delta.total_seconds())
+                try:
+                    if isinstance(computer_use_item.created_at, str):
+                        from dateutil import parser
+                        created_at = parser.parse(computer_use_item.created_at)
+                    else:
+                        created_at = computer_use_item.created_at
+
+                    # Make both datetimes timezone-naive for comparison
+                    now = datetime.now()
+                    if hasattr(created_at, 'tzinfo') and created_at.tzinfo is not None:
+                        created_at = created_at.replace(tzinfo=None)
+
+                    delta = now - created_at
+                    duration = max(1, int(delta.total_seconds()))
+                except Exception as e:
+                    logger.warning("Could not calculate duration: %s, using default", e)
+                    duration = 1
+
                 computer_use_item.workflow.summary = DurationSummary(duration=duration)
                 computer_use_item.workflow.expanded = False
+                logger.info("Setting workflow summary: duration=%ds, expanded=%s", duration, computer_use_item.workflow.expanded)
 
                 # Save to store
                 await self.store.add_thread_item(thread.id, computer_use_item, context=context)
 
-                # Emit done event
+                # Emit done event with full updated item
+                logger.info("Emitting ThreadItemDoneEvent with summary=%s", computer_use_item.workflow.summary)
                 yield ThreadItemDoneEvent(item=computer_use_item)
                 logger.info("Workflow completed with screenshot, duration=%ds", duration)
             else:
