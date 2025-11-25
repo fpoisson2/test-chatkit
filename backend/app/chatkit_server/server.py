@@ -1192,6 +1192,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow=workflow,
             )
 
+            # Save to store so it persists
+            await self.store.save_item(thread.id, workflow_item, context=context)
+
             yield ThreadItemAddedEvent(item=workflow_item)
             yield ThreadItemDoneEvent(item=workflow_item)
             logger.info("Final screenshot emitted")
