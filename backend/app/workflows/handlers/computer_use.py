@@ -269,6 +269,9 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
                 computer_task = ComputerUseTask(**task_kwargs)
 
+                # Debug: Log the serialized task to verify vnc_token is present
+                logger.info(f"ComputerUseTask created: {computer_task.model_dump_json(exclude_none=True)}")
+
                 # Create Workflow
                 workflow = Workflow(
                     type="custom",
@@ -283,6 +286,9 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                     created_at=datetime.now(),
                     workflow=workflow,
                 )
+
+                # Debug: Log the serialized workflow item
+                logger.info(f"WorkflowItem tasks: {[t.model_dump(exclude_none=True) for t in workflow_item.workflow.tasks]}")
 
                 # Emit the workflow item
                 await on_stream_event(ThreadItemAddedEvent(item=workflow_item))
