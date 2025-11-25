@@ -252,6 +252,48 @@ def _add_workflow_steps_parent_slug_column(connection) -> None:
     )
 
 
+def _workflows_has_multi_user_columns(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("workflows"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("workflows")}
+    required = {
+        "multi_user_enabled",
+        "multi_user_auto_call_ai",
+        "multi_user_allow_instructor_annotations",
+    }
+    return required.issubset(columns)
+
+
+def _add_workflows_multi_user_columns(connection) -> None:
+    inspector = inspect(connection)
+
+    if not inspector.has_table("workflows"):
+        logger.warning(
+            "Cannot add multi-user columns to workflows because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("workflows")
+    }
+
+    statements: tuple[tuple[str, str], ...] = (
+        ("multi_user_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("multi_user_auto_call_ai", "BOOLEAN NOT NULL DEFAULT TRUE"),
+        ("multi_user_allow_instructor_annotations", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    )
+
+    for column_name, column_type in statements:
+        if column_name in existing_columns:
+            continue
+        connection.execute(
+            text(
+                f"ALTER TABLE workflows ADD COLUMN {column_name} {column_type}"
+            )
+        )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -313,6 +355,12 @@ def check_and_apply_migrations():
             "description": "Add parent_slug column for explicit parent-child relationships in workflows",
             "check_fn": _workflow_steps_has_parent_slug_column,
             "apply_fn": _add_workflow_steps_parent_slug_column,
+        },
+        {
+            "id": "008_add_multi_user_columns_to_workflows",
+            "description": "Add multi-user conversation settings to workflows table",
+            "check_fn": _workflows_has_multi_user_columns,
+            "apply_fn": _add_workflows_multi_user_columns,
         },
     ]
 

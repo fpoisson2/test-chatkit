@@ -96,6 +96,80 @@
   color: #000;
 }
 
+/* Multi-user: Other user's messages (left-aligned with different colors) */
+.chatkit-message-other-user {
+  align-items: flex-start;
+}
+
+.chatkit-message-other-user .chatkit-message-content {
+  background: #f0f4f8;
+  color: #000;
+}
+
+.chatkit-message-other-user .chatkit-message-content.chatkit-message-other-user {
+  /* Allow custom background color from sender.color */
+  color: #fff;
+}
+
+/* Sender info for multi-user messages */
+.chatkit-message-sender {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+  opacity: 0.9;
+}
+
+.chatkit-message-sender-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chatkit-message-sender-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chatkit-message-sender-role {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+/* Annotation badge for instructor-only messages */
+.chatkit-message-annotation-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: inherit;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+.chatkit-message-annotation {
+  border: 2px dashed rgba(0, 0, 0, 0.2);
+  background: rgba(255, 243, 224, 0.8) !important;
+}
+
+[data-theme="dark"] .chatkit-message-annotation {
+  background: rgba(255, 183, 77, 0.15) !important;
+  border-color: rgba(255, 183, 77, 0.3);
+}
+
+[data-theme="dark"] .chatkit-message-other-user .chatkit-message-content {
+  background: var(--chatkit-dark-bg-secondary);
+}
+
 .chatkit-message-assistant .chatkit-message-content {
   background: transparent;
   color: var(--color-text);

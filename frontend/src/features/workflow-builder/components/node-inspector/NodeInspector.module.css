@@ -365,6 +365,12 @@
   margin-top: 0.75rem;
 }
 
+.nodeInspectorDivider {
+  margin: 1.25rem 0 0.5rem;
+  border: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+}
+
 .nodeInspectorInlineStack {
   display: flex;
   align-items: flex-start;

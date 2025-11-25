@@ -295,6 +295,67 @@ const NodeInspector = ({
     [currentWorkflow, token, onWorkflowUpdate]
   );
 
+  // Multi-user handlers
+  const handleMultiUserEnabledChange = useCallback(
+    async (value: boolean) => {
+      if (!currentWorkflow || !token) return;
+      try {
+        await fetch(`/api/workflows/${currentWorkflow.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ multi_user_enabled: value }),
+        });
+        onWorkflowUpdate?.();
+      } catch (error) {
+        console.error("Failed to update multi-user enabled:", error);
+      }
+    },
+    [currentWorkflow, token, onWorkflowUpdate]
+  );
+
+  const handleMultiUserAutoCallAiChange = useCallback(
+    async (value: boolean) => {
+      if (!currentWorkflow || !token) return;
+      try {
+        await fetch(`/api/workflows/${currentWorkflow.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ multi_user_auto_call_ai: value }),
+        });
+        onWorkflowUpdate?.();
+      } catch (error) {
+        console.error("Failed to update multi-user auto call AI:", error);
+      }
+    },
+    [currentWorkflow, token, onWorkflowUpdate]
+  );
+
+  const handleMultiUserAllowInstructorAnnotationsChange = useCallback(
+    async (value: boolean) => {
+      if (!currentWorkflow || !token) return;
+      try {
+        await fetch(`/api/workflows/${currentWorkflow.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ multi_user_allow_instructor_annotations: value }),
+        });
+        onWorkflowUpdate?.();
+      } catch (error) {
+        console.error("Failed to update multi-user instructor annotations:", error);
+      }
+    },
+    [currentWorkflow, token, onWorkflowUpdate]
+  );
+
   const { t } = useI18n();
   const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
@@ -423,6 +484,9 @@ const NodeInspector = ({
           ltiShowSidebar={currentWorkflow?.lti_show_sidebar ?? true}
           ltiShowHeader={currentWorkflow?.lti_show_header ?? true}
           ltiEnableHistory={currentWorkflow?.lti_enable_history ?? true}
+          multiUserEnabled={currentWorkflow?.multi_user_enabled ?? false}
+          multiUserAutoCallAi={currentWorkflow?.multi_user_auto_call_ai ?? true}
+          multiUserAllowInstructorAnnotations={currentWorkflow?.multi_user_allow_instructor_annotations ?? false}
           onStartAutoRunChange={onStartAutoRunChange}
           onStartAutoRunMessageChange={onStartAutoRunMessageChange}
           onStartAutoRunAssistantMessageChange={onStartAutoRunAssistantMessageChange}
@@ -434,6 +498,9 @@ const NodeInspector = ({
           onLtiShowSidebarChange={handleLtiShowSidebarChange}
           onLtiShowHeaderChange={handleLtiShowHeaderChange}
           onLtiEnableHistoryChange={handleLtiEnableHistoryChange}
+          onMultiUserEnabledChange={handleMultiUserEnabledChange}
+          onMultiUserAutoCallAiChange={handleMultiUserAutoCallAiChange}
+          onMultiUserAllowInstructorAnnotationsChange={handleMultiUserAllowInstructorAnnotationsChange}
           workflowId={currentWorkflowId}
         />
       ) : null}

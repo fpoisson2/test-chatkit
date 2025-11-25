@@ -32,6 +32,10 @@ type StartInspectorSectionProps = {
   ltiShowSidebar: boolean;
   ltiShowHeader: boolean;
   ltiEnableHistory: boolean;
+  // Multi-user configuration
+  multiUserEnabled: boolean;
+  multiUserAutoCallAi: boolean;
+  multiUserAllowInstructorAnnotations: boolean;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
@@ -43,6 +47,10 @@ type StartInspectorSectionProps = {
   onLtiShowSidebarChange: (value: boolean) => void;
   onLtiShowHeaderChange: (value: boolean) => void;
   onLtiEnableHistoryChange: (value: boolean) => void;
+  // Multi-user handlers
+  onMultiUserEnabledChange: (value: boolean) => void;
+  onMultiUserAutoCallAiChange: (value: boolean) => void;
+  onMultiUserAllowInstructorAnnotationsChange: (value: boolean) => void;
   workflowId: number | null;
 };
 
@@ -59,6 +67,9 @@ export const StartInspectorSection = ({
   ltiShowSidebar,
   ltiShowHeader,
   ltiEnableHistory,
+  multiUserEnabled,
+  multiUserAutoCallAi,
+  multiUserAllowInstructorAnnotations,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
@@ -70,6 +81,9 @@ export const StartInspectorSection = ({
   onLtiShowSidebarChange,
   onLtiShowHeaderChange,
   onLtiEnableHistoryChange,
+  onMultiUserEnabledChange,
+  onMultiUserAutoCallAiChange,
+  onMultiUserAllowInstructorAnnotationsChange,
   workflowId,
 }: StartInspectorSectionProps) => {
   const { t } = useI18n();
@@ -300,6 +314,34 @@ export const StartInspectorSection = ({
             checked={ltiEnableHistory}
             onChange={onLtiEnableHistoryChange}
             help="Permet l'accès à l'historique des conversations dans ChatKit lors d'un lancement LTI."
+          />
+        </>
+      )}
+
+      {/* Multi-user conversation configuration */}
+      <div className={styles.nodeInspectorDivider} />
+
+      <ToggleRow
+        label="Conversations multi-utilisateurs"
+        checked={multiUserEnabled}
+        onChange={onMultiUserEnabledChange}
+        help="Permet à plusieurs utilisateurs de participer à la même conversation. Chaque participant aura sa propre bulle de couleur."
+      />
+
+      {multiUserEnabled && (
+        <>
+          <ToggleRow
+            label="Appel automatique de l'IA"
+            checked={multiUserAutoCallAi}
+            onChange={onMultiUserAutoCallAiChange}
+            help="Quand activé, chaque message déclenche automatiquement une réponse de l'IA. Sinon, les utilisateurs peuvent discuter entre eux et appeler l'IA manuellement."
+          />
+
+          <ToggleRow
+            label="Annotations instructeur"
+            checked={multiUserAllowInstructorAnnotations}
+            onChange={onMultiUserAllowInstructorAnnotationsChange}
+            help="Permet aux instructeurs d'envoyer des messages visibles dans le chat mais exclus du contexte IA (annotations, corrections, explications)."
           />
         </>
       )}

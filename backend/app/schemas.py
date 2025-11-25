@@ -1206,6 +1206,10 @@ class WorkflowSummaryResponse(BaseModel):
     lti_show_sidebar: bool = True
     lti_show_header: bool = True
     lti_enable_history: bool = True
+    # Multi-user conversation settings
+    multi_user_enabled: bool = False
+    multi_user_auto_call_ai: bool = True
+    multi_user_allow_instructor_annotations: bool = False
     versions_count: int
 
 
@@ -1235,6 +1239,10 @@ class WorkflowUpdateRequest(BaseModel):
     lti_show_sidebar: bool | None = None
     lti_show_header: bool | None = None
     lti_enable_history: bool | None = None
+    # Multi-user conversation settings
+    multi_user_enabled: bool | None = None
+    multi_user_auto_call_ai: bool | None = None
+    multi_user_allow_instructor_annotations: bool | None = None
 
 
 class WorkflowVersionCreateRequest(BaseModel):

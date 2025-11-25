@@ -11,6 +11,10 @@ export type WorkflowSummary = {
   lti_show_sidebar: boolean;
   lti_show_header: boolean;
   lti_enable_history: boolean;
+  // Multi-user conversation settings
+  multi_user_enabled: boolean;
+  multi_user_auto_call_ai: boolean;
+  multi_user_allow_instructor_annotations: boolean;
   versions_count: number;
   created_at: string;
   updated_at: string;

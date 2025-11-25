@@ -32,6 +32,16 @@ export interface UserMessageTagContent {
 
 export type UserMessageContent = UserMessageTextContent | UserMessageImageContent | UserMessageFileContent | UserMessageTagContent;
 
+// ===== Types pour les messages multi-utilisateurs =====
+
+export interface MessageSender {
+  id: string;
+  name: string;
+  avatar_url?: string;
+  color?: string;  // Couleur de la bulle (ex: "#3b82f6")
+  role?: 'owner' | 'participant' | 'instructor';
+}
+
 export interface UserMessageItem {
   type: 'user_message';
   id: string;
@@ -39,6 +49,10 @@ export interface UserMessageItem {
   created_at: string;
   attachments?: string[];
   quoted_text?: string;
+  // Multi-user support
+  sender?: MessageSender;
+  /** Si true, ce message n'est pas envoyé au contexte IA (annotation instructeur) */
+  exclude_from_context?: boolean;
 }
 
 // ===== Types pour les sources =====

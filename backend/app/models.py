@@ -408,6 +408,16 @@ class Workflow(Base):
     lti_enable_history: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
+    # Multi-user conversation settings
+    multi_user_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    multi_user_auto_call_ai: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    multi_user_allow_instructor_annotations: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

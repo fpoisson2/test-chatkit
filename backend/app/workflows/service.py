@@ -2436,6 +2436,18 @@ class WorkflowService:
             if "lti_enable_history" in updates:
                 workflow.lti_enable_history = bool(updates["lti_enable_history"])
 
+            # Multi-user conversation settings
+            if "multi_user_enabled" in updates:
+                workflow.multi_user_enabled = bool(updates["multi_user_enabled"])
+
+            if "multi_user_auto_call_ai" in updates:
+                workflow.multi_user_auto_call_ai = bool(updates["multi_user_auto_call_ai"])
+
+            if "multi_user_allow_instructor_annotations" in updates:
+                workflow.multi_user_allow_instructor_annotations = bool(
+                    updates["multi_user_allow_instructor_annotations"]
+                )
+
             workflow.updated_at = datetime.datetime.now(datetime.UTC)
             db.add(workflow)
             db.commit()
@@ -3350,6 +3362,9 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "lti_show_sidebar": workflow.lti_show_sidebar,
         "lti_show_header": workflow.lti_show_header,
         "lti_enable_history": workflow.lti_enable_history,
+        "multi_user_enabled": workflow.multi_user_enabled,
+        "multi_user_auto_call_ai": workflow.multi_user_auto_call_ai,
+        "multi_user_allow_instructor_annotations": workflow.multi_user_allow_instructor_annotations,
         "versions_count": len(workflow.versions),
     }
 

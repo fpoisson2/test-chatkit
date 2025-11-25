@@ -19,6 +19,8 @@ export interface MessageRendererProps {
   onCopyMessage: (messageId: string, content: string) => void;
   createWidgetContext: (itemId: string) => WidgetContext;
   loadingLabel: string;
+  // Multi-user support
+  currentUserId?: string;
   // Screencast props
   activeScreencast: { token: string; itemId: string } | null;
   lastScreencastScreenshot: { itemId: string; src: string; action?: string } | null;
@@ -63,11 +65,44 @@ const isLikelyJson = (value: string): boolean => {
 /**
  * Renders a user message
  */
-function UserMessageContent({ item, theme }: { item: ThreadItem; theme?: string }): JSX.Element {
+function UserMessageContent({ item, theme, currentUserId }: { item: ThreadItem; theme?: string; currentUserId?: string }): JSX.Element {
   if (item.type !== 'user_message') return <></>;
 
+  const sender = item.sender;
+  const isCurrentUser = !sender || sender.id === currentUserId;
+  const isInstructor = sender?.role === 'instructor';
+  const isAnnotation = item.exclude_from_context;
+
+  // Custom style for sender color
+  const bubbleStyle = sender?.color && !isCurrentUser ? { backgroundColor: sender.color } : undefined;
+
   return (
-    <div className="chatkit-message-content">
+    <div
+      className={`chatkit-message-content ${!isCurrentUser ? 'chatkit-message-other-user' : ''} ${isAnnotation ? 'chatkit-message-annotation' : ''}`}
+      style={bubbleStyle}
+    >
+      {/* Show sender name for other users */}
+      {sender && !isCurrentUser && (
+        <div className="chatkit-message-sender">
+          {sender.avatar_url && (
+            <img src={sender.avatar_url} alt="" className="chatkit-message-sender-avatar" />
+          )}
+          <span className="chatkit-message-sender-name">
+            {sender.name}
+            {isInstructor && <span className="chatkit-message-sender-role">Instructeur</span>}
+          </span>
+        </div>
+      )}
+      {/* Annotation indicator */}
+      {isAnnotation && (
+        <div className="chatkit-message-annotation-badge">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          Visible uniquement
+        </div>
+      )}
       {item.content.map((content, idx) => (
         <div key={idx}>
           {content.type === 'input_text' && <MarkdownRenderer content={content.text} theme={theme} />}
@@ -499,6 +534,7 @@ export function MessageRenderer({
   onCopyMessage,
   createWidgetContext,
   loadingLabel,
+  currentUserId,
   activeScreencast,
   lastScreencastScreenshot,
   dismissedScreencastItems,
@@ -514,8 +550,11 @@ export function MessageRenderer({
     return null;
   }
 
+  // Determine if this is another user's message (for multi-user conversations)
+  const isOtherUserMessage = item.type === 'user_message' && item.sender && item.sender.id !== currentUserId;
+
   const messageClass = item.type === 'user_message'
-    ? 'user'
+    ? isOtherUserMessage ? 'other-user' : 'user'
     : item.type === 'client_tool_call'
     ? 'tool'
     : item.type === 'widget' || item.type === 'task' || item.type === 'workflow'
@@ -525,7 +564,7 @@ export function MessageRenderer({
   return (
     <div className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}>
       {item.type === 'user_message' && (
-        <UserMessageContent item={item} theme={theme} />
+        <UserMessageContent item={item} theme={theme} currentUserId={currentUserId} />
       )}
 
       {item.type === 'assistant_message' && (
