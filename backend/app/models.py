@@ -1267,6 +1267,130 @@ class WorkflowShare(Base):
     user: Mapped[User] = relationship("User")
 
 
+class UserGroup(Base):
+    """Groupe d'utilisateurs pour le partage de workflows.
+
+    Permet de créer des groupes (ex: 'Équipe Maths', 'Enseignants Physique')
+    et de partager des workflows avec tous les membres du groupe.
+    """
+
+    __tablename__ = "user_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    owner_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    owner: Mapped[User] = relationship("User", foreign_keys=[owner_id])
+    members: Mapped[list["UserGroupMember"]] = relationship(
+        "UserGroupMember",
+        back_populates="group",
+        cascade="all, delete-orphan",
+    )
+    workflow_shares: Mapped[list["WorkflowGroupShare"]] = relationship(
+        "WorkflowGroupShare",
+        back_populates="group",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserGroupMember(Base):
+    """Membre d'un groupe d'utilisateurs."""
+
+    __tablename__ = "user_group_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id", "user_id", name="uq_user_group_members_group_user"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("user_groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="member"
+    )  # 'admin' or 'member'
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    group: Mapped[UserGroup] = relationship("UserGroup", back_populates="members")
+    user: Mapped[User] = relationship("User")
+
+
+class WorkflowGroupShare(Base):
+    """Partage d'un workflow avec un groupe.
+
+    Permet de partager un workflow avec tous les membres d'un groupe.
+    """
+
+    __tablename__ = "workflow_group_shares"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id", "group_id", name="uq_workflow_group_shares_workflow_group"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workflow_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    group_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("user_groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    permission: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="read"
+    )  # 'read' or 'write'
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    workflow: Mapped[Workflow] = relationship("Workflow")
+    group: Mapped[UserGroup] = relationship("UserGroup", back_populates="workflow_shares")
+
+
 Index("ix_json_documents_metadata", JsonDocument.metadata_json, postgresql_using="gin")
 Index("ix_json_chunks_metadata", JsonChunk.metadata_json, postgresql_using="gin")
 Index(

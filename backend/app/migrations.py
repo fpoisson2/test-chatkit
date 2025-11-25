@@ -12,6 +12,9 @@ from .models import (
     LTIRegistration,
     LTIResourceLink,
     LTIUserSession,
+    UserGroup,
+    UserGroupMember,
+    WorkflowGroupShare,
     WorkflowShare,
 )
 
@@ -347,6 +350,23 @@ def _add_users_role_column(connection) -> None:
     )
 
 
+def _user_groups_tables_exist(connection) -> bool:
+    inspector = inspect(connection)
+    required = ("user_groups", "user_group_members", "workflow_group_shares")
+    return all(inspector.has_table(table) for table in required)
+
+
+def _create_user_groups_tables(connection) -> None:
+    Base.metadata.create_all(
+        bind=connection,
+        tables=[
+            UserGroup.__table__,
+            UserGroupMember.__table__,
+            WorkflowGroupShare.__table__,
+        ],
+    )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -426,6 +446,12 @@ def check_and_apply_migrations():
             "description": "Add role column to users table for teacher/student distinction",
             "check_fn": _users_has_role_column,
             "apply_fn": _add_users_role_column,
+        },
+        {
+            "id": "011_create_user_groups_tables",
+            "description": "Create user_groups, user_group_members, and workflow_group_shares tables for ACL",
+            "check_fn": _user_groups_tables_exist,
+            "apply_fn": _create_user_groups_tables,
         },
     ]
 

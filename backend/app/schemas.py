@@ -1598,3 +1598,127 @@ class WorkflowShareResponse(BaseModel):
     updated_at: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ============================================================================
+# User Groups (ACL)
+# ============================================================================
+
+
+class UserGroupMemberResponse(BaseModel):
+    """Information sur un membre d'un groupe."""
+
+    id: int
+    user_id: int
+    email: str
+    role: Literal["admin", "member"]
+    created_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserGroupCreateRequest(BaseModel):
+    """Requête de création d'un groupe d'utilisateurs."""
+
+    name: constr(strip_whitespace=True, min_length=1, max_length=128)
+    description: constr(strip_whitespace=True, max_length=512) | None = None
+
+
+class UserGroupUpdateRequest(BaseModel):
+    """Requête de mise à jour d'un groupe."""
+
+    name: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
+    description: constr(strip_whitespace=True, max_length=512) | None = None
+
+
+class UserGroupResponse(BaseModel):
+    """Réponse contenant les détails d'un groupe."""
+
+    id: int
+    name: str
+    description: str | None = None
+    owner_id: int
+    owner_email: str | None = None
+    members_count: int = 0
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserGroupDetailResponse(UserGroupResponse):
+    """Réponse détaillée d'un groupe avec ses membres."""
+
+    members: list[UserGroupMemberResponse] = Field(default_factory=list)
+
+
+class UserGroupMemberAddRequest(BaseModel):
+    """Requête d'ajout d'un membre à un groupe."""
+
+    user_id: int
+    role: Literal["admin", "member"] = "member"
+
+
+class UserGroupMemberUpdateRequest(BaseModel):
+    """Requête de mise à jour du rôle d'un membre."""
+
+    role: Literal["admin", "member"]
+
+
+# ============================================================================
+# Workflow Group Sharing
+# ============================================================================
+
+
+class WorkflowGroupShareCreateRequest(BaseModel):
+    """Requête de création d'un partage de workflow avec un groupe."""
+
+    group_id: int = Field(..., description="ID du groupe avec qui partager")
+    permission: Literal["read", "write"] = Field(
+        default="read",
+        description="Niveau de permission (read ou write)",
+    )
+
+
+class WorkflowGroupShareUpdateRequest(BaseModel):
+    """Requête de mise à jour d'un partage de workflow avec un groupe."""
+
+    permission: Literal["read", "write"] = Field(
+        ..., description="Nouveau niveau de permission"
+    )
+
+
+class WorkflowGroupShareResponse(BaseModel):
+    """Réponse contenant les détails d'un partage de workflow avec un groupe."""
+
+    id: int
+    workflow_id: int
+    group_id: int
+    group_name: str
+    permission: Literal["read", "write"]
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ============================================================================
+# Access Management (unified view)
+# ============================================================================
+
+
+class AccessManagementWorkflowResponse(BaseModel):
+    """Workflow avec ses partages (utilisateurs et groupes)."""
+
+    id: int
+    slug: str
+    display_name: str
+    user_shares: list[WorkflowShareResponse] = Field(default_factory=list)
+    group_shares: list[WorkflowGroupShareResponse] = Field(default_factory=list)
+
+
+class AccessManagementResponse(BaseModel):
+    """Vue unifiée de tous les accès."""
+
+    workflows: list[AccessManagementWorkflowResponse] = Field(default_factory=list)
+    groups: list[UserGroupResponse] = Field(default_factory=list)

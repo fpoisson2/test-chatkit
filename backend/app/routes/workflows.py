@@ -21,6 +21,9 @@ from ..schemas import (
     WorkflowDefinitionResponse,
     WorkflowDefinitionUpdate,
     WorkflowDuplicateRequest,
+    WorkflowGroupShareCreateRequest,
+    WorkflowGroupShareResponse,
+    WorkflowGroupShareUpdateRequest,
     WorkflowImportRequest,
     WorkflowProductionUpdate,
     WorkflowShareCreateRequest,
@@ -64,19 +67,21 @@ def _get_workflow_permission(
     """
     Check if a user has access to a workflow and return the permission level.
 
+    Checks both direct user shares and group-based shares.
+
     Returns:
         'admin' - User is admin, full access
         'write' - User has write permission via sharing
         'read' - User has read permission via sharing
         None - No access
     """
-    from ..models import WorkflowShare
+    from ..models import UserGroupMember, WorkflowGroupShare, WorkflowShare
     from sqlalchemy import select
 
     if user.is_admin:
         return "admin"
 
-    # Check for shared access
+    # Check for direct user share
     share = session.scalar(
         select(WorkflowShare).where(
             WorkflowShare.workflow_id == workflow_id,
@@ -85,7 +90,41 @@ def _get_workflow_permission(
     )
 
     if share:
-        return share.permission
+        direct_permission = share.permission
+    else:
+        direct_permission = None
+
+    # Check for group-based access
+    # Get all groups the user is a member of
+    user_group_ids = session.scalars(
+        select(UserGroupMember.group_id).where(
+            UserGroupMember.user_id == user.id
+        )
+    ).all()
+
+    group_permission = None
+    if user_group_ids:
+        # Check if any of these groups have access to the workflow
+        group_shares = session.scalars(
+            select(WorkflowGroupShare).where(
+                WorkflowGroupShare.workflow_id == workflow_id,
+                WorkflowGroupShare.group_id.in_(user_group_ids),
+            )
+        ).all()
+
+        # Take the highest permission from all group shares
+        for gs in group_shares:
+            if gs.permission == "write":
+                group_permission = "write"
+                break
+            elif gs.permission == "read":
+                group_permission = "read"
+
+    # Return the highest permission between direct and group-based
+    if direct_permission == "write" or group_permission == "write":
+        return "write"
+    if direct_permission == "read" or group_permission == "read":
+        return "read"
 
     return None
 
@@ -199,19 +238,46 @@ async def list_workflows(
 
         return []
 
-    # Teachers and students: show only shared workflows
-    # Get workflows shared with this user along with their permissions
+    # Teachers and students: show only shared workflows (direct + group-based)
+    from ..models import UserGroupMember, WorkflowGroupShare
+
+    # Build a map of workflow_id -> permission (will take highest permission)
+    permission_map: dict[int, str] = {}
+
+    # 1. Get workflows shared directly with this user
     shares_stmt = (
         select(WorkflowShare)
         .where(WorkflowShare.user_id == current_user.id)
     )
     shares = session.scalars(shares_stmt).all()
+    for share in shares:
+        permission_map[share.workflow_id] = share.permission
 
-    if not shares:
+    # 2. Get workflows shared via groups the user belongs to
+    user_group_ids = session.scalars(
+        select(UserGroupMember.group_id).where(
+            UserGroupMember.user_id == current_user.id
+        )
+    ).all()
+
+    if user_group_ids:
+        group_shares = session.scalars(
+            select(WorkflowGroupShare).where(
+                WorkflowGroupShare.group_id.in_(user_group_ids)
+            )
+        ).all()
+
+        for gs in group_shares:
+            # Take the highest permission
+            existing = permission_map.get(gs.workflow_id)
+            if existing is None:
+                permission_map[gs.workflow_id] = gs.permission
+            elif existing == "read" and gs.permission == "write":
+                permission_map[gs.workflow_id] = "write"
+
+    if not permission_map:
         return []
 
-    # Build a map of workflow_id -> permission
-    permission_map = {share.workflow_id: share.permission for share in shares}
     shared_workflow_ids = list(permission_map.keys())
 
     # Get the actual workflows
@@ -796,4 +862,208 @@ async def delete_workflow_share(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ============================================================================
+# Workflow Group Sharing Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/api/workflows/{workflow_id}/group-shares",
+    response_model=list[WorkflowGroupShareResponse],
+)
+async def list_workflow_group_shares(
+    workflow_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> list[WorkflowGroupShareResponse]:
+    """List all group shares for a workflow."""
+    from ..models import UserGroup, Workflow, WorkflowGroupShare
+
+    _ensure_admin(current_user)
+
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Workflow non trouvé"
+        )
+
+    shares = (
+        session.query(WorkflowGroupShare)
+        .filter(WorkflowGroupShare.workflow_id == workflow_id)
+        .all()
+    )
+
+    result = []
+    for share in shares:
+        group = session.get(UserGroup, share.group_id)
+        result.append(
+            WorkflowGroupShareResponse(
+                id=share.id,
+                workflow_id=share.workflow_id,
+                group_id=share.group_id,
+                group_name=group.name if group else "",
+                permission=share.permission,
+                created_at=share.created_at,
+                updated_at=share.updated_at,
+            )
+        )
+
+    return result
+
+
+@router.post(
+    "/api/workflows/{workflow_id}/group-shares",
+    response_model=WorkflowGroupShareResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_workflow_group_share(
+    workflow_id: int,
+    payload: WorkflowGroupShareCreateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowGroupShareResponse:
+    """Share a workflow with a group."""
+    from ..models import UserGroup, Workflow, WorkflowGroupShare
+
+    _ensure_admin(current_user)
+
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Workflow non trouvé"
+        )
+
+    group = session.get(UserGroup, payload.group_id)
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Groupe non trouvé"
+        )
+
+    # Check if share already exists
+    existing = (
+        session.query(WorkflowGroupShare)
+        .filter(
+            WorkflowGroupShare.workflow_id == workflow_id,
+            WorkflowGroupShare.group_id == payload.group_id,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ce workflow est déjà partagé avec ce groupe",
+        )
+
+    share = WorkflowGroupShare(
+        workflow_id=workflow_id,
+        group_id=payload.group_id,
+        permission=payload.permission,
+    )
+    session.add(share)
+    session.commit()
+    session.refresh(share)
+
+    return WorkflowGroupShareResponse(
+        id=share.id,
+        workflow_id=share.workflow_id,
+        group_id=share.group_id,
+        group_name=group.name,
+        permission=share.permission,
+        created_at=share.created_at,
+        updated_at=share.updated_at,
+    )
+
+
+@router.patch(
+    "/api/workflows/{workflow_id}/group-shares/{share_id}",
+    response_model=WorkflowGroupShareResponse,
+)
+async def update_workflow_group_share(
+    workflow_id: int,
+    share_id: int,
+    payload: WorkflowGroupShareUpdateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowGroupShareResponse:
+    """Update a workflow group share permission."""
+    from ..models import UserGroup, Workflow, WorkflowGroupShare
+
+    _ensure_admin(current_user)
+
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Workflow non trouvé"
+        )
+
+    share = (
+        session.query(WorkflowGroupShare)
+        .filter(
+            WorkflowGroupShare.id == share_id,
+            WorkflowGroupShare.workflow_id == workflow_id,
+        )
+        .first()
+    )
+    if not share:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Partage non trouvé"
+        )
+
+    share.permission = payload.permission
+    session.commit()
+    session.refresh(share)
+
+    group = session.get(UserGroup, share.group_id)
+
+    return WorkflowGroupShareResponse(
+        id=share.id,
+        workflow_id=share.workflow_id,
+        group_id=share.group_id,
+        group_name=group.name if group else "",
+        permission=share.permission,
+        created_at=share.created_at,
+        updated_at=share.updated_at,
+    )
+
+
+@router.delete(
+    "/api/workflows/{workflow_id}/group-shares/{share_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_workflow_group_share(
+    workflow_id: int,
+    share_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """Remove a workflow group share."""
+    from ..models import Workflow, WorkflowGroupShare
+
+    _ensure_admin(current_user)
+
+    workflow = session.get(Workflow, workflow_id)
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Workflow non trouvé"
+        )
+
+    share = (
+        session.query(WorkflowGroupShare)
+        .filter(
+            WorkflowGroupShare.id == share_id,
+            WorkflowGroupShare.workflow_id == workflow_id,
+        )
+        .first()
+    )
+    if not share:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Partage non trouvé"
+        )
+
+    session.delete(share)
+    session.commit()
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)

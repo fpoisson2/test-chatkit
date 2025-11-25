@@ -45,6 +45,7 @@ else:
             auth,
             computer,
             docs,
+            groups,
             languages,
             lti,
             mcp,
@@ -114,6 +115,7 @@ else:
         app.include_router(auth.router)
         app.include_router(users.router)
         app.include_router(admin.router)
+        app.include_router(groups.router)
         app.include_router(workflow_monitor_ws.router)
         app.include_router(computer.router)
         app.include_router(docs.router)

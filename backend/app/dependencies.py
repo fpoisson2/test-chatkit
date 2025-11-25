@@ -68,6 +68,18 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+async def require_teacher_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Exige que l'utilisateur soit un enseignant ou un administrateur."""
+    if current_user.is_admin:
+        return current_user
+    if current_user.role == "teacher":
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Accès réservé aux enseignants et administrateurs",
+    )
+
+
 def get_workflow_persistence_service() -> WorkflowPersistenceService:
     settings = get_settings()
     return WorkflowPersistenceService(settings=settings)

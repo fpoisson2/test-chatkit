@@ -2016,6 +2016,176 @@ export interface FactoryResetResult {
   message: string;
 }
 
+// ========== User Groups ==========
+
+export type UserGroupMember = {
+  id: number;
+  user_id: number;
+  email: string;
+  role: "admin" | "member";
+  created_at: string;
+};
+
+export type UserGroup = {
+  id: number;
+  name: string;
+  description: string | null;
+  owner_id: number;
+  owner_email: string | null;
+  members_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserGroupDetail = UserGroup & {
+  members: UserGroupMember[];
+};
+
+export type UserGroupCreatePayload = {
+  name: string;
+  description?: string | null;
+};
+
+export type UserGroupUpdatePayload = {
+  name?: string;
+  description?: string | null;
+};
+
+export type WorkflowGroupShare = {
+  id: number;
+  workflow_id: number;
+  group_id: number;
+  group_name: string;
+  permission: "read" | "write";
+  created_at: string;
+  updated_at: string;
+};
+
+export const groupsApi = {
+  async list(token: string | null): Promise<UserGroup[]> {
+    const response = await requestWithFallback("/api/groups", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async get(token: string | null, groupId: number): Promise<UserGroupDetail> {
+    const response = await requestWithFallback(`/api/groups/${groupId}`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async create(token: string | null, payload: UserGroupCreatePayload): Promise<UserGroup> {
+    const response = await requestWithFallback("/api/groups", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    groupId: number,
+    payload: UserGroupUpdatePayload,
+  ): Promise<UserGroup> {
+    const response = await requestWithFallback(`/api/groups/${groupId}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, groupId: number): Promise<void> {
+    await requestWithFallback(`/api/groups/${groupId}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+
+  async addMember(
+    token: string | null,
+    groupId: number,
+    userId: number,
+    role: "admin" | "member" = "member",
+  ): Promise<UserGroupMember> {
+    const response = await requestWithFallback(`/api/groups/${groupId}/members`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ user_id: userId, role }),
+    });
+    return response.json();
+  },
+
+  async updateMember(
+    token: string | null,
+    groupId: number,
+    userId: number,
+    role: "admin" | "member",
+  ): Promise<UserGroupMember> {
+    const response = await requestWithFallback(`/api/groups/${groupId}/members/${userId}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ role }),
+    });
+    return response.json();
+  },
+
+  async removeMember(token: string | null, groupId: number, userId: number): Promise<void> {
+    await requestWithFallback(`/api/groups/${groupId}/members/${userId}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+};
+
+// Workflow group sharing methods (add to workflowsApi equivalent location)
+export const workflowGroupSharesApi = {
+  async list(token: string | null, workflowId: number): Promise<WorkflowGroupShare[]> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/group-shares`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async create(
+    token: string | null,
+    workflowId: number,
+    groupId: number,
+    permission: "read" | "write",
+  ): Promise<WorkflowGroupShare> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/group-shares`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ group_id: groupId, permission }),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    workflowId: number,
+    shareId: number,
+    permission: "read" | "write",
+  ): Promise<WorkflowGroupShare> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/group-shares/${shareId}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ permission }),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, workflowId: number, shareId: number): Promise<void> {
+    await requestWithFallback(`/api/workflows/${workflowId}/group-shares/${shareId}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+};
+
 export const cleanupApi = {
   async getStats(token: string | null): Promise<CleanupStats> {
     const response = await requestWithFallback("/api/admin/cleanup/stats", {
