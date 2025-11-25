@@ -1138,13 +1138,21 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         )
 
                     logger.info("Closing browser %s", cache_key)
-                    await browser.close()
-                    logger.info("Browser %s closed", cache_key)
+                    try:
+                        # Add timeout to browser.close() to prevent hanging
+                        await asyncio.wait_for(browser.close(), timeout=5.0)
+                        logger.info("Browser %s closed successfully", cache_key)
+                    except asyncio.TimeoutError:
+                        logger.warning("Browser %s close timed out after 5s, continuing anyway", cache_key)
+                    except Exception as close_error:
+                        logger.warning("Browser %s close failed: %s, continuing anyway", cache_key, close_error)
                 except Exception as e:
                     logger.error("Error with browser %s: %s", cache_key, e)
 
             # Clean up browser cache for this thread
+            logger.info("Cleaning up browser cache for thread %s", thread.id)
             cleanup_browser_cache(thread.id)
+            logger.info("Browser cache cleaned up")
 
         # Create agent context for generating IDs
         agent_context = AgentContext(
