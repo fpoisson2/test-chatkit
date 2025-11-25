@@ -195,12 +195,7 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
             setIsActive(false);
             setStatus("completed");
             onCallEndRef.current?.();
-            // Reset callId after a short delay to allow UI to update
-            setTimeout(() => {
-              setCallId(null);
-              setStatus("idle");
-              setToNumber(null);
-            }, 2000);
+            // Keep callId and status visible - will reset when a new call starts
             break;
 
           case "hangup_response":
