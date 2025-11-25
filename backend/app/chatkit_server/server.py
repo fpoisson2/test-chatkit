@@ -1094,8 +1094,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         It performs the cleanup that would normally happen when resuming from a wait state,
         then continues the workflow to the next step.
         """
-        from ..tool_builders.computer_use import get_thread_browsers, cleanup_browser_cache
+        from ..tool_builders.computer_use import cleanup_browser_cache
         from chatkit.agents import AgentContext
+        from ..workflows.handlers.computer_use import ComputerUseNodeHandler
 
         logger.info("Handling continue_workflow action for thread %s", thread.id)
 
@@ -1121,39 +1122,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             next_step_slug,
         )
 
-        # Get cached browsers for this thread
-        browsers = get_thread_browsers(thread.id)
-        data_url: str | None = None
-
-        if browsers:
-            # Capture screenshot from first browser and close all
-            for cache_key, browser in list(browsers.items()):
-                try:
-                    if data_url is None:
-                        logger.info("Capturing final screenshot from browser %s", cache_key)
-                        data_url = await browser.screenshot()
-                        logger.info(
-                            "Screenshot captured, length: %d",
-                            len(data_url) if data_url else 0,
-                        )
-
-                    logger.info("Closing browser %s", cache_key)
-                    try:
-                        # Add timeout to browser.close() to prevent hanging
-                        await asyncio.wait_for(browser.close(), timeout=5.0)
-                        logger.info("Browser %s closed successfully", cache_key)
-                    except asyncio.TimeoutError:
-                        logger.warning("Browser %s close timed out after 5s, continuing anyway", cache_key)
-                    except Exception as close_error:
-                        logger.warning("Browser %s close failed: %s, continuing anyway", cache_key, close_error)
-                except Exception as e:
-                    logger.error("Error with browser %s: %s", cache_key, e)
-
-            # Clean up browser cache for this thread
-            logger.info("Cleaning up browser cache for thread %s", thread.id)
-            cleanup_browser_cache(thread.id)
-            logger.info("Browser cache cleaned up")
-
         # Create agent context for generating IDs
         agent_context = AgentContext(
             thread=thread,
@@ -1161,10 +1129,43 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             request_context=context,
         )
 
-        # Note: We intentionally do NOT emit any new WorkflowItems here.
-        # The existing ComputerUseTask will stay with its current status.
-        # Emitting items was causing accumulation of empty/duplicate items.
-        logger.info(">>> Skipping item emission to avoid duplicates")
+        # Attempt to fetch the original computer_use node to reuse its configuration
+        node_slug = wait_state.get("slug")
+        node = None
+        try:
+            definition = self._workflow_service.get_current()
+            node = next(
+                (step for step in definition.steps if getattr(step, "slug", None) == node_slug),
+                None,
+            )
+        except Exception:
+            logger.warning("Unable to load workflow definition while continuing computer_use", exc_info=True)
+
+        # Capture and emit the final screenshot immediately after the stop action
+        if node is not None:
+            handler = ComputerUseNodeHandler()
+            screenshot_events: list[ThreadStreamEvent] = []
+
+            async def on_stream_event(event: ThreadStreamEvent) -> None:
+                screenshot_events.append(event)
+
+            try:
+                await handler._capture_and_emit_final_screenshot(
+                    node=node,
+                    thread=thread,
+                    agent_context=agent_context,
+                    on_stream_event=on_stream_event,
+                )
+            except Exception:
+                logger.error("Failed to capture final screenshot during continue_workflow", exc_info=True)
+
+            for event in screenshot_events:
+                yield event
+
+        # Clean up any cached browsers for this thread
+        logger.info("Cleaning up browser cache for thread %s", thread.id)
+        cleanup_browser_cache(thread.id)
+        logger.info("Browser cache cleaned up")
 
         # Clear wait state
         logger.info(">>> Clearing wait state for thread %s", thread.id)
