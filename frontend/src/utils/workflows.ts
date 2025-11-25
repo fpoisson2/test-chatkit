@@ -19,6 +19,12 @@ export type ComputerUseConfig = {
   display_height: number;
   environment: string;
   start_url?: string;
+  // SSH-specific configuration
+  ssh_host?: string;
+  ssh_port?: number;
+  ssh_username?: string;
+  ssh_password?: string;
+  ssh_private_key?: string;
 };
 
 export type McpSseToolConfig = {

@@ -72,6 +72,7 @@ export const COMPUTER_USE_ENVIRONMENTS = [
   "mac",
   "windows",
   "ubuntu",
+  "ssh",
 ] as const;
 
 export const WEB_SEARCH_LOCATION_LABELS = {
