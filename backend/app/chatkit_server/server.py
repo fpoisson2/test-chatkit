@@ -1279,110 +1279,46 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             else:
                 logger.warning("Could not find ComputerUseTask workflow to add screenshot")
 
-        # Clear wait state
-        logger.info(">>> Clearing wait state for thread %s", thread.id)
-        _set_wait_state_metadata(thread, None)
-        await self.store.save_thread(thread, context=context)
-
-        # Verify wait state is cleared
-        verify_wait_state = _get_wait_state_metadata(thread)
-        logger.info(">>> Wait state after clearing: %s", verify_wait_state)
-
-        # Continue workflow to next step (or start node if no next_step_slug)
-        logger.info(">>> Starting workflow continuation to: %s", next_step_slug or "(start node)")
-
-        # Reload thread history in ascending order for workflow execution
-        history_asc = await self.store.load_thread_items(
-            thread.id,
-            after=None,
-            limit=1000,
-            order="asc",
-            context=context,
-        )
-
-        # Create workflow input for continuation
-        from ..workflows.executor import WorkflowInput, WorkflowRuntimeSnapshot
-
-        # Get saved state from wait_state
-        saved_state = wait_state.get("state", {})
-        conversation_history = wait_state.get("conversation_history", [])
-
-        # Find the target slug - either next_step_slug or the start node
-        target_slug = next_step_slug
-        if not target_slug:
-            # Find the start node
+        # Check if next step is an END node or doesn't exist
+        is_end_node = False
+        if next_step_slug:
             try:
                 definition = self._workflow_service.get_current()
                 for step in definition.steps:
-                    if step.kind == "start" and step.is_enabled:
-                        target_slug = step.slug
-                        logger.info(">>> Found start node: %s", target_slug)
+                    if step.slug == next_step_slug:
+                        is_end_node = step.kind == "end"
+                        logger.info(">>> Next step %s has kind=%s, is_end=%s", next_step_slug, step.kind, is_end_node)
                         break
             except Exception as e:
-                logger.warning("Could not find start node: %s", e)
+                logger.warning("Could not check next step kind: %s", e)
 
-        if not target_slug:
-            logger.error("No target slug found for workflow continuation")
+        # If no next step or next step is END, workflow is complete - just clear wait state
+        if not next_step_slug or is_end_node:
+            logger.info(">>> Workflow complete (next_step=%s, is_end=%s) - clearing wait state only", next_step_slug, is_end_node)
+            _set_wait_state_metadata(thread, None)
+            await self.store.save_thread(thread, context=context)
+            logger.info("Computer use session completed for thread %s", thread.id)
             return
 
-        # Create runtime snapshot with explicit current_slug
-        runtime_snapshot = WorkflowRuntimeSnapshot(
-            state=saved_state if isinstance(saved_state, dict) else {},
-            conversation_history=conversation_history,
-            last_step_context={"computer_use_completed": True},
-            steps=[],
-            current_slug=target_slug,
-        )
-        logger.info(">>> Created runtime_snapshot with current_slug=%s", target_slug)
+        # Next step exists and is not END - keep wait state for user to continue manually
+        # Update wait state to indicate computer_use is done but workflow continues
+        logger.info(">>> Next step %s is not END - setting pending_continue wait state", next_step_slug)
 
-        workflow_input = WorkflowInput(
-            input_as_text="",
-            auto_start_was_triggered=False,
-            auto_start_assistant_message=None,
-            source_item_id=None,
-            model_override=None,
-        )
+        # Get saved state from current wait_state for preservation
+        saved_state = wait_state.get("state", {})
+        conversation_history = wait_state.get("conversation_history", [])
 
-        event_queue: asyncio.Queue[Any] = asyncio.Queue()
+        new_wait_state = {
+            "wait_type": "pending_continue",
+            "next_step_slug": next_step_slug,
+            "state": saved_state,
+            "conversation_history": conversation_history,
+            "reason": "Computer use session terminée. Le workflow continuera au prochain message.",
+        }
+        _set_wait_state_metadata(thread, new_wait_state)
+        await self.store.save_thread(thread, context=context)
 
-        # Execute workflow continuation
-        workflow_task = asyncio.create_task(
-            self._execute_workflow(
-                thread=thread,
-                agent_context=agent_context,
-                workflow_input=workflow_input,
-                event_queue=event_queue,
-                thread_items_history=history_asc.data,
-                thread_item_converter=self._thread_item_converter,
-                input_user_message=None,
-                runtime_snapshot=runtime_snapshot,
-            )
-        )
-
-        # Stream events from the workflow
-        while True:
-            try:
-                event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
-                if event is _STREAM_DONE:
-                    break
-                yield event
-            except asyncio.TimeoutError:
-                if workflow_task.done():
-                    # Drain remaining events
-                    while not event_queue.empty():
-                        event = event_queue.get_nowait()
-                        if event is _STREAM_DONE:
-                            break
-                        yield event
-                    break
-
-        # Wait for workflow task to complete
-        try:
-            await workflow_task
-        except Exception as e:
-            logger.error("Workflow execution failed: %s", e)
-
-        logger.info("Continue workflow completed for thread %s", thread.id)
+        logger.info("Computer use session completed for thread %s, pending continue to %s", thread.id, next_step_slug)
 
     async def _execute_workflow(
         self,
