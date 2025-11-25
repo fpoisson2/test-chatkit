@@ -854,7 +854,10 @@ async def get_vnc_info(
     if not session:
         raise HTTPException(status_code=404, detail="VNC session not found")
 
-    if session.get("user_id") != current_user.id:
+    # Allow access if session has no user_id (created without user context)
+    # or if the user_id matches the current user
+    session_user_id = session.get("user_id")
+    if session_user_id is not None and session_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     vnc_instance = session.get("vnc")
@@ -892,7 +895,10 @@ async def close_vnc_session(
     if not session:
         raise HTTPException(status_code=404, detail="VNC session not found")
 
-    if session.get("user_id") != current_user.id:
+    # Allow access if session has no user_id (created without user context)
+    # or if the user_id matches the current user
+    session_user_id = session.get("user_id")
+    if session_user_id is not None and session_user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     vnc_instance = session.get("vnc")
