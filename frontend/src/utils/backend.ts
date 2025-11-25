@@ -1901,3 +1901,78 @@ export const sipAccountsApi = {
     });
   },
 };
+
+// ========== Admin Cleanup ==========
+
+export interface CleanupStats {
+  conversations_count: number;
+  conversation_items_count: number;
+  attachments_count: number;
+  workflows_count: number;
+  workflow_versions_count: number;
+  workflow_old_versions_count: number;
+  viewports_count: number;
+}
+
+export interface CleanupResult {
+  success: boolean;
+  deleted_count: number;
+  message: string;
+}
+
+export interface FactoryResetResult {
+  success: boolean;
+  conversations_deleted: number;
+  workflows_deleted: number;
+  viewports_deleted: number;
+  message: string;
+}
+
+export const cleanupApi = {
+  async getStats(token: string | null): Promise<CleanupStats> {
+    const response = await requestWithFallback("/api/admin/cleanup/stats", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async deleteConversations(token: string | null): Promise<CleanupResult> {
+    const response = await requestWithFallback("/api/admin/cleanup/conversations", {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async deleteWorkflowHistory(token: string | null): Promise<CleanupResult> {
+    const response = await requestWithFallback("/api/admin/cleanup/workflow-history", {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async deleteWorkflows(token: string | null): Promise<CleanupResult> {
+    const response = await requestWithFallback("/api/admin/cleanup/workflows", {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async deleteViewports(token: string | null): Promise<CleanupResult> {
+    const response = await requestWithFallback("/api/admin/cleanup/viewports", {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async factoryReset(token: string | null): Promise<FactoryResetResult> {
+    const response = await requestWithFallback("/api/admin/cleanup/factory-reset", {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+};

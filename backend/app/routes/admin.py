@@ -30,16 +30,20 @@ from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
 from ..rate_limit import get_rate_limit, limiter
 from ..models import (
+    ChatAttachment,
     ChatThread,
+    ChatThreadItem,
     Language,
     LanguageGenerationTask,
     LTIRegistration,
+    OutboundCall,
     SipAccount,
     TelephonyRoute,
     User,
     Workflow,
     WorkflowDefinition,
     WorkflowStep,
+    WorkflowViewport,
 )
 from ..schemas import (
     ActiveWorkflowSession,
@@ -1768,3 +1772,334 @@ async def get_default_translation_prompt(
         prompt=default_prompt,
         variables=["{{language_name}}", "{{language_code}}", "{{translations_json}}"]
     )
+
+
+# ============================================================================
+# Admin Cleanup Endpoints
+# ============================================================================
+
+
+class CleanupStatsResponse(BaseModel):
+    """Statistics about data that can be cleaned up."""
+
+    conversations_count: int
+    conversation_items_count: int
+    attachments_count: int
+    workflows_count: int
+    workflow_versions_count: int
+    workflow_old_versions_count: int
+    viewports_count: int
+
+
+class CleanupResultResponse(BaseModel):
+    """Result of a cleanup operation."""
+
+    success: bool
+    deleted_count: int
+    message: str
+
+
+@router.get("/api/admin/cleanup/stats", response_model=CleanupStatsResponse)
+async def get_cleanup_stats(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Get statistics about data that can be cleaned up.
+    """
+    from sqlalchemy import func
+
+    # Count conversations
+    conversations_count = session.scalar(
+        select(func.count()).select_from(ChatThread)
+    ) or 0
+
+    # Count conversation items
+    conversation_items_count = session.scalar(
+        select(func.count()).select_from(ChatThreadItem)
+    ) or 0
+
+    # Count attachments
+    attachments_count = session.scalar(
+        select(func.count()).select_from(ChatAttachment)
+    ) or 0
+
+    # Count workflows
+    workflows_count = session.scalar(
+        select(func.count()).select_from(Workflow)
+    ) or 0
+
+    # Count all workflow versions
+    workflow_versions_count = session.scalar(
+        select(func.count()).select_from(WorkflowDefinition)
+    ) or 0
+
+    # Count old workflow versions (not the active one)
+    # A version is "old" if it's not the active_version_id of its workflow
+    old_versions_subquery = (
+        select(WorkflowDefinition.id)
+        .join(Workflow, WorkflowDefinition.workflow_id == Workflow.id)
+        .where(WorkflowDefinition.id != Workflow.active_version_id)
+    )
+    workflow_old_versions_count = session.scalar(
+        select(func.count()).select_from(old_versions_subquery.subquery())
+    ) or 0
+
+    # Count viewports
+    viewports_count = session.scalar(
+        select(func.count()).select_from(WorkflowViewport)
+    ) or 0
+
+    return CleanupStatsResponse(
+        conversations_count=conversations_count,
+        conversation_items_count=conversation_items_count,
+        attachments_count=attachments_count,
+        workflows_count=workflows_count,
+        workflow_versions_count=workflow_versions_count,
+        workflow_old_versions_count=workflow_old_versions_count,
+        viewports_count=viewports_count,
+    )
+
+
+@router.delete("/api/admin/cleanup/conversations", response_model=CleanupResultResponse)
+async def delete_all_conversations(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Delete all conversation history for all users.
+    This includes threads, thread items, and attachments.
+    """
+    from sqlalchemy import func
+
+    try:
+        # Count before deletion
+        count = session.scalar(select(func.count()).select_from(ChatThread)) or 0
+
+        # Delete all attachments first (no FK constraint but for completeness)
+        session.execute(ChatAttachment.__table__.delete())
+
+        # Delete all thread items (CASCADE should handle this, but explicit is better)
+        session.execute(ChatThreadItem.__table__.delete())
+
+        # Delete all threads
+        session.execute(ChatThread.__table__.delete())
+
+        session.commit()
+
+        return CleanupResultResponse(
+            success=True,
+            deleted_count=count,
+            message=f"Deleted {count} conversations and all associated items",
+        )
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("Failed to delete conversations", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete conversations",
+        ) from exc
+
+
+@router.delete(
+    "/api/admin/cleanup/workflow-history", response_model=CleanupResultResponse
+)
+async def delete_workflow_history(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Delete workflow version history, keeping only the active version for each workflow.
+    OutboundCall records referencing old versions are updated to point to the active version.
+    """
+    from sqlalchemy import func, update
+
+    try:
+        # Find all workflow definitions that are not the active version
+        old_versions = session.scalars(
+            select(WorkflowDefinition)
+            .join(Workflow, WorkflowDefinition.workflow_id == Workflow.id)
+            .where(WorkflowDefinition.id != Workflow.active_version_id)
+        ).all()
+
+        count = len(old_versions)
+
+        if count > 0:
+            # Build a mapping from old version IDs to active version IDs
+            old_to_active = {}
+            for old_version in old_versions:
+                workflow = session.get(Workflow, old_version.workflow_id)
+                if workflow and workflow.active_version_id:
+                    old_to_active[old_version.id] = workflow.active_version_id
+
+            # Update OutboundCall.workflow_id for each old version
+            for old_id, active_id in old_to_active.items():
+                session.execute(
+                    update(OutboundCall)
+                    .where(OutboundCall.workflow_id == old_id)
+                    .values(workflow_id=active_id)
+                )
+                # Also update triggered_by_workflow_id (nullable)
+                session.execute(
+                    update(OutboundCall)
+                    .where(OutboundCall.triggered_by_workflow_id == old_id)
+                    .values(triggered_by_workflow_id=active_id)
+                )
+
+            # Now delete old versions
+            for version in old_versions:
+                session.delete(version)
+
+        session.commit()
+
+        return CleanupResultResponse(
+            success=True,
+            deleted_count=count,
+            message=f"Deleted {count} old workflow versions",
+        )
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("Failed to delete workflow history", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete workflow history",
+        ) from exc
+
+
+@router.delete("/api/admin/cleanup/workflows", response_model=CleanupResultResponse)
+async def delete_all_workflows(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Delete all workflows and their versions.
+    Also deletes associated outbound call records.
+    """
+    from sqlalchemy import func
+
+    try:
+        # Count before deletion
+        count = session.scalar(select(func.count()).select_from(Workflow)) or 0
+
+        # Delete outbound calls first (they reference workflow_definitions)
+        session.execute(OutboundCall.__table__.delete())
+
+        # Delete all workflows (CASCADE will handle versions, steps, transitions)
+        session.execute(Workflow.__table__.delete())
+
+        session.commit()
+
+        return CleanupResultResponse(
+            success=True,
+            deleted_count=count,
+            message=f"Deleted {count} workflows and all versions",
+        )
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("Failed to delete workflows", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete workflows",
+        ) from exc
+
+
+@router.delete("/api/admin/cleanup/viewports", response_model=CleanupResultResponse)
+async def delete_all_viewports(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Delete all saved viewport positions for all users.
+    """
+    from sqlalchemy import func
+
+    try:
+        # Count before deletion
+        count = session.scalar(select(func.count()).select_from(WorkflowViewport)) or 0
+
+        # Delete all viewports
+        session.execute(WorkflowViewport.__table__.delete())
+
+        session.commit()
+
+        return CleanupResultResponse(
+            success=True,
+            deleted_count=count,
+            message=f"Deleted {count} saved viewports",
+        )
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("Failed to delete viewports", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete viewports",
+        ) from exc
+
+
+class FactoryResetResultResponse(BaseModel):
+    """Result of a factory reset operation."""
+
+    success: bool
+    conversations_deleted: int
+    workflows_deleted: int
+    viewports_deleted: int
+    message: str
+
+
+@router.delete("/api/admin/cleanup/factory-reset", response_model=FactoryResetResultResponse)
+async def factory_reset(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """
+    Perform a factory reset: delete all conversations, workflows, and viewports.
+    This is a destructive operation that cannot be undone.
+    """
+    from sqlalchemy import func
+
+    try:
+        # Count before deletion
+        conversations_count = session.scalar(
+            select(func.count()).select_from(ChatThread)
+        ) or 0
+        workflows_count = session.scalar(
+            select(func.count()).select_from(Workflow)
+        ) or 0
+        viewports_count = session.scalar(
+            select(func.count()).select_from(WorkflowViewport)
+        ) or 0
+
+        # Delete all viewports
+        session.execute(WorkflowViewport.__table__.delete())
+
+        # Delete outbound calls first (they reference workflow_definitions)
+        session.execute(OutboundCall.__table__.delete())
+
+        # Delete all workflows (CASCADE handles versions, steps, transitions)
+        session.execute(Workflow.__table__.delete())
+
+        # Delete all attachments
+        session.execute(ChatAttachment.__table__.delete())
+
+        # Delete all thread items
+        session.execute(ChatThreadItem.__table__.delete())
+
+        # Delete all threads
+        session.execute(ChatThread.__table__.delete())
+
+        session.commit()
+
+        return FactoryResetResultResponse(
+            success=True,
+            conversations_deleted=conversations_count,
+            workflows_deleted=workflows_count,
+            viewports_deleted=viewports_count,
+            message="Factory reset completed successfully",
+        )
+    except SQLAlchemyError as exc:
+        session.rollback()
+        logger.exception("Factory reset failed", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Factory reset failed",
+        ) from exc
