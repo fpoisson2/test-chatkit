@@ -155,11 +155,12 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
     };
   }
 
-  if (event.type === 'thread.item.completed' || event.type === 'thread.item.done') {
+  // LEGACY: thread.item.completed (deprecated, use thread.item.done instead)
+  // Note: thread.item.done is handled separately below with workflow.completed = true logic
+  if (event.type === 'thread.item.completed') {
     const existingIndex = thread.items.findIndex((item) => item.id === event.item.id);
 
-    // Si l'item n'existe pas encore (ex: première apparition via thread.item.done),
-    // l'ajouter à la liste plutôt que d'ignorer l'événement.
+    // Si l'item n'existe pas encore, l'ajouter à la liste
     if (existingIndex === -1) {
       return {
         ...thread,
@@ -367,19 +368,32 @@ function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
   }
 
   if (event.type === 'thread.item.done') {
+    const existingIndex = thread.items.findIndex((item) => item.id === event.item.id);
+
+    // Prepare the completed item (with workflow.completed = true if applicable)
+    let completedItem = event.item;
+    if (event.item.type === 'workflow') {
+      completedItem = {
+        ...event.item,
+        workflow: {
+          ...event.item.workflow,
+          completed: true,
+        },
+      };
+    }
+
+    // If item doesn't exist yet (first appearance via thread.item.done), add it
+    if (existingIndex === -1) {
+      return {
+        ...thread,
+        items: [...thread.items, completedItem],
+      };
+    }
+
+    // Update existing item
     const items = thread.items.map((item) => {
       if (item.id === event.item.id) {
-        // Si c'est un workflow, le marquer comme completed
-        if (event.item.type === 'workflow') {
-          return {
-            ...event.item,
-            workflow: {
-              ...event.item.workflow,
-              completed: true,
-            },
-          };
-        }
-        return event.item;
+        return completedItem;
       }
       return item;
     });
