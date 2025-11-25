@@ -28,6 +28,7 @@ from chatkit.types import (
     AssistantMessageItem,
     Attachment,
     ClosedStatus,
+    ComputerUseScreenshot,
     ComputerUseTask,
     EndOfTurnItem,
     ErrorCode,
@@ -57,6 +58,7 @@ from chatkit.types import (
     WidgetRootUpdated,
     Workflow,
     WorkflowItem,
+    WorkflowTaskUpdated,
 )
 from openai.types.responses import (
     ResponseInputContentParam,
@@ -1165,43 +1167,72 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             request_context=context,
         )
 
-        # Emit screenshot if captured
+        # Find and update the existing ComputerUseTask with the screenshot
         if data_url:
-            logger.info("Emitting final screenshot from backend")
+            logger.info("Updating existing ComputerUseTask with final screenshot")
             from datetime import datetime
 
-            image_id = f"img_{uuid.uuid4().hex[:8]}"
-            generated_image = GeneratedImage(
-                id=image_id,
-                data_url=data_url,
+            # Load thread items to find the ComputerUseTask
+            thread_items = await self.store.load_thread_items(
+                thread.id, after=None, limit=100, order="desc", context=context
             )
 
-            image_task = ImageTask(
-                type="image",
-                title="Screenshot finale de la session Computer Use",
-                images=[generated_image],
-                status_indicator="complete",
-            )
+            # Find the workflow item with a ComputerUseTask
+            computer_use_item: WorkflowItem | None = None
+            computer_use_task_index: int = -1
 
-            workflow = Workflow(
-                type="custom",
-                tasks=[image_task],
-                expanded=True,
-            )
+            for item in thread_items.data:
+                if item.type == "workflow":
+                    workflow_item = item
+                    for idx, task in enumerate(workflow_item.workflow.tasks):
+                        if isinstance(task, ComputerUseTask) or (hasattr(task, "type") and task.type == "computer_use"):
+                            computer_use_item = workflow_item
+                            computer_use_task_index = idx
+                            break
+                    if computer_use_item:
+                        break
 
-            workflow_item = WorkflowItem(
-                id=agent_context.generate_id("workflow"),
-                thread_id=thread.id,
-                created_at=datetime.now(),
-                workflow=workflow,
-            )
+            if computer_use_item and computer_use_task_index >= 0:
+                # Get the existing task
+                existing_task = computer_use_item.workflow.tasks[computer_use_task_index]
 
-            # Save to store so it persists (add_thread_item creates or updates)
-            await self.store.add_thread_item(thread.id, workflow_item, context=context)
+                # Create screenshot
+                screenshot_id = f"screenshot_{uuid.uuid4().hex[:8]}"
+                screenshot = ComputerUseScreenshot(
+                    id=screenshot_id,
+                    data_url=data_url,
+                    timestamp=datetime.now().isoformat(),
+                    action_description="Screenshot finale",
+                )
 
-            yield ThreadItemAddedEvent(item=workflow_item)
-            yield ThreadItemDoneEvent(item=workflow_item)
-            logger.info("Final screenshot emitted")
+                # Create updated task with screenshot and complete status
+                updated_task = ComputerUseTask(
+                    type="computer_use",
+                    title=existing_task.title if hasattr(existing_task, "title") else "Session Computer Use terminée",
+                    status_indicator="complete",
+                    debug_url_token=None,  # Clear the token
+                    screenshots=[screenshot],
+                    current_action="Session terminée",
+                )
+
+                # Update the task in the workflow
+                computer_use_item.workflow.tasks[computer_use_task_index] = updated_task
+
+                # Save to store
+                await self.store.add_thread_item(thread.id, computer_use_item, context=context)
+
+                # Emit update event
+                yield ThreadItemUpdated(
+                    item_id=computer_use_item.id,
+                    update=WorkflowTaskUpdated(
+                        task_index=computer_use_task_index,
+                        task=updated_task,
+                    ),
+                )
+                yield ThreadItemDoneEvent(item=computer_use_item)
+                logger.info("ComputerUseTask updated with final screenshot")
+            else:
+                logger.warning("Could not find ComputerUseTask to update with screenshot")
 
         # Clear wait state
         logger.info(">>> Clearing wait state for thread %s", thread.id)
