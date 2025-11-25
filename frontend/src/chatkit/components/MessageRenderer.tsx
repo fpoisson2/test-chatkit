@@ -344,7 +344,8 @@ function WorkflowContent({
           const isComplete = computerUseTask.status_indicator === 'complete';
           const isError = computerUseTask.status_indicator === 'error';
           const isTerminal = isComplete || isError;
-          const showScreenshot = !!src && !showLiveScreencast && !showSSHTerminal && !isTerminal;
+          // Never show screenshots for SSH sessions (SSH has no meaningful screenshots)
+          const showScreenshot = !!src && !showLiveScreencast && !showSSHTerminal && !isTerminal && !sshToken;
 
           const isDismissed = dismissedScreencastItems.has(item.id);
           const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
