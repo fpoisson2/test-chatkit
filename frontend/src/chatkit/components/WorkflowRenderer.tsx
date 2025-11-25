@@ -27,6 +27,13 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
     setExpanded(!expanded);
   };
 
+  // Sync expanded state when workflow.expanded changes (e.g., when session ends)
+  useEffect(() => {
+    if (workflow.expanded !== undefined) {
+      setExpanded(workflow.expanded);
+    }
+  }, [workflow.expanded]);
+
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
