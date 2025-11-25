@@ -859,7 +859,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         # Handle continue_workflow action - continue workflow from wait state
         if action.type == "continue_workflow":
-            async for event in self._handle_continue_workflow(thread, context):
+            async for event in self._process_events(
+                thread,
+                context,
+                lambda: self._handle_continue_workflow(thread, context),
+            ):
                 yield event
             return
 
