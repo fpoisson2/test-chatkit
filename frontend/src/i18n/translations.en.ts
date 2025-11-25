@@ -1261,6 +1261,7 @@ export const en: TranslationDictionary = {
   "admin.browserTest.success.closed": "Browser closed successfully",
   "admin.cleanup.stats.title": "Current Data Statistics",
   "admin.cleanup.stats.subtitle": "Overview of data stored in the system for all users.",
+  "admin.cleanup.stats.loading": "Loading statistics...",
   "admin.cleanup.stats.conversations": "Conversations",
   "admin.cleanup.stats.workflows": "Workflows",
   "admin.cleanup.stats.oldVersions": "Old versions",

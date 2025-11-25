@@ -11,7 +11,7 @@ import {
   useDeleteViewports,
   useFactoryReset,
 } from "../hooks";
-import { FeedbackMessages, FormSection } from "../components";
+import { FeedbackMessages, FormSection, LoadingSpinner } from "../components";
 import { ConfirmDialog } from "../components/admin/ConfirmDialog";
 
 type CleanupAction =
@@ -187,7 +187,7 @@ export const AdminCleanupPage = () => {
         >
           <div className="flex flex-col gap-4">
             {isLoading ? (
-              <p className="text-muted">{t("common.loading")}</p>
+              <LoadingSpinner text={t("admin.cleanup.stats.loading")} />
             ) : stats ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-surface-elevated rounded-lg border text-center">
