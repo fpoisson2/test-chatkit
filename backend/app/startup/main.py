@@ -33,7 +33,7 @@ from ..models import (
 )
 from ..security import hash_password
 from ..telephony.invite_runtime import InviteRuntime
-from ..telephony.multi_sip_manager import MultiSIPRegistrationManager
+from ..telephony.multi_sip_manager import AIOSIP_AVAILABLE, MultiSIPRegistrationManager
 from ..telephony.registration import SIPRegistrationManager
 from ..telephony.sip_server import resolve_workflow_for_phone_number
 from ..telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
@@ -547,7 +547,8 @@ def register_telephony_events(
                 await manager.load_accounts_from_db(session)
 
                 # Si aucun compte SIP n'est configuré, essayer les anciens paramètres
-                if not manager.has_accounts():
+                # Only attempt fallback if aiosip is available
+                if not manager.has_accounts() and AIOSIP_AVAILABLE:
                     logger.info(
                         "Aucun compte SIP trouvé en BD, tentative de chargement depuis "
                         "AppSettings"
