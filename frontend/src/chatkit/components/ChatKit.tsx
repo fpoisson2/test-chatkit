@@ -251,6 +251,46 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
   }, [control.thread?.items]);
 
+  // Sauvegarder automatiquement la dernière screenshot disponible pour un workflow
+  useEffect(() => {
+    const items = (control.thread?.items || []) as ThreadItem[];
+
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item.type !== 'workflow') continue;
+
+      const computerUseTask = item.workflow.tasks.find((task: any) => task.type === 'computer_use');
+      const screenshots = computerUseTask?.screenshots;
+
+      if (!computerUseTask || !screenshots || screenshots.length === 0) continue;
+
+      const latestScreenshot = screenshots[screenshots.length - 1];
+      let src =
+        latestScreenshot.data_url ||
+        (latestScreenshot.b64_image ? `data:image/png;base64,${latestScreenshot.b64_image}` : '');
+
+      if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+        src = `data:image/png;base64,${src}`;
+      }
+
+      if (!src) continue;
+
+      const action = latestScreenshot.action_description || computerUseTask.current_action;
+
+      if (
+        lastScreencastScreenshot &&
+        lastScreencastScreenshot.itemId === item.id &&
+        lastScreencastScreenshot.src === src &&
+        lastScreencastScreenshot.action === action
+      ) {
+        break;
+      }
+
+      setLastScreencastScreenshot({ itemId: item.id, src, action });
+      break;
+    }
+  }, [control.thread?.items, lastScreencastScreenshot]);
+
   // Keep ref in sync with state
   useEffect(() => {
     activeScreencastRef.current = activeScreencast;
@@ -419,8 +459,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         if (screenshotTask) {
           const isActuallyTerminal = screenshotTask.status_indicator === 'complete' || screenshotTask.status_indicator === 'error';
           if (isActuallyTerminal) {
-            console.log('[ChatKit] Clearing last screencast screenshot for actually terminal task');
-            setLastScreencastScreenshot(null);
+            const hasTerminalScreenshot =
+              Array.isArray(screenshotTask.screenshots) &&
+              screenshotTask.screenshots.length > 0;
+            // Conserver le dernier screenshot pour les tâches complètes afin d'afficher l'aperçu final
+            if (!hasTerminalScreenshot || screenshotTask.status_indicator === 'error') {
+              console.log('[ChatKit] Clearing last screencast screenshot for terminal task without image or with error');
+              setLastScreencastScreenshot(null);
+            }
           }
         }
       }
@@ -1234,11 +1280,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                         }
 
                         // Afficher la screenshot si on a une screenshot ET qu'on n'affiche pas le screencast live
-                        // MAIS seulement si la tâche n'est pas complete (sinon on cache tout pour retourner au début)
-                        const isComplete = computerUseTask.status_indicator === 'complete';
+                        // Autoriser l'affichage final lorsque la tâche est complete pour conserver un aperçu final
                         const isError = computerUseTask.status_indicator === 'error';
-                        const isTerminal = isComplete || isError;
-                        const showScreenshot = !!src && !showLiveScreencast && !isTerminal;
+                        const showScreenshot = !!src && !showLiveScreencast && !isError;
 
                         const isDismissed = dismissedScreencastItems.has(item.id);
                         // If dismissed, only hide the live screencast, but still show static screenshot
