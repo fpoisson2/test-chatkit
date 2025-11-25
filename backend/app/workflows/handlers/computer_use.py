@@ -218,13 +218,16 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             # Create a workflow item with computer_use task
             on_stream_event = context.runtime_vars.get("on_stream_event")
 
-            if on_stream_event and agent_context and debug_url_token:
+            # Check if this is an SSH environment (no debug_url)
+            is_ssh = computer_use_config.get("environment") == "ssh"
+
+            if on_stream_event and agent_context and (debug_url_token or is_ssh):
                 # Create ComputerUseTask
                 computer_task = ComputerUseTask(
                     type="computer_use",
                     status_indicator="loading",
-                    debug_url_token=debug_url_token,
-                    title="Environnement Computer Use",
+                    debug_url_token=debug_url_token,  # Will be None for SSH
+                    title="Session SSH" if is_ssh else "Environnement Computer Use",
                 )
 
                 # Create Workflow
