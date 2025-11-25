@@ -57,6 +57,30 @@ const RequireAdmin = ({ children }: { children: ReactElement }) => {
   return children;
 };
 
+/**
+ * Allows access to admin users and teachers (who may have write access to workflows)
+ */
+const RequireWorkflowAccess = ({ children }: { children: ReactElement }) => {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Admin users always have access
+  if (user.is_admin) {
+    return children;
+  }
+
+  // Teachers may have write access to shared workflows
+  if (user.role === "teacher") {
+    return children;
+  }
+
+  // Other users (students) don't have access to the workflow builder
+  return <Navigate to="/" replace />;
+};
+
 const RequireGuest = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
 
@@ -150,9 +174,9 @@ export const App = () => (
           path="workflows"
           element={
             <SuspenseRoute>
-              <RequireAdmin>
+              <RequireWorkflowAccess>
                 <WorkflowBuilderPage />
-              </RequireAdmin>
+              </RequireWorkflowAccess>
             </SuspenseRoute>
           }
         />

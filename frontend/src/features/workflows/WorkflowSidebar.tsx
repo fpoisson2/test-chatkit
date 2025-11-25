@@ -264,6 +264,11 @@ export const useWorkflowSidebarEntries = (
             onCloseMenu: () => menuConfig?.onCloseMenu(),
           }) ?? [];
 
+        // Determine permission badge for shared workflows
+        const permission = workflow.user_permission;
+        const isShared = permission === "read" || permission === "write";
+        const permissionLabel = permission === "write" ? t("workflows.writePermission") : t("workflows.readPermission");
+
         return {
           key: `local:${workflow.id}`,
           kind: "local" as const,
@@ -305,6 +310,11 @@ export const useWorkflowSidebarEntries = (
               title={workflow.description ?? undefined}
             >
               <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
+              {isShared && (
+                <span className={`chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--${permission}`}>
+                  {permissionLabel}
+                </span>
+              )}
             </button>
           ),
           compact: {
@@ -314,6 +324,7 @@ export const useWorkflowSidebarEntries = (
             disabled: !hasProduction || loading,
             isActive,
             ariaLabel: workflow.display_name,
+            hiddenLabelSuffix: isShared ? permissionLabel : undefined,
           },
         } satisfies WorkflowSidebarSectionEntry;
       }),
@@ -1390,6 +1401,8 @@ export const WorkflowBuilderSidebar = ({
   setWorkflowMenuPlacement,
 }: WorkflowBuilderSidebarProps) => {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.is_admin);
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } =
     useSidebarPortal();
 
@@ -1454,6 +1467,9 @@ export const WorkflowBuilderSidebar = ({
       onTogglePin: () => void;
       onCloseMenu: () => void;
     }): WorkflowActionMenuItem[] => {
+      // Only admin users can manage hosted workflows
+      if (!isAdmin) return [];
+
       const pinLabel = isPinned
         ? t("workflows.unpinAction")
         : t("workflows.pinAction");
@@ -1493,7 +1509,7 @@ export const WorkflowBuilderSidebar = ({
         },
       ];
     },
-    [onDeleteHostedWorkflow, onOpenAppearanceModal],
+    [isAdmin, onDeleteHostedWorkflow, onOpenAppearanceModal],
   );
 
   const localMenuItems = useCallback(
@@ -1510,15 +1526,19 @@ export const WorkflowBuilderSidebar = ({
       onTogglePin: () => void;
       onCloseMenu: () => void;
     }): WorkflowActionMenuItem[] => {
-      const canDelete = !loading;
+      // Get user's permission for this workflow
+      const permission = workflow.user_permission;
+      const hasWriteAccess = permission === "admin" || permission === "write";
+      const hasAdminAccess = permission === "admin";
+
       const canDuplicate =
-        !loading && (workflow.id === selectedWorkflowId || workflow.active_version_id !== null);
+        hasAdminAccess && !loading && (workflow.id === selectedWorkflowId || workflow.active_version_id !== null);
 
       const pinLabel = isPinned
         ? t("workflows.unpinAction")
         : t("workflows.pinAction");
 
-      return [
+      const items: WorkflowActionMenuItem[] = [
         {
           key: "pin",
           label: pinLabel,
@@ -1529,50 +1549,64 @@ export const WorkflowBuilderSidebar = ({
             onCloseMenu();
           },
         },
-        {
-          key: "duplicate",
-          label: t("workflowBuilder.localSection.duplicateAction"),
-          onSelect: () => void onDuplicateWorkflow(workflow.id),
-          disabled: !canDuplicate,
-        },
-        {
+      ];
+
+      // Export - available to all users with read access
+      items.push({
+        key: "export",
+        label: t("workflowBuilder.localSection.exportAction"),
+        onSelect: () => void onExportWorkflow(workflow.id),
+        disabled: loading,
+      });
+
+      // Write-access features
+      if (hasWriteAccess) {
+        items.push({
           key: "rename",
           label: t("workflowBuilder.localSection.renameAction"),
           onSelect: () => void onRenameWorkflow(workflow.id),
           disabled: loading,
-        },
-        {
-          key: "export",
-          label: t("workflowBuilder.localSection.exportAction"),
-          onSelect: () => void onExportWorkflow(workflow.id),
-          disabled: loading,
-        },
-        {
-          key: "appearance",
-          label: t("workflowBuilder.localSection.customizeAction"),
-          onSelect: (event) =>
-            onOpenAppearanceModal(
-              {
-                kind: "local",
-                workflowId: workflow.id,
-                slug: workflow.slug,
-                label: workflow.display_name,
-              },
-              event.currentTarget,
-            ),
-          disabled: loading,
-        },
-        {
-          key: "delete",
-          label: t("workflowBuilder.localSection.deleteAction"),
-          onSelect: () => {
-            onCloseMenu();
-            void onDeleteWorkflow(workflow.id);
+        });
+      }
+
+      // Admin-only features
+      if (hasAdminAccess) {
+        items.push(
+          {
+            key: "duplicate",
+            label: t("workflowBuilder.localSection.duplicateAction"),
+            onSelect: () => void onDuplicateWorkflow(workflow.id),
+            disabled: !canDuplicate,
           },
-          disabled: !canDelete,
-          danger: true,
-        },
-      ];
+          {
+            key: "appearance",
+            label: t("workflowBuilder.localSection.customizeAction"),
+            onSelect: (event) =>
+              onOpenAppearanceModal(
+                {
+                  kind: "local",
+                  workflowId: workflow.id,
+                  slug: workflow.slug,
+                  label: workflow.display_name,
+                },
+                event.currentTarget,
+              ),
+            disabled: loading,
+          },
+          {
+            key: "delete",
+            label: t("workflowBuilder.localSection.deleteAction"),
+            onSelect: () => {
+              onCloseMenu();
+              void onDeleteWorkflow(workflow.id);
+            },
+            disabled: loading,
+            danger: true,
+          },
+        );
+      }
+
+      return items;
     },
     [
       loading,
@@ -1702,11 +1736,11 @@ export const WorkflowBuilderSidebar = ({
         entries={entriesForSection}
         pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
         defaultSectionTitle={t("workflows.defaultSectionTitle")}
-        floatingAction={{
+        floatingAction={isAdmin ? {
           label: t("workflowBuilder.createWorkflow.openModal"),
           onClick: onOpenCreateModal,
           disabled: isCreatingWorkflow,
-        }}
+        } : undefined}
         beforeGroups={beforeGroupsContent}
         emptyState={emptyContent}
         footerContent={footerContent}
@@ -1716,6 +1750,7 @@ export const WorkflowBuilderSidebar = ({
   }, [
     hostedError,
     hostedLoading,
+    isAdmin,
     isCreatingWorkflow,
     isMobileLayout,
     loadError,

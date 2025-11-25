@@ -776,6 +776,8 @@ export const en: TranslationDictionary = {
   "workflows.hostedCompactLabel": "{label} (hosted)",
   "workflows.pinAction": "Pin",
   "workflows.unpinAction": "Unpin",
+  "workflows.readPermission": "Read",
+  "workflows.writePermission": "Write",
   "workflows.pinnedSectionTitle": "Pinned workflows",
   "workflows.defaultSectionTitle": "Workflows",
   "workflowBuilder.createWorkflow.modal.title": "New workflow",

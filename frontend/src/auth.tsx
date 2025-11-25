@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
+export type UserRole = "admin" | "teacher" | "student";
+
 export type AuthUser = {
   id: number;
   email: string;
   is_admin: boolean;
   is_lti: boolean;
+  role: UserRole;
   created_at: string;
   updated_at: string;
 };

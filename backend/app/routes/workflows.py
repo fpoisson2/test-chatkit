@@ -315,7 +315,8 @@ async def update_workflow(
         get_workflow_persistence_service
     ),
 ) -> WorkflowSummaryResponse:
-    _ensure_admin(current_user)
+    # Allow admin or users with write permission
+    _ensure_workflow_write_access(current_user, workflow_id, session)
     try:
         workflow = service.update_workflow(
             workflow_id,
@@ -330,7 +331,11 @@ async def update_workflow(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
         ) from exc
-    return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
+    # Return with user's permission level
+    permission = _get_workflow_permission(current_user, workflow_id, session)
+    return WorkflowSummaryResponse.model_validate(
+        serialize_workflow_summary(workflow, user_permission=permission)
+    )
 
 
 @router.post(
@@ -434,7 +439,8 @@ async def list_workflow_versions(
         get_workflow_persistence_service
     ),
 ) -> list[WorkflowVersionSummaryResponse]:
-    _ensure_admin(current_user)
+    # Allow admin or users with at least read permission
+    _ensure_workflow_read_access(current_user, workflow_id, session)
     try:
         versions = service.list_versions(workflow_id, session)
     except WorkflowNotFoundError as exc:
@@ -460,7 +466,8 @@ async def get_workflow_version(
         get_workflow_persistence_service
     ),
 ) -> WorkflowDefinitionResponse:
-    _ensure_admin(current_user)
+    # Allow admin or users with at least read permission
+    _ensure_workflow_read_access(current_user, workflow_id, session)
     try:
         definition = service.get_version(workflow_id, version_id, session)
     except WorkflowVersionNotFoundError as exc:
@@ -480,7 +487,8 @@ async def export_workflow_version(
         get_workflow_persistence_service
     ),
 ) -> dict[str, Any]:
-    _ensure_admin(current_user)
+    # Allow admin or users with at least read permission
+    _ensure_workflow_read_access(current_user, workflow_id, session)
     try:
         definition = service.get_version(workflow_id, version_id, session)
     except WorkflowVersionNotFoundError as exc:
@@ -506,7 +514,8 @@ async def create_workflow_version(
         get_workflow_persistence_service
     ),
 ) -> WorkflowDefinitionResponse:
-    _ensure_admin(current_user)
+    # Allow admin or users with write permission
+    _ensure_workflow_write_access(current_user, workflow_id, session)
     try:
         definition = service.create_version(
             workflow_id,
@@ -540,7 +549,8 @@ async def update_workflow_version(
         get_workflow_persistence_service
     ),
 ) -> WorkflowDefinitionResponse:
-    _ensure_admin(current_user)
+    # Allow admin or users with write permission
+    _ensure_workflow_write_access(current_user, workflow_id, session)
     try:
         definition = service.update_version(
             workflow_id,
@@ -572,7 +582,8 @@ async def set_workflow_production_version(
         get_workflow_persistence_service
     ),
 ) -> WorkflowDefinitionResponse:
-    _ensure_admin(current_user)
+    # Allow admin or users with write permission
+    _ensure_workflow_write_access(current_user, workflow_id, session)
     try:
         definition = service.set_production_version(
             workflow_id,
