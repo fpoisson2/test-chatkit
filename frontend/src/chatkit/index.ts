@@ -39,9 +39,10 @@ export {
   submitFeedback,
   updateThreadMetadata,
   listThreads,
+  deleteThread,
   listItems,
-} from './api/streaming';
-export type { StreamOptions } from './api/streaming';
+} from './api/streaming/index';
+export type { StreamOptions } from './api/streaming/index';
 export {
   uploadAttachment,
   createFilePreview,

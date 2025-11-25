@@ -3,7 +3,7 @@
  */
 import { useState, useCallback } from 'react';
 import type { Thread, ChatKitAPIConfig, UserMessageContent, ThreadStreamEvent, InferenceOptions } from '../types';
-import { streamChatKitEvents } from '../api/streaming';
+import { streamChatKitEvents } from '../api/streaming/index';
 
 export interface UseMessageStreamingOptions {
   api: ChatKitAPIConfig;

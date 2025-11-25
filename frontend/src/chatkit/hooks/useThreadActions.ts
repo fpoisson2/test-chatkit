@@ -8,7 +8,7 @@ import {
   retryAfterItem as retryAfterItemAPI,
   submitFeedback as submitFeedbackAPI,
   updateThreadMetadata as updateThreadMetadataAPI,
-} from '../api/streaming';
+} from '../api/streaming/index';
 
 export interface UseThreadActionsOptions {
   api: ChatKitAPIConfig;

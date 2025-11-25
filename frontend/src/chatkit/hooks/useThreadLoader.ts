@@ -3,7 +3,7 @@
  */
 import { useEffect, useCallback } from 'react';
 import type { Thread, ChatKitAPIConfig } from '../types';
-import { fetchThread } from '../api/streaming';
+import { fetchThread } from '../api/streaming/api';
 
 export interface UseThreadLoaderOptions {
   api: ChatKitAPIConfig;

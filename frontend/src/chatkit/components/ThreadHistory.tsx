@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import type { Thread, ChatKitAPIConfig } from '../types';
-import { deleteThread, listThreads } from '../api/streaming';
+import { deleteThread, listThreads } from '../api/streaming/api';
 import './ThreadHistory.css';
 
 export interface ThreadHistoryProps {
