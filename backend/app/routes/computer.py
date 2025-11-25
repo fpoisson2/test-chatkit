@@ -747,14 +747,14 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         logger.info(f"SSH WebSocket closed for session {token[:8]}...")
 
 
-# VNC WebSocket endpoint for websockify proxy
+# VNC WebSocket endpoint - direct WebSocket to TCP proxy
 @router.websocket("/vnc/ws")
 async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
     """
-    WebSocket endpoint for VNC via websockify.
+    WebSocket endpoint for VNC - proxies directly to VNC server via TCP.
 
-    Proxies WebSocket connections to the websockify server which handles
-    the WebSocket-to-TCP (VNC) protocol translation.
+    This is a WebSocket-to-TCP proxy that translates noVNC/RFB WebSocket
+    messages directly to the VNC server, without going through websockify.
 
     Args:
         token: The VNC session token
@@ -784,73 +784,74 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
         await websocket.close(code=1011, reason="VNC instance not found")
         return
 
-    logger.info(f"VNC WebSocket connected for session {token[:8]}...")
+    # Get VNC server connection details
+    vnc_config = vnc_instance.config
+    vnc_host = vnc_config.host
+    vnc_port = vnc_config.port
+
+    logger.info(f"VNC WebSocket connected for session {token[:8]}..., connecting to {vnc_host}:{vnc_port}")
+
+    reader: asyncio.StreamReader | None = None
+    writer: asyncio.StreamWriter | None = None
 
     try:
-        # Get the websockify port
-        websockify_port = vnc_instance.novnc_port
-
-        # Connect to the local websockify WebSocket server
-        import websockets
-
-        # websockify proxies WebSocket connections to TCP (VNC)
-        # The WebSocket URL format is: ws://localhost:port/
-        websockify_ws_url = f"ws://127.0.0.1:{websockify_port}/"
-
-        logger.info(f"Connecting to websockify WebSocket: {websockify_ws_url}")
-
+        # Connect directly to VNC server via TCP
         try:
-            # Connect with binary subprotocol (required by noVNC/websockify)
-            vnc_ws = await websockets.connect(
-                websockify_ws_url,
-                subprotocols=["binary"],
-                open_timeout=10,
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(vnc_host, vnc_port),
+                timeout=10.0
             )
-            logger.info(f"Connected to websockify successfully, subprotocol={vnc_ws.subprotocol}")
+            logger.info(f"Connected to VNC server {vnc_host}:{vnc_port} via TCP")
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout connecting to VNC server {vnc_host}:{vnc_port}")
+            await websocket.close(code=1011, reason="VNC server connection timeout")
+            return
         except Exception as connect_exc:
-            logger.error(f"Failed to connect to websockify: {connect_exc}", exc_info=True)
+            logger.error(f"Failed to connect to VNC server: {connect_exc}", exc_info=True)
             await websocket.close(code=1011, reason=f"Cannot connect to VNC: {connect_exc}")
             return
 
-        try:
-            async def forward_vnc_to_client() -> None:
-                """Forward VNC data from websockify to WebSocket client."""
-                try:
-                    async for message in vnc_ws:
-                        if isinstance(message, bytes):
-                            await websocket.send_bytes(message)
-                        else:
-                            await websocket.send_text(message)
-                except WebSocketDisconnect:
-                    logger.debug("VNC client WebSocket disconnected")
-                except Exception as exc:
-                    logger.debug(f"VNC to client forward ended: {exc}")
+        async def forward_vnc_to_client() -> None:
+            """Forward VNC TCP data to WebSocket client."""
+            try:
+                while True:
+                    # Read from VNC TCP connection
+                    data = await reader.read(65536)
+                    if not data:
+                        logger.debug("VNC server closed connection")
+                        break
+                    # Send as binary WebSocket message
+                    await websocket.send_bytes(data)
+            except WebSocketDisconnect:
+                logger.debug("VNC client WebSocket disconnected")
+            except Exception as exc:
+                logger.debug(f"VNC to client forward ended: {exc}")
 
-            async def forward_client_to_vnc() -> None:
-                """Forward WebSocket input from client to websockify."""
-                try:
-                    while True:
-                        message = await websocket.receive()
-                        if message["type"] == "websocket.disconnect":
-                            break
-                        if "bytes" in message:
-                            await vnc_ws.send(message["bytes"])
-                        elif "text" in message:
-                            await vnc_ws.send(message["text"])
-                except WebSocketDisconnect:
-                    logger.debug("Client WebSocket disconnected")
-                except Exception as exc:
-                    logger.debug(f"Client to VNC forward ended: {exc}")
+        async def forward_client_to_vnc() -> None:
+            """Forward WebSocket input from client to VNC TCP."""
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if message["type"] == "websocket.disconnect":
+                        break
+                    if "bytes" in message:
+                        writer.write(message["bytes"])
+                        await writer.drain()
+                    elif "text" in message:
+                        # noVNC sends binary data, but handle text just in case
+                        writer.write(message["text"].encode("latin-1"))
+                        await writer.drain()
+            except WebSocketDisconnect:
+                logger.debug("Client WebSocket disconnected")
+            except Exception as exc:
+                logger.debug(f"Client to VNC forward ended: {exc}")
 
-            # Run both forwarding tasks concurrently
-            await asyncio.gather(
-                forward_vnc_to_client(),
-                forward_client_to_vnc(),
-                return_exceptions=True,
-            )
-        finally:
-            # Close the websockify connection
-            await vnc_ws.close()
+        # Run both forwarding tasks concurrently
+        await asyncio.gather(
+            forward_vnc_to_client(),
+            forward_client_to_vnc(),
+            return_exceptions=True,
+        )
 
     except Exception as exc:
         logger.error(f"VNC WebSocket error: {exc}", exc_info=True)
@@ -859,6 +860,13 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
         except Exception:
             pass  # WebSocket might already be closed
     finally:
+        # Close the TCP connection
+        if writer is not None:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
         logger.info(f"VNC WebSocket closed for session {token[:8]}...")
 
 
