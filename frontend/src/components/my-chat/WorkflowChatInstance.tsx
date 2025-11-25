@@ -55,11 +55,15 @@ export const WorkflowChatInstance = ({
 
   return (
     <div
+      className={`chat-instance ${isActive ? "chat-instance--active" : "chat-instance--inactive"}`}
       style={{
-        display: isActive ? "flex" : "none",
+        display: "flex",
         flexDirection: "column",
         height: "100%",
         width: "100%",
+        position: "absolute",
+        top: 0,
+        left: 0,
       }}
       data-workflow-id={workflowId}
     >
