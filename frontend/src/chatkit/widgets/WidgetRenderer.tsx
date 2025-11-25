@@ -1,8 +1,5 @@
-import React, { Fragment, useCallback, useMemo, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { renderWidgetIcon } from '../../components/widgetIcons';
+import React, { Fragment, useMemo } from 'react';
 import type {
-  ActionConfig,
   BadgeWidget,
   BoxWidget,
   ButtonWidget,
@@ -17,13 +14,11 @@ import type {
   ImageWidget,
   InputWidget,
   LabelWidget,
-  ListViewItem,
   ListViewWidget,
   MarkdownWidget,
   RadioGroupWidget,
   RowWidget,
   SelectWidget,
-  SpacerWidget,
   TextWidget,
   TextareaWidget,
   TitleWidget,
@@ -31,763 +26,55 @@ import type {
   WidgetComponent,
   WidgetRoot,
   VoiceSessionWidget,
-  VoiceSessionWidgetContext,
 } from '../types';
+import { isRecord } from '../utils';
+
+// Import renderers from extracted modules
 import {
-  ImageWithBlobUrl,
-  BUTTON_ICON_SIZE_MAP,
-  SEMANTIC_COLORS,
-  isRecord,
-  formatSpacing,
-  formatDimension,
-  formatRadius,
-  toThemeColor,
-  applySpacing,
-  applyBlockProps,
-  applyBoxStyles,
-} from '../utils';
+  renderText,
+  renderTitle,
+  renderCaption,
+  renderMarkdown,
+} from './renderers/TextRenderers';
+import {
+  renderCheckbox,
+  renderInput,
+  renderTextarea,
+  renderSelect,
+  renderDatePicker,
+  renderLabel,
+  renderRadioGroup,
+  renderForm,
+} from './renderers/FormRenderers';
+import {
+  renderCard,
+  renderListView,
+  renderBox,
+  renderBasicRoot,
+} from './renderers/LayoutRenderers';
+import {
+  renderBadge,
+  renderButton,
+  renderImage,
+  renderIcon,
+  renderDivider,
+} from './renderers/UIRenderers';
+import { VoiceSessionPanel } from './renderers/VoiceSessionPanel';
+import type { WidgetContext, WidgetNode } from './renderers/types';
+
+// Re-export types and components for external use
+export type { WidgetContext } from './renderers/types';
+export { VoiceSessionPanel } from './renderers/VoiceSessionPanel';
 
 type BoxLike = BoxWidget | RowWidget | ColWidget | FormWidget | WidgetRoot;
 
-type WidgetNode = WidgetComponent | WidgetRoot | TransitionWidget | ListViewItem;
-
 const WidgetContextProvider = React.createContext<WidgetContext>({});
-
-export interface WidgetContext {
-  onAction?: (action: ActionConfig) => void;
-  onFormData?: (data: FormData) => void;
-  voiceSession?: VoiceSessionWidgetContext;
-}
 
 export const useWidgetContext = () => React.useContext(WidgetContextProvider);
 
 const renderUnsupported = (type: string) => (
   <div className="alert alert-warning text-sm">Widget non pris en charge : {type}</div>
 );
-
-const formatVoiceTimestamp = (timestamp?: number) => {
-  if (!timestamp) {
-    return '';
-  }
-  return new Date(timestamp).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-};
-
-const VoiceSessionPanel = ({ widget, context }: { widget: VoiceSessionWidget; context: WidgetContext }) => {
-  const voice = context.voiceSession;
-  const [isStarting, setIsStarting] = useState(false);
-
-  const statusLabel = useMemo(() => {
-    if (!voice) {
-      return 'Indisponible';
-    }
-    switch (voice.status) {
-      case 'connecting':
-        return 'Connexion en cours';
-      case 'connected':
-        return voice.isListening ? 'En écoute' : 'Connecté';
-      case 'error':
-        return 'Erreur';
-      default:
-        return 'En veille';
-    }
-  }, [voice]);
-
-  const handleStart = useCallback(async () => {
-    if (!voice?.startVoiceSession) {
-      return;
-    }
-    setIsStarting(true);
-    try {
-      await voice.startVoiceSession();
-    } catch (error) {
-      console.error('[VoiceSessionWidget] Error starting voice session', error);
-    } finally {
-      setIsStarting(false);
-    }
-  }, [voice]);
-
-  const handleStop = useCallback(() => {
-    voice?.interruptSession?.();
-    voice?.stopVoiceSession?.();
-  }, [voice]);
-
-  if (!voice) {
-    return (
-      <div className="alert alert-warning text-sm">
-        Le contexte vocal n'est pas disponible pour ce widget.
-      </div>
-    );
-  }
-
-  const startDisabled =
-    isStarting || voice.status === 'connecting' || voice.status === 'connected' || !voice.startVoiceSession || !voice.threadId;
-  const stopDisabled = (voice.status === 'idle' && !voice.isListening) || voice.status === 'error';
-
-  const transcriptContent = (() => {
-    if (!(widget.showTranscripts ?? true)) {
-      return null;
-    }
-
-    if (voice.transcripts.length === 0) {
-      return <p className="text-sm text-secondary">Aucune transcription disponible pour le moment.</p>;
-    }
-
-    return (
-      <ul className="space-y-2">
-        {voice.transcripts.map((entry) => (
-          <li key={entry.id} className="rounded-lg border border-slate-200 bg-white/60 p-3 dark:border-slate-700 dark:bg-slate-900/40">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-secondary">
-              <span className="font-semibold">
-                {entry.role === 'assistant' ? 'Assistant' : 'Utilisateur'}
-              </span>
-              <span>{formatVoiceTimestamp(entry.timestamp)}</span>
-              {entry.status ? (
-                <span className="badge badge-soft-secondary capitalize">{entry.status.replace('_', ' ')}</span>
-              ) : null}
-            </div>
-            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{entry.text}</p>
-          </li>
-        ))}
-      </ul>
-    );
-  })();
-
-  return (
-    <section className="flex flex-col gap-3">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h3 className="text-lg font-semibold">{widget.title ?? 'Session vocale'}</h3>
-          <p className="text-sm text-secondary">
-            {!voice.threadId
-              ? "Envoyez un premier message pour démarrer une session vocale."
-              : (widget.description ?? "Contrôlez l'écoute et consultez les transcriptions en temps réel.")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="btn btn-primary btn-sm"
-            type="button"
-            disabled={startDisabled}
-            onClick={handleStart}
-          >
-            {isStarting ? 'Connexion…' : widget.startLabel ?? 'Démarrer'}
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            type="button"
-            disabled={stopDisabled}
-            onClick={handleStop}
-          >
-            {widget.stopLabel ?? 'Arrêter'}
-          </button>
-        </div>
-      </header>
-
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="badge badge-soft-info">{statusLabel}</span>
-        {voice.status === 'connected' ? (
-          <span className="badge badge-soft-success">{voice.isListening ? 'En écoute' : 'Pause'}</span>
-        ) : null}
-      </div>
-
-      {voice.transportError ? (
-        <div className="alert alert-danger text-sm" role="status">
-          {voice.transportError}
-        </div>
-      ) : null}
-
-      {transcriptContent}
-    </section>
-  );
-};
-
-const renderStatus = (status?: { text: string; icon?: string; favicon?: string; frame?: boolean }) => {
-  if (!status) return null;
-  return (
-    <div className="widget-status flex items-center gap-2 text-sm text-secondary">
-      {status.favicon ? <img src={status.favicon} alt="favicon" className="h-4 w-4" /> : null}
-      {status.icon ? renderWidgetIcon(status.icon as any) : null}
-      <span>{status.text}</span>
-    </div>
-  );
-};
-
-const renderText = (component: TextWidget) => {
-  const classNames: string[] = [];
-  const style: React.CSSProperties = {};
-
-  if (component.weight === 'bold') {
-    classNames.push('font-bold');
-  } else if (component.weight === 'semibold') {
-    classNames.push('font-semibold');
-  } else if (component.weight === 'medium') {
-    classNames.push('font-medium');
-  } else if (component.weight === 'normal') {
-    classNames.push('font-normal');
-  }
-
-  if (component.italic) {
-    classNames.push('italic');
-  }
-
-  if (component.size === '3xs') {
-    style.fontSize = 'var(--font-text-3xs-size, 0.5rem)';
-    style.lineHeight = 'var(--font-text-3xs-line-height, 0.75rem)';
-  } else if (component.size === '2xs') {
-    style.fontSize = 'var(--font-text-2xs-size, 0.625rem)';
-    style.lineHeight = 'var(--font-text-2xs-line-height, 0.875rem)';
-  } else if (component.size === 'xs') {
-    classNames.push('text-xs');
-  } else if (component.size === 'sm') {
-    classNames.push('text-sm');
-  } else if (component.size === 'md') {
-    classNames.push('text-base');
-  } else if (component.size === 'lg') {
-    classNames.push('text-lg');
-  } else if (component.size === 'xl') {
-    classNames.push('text-xl');
-  }
-
-  if (component.textAlign === 'center') {
-    classNames.push('text-center');
-  } else if (component.textAlign === 'end') {
-    classNames.push('text-right');
-  } else if (component.textAlign === 'start') {
-    classNames.push('text-left');
-  }
-
-  if (component.color) {
-    if (typeof component.color === 'string') {
-      if (SEMANTIC_COLORS.includes(component.color as any)) {
-        classNames.push(`text-${component.color}`);
-      } else if (component.color.startsWith('alpha-')) {
-        style.color = `var(--${component.color})`;
-      } else if (/^(red|blue|green|yellow|purple|pink|gray|orange|teal|cyan|indigo)-\d{2,3}$/.test(component.color)) {
-        style.color = `var(--${component.color})`;
-      } else {
-        const color = toThemeColor(component.color);
-        style.color = color ?? component.color;
-      }
-    } else {
-      const color = toThemeColor(component.color);
-      if (color) {
-        style.color = color;
-      }
-    }
-  }
-
-  if (component.width) {
-    style.width = typeof component.width === 'number' ? `${component.width}px` : component.width;
-  }
-
-  return (
-    <p className={classNames.join(' ')} style={style}>
-      {component.value}
-    </p>
-  );
-};
-
-const renderTitle = (component: TitleWidget) => {
-  const classNames: string[] = [];
-
-  if (component.weight === 'bold') {
-    classNames.push('font-bold');
-  } else if (component.weight === 'semibold') {
-    classNames.push('font-semibold');
-  } else if (component.weight === 'medium') {
-    classNames.push('font-medium');
-  } else if (component.weight === 'normal') {
-    classNames.push('font-normal');
-  } else {
-    classNames.push('font-semibold');
-  }
-
-  if (component.size === 'xs') {
-    classNames.push('text-xs');
-  } else if (component.size === 'sm') {
-    classNames.push('text-sm');
-  } else if (component.size === 'md') {
-    classNames.push('text-base');
-  } else if (component.size === 'lg') {
-    classNames.push('text-lg');
-  } else if (component.size === 'xl') {
-    classNames.push('text-xl');
-  } else if (component.size === '2xl') {
-    classNames.push('text-2xl');
-  } else if (component.size === '3xl') {
-    classNames.push('text-3xl');
-  } else if (component.size === '4xl') {
-    classNames.push('text-4xl');
-  } else if (component.size === '5xl') {
-    classNames.push('text-5xl');
-  } else {
-    classNames.push('text-base');
-  }
-
-  const style: React.CSSProperties = {};
-
-  if (component.textAlign === 'center') {
-    classNames.push('text-center');
-  } else if (component.textAlign === 'end') {
-    classNames.push('text-right');
-  } else if (component.textAlign === 'start') {
-    classNames.push('text-left');
-  }
-
-  if (component.color) {
-    if (typeof component.color === 'string') {
-      if (SEMANTIC_COLORS.includes(component.color as any)) {
-        classNames.push(`text-${component.color}`);
-      } else if (component.color.startsWith('alpha-')) {
-        style.color = `var(--${component.color})`;
-      } else if (/^(red|blue|green|yellow|purple|pink|gray|orange|teal|cyan|indigo)-\d{2,3}$/.test(component.color)) {
-        style.color = `var(--${component.color})`;
-      } else {
-        const color = toThemeColor(component.color);
-        style.color = color ?? component.color;
-      }
-    } else {
-      const color = toThemeColor(component.color);
-      if (color) {
-        style.color = color;
-      }
-    }
-  }
-
-  return (
-    <h3 className={classNames.join(' ')} style={style}>
-      {component.value}
-    </h3>
-  );
-};
-
-const renderCaption = (component: CaptionWidget) => {
-  const classNames = ['text-sm', 'text-secondary'];
-  const style: React.CSSProperties = {};
-
-  if (component.textAlign === 'center') {
-    classNames.push('text-center');
-  } else if (component.textAlign === 'end') {
-    classNames.push('text-right');
-  } else if (component.textAlign === 'start') {
-    classNames.push('text-left');
-  }
-
-  if (component.color) {
-    if (typeof component.color === 'string') {
-      const color = toThemeColor(component.color) ?? component.color;
-      style.color = color;
-    } else {
-      const color = toThemeColor(component.color);
-      if (color) style.color = color;
-    }
-  }
-
-  return (
-    <p className={classNames.join(' ')} style={style}>
-      {component.value}
-    </p>
-  );
-};
-
-const renderBadge = (component: BadgeWidget) => {
-  const classNames = ['badge'];
-
-  if (component.variant === 'outline') {
-    classNames.push('badge-outline');
-  } else if (component.variant === 'soft') {
-    classNames.push('badge-soft');
-  }
-
-  if (component.color) {
-    classNames.push(`badge-${component.color}`);
-  }
-  if (component.size === 'sm') {
-    classNames.push('badge-sm');
-  } else if (component.size === 'lg') {
-    classNames.push('badge-lg');
-  }
-  if (component.pill) {
-    classNames.push('badge-pill');
-  }
-  return <span className={classNames.join(' ')}>{component.label}</span>;
-};
-
-const renderMarkdown = (component: MarkdownWidget) => (
-  <div className="prose prose-sm">
-    <ReactMarkdown>{component.value}</ReactMarkdown>
-  </div>
-);
-
-const renderButton = (component: ButtonWidget, context: WidgetContext) => {
-  const classNames = ['btn'];
-
-  if (component.style === 'secondary') {
-    classNames.push('btn-secondary');
-  } else {
-    classNames.push('btn-primary');
-  }
-
-  if (component.variant === 'outline') {
-    classNames.push('btn-outline');
-  } else if (component.variant === 'ghost') {
-    classNames.push('btn-ghost');
-  }
-
-  if (component.color === 'danger' || component.color === 'red') {
-    classNames.push('btn-danger');
-  } else if (component.color === 'success' || component.color === 'green') {
-    classNames.push('btn-success');
-  }
-
-  if (component.size === 'sm') {
-    classNames.push('btn-sm');
-  } else if (component.size === 'lg') {
-    classNames.push('btn-lg');
-  }
-
-  if (component.block || component.uniform) {
-    classNames.push('w-full');
-  }
-
-  const iconStyle = component.iconSize ? { fontSize: BUTTON_ICON_SIZE_MAP[component.iconSize] } : undefined;
-  return (
-    <button
-      className={classNames.join(' ')}
-      type={component.submit ? 'submit' : 'button'}
-      disabled={component.disabled}
-      aria-disabled={component.disabled ?? false}
-      onClick={() => component.onClickAction && context.onAction?.(component.onClickAction)}
-    >
-      {component.iconStart ? (
-        <span className="btn-icon" style={iconStyle} aria-hidden>
-          {renderWidgetIcon(component.iconStart)}
-        </span>
-      ) : null}
-      <span>{component.label ?? 'Bouton'}</span>
-      {component.iconEnd ? (
-        <span className="btn-icon" style={iconStyle} aria-hidden>
-          {renderWidgetIcon(component.iconEnd)}
-        </span>
-      ) : null}
-    </button>
-  );
-};
-
-const renderImage = (component: ImageWidget) => {
-  const style: React.CSSProperties = {};
-  const props = component as unknown as Record<string, unknown>;
-
-  if (props.size !== undefined) {
-    const formatted = formatDimension(props.size);
-    if (formatted) {
-      style.width = formatted;
-      style.height = formatted;
-    }
-  } else {
-    if (props.width !== undefined) {
-      const formatted = formatDimension(props.width);
-      if (formatted) {
-        style.width = formatted;
-      }
-    }
-    if (props.height !== undefined) {
-      const formatted = formatDimension(props.height);
-      if (formatted) {
-        style.height = formatted;
-      }
-    }
-  }
-
-  if (component.radius) {
-    const formatted = formatRadius(component.radius);
-    if (formatted) {
-      style.borderRadius = formatted;
-    }
-  }
-
-  return (
-    <ImageWithBlobUrl
-      src={component.src}
-      alt={component.alt ?? 'Image de widget'}
-      style={style}
-      className="object-cover"
-    />
-  );
-};
-
-const renderIcon = (component: IconWidget) => {
-  const style: React.CSSProperties = {};
-  const props = component as unknown as Record<string, unknown>;
-  if (props.size !== undefined) {
-    const formatted = formatDimension(props.size);
-    if (formatted) {
-      style.fontSize = formatted;
-      style.width = formatted;
-      style.height = formatted;
-    }
-  }
-  if (props.color) {
-    style.color = typeof props.color === 'string' ? props.color : toThemeColor(props.color);
-  }
-  return <span style={style}>{renderWidgetIcon(component.name)}</span>;
-};
-
-const renderDivider = (component: DividerWidget) => {
-  const style: React.CSSProperties = {
-    borderColor: component.color ? toThemeColor(component.color) ?? (component.color as string) : undefined,
-  };
-  if (component.size !== undefined) {
-    const formatted = formatDimension(component.size);
-    if (formatted) {
-      style.borderWidth = formatted;
-    }
-  }
-  const classNames = ['w-full border-b border-gray-200'];
-  if (component.flush) {
-    classNames.push('my-0');
-  } else if (component.spacing !== undefined) {
-    const formatted = formatSpacing(component.spacing);
-    if (formatted) {
-      style.marginTop = formatted;
-      style.marginBottom = formatted;
-    }
-  }
-  return <hr className={classNames.join(' ')} style={style} />;
-};
-
-const renderCheckbox = (component: CheckboxWidget, context: WidgetContext) => (
-  <label className="flex items-center gap-3">
-    <input
-      type="checkbox"
-      name={component.name}
-      defaultChecked={component.defaultChecked === 'true'}
-      disabled={component.disabled}
-      required={component.required}
-      onChange={() => component.onChangeAction && context.onAction?.(component.onChangeAction)}
-    />
-    <span>{component.label ?? 'Case à cocher'}</span>
-  </label>
-);
-
-const renderInput = (component: InputWidget) => (
-  <input
-    type={component.inputType ?? 'text'}
-    name={component.name}
-    defaultValue={component.defaultValue}
-    placeholder={component.placeholder}
-    required={component.required}
-    pattern={component.pattern}
-    disabled={component.disabled}
-    className="input"
-  />
-);
-
-const renderTextarea = (component: TextareaWidget) => (
-  <textarea
-    name={component.name}
-    defaultValue={component.defaultValue}
-    placeholder={component.placeholder}
-    required={component.required}
-    disabled={component.disabled}
-    rows={component.rows ?? 3}
-    className="textarea"
-  />
-);
-
-const renderSelect = (component: SelectWidget, context: WidgetContext) => (
-  <select
-    name={component.name}
-    defaultValue={component.defaultValue}
-    disabled={component.disabled}
-    className="select"
-    onChange={() => component.onChangeAction && context.onAction?.(component.onChangeAction)}
-  >
-    {component.placeholder ? <option value="">{component.placeholder}</option> : null}
-    {(component.options ?? []).map((option) => (
-      <option key={option.value} value={option.value} disabled={option.disabled}>
-        {option.label}
-      </option>
-    ))}
-  </select>
-);
-
-const renderDatePicker = (component: DatePickerWidget, context: WidgetContext) => (
-  <input
-    type="date"
-    name={component.name}
-    defaultValue={component.defaultValue}
-    min={component.min}
-    max={component.max}
-    placeholder={component.placeholder}
-    disabled={component.disabled}
-    className="input"
-    onChange={() => component.onChangeAction && context.onAction?.(component.onChangeAction)}
-  />
-);
-
-const renderLabel = (component: LabelWidget) => (
-  <label className="form-label" htmlFor={component.name}>
-    {component.label ?? component.name}
-  </label>
-);
-
-const renderRadioGroup = (component: RadioGroupWidget, context: WidgetContext) => (
-  <div className="flex flex-col gap-2" role="radiogroup" aria-label={component.name}>
-    {(component.options ?? []).map((option) => (
-      <label key={option.value} className="flex items-center gap-2">
-        <input
-          type="radio"
-          name={component.name}
-          value={option.value}
-          defaultChecked={option.default}
-          disabled={option.disabled}
-          onChange={() => component.onChangeAction && context.onAction?.(component.onChangeAction)}
-        />
-        <span>{option.label}</span>
-      </label>
-    ))}
-  </div>
-);
-
-const renderForm = (box: FormWidget, context: WidgetContext) => {
-  const styles = applyBoxStyles(box);
-  return (
-    <form
-      className="flex flex-col gap-4"
-      style={styles}
-      onSubmit={(event) => {
-        event.preventDefault();
-        const formData = new FormData(event.currentTarget);
-        context.onFormData?.(formData);
-        if (box.onSubmitAction) {
-          context.onAction?.(box.onSubmitAction);
-        }
-      }}
-    >
-      {renderChildren(Array.isArray(box.children) ? box.children : [], context)}
-    </form>
-  );
-};
-
-const renderListView = (listView: ListViewWidget, context: WidgetContext) => {
-  const children = Array.isArray(listView.children) ? listView.children : [];
-  const limited = typeof listView.limit === 'number' ? children.slice(0, listView.limit) : children;
-  const wrapperClassNames = ['flex flex-col gap-3 p-4'];
-  const wrapperStyles: React.CSSProperties = {};
-  applyBlockProps(wrapperStyles, listView as unknown as Record<string, unknown>);
-
-  return (
-    <section className={wrapperClassNames.join(' ')} style={wrapperStyles} data-theme={listView.theme}>
-      {renderStatus(listView.status)}
-      <div className="flex flex-col gap-3">
-        {limited.map((item, index) => {
-          const entry = item as ListViewItem;
-          const itemClassNames = ['flex flex-col gap-3 p-3'];
-          if (entry.onClickAction) {
-            itemClassNames.push('cursor-pointer hover:bg-surface-elevated rounded-lg transition-colors');
-          }
-          const itemStyles: React.CSSProperties = {};
-          if (entry.align) {
-            itemStyles.alignItems =
-              entry.align === 'start'
-                ? 'flex-start'
-                : entry.align === 'end'
-                  ? 'flex-end'
-                  : entry.align;
-          }
-          if (entry.gap !== undefined) {
-            const formatted = formatSpacing(entry.gap);
-            if (formatted) {
-              itemStyles.gap = formatted;
-            }
-          }
-          return (
-            <div
-              key={index}
-              className={itemClassNames.join(' ')}
-              style={itemStyles}
-              onClick={() => entry.onClickAction && context.onAction?.(entry.onClickAction)}
-              role={entry.onClickAction ? 'button' : undefined}
-              tabIndex={entry.onClickAction ? 0 : undefined}
-            >
-              {renderChildren(Array.isArray(entry.children) ? entry.children : [], context)}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-};
-
-const renderCard = (card: CardWidget, context: WidgetContext) => {
-  const styles: React.CSSProperties = {};
-  applyBlockProps(styles, card as unknown as Record<string, unknown>);
-  const background = card.background
-    ? toThemeColor(card.background) ?? (typeof card.background === 'string' ? card.background : undefined)
-    : undefined;
-  if (background) {
-    styles.background = background;
-  }
-  if (card.padding !== undefined) {
-    (styles as any)['--card-body-padding'] = '0';
-    applySpacing(styles, 'padding', card.padding);
-  }
-  const classNames = ['card'];
-
-  if (card.size === 'sm') {
-    classNames.push('card-sm');
-  } else if (card.size === 'md') {
-    classNames.push('card-md');
-  } else if (card.size === 'lg') {
-    classNames.push('card-lg');
-  }
-
-  return (
-    <section className={classNames.join(' ')} style={styles} data-theme={card.theme}>
-      {renderStatus(card.status)}
-      <div className="card-body">
-        {renderChildren(Array.isArray(card.children) ? card.children : [], context)}
-      </div>
-      {card.confirm || card.cancel ? (
-        <div className="card-footer flex items-center gap-3 justify-end">
-          {card.confirm ? renderButton({
-            type: 'Button',
-            label: card.confirm.label ?? 'Confirmer',
-            style: 'primary',
-          } as ButtonWidget, context) : null}
-          {card.cancel ? renderButton({
-            type: 'Button',
-            label: card.cancel.label ?? 'Annuler',
-            style: 'secondary',
-          } as ButtonWidget, context) : null}
-        </div>
-      ) : null}
-    </section>
-  );
-};
-
-const renderBox = (node: BoxLike, context: WidgetContext) => {
-  const styles = applyBoxStyles(node);
-  return (
-    <div className="flex" style={styles} data-theme={(node as any).theme}>
-      {renderChildren(Array.isArray((node as any).children) ? (node as any).children : [], context)}
-    </div>
-  );
-};
-
-const renderBasicRoot = (root: WidgetRoot, context: WidgetContext) => {
-  const styles = applyBoxStyles(root);
-  return (
-    <section className="p-4" style={styles} data-theme={root.theme}>
-      {renderChildren(Array.isArray(root.children) ? root.children : [], context)}
-    </section>
-  );
-};
 
 const renderChildren = (children: WidgetNode[], context: WidgetContext): React.ReactNode => (
   <>
@@ -814,19 +101,19 @@ const renderNode = (node: WidgetNode, context: WidgetContext): React.ReactNode =
 
   switch (resolvedType) {
     case 'Card':
-      return renderCard(node as CardWidget, context);
+      return renderCard(node as CardWidget, context, renderChildren);
     case 'Basic':
-      return renderBasicRoot(node as WidgetRoot, context);
+      return renderBasicRoot(node as WidgetRoot, context, renderChildren);
     case 'ListView':
-      return renderListView(node as ListViewWidget, context);
+      return renderListView(node as ListViewWidget, context, renderChildren);
     case 'Row':
     case 'Col':
     case 'Box':
-      return renderBox(node as BoxLike & { children?: unknown[] }, context);
+      return renderBox(node as BoxLike & { children?: unknown[] }, context, renderChildren);
     case 'VoiceSession':
       return <VoiceSessionPanel widget={node as VoiceSessionWidget} context={context} />;
     case 'Form':
-      return renderForm(node as FormWidget, context);
+      return renderForm(node as FormWidget, context, renderChildren);
     case 'Text':
       return renderText(node as TextWidget);
     case 'Title':
@@ -876,8 +163,6 @@ const normalizeDefinition = (definition: Record<string, unknown>): WidgetRoot | 
   }
   return definition as WidgetRoot;
 };
-
-export { VoiceSessionPanel };
 
 export interface WidgetRendererProps {
   widget: WidgetComponent | WidgetRoot;
