@@ -161,7 +161,9 @@ async def list_workflows(
     if current_user.is_admin:
         workflows = service.list_workflows(session)
         return [
-            WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
+            WorkflowSummaryResponse.model_validate(
+                serialize_workflow_summary(w, user_permission="admin")
+            )
             for w in workflows
         ]
 
@@ -188,22 +190,29 @@ async def list_workflows(
         # Return only the workflow from the current resource link
         workflow = latest_session.resource_link.workflow
         if workflow and workflow.active_version_id is not None:
+            # LTI users have read access
             return [
-                WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
+                WorkflowSummaryResponse.model_validate(
+                    serialize_workflow_summary(workflow, user_permission="read")
+                )
             ]
 
         return []
 
     # Teachers and students: show only shared workflows
-    # Get workflows shared with this user
-    shared_workflow_ids_stmt = (
-        select(WorkflowShare.workflow_id)
+    # Get workflows shared with this user along with their permissions
+    shares_stmt = (
+        select(WorkflowShare)
         .where(WorkflowShare.user_id == current_user.id)
     )
-    shared_workflow_ids = session.scalars(shared_workflow_ids_stmt).all()
+    shares = session.scalars(shares_stmt).all()
 
-    if not shared_workflow_ids:
+    if not shares:
         return []
+
+    # Build a map of workflow_id -> permission
+    permission_map = {share.workflow_id: share.permission for share in shares}
+    shared_workflow_ids = list(permission_map.keys())
 
     # Get the actual workflows
     workflows_stmt = (
@@ -217,7 +226,9 @@ async def list_workflows(
     workflows = session.scalars(workflows_stmt).all()
 
     return [
-        WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
+        WorkflowSummaryResponse.model_validate(
+            serialize_workflow_summary(w, user_permission=permission_map.get(w.id))
+        )
         for w in workflows
     ]
 

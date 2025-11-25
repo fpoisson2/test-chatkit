@@ -3538,7 +3538,10 @@ def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
     }
 
 
-def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
+def serialize_workflow_summary(
+    workflow: Workflow,
+    user_permission: str | None = None,
+) -> dict[str, Any]:
     active_version = workflow.active_version
     return {
         "id": workflow.id,
@@ -3559,6 +3562,7 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "multi_user_auto_call_ai": workflow.multi_user_auto_call_ai,
         "multi_user_allow_instructor_annotations": workflow.multi_user_allow_instructor_annotations,
         "versions_count": len(workflow.versions),
+        "user_permission": user_permission,
     }
 
 

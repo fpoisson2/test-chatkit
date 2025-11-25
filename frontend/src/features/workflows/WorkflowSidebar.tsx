@@ -634,9 +634,10 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       }
 
       const isLtiUser = user?.is_lti;
+      const hasSharedAccess = workflowToActivate.user_permission === "read" || workflowToActivate.user_permission === "write";
 
-      // LTI users can select workflows locally without API call
-      if (isLtiUser) {
+      // LTI users and users with shared access can select workflows locally without API call
+      if (isLtiUser || hasSharedAccess) {
         setSelectedWorkflowId(workflowId);
         updateStoredWorkflowSelection((previous) => ({
           mode: "local",
@@ -1010,16 +1011,21 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       onTogglePin: () => void;
       onCloseMenu: () => void;
     }): WorkflowActionMenuItem[] => {
-      if (!isAdmin) return [];
+      // Get user's permission for this workflow
+      const permission = workflow.user_permission;
+
+      // No menu for users without access
+      if (!permission) return [];
 
       const pinLabel = isPinned
         ? t("workflows.unpinAction")
         : t("workflows.pinAction");
 
-      const canDelete = !loading;
       const canExport = workflow.active_version_id !== null;
+      const hasWriteAccess = permission === "admin" || permission === "write";
+      const hasAdminAccess = permission === "admin";
 
-      return [
+      const items: WorkflowActionMenuItem[] = [
         {
           key: "pin",
           label: pinLabel,
@@ -1030,18 +1036,24 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             onCloseMenu();
           },
         },
-        {
-          key: "duplicate",
-          label: t("workflowBuilder.localSection.duplicateAction"),
-          onSelect: () => void handleDuplicateWorkflow(workflow),
-          disabled:
-            !isAdmin ||
-            loading ||
-            updatingWorkflowId === workflow.id ||
-            workflow.active_version_id === null ||
-            !token,
-        },
-        {
+      ];
+
+      // Export - available to all users with access
+      if (canExport) {
+        items.push({
+          key: "export",
+          label: t("workflowBuilder.localSection.exportAction"),
+          onSelect: () => {
+            onCloseMenu();
+            void handleExportWorkflow(workflow);
+          },
+          disabled: loading,
+        });
+      }
+
+      // Write-access features (admin and write permission)
+      if (hasWriteAccess) {
+        items.push({
           key: "rename",
           label: t("workflowBuilder.localSection.renameAction"),
           onSelect: () => {
@@ -1049,44 +1061,53 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             void handleRenameWorkflow(workflow);
           },
           disabled: loading,
-        },
-        {
-          key: "export",
-          label: t("workflowBuilder.localSection.exportAction"),
-          onSelect: () => {
-            onCloseMenu();
-            void handleExportWorkflow(workflow);
+        });
+      }
+
+      // Admin-only features
+      if (hasAdminAccess) {
+        items.push(
+          {
+            key: "duplicate",
+            label: t("workflowBuilder.localSection.duplicateAction"),
+            onSelect: () => void handleDuplicateWorkflow(workflow),
+            disabled:
+              loading ||
+              updatingWorkflowId === workflow.id ||
+              workflow.active_version_id === null ||
+              !token,
           },
-          disabled: !canExport || loading,
-        },
-        {
-          key: "share",
-          label: "Partager",
-          onSelect: () => {
-            handleOpenShare(workflow);
+          {
+            key: "share",
+            label: "Partager",
+            onSelect: () => {
+              handleOpenShare(workflow);
+            },
+            disabled: loading,
           },
-          disabled: loading,
-        },
-        {
-          key: "appearance",
-          label: t("workflowBuilder.localSection.customizeAction"),
-          onSelect: () => {
-            onCloseMenu();
-            handleOpenAppearance(workflow);
+          {
+            key: "appearance",
+            label: t("workflowBuilder.localSection.customizeAction"),
+            onSelect: () => {
+              onCloseMenu();
+              handleOpenAppearance(workflow);
+            },
+            disabled: loading,
           },
-          disabled: loading,
-        },
-        {
-          key: "delete",
-          label: t("workflowBuilder.localSection.deleteAction"),
-          onSelect: () => {
-            onCloseMenu();
-            void handleDeleteWorkflow(workflow);
+          {
+            key: "delete",
+            label: t("workflowBuilder.localSection.deleteAction"),
+            onSelect: () => {
+              onCloseMenu();
+              void handleDeleteWorkflow(workflow);
+            },
+            disabled: loading,
+            danger: true,
           },
-          disabled: !canDelete,
-          danger: true,
-        },
-      ];
+        );
+      }
+
+      return items;
     },
     [
       handleDuplicateWorkflow,
@@ -1095,7 +1116,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       handleExportWorkflow,
       handleOpenAppearance,
       handleOpenShare,
-      isAdmin,
       loading,
       token,
       updatingWorkflowId,

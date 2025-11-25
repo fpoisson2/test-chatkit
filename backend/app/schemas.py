@@ -1214,6 +1214,8 @@ class WorkflowSummaryResponse(BaseModel):
     multi_user_auto_call_ai: bool = True
     multi_user_allow_instructor_annotations: bool = False
     versions_count: int
+    # User's permission level for this workflow (admin, write, read, or None)
+    user_permission: Literal["admin", "write", "read"] | None = None
 
 
 class WorkflowVersionSummaryResponse(BaseModel):

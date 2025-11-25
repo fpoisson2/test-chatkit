@@ -14,10 +14,13 @@ import {
 /**
  * Admin User Creation Form Schema
  */
+export const userRoleSchema = z.enum(['admin', 'teacher', 'student']);
+
 export const adminCreateUserSchema = z.object({
   email: emailSchema,
   password: trimmedNonEmptyString,
-  is_admin: z.boolean().default(false)
+  is_admin: z.boolean().default(false),
+  role: userRoleSchema.default('student')
 });
 
 export type AdminCreateUserFormData = z.infer<typeof adminCreateUserSchema>;

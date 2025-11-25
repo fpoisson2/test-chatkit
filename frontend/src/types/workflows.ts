@@ -1,3 +1,5 @@
+export type WorkflowPermission = "admin" | "write" | "read";
+
 export type WorkflowSummary = {
   id: number;
   slug: string;
@@ -18,6 +20,8 @@ export type WorkflowSummary = {
   versions_count: number;
   created_at: string;
   updated_at: string;
+  // User's permission level for this workflow
+  user_permission: WorkflowPermission | null;
 };
 
 export type WorkflowVersionSummary = {

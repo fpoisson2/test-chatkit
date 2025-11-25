@@ -31,14 +31,19 @@ export const AdminPage = () => {
     handleSubmit,
     formState: { errors: formErrors },
     reset,
+    watch,
   } = useForm<AdminCreateUserFormData>({
     resolver: zodResolver(adminCreateUserSchema),
     defaultValues: {
       email: "",
       password: "",
       is_admin: false,
+      role: "student",
     },
   });
+
+  // Sync is_admin with role when role is admin
+  const watchedRole = watch("role");
 
   const fetchUsers = useCallback(async () => {
     if (!token) {
@@ -71,7 +76,12 @@ export const AdminPage = () => {
 
   const handleCreate = async (data: AdminCreateUserFormData) => {
     try {
-      const created = await adminApi.createUser(token, data);
+      // Set is_admin based on role
+      const payload = {
+        ...data,
+        is_admin: data.role === "admin",
+      };
+      const created = await adminApi.createUser(token, payload);
       setUsers((prev) => [...prev, created]);
       reset();
       setShowCreateModal(false);
@@ -89,10 +99,11 @@ export const AdminPage = () => {
     }
   };
 
-  const handleToggleAdmin = async (editableUser: EditableUser) => {
+  const handleChangeRole = async (editableUser: EditableUser, newRole: "admin" | "teacher" | "student") => {
     try {
       const updated = await adminApi.updateUser(token, editableUser.id, {
-        is_admin: !editableUser.is_admin,
+        role: newRole,
+        is_admin: newRole === "admin",
       });
       setUsers((prev) =>
         prev.map((user) => (user.id === updated.id ? updated : user)),
@@ -162,6 +173,19 @@ export const AdminPage = () => {
     }
   };
 
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case "admin":
+        return "Administrateur";
+      case "teacher":
+        return "Enseignant";
+      case "student":
+        return "Étudiant";
+      default:
+        return role;
+    }
+  };
+
   const userColumns = useMemo<Column<EditableUser>[]>(
     () => [
       {
@@ -172,7 +196,17 @@ export const AdminPage = () => {
       {
         key: "role",
         label: "Rôle",
-        render: (user) => (user.is_admin ? "Administrateur" : "Utilisateur"),
+        render: (user) => (
+          <select
+            className="input input--sm"
+            value={user.role}
+            onChange={(e) => handleChangeRole(user, e.target.value as "admin" | "teacher" | "student")}
+          >
+            <option value="admin">Administrateur</option>
+            <option value="teacher">Enseignant</option>
+            <option value="student">Étudiant</option>
+          </select>
+        ),
       },
       {
         key: "created",
@@ -189,13 +223,6 @@ export const AdminPage = () => {
         label: "Actions",
         render: (user) => (
           <div className="admin-table__actions">
-            <button
-              className="btn btn-sm btn-subtle"
-              type="button"
-              onClick={() => handleToggleAdmin(user)}
-            >
-              {user.is_admin ? "Retirer admin" : "Promouvoir"}
-            </button>
             <button
               className="btn btn-sm btn-ghost"
               type="button"
@@ -214,7 +241,7 @@ export const AdminPage = () => {
         ),
       },
     ],
-    [handleToggleAdmin, handleResetPassword, handleDelete],
+    [handleChangeRole, handleResetPassword, handleDelete],
   );
 
   return (
@@ -315,10 +342,16 @@ export const AdminPage = () => {
               </FormField>
             </div>
 
-            <label className="checkbox-field">
-              <input type="checkbox" {...register("is_admin")} />
-              Administrateur
-            </label>
+            <FormField
+              label="Rôle"
+              error={formErrors.role?.message}
+            >
+              <select className="input" {...register("role")}>
+                <option value="student">Étudiant</option>
+                <option value="teacher">Enseignant</option>
+                <option value="admin">Administrateur</option>
+              </select>
+            </FormField>
           </form>
         </Modal>
       )}
