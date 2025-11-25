@@ -1,0 +1,184 @@
+/**
+ * Types pour le module ChatKit React personnalisé
+ * Ces types correspondent aux types Python dans chatkit-python
+ */
+
+// Types de base
+export type {
+  ThemeColor,
+  Spacing,
+  Border,
+  Borders,
+  EditableProps,
+  RadiusValue,
+  TextAlign,
+  TextSize,
+  IconSize,
+  TitleSize,
+  CaptionSize,
+  Alignment,
+  Justification,
+  ControlVariant,
+  ControlSize,
+  WidgetIcon,
+} from './base';
+
+// Types d'actions
+export type {
+  ActionConfig,
+  Action,
+  InferenceOptions,
+  ToolChoice,
+  FeedbackKind,
+  ComposerModel,
+} from './actions';
+
+// Types voix
+export type {
+  VoiceSessionStatus,
+  TranscriptEntry,
+  OutboundCallStatus,
+  OutboundCallTranscript,
+} from './voice';
+
+// Types de widgets
+export type {
+  WidgetStatus,
+  WidgetComponentBase,
+  TextWidget,
+  TitleWidget,
+  CaptionWidget,
+  MarkdownWidget,
+  BadgeWidget,
+  LabelWidget,
+  BoxBase,
+  BoxWidget,
+  RowWidget,
+  ColWidget,
+  FormWidget,
+  DividerWidget,
+  SpacerWidget,
+  IconWidget,
+  ImageWidget,
+  ButtonWidget,
+  SelectOption,
+  SelectWidget,
+  DatePickerWidget,
+  CheckboxWidget,
+  InputWidget,
+  RadioOption,
+  RadioGroupWidget,
+  TextareaWidget,
+  TransitionWidget,
+  CurveType,
+  BarSeries,
+  AreaSeries,
+  LineSeries,
+  Series,
+  XAxisConfig,
+  ChartWidget,
+  ListViewItem,
+  ListView,
+  CardAction,
+  Card,
+  VoiceSessionWidget,
+  OutboundCallWidget,
+  WidgetComponent,
+  WidgetRoot,
+} from './widgets';
+
+// Types de messages
+export type {
+  UserMessageTextContent,
+  UserMessageImageContent,
+  UserMessageFileContent,
+  UserMessageTagContent,
+  UserMessageContent,
+  UserMessageItem,
+  SourceBase,
+  URLSource,
+  FileSource,
+  EntitySource,
+  Source,
+  Annotation,
+  AssistantMessageTextContent,
+  AssistantMessageWidgetContent,
+  AssistantMessageContent,
+  AssistantMessageItem,
+  ClientToolCallItem,
+  BaseTask,
+  CustomTask,
+  SearchTask,
+  ThoughtTask,
+  FileTask,
+  GeneratedImage,
+  ImageTask,
+  ComputerUseScreenshot,
+  ComputerUseTask,
+  VoiceAgentTask,
+  OutboundCallTask,
+  Task,
+  CustomSummary,
+  DurationSummary,
+  WorkflowSummary,
+  Workflow,
+} from './messages';
+
+// Types de threads
+export type {
+  WidgetItem,
+  TaskItem,
+  WorkflowItem,
+  EndOfTurnItem,
+  ThreadItem,
+  ThreadStatusBase,
+  ActiveStatus,
+  ClosedStatus,
+  LockedStatus,
+  ThreadStatus,
+  Thread,
+  ListThreadsOptions,
+  ThreadListResponse,
+  ListItemsOptions,
+  ItemListResponse,
+} from './threads';
+
+// Types de streaming
+export type {
+  ThreadStreamEventBase,
+  ThreadCreatedEvent,
+  ThreadUpdatedEvent,
+  ThreadItemAddedEvent,
+  ThreadItemDoneEvent,
+  ThreadItemRemovedEvent,
+  ThreadItemReplacedEvent,
+  AssistantMessageContentPartAddedEvent,
+  AssistantMessageContentPartTextDeltaEvent,
+  AssistantMessageContentPartAnnotationAddedEvent,
+  AssistantMessageContentPartDoneEvent,
+  WorkflowTaskAddedEvent,
+  WorkflowTaskUpdatedEvent,
+  WidgetRootUpdatedEvent,
+  WidgetComponentUpdatedEvent,
+  WidgetStreamingTextValueDeltaEvent,
+  ThreadItemUpdate,
+  ThreadItemUpdatedEvent,
+  ProgressUpdateEvent,
+  NoticeEvent,
+  ErrorEvent,
+  ThreadItemCreatedEvent,
+  ThreadItemDeltaEvent,
+  ThreadItemCompletedEvent,
+  ThreadMessageCompletedEvent,
+  ThreadStreamEvent,
+} from './streaming';
+
+// Types de configuration
+export type {
+  ChatKitAPIConfig,
+  StartScreenPrompt,
+  VoiceSessionWidgetContext,
+  OutboundCallWidgetContext,
+  ChatKitOptions,
+  ChatKitControl,
+} from './config';
