@@ -46,7 +46,7 @@
 }
 
 .chatkit-messages > .chatkit-message-standalone {
-  max-width: 100%;
+  max-width: 800px;
   padding: 0;
 }
 
