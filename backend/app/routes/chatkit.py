@@ -408,6 +408,60 @@ async def get_generated_image(
     return FileResponse(file_path)
 
 
+@router.get("/api/chatkit/thread-images/{thread_id}/{item_id}/{image_id}")
+async def get_thread_image(
+    thread_id: str,
+    item_id: str,
+    image_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Récupère une image stockée dans un item de thread.
+
+    Cette route permet de charger les images à la demande (lazy loading)
+    au lieu de les envoyer avec le payload du thread, ce qui améliore
+    significativement les performances de chargement des conversations
+    contenant des images générées.
+    """
+    try:
+        server = get_chatkit_server()
+    except (ModuleNotFoundError, ImportError) as exc:
+        logger.error("SDK ChatKit introuvable", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image introuvable",
+        ) from exc
+
+    context = build_chatkit_request_context(current_user, request)
+
+    try:
+        result = await server.store.get_thread_image_data(
+            thread_id, item_id, image_id, context
+        )
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image introuvable",
+        ) from None
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image introuvable",
+        )
+
+    image_data, mime_type = result
+
+    # Ajouter des headers de cache pour optimiser les performances
+    headers = {
+        "Cache-Control": "private, max-age=86400",  # 24h de cache
+        "Content-Type": mime_type,
+    }
+
+    return Response(content=image_data, media_type=mime_type, headers=headers)
+
+
 @router.post("/api/chatkit/attachments/{attachment_id}/upload")
 @limiter.limit(get_rate_limit("file_upload"))
 async def upload_chatkit_attachment(

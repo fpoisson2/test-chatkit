@@ -32,13 +32,14 @@ export interface MessageRendererProps {
 /**
  * Component to display final images with wrapper
  */
-function FinalImageDisplay({ src }: { src: string }): JSX.Element | null {
+function FinalImageDisplay({ src, authToken }: { src: string; authToken?: string }): JSX.Element | null {
   return (
     <div className="chatkit-image-generation-preview">
       <ImageWithBlobUrl
         src={src}
         alt="Image générée"
         className="chatkit-generated-image-final"
+        authToken={authToken}
       />
     </div>
   );
@@ -281,6 +282,7 @@ function WorkflowContent({
                   src={src}
                   alt="Génération en cours..."
                   className="chatkit-generating-image"
+                  authToken={authToken}
                 />
               </div>
             );
@@ -288,11 +290,12 @@ function WorkflowContent({
 
           if (!isLoading) {
             let src = image.data_url || image.image_url || (image.b64_json ? `data:image/png;base64,${image.b64_json}` : '');
-            if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+            // Ne pas traiter les URLs relatives (/api/...) comme du base64
+            if (src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('/')) {
               src = `data:image/png;base64,${src}`;
             }
             if (src) {
-              return <FinalImageDisplay src={src} />;
+              return <FinalImageDisplay src={src} authToken={authToken} />;
             }
           }
         }
@@ -321,9 +324,10 @@ function WorkflowContent({
           const screenshot = hasScreenshots ? computerUseTask.screenshots[computerUseTask.screenshots.length - 1] : null;
           const isLoading = computerUseTask.status_indicator === 'loading';
 
-          let src = screenshot ? (screenshot.data_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
+          let src = screenshot ? (screenshot.data_url || screenshot.image_url || (screenshot.b64_image ? `data:image/png;base64,${screenshot.b64_image}` : '')) : '';
 
-          if (src && !src.startsWith('data:') && !src.startsWith('http')) {
+          // Ne pas traiter les URLs relatives (/api/...) comme du base64
+          if (src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('/')) {
             src = `data:image/png;base64,${src}`;
           }
 
@@ -409,6 +413,7 @@ function WorkflowContent({
                         src={src}
                         alt={actionTitle || "Browser automation"}
                         className={screenshotIsLoading ? "chatkit-browser-screenshot chatkit-browser-screenshot--loading" : "chatkit-browser-screenshot"}
+                        authToken={authToken}
                       />
                       {clickCoordinates && (
                         <div
