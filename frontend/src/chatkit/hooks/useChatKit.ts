@@ -1,15 +1,15 @@
 /**
  * Hook principal pour gérer le chat ChatKit
+ * Ce hook orchestre les hooks spécialisés pour une séparation claire des responsabilités
  */
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import type { ChatKitOptions, Thread, ThreadStreamEvent, ChatKitControl, UserMessageContent, Action, FeedbackKind } from '../types';
-import {
-  streamChatKitEvents,
-  fetchThread,
-  retryAfterItem as retryAfterItemAPI,
-  submitFeedback as submitFeedbackAPI,
-  updateThreadMetadata as updateThreadMetadataAPI,
-} from '../api/streaming';
+import { useMemo } from 'react';
+import type { ChatKitOptions, ChatKitControl, UserMessageContent } from '../types';
+import { useThreadState } from './useThreadState';
+import { useThreadLoading } from './useThreadLoading';
+import { useAbortControllers } from './useAbortControllers';
+import { useThreadLoader } from './useThreadLoader';
+import { useMessageStreaming } from './useMessageStreaming';
+import { useThreadActions } from './useThreadActions';
 
 export interface UseChatKitReturn {
   control: ChatKitControl;
@@ -31,463 +31,97 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     onClientTool,
   } = options;
 
-  const [thread, setThread] = useState<Thread | null>(null);
-  const [loadingByThread, setLoadingByThread] = useState<Record<string, boolean>>({});
-  const [error, setError] = useState<Error | null>(null);
-  const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const activeThreadIdRef = useRef<string | null>(initialThread || null);
-  const visibleThreadIdRef = useRef<string | null>(initialThread || null);
-  const threadCacheRef = useRef<Map<string, Thread>>(new Map());
-  const tempThreadIdCounterRef = useRef<number>(0);
+  // Thread state management
+  const {
+    thread,
+    setThread,
+    activeThreadIdRef,
+    visibleThreadIdRef,
+    threadCacheRef,
+    getThreadKey,
+    generateTempThreadId,
+    isTempThreadId,
+  } = useThreadState(initialThread);
 
-  const getThreadKey = useCallback((threadId: string | null | undefined) => threadId ?? '__new_thread__', []);
+  // Loading state management
+  const {
+    loadingByThread,
+    setThreadLoading,
+    isLoading: isLoadingFn,
+    getLoadingThreadIds,
+  } = useThreadLoading(getThreadKey);
 
-  const generateTempThreadId = useCallback(() => {
-    tempThreadIdCounterRef.current += 1;
-    return `__temp_thread_${tempThreadIdCounterRef.current}__`;
-  }, []);
+  // Abort controllers management
+  const { abortControllersRef } = useAbortControllers();
 
-  const isTempThreadId = useCallback((threadId: string | null | undefined): boolean => {
-    return typeof threadId === 'string' && threadId.startsWith('__temp_thread_');
-  }, []);
+  // Thread loading and refresh
+  const { fetchUpdates } = useThreadLoader({
+    api,
+    initialThread,
+    threadCacheRef,
+    activeThreadIdRef,
+    visibleThreadIdRef,
+    setThread,
+    setThreadLoading,
+    getThreadKey,
+    generateTempThreadId,
+    isTempThreadId,
+    onThreadLoadStart,
+    onThreadLoadEnd,
+    onError,
+    onLog,
+  });
 
-  const setThreadLoading = useCallback((threadId: string | null | undefined, value: boolean) => {
-    const key = getThreadKey(threadId);
-    setLoadingByThread((prev) => {
-      const next = { ...prev };
+  // Message streaming
+  const { error, sendUserMessage } = useMessageStreaming({
+    api,
+    thread,
+    threadCacheRef,
+    activeThreadIdRef,
+    visibleThreadIdRef,
+    abortControllersRef,
+    setThread,
+    setThreadLoading,
+    getThreadKey,
+    isTempThreadId,
+    onResponseStart,
+    onResponseEnd,
+    onThreadChange,
+    onError,
+    onLog,
+    onClientTool,
+  });
 
-      if (!value) {
-        delete next[key];
-      } else {
-        next[key] = true;
-      }
+  // Thread actions
+  const {
+    customAction,
+    retryAfterItem,
+    submitFeedback,
+    updateThreadMetadata,
+  } = useThreadActions({
+    api,
+    thread,
+    threadCacheRef,
+    setThread,
+    fetchUpdates,
+    onThreadChange,
+    onError,
+    onLog,
+  });
 
-      return next;
-    });
-  }, [getThreadKey]);
-
-  useEffect(() => {
-    if (initialThread === null) {
-      // Ne pas annuler les autres flux en cours : nous gérons plusieurs conversations
-      // en parallèle et celles qui continuent à streamer doivent rester actives.
-      // On réinitialise uniquement le thread actif pour préparer une nouvelle
-      // conversation.
-      // Générer un ID temporaire unique pour ce nouveau thread afin d'éviter les
-      // collisions avec d'autres nouveaux threads en cours de streaming.
-      const tempId = generateTempThreadId();
-      setThread(null);
-      activeThreadIdRef.current = tempId;
-      visibleThreadIdRef.current = tempId;
-      setLoadingByThread((prev) => {
-        const next = { ...prev };
-        delete next[getThreadKey(null)];
-        return next;
-      });
-    }
-    // Note: Ne pas mettre à jour les refs quand initialThread change à un ID non-null,
-    // car le deuxième effet (qui charge le thread) va le faire correctement.
-  }, [getThreadKey, generateTempThreadId, initialThread]);
-
-  // Charger le thread initial
-  useEffect(() => {
-    if (initialThread) {
-      onThreadLoadStart?.({ threadId: initialThread });
-      onLog?.({ name: 'thread.load.start', data: { threadId: initialThread } });
-
-      // Vérifier d'abord le cache pour un affichage instantané
-      const cachedThread = threadCacheRef.current.get(initialThread);
-
-      if (cachedThread) {
-        // Utiliser le thread en cache immédiatement
-        setThread(cachedThread);
-        activeThreadIdRef.current = cachedThread.id;
-        visibleThreadIdRef.current = cachedThread.id;
-        onThreadLoadEnd?.({ threadId: initialThread });
-        onLog?.({ name: 'thread.load.end', data: { thread: cachedThread, source: 'cache' } });
-      } else {
-        // Si pas en cache, charger depuis le serveur
-        setThreadLoading(initialThread, true);
-
-        fetchThread({
-          url: api.url,
-          headers: api.headers,
-          threadId: initialThread,
-        })
-          .then((loadedThread) => {
-            setThread(loadedThread);
-            threadCacheRef.current.set(loadedThread.id, loadedThread);
-            activeThreadIdRef.current = loadedThread.id;
-            visibleThreadIdRef.current = loadedThread.id;
-            setThreadLoading(loadedThread.id, false);
-            onThreadLoadEnd?.({ threadId: initialThread });
-            onLog?.({ name: 'thread.load.end', data: { thread: loadedThread, source: 'server' } });
-          })
-          .catch((err) => {
-            // Si le thread n'existe pas (404), on l'ignore et on démarre avec thread=null
-            const errorMessage = err?.message || String(err);
-            if (errorMessage.includes('404')) {
-              console.warn('[ChatKit] Initial thread not found, starting with empty thread');
-              // Reset refs to null to prevent fetchUpdates from trying to fetch a non-existent thread
-              const tempId = generateTempThreadId();
-              activeThreadIdRef.current = tempId;
-              visibleThreadIdRef.current = tempId;
-              setThread(null);
-              onThreadLoadEnd?.({ threadId: initialThread });
-            } else {
-              console.error('[ChatKit] Failed to load initial thread:', err);
-              onError?.({ error: err instanceof Error ? err : new Error(errorMessage) });
-            }
-          })
-          .finally(() => {
-            setThreadLoading(initialThread, false);
-          });
-      }
-    }
-  }, [initialThread, api.url, api.headers, onThreadLoadStart, onThreadLoadEnd, onError, onLog, setThreadLoading, generateTempThreadId]);
-
-  // Envoyer un message utilisateur
-  const sendUserMessage = useCallback(
-    async (content: UserMessageContent[] | string, options?: { inferenceOptions?: any }) => {
-      const targetThreadId = activeThreadIdRef.current ?? thread?.id ?? null;
-      const threadKey = getThreadKey(targetThreadId);
-      const existingController = abortControllersRef.current.get(threadKey);
-      // Ne chercher le thread dans le cache que si c'est un vrai ID, pas un ID temporaire
-      const initialThreadForStream =
-        targetThreadId && !isTempThreadId(targetThreadId)
-          ? threadCacheRef.current.get(targetThreadId) ?? null
-          : null;
-
-      if (existingController) {
-        existingController.abort();
-      }
-
-      const controller = new AbortController();
-      abortControllersRef.current.set(threadKey, controller);
-
-      setThreadLoading(targetThreadId, true);
-      setError(null);
-      onResponseStart?.();
-
-      // Déclarer updatedThread AVANT le try pour qu'elle soit accessible dans le finally
-      let updatedThread: Thread | null = null;
-
-      try {
-        const messageContent = typeof content === 'string'
-          ? [{ type: 'input_text' as const, text: content }]
-          : content;
-
-        const input = {
-          content: messageContent,
-          attachments: [],
-          quoted_text: null,
-          inference_options: options?.inferenceOptions || {},
-        };
-
-          // Si un thread réel existe (pas un ID temporaire), ajouter un message.
-          // Sinon, créer un nouveau thread.
-          const isRealThread = targetThreadId && !isTempThreadId(targetThreadId);
-          const payload = isRealThread
-            ? {
-                type: 'threads.add_user_message',
-                params: {
-                  thread_id: targetThreadId,
-                  input,
-                },
-              }
-            : {
-                type: 'threads.create',
-                params: {
-                  input,
-                },
-              };
-
-          // Utiliser une ref mutable pour suivre la clé du thread en cours de streaming
-          // Cela permet de gérer le cas où un thread temporaire reçoit son vrai ID
-          const streamThreadKeyRef = { current: threadKey };
-
-          await streamChatKitEvents({
-            url: api.url,
-            headers: api.headers,
-            body: payload,
-            initialThread: initialThreadForStream,
-            signal: controller.signal,
-            onEvent: (event: ThreadStreamEvent) => {
-              onLog?.({ name: `event.${event.type}`, data: { event } });
-            },
-            onThreadUpdate: (newThread: Thread) => {
-              updatedThread = newThread;
-              threadCacheRef.current.set(newThread.id, newThread);
-
-              const visibleKey = getThreadKey(visibleThreadIdRef.current);
-              const shouldUpdateThreadState = streamThreadKeyRef.current === visibleKey;
-
-              // Si le thread passe d'un ID temporaire à un vrai ID, mettre à jour la clé de streaming
-              if (threadKey !== getThreadKey(newThread.id)) {
-                abortControllersRef.current.delete(threadKey);
-                abortControllersRef.current.set(getThreadKey(newThread.id), controller);
-                setThreadLoading(targetThreadId, false);
-                setThreadLoading(newThread.id, true);
-                // Mettre à jour la clé de streaming pour qu'elle corresponde au nouveau thread
-                streamThreadKeyRef.current = getThreadKey(newThread.id);
-              }
-
-              if (shouldUpdateThreadState) {
-                setThread(newThread);
-                activeThreadIdRef.current = newThread.id;
-                visibleThreadIdRef.current = newThread.id;
-                if (!thread || thread.id !== newThread.id) {
-                  onThreadChange?.({ threadId: newThread.id });
-                }
-              }
-              onLog?.({ name: 'thread.update', data: { thread: newThread } });
-            },
-            onClientToolCall: onClientTool
-              ? async (toolCall) => {
-                  // Adapter le format pour correspondre à l'API attendue
-                  return await onClientTool({
-                    name: toolCall.name,
-                    params: toolCall.arguments,
-                  });
-                }
-              : undefined,
-            onError: (err: Error) => {
-              setError(err);
-              onError?.({ error: err });
-            },
-          });
-
-        if (updatedThread) {
-          const visibleKey = getThreadKey(visibleThreadIdRef.current);
-          const streamKey = streamThreadKeyRef.current;
-
-          // Ne mettre à jour l'UI que si le thread de ce flux est toujours celui
-          // affiché par l'utilisateur. Sinon, on garde uniquement le cache
-          // à jour pour éviter de changer de conversation automatiquement.
-          if (visibleKey === streamKey) {
-            setThread(updatedThread);
-          }
-        }
-
-        onResponseEnd?.();
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        setError(error);
-        onError?.({ error });
-      } finally {
-        // Nettoyer l'état de loading pour les deux IDs (initial et final) pour être sûr
-        // Cela gère le cas où le thread passe d'un ID temporaire à un vrai ID
-        setThreadLoading(targetThreadId, false);
-        if (updatedThread?.id && updatedThread.id !== targetThreadId) {
-          setThreadLoading(updatedThread.id, false);
-        }
-        // Nettoyer les abort controllers
-        abortControllersRef.current.delete(getThreadKey(targetThreadId));
-        if (updatedThread?.id) {
-          abortControllersRef.current.delete(getThreadKey(updatedThread.id));
-        }
-      }
-    },
-    [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading, isTempThreadId]
-  );
-
-  // Récupérer les mises à jour du thread
-  const fetchUpdates = useCallback(async () => {
-    const targetThreadId = visibleThreadIdRef.current ?? activeThreadIdRef.current;
-
-    // Ne pas essayer de fetch un thread temporaire (qui n'existe pas encore sur le serveur)
-    if (!targetThreadId || isTempThreadId(targetThreadId)) {
-      return;
-    }
-
-    try {
-      setThreadLoading(targetThreadId, true);
-      const updatedThread = await fetchThread({
-        url: api.url,
-        headers: api.headers,
-        threadId: targetThreadId,
-      });
-
-      setThread(updatedThread);
-      threadCacheRef.current.set(updatedThread.id, updatedThread);
-      activeThreadIdRef.current = updatedThread.id;
-      visibleThreadIdRef.current = updatedThread.id;
-      setThreadLoading(updatedThread.id, false);
-      onLog?.({ name: 'thread.refresh', data: { thread: updatedThread } });
-    } catch (err) {
-      console.error('[ChatKit] Failed to fetch updates:', err);
-      const error = err instanceof Error ? err : new Error(String(err));
-      onError?.({ error });
-    } finally {
-      setThreadLoading(targetThreadId, false);
-    }
-  }, [api.url, api.headers, onError, onLog, setThreadLoading, isTempThreadId]);
-
-  useEffect(() => {
-    return () => {
-      abortControllersRef.current.forEach((controller) => controller.abort());
-      abortControllersRef.current.clear();
-    };
-  }, []);
-
-  // Action personnalisée
-  const customAction = useCallback(
-    async (itemId: string | null, action: Action) => {
-      if (!thread) {
-        console.warn('[ChatKit] Cannot send custom action: no thread available');
-        return;
-      }
-
-      try {
-        // Convert 'data' to 'payload' for backend compatibility
-        const backendAction = {
-          type: action.type,
-          payload: (action as any).data,
-        };
-
-        // Use streamChatKitEvents to properly handle SSE events
-        const updatedThread = await streamChatKitEvents({
-          url: api.url,
-          headers: api.headers,
-          body: {
-            type: 'threads.custom_action',
-            params: {
-              thread_id: thread.id,
-              item_id: itemId,
-              action: backendAction,
-            },
-          },
-          initialThread: thread,
-          onEvent: (event) => {
-            onLog?.({ name: 'custom_action.event', data: { event } });
-          },
-          onThreadUpdate: (updatedThread) => {
-            // Update thread state in real-time as events come in
-            setThread(updatedThread);
-            threadCacheRef.current.set(updatedThread.id, updatedThread);
-            onThreadChange?.({ thread: updatedThread });
-          },
-          onError: (err) => {
-            console.error('[ChatKit] Custom action stream error:', err);
-            onError?.({ error: err });
-          },
-        });
-
-        onLog?.({ name: 'custom_action.sent', data: { itemId, action } });
-
-        // Final update with the complete thread
-        if (updatedThread) {
-          setThread(updatedThread);
-          threadCacheRef.current.set(updatedThread.id, updatedThread);
-        }
-      } catch (err) {
-        console.error('[ChatKit] Failed to send custom action:', err);
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.({ error });
-      }
-    },
-    [thread, api.url, api.headers, onError, onLog, onThreadChange]
-  );
-
-  // Réessayer après un item
-  const retryAfterItem = useCallback(
-    async (itemId: string) => {
-      if (!thread) {
-        console.warn('[ChatKit] Cannot retry: no thread available');
-        return;
-      }
-
-      try {
-        await retryAfterItemAPI({
-          url: api.url,
-          headers: api.headers,
-          threadId: thread.id,
-          itemId,
-        });
-        onLog?.({ name: 'retry_after_item.sent', data: { itemId } });
-
-        // Rafraîchir le thread après le retry
-        await fetchUpdates();
-      } catch (err) {
-        console.error('[ChatKit] Failed to retry after item:', err);
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.({ error });
-      }
-    },
-    [thread?.id, api.url, api.headers, fetchUpdates, onError, onLog]
-  );
-
-  // Soumettre un feedback
-  const submitFeedback = useCallback(
-    async (itemIds: string[], kind: FeedbackKind) => {
-      if (!thread) {
-        console.warn('[ChatKit] Cannot submit feedback: no thread available');
-        return;
-      }
-
-      try {
-        await submitFeedbackAPI({
-          url: api.url,
-          headers: api.headers,
-          threadId: thread.id,
-          itemIds,
-          kind,
-        });
-        onLog?.({ name: 'feedback.submitted', data: { itemIds, kind } });
-      } catch (err) {
-        console.error('[ChatKit] Failed to submit feedback:', err);
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.({ error });
-      }
-    },
-    [thread?.id, api.url, api.headers, onError, onLog]
-  );
-
-  // Mettre à jour les métadonnées du thread
-  const updateThreadMetadata = useCallback(
-    async (metadata: Record<string, unknown>) => {
-      if (!thread) {
-        console.warn('[ChatKit] Cannot update metadata: no thread available');
-        return;
-      }
-
-      try {
-        await updateThreadMetadataAPI({
-          url: api.url,
-          headers: api.headers,
-          threadId: thread.id,
-          metadata,
-        });
-        onLog?.({ name: 'thread.metadata.updated', data: { metadata } });
-
-        // Rafraîchir le thread pour obtenir les métadonnées à jour
-        await fetchUpdates();
-      } catch (err) {
-        console.error('[ChatKit] Failed to update thread metadata:', err);
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.({ error });
-      }
-    },
-    [thread?.id, api.url, api.headers, fetchUpdates, onError, onLog]
-  );
-
+  // Computed loading state
   const currentThreadId = thread?.id ?? activeThreadIdRef.current;
   const isLoading = useMemo(
-    () => loadingByThread[getThreadKey(currentThreadId)] ?? false,
-    [currentThreadId, getThreadKey, loadingByThread],
+    () => isLoadingFn(currentThreadId, getThreadKey),
+    [currentThreadId, getThreadKey, isLoadingFn, loadingByThread]
   );
 
-  // Créer un Set des thread IDs en cours de chargement
-  const loadingThreadIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const [key, isLoading] of Object.entries(loadingByThread)) {
-      if (isLoading && key !== '__new_thread__' && !key.startsWith('__temp_thread_')) {
-        ids.add(key);
-      }
-    }
-    return ids;
-  }, [loadingByThread]);
+  const loadingThreadIds = useMemo(
+    () => getLoadingThreadIds(),
+    [getLoadingThreadIds, loadingByThread]
+  );
 
-  // Créer le control object
+  // Create control object
   const control: ChatKitControl = {
     thread,
     isLoading,
