@@ -1283,14 +1283,33 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         saved_state = wait_state.get("state", {})
         conversation_history = wait_state.get("conversation_history", [])
 
-        # If no next_step_slug, run_workflow_v2 will find the start node automatically
+        # Find the target slug - either next_step_slug or the start node
+        target_slug = next_step_slug
+        if not target_slug:
+            # Find the start node
+            try:
+                definition = self._workflow_service.get_current()
+                for step in definition.steps:
+                    if step.kind == "start" and step.is_enabled:
+                        target_slug = step.slug
+                        logger.info(">>> Found start node: %s", target_slug)
+                        break
+            except Exception as e:
+                logger.warning("Could not find start node: %s", e)
+
+        if not target_slug:
+            logger.error("No target slug found for workflow continuation")
+            return
+
+        # Create runtime snapshot with explicit current_slug
         runtime_snapshot = WorkflowRuntimeSnapshot(
             state=saved_state if isinstance(saved_state, dict) else {},
             conversation_history=conversation_history,
             last_step_context={"computer_use_completed": True},
             steps=[],
-            current_slug=next_step_slug,  # Can be None - run_workflow will find start node
+            current_slug=target_slug,
         )
+        logger.info(">>> Created runtime_snapshot with current_slug=%s", target_slug)
 
         workflow_input = WorkflowInput(
             input_as_text="",
