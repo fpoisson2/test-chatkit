@@ -182,6 +182,7 @@ const NodeInspector = ({
     handleAgentWorkflowToolToggle: onAgentWorkflowToolToggle,
     handleAgentModelSelectionModeChange: onAgentModelSelectionModeChange,
     handleAgentUserModelOptionsChange: onAgentUserModelOptionsChange,
+    handleAgentFallbackModelsChange: onAgentFallbackModelsChange,
     handleStateAssignmentsChange: onStateAssignmentsChange,
     handleEndMessageChange: onEndMessageChange,
     handleEndAgsVariableIdChange: onEndAgsVariableIdChange,
@@ -585,6 +586,7 @@ const NodeInspector = ({
           onAgentMcpServersChange={onAgentMcpServersChange}
           onAgentModelSelectionModeChange={onAgentModelSelectionModeChange}
           onAgentUserModelOptionsChange={onAgentUserModelOptionsChange}
+          onAgentFallbackModelsChange={onAgentFallbackModelsChange}
         />
       ) : null}
 

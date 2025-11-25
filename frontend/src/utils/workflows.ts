@@ -4293,3 +4293,95 @@ export const updateAgentUserModelOption = (
     ),
   );
 };
+
+// Fallback models: models to try if the primary model fails
+export type FallbackModel = {
+  id: string;
+  model: string;
+  provider_id?: string;
+  provider_slug?: string;
+};
+
+export const getAgentFallbackModels = (
+  parameters: AgentParameters | null | undefined,
+): FallbackModel[] => {
+  if (!parameters) {
+    return [];
+  }
+  const fallbackModels = (parameters as Record<string, unknown>).fallback_models;
+  if (!Array.isArray(fallbackModels)) {
+    return [];
+  }
+  return fallbackModels.filter(
+    (item): item is FallbackModel =>
+      isPlainRecord(item) &&
+      typeof (item as Record<string, unknown>).id === 'string' &&
+      typeof (item as Record<string, unknown>).model === 'string',
+  );
+};
+
+export const setAgentFallbackModels = (
+  parameters: AgentParameters,
+  models: FallbackModel[],
+): AgentParameters => {
+  if (models.length === 0) {
+    const { fallback_models: _ignored, ...rest } = parameters;
+    return stripEmpty(rest);
+  }
+  return { ...parameters, fallback_models: models };
+};
+
+export const addAgentFallbackModel = (
+  parameters: AgentParameters,
+  model: FallbackModel,
+): AgentParameters => {
+  const existing = getAgentFallbackModels(parameters);
+  return setAgentFallbackModels(parameters, [...existing, model]);
+};
+
+export const removeAgentFallbackModel = (
+  parameters: AgentParameters,
+  modelId: string,
+): AgentParameters => {
+  const existing = getAgentFallbackModels(parameters);
+  return setAgentFallbackModels(
+    parameters,
+    existing.filter((m) => m.id !== modelId),
+  );
+};
+
+export const updateAgentFallbackModel = (
+  parameters: AgentParameters,
+  modelId: string,
+  updates: Partial<FallbackModel>,
+): AgentParameters => {
+  const existing = getAgentFallbackModels(parameters);
+  return setAgentFallbackModels(
+    parameters,
+    existing.map((m) =>
+      m.id === modelId ? { ...m, ...updates } : m,
+    ),
+  );
+};
+
+export const reorderAgentFallbackModels = (
+  parameters: AgentParameters,
+  modelIds: string[],
+): AgentParameters => {
+  const existing = getAgentFallbackModels(parameters);
+  const modelMap = new Map(existing.map((m) => [m.id, m]));
+  const reordered: FallbackModel[] = [];
+  for (const id of modelIds) {
+    const model = modelMap.get(id);
+    if (model) {
+      reordered.push(model);
+    }
+  }
+  // Add any models not in the new order at the end
+  for (const model of existing) {
+    if (!modelIds.includes(model.id)) {
+      reordered.push(model);
+    }
+  }
+  return setAgentFallbackModels(parameters, reordered);
+};

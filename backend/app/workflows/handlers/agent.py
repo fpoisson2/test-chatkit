@@ -7,6 +7,8 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from agents import Agent
+
 from .base import BaseNodeHandler
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -16,6 +18,49 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 logger = logging.getLogger("chatkit.server")
+
+
+def _build_fallback_agent(
+    base_parameters: dict[str, Any],
+    fallback_model: dict[str, Any],
+) -> Agent:
+    """Build a fallback agent with the specified model configuration.
+
+    Args:
+        base_parameters: The original step parameters
+        fallback_model: The fallback model configuration with keys:
+            - model: The model name
+            - provider_id: Optional provider ID
+            - provider_slug: Optional provider slug
+
+    Returns:
+        A new Agent instance configured with the fallback model
+    """
+    from ...chatkit.agent_registry import (
+        _build_custom_agent,
+        get_agent_provider_binding,
+    )
+
+    # Create a copy of parameters with the fallback model
+    overrides = dict(base_parameters)
+    overrides["model"] = fallback_model.get("model")
+
+    # Handle provider binding for the fallback model
+    provider_id = fallback_model.get("provider_id")
+    provider_slug = fallback_model.get("provider_slug")
+
+    # Remove old provider settings
+    overrides.pop("model_provider_id", None)
+    overrides.pop("model_provider_slug", None)
+    overrides.pop("model_provider", None)
+    overrides.pop("_provider_binding", None)
+
+    if provider_id or provider_slug:
+        provider_binding = get_agent_provider_binding(provider_id, provider_slug)
+        if provider_binding:
+            overrides["_provider_binding"] = provider_binding
+
+    return _build_custom_agent(overrides)
 
 
 class AgentNodeHandler(BaseNodeHandler):
@@ -87,52 +132,122 @@ class AgentNodeHandler(BaseNodeHandler):
                     "run_agent_step not provided in runtime_vars"
                 )
 
-        # Call process_agent_step with all dependencies
-        result = await process_agent_step(
-            current_node=node,
-            current_slug=node.slug,
-            agent_instances=agent_instances,
-            agent_positions=agent_positions,
-            total_runtime_steps=total_runtime_steps,
-            widget_configs_by_step=widget_configs_by_step,
-            conversation_history=context.conversation_history,
-            last_step_context=context.last_step_context,
-            state=context.state,
-            agent_context=agent_context,
-            run_agent_step=run_agent_step,
-            consume_generated_image_urls=helpers["consume_generated_image_urls"],
-            structured_output_as_json=helpers["structured_output_as_json"],
-            record_step=context.record_step,
-            merge_generated_image_urls_into_payload=helpers[
-                "merge_generated_image_urls_into_payload"
-            ],
-            append_generated_image_links=helpers["append_generated_image_links"],
-            format_generated_image_links=helpers["format_generated_image_links"],
-            ingest_vector_store_step=helpers["ingest_vector_store_step"],
-            stream_widget=helpers["stream_widget"],
-            should_wait_for_widget_action=helpers["should_wait_for_widget_action"],
-            on_widget_step=on_widget_step,
-            emit_stream_event=helpers["emit_stream_event"],
-            on_stream_event=on_stream_event,
-            branch_prefixed_slug=helpers["branch_prefixed_slug"],
-            node_title=helpers["node_title"],
-            next_edge=lambda slug: self._next_edge(context, slug),
-            session_factory=helpers["session_factory"],
-        )
+        # Get fallback models from node parameters
+        fallback_models = (node.parameters or {}).get("fallback_models", [])
+        if not isinstance(fallback_models, list):
+            fallback_models = []
 
-        # Update context with result
-        context_updates = {}
-        if result.last_step_context is not None:
-            context_updates["last_step_context"] = result.last_step_context
+        # Try to execute with primary model, then fallback models if needed
+        last_exception: Exception | None = None
+        current_agent_instances = agent_instances
 
-        # Determine next slug
-        if result.transition:
-            next_slug = result.transition.target_step.slug
-        else:
-            # No explicit transition - use fallback logic (while parent or start)
-            next_slug = self._next_slug_or_fallback(node.slug, context)
+        # Build list of attempts: primary (None) + fallback models
+        model_attempts: list[dict[str, Any] | None] = [None] + [
+            fm for fm in fallback_models
+            if isinstance(fm, dict) and fm.get("model")
+        ]
 
-        return NodeResult(next_slug=next_slug, context_updates=context_updates)
+        for attempt_index, fallback_model in enumerate(model_attempts):
+            try:
+                # If this is a fallback attempt, create a new agent with the fallback model
+                if fallback_model is not None:
+                    logger.info(
+                        "Attempting fallback model %s for step %s (attempt %d/%d)",
+                        fallback_model.get("model"),
+                        node.slug,
+                        attempt_index + 1,
+                        len(model_attempts),
+                    )
+                    fallback_agent = _build_fallback_agent(
+                        node.parameters or {},
+                        fallback_model,
+                    )
+                    # Create a modified agent_instances dict with the fallback agent
+                    current_agent_instances = {
+                        **agent_instances,
+                        node.slug: fallback_agent,
+                    }
+
+                # Call process_agent_step with all dependencies
+                result = await process_agent_step(
+                    current_node=node,
+                    current_slug=node.slug,
+                    agent_instances=current_agent_instances,
+                    agent_positions=agent_positions,
+                    total_runtime_steps=total_runtime_steps,
+                    widget_configs_by_step=widget_configs_by_step,
+                    conversation_history=context.conversation_history,
+                    last_step_context=context.last_step_context,
+                    state=context.state,
+                    agent_context=agent_context,
+                    run_agent_step=run_agent_step,
+                    consume_generated_image_urls=helpers["consume_generated_image_urls"],
+                    structured_output_as_json=helpers["structured_output_as_json"],
+                    record_step=context.record_step,
+                    merge_generated_image_urls_into_payload=helpers[
+                        "merge_generated_image_urls_into_payload"
+                    ],
+                    append_generated_image_links=helpers["append_generated_image_links"],
+                    format_generated_image_links=helpers["format_generated_image_links"],
+                    ingest_vector_store_step=helpers["ingest_vector_store_step"],
+                    stream_widget=helpers["stream_widget"],
+                    should_wait_for_widget_action=helpers["should_wait_for_widget_action"],
+                    on_widget_step=on_widget_step,
+                    emit_stream_event=helpers["emit_stream_event"],
+                    on_stream_event=on_stream_event,
+                    branch_prefixed_slug=helpers["branch_prefixed_slug"],
+                    node_title=helpers["node_title"],
+                    next_edge=lambda slug: self._next_edge(context, slug),
+                    session_factory=helpers["session_factory"],
+                )
+
+                # Success - log if we used a fallback
+                if fallback_model is not None:
+                    logger.info(
+                        "Successfully executed step %s with fallback model %s",
+                        node.slug,
+                        fallback_model.get("model"),
+                    )
+
+                # Update context with result
+                context_updates = {}
+                if result.last_step_context is not None:
+                    context_updates["last_step_context"] = result.last_step_context
+
+                # Determine next slug
+                if result.transition:
+                    next_slug = result.transition.target_step.slug
+                else:
+                    # No explicit transition - use fallback logic (while parent or start)
+                    next_slug = self._next_slug_or_fallback(node.slug, context)
+
+                return NodeResult(next_slug=next_slug, context_updates=context_updates)
+
+            except Exception as exc:
+                last_exception = exc
+                model_name = (
+                    fallback_model.get("model") if fallback_model else "primary"
+                )
+                logger.warning(
+                    "Agent execution failed for step %s with model %s: %s",
+                    node.slug,
+                    model_name,
+                    str(exc),
+                )
+                # Continue to next fallback model
+                continue
+
+        # All attempts failed, raise the last exception
+        if last_exception is not None:
+            logger.error(
+                "All model attempts failed for step %s (tried %d models)",
+                node.slug,
+                len(model_attempts),
+            )
+            raise last_exception
+
+        # This should never happen, but just in case
+        raise RuntimeError(f"No agent available for step {node.slug}")
 
     async def _execute_nested_workflow(
         self, node: WorkflowStep, context: ExecutionContext

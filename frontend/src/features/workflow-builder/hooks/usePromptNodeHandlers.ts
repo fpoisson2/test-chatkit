@@ -9,6 +9,7 @@ import {
   getAgentNestedWorkflow,
   setAgentContinueOnError,
   setAgentDisplayResponseInChat,
+  setAgentFallbackModels,
   setAgentIncludeChatHistory,
   setAgentMaxOutputTokens,
   setAgentMessage,
@@ -37,6 +38,7 @@ import {
   setStartTelephonySipAccountId,
   setStartTelephonySpeakFirst,
   stringifyAgentParameters,
+  type FallbackModel,
   type ModelSelectionMode,
   type UserModelOption,
 } from "../../../utils/workflows";
@@ -496,6 +498,19 @@ const usePromptNodeHandlers = ({
     [updateNodeData]
   );
 
+  const handleAgentFallbackModelsChange = useCallback(
+    (nodeId: string, models: FallbackModel[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentFallbackModels(data.parameters, models);
+        return updateNodeParameters(data, nextParameters);
+      });
+    },
+    [updateNodeData]
+  );
+
   return {
     // Start handlers
     handleStartAutoRunChange,
@@ -528,6 +543,7 @@ const usePromptNodeHandlers = ({
     handleAgentResponseWidgetDefinitionChange,
     handleAgentModelSelectionModeChange,
     handleAgentUserModelOptionsChange,
+    handleAgentFallbackModelsChange,
   };
 };
 

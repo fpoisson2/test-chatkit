@@ -15,6 +15,7 @@ import {
   getAgentContinueOnError,
   getAgentDisplayResponseInChat,
   getAgentComputerUseConfig,
+  getAgentFallbackModels,
   getAgentFileSearchConfig,
   getAgentImageGenerationConfig,
   getAgentIncludeChatHistory,
@@ -82,6 +83,7 @@ type AgentInspectorState = {
   agentProviderSlug: string;
   modelSelectionMode: ReturnType<typeof getAgentModelSelectionMode>;
   userModelOptions: ReturnType<typeof getAgentUserModelOptions>;
+  fallbackModels: ReturnType<typeof getAgentFallbackModels>;
   nestedWorkflowId: number | null;
   nestedWorkflowSlug: string;
   nestedWorkflowMode: "local" | "hosted" | "custom";
@@ -180,6 +182,7 @@ export const useAgentInspectorState = ({
   const agentProviderSlug = getAgentModelProviderSlug(parameters).trim().toLowerCase();
   const modelSelectionMode = getAgentModelSelectionMode(parameters);
   const userModelOptions = getAgentUserModelOptions(parameters);
+  const fallbackModels = getAgentFallbackModels(parameters);
   const nestedWorkflow = getAgentNestedWorkflow(parameters);
   const availableNestedWorkflows = useMemo(
     () => workflows.filter((workflow) => workflow.id !== currentWorkflowId),
@@ -585,6 +588,7 @@ export const useAgentInspectorState = ({
     agentProviderSlug,
     modelSelectionMode,
     userModelOptions,
+    fallbackModels,
     nestedWorkflowId: nestedWorkflow.id,
     nestedWorkflowSlug: nestedWorkflow.slug,
     nestedWorkflowMode,

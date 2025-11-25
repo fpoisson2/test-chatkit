@@ -74,7 +74,7 @@ import {
   DEFAULT_IMAGE_TOOL_CONFIG,
   DEFAULT_JSON_SCHEMA_TEXT,
 } from '../constants';
-import type { ModelSelectionMode, UserModelOption } from '../../../../../utils/workflows';
+import type { FallbackModel, ModelSelectionMode, UserModelOption } from '../../../../../utils/workflows';
 import { ToolSettingsPanel } from './ToolSettingsPanel';
 import styles from './AgentInspectorSectionV2.module.css';
 
@@ -179,6 +179,7 @@ type AgentInspectorSectionV2Props = {
   ) => void;
   onAgentModelSelectionModeChange: (nodeId: string, mode: ModelSelectionMode) => void;
   onAgentUserModelOptionsChange: (nodeId: string, options: UserModelOption[]) => void;
+  onAgentFallbackModelsChange: (nodeId: string, models: FallbackModel[]) => void;
 };
 export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = ({
   nodeId,
@@ -231,6 +232,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
   onAgentWorkflowToolToggle,
   onAgentModelSelectionModeChange,
   onAgentUserModelOptionsChange,
+  onAgentFallbackModelsChange,
 }) => {
   const { t } = useI18n();
 
@@ -241,6 +243,7 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
     agentProviderSlug,
     modelSelectionMode,
     userModelOptions,
+    fallbackModels,
     nestedWorkflowId,
     nestedWorkflowSlug,
     nestedWorkflowMode,
@@ -396,6 +399,8 @@ export const AgentInspectorSectionV2: React.FC<AgentInspectorSectionV2Props> = (
             onAgentMaxOutputTokensChange={onAgentMaxOutputTokensChange}
             onAgentModelSelectionModeChange={onAgentModelSelectionModeChange}
             onAgentUserModelOptionsChange={onAgentUserModelOptionsChange}
+            fallbackModels={fallbackModels}
+            onAgentFallbackModelsChange={onAgentFallbackModelsChange}
             t={t}
           />
         ),
@@ -1159,6 +1164,7 @@ interface ModelSettingsTabProps {
   agentProviderSlug: string;
   modelSelectionMode: ModelSelectionMode;
   userModelOptions: UserModelOption[];
+  fallbackModels: FallbackModel[];
   selectedProviderValue: string;
   selectedModelOption: string;
   providerOptions: Array<{ value: string; label: string; id: string | null; slug: string | null }>;
@@ -1195,6 +1201,7 @@ interface ModelSettingsTabProps {
   onAgentMaxOutputTokensChange: (nodeId: string, value: string) => void;
   onAgentModelSelectionModeChange: (nodeId: string, mode: ModelSelectionMode) => void;
   onAgentUserModelOptionsChange: (nodeId: string, options: UserModelOption[]) => void;
+  onAgentFallbackModelsChange: (nodeId: string, models: FallbackModel[]) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
@@ -1205,6 +1212,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   agentProviderSlug,
   modelSelectionMode,
   userModelOptions,
+  fallbackModels,
   selectedProviderValue,
   selectedModelOption,
   providerOptions,
@@ -1230,6 +1238,7 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   onAgentMaxOutputTokensChange,
   onAgentModelSelectionModeChange,
   onAgentUserModelOptionsChange,
+  onAgentFallbackModelsChange,
   t,
 }) => {
   const handleProviderChange = useCallback(
@@ -1394,6 +1403,40 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
       onAgentUserModelOptionsChange(nodeId, newOptions);
     },
     [nodeId, userModelOptions, onAgentUserModelOptionsChange],
+  );
+
+  // Fallback models handlers
+  const handleAddFallbackModel = useCallback(() => {
+    if (!agentModel.trim()) return;
+    const newFallback: FallbackModel = {
+      id: `fb-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      model: agentModel.trim(),
+      provider_id: agentProviderId || undefined,
+      provider_slug: agentProviderSlug || undefined,
+    };
+    onAgentFallbackModelsChange(nodeId, [...fallbackModels, newFallback]);
+  }, [nodeId, agentModel, agentProviderId, agentProviderSlug, fallbackModels, onAgentFallbackModelsChange]);
+
+  const handleRemoveFallbackModel = useCallback(
+    (modelId: string) => {
+      const newModels = fallbackModels.filter((m) => m.id !== modelId);
+      onAgentFallbackModelsChange(nodeId, newModels);
+    },
+    [nodeId, fallbackModels, onAgentFallbackModelsChange],
+  );
+
+  const handleMoveFallbackModel = useCallback(
+    (modelId: string, direction: 'up' | 'down') => {
+      const index = fallbackModels.findIndex((m) => m.id === modelId);
+      if (index === -1) return;
+      if (direction === 'up' && index === 0) return;
+      if (direction === 'down' && index === fallbackModels.length - 1) return;
+      const newModels = [...fallbackModels];
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      [newModels[index], newModels[targetIndex]] = [newModels[targetIndex], newModels[index]];
+      onAgentFallbackModelsChange(nodeId, newModels);
+    },
+    [nodeId, fallbackModels, onAgentFallbackModelsChange],
   );
 
   return (
@@ -1711,6 +1754,83 @@ const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
             )}
           />
         </Field>
+      </div>
+
+      {/* Fallback Models Section */}
+      <div className={styles.sectionCard}>
+        <div className={styles.sectionHeader}>
+          <h4 className={styles.sectionTitle}>
+            {t('workflowBuilder.agentInspector.fallbackModelsTitle') || 'Modèles de fallback'}
+          </h4>
+          <p className={styles.sectionDescription}>
+            {t('workflowBuilder.agentInspector.fallbackModelsDescription') || 'En cas d\'erreur avec le modèle principal, les modèles suivants seront essayés dans l\'ordre.'}
+          </p>
+        </div>
+
+        {/* Button to add current model as fallback */}
+        {agentModel.trim() && (
+          <button
+            type="button"
+            className={styles.addButton}
+            onClick={handleAddFallbackModel}
+          >
+            {t('workflowBuilder.agentInspector.addFallbackModel') || 'Ajouter le modèle comme fallback'}
+          </button>
+        )}
+
+        {/* List of fallback models */}
+        {fallbackModels.length === 0 ? (
+          <p className={styles.mutedMessage}>
+            {t('workflowBuilder.agentInspector.noFallbackModels') || 'Aucun modèle de fallback configuré. Sélectionnez un modèle ci-dessus et cliquez sur "Ajouter le modèle comme fallback".'}
+          </p>
+        ) : (
+          <div className={styles.userModelOptionsList}>
+            {fallbackModels.map((model, index) => (
+              <div key={model.id} className={styles.userModelOption}>
+                <div className={styles.userModelOptionInfo}>
+                  <span className={styles.userModelOptionLabel}>
+                    {index + 1}. {model.model}
+                  </span>
+                  {model.provider_slug && (
+                    <span className={styles.userModelOptionModel}>
+                      {model.provider_slug}
+                    </span>
+                  )}
+                </div>
+                <div className={styles.userModelOptionActions}>
+                  <button
+                    type="button"
+                    className={styles.moveButton}
+                    onClick={() => handleMoveFallbackModel(model.id, 'up')}
+                    disabled={index === 0}
+                    aria-label={t('workflowBuilder.agentInspector.moveUp') || 'Monter'}
+                    title={t('workflowBuilder.agentInspector.moveUp') || 'Monter'}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.moveButton}
+                    onClick={() => handleMoveFallbackModel(model.id, 'down')}
+                    disabled={index === fallbackModels.length - 1}
+                    aria-label={t('workflowBuilder.agentInspector.moveDown') || 'Descendre'}
+                    title={t('workflowBuilder.agentInspector.moveDown') || 'Descendre'}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.removeButton}
+                    onClick={() => handleRemoveFallbackModel(model.id)}
+                    aria-label={t('workflowBuilder.agentInspector.removeFallbackModel') || 'Supprimer'}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
