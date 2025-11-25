@@ -15,6 +15,7 @@ import type { WidgetContext } from '../widgets';
 import { ThreadHistory } from './ThreadHistory';
 import { Composer } from './Composer';
 import { MessageRenderer } from './MessageRenderer';
+import { Header } from './Header';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useScreencast } from '../hooks/useScreencast';
 import type { Attachment } from '../api/attachments';
@@ -302,52 +303,14 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       data-theme={theme?.colorScheme}
     >
       {/* Header */}
-      {header !== false && header?.enabled !== false && (
-        <div className="chatkit-header">
-          {header?.leftAction && (
-            <button
-              className="chatkit-header-action"
-              onClick={header.leftAction.onClick}
-              aria-label={header.leftAction.icon}
-            >
-              {header.leftAction.icon === 'menu' ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="3" y1="12" x2="21" y2="12"></line>
-                  <line x1="3" y1="6" x2="21" y2="6"></line>
-                  <line x1="3" y1="18" x2="21" y2="18"></line>
-                </svg>
-              ) : header.leftAction.icon}
-            </button>
-          )}
-          <div className="chatkit-header-title">{getThreadTitle()}</div>
-          <div className="chatkit-header-actions">
-            <button
-              className="chatkit-header-action"
-              disabled={showStartScreen}
-              onClick={handleNewThread}
-              aria-label="Nouvelle conversation"
-              title="Nouvelle conversation"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14"></path>
-              </svg>
-            </button>
-            {history?.enabled !== false && (
-              <button
-                className="chatkit-header-action"
-                onClick={() => setShowHistory(!showHistory)}
-                aria-label="Historique"
-                title="Historique des conversations"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <Header
+        config={header}
+        title={getThreadTitle()}
+        showNewThreadButton={!showStartScreen}
+        showHistoryButton={history?.enabled !== false}
+        onNewThread={handleNewThread}
+        onToggleHistory={() => setShowHistory(!showHistory)}
+      />
 
       {/* Messages */}
       <div className="chatkit-messages" ref={messagesContainerRef}>
