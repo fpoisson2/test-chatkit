@@ -1006,7 +1006,7 @@ export function MyChat() {
           setMode={setMode}
           onWorkflowActivated={handleWorkflowActivated}
         />
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
             <WorkflowChatInstance
               key={`${instanceId}-${instance.instanceKey}`}

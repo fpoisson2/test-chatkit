@@ -271,6 +271,28 @@ html {
 }
 
 /* ==========================================
+   Chat Instance Transitions
+   ========================================== */
+
+/* Workflow/conversation switching fade transition */
+.chat-instance {
+  transition: opacity 250ms ease-out, visibility 250ms ease-out;
+}
+
+.chat-instance--active {
+  opacity: 1;
+  visibility: visible;
+  z-index: 1;
+}
+
+.chat-instance--inactive {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ==========================================
    Utility Classes
    ========================================== */
 
