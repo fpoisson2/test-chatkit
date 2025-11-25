@@ -14,6 +14,13 @@ from .registration import SIPRegistrationConfig, SIPRegistrationManager, InviteR
 
 logger = logging.getLogger(__name__)
 
+# Check if aiosip is available by checking the registration module
+try:
+    from .registration import aiosip as _aiosip_module
+    AIOSIP_AVAILABLE = _aiosip_module is not None
+except ImportError:
+    AIOSIP_AVAILABLE = False
+
 
 class MultiSIPRegistrationManager:
     """Gère plusieurs comptes SIP simultanément.
@@ -73,6 +80,15 @@ class MultiSIPRegistrationManager:
             session: Session SQLAlchemy pour accéder à la BD
         """
         logger.info("Chargement des comptes SIP depuis la base de données")
+
+        # Check if aiosip is available before attempting to configure SIP
+        if not AIOSIP_AVAILABLE:
+            logger.warning(
+                "Le module aiosip n'est pas disponible. "
+                "L'enregistrement SIP sera désactivé. "
+                "Installez aiosip pour activer la fonctionnalité SIP."
+            )
+            return
 
         # Récupérer tous les comptes actifs
         accounts = session.scalars(
