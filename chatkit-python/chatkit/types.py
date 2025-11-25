@@ -863,6 +863,9 @@ class ComputerUseTask(BaseTask):
     ssh_token: str | None = None
     """Secure token for accessing an SSH terminal session via WebSocket."""
 
+    vnc_token: str | None = None
+    """Secure token for accessing a VNC remote desktop session via WebSocket."""
+
 
 Task = Annotated[
     CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask,

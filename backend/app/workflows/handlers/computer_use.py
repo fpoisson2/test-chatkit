@@ -190,14 +190,16 @@ class ComputerUseNodeHandler(BaseNodeHandler):
 
         # Check if this is an SSH environment
         is_ssh = computer_use_config.get("environment") == "ssh"
+        # Check if this is a VNC environment
+        is_vnc = computer_use_config.get("environment") == "vnc"
 
         # Build the computer_use tool to initialize the environment
         computer_tool = build_computer_use_tool({"computer_use": computer_use_config})
 
         if computer_tool:
-            # Get the debug_url from the HostedBrowser (not applicable for SSH)
+            # Get the debug_url from the HostedBrowser (not applicable for SSH/VNC)
             debug_url = None
-            if not is_ssh and hasattr(computer_tool, "computer"):
+            if not is_ssh and not is_vnc and hasattr(computer_tool, "computer"):
                 try:
                     # Force browser initialization by taking a screenshot
                     await computer_tool.computer.screenshot()
@@ -209,6 +211,7 @@ class ComputerUseNodeHandler(BaseNodeHandler):
             # Register the debug session to get a token
             debug_url_token = None
             ssh_token = None
+            vnc_token = None
 
             if debug_url:
                 try:
@@ -231,21 +234,38 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                     logger.info(f"Registered SSH session with token {ssh_token[:8]}...")
                 except Exception as e:
                     logger.error(f"Failed to register SSH session: {e}")
+            elif is_vnc and hasattr(computer_tool, "computer"):
+                # Register VNC session for remote desktop
+                try:
+                    from ...routes.computer import register_vnc_session
+                    user_id = agent_context.user.id if agent_context and hasattr(agent_context, "user") else None
+                    # Force VNC initialization by taking a screenshot (starts websockify)
+                    await computer_tool.computer.screenshot()
+                    vnc_token = register_vnc_session(
+                        vnc_instance=computer_tool.computer,
+                        vnc_config=computer_tool.computer.config,
+                        user_id=user_id,
+                    )
+                    logger.info(f"Registered VNC session with token {vnc_token[:8]}...")
+                except Exception as e:
+                    logger.error(f"Failed to register VNC session: {e}")
 
             # Create a workflow item with computer_use task
             on_stream_event = context.runtime_vars.get("on_stream_event")
 
-            if on_stream_event and agent_context and (debug_url_token or ssh_token):
+            if on_stream_event and agent_context and (debug_url_token or ssh_token or vnc_token):
                 # Create ComputerUseTask
                 task_kwargs: dict[str, Any] = {
                     "type": "computer_use",
                     "status_indicator": "loading",
-                    "title": "Session SSH" if is_ssh else "Environnement Computer Use",
+                    "title": "Session VNC" if is_vnc else ("Session SSH" if is_ssh else "Environnement Computer Use"),
                 }
                 if debug_url_token:
                     task_kwargs["debug_url_token"] = debug_url_token
                 if ssh_token:
                     task_kwargs["ssh_token"] = ssh_token
+                if vnc_token:
+                    task_kwargs["vnc_token"] = vnc_token
 
                 computer_task = ComputerUseTask(**task_kwargs)
 
@@ -270,14 +290,17 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 # Mark as done immediately so it shows up
                 await on_stream_event(ThreadItemDoneEvent(item=workflow_item))
 
-                logger.info(f"Computer use environment initialized for node {node.slug} with token {debug_url_token}")
+                token_info = vnc_token or ssh_token or debug_url_token
+                logger.info(f"Computer use environment initialized for node {node.slug} with token {token_info}")
             else:
                 logger.warning(
                     f"Cannot emit computer_use task: "
                     f"on_stream_event={on_stream_event is not None}, "
                     f"agent_context={agent_context is not None}, "
                     f"debug_url={debug_url}, "
-                    f"debug_url_token={debug_url_token}"
+                    f"debug_url_token={debug_url_token}, "
+                    f"ssh_token={ssh_token is not None}, "
+                    f"vnc_token={vnc_token is not None}"
                 )
         else:
             logger.error(f"Failed to initialize computer_use tool for node {node.slug}")
