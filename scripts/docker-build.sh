@@ -10,12 +10,13 @@
 #   ./scripts/docker-build.sh              # Build local avec cache local
 #   ./scripts/docker-build.sh --push       # Build et pousse le cache vers le registry
 #   ./scripts/docker-build.sh --pull       # Build en tirant le cache du registry
-#   ./scripts/docker-build.sh --push-base  # Pousse uniquement les images de base (PJSIP + deps)
+#   ./scripts/docker-build.sh --push-base  # Pousse uniquement les images de base (PJSIP + Playwright)
 #
 # Variables d'environnement:
-#   REGISTRY     - Registry Docker (défaut: ghcr.io/fpoisson2)
-#   IMAGE_NAME   - Nom de l'image (défaut: chatkit-backend)
-#   PJSIP_VERSION - Version de PJSIP (défaut: 2.15.1)
+#   REGISTRY           - Registry Docker (défaut: ghcr.io/fpoisson2)
+#   IMAGE_NAME         - Nom de l'image (défaut: chatkit-backend)
+#   PJSIP_VERSION      - Version de PJSIP (défaut: 2.15.1)
+#   PLAYWRIGHT_VERSION - Version de Playwright (défaut: 1.49.0)
 # =============================================================================
 
 set -euo pipefail
@@ -24,6 +25,7 @@ set -euo pipefail
 REGISTRY="${REGISTRY:-ghcr.io/fpoisson2}"
 IMAGE_NAME="${IMAGE_NAME:-chatkit-backend}"
 PJSIP_VERSION="${PJSIP_VERSION:-2.15.1}"
+PLAYWRIGHT_VERSION="${PLAYWRIGHT_VERSION:-1.49.0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
@@ -42,6 +44,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # Tags pour le cache
 TAG_BASE="${REGISTRY}/${IMAGE_NAME}:cache-base"
 TAG_PJSIP="${REGISTRY}/${IMAGE_NAME}:cache-pjsip-${PJSIP_VERSION}"
+TAG_PLAYWRIGHT="${REGISTRY}/${IMAGE_NAME}:cache-playwright-${PLAYWRIGHT_VERSION}"
 TAG_PYDEPS="${REGISTRY}/${IMAGE_NAME}:cache-pydeps"
 TAG_FINAL="${REGISTRY}/${IMAGE_NAME}:latest"
 
@@ -64,6 +67,7 @@ build_local() {
         --file backend/Dockerfile \
         --target final \
         --build-arg PJSIP_VERSION="$PJSIP_VERSION" \
+        --build-arg PLAYWRIGHT_VERSION="$PLAYWRIGHT_VERSION" \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         --tag "${IMAGE_NAME}:latest" \
         .
@@ -79,6 +83,7 @@ build_with_cache_pull() {
     # Tente de tirer les images de cache (ignore les erreurs si elles n'existent pas)
     log_info "Téléchargement des images de cache..."
     docker pull "$TAG_PJSIP" 2>/dev/null || log_warn "Image PJSIP non trouvée dans le registry"
+    docker pull "$TAG_PLAYWRIGHT" 2>/dev/null || log_warn "Image Playwright non trouvée dans le registry"
     docker pull "$TAG_PYDEPS" 2>/dev/null || log_warn "Image Python deps non trouvée dans le registry"
     docker pull "$TAG_FINAL" 2>/dev/null || log_warn "Image finale non trouvée dans le registry"
 
@@ -86,8 +91,10 @@ build_with_cache_pull() {
         --file backend/Dockerfile \
         --target final \
         --build-arg PJSIP_VERSION="$PJSIP_VERSION" \
+        --build-arg PLAYWRIGHT_VERSION="$PLAYWRIGHT_VERSION" \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         --cache-from "$TAG_PJSIP" \
+        --cache-from "$TAG_PLAYWRIGHT" \
         --cache-from "$TAG_PYDEPS" \
         --cache-from "$TAG_FINAL" \
         --tag "${IMAGE_NAME}:latest" \
@@ -103,7 +110,7 @@ build_and_push_cache() {
     cd "$PROJECT_ROOT"
 
     # Build et tag chaque stage séparément pour le cache
-    log_info "1/4 - Build du stage 'base'..."
+    log_info "1/5 - Build du stage 'base'..."
     DOCKER_BUILDKIT=1 docker build \
         --file backend/Dockerfile \
         --target base \
@@ -111,7 +118,7 @@ build_and_push_cache() {
         --tag "$TAG_BASE" \
         .
 
-    log_info "2/4 - Build du stage 'pjsip-builder'..."
+    log_info "2/5 - Build du stage 'pjsip-builder'..."
     DOCKER_BUILDKIT=1 docker build \
         --file backend/Dockerfile \
         --target pjsip-builder \
@@ -121,7 +128,17 @@ build_and_push_cache() {
         --tag "$TAG_PJSIP" \
         .
 
-    log_info "3/4 - Build du stage 'python-deps'..."
+    log_info "3/5 - Build du stage 'playwright-deps'..."
+    DOCKER_BUILDKIT=1 docker build \
+        --file backend/Dockerfile \
+        --target playwright-deps \
+        --build-arg PLAYWRIGHT_VERSION="$PLAYWRIGHT_VERSION" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$TAG_BASE" \
+        --tag "$TAG_PLAYWRIGHT" \
+        .
+
+    log_info "4/5 - Build du stage 'python-deps'..."
     DOCKER_BUILDKIT=1 docker build \
         --file backend/Dockerfile \
         --target python-deps \
@@ -130,14 +147,16 @@ build_and_push_cache() {
         --tag "$TAG_PYDEPS" \
         .
 
-    log_info "4/4 - Build du stage 'final'..."
+    log_info "5/5 - Build du stage 'final'..."
     DOCKER_BUILDKIT=1 docker build \
         --file backend/Dockerfile \
         --target final \
         --build-arg PJSIP_VERSION="$PJSIP_VERSION" \
+        --build-arg PLAYWRIGHT_VERSION="$PLAYWRIGHT_VERSION" \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         --cache-from "$TAG_BASE" \
         --cache-from "$TAG_PJSIP" \
+        --cache-from "$TAG_PLAYWRIGHT" \
         --cache-from "$TAG_PYDEPS" \
         --tag "${IMAGE_NAME}:latest" \
         --tag "$TAG_FINAL" \
@@ -146,12 +165,14 @@ build_and_push_cache() {
     # Push des images de cache
     log_info "Push des images vers le registry..."
     docker push "$TAG_PJSIP"
+    docker push "$TAG_PLAYWRIGHT"
     docker push "$TAG_PYDEPS"
     docker push "$TAG_FINAL"
 
     log_success "Images de cache poussées vers le registry"
     log_info "Images disponibles:"
     echo "  - $TAG_PJSIP"
+    echo "  - $TAG_PLAYWRIGHT"
     echo "  - $TAG_PYDEPS"
     echo "  - $TAG_FINAL"
 }
@@ -171,23 +192,24 @@ push_base_images() {
         --tag "$TAG_PJSIP" \
         .
 
-    # Build Python deps
-    log_info "Build de l'image Python deps..."
+    # Build Playwright
+    log_info "Build de l'image Playwright (~200 MB de téléchargement)..."
     DOCKER_BUILDKIT=1 docker build \
         --file backend/Dockerfile \
-        --target python-deps \
+        --target playwright-deps \
+        --build-arg PLAYWRIGHT_VERSION="$PLAYWRIGHT_VERSION" \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --tag "$TAG_PYDEPS" \
+        --tag "$TAG_PLAYWRIGHT" \
         .
 
     # Push
     log_info "Push vers le registry..."
     docker push "$TAG_PJSIP"
-    docker push "$TAG_PYDEPS"
+    docker push "$TAG_PLAYWRIGHT"
 
     log_success "Images de base poussées:"
     echo "  - $TAG_PJSIP"
-    echo "  - $TAG_PYDEPS"
+    echo "  - $TAG_PLAYWRIGHT"
     echo ""
     log_info "Pour utiliser le cache après un 'docker system prune -a':"
     echo "  ./scripts/docker-build.sh --pull"
@@ -205,13 +227,14 @@ Options:
   --local       Build local avec cache BuildKit (défaut)
   --pull        Build en tirant le cache depuis le registry
   --push        Build complet et push du cache vers le registry
-  --push-base   Push uniquement les images de base (PJSIP + Python deps)
+  --push-base   Push uniquement les images de base (PJSIP + Playwright)
   --help        Affiche cette aide
 
 Variables d'environnement:
-  REGISTRY       Registry Docker (défaut: ghcr.io/fpoisson2)
-  IMAGE_NAME     Nom de l'image (défaut: chatkit-backend)
-  PJSIP_VERSION  Version PJSIP à compiler (défaut: 2.15.1)
+  REGISTRY           Registry Docker (défaut: ghcr.io/fpoisson2)
+  IMAGE_NAME         Nom de l'image (défaut: chatkit-backend)
+  PJSIP_VERSION      Version PJSIP à compiler (défaut: 2.15.1)
+  PLAYWRIGHT_VERSION Version Playwright (défaut: 1.49.0)
 
 Exemples:
   # Build local standard
@@ -226,6 +249,12 @@ Exemples:
 
   # Avec un registry différent
   REGISTRY=docker.io/monuser ./scripts/docker-build.sh --push-base
+
+Comportement du cache pip:
+  Grâce aux cache mounts BuildKit, même si requirements.txt change:
+  - Les packages pip déjà téléchargés restent en cache local
+  - Seuls les NOUVEAUX packages sont téléchargés
+  - Playwright n'est PAS retéléchargé (stage séparé)
 
 EOF
 }

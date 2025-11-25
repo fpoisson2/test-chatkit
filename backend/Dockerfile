@@ -1,11 +1,18 @@
+# syntax=docker/dockerfile:1.4
 # =============================================================================
 # Dockerfile de développement optimisé pour le backend FastAPI
 # =============================================================================
 # Structure multi-stage pour maximiser le cache:
-#   1) base          - Python + dépendances système
-#   2) pjsip-builder - Compilation PJSIP (recaché seulement si PJSIP_VERSION change)
-#   3) python-deps   - pip install + playwright (recaché seulement si requirements change)
-#   4) final         - Image de développement
+#   1) base            - Python + dépendances système
+#   2) pjsip-builder   - Compilation PJSIP (recaché si PJSIP_VERSION change)
+#   3) playwright-deps - Playwright + Chromium (recaché si PLAYWRIGHT_VERSION change)
+#   4) python-deps     - pip install avec cache mount (seuls les nouveaux packages téléchargés)
+#   5) final           - Image de développement
+#
+# Grâce aux cache mounts, même si requirements.txt change:
+#   - Les packages pip déjà téléchargés restent en cache
+#   - Playwright n'est PAS retéléchargé
+#   - Seuls les nouveaux/modifiés packages sont installés
 #
 # Utilisation avec cache registry (survit à docker system prune -a):
 #   ./scripts/docker-build.sh --push   # Build et pousse le cache
@@ -22,7 +29,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
     apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       build-essential \
       wget \
@@ -38,8 +48,7 @@ RUN set -eux; \
       libreadline-dev \
       libffi-dev \
       libz-dev \
-      liblzma-dev \
-    && rm -rf /var/lib/apt/lists/*
+      liblzma-dev
 
 
 # -----------------------------------------------------------------------------
@@ -74,8 +83,24 @@ RUN set -eux; \
 
 
 # -----------------------------------------------------------------------------
-# Stage 3: Dépendances Python - pip install + playwright
-#          Recaché seulement si requirements.txt ou pyproject.toml changent.
+# Stage 3: Playwright - Installé une fois, recaché tant que PLAYWRIGHT_VERSION
+#          ne change pas (~200 MB de téléchargement pour Chromium).
+# -----------------------------------------------------------------------------
+FROM base AS playwright-deps
+
+# Changer cette version pour forcer un retéléchargement de Playwright
+ARG PLAYWRIGHT_VERSION=1.49.0
+
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    pip install --upgrade pip && \
+    pip install playwright==${PLAYWRIGHT_VERSION}
+
+RUN python -m playwright install --with-deps chromium
+
+
+# -----------------------------------------------------------------------------
+# Stage 4: Dépendances Python - pip install avec cache mount
+#          Le cache pip est persisté: seuls les NOUVEAUX packages sont téléchargés.
 # -----------------------------------------------------------------------------
 FROM base AS python-deps
 
@@ -83,28 +108,31 @@ FROM base AS python-deps
 COPY chatkit-python /tmp/chatkit-python
 COPY backend/requirements.txt backend/pyproject.toml /tmp/backend/
 
-RUN set -eux; \
+# --mount=type=cache : garde le cache pip entre les builds
+# Même si requirements.txt change, les packages déjà téléchargés sont réutilisés
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    set -eux; \
     pip install --upgrade pip; \
     cd /tmp/backend; \
-    pip install --no-cache-dir -r requirements.txt; \
-    # Playwright: télécharge Chromium (~200 MB, long à télécharger)
-    python -m playwright install --with-deps chromium; \
-    # Nettoyage
+    pip install -r requirements.txt; \
     rm -rf /tmp/backend /tmp/chatkit-python
 
 
 # -----------------------------------------------------------------------------
-# Stage 4: Image finale de développement
-#          Combine PJSIP + deps Python + code backend
+# Stage 5: Image finale de développement
+#          Combine PJSIP + Playwright + deps Python + code backend
 # -----------------------------------------------------------------------------
 FROM base AS final
 
 # Récupérer PJSIP (libs + includes + bindings Python)
 COPY --from=pjsip-builder /usr/local /usr/local
 
-# Récupérer les modules Python installés (site-packages + playwright)
-COPY --from=python-deps /usr/local /usr/local
-COPY --from=python-deps /root/.cache/ms-playwright /root/.cache/ms-playwright
+# Récupérer Playwright et Chromium (installés séparément pour meilleur cache)
+COPY --from=playwright-deps /usr/local/lib/python3.11/site-packages/playwright /usr/local/lib/python3.11/site-packages/playwright
+COPY --from=playwright-deps /root/.cache/ms-playwright /root/.cache/ms-playwright
+
+# Récupérer les modules Python installés (site-packages)
+COPY --from=python-deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
 # S'assurer que les libs partagées sont trouvées
 RUN ldconfig
