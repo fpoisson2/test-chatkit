@@ -1171,22 +1171,22 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
 
         # Find the WorkflowItem with the ComputerUseTask in "loading" state
-        existing_workflow_item_id: str | None = None
+        existing_workflow_item: WorkflowItem | None = None
         existing_task_index: int | None = None
         for item in history.data:
             if isinstance(item, WorkflowItem) and item.workflow and item.workflow.tasks:
                 for idx, task in enumerate(item.workflow.tasks):
                     if hasattr(task, 'type') and task.type == 'computer_use':
                         if hasattr(task, 'status_indicator') and task.status_indicator == 'loading':
-                            existing_workflow_item_id = item.id
+                            existing_workflow_item = item
                             existing_task_index = idx
                             logger.info(
                                 "Found existing ComputerUseTask in WorkflowItem %s at index %d",
-                                existing_workflow_item_id,
+                                item.id,
                                 existing_task_index,
                             )
                             break
-                if existing_workflow_item_id:
+                if existing_workflow_item:
                     break
 
         # Import ThreadItemUpdated and WorkflowTaskUpdated/Added
@@ -1200,11 +1200,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             title="Session Computer Use terminée",
         )
 
-        if existing_workflow_item_id is not None and existing_task_index is not None:
+        if existing_workflow_item is not None and existing_task_index is not None:
             # Update the existing task to completed
             logger.info(">>> [1/2] Yielding ThreadItemUpdated for completed ComputerUseTask")
             yield ThreadItemUpdated(
-                item_id=existing_workflow_item_id,
+                item_id=existing_workflow_item.id,
                 update=WorkflowTaskUpdated(
                     task_index=existing_task_index,
                     task=completed_computer_task,
@@ -1230,13 +1230,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
                 # Add the image task to the existing workflow item
                 yield ThreadItemUpdated(
-                    item_id=existing_workflow_item_id,
+                    item_id=existing_workflow_item.id,
                     update=WorkflowTaskAdded(
                         task_index=existing_task_index + 1,
                         task=image_task,
                     ),
                 )
                 logger.info(">>> [2/2] ImageTask added to existing WorkflowItem")
+
+            # Emit ThreadItemDoneEvent to ensure the item remains visible
+            yield ThreadItemDoneEvent(item=existing_workflow_item)
+            logger.info(">>> ThreadItemDoneEvent emitted for WorkflowItem")
         else:
             # Create a new WorkflowItem if not found (fallback)
             logger.info("Creating new ComputerUseTask with status=complete (no existing task found)")
