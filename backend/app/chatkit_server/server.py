@@ -1161,10 +1161,40 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             request_context=context,
         )
 
-        # Note: We intentionally do NOT emit any new WorkflowItems here.
-        # The existing ComputerUseTask will stay with its current status.
-        # Emitting items was causing accumulation of empty/duplicate items.
-        logger.info(">>> Skipping item emission to avoid duplicates")
+        # Emit screenshot if captured
+        if data_url:
+            logger.info("Emitting final screenshot from backend")
+            from datetime import datetime
+
+            image_id = f"img_{uuid.uuid4().hex[:8]}"
+            generated_image = GeneratedImage(
+                id=image_id,
+                data_url=data_url,
+            )
+
+            image_task = ImageTask(
+                type="image",
+                title="Screenshot finale de la session Computer Use",
+                images=[generated_image],
+                status_indicator="complete",
+            )
+
+            workflow = Workflow(
+                type="custom",
+                tasks=[image_task],
+                expanded=True,
+            )
+
+            workflow_item = WorkflowItem(
+                id=agent_context.generate_id("workflow"),
+                thread_id=thread.id,
+                created_at=datetime.now(),
+                workflow=workflow,
+            )
+
+            yield ThreadItemAddedEvent(item=workflow_item)
+            yield ThreadItemDoneEvent(item=workflow_item)
+            logger.info("Final screenshot emitted")
 
         # Clear wait state
         logger.info(">>> Clearing wait state for thread %s", thread.id)

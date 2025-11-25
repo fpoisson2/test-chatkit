@@ -434,16 +434,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
   }, [control.isLoading, control.thread?.items, dismissedScreencastItems, failedScreencastTokens, lastScreencastScreenshot]);
 
-  // Callback pour capturer le dernier frame du screencast avant sa fermeture
+  // Callback pour le dernier frame du screencast (logging seulement)
+  // Note: Screenshots are now captured and emitted by the backend
   const handleScreencastLastFrame = useCallback((itemId: string) => {
     return (frameDataUrl: string) => {
-      console.log('[ChatKit] Captured last screencast frame for item:', itemId, 'dataUrl length:', frameDataUrl.length);
-      setLastScreencastScreenshot({
-        itemId,
-        src: frameDataUrl,
-        action: undefined,
-      });
-      console.log('[ChatKit] lastScreencastScreenshot state updated');
+      console.log('[ChatKit] Last screencast frame received for item:', itemId, 'dataUrl length:', frameDataUrl.length);
+      // Screenshot is now emitted by backend, no need to store it here
     };
   }, []);
 
@@ -1290,23 +1286,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                           const handleEndSession = () => {
                             console.log('Ending computer_use session...');
 
-                            // Capture the current frame from the canvas before closing
-                            try {
-                              const canvas = document.querySelector('.chatkit-screencast-canvas') as HTMLCanvasElement;
-                              if (canvas) {
-                                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                                setLastScreencastScreenshot({
-                                  itemId: item.id,
-                                  src: dataUrl,
-                                  action: actionTitle,
-                                });
-                                console.log('[ChatKit] Captured screenshot before closing, length:', dataUrl.length);
-                              } else {
-                                console.warn('[ChatKit] Canvas not found, cannot capture screenshot');
-                              }
-                            } catch (err) {
-                              console.error('[ChatKit] Error capturing screenshot:', err);
-                            }
+                            // Note: Screenshot is now captured and emitted by the backend
+                            // in _handle_continue_workflow (server.py)
 
                             // Mark this item as dismissed to prevent auto-restart
                             setDismissedScreencastItems(prev => {
