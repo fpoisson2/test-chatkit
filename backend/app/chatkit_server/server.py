@@ -1189,22 +1189,34 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if existing_workflow_item:
                     break
 
-        # Update the existing task or create a new one
-        completed_computer_task = ComputerUseTask(
-            type="computer_use",
-            status_indicator="complete",
-            debug_url_token=None,
-            title="Session Computer Use terminée",
-        )
-
         if existing_workflow_item is not None and existing_task_index is not None:
             # Build updated tasks list
             updated_tasks = list(existing_workflow_item.workflow.tasks) if existing_workflow_item.workflow else []
 
-            # Update the task at existing_task_index to completed
+            # Get the original task and update only status_indicator
             if existing_task_index < len(updated_tasks):
+                original_task = updated_tasks[existing_task_index]
+                # Create updated task preserving original content but changing status
+                if hasattr(original_task, 'model_dump'):
+                    task_data = original_task.model_dump()
+                    task_data['status_indicator'] = 'complete'
+                    task_data['debug_url_token'] = None  # Clear debug URL since browser is closed
+                    completed_computer_task = ComputerUseTask(**task_data)
+                else:
+                    completed_computer_task = ComputerUseTask(
+                        type="computer_use",
+                        status_indicator="complete",
+                        debug_url_token=None,
+                        title="Session Computer Use terminée",
+                    )
                 updated_tasks[existing_task_index] = completed_computer_task
             else:
+                completed_computer_task = ComputerUseTask(
+                    type="computer_use",
+                    status_indicator="complete",
+                    debug_url_token=None,
+                    title="Session Computer Use terminée",
+                )
                 updated_tasks.append(completed_computer_task)
 
             # Add ImageTask if screenshot available
@@ -1249,7 +1261,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             # Create a new WorkflowItem if not found (fallback)
             logger.info("Creating new ComputerUseTask with status=complete (no existing task found)")
 
-            tasks_list = [completed_computer_task]
+            fallback_computer_task = ComputerUseTask(
+                type="computer_use",
+                status_indicator="complete",
+                debug_url_token=None,
+                title="Session Computer Use terminée",
+            )
+            tasks_list = [fallback_computer_task]
 
             # Add screenshot if available
             if data_url:
