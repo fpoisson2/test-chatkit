@@ -179,11 +179,11 @@ build_and_push_cache() {
 
 # Push uniquement les images de base (pour CI/CD initial)
 push_base_images() {
-    log_info "Push des images de base uniquement..."
+    log_info "Push des images de base..."
     cd "$PROJECT_ROOT"
 
     # Build PJSIP
-    log_info "Build de l'image PJSIP (peut prendre 5-10 minutes)..."
+    log_info "1/3 - Build de l'image PJSIP (peut prendre 5-10 minutes)..."
     DOCKER_BUILDKIT=1 docker build \
         --file backend/Dockerfile \
         --target pjsip-builder \
@@ -193,7 +193,7 @@ push_base_images() {
         .
 
     # Build Playwright
-    log_info "Build de l'image Playwright (~200 MB de téléchargement)..."
+    log_info "2/3 - Build de l'image Playwright (~200 MB de téléchargement)..."
     DOCKER_BUILDKIT=1 docker build \
         --file backend/Dockerfile \
         --target playwright-deps \
@@ -202,14 +202,25 @@ push_base_images() {
         --tag "$TAG_PLAYWRIGHT" \
         .
 
+    # Build Python deps
+    log_info "3/3 - Build de l'image Python deps..."
+    DOCKER_BUILDKIT=1 docker build \
+        --file backend/Dockerfile \
+        --target python-deps \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --tag "$TAG_PYDEPS" \
+        .
+
     # Push
     log_info "Push vers le registry..."
     docker push "$TAG_PJSIP"
     docker push "$TAG_PLAYWRIGHT"
+    docker push "$TAG_PYDEPS"
 
     log_success "Images de base poussées:"
     echo "  - $TAG_PJSIP"
     echo "  - $TAG_PLAYWRIGHT"
+    echo "  - $TAG_PYDEPS"
     echo ""
     log_info "Pour utiliser le cache après un 'docker system prune -a':"
     echo "  ./scripts/docker-build.sh --pull"
@@ -227,7 +238,7 @@ Options:
   --local       Build local avec cache BuildKit (défaut)
   --pull        Build en tirant le cache depuis le registry
   --push        Build complet et push du cache vers le registry
-  --push-base   Push uniquement les images de base (PJSIP + Playwright)
+  --push-base   Push les images de base (PJSIP + Playwright + Python deps)
   --help        Affiche cette aide
 
 Variables d'environnement:
