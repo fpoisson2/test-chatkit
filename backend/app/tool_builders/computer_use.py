@@ -11,6 +11,7 @@ from agents.tool import ComputerTool
 
 from ..computer.hosted_browser import HostedBrowser, HostedBrowserError
 from ..computer.hosted_ssh import HostedSSH, HostedSSHError, SSHConfig
+from ..computer.hosted_vnc import HostedVNC, HostedVNCError, VNCConfig
 
 logger = logging.getLogger("chatkit.server")
 
@@ -18,7 +19,7 @@ __all__ = ["build_computer_use_tool", "cleanup_browser_cache", "get_thread_brows
 
 _DEFAULT_COMPUTER_USE_DISPLAY_WIDTH = 1024
 _DEFAULT_COMPUTER_USE_DISPLAY_HEIGHT = 768
-_SUPPORTED_COMPUTER_ENVIRONMENTS = frozenset({"browser", "mac", "windows", "ubuntu", "ssh"})
+_SUPPORTED_COMPUTER_ENVIRONMENTS = frozenset({"browser", "mac", "windows", "ubuntu", "ssh", "vnc"})
 
 # Global cache for browser instances, keyed by thread_id
 # Format: {thread_id: {cache_key: HostedBrowser}}
@@ -267,6 +268,81 @@ def build_computer_use_tool(payload: Any) -> ComputerTool | None:
             except Exception as exc:
                 logger.exception(
                     "Erreur inattendue lors de la création de la connexion SSH",
+                    exc_info=exc,
+                )
+                return None
+    elif environment == "vnc":
+        # Handle VNC environment - connect to remote desktop via noVNC
+        vnc_host = config.get("vnc_host")
+        if not isinstance(vnc_host, str) or not vnc_host.strip():
+            logger.warning("Configuration VNC manquante: vnc_host est requis")
+            return None
+
+        vnc_port_raw = config.get("vnc_port", 5900)
+        vnc_port = 5900
+        if isinstance(vnc_port_raw, int):
+            vnc_port = vnc_port_raw
+        elif isinstance(vnc_port_raw, str):
+            try:
+                vnc_port = int(vnc_port_raw)
+            except ValueError:
+                vnc_port = 5900
+
+        vnc_password = config.get("vnc_password")
+        if not isinstance(vnc_password, str) or not vnc_password.strip():
+            vnc_password = None
+
+        # noVNC server port (for the web interface)
+        novnc_port_raw = config.get("novnc_port", 6080)
+        novnc_port = 6080
+        if isinstance(novnc_port_raw, int):
+            novnc_port = novnc_port_raw
+        elif isinstance(novnc_port_raw, str):
+            try:
+                novnc_port = int(novnc_port_raw)
+            except ValueError:
+                novnc_port = 6080
+
+        vnc_config = VNCConfig(
+            host=vnc_host.strip(),
+            port=vnc_port,
+            password=vnc_password.strip() if vnc_password else None,
+            novnc_port=novnc_port,
+        )
+
+        # Create VNC cache key
+        cache_key = f"vnc:{vnc_config.host}:{vnc_config.port}"
+        cache = _get_browser_cache(thread_id)
+        cached_vnc = cache.get(cache_key)
+
+        if cached_vnc is not None and isinstance(cached_vnc, HostedVNC):
+            thread_info = f"thread={thread_id}" if thread_id else "sans thread_id"
+            logger.info(
+                f"♻️ REUTILISATION connexion VNC en cache ({thread_info}): {cache_key}"
+            )
+            computer = cached_vnc
+        else:
+            try:
+                computer = HostedVNC(
+                    width=width,
+                    height=height,
+                    config=vnc_config,
+                )
+                if thread_id:
+                    cache[cache_key] = computer  # type: ignore[assignment]
+                    logger.info(
+                        f"🆕 CREATION nouvelle connexion VNC (thread={thread_id}): {cache_key}"
+                    )
+                else:
+                    logger.info(
+                        f"⚠️ CREATION connexion VNC SANS CACHE (thread_id manquant): {cache_key}"
+                    )
+            except HostedVNCError as exc:
+                logger.warning("Impossible d'initialiser la connexion VNC : %s", exc)
+                return None
+            except Exception as exc:
+                logger.exception(
+                    "Erreur inattendue lors de la creation de la connexion VNC",
                     exc_info=exc,
                 )
                 return None

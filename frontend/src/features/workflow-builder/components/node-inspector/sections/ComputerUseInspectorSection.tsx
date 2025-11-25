@@ -97,6 +97,47 @@ export const ComputerUseInspectorSection = ({
     }
   };
 
+  // VNC handlers
+  const handleVNCHostChange = (value: string) => {
+    if (value === "") {
+      const { vnc_host: _, ...rest } = config;
+      onComputerUseConfigChange(nodeId, rest);
+    } else {
+      onComputerUseConfigChange(nodeId, { ...config, vnc_host: value });
+    }
+  };
+
+  const handleVNCPortChange = (value: string) => {
+    const port = parseInt(value, 10);
+    if (value === "" || isNaN(port)) {
+      const { vnc_port: _, ...rest } = config;
+      onComputerUseConfigChange(nodeId, rest);
+    } else if (port > 0 && port <= 65535) {
+      onComputerUseConfigChange(nodeId, { ...config, vnc_port: port });
+    }
+  };
+
+  const handleVNCPasswordChange = (value: string) => {
+    if (value === "") {
+      const { vnc_password: _, ...rest } = config;
+      onComputerUseConfigChange(nodeId, rest);
+    } else {
+      onComputerUseConfigChange(nodeId, { ...config, vnc_password: value });
+    }
+  };
+
+  const handleNoVNCPortChange = (value: string) => {
+    const port = parseInt(value, 10);
+    if (value === "" || isNaN(port)) {
+      const { novnc_port: _, ...rest } = config;
+      onComputerUseConfigChange(nodeId, rest);
+    } else if (port > 0 && port <= 65535) {
+      onComputerUseConfigChange(nodeId, { ...config, novnc_port: port });
+    }
+  };
+
+  const isVNC = config.environment === "vnc";
+
   return (
     <>
       <label className={styles.nodeInspectorField}>
@@ -144,7 +185,7 @@ export const ComputerUseInspectorSection = ({
         </select>
       </label>
 
-      {!isSSH && (
+      {!isSSH && !isVNC && (
         <label className={styles.nodeInspectorField}>
           <span className={styles.nodeInspectorLabel}>
             URL de démarrage (optionnel)
@@ -231,10 +272,72 @@ export const ComputerUseInspectorSection = ({
         </>
       )}
 
+      {isVNC && (
+        <>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              Hote VNC
+              <HelpTooltip label="Adresse IP ou nom d'hote du serveur VNC." />
+            </span>
+            <input
+              type="text"
+              value={config.vnc_host || ""}
+              onChange={(event) => handleVNCHostChange(event.target.value)}
+              placeholder="192.168.1.100"
+            />
+          </label>
+
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              Port VNC
+              <HelpTooltip label="Port du serveur VNC (par defaut: 5900)." />
+            </span>
+            <input
+              type="number"
+              min="1"
+              max="65535"
+              value={config.vnc_port || 5900}
+              onChange={(event) => handleVNCPortChange(event.target.value)}
+              placeholder="5900"
+            />
+          </label>
+
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              Mot de passe VNC (optionnel)
+              <HelpTooltip label="Mot de passe pour l'authentification VNC. Laissez vide si aucun mot de passe n'est requis." />
+            </span>
+            <input
+              type="password"
+              value={config.vnc_password || ""}
+              onChange={(event) => handleVNCPasswordChange(event.target.value)}
+              placeholder="••••••••"
+            />
+          </label>
+
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              Port noVNC
+              <HelpTooltip label="Port pour l'interface web noVNC (par defaut: 6080). Ce port est utilise pour acceder au bureau distant via le navigateur." />
+            </span>
+            <input
+              type="number"
+              min="1"
+              max="65535"
+              value={config.novnc_port || 6080}
+              onChange={(event) => handleNoVNCPortChange(event.target.value)}
+              placeholder="6080"
+            />
+          </label>
+        </>
+      )}
+
       <p className={styles.nodeInspectorHintTextTight}>
         {isSSH
-          ? "Configure la connexion SSH pour permettre à Claude d'interagir avec un serveur distant via l'outil Computer Use."
-          : "Configure l'environnement de bureau virtuel pour permettre à Claude d'interagir avec un ordinateur via l'outil Computer Use."}
+          ? "Configure la connexion SSH pour permettre a Claude d'interagir avec un serveur distant via l'outil Computer Use."
+          : isVNC
+          ? "Configure la connexion VNC via noVNC pour permettre a Claude d'interagir avec un bureau distant via l'outil Computer Use."
+          : "Configure l'environnement de bureau virtuel pour permettre a Claude d'interagir avec un ordinateur via l'outil Computer Use."}
       </p>
     </>
   );

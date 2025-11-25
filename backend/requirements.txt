@@ -1,5 +1,6 @@
 # Core dependencies
 asyncssh
+novnc>=1.1.6
 openai-agents[litellm]
 # aiosip - Removed due to Python 3.11+ incompatibility (@asyncio.coroutine deprecated)
 # pjsua2  # PJSIP stack - Compiled from source in Dockerfile (avoid pip sdist issues)
