@@ -5,10 +5,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import type {
   ChatKitControl,
   ChatKitOptions,
-  StartScreenPrompt,
   ThreadItem,
   ActionConfig,
-  ComposerModel,
   UserMessageContent,
   VoiceSessionWidget,
 } from '../types';
@@ -20,16 +18,11 @@ import { AnnotationRenderer } from './AnnotationRenderer';
 import { ThreadHistory } from './ThreadHistory';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { DevToolsScreencast } from './DevToolsScreencast';
+import { Composer } from './Composer';
 import { useI18n } from '../../i18n/I18nProvider';
 import { LoadingIndicator } from './LoadingIndicator';
-import {
-  Attachment,
-  uploadAttachment,
-  createFilePreview,
-  generateAttachmentId,
-  validateFile
-} from '../api/attachments';
-import { ImageWithBlobUrl, COPY_FEEDBACK_DELAY_MS, TEXTAREA_MAX_HEIGHT_PX } from '../utils';
+import type { Attachment } from '../api/attachments';
+import { ImageWithBlobUrl, COPY_FEEDBACK_DELAY_MS } from '../utils';
 import './ChatKit.css';
 
 export interface ChatKitProps {
@@ -69,13 +62,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const activeScreencastRef = useRef<{ token: string; itemId: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const singleLineHeightRef = useRef<number | null>(null);
-  const [isMultiline, setIsMultiline] = useState(false);
-  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
-  const modelDropdownRef = useRef<HTMLDivElement>(null);
-  const modeChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const previousKeyboardOffsetRef = useRef(0);
   const lastUserMessageIdRef = useRef<string | null>(null);
@@ -91,68 +77,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     api,
   } = options;
 
-  const composerModels = composer?.models;
-
-  const availableModels = useMemo<ComposerModel[]>(() => {
-    if (!composerModels) return [];
-    return Array.isArray(composerModels)
-      ? composerModels
-      : composerModels.options || [];
-  }, [composerModels]);
-
-  const isModelSelectorEnabled = useMemo(
-    () => !!composerModels && (Array.isArray(composerModels) || !!composerModels.enabled),
-    [composerModels],
-  );
-
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isModelSelectorEnabled || availableModels.length === 0) {
-      setSelectedModelId(null);
-      return;
-    }
-
-    const currentModelExists = availableModels.some((model) => model.id === selectedModelId);
-    if (currentModelExists) return;
-
-    const defaultModel = availableModels.find((model) => model.default) ?? availableModels[0];
-    setSelectedModelId(defaultModel?.id ?? null);
-  }, [availableModels, isModelSelectorEnabled, selectedModelId]);
-
-  const inferenceOptions = useMemo(
-    () => (isModelSelectorEnabled && selectedModelId ? { model: selectedModelId } : undefined),
-    [isModelSelectorEnabled, selectedModelId],
-  );
-
-  const selectedModel = useMemo(
-    () => availableModels.find((model) => model.id === selectedModelId),
-    [availableModels, selectedModelId],
-  );
-
-  const sendMessageWithInference = useCallback(
-    (content: UserMessageContent[] | string) =>
-      control.sendMessage(content, inferenceOptions ? { inferenceOptions } : undefined),
-    [control, inferenceOptions],
-  );
-
   // Extract auth token from API headers for DevToolsScreencast
   const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
-
-  // Close model dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
-        setIsModelDropdownOpen(false);
-      }
-    };
-    if (isModelDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isModelDropdownOpen]);
 
   // Auto-scroll vers le bas
   useEffect(() => {
@@ -346,93 +272,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     };
   }, []);
 
-  // Ajuster automatiquement la hauteur du textarea
-  // Forcer le mode multiline quand le sélecteur de modèle est activé
-  const forceMultiline = isModelSelectorEnabled && availableModels.length > 0;
-
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    // Si le sélecteur de modèle est activé, forcer le mode multiline
-    if (forceMultiline) {
-      const form = textarea.closest('.chatkit-composer-form');
-      if (form) {
-        form.classList.add('is-multiline');
-        form.classList.remove('is-singleline');
-      }
-      // Ajuster la hauteur du textarea
-      textarea.style.height = 'auto';
-      const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${Math.min(Math.max(scrollHeight, 24), TEXTAREA_MAX_HEIGHT_PX)}px`;
-      return;
-    }
-
-    // Calculer la hauteur minimale basée sur le style réel du textarea
-    const styles = window.getComputedStyle(textarea);
-    const lineHeight = parseFloat(styles.lineHeight || '0');
-    const paddingTop = parseFloat(styles.paddingTop || '0');
-    const paddingBottom = parseFloat(styles.paddingBottom || '0');
-    const minHeight = lineHeight + paddingTop + paddingBottom;
-
-    if (singleLineHeightRef.current === null) {
-      singleLineHeightRef.current = minHeight;
-    }
-    const baseHeight = singleLineHeightRef.current;
-
-    // Pour détecter correctement le dépassement, mesurer avec la largeur du mode SINGLE-LINE
-    // pour le premier passage en multiline, puis utiliser la largeur effective en mode multiline
-    const form = textarea.closest('.chatkit-composer-form');
-    const lineHeightValue = lineHeight || 25.5;
-
-    const setModeClass = (mode: 'single' | 'multi') => {
-      if (!form) return;
-      if (mode === 'multi') {
-        form.classList.add('is-multiline');
-        form.classList.remove('is-singleline');
-      } else {
-        form.classList.add('is-singleline');
-        form.classList.remove('is-multiline');
-      }
-      // Forcer un reflow pour que le CSS soit appliqué avant la mesure
-      void form.offsetHeight;
-    };
-
-    const measureHeight = (mode: 'single' | 'multi') => {
-      setModeClass(mode);
-      textarea.style.height = 'auto';
-      return textarea.scrollHeight;
-    };
-
-    // Toujours mesurer la longueur de référence en mode single-line pour décider
-    // du passage/retour en multiline, puis prendre la mesure réelle du layout courant
-    const singleLineContentHeight = measureHeight('single');
-    const multilineContentHeight = measureHeight('multi');
-
-    // Restaurer le layout actuel immédiatement après la mesure
-    setModeClass(isMultiline ? 'multi' : 'single');
-
-    // Déterminer si on doit être en mode multiline avec hystérésis
-    const shouldBeMultiline = isMultiline
-      ? singleLineContentHeight > baseHeight + 2 // Revenir en single-line seulement quand ça tient sur une ligne de référence
-      : singleLineContentHeight > baseHeight + (lineHeightValue * 0.1); // Activer si déborde la largeur single-line
-
-    // Ajuster la hauteur immédiatement en fonction du contenu effectif
-    const nextHeight = Math.max(isMultiline ? multilineContentHeight : singleLineContentHeight, baseHeight);
-    textarea.style.height = `${Math.min(nextHeight, TEXTAREA_MAX_HEIGHT_PX)}px`;
-
-    // Changer le mode si nécessaire
-    if (shouldBeMultiline !== isMultiline) {
-      // Annuler le timeout précédent s'il existe
-      if (modeChangeTimeoutRef.current) {
-        clearTimeout(modeChangeTimeoutRef.current);
-        modeChangeTimeoutRef.current = null;
-      }
-
-      setIsMultiline(shouldBeMultiline);
-    }
-  }, [inputValue, isMultiline, forceMultiline]);
-
   // Ajuster le décalage du clavier virtuel sur mobile pour ne déplacer que le composer
   useEffect(() => {
     if (typeof window === 'undefined' || !window.visualViewport) return;
@@ -468,112 +307,32 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
   }, [keyboardOffset]);
 
-  // Gérer l'ajout de fichiers
-  const handleFileSelect = useCallback(async (files: FileList | null) => {
-    if (!files || !composer?.attachments?.enabled) return;
-
-    const config = composer.attachments;
-    const newAttachments: Attachment[] = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-
-      // Vérifier le nombre max
-      if (config.maxCount && attachments.length + newAttachments.length >= config.maxCount) {
-        break;
+  // Callback pour la soumission du Composer
+  const handleComposerSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[]) => {
+    // Construire le contenu du message
+    const content: UserMessageContent[] = [];
+    if (message) {
+      content.push({ type: 'input_text', text: message });
+    }
+    for (const att of uploadedAttachments) {
+      if (att.status === 'uploaded') {
+        content.push({
+          type: att.type as 'image' | 'file',
+          [att.type]: att.id,
+        } as UserMessageContent);
       }
-
-      // Valider le fichier
-      const validation = validateFile(file, config);
-      if (!validation.valid) {
-        console.error(`[ChatKit] File validation failed: ${validation.error}`);
-        continue;
-      }
-
-      const id = generateAttachmentId();
-      const preview = await createFilePreview(file);
-      const type = file.type.startsWith('image/') ? 'image' : 'file';
-
-      newAttachments.push({
-        id,
-        file,
-        type,
-        preview: preview || undefined,
-        status: 'pending',
-      });
     }
 
-    setAttachments(prev => [...prev, ...newAttachments]);
-  }, [attachments.length, composer?.attachments]);
+    // Envoyer le message
+    await control.sendMessage(content);
 
-  // Supprimer un attachment
-  const removeAttachment = useCallback((id: string) => {
-    setAttachments(prev => prev.filter(att => att.id !== id));
-  }, []);
-
-  // Soumettre le message
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const message = inputValue.trim();
-    const hasContent = message || attachments.length > 0;
-
-    if (!hasContent || control.isLoading) return;
-
-    try {
-      // Upload des attachments d'abord
-      if (attachments.length > 0 && options.api.url) {
-        for (const att of attachments) {
-          setAttachments(prev => prev.map(a =>
-            a.id === att.id ? { ...a, status: 'uploading' as const } : a
-          ));
-
-          try {
-            await uploadAttachment({
-              url: options.api.url,
-              headers: options.api.headers,
-              attachmentId: att.id,
-              file: att.file,
-            });
-
-            setAttachments(prev => prev.map(a =>
-              a.id === att.id ? { ...a, status: 'uploaded' as const } : a
-            ));
-          } catch (err) {
-            setAttachments(prev => prev.map(a =>
-              a.id === att.id ? { ...a, status: 'error' as const, error: String(err) } : a
-            ));
-          }
-        }
-      }
-
-      // Construire le contenu du message
-      const content = [];
-      if (message) {
-        content.push({ type: 'input_text' as const, text: message });
-      }
-      for (const att of attachments) {
-        if (att.status === 'uploaded') {
-          content.push({
-            type: att.type as 'image' | 'file',
-            [att.type]: att.id,
-          });
-        }
-      }
-
-      // Envoyer le message
-      await sendMessageWithInference(content as any);
-
-      // Réinitialiser le formulaire
-      setInputValue('');
-      setAttachments([]);
-    } catch (error) {
-      console.error('[ChatKit] Failed to send message:', error);
-    }
-  };
+    // Réinitialiser le formulaire
+    setInputValue('');
+    setAttachments([]);
+  }, [control]);
 
   const handlePromptClick = (prompt: string) => {
-    sendMessageWithInference(prompt);
+    control.sendMessage(prompt);
   };
 
   // Créer un nouveau thread
@@ -1242,141 +1001,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         </div>
       )}
 
-      {/* Attachments preview */}
-      {attachments.length > 0 && (
-        <div className="chatkit-attachments-preview">
-          {attachments.map(att => (
-            <div key={att.id} className={`chatkit-attachment chatkit-attachment-${att.status}`}>
-              {att.preview && <ImageWithBlobUrl src={att.preview} alt={att.file.name} />}
-              {!att.preview && (
-                <div className="chatkit-attachment-icon">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                  </svg>
-                </div>
-              )}
-              <div className="chatkit-attachment-name">{att.file.name}</div>
-              <button
-                className="chatkit-attachment-remove"
-                onClick={() => removeAttachment(att.id)}
-                aria-label="Remove"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Composer */}
-      <div className="chatkit-composer">
-        <form
-          onSubmit={handleSubmit}
-          className={`chatkit-composer-form ${isModelSelectorEnabled && availableModels.length > 0 ? 'is-multiline' : 'is-singleline'}`}
-        >
-          <div className="chatkit-input-area">
-            <textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => {
-                // Envoyer avec Entrée (sans Shift)
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  if (control.isLoading || isThreadDisabled) {
-                    return;
-                  }
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              placeholder={isThreadDisabled ? threadStatusMessage || '' : (composer?.placeholder || 'Posez votre question...')}
-              className="chatkit-input"
-              rows={1}
-              disabled={isThreadDisabled}
-            />
-          </div>
-          <div className="chatkit-composer-actions">
-            {isModelSelectorEnabled && availableModels.length > 0 && (
-              <div className="chatkit-model-selector" ref={modelDropdownRef}>
-                <button
-                  type="button"
-                  className="chatkit-model-dropdown-trigger"
-                  onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                  disabled={isThreadDisabled}
-                  aria-label="Sélectionner un modèle"
-                  aria-expanded={isModelDropdownOpen}
-                >
-                  <span className="chatkit-model-dropdown-selected">{selectedModel?.label || 'Modèle'}</span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                {isModelDropdownOpen && (
-                  <div className="chatkit-model-dropdown-menu">
-                    {availableModels.map((model) => (
-                      <button
-                        key={model.id}
-                        type="button"
-                        className={`chatkit-model-dropdown-item ${selectedModelId === model.id ? 'is-selected' : ''}`}
-                        onClick={() => {
-                          setSelectedModelId(model.id);
-                          setIsModelDropdownOpen(false);
-                        }}
-                      >
-                        <span className="chatkit-model-dropdown-label">{model.label}</span>
-                        {model.description && (
-                          <span className="chatkit-model-dropdown-description">{model.description}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            {(composer?.attachments?.enabled || composer?.attachments !== false) && (
-              <div className="chatkit-attach-wrapper">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept={composer?.attachments?.accept ? Object.values(composer.attachments.accept).flat().join(',') : undefined}
-                  onChange={(e) => handleFileSelect(e.target.files)}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  type="button"
-                  className="chatkit-attach-button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={control.isLoading || !composer?.attachments?.enabled || isThreadDisabled}
-                  aria-label="Joindre un fichier"
-                  title="Joindre un fichier"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                  </svg>
-                </button>
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={(!inputValue.trim() && attachments.length === 0) || control.isLoading || isThreadDisabled}
-              className="chatkit-submit"
-              aria-label="Envoyer"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="16 12 12 8 8 12"></polyline>
-                <line x1="12" y1="16" x2="12" y2="8"></line>
-              </svg>
-            </button>
-          </div>
-        </form>
-
-        {/* Disclaimer */}
-        {disclaimer && (
-          <div className="chatkit-disclaimer">{disclaimer.text}</div>
-        )}
-      </div>
+      <Composer
+        value={inputValue}
+        onChange={setInputValue}
+        attachments={attachments}
+        onAttachmentsChange={setAttachments}
+        onSubmit={handleComposerSubmit}
+        isLoading={control.isLoading}
+        isDisabled={isThreadDisabled}
+        disabledMessage={threadStatusMessage || undefined}
+        config={composer}
+        disclaimer={disclaimer?.text}
+        apiConfig={api.url ? { url: api.url, headers: api.headers } : undefined}
+      />
 
       {/* Thread History Modal */}
       {showHistory && (
