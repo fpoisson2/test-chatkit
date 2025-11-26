@@ -61,6 +61,48 @@ const isLikelyJson = (value: string): boolean => {
 };
 
 /**
+ * Helper to find attachment details by ID
+ */
+function findAttachment(
+  attachmentId: string,
+  attachments?: Array<{ id: string; name: string; mime_type: string; type: string }>
+) {
+  return attachments?.find(att => att.id === attachmentId);
+}
+
+/**
+ * Renders a file attachment with download link
+ */
+function FileAttachmentDisplay({
+  attachmentId,
+  attachment,
+}: {
+  attachmentId: string;
+  attachment?: { id: string; name: string; mime_type: string; type: string };
+}): JSX.Element {
+  const displayName = attachment?.name || attachmentId;
+  const downloadUrl = `/api/chatkit/attachments/${attachmentId}`;
+
+  return (
+    <a
+      href={downloadUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="chatkit-file chatkit-file-download"
+      title={`Télécharger ${displayName}`}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="12" y1="18" x2="12" y2="12"></line>
+        <polyline points="9 15 12 18 15 15"></polyline>
+      </svg>
+      <span className="chatkit-file-name">{displayName}</span>
+    </a>
+  );
+}
+
+/**
  * Renders a user message
  */
 function UserMessageContent({ item, theme }: { item: ThreadItem; theme?: string }): JSX.Element {
@@ -76,16 +118,27 @@ function UserMessageContent({ item, theme }: { item: ThreadItem; theme?: string 
           )}
           {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" />}
           {content.type === 'file' && (
-            <div className="chatkit-file">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-              </svg>
-              {content.file}
-            </div>
+            <FileAttachmentDisplay
+              attachmentId={content.file}
+              attachment={findAttachment(content.file, item.attachments)}
+            />
           )}
         </div>
       ))}
+      {/* Render any attachments not in content (legacy support) */}
+      {item.attachments && item.attachments.length > 0 && (
+        <div className="chatkit-attachments">
+          {item.attachments
+            .filter(att => !item.content.some(c => c.type === 'file' && c.file === att.id))
+            .map((att, idx) => (
+              <FileAttachmentDisplay
+                key={`att-${idx}`}
+                attachmentId={att.id}
+                attachment={att}
+              />
+            ))}
+        </div>
+      )}
       {item.quoted_text && (
         <div className="chatkit-quoted-text">
           <blockquote>{item.quoted_text}</blockquote>

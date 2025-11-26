@@ -94,6 +94,7 @@ export type {
   UserMessageFileContent,
   UserMessageTagContent,
   UserMessageContent,
+  MessageAttachment,
   UserMessageItem,
   SourceBase,
   URLSource,

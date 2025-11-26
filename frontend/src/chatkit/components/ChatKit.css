@@ -862,6 +862,34 @@
   flex-shrink: 0;
 }
 
+/* File download link */
+.chatkit-file-download {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.chatkit-file-download:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.chatkit-file-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Attachments container */
+.chatkit-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* ===== WORKFLOWS ===== */
 .chatkit-workflow {
   /* Reduce vertical spacing so workflow summaries sit closer to the surrounding messages */

@@ -32,12 +32,22 @@ export interface UserMessageTagContent {
 
 export type UserMessageContent = UserMessageTextContent | UserMessageImageContent | UserMessageFileContent | UserMessageTagContent;
 
+// ===== Types pour les pièces jointes =====
+
+export interface MessageAttachment {
+  id: string;
+  name: string;
+  mime_type: string;
+  type: 'file' | 'image';
+  upload_url?: string | null;
+}
+
 export interface UserMessageItem {
   type: 'user_message';
   id: string;
   content: UserMessageContent[];
   created_at: string;
-  attachments?: string[];
+  attachments?: MessageAttachment[];
   quoted_text?: string;
 }
 
