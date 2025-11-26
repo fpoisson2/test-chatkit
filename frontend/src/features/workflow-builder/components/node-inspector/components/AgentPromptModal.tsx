@@ -3,7 +3,7 @@
  * Allows viewing the prompt in a larger format with optional markdown rendering
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Modal } from '../../../../../components/Modal';
 import { MarkdownRenderer } from '../../../../../chatkit/components/MarkdownRenderer';
 import { useI18n } from '../../../../../i18n';
@@ -28,12 +28,15 @@ export function AgentPromptModal({
   const { t } = useI18n();
   const [viewMode, setViewMode] = useState<ViewMode>('edit');
   const [localValue, setLocalValue] = useState(value);
+  const prevIsOpenRef = useRef(false);
 
-  // Sync local value when modal opens with new value
-  React.useEffect(() => {
-    if (isOpen) {
+  // Sync local value only when modal opens (transition from closed to open)
+  // This prevents overwriting user edits when value prop changes during editing
+  useEffect(() => {
+    if (isOpen && !prevIsOpenRef.current) {
       setLocalValue(value);
     }
+    prevIsOpenRef.current = isOpen;
   }, [isOpen, value]);
 
   const handleSave = useCallback(() => {
