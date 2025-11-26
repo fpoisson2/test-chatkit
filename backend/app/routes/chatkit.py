@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -467,7 +467,7 @@ async def get_thread_image(
 async def upload_chatkit_attachment(
     attachment_id: str,
     request: Request,
-    file: UploadFile = File(...),
+    file: Annotated[UploadFile, File()],
     current_user: User = Depends(get_current_user),
 ):
     try:
