@@ -198,7 +198,7 @@ export function MyChat() {
     setActiveWorkflow: setAppearanceWorkflow,
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
-  const { openSidebar, setHideSidebar } = useAppLayout();
+  const { openSidebar, setHideSidebar, isSidebarOpen } = useAppLayout();
   const { loading: workflowsLoading, workflows, selectedWorkflowId: providerSelectedWorkflowId } = useWorkflowSidebar();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
@@ -707,10 +707,12 @@ export function MyChat() {
           header: { enabled: false },
         } : {
           header: {
-            leftAction: {
-              icon: "menu",
-              onClick: openSidebar,
-            },
+            ...(isSidebarOpen ? {} : {
+              leftAction: {
+                icon: "menu",
+                onClick: openSidebar,
+              },
+            }),
           },
         }),
         ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history ? {
