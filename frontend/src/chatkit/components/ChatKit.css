@@ -216,6 +216,52 @@
   background: rgba(var(--color-primary-rgb, 59, 130, 246), 0.15);
 }
 
+/* Full-screen drop overlay (covers entire chat area) */
+.chatkit.is-dragging {
+  position: relative;
+}
+
+.chatkit-fullscreen-drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--color-primary-rgb, 59, 130, 246), 0.08);
+  border: 3px dashed var(--color-primary, #3b82f6);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+
+.chatkit-fullscreen-drop-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-primary, #3b82f6);
+  font-size: 18px;
+  font-weight: 600;
+  padding: 32px;
+  background: var(--color-surface, #fff);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.chatkit-fullscreen-drop-overlay-content svg {
+  opacity: 0.9;
+}
+
+[data-theme="dark"] .chatkit-fullscreen-drop-overlay {
+  background: rgba(var(--color-primary-rgb, 59, 130, 246), 0.15);
+}
+
+[data-theme="dark"] .chatkit-fullscreen-drop-overlay-content {
+  background: var(--chatkit-dark-bg-secondary, #2a2a2a);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
 .chatkit-composer-form {
   display: grid;
   gap: 3px;

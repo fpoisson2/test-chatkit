@@ -19,7 +19,12 @@ import { MessageRenderer } from './MessageRenderer';
 import { Header } from './Header';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useScreencast } from '../hooks/useScreencast';
-import type { Attachment } from '../api/attachments';
+import {
+  Attachment,
+  validateFile,
+  createFilePreview,
+  generateAttachmentId,
+} from '../api/attachments';
 import { COPY_FEEDBACK_DELAY_MS } from '../utils';
 import './ChatKit.css';
 
@@ -42,6 +47,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const previousKeyboardOffsetRef = useRef(0);
   const lastUserMessageIdRef = useRef<string | null>(null);
   const formDataRef = useRef<FormData | null>(null);
+
+  // Drag and drop state for file uploads
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
 
   // Screencast management hook
   const {
@@ -133,6 +142,83 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       previousKeyboardOffsetRef.current = keyboardOffset;
     }
   }, [keyboardOffset]);
+
+  // Drag and drop handlers for file uploads (applied to the entire chat container)
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleFileDrop = useCallback(async (files: FileList) => {
+    if (!composer?.attachments?.enabled) return;
+
+    const attachConfig = composer.attachments;
+    const newAttachments: Attachment[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+
+      // Check max count
+      if (attachConfig.maxCount && attachments.length + newAttachments.length >= attachConfig.maxCount) {
+        break;
+      }
+
+      // Validate file
+      const validation = validateFile(file, attachConfig);
+      if (!validation.valid) {
+        console.error(`[ChatKit] File validation failed: ${validation.error}`);
+        continue;
+      }
+
+      const id = generateAttachmentId();
+      const preview = await createFilePreview(file);
+      const type = file.type.startsWith('image/') ? 'image' : 'file';
+
+      newAttachments.push({
+        id,
+        file,
+        type,
+        preview: preview || undefined,
+        status: 'pending',
+      });
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments(prev => [...prev, ...newAttachments]);
+    }
+  }, [composer?.attachments, attachments.length]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+
+    if (!composer?.attachments?.enabled) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFileDrop(files);
+    }
+  }, [composer?.attachments?.enabled, handleFileDrop]);
 
   // Callback pour la soumission du Composer
   const handleComposerSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[]) => {
@@ -321,13 +407,31 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   return (
     <div
-      className={`chatkit ${className || ''}`}
+      className={`chatkit ${className || ''}${isDragging ? ' is-dragging' : ''}`}
       style={{
         ...style,
         ['--chatkit-keyboard-offset' as const]: `${keyboardOffset}px`,
       }}
       data-theme={theme?.colorScheme}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
+      {/* Full-chat drop overlay */}
+      {isDragging && composer?.attachments?.enabled && (
+        <div className="chatkit-fullscreen-drop-overlay">
+          <div className="chatkit-fullscreen-drop-overlay-content">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>Déposez vos fichiers ici</span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <Header
         config={header}
