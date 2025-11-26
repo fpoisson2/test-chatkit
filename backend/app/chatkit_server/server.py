@@ -186,7 +186,24 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
     ) -> ResponseInputContentParam:
         """Convertir une pièce jointe en contenu compatible avec le modèle."""
 
+        logger.info(
+            "📎 attachment_to_message_content called: attachment_id=%s, "
+            "attachment_name=%s, mime_type=%s, open_attachment=%s, request_context=%s",
+            attachment.id,
+            getattr(attachment, "name", None),
+            getattr(attachment, "mime_type", None),
+            self._open_attachment is not None,
+            self._request_context is not None,
+        )
+
         if self._open_attachment is None or self._request_context is None:
+            logger.warning(
+                "📎 Falling back to text description for attachment %s: "
+                "open_attachment=%s, request_context=%s",
+                attachment.id,
+                self._open_attachment is not None,
+                self._request_context is not None,
+            )
             return self._describe_attachment_as_text(attachment)
 
         try:
@@ -213,12 +230,25 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
         data_url = f"data:{resolved_mime};base64,{b64_payload}"
 
         if resolved_mime.startswith("image/"):
+            logger.info(
+                "📎 Attachment %s converted to input_image: mime=%s, data_size=%d",
+                attachment.id,
+                resolved_mime,
+                len(data),
+            )
             return ResponseInputImageParam(
                 type="input_image",
                 detail="auto",
                 image_url=data_url,
             )
 
+        logger.info(
+            "📎 Attachment %s converted to input_file: mime=%s, filename=%s, data_size=%d",
+            attachment.id,
+            resolved_mime,
+            resolved_name,
+            len(data),
+        )
         return ResponseInputFileParam(
             type="input_file",
             file_data=data_url,
