@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -14,6 +15,14 @@ from chatkit.types import Attachment, AttachmentCreateParams, FileAttachment
 
 from .chatkit_server.context import ChatKitRequestContext
 from .chatkit_store import PostgresChatKitStore
+from .docx_converter import (
+    convert_docx_to_pdf,
+    get_pdf_filename,
+    get_pdf_mime_type,
+    is_docx_file,
+)
+
+logger = logging.getLogger(__name__)
 
 ATTACHMENT_STORAGE_DIR = Path(__file__).resolve().parent / "uploaded_attachments"
 ATTACHMENT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -152,10 +161,37 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
             await upload.close()
             self._pending.pop(attachment_id, None)
 
+        # Convertir les fichiers DOCX en PDF automatiquement
+        final_name = attachment.name
+        final_mime_type = attachment.mime_type
+        final_destination = destination
+
+        if is_docx_file(attachment.name, attachment.mime_type):
+            logger.info(f"Conversion DOCX détectée pour: {attachment.name}")
+            try:
+                pdf_destination = destination.with_suffix(".pdf")
+                await convert_docx_to_pdf(destination, pdf_destination)
+
+                # Supprimer le fichier DOCX original après conversion réussie
+                destination.unlink(missing_ok=True)
+
+                # Mettre à jour les métadonnées
+                final_name = get_pdf_filename(attachment.name)
+                final_mime_type = get_pdf_mime_type()
+                final_destination = pdf_destination
+
+                logger.info(f"DOCX converti en PDF: {final_name}")
+            except Exception as e:
+                # En cas d'échec de conversion, garder le fichier DOCX original
+                logger.warning(
+                    f"Échec de la conversion DOCX vers PDF pour {attachment.name}: {e}. "
+                    f"Le fichier DOCX original sera conservé."
+                )
+
         stored = FileAttachment(
             id=attachment.id,
-            name=attachment.name,
-            mime_type=attachment.mime_type,
+            name=final_name,
+            mime_type=final_mime_type,
             upload_url=None,
         )
         await self._store.save_attachment(stored, context)
