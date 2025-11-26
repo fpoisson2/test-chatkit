@@ -467,7 +467,7 @@ async def get_thread_image(
 async def upload_chatkit_attachment(
     attachment_id: str,
     request: Request,
-    file: Annotated[UploadFile, File()],
+    file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
     try:
