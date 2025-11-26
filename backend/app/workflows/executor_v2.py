@@ -14,7 +14,7 @@ import re
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from .handlers.factory import create_state_machine
@@ -29,6 +29,17 @@ class WorkflowMetrics:
     steps_count: int
     handler_calls: dict[str, int]
     errors: list[str]
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_cost: float = 0.0
+    agent_usage: dict[str, "TokenUsage"] = field(default_factory=dict)
+
+
+@dataclass
+class TokenUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost: float = 0.0
 
 if TYPE_CHECKING:  # pragma: no cover
     from chatkit.types import ThreadItem, ThreadStreamEvent, UserMessageItem
@@ -104,6 +115,114 @@ async def run_workflow_v2(
 
     start_time = time.time()
     handler_calls: defaultdict[str, int] = defaultdict(int)
+    total_usage = TokenUsage()
+    agent_usage: dict[str, TokenUsage] = {}
+
+    def _safe_int(value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    def _safe_float(value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _coerce_usage(raw_usage: Any) -> TokenUsage | None:
+        if raw_usage is None:
+            return None
+
+        if isinstance(raw_usage, TokenUsage):
+            return raw_usage
+
+        input_tokens = 0
+        output_tokens = 0
+        cost = 0.0
+
+        if isinstance(raw_usage, Mapping):
+            input_tokens = _safe_int(
+                raw_usage.get("input_tokens")
+                or raw_usage.get("prompt_tokens")
+                or raw_usage.get("promptTokens")
+            )
+            output_tokens = _safe_int(
+                raw_usage.get("output_tokens")
+                or raw_usage.get("completion_tokens")
+                or raw_usage.get("completionTokens")
+            )
+            cost = _safe_float(
+                raw_usage.get("cost")
+                or raw_usage.get("total_cost")
+                or raw_usage.get("response_cost")
+            )
+        else:
+            input_tokens = _safe_int(
+                getattr(raw_usage, "input_tokens", None)
+                or getattr(raw_usage, "prompt_tokens", None)
+            )
+            output_tokens = _safe_int(
+                getattr(raw_usage, "output_tokens", None)
+                or getattr(raw_usage, "completion_tokens", None)
+            )
+            cost = _safe_float(
+                getattr(raw_usage, "cost", None)
+                or getattr(raw_usage, "total_cost", None)
+                or getattr(raw_usage, "response_cost", None)
+            )
+
+        if input_tokens == 0 and output_tokens == 0 and cost == 0.0:
+            return None
+
+        return TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=cost,
+        )
+
+    def _pricing_for_model(model_name: str | None) -> Mapping[str, Any] | None:
+        if not model_name:
+            return None
+        pricing_map = get_settings().workflow_model_pricing
+        if not pricing_map:
+            return None
+        return pricing_map.get(model_name) or pricing_map.get(model_name.lower())
+
+    def _calculate_cost(model_name: str | None, usage: TokenUsage) -> float:
+        pricing = _pricing_for_model(model_name)
+        if not pricing:
+            return 0.0
+
+        input_rate = _safe_float(
+            pricing.get("input_cost_per_token")
+            or pricing.get("prompt_cost_per_token")
+            or pricing.get("prompt_token_cost")
+        )
+        output_rate = _safe_float(
+            pricing.get("output_cost_per_token")
+            or pricing.get("completion_cost_per_token")
+            or pricing.get("completion_token_cost")
+        )
+
+        return (usage.input_tokens * input_rate) + (usage.output_tokens * output_rate)
+
+    def _record_usage(agent_key: str, model_name: str | None, usage: TokenUsage | None) -> None:
+        if usage is None:
+            return
+
+        agent_identifier = agent_key or "unknown"
+        agent_metrics = agent_usage.setdefault(agent_identifier, TokenUsage())
+
+        agent_metrics.input_tokens += usage.input_tokens
+        agent_metrics.output_tokens += usage.output_tokens
+
+        computed_cost = usage.cost or _calculate_cost(model_name, usage)
+        agent_metrics.cost += computed_cost
+
+        total_usage.input_tokens += usage.input_tokens
+        total_usage.output_tokens += usage.output_tokens
+        total_usage.cost += computed_cost
 
     # Initialize runtime context (reuse existing logic)
     initialization = await initialize_runtime_context(
@@ -487,6 +606,8 @@ async def run_workflow_v2(
                 step_context=run_context if isinstance(run_context, Mapping) else None,
             )
 
+        agent_identifier = metadata_for_images.get("agent_key") or step_key
+
         # Handle instruction rendering
         raw_instructions = getattr(agent, "instructions", None)
         overridden_instructions: Any = None
@@ -508,6 +629,12 @@ async def run_workflow_v2(
 
         # Get provider binding
         provider_binding = agent_provider_bindings.get(context.current_slug)
+
+        model_name: str | None = getattr(agent, "model", None)
+        if provider_binding and not model_name:
+            model_name = getattr(provider_binding, "provider_id", None) or getattr(
+                provider_binding, "provider_slug", None
+            )
 
         # Connect MCP servers
         mcp_servers = getattr(agent, "mcp_servers", None)
@@ -610,6 +737,13 @@ async def run_workflow_v2(
                 async for event in stream_agent_response(agent_context, result):
                     if _should_forward_agent_event(event, suppress=suppress_stream_events):
                         await _emit_stream_event(event)
+                    usage_from_event = _coerce_usage(
+                        getattr(event, "usage", None)
+                        or getattr(event, "model_usage", None)
+                        or getattr(event, "usage_info", None)
+                    )
+                    if usage_from_event:
+                        _record_usage(agent_identifier, model_name, usage_from_event)
                     delta_text = _extract_delta(event)
                     if delta_text:
                         accumulated_text += delta_text
@@ -653,6 +787,13 @@ async def run_workflow_v2(
 
             # Update conversation history
             conversation_history.extend([item.to_input_item() for item in result.new_items])
+            usage_from_result = _coerce_usage(
+                getattr(result, "usage", None)
+                or getattr(getattr(result, "response", None), "usage", None)
+                or getattr(result, "model_usage", None)
+            )
+            if usage_from_result:
+                _record_usage(agent_identifier, model_name, usage_from_result)
             return result
         finally:
             # Cleanup MCP servers
@@ -744,7 +885,27 @@ async def run_workflow_v2(
         steps_count=len(steps),
         handler_calls=dict(handler_calls),
         errors=[],
+        input_tokens=total_usage.input_tokens,
+        output_tokens=total_usage.output_tokens,
+        total_cost=total_usage.cost,
+        agent_usage={
+            key: TokenUsage(
+                input_tokens=value.input_tokens,
+                output_tokens=value.output_tokens,
+                cost=value.cost,
+            )
+            for key, value in agent_usage.items()
+        },
     )
+
+    if metrics.input_tokens or metrics.output_tokens:
+        logger.info(
+            "Workflow %s usage: input_tokens=%s output_tokens=%s cost=$%.6f",
+            metrics.workflow_slug,
+            metrics.input_tokens,
+            metrics.output_tokens,
+            metrics.total_cost,
+        )
 
     return WorkflowRunSummary(
         steps=steps,
