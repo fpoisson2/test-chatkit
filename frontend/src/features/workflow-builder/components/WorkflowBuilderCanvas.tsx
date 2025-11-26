@@ -117,11 +117,29 @@ const WorkflowBuilderCanvas = ({
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   useEffect(() => {
     const mediaQuery = window.matchMedia("(pointer: coarse)");
+    const hoverQuery = window.matchMedia("(hover: none)");
+    const hasTouchPoints = navigator.maxTouchPoints > 0;
+
+    console.log("[WorkflowBuilder] Touch detection:", {
+      "pointer: coarse": mediaQuery.matches,
+      "hover: none": hoverQuery.matches,
+      "maxTouchPoints": navigator.maxTouchPoints,
+      "hasTouchPoints": hasTouchPoints,
+      "ontouchstart in window": "ontouchstart" in window,
+    });
+
     setIsTouchDevice(mediaQuery.matches);
-    const handler = (e: MediaQueryListEvent) => setIsTouchDevice(e.matches);
+    const handler = (e: MediaQueryListEvent) => {
+      console.log("[WorkflowBuilder] pointer:coarse changed:", e.matches);
+      setIsTouchDevice(e.matches);
+    };
     mediaQuery.addEventListener("change", handler);
     return () => mediaQuery.removeEventListener("change", handler);
   }, []);
+
+  // Log connectionRadius value
+  const connectionRadiusValue = isTouchDevice ? 50 : 20;
+  console.log("[WorkflowBuilder] connectionRadius:", connectionRadiusValue, "isTouchDevice:", isTouchDevice);
 
   // GraphContext - Graph state, handlers, and operations (Phase 5: expanded)
   const {
@@ -376,7 +394,7 @@ const WorkflowBuilderCanvas = ({
                     onConnect={onConnect}
                     defaultEdgeOptions={defaultEdgeOptions}
                     connectionLineStyle={connectionLineStyle}
-                    connectionRadius={isTouchDevice ? 50 : 20}
+                    connectionRadius={connectionRadiusValue}
                     nodesDraggable={!isMobileLayout}
                     selectionOnDrag={!isMobileLayout}
                     panOnDrag={isMobileLayout ? true : [1, 2]}
