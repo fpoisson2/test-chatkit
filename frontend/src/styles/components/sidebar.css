@@ -1844,6 +1844,7 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
   gap: calc(var(--spacing) * 3.5);
   text-align: center;
   width: 100%;
+  transition-duration: 0s;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__topline {
@@ -1851,6 +1852,7 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
   align-items: center;
   width: 100%;
   gap: calc(var(--spacing) * 2.5);
+  transition-duration: 0s;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand {
@@ -1860,6 +1862,7 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
   gap: calc(var(--spacing) * 3);
   flex: 0 0 auto;
   width: auto;
+  transition-duration: 0s;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand-mark {
@@ -1904,6 +1907,7 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+  transition-duration: 0s;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__app-switcher {
