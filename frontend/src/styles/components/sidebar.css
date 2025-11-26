@@ -1472,7 +1472,6 @@
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transition-delay: var(--chatkit-sidebar-open-duration);
 }
 
 .chatkit-sidebar__dismiss:focus-visible {
