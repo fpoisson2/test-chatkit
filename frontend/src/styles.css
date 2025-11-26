@@ -548,9 +548,40 @@ button {
   bottom: calc(var(--handle-size) * -0.5);
 }
 
+/* Mobile/Touch: increase handle size and add invisible touch padding for better accessibility */
+/* Apple recommends 44pt minimum touch targets */
+@media (hover: none) and (pointer: coarse) {
+  .react-flow__handle {
+    --handle-size: 28px;
+    --touch-padding: 10px;
+    width: var(--handle-size);
+    height: var(--handle-size);
+    border-width: 2px;
+    /* Use box-shadow to create larger visual feedback area */
+    box-shadow:
+      0 1px 3px rgba(15, 23, 42, 0.25),
+      0 0 0 var(--touch-padding) transparent;
+    /* Increase actual touch area with padding inside content-box */
+    position: relative;
+  }
+
+  /* Pseudo-element for larger invisible touch target */
+  .react-flow__handle::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+  }
+}
+
+/* Fallback for small screens that might not be touch devices */
 @media (max-width: 768px) {
   .react-flow__handle {
-    --handle-size: 22px;
+    --handle-size: 24px;
     width: var(--handle-size);
     height: var(--handle-size);
     border-width: 2px;

@@ -80,14 +80,29 @@
   border: 3px solid white;
   box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.2);
   transform: translate(-50%, -50%);
+  position: relative;
 }
 
+/* Mobile/Touch: larger touch targets for better accessibility (44px minimum recommended) */
 @media (hover: none) and (pointer: coarse) {
   .resizerHandle {
-    width: 22px;
-    height: 22px;
-    padding: 12px;
-    box-shadow: 0 0 0 8px rgba(168, 85, 247, 0.25);
+    width: 26px;
+    height: 26px;
+    padding: 14px;
+    border-width: 3px;
+    box-shadow: 0 0 0 10px rgba(168, 85, 247, 0.3);
+  }
+
+  /* Larger invisible touch target */
+  .resizerHandle::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 54px;
+    height: 54px;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
   }
 }
 
