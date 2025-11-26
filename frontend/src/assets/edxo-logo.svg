@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" fill="none">
+  <!-- E -->
+  <text x="0" y="32" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#9CA3AF">E</text>
+  <!-- D -->
+  <text x="22" y="32" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#9CA3AF">D</text>
+  <!-- Blue dot above x -->
+  <circle cx="68" cy="6" r="5" fill="#6B9FD4"/>
+  <!-- x -->
+  <text x="56" y="32" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#9CA3AF">x</text>
+  <!-- o -->
+  <text x="82" y="32" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#9CA3AF">o</text>
+</svg>
