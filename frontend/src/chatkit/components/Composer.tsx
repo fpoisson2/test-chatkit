@@ -4,14 +4,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ComposerModel, ChatKitOptions } from '../types';
 import { ImageWithBlobUrl, TEXTAREA_MAX_HEIGHT_PX, getFileTypeIcon } from '../utils';
-import {
-  Attachment,
-  uploadAttachment,
-  createAttachment,
-  createFilePreview,
-  generateAttachmentId,
-  validateFile
-} from '../api/attachments';
+import { Attachment, uploadAttachment, createAttachment } from '../api/attachments';
 
 /**
  * Télécharge un fichier en créant un lien de téléchargement
@@ -53,6 +46,10 @@ export interface ComposerProps {
     url: string;
     headers?: Record<string, string>;
   };
+  /** Gestion de la sélection de fichiers (drag-and-drop ou input) */
+  onFilesSelected: (files: FileList | null) => void;
+  /** Indique si un drag-and-drop de fichiers est en cours */
+  isDraggingFiles?: boolean;
 }
 
 export function Composer({
@@ -67,12 +64,12 @@ export function Composer({
   config,
   disclaimer,
   apiConfig,
+  onFilesSelected,
+  isDraggingFiles = false,
 }: ComposerProps): JSX.Element {
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragCounterRef = useRef(0);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -236,86 +233,10 @@ export function Composer({
     };
   }, [value, isMultiline, forceMultiline]);
 
-  // Gérer l'ajout de fichiers
-  const handleFileSelect = useCallback(async (files: FileList | null) => {
-    if (!files || !config?.attachments?.enabled) return;
-
-    const attachConfig = config.attachments;
-    const newAttachments: Attachment[] = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-
-      // Vérifier le nombre max
-      if (attachConfig.maxCount && attachments.length + newAttachments.length >= attachConfig.maxCount) {
-        break;
-      }
-
-      // Valider le fichier
-      const validation = validateFile(file, attachConfig);
-      if (!validation.valid) {
-        console.error(`[Composer] File validation failed: ${validation.error}`);
-        continue;
-      }
-
-      const id = generateAttachmentId();
-      const preview = await createFilePreview(file);
-      const type = file.type.startsWith('image/') ? 'image' : 'file';
-
-      newAttachments.push({
-        id,
-        file,
-        type,
-        preview: preview || undefined,
-        status: 'pending',
-      });
-    }
-
-    onAttachmentsChange([...attachments, ...newAttachments]);
-  }, [attachments, config?.attachments, onAttachmentsChange]);
-
   // Supprimer un attachment
   const removeAttachment = useCallback((id: string) => {
     onAttachmentsChange(attachments.filter(att => att.id !== id));
   }, [attachments, onAttachmentsChange]);
-
-  // Handlers pour le drag and drop
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current++;
-    if (e.dataTransfer.types.includes('Files')) {
-      setIsDragging(true);
-    }
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current--;
-    if (dragCounterRef.current === 0) {
-      setIsDragging(false);
-    }
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current = 0;
-    setIsDragging(false);
-
-    if (!config?.attachments?.enabled) return;
-
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      handleFileSelect(files);
-    }
-  }, [config?.attachments?.enabled, handleFileSelect]);
 
   // Soumettre le message
   const handleSubmit = async (e: React.FormEvent) => {
@@ -415,25 +336,8 @@ export function Composer({
       <div className="chatkit-composer">
         <form
           onSubmit={handleSubmit}
-          className={`chatkit-composer-form ${isModelSelectorEnabled && availableModels.length > 0 ? 'is-multiline' : 'is-singleline'}${attachments.length > 0 ? ' has-attachments' : ''}${isDragging ? ' is-dragging' : ''}`}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
+          className={`chatkit-composer-form ${isModelSelectorEnabled && availableModels.length > 0 ? 'is-multiline' : 'is-singleline'}${attachments.length > 0 ? ' has-attachments' : ''}${isDraggingFiles ? ' is-dragging' : ''}`}
         >
-          {/* Drop overlay */}
-          {isDragging && config?.attachments?.enabled && (
-            <div className="chatkit-drop-overlay">
-              <div className="chatkit-drop-overlay-content">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="17 8 12 3 7 8"></polyline>
-                  <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-                <span>Déposez vos fichiers ici</span>
-              </div>
-            </div>
-          )}
           {/* Attachments preview inside form */}
           {attachments.length > 0 && (
             <div className="chatkit-attachments-preview">
@@ -530,7 +434,7 @@ export function Composer({
                   type="file"
                   multiple
                   accept={config?.attachments?.accept ? Object.values(config.attachments.accept).flat().join(',') : undefined}
-                  onChange={(e) => handleFileSelect(e.target.files)}
+                  onChange={(e) => onFilesSelected(e.target.files)}
                   style={{ display: 'none' }}
                 />
                 <button

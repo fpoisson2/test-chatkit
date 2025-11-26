@@ -20,6 +20,7 @@ import { Header } from './Header';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useScreencast } from '../hooks/useScreencast';
 import type { Attachment } from '../api/attachments';
+import { createFilePreview, generateAttachmentId, validateFile } from '../api/attachments';
 import { COPY_FEEDBACK_DELAY_MS } from '../utils';
 import './ChatKit.css';
 
@@ -42,6 +43,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const previousKeyboardOffsetRef = useRef(0);
   const lastUserMessageIdRef = useRef<string | null>(null);
   const formDataRef = useRef<FormData | null>(null);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const dragCounterRef = useRef(0);
+  const attachmentsRef = useRef<Attachment[]>([]);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
 
   // Screencast management hook
   const {
@@ -67,6 +75,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     theme,
     api,
   } = options;
+
+  const attachmentsConfig = composer?.attachments;
+  const attachmentsEnabled = attachmentsConfig?.enabled === true;
 
   // Extract auth token from API headers for DevToolsScreencast
   const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
@@ -181,6 +192,80 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       options.onThreadChange({ threadId: null });
     }
   };
+
+  const handleFilesSelected = useCallback(async (files: FileList | null) => {
+    if (!attachmentsConfig?.enabled || !files || files.length === 0) {
+      return;
+    }
+
+    const filesArray = Array.from(files);
+    const newAttachments: Attachment[] = [];
+
+    for (const file of filesArray) {
+      if (attachmentsConfig.maxCount && attachmentsRef.current.length + newAttachments.length >= attachmentsConfig.maxCount) {
+        break;
+      }
+
+      const validation = validateFile(file, attachmentsConfig);
+      if (!validation.valid) {
+        console.error(`[ChatKit] File validation failed: ${validation.error}`);
+        continue;
+      }
+
+      const id = generateAttachmentId();
+      const preview = await createFilePreview(file);
+      const type = file.type.startsWith('image/') ? 'image' : 'file';
+
+      newAttachments.push({
+        id,
+        file,
+        type,
+        preview: preview || undefined,
+        status: 'pending',
+      });
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments([...attachmentsRef.current, ...newAttachments]);
+    }
+  }, [attachmentsConfig]);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (!attachmentsEnabled) return;
+
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDraggingFiles(true);
+    }
+  }, [attachmentsEnabled]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (!attachmentsEnabled) return;
+
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) {
+      setIsDraggingFiles(false);
+    }
+  }, [attachmentsEnabled]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (!attachmentsEnabled) return;
+  }, [attachmentsEnabled]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (!attachmentsEnabled) return;
+
+    dragCounterRef.current = 0;
+    setIsDraggingFiles(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesSelected(e.dataTransfer.files);
+    }
+  }, [attachmentsEnabled, handleFilesSelected]);
 
   // Copier le contenu d'un message
   const handleCopyMessage = (messageId: string, content: string) => {
@@ -327,7 +412,23 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         ['--chatkit-keyboard-offset' as const]: `${keyboardOffset}px`,
       }}
       data-theme={theme?.colorScheme}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
+      {isDraggingFiles && attachmentsEnabled && (
+        <div className="chatkit-drop-overlay chatkit-drop-overlay--full">
+          <div className="chatkit-drop-overlay-content">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>Déposez vos fichiers ici</span>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <Header
         config={header}
@@ -474,6 +575,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         config={composer}
         disclaimer={disclaimer?.text}
         apiConfig={api.url ? { url: api.url, headers: api.headers } : undefined}
+        onFilesSelected={handleFilesSelected}
+        isDraggingFiles={isDraggingFiles}
       />
 
       {/* Thread History Modal */}
