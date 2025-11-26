@@ -1848,6 +1848,10 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 .chatkit-sidebar--collapsed .chatkit-sidebar__logo-image {
   display: block;
   align-self: flex-start;
+  height: 28px;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__logo-image--compact {
   padding-left: 12px;
 }
 
@@ -1858,10 +1862,6 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
   letter-spacing: var(--font-tracking-tight);
   width: 100%;
   display: block;
-}
-
-.chatkit-sidebar--collapsed .chatkit-sidebar__logo-image {
-  height: 28px;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__switcher {
