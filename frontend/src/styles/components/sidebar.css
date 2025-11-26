@@ -1289,6 +1289,12 @@
   color: var(--text-color);
 }
 
+.chatkit-sidebar__logo-image {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+}
+
 @media (max-width: 1023px) {
   .chatkit-sidebar__topline {
     justify-content: center;
@@ -1307,6 +1313,10 @@
 
   .chatkit-sidebar__brand-title {
     width: 100%;
+  }
+
+  .chatkit-sidebar__logo-image {
+    height: 24px;
   }
 
   .chatkit-sidebar__actions {
@@ -1833,6 +1843,10 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
   letter-spacing: 0.12em;
   width: 100%;
   display: block;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__logo-image {
+  height: 22px;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__switcher {

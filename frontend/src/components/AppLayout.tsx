@@ -16,6 +16,7 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-
 import { useAuth } from "../auth";
 import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { ProfileMenu } from "./ProfileMenu";
+import edxoLogo from "../assets/edxo-logo.svg";
 import { Tooltip } from "./Tooltip";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import { useI18n } from "../i18n";
@@ -497,12 +498,11 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               <header className="chatkit-sidebar__header">
                 <div className="chatkit-sidebar__topline">
                   <div className="chatkit-sidebar__brand">
-                    <span className="chatkit-sidebar__brand-mark" aria-hidden="true">
-                      <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-                    </span>
-                    <span className="chatkit-sidebar__brand-title">
-                      {t("app.sidebar.brandTitle")}
-                    </span>
+                    <img
+                      src={edxoLogo}
+                      alt="EDxo"
+                      className="chatkit-sidebar__logo-image"
+                    />
                   </div>
                   <div className="chatkit-sidebar__actions">
                     {isSidebarOpen ? (
