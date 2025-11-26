@@ -1590,8 +1590,8 @@ button {
   background: transparent;
   border: none;
   color: var(--text-color);
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border-radius: 12px;
   cursor: pointer;
