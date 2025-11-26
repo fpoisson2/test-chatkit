@@ -259,6 +259,28 @@
   padding: 5px 6px 6px;
 }
 
+/* Form with attachments */
+.chatkit-composer-form.has-attachments {
+  grid-template-areas:
+    "attachments attachments attachments attachments"
+    "attach model input send";
+  grid-template-rows: auto auto;
+}
+
+.chatkit-composer-form.has-attachments.is-multiline {
+  grid-template-areas:
+    "attachments attachments attachments attachments"
+    "input input input input"
+    "attach model . send";
+  grid-template-rows: auto auto auto;
+}
+
+.chatkit-composer-form .chatkit-attachments-preview {
+  grid-area: attachments;
+  padding: 8px 8px 4px;
+  margin: 0;
+  border-bottom: none;
+}
 
 [data-theme="dark"] .chatkit-composer-form {
   background: var(--color-surface);
@@ -641,23 +663,17 @@
 
 /* Attachments */
 .chatkit-attachments-preview {
-  position: absolute;
-  bottom: 130px;
-  left: 0;
-  right: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
   overflow-x: auto;
-  background: var(--color-surface);
-  z-index: 9;
-  transform: translateY(calc(-1 * var(--chatkit-keyboard-offset)));
+  background: transparent;
 }
 
 [data-theme="dark"] .chatkit-attachments-preview {
-  border-top-color: var(--color-border-subtle);
-  background: var(--chatkit-dark-bg-primary);
+  border-bottom-color: var(--color-border-subtle);
 }
 
 .chatkit-attachment {
