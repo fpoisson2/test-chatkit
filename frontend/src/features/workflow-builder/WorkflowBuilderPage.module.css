@@ -440,26 +440,25 @@
 /* Mobile/Touch: larger touch targets for handles */
 @media (hover: none) and (pointer: coarse) {
   .flowViewport :global(.react-flow__handle) {
-    width: 32px !important;
-    height: 32px !important;
-    border-width: 3px !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 6px rgba(99, 102, 241, 0.25) !important;
+    width: 18px !important;
+    height: 18px !important;
+    border-width: 2px !important;
   }
 
   .flowViewport :global(.react-flow__handle-left) {
-    left: -16px !important;
+    left: -9px !important;
   }
 
   .flowViewport :global(.react-flow__handle-right) {
-    right: -16px !important;
+    right: -9px !important;
   }
 
   .flowViewport :global(.react-flow__handle-top) {
-    top: -16px !important;
+    top: -9px !important;
   }
 
   .flowViewport :global(.react-flow__handle-bottom) {
-    bottom: -16px !important;
+    bottom: -9px !important;
   }
 }
 .flowNode {
