@@ -245,7 +245,7 @@
   display: flex;
   flex-direction: column;
   gap: calc(var(--spacing) * 4);
-  padding: max(env(safe-area-inset-top), var(--chatkit-sidebar-content-padding-x)) var(--chatkit-sidebar-content-padding-x) calc(var(--spacing) * 4);
+  padding: max(env(safe-area-inset-top), 6px) 6px calc(var(--spacing) * 4);
   border-bottom: 1px solid var(--sidebar-border);
   position: sticky;
   top: 0;
@@ -1814,7 +1814,7 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__header {
   align-items: center;
-  padding-inline: 0;
+  padding-inline: 6px;
   gap: calc(var(--spacing) * 3.5);
   text-align: center;
 }
