@@ -246,6 +246,8 @@
   top: 0;
   z-index: 3;
   background: var(--sidebar-background);
+  transition: gap var(--chatkit-sidebar-open-duration) var(--cubic-enter),
+              padding var(--chatkit-sidebar-open-duration) var(--cubic-enter);
 }
 
 .chatkit-sidebar__switcher {
@@ -1241,6 +1243,7 @@
   align-items: center;
   justify-content: space-between;
   gap: calc(var(--spacing) * 4);
+  transition: gap var(--chatkit-sidebar-open-duration) var(--cubic-enter);
 }
 
 .chatkit-sidebar__actions {
@@ -1257,6 +1260,9 @@
   gap: calc(var(--spacing) * 3);
   min-width: 0;
   flex: 1 1 auto;
+  transition: flex var(--chatkit-sidebar-open-duration) var(--cubic-enter),
+              width var(--chatkit-sidebar-open-duration) var(--cubic-enter),
+              justify-content var(--chatkit-sidebar-open-duration) var(--cubic-enter);
 }
 
 .chatkit-sidebar__brand-mark {
@@ -1296,6 +1302,11 @@
   object-fit: contain;
   margin: 0;
   padding-left: 26px;
+  /* Prevent flicker during sidebar open transition */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
+  contain: layout style;
 }
 
 .chatkit-sidebar__logo-image--compact {
