@@ -1295,6 +1295,11 @@
   object-fit: contain;
   margin: 0;
   padding-left: 26px;
+  /* Prevent flicker during sidebar transitions by isolating the layer */
+  isolation: isolate;
+  contain: layout style;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .chatkit-sidebar__logo-image--compact {
