@@ -253,6 +253,7 @@
   flex-direction: column;
   gap: calc(var(--spacing) * 3);
   align-items: center;
+  padding-inline: 6px;
 }
 
 .chatkit-sidebar__dynamic {
