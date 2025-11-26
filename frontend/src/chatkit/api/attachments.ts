@@ -81,6 +81,9 @@ export async function uploadAttachment(options: {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
 
+    // Enable credentials for cross-origin requests (cookies, auth headers)
+    xhr.withCredentials = true;
+
     xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable && onProgress) {
         const progress = (e.loaded / e.total) * 100;
@@ -89,10 +92,11 @@ export async function uploadAttachment(options: {
     });
 
     xhr.addEventListener('load', () => {
+      console.log('[uploadAttachment] Response:', xhr.status, xhr.statusText, xhr.responseText);
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+        reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText} - ${xhr.responseText}`));
       }
     });
 
@@ -107,6 +111,7 @@ export async function uploadAttachment(options: {
     xhr.open('POST', finalUploadUrl);
 
     // Ajouter les headers SAUF Content-Type (le navigateur le définit automatiquement pour FormData)
+    console.log('[uploadAttachment] Headers to send:', Object.keys(headers).filter(k => k.toLowerCase() !== 'content-type'));
     Object.entries(headers).forEach(([key, value]) => {
       // Ne pas définir Content-Type pour les uploads FormData - le navigateur le fait automatiquement
       // avec la bonne boundary pour multipart/form-data
@@ -115,6 +120,7 @@ export async function uploadAttachment(options: {
       }
     });
 
+    console.log('[uploadAttachment] Sending FormData with file:', file.name, file.size, file.type);
     xhr.send(formData);
   });
 }
