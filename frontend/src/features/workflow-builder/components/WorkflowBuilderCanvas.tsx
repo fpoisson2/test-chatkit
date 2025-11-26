@@ -81,6 +81,7 @@ export interface MobileActionLabels {
 interface WorkflowBuilderCanvasProps {
   // Sidebar navigation
   openSidebar: () => void;
+  isSidebarOpen: boolean;
 
   // Render props (delegated rendering)
   renderHeaderControls: () => ReactNode;
@@ -100,6 +101,7 @@ interface WorkflowBuilderCanvasProps {
 const WorkflowBuilderCanvas = ({
   // Phase 5: Reduced to 10 props
   openSidebar,
+  isSidebarOpen,
   renderHeaderControls,
   renderWorkflowDescription,
   renderWorkflowPublicationReminder,
@@ -313,21 +315,23 @@ const WorkflowBuilderCanvas = ({
   return (
     <>
       <header style={headerStyle}>
-        <button
-          type="button"
-          onClick={openSidebar}
-          aria-label="Ouvrir la navigation générale"
-          style={headerNavigationButtonStyle}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path
-              d="M3 5h14M3 10h14M3 15h14"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
+        {!isSidebarOpen && (
+          <button
+            type="button"
+            onClick={openSidebar}
+            aria-label="Ouvrir la navigation générale"
+            style={headerNavigationButtonStyle}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path
+                d="M3 5h14M3 10h14M3 15h14"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        )}
         {renderHeaderControls()}
       </header>
 

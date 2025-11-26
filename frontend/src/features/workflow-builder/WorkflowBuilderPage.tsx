@@ -245,7 +245,7 @@ const WorkflowBuilderPage = () => {
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token],
   );
-  const { openSidebar, closeSidebar, isSidebarCollapsed } = useAppLayout();
+  const { openSidebar, closeSidebar, isSidebarCollapsed, isSidebarOpen } = useAppLayout();
 
   // Phase 4: Use contexts instead of local state
   const {
@@ -1580,6 +1580,7 @@ const WorkflowBuilderPage = () => {
             {/* Phase 5: WorkflowBuilderCanvas now uses contexts (21 → 10 props, -52%) */}
             <WorkflowBuilderCanvas
               openSidebar={openSidebar}
+              isSidebarOpen={isSidebarOpen}
               renderHeaderControls={renderHeaderControls}
               renderWorkflowDescription={renderWorkflowDescription}
               renderWorkflowPublicationReminder={renderWorkflowPublicationReminder}
