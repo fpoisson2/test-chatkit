@@ -22,6 +22,7 @@ import {
   FileSearch,
   Monitor,
   Image as ImageIcon,
+  Maximize2,
 } from 'lucide-react';
 
 import {
@@ -76,6 +77,7 @@ import {
 } from '../constants';
 import type { ModelSelectionMode, UserModelOption } from '../../../../../utils/workflows';
 import { ToolSettingsPanel } from './ToolSettingsPanel';
+import { AgentPromptModal } from '../components/AgentPromptModal';
 import styles from './AgentInspectorSectionV2.module.css';
 
 const DEFAULT_TAB = 'basic';
@@ -767,6 +769,7 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
   const [hostedWorkflowSlugValue, setHostedWorkflowSlugValue] = useState(
     nestedWorkflowSlug,
   );
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const hostedWorkflowSelectId = useId();
 
   const findHostedWorkflow = useCallback(
@@ -1025,13 +1028,31 @@ const BasicSettingsTab: React.FC<BasicSettingsTabProps> = ({
           required
           hint={t('workflowBuilder.agentInspector.messageHint')}
         >
-          <textarea
-            value={agentMessage}
-            onChange={(event) => onAgentMessageChange(nodeId, event.target.value)}
-            rows={8}
-            placeholder={t('workflowBuilder.agentInspector.messagePlaceholder')}
-          />
+          <div className={styles.textareaWithAction}>
+            <textarea
+              value={agentMessage}
+              onChange={(event) => onAgentMessageChange(nodeId, event.target.value)}
+              rows={8}
+              placeholder={t('workflowBuilder.agentInspector.messagePlaceholder')}
+            />
+            <button
+              type="button"
+              className={styles.expandButton}
+              onClick={() => setIsPromptModalOpen(true)}
+              title={t('workflowBuilder.agentInspector.promptModal.expand')}
+              aria-label={t('workflowBuilder.agentInspector.promptModal.expand')}
+            >
+              <Maximize2 size={16} />
+            </button>
+          </div>
         </Field>
+
+        <AgentPromptModal
+          isOpen={isPromptModalOpen}
+          onClose={() => setIsPromptModalOpen(false)}
+          value={agentMessage}
+          onChange={(value) => onAgentMessageChange(nodeId, value)}
+        />
 
         <InlineHelp
           title={t('workflowBuilder.agentInspector.systemPrompt.helpTitle')}
