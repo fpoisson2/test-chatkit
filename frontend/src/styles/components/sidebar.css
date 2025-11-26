@@ -1293,18 +1293,23 @@
   width: auto;
   object-fit: contain;
   margin: 0;
+  padding-left: 26px;
+}
+
+.chatkit-sidebar__logo-image--compact {
+  padding-left: 26px;
 }
 
 @media (max-width: 1023px) {
   .chatkit-sidebar__topline {
-    justify-content: center;
+    justify-content: flex-start;
     position: relative;
     padding-right: calc(var(--spacing) * 13);
   }
 
   .chatkit-sidebar__brand {
-    justify-content: center;
-    text-align: center;
+    justify-content: flex-start;
+    text-align: left;
   }
 
   .chatkit-sidebar__brand-mark {
@@ -1856,7 +1861,7 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__logo-image--compact {
-  padding-left: 12px;
+  padding-left: 26px;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand-title {
