@@ -450,9 +450,12 @@ export function Composer({
       // Phase 2: Upload the file to the server-provided URL
       const uploadedAttachments: Attachment[] = [...attachments];
 
+      console.log('[Composer] Starting submit with attachments:', attachments.length, 'apiConfig:', !!apiConfig?.url);
+
       if (attachments.length > 0 && apiConfig?.url) {
         for (let i = 0; i < attachments.length; i++) {
           const att = attachments[i];
+          console.log('[Composer] Processing attachment:', att.id, att.file.name, att.status);
 
           // Update status to uploading
           onAttachmentsChange(attachments.map(a =>
@@ -461,6 +464,7 @@ export function Composer({
 
           try {
             // Phase 1: Create attachment to get backend ID and upload URL
+            console.log('[Composer] Phase 1: Creating attachment on backend...');
             const createResponse = await createAttachment({
               url: apiConfig.url,
               headers: apiConfig.headers,
@@ -468,11 +472,13 @@ export function Composer({
               size: att.file.size,
               mimeType: att.file.type || 'application/octet-stream',
             });
+            console.log('[Composer] Phase 1 response:', createResponse);
 
             const backendId = createResponse.id;
             const uploadUrl = createResponse.upload_url;
 
             // Phase 2: Upload the file using the backend-provided URL
+            console.log('[Composer] Phase 2: Uploading file to:', uploadUrl || 'fallback URL');
             await uploadAttachment({
               url: apiConfig.url,
               headers: apiConfig.headers,
@@ -480,6 +486,7 @@ export function Composer({
               file: att.file,
               uploadUrl: uploadUrl,
             });
+            console.log('[Composer] Phase 2 complete, backendId:', backendId);
 
             // Update the attachment with the backend ID and mark as uploaded
             uploadedAttachments[i] = {
@@ -503,6 +510,7 @@ export function Composer({
 
       // Submit the message with attachments that have backend IDs
       const successfulAttachments = uploadedAttachments.filter(a => a.status === 'uploaded');
+      console.log('[Composer] Submitting message with', successfulAttachments.length, 'successful attachments:', successfulAttachments.map(a => ({ id: a.id, status: a.status })));
       await onSubmit(message, successfulAttachments);
     } catch (error) {
       console.error('[Composer] Failed to send message:', error);
