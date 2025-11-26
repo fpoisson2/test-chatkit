@@ -198,6 +198,19 @@
   pointer-events: none;
 }
 
+.chatkit-drop-overlay--full {
+  inset: 0;
+  border-radius: 16px;
+  backdrop-filter: blur(2px);
+}
+
+.chatkit-drop-overlay--full .chatkit-drop-overlay-content {
+  background: rgba(var(--color-surface-rgb, 255, 255, 255), 0.92);
+  padding: 16px 20px;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
 .chatkit-drop-overlay-content {
   display: flex;
   flex-direction: column;
