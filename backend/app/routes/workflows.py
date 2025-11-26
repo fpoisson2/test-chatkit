@@ -182,12 +182,12 @@ async def replace_workflow_viewports(
     )
 
 
+@limiter.limit(get_rate_limit("api_write"))
 @router.post(
     "/api/workflows",
     response_model=WorkflowDefinitionResponse,
     status_code=status.HTTP_201_CREATED,
 )
-@limiter.limit(get_rate_limit("api_write"))
 async def create_workflow(
     payload: WorkflowCreateRequest,
     request: Request,
