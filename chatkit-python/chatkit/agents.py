@@ -1516,254 +1516,80 @@ async def stream_agent_response(
             # For other errors, re-raise
             raise
 
-        try:
-            async for event in _merge_generators(safe_stream_events(), queue_iterator):
-            
-                usage_details = _event_attr(event, "usage") or _event_attr(
-                    event, "response_usage"
-                )
-                if usage_details is None:
-                    usage_details = _event_attr(event, "model_usage")
+    try:
+        async for event in _merge_generators(safe_stream_events(), queue_iterator):
+        
+            usage_details = _event_attr(event, "usage") or _event_attr(
+                event, "response_usage"
+            )
+            if usage_details is None:
+                usage_details = _event_attr(event, "model_usage")
 
-                if usage_details is not None:
-                    try:
-                        setattr(event, "usage", usage_details)
-                    except Exception:
-                        LOGGER.debug("Unable to attach usage to event %s", event)
+            if usage_details is not None:
+                try:
+                    setattr(event, "usage", usage_details)
+                except Exception:
+                    LOGGER.debug("Unable to attach usage to event %s", event)
 
-                # Events emitted from agent context helpers
-                if isinstance(event, _EventWrapper):
-                    event = event.event
+            # Events emitted from agent context helpers
+            if isinstance(event, _EventWrapper):
+                event = event.event
+                if (
+                    event.type == "thread.item.added"
+                    or event.type == "thread.item.done"
+                ):
+                    # End the current workflow if visual item is added after it
+                    if (
+                        ctx.workflow_item
+                        and ctx.workflow_item.id != event.item.id
+                        and event.item.type != "client_tool_call"
+                        and event.item.type != "hidden_context_item"
+                    ):
+                        yield end_workflow(ctx.workflow_item)
+
+                    # track the current workflow if one is added
                     if (
                         event.type == "thread.item.added"
-                        or event.type == "thread.item.done"
+                        and event.item.type == "workflow"
                     ):
-                        # End the current workflow if visual item is added after it
-                        if (
-                            ctx.workflow_item
-                            and ctx.workflow_item.id != event.item.id
-                            and event.item.type != "client_tool_call"
-                            and event.item.type != "hidden_context_item"
-                        ):
-                            yield end_workflow(ctx.workflow_item)
+                        ctx.workflow_item = event.item
+                        search_tasks.clear()
+                        image_tasks.clear()
+                        function_tasks.clear()
+                        function_tasks_by_call_id.clear()
 
-                        # track the current workflow if one is added
-                        if (
-                            event.type == "thread.item.added"
-                            and event.item.type == "workflow"
-                        ):
-                            ctx.workflow_item = event.item
-                            search_tasks.clear()
-                            image_tasks.clear()
-                            function_tasks.clear()
-                            function_tasks_by_call_id.clear()
+                    # track integration produced items so we can clean them up if
+                    # there is a guardrail tripwire
+                    produced_items.add(event.item.id)
+                yield event
+                continue
 
-                        # track integration produced items so we can clean them up if
-                        # there is a guardrail tripwire
-                        produced_items.add(event.item.id)
-                    yield event
-                    continue
-
-                if event.type == "run_item_stream_event":
-                    run_item_event = event
-                    event_item = run_item_event.item
-                    if (
-                        run_item_event.name == "tool_called"
-                        and event_item.type == "tool_call_item"
-                    ):
-                        raw_item = event_item.raw_item
-                        if _get_value(raw_item, "type") == "function_call":
-                            current_tool_call = _get_value(raw_item, "call_id")
-                            current_item_id = _get_value(raw_item, "id")
-                            if current_item_id:
-                                produced_items.add(current_item_id)
-                            tracker, task_added, workflow_events = ensure_function_task(
-                                _get_value(raw_item, "id") or "",
-                                name=_get_value(raw_item, "name"),
-                                call_id=_get_value(raw_item, "call_id"),
-                            )
-                            for workflow_event in workflow_events:
-                                yield workflow_event
-                            updated = apply_function_task_updates(
-                                tracker,
-                                status=_get_value(raw_item, "status"),
-                                arguments=_get_value(raw_item, "arguments"),
-                                name=_get_value(raw_item, "name"),
-                            )
-                            if ctx.workflow_item and (task_added or updated):
-                                task_index = ctx.workflow_item.workflow.tasks.index(
-                                    tracker.task
-                                )
-                                update_cls = (
-                                    WorkflowTaskAdded if task_added else WorkflowTaskUpdated
-                                )
-                                yield ThreadItemUpdated(
-                                    item_id=ctx.workflow_item.id,
-                                    update=update_cls(
-                                        task=tracker.task,
-                                        task_index=task_index,
-                                    ),
-                                )
-                        elif _get_value(raw_item, "type") == "web_search_call":
-                            for search_event in upsert_search_task(
-                                cast(ResponseFunctionWebSearch, raw_item),
-                                status="loading",
-                            ):
-                                yield search_event
-                        elif _get_value(raw_item, "type") == "computer_call":
-                            call_id = _get_value(raw_item, "call_id")
-                            item_id = _get_value(raw_item, "id") or ""
-                            if item_id:
-                                produced_items.add(item_id)
-                            tracker, task_added, workflow_events = ensure_computer_task(
-                                item_id,
-                                call_id=call_id,
-                            )
-                            for workflow_event in workflow_events:
-                                yield workflow_event
-                            updated = apply_computer_call_updates(
-                                tracker,
-                                cast(ResponseComputerToolCall, raw_item),
-                            )
-                            if ctx.workflow_item and (task_added or updated):
-                                task_index = ctx.workflow_item.workflow.tasks.index(
-                                    tracker.task
-                                )
-                                update_cls = (
-                                    WorkflowTaskAdded if task_added else WorkflowTaskUpdated
-                                )
-                                yield ThreadItemUpdated(
-                                    item_id=ctx.workflow_item.id,
-                                    update=update_cls(
-                                        task=tracker.task,
-                                        task_index=task_index,
-                                    ),
-                                )
-                    elif (
-                        run_item_event.name == "tool_output"
-                        and event_item.type == "tool_call_output_item"
-                    ):
-                        raw_item = event_item.raw_item
-                        call_id = _get_value(raw_item, "call_id")
-                        tracker = get_function_task_by_call_id(call_id)
-                        if tracker is not None:
-                            status = _get_value(raw_item, "status")
-                            updated = apply_function_task_updates(
-                                tracker,
-                                status=status,
-                                output=getattr(event_item, "output", None),
-                            )
-                            if ctx.workflow_item and updated:
-                                task_index = ctx.workflow_item.workflow.tasks.index(
-                                    tracker.task
-                                )
-                                yield ThreadItemUpdated(
-                                    item_id=ctx.workflow_item.id,
-                                    update=WorkflowTaskUpdated(
-                                        task=tracker.task,
-                                        task_index=task_index,
-                                    ),
-                                )
-                        elif _get_value(raw_item, "type") == "computer_call_output":
-                            tracker = get_computer_task_by_call_id(call_id)
-                            if tracker is not None:
-                                status = _get_value(raw_item, "status")
-                                updated = apply_computer_output_updates(
-                                    tracker,
-                                    call_id=call_id,
-                                    status=status,
-                                    raw_output=_get_value(raw_item, "output"),
-                                    parsed_output=getattr(event_item, "output", None),
-                                )
-                                if ctx.workflow_item and updated:
-                                    task_index = ctx.workflow_item.workflow.tasks.index(
-                                        tracker.task
-                                    )
-                                    yield ThreadItemUpdated(
-                                        item_id=ctx.workflow_item.id,
-                                        update=WorkflowTaskUpdated(
-                                            task=tracker.task,
-                                            task_index=task_index,
-                                        ),
-                                    )
-                    continue
-
-                if event.type != "raw_response_event":
-                    # Ignore everything else that isn't a raw response event
-                    continue
-
-                # Handle Responses events
-                event = event.data
-                if event.type == "response.content_part.added":
-                    if event.part.type == "reasoning_text":
-                        continue
-                    content = _convert_content(event.part)
-                    yield ThreadItemUpdated(
-                        item_id=event.item_id,
-                        update=AssistantMessageContentPartAdded(
-                            content_index=event.content_index,
-                            content=content,
-                        ),
-                    )
-                elif event.type == "response.output_text.delta":
-                    yield ThreadItemUpdated(
-                        item_id=event.item_id,
-                        update=AssistantMessageContentPartTextDelta(
-                            content_index=event.content_index,
-                            delta=event.delta,
-                        ),
-                    )
-                elif event.type == "response.output_text.done":
-                    yield ThreadItemUpdated(
-                        item_id=event.item_id,
-                        update=AssistantMessageContentPartDone(
-                            content_index=event.content_index,
-                            content=AssistantMessageContent(
-                                text=event.text,
-                                annotations=[],
-                            ),
-                        ),
-                    )
-                elif event.type == "response.output_text.annotation.added":
-                    # Ignore annotation-added events; annotations are reflected in the final item content.
-                    continue
-                elif event.type == "response.output_item.added":
-                    item = event.item
-                    if item.type == "reasoning" and not ctx.workflow_item:
-                        for workflow_event in ensure_workflow():
-                            yield workflow_event
-                        # Store the reasoning ID to associate with the next message
-                        current_reasoning_id = item.id
-                    if item.type == "message":
-                        if ctx.workflow_item:
-                            yield end_workflow(ctx.workflow_item)
-                        produced_items.add(item.id)
-                        yield ThreadItemAddedEvent(
-                            item=AssistantMessageItem(
-                                # Reusing the Responses message ID
-                                id=item.id,
-                                thread_id=thread.id,
-                                content=[_convert_content(c) for c in item.content],
-                                created_at=datetime.now(),
-                                reasoning_id=current_reasoning_id,
-                            ),
-                        )
-                        # Reset the reasoning_id after associating it with the message
-                        current_reasoning_id = None
-                    elif item.type == "function_call":
+            if event.type == "run_item_stream_event":
+                run_item_event = event
+                event_item = run_item_event.item
+                if (
+                    run_item_event.name == "tool_called"
+                    and event_item.type == "tool_call_item"
+                ):
+                    raw_item = event_item.raw_item
+                    if _get_value(raw_item, "type") == "function_call":
+                        current_tool_call = _get_value(raw_item, "call_id")
+                        current_item_id = _get_value(raw_item, "id")
+                        if current_item_id:
+                            produced_items.add(current_item_id)
                         tracker, task_added, workflow_events = ensure_function_task(
-                            item.id,
-                            name=getattr(item, "name", None),
-                            call_id=getattr(item, "call_id", None),
+                            _get_value(raw_item, "id") or "",
+                            name=_get_value(raw_item, "name"),
+                            call_id=_get_value(raw_item, "call_id"),
                         )
+                        for workflow_event in workflow_events:
+                            yield workflow_event
                         updated = apply_function_task_updates(
                             tracker,
-                            status=getattr(item, "status", None),
-                            arguments=getattr(item, "arguments", None),
-                            name=getattr(item, "name", None),
+                            status=_get_value(raw_item, "status"),
+                            arguments=_get_value(raw_item, "arguments"),
+                            name=_get_value(raw_item, "name"),
                         )
-                        for workflow_event in workflow_events:
-                            yield workflow_event
                         if ctx.workflow_item and (task_added or updated):
                             task_index = ctx.workflow_item.workflow.tasks.index(
                                 tracker.task
@@ -1778,103 +1604,27 @@ async def stream_agent_response(
                                     task_index=task_index,
                                 ),
                             )
-                        produced_items.add(item.id)
-                    elif item.type == "function_call_output":
-                        tracker = get_function_task_by_call_id(
-                            getattr(item, "call_id", None)
-                        )
-                        if tracker:
-                            updated = apply_function_task_updates(
-                                tracker,
-                                output=getattr(item, "output", None),
-                                status=getattr(item, "status", None),
-                            )
-                            if ctx.workflow_item and updated:
-                                task_index = ctx.workflow_item.workflow.tasks.index(
-                                    tracker.task
-                                )
-                                yield ThreadItemUpdated(
-                                    item_id=ctx.workflow_item.id,
-                                    update=WorkflowTaskUpdated(
-                                        task=tracker.task,
-                                        task_index=task_index,
-                                    ),
-                                )
-                    elif item.type == "computer_call":
-                        tracker, task_added, workflow_events = ensure_computer_task(
-                            item.id,
-                            call_id=getattr(item, "call_id", None),
-                        )
-                        updated = apply_computer_call_updates(
-                            tracker,
-                            cast(ResponseComputerToolCall, item),
-                        )
-                        for workflow_event in workflow_events:
-                            yield workflow_event
-                        if ctx.workflow_item and (task_added or updated):
-                            task_index = ctx.workflow_item.workflow.tasks.index(
-                                tracker.task
-                            )
-                            update_cls = (
-                                WorkflowTaskAdded if task_added else WorkflowTaskUpdated
-                            )
-                            yield ThreadItemUpdated(
-                                item_id=ctx.workflow_item.id,
-                                update=update_cls(
-                                    task=tracker.task,
-                                    task_index=task_index,
-                                ),
-                            )
-                        produced_items.add(item.id)
-                    elif item.type == "computer_call_output":
-                        tracker = get_computer_task_by_call_id(
-                            getattr(item, "call_id", None)
-                        )
-                        if tracker:
-                            updated = apply_computer_output_updates(
-                                tracker,
-                                call_id=getattr(item, "call_id", None),
-                                status=getattr(item, "status", None),
-                                raw_output=getattr(item, "output", None),
-                            )
-                            if ctx.workflow_item and updated:
-                                task_index = ctx.workflow_item.workflow.tasks.index(
-                                    tracker.task
-                                )
-                                yield ThreadItemUpdated(
-                                    item_id=ctx.workflow_item.id,
-                                    update=WorkflowTaskUpdated(
-                                        task=tracker.task,
-                                        task_index=task_index,
-                                    ),
-                                )
-                    elif item.type == "web_search_call":
+                    elif _get_value(raw_item, "type") == "web_search_call":
                         for search_event in upsert_search_task(
-                            cast(ResponseFunctionWebSearch, item)
+                            cast(ResponseFunctionWebSearch, raw_item),
+                            status="loading",
                         ):
                             yield search_event
-                    elif item.type == "image_generation_call":
-                        tracker, task_added, workflow_events = ensure_image_task(
-                            item.id, event.output_index
-                        )
-                        tracker.task.call_id = item.id
-                        tracker.task.output_index = event.output_index
-                        status = "complete" if item.status == "completed" else "loading"
-                        payload_b64, payload_url, payload_format = _extract_image_payload(
-                            getattr(item, "result", None),
-                            output_index=event.output_index,
-                        )
-                        updated = apply_image_task_updates(
-                            tracker,
-                            status=status,
-                            final_b64=payload_b64 if status == "complete" else None,
-                            final_url=payload_url if status == "complete" else None,
-                            partial_b64=payload_b64 if status != "complete" else None,
-                            partial_url=payload_url if status != "complete" else None,
-                            output_format=payload_format,
+                    elif _get_value(raw_item, "type") == "computer_call":
+                        call_id = _get_value(raw_item, "call_id")
+                        item_id = _get_value(raw_item, "id") or ""
+                        if item_id:
+                            produced_items.add(item_id)
+                        tracker, task_added, workflow_events = ensure_computer_task(
+                            item_id,
+                            call_id=call_id,
                         )
                         for workflow_event in workflow_events:
                             yield workflow_event
+                        updated = apply_computer_call_updates(
+                            tracker,
+                            cast(ResponseComputerToolCall, raw_item),
+                        )
                         if ctx.workflow_item and (task_added or updated):
                             task_index = ctx.workflow_item.workflow.tasks.index(
                                 tracker.task
@@ -1889,16 +1639,135 @@ async def stream_agent_response(
                                     task_index=task_index,
                                 ),
                             )
-                        produced_items.add(item.id)
-                elif event.type == "response.image_generation_call.in_progress":
-                    tracker, task_added, workflow_events = ensure_image_task(
-                        event.item_id, event.output_index
+                elif (
+                    run_item_event.name == "tool_output"
+                    and event_item.type == "tool_call_output_item"
+                ):
+                    raw_item = event_item.raw_item
+                    call_id = _get_value(raw_item, "call_id")
+                    tracker = get_function_task_by_call_id(call_id)
+                    if tracker is not None:
+                        status = _get_value(raw_item, "status")
+                        updated = apply_function_task_updates(
+                            tracker,
+                            status=status,
+                            output=getattr(event_item, "output", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                    elif _get_value(raw_item, "type") == "computer_call_output":
+                        tracker = get_computer_task_by_call_id(call_id)
+                        if tracker is not None:
+                            status = _get_value(raw_item, "status")
+                            updated = apply_computer_output_updates(
+                                tracker,
+                                call_id=call_id,
+                                status=status,
+                                raw_output=_get_value(raw_item, "output"),
+                                parsed_output=getattr(event_item, "output", None),
+                            )
+                            if ctx.workflow_item and updated:
+                                task_index = ctx.workflow_item.workflow.tasks.index(
+                                    tracker.task
+                                )
+                                yield ThreadItemUpdated(
+                                    item_id=ctx.workflow_item.id,
+                                    update=WorkflowTaskUpdated(
+                                        task=tracker.task,
+                                        task_index=task_index,
+                                    ),
+                                )
+                continue
+
+            if event.type != "raw_response_event":
+                # Ignore everything else that isn't a raw response event
+                continue
+
+            # Handle Responses events
+            event = event.data
+            if event.type == "response.content_part.added":
+                if event.part.type == "reasoning_text":
+                    continue
+                content = _convert_content(event.part)
+                yield ThreadItemUpdated(
+                    item_id=event.item_id,
+                    update=AssistantMessageContentPartAdded(
+                        content_index=event.content_index,
+                        content=content,
+                    ),
+                )
+            elif event.type == "response.output_text.delta":
+                yield ThreadItemUpdated(
+                    item_id=event.item_id,
+                    update=AssistantMessageContentPartTextDelta(
+                        content_index=event.content_index,
+                        delta=event.delta,
+                    ),
+                )
+            elif event.type == "response.output_text.done":
+                yield ThreadItemUpdated(
+                    item_id=event.item_id,
+                    update=AssistantMessageContentPartDone(
+                        content_index=event.content_index,
+                        content=AssistantMessageContent(
+                            text=event.text,
+                            annotations=[],
+                        ),
+                    ),
+                )
+            elif event.type == "response.output_text.annotation.added":
+                # Ignore annotation-added events; annotations are reflected in the final item content.
+                continue
+            elif event.type == "response.output_item.added":
+                item = event.item
+                if item.type == "reasoning" and not ctx.workflow_item:
+                    for workflow_event in ensure_workflow():
+                        yield workflow_event
+                    # Store the reasoning ID to associate with the next message
+                    current_reasoning_id = item.id
+                if item.type == "message":
+                    if ctx.workflow_item:
+                        yield end_workflow(ctx.workflow_item)
+                    produced_items.add(item.id)
+                    yield ThreadItemAddedEvent(
+                        item=AssistantMessageItem(
+                            # Reusing the Responses message ID
+                            id=item.id,
+                            thread_id=thread.id,
+                            content=[_convert_content(c) for c in item.content],
+                            created_at=datetime.now(),
+                            reasoning_id=current_reasoning_id,
+                        ),
                     )
-                    updated = apply_image_task_updates(tracker, status="loading")
+                    # Reset the reasoning_id after associating it with the message
+                    current_reasoning_id = None
+                elif item.type == "function_call":
+                    tracker, task_added, workflow_events = ensure_function_task(
+                        item.id,
+                        name=getattr(item, "name", None),
+                        call_id=getattr(item, "call_id", None),
+                    )
+                    updated = apply_function_task_updates(
+                        tracker,
+                        status=getattr(item, "status", None),
+                        arguments=getattr(item, "arguments", None),
+                        name=getattr(item, "name", None),
+                    )
                     for workflow_event in workflow_events:
                         yield workflow_event
                     if ctx.workflow_item and (task_added or updated):
-                        task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            tracker.task
+                        )
                         update_cls = (
                             WorkflowTaskAdded if task_added else WorkflowTaskUpdated
                         )
@@ -1909,15 +1778,43 @@ async def stream_agent_response(
                                 task_index=task_index,
                             ),
                         )
-                elif event.type == "response.image_generation_call.generating":
-                    tracker, task_added, workflow_events = ensure_image_task(
-                        event.item_id, event.output_index
+                    produced_items.add(item.id)
+                elif item.type == "function_call_output":
+                    tracker = get_function_task_by_call_id(
+                        getattr(item, "call_id", None)
                     )
-                    updated = apply_image_task_updates(tracker, status="loading")
+                    if tracker:
+                        updated = apply_function_task_updates(
+                            tracker,
+                            output=getattr(item, "output", None),
+                            status=getattr(item, "status", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                elif item.type == "computer_call":
+                    tracker, task_added, workflow_events = ensure_computer_task(
+                        item.id,
+                        call_id=getattr(item, "call_id", None),
+                    )
+                    updated = apply_computer_call_updates(
+                        tracker,
+                        cast(ResponseComputerToolCall, item),
+                    )
                     for workflow_event in workflow_events:
                         yield workflow_event
                     if ctx.workflow_item and (task_added or updated):
-                        task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            tracker.task
+                        )
                         update_cls = (
                             WorkflowTaskAdded if task_added else WorkflowTaskUpdated
                         )
@@ -1928,37 +1825,60 @@ async def stream_agent_response(
                                 task_index=task_index,
                             ),
                         )
-                elif event.type == "response.image_generation_call.partial_image":
+                    produced_items.add(item.id)
+                elif item.type == "computer_call_output":
+                    tracker = get_computer_task_by_call_id(
+                        getattr(item, "call_id", None)
+                    )
+                    if tracker:
+                        updated = apply_computer_output_updates(
+                            tracker,
+                            call_id=getattr(item, "call_id", None),
+                            status=getattr(item, "status", None),
+                            raw_output=getattr(item, "output", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                elif item.type == "web_search_call":
+                    for search_event in upsert_search_task(
+                        cast(ResponseFunctionWebSearch, item)
+                    ):
+                        yield search_event
+                elif item.type == "image_generation_call":
                     tracker, task_added, workflow_events = ensure_image_task(
-                        event.item_id, event.output_index
+                        item.id, event.output_index
                     )
-                    raw_partial_b64 = _coerce_optional_str(
-                        _event_attr(event, "partial_image_b64")
-                    )
-                    raw_partial_url = _coerce_optional_str(
-                        _event_attr(event, "partial_image_url")
-                    )
-                    payload = _event_attr(event, "partial_image") or _event_attr(
-                        event, "image"
-                    )
+                    tracker.task.call_id = item.id
+                    tracker.task.output_index = event.output_index
+                    status = "complete" if item.status == "completed" else "loading"
                     payload_b64, payload_url, payload_format = _extract_image_payload(
-                        payload, output_index=event.output_index
+                        getattr(item, "result", None),
+                        output_index=event.output_index,
                     )
-                    if raw_partial_b64 is None:
-                        raw_partial_b64 = payload_b64
-                    if raw_partial_url is None:
-                        raw_partial_url = payload_url
                     updated = apply_image_task_updates(
                         tracker,
-                        status="loading",
-                        partial_b64=raw_partial_b64,
-                        partial_url=raw_partial_url,
+                        status=status,
+                        final_b64=payload_b64 if status == "complete" else None,
+                        final_url=payload_url if status == "complete" else None,
+                        partial_b64=payload_b64 if status != "complete" else None,
+                        partial_url=payload_url if status != "complete" else None,
                         output_format=payload_format,
                     )
                     for workflow_event in workflow_events:
                         yield workflow_event
                     if ctx.workflow_item and (task_added or updated):
-                        task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            tracker.task
+                        )
                         update_cls = (
                             WorkflowTaskAdded if task_added else WorkflowTaskUpdated
                         )
@@ -1969,130 +1889,249 @@ async def stream_agent_response(
                                 task_index=task_index,
                             ),
                         )
-                elif event.type == "response.image_generation_call.completed":
-                    tracker, task_added, workflow_events = ensure_image_task(
-                        event.item_id, event.output_index
+                    produced_items.add(item.id)
+            elif event.type == "response.image_generation_call.in_progress":
+                tracker, task_added, workflow_events = ensure_image_task(
+                    event.item_id, event.output_index
+                )
+                updated = apply_image_task_updates(tracker, status="loading")
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
                     )
-                    complete_b64, complete_url, complete_format = _extract_image_payload(
-                        _event_attr(event, "image") or _event_attr(event, "result"),
-                        output_index=event.output_index,
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
                     )
-                    updated = apply_image_task_updates(
-                        tracker,
-                        status="complete",
-                        final_b64=complete_b64,
-                        final_url=complete_url,
-                        output_format=complete_format,
+            elif event.type == "response.image_generation_call.generating":
+                tracker, task_added, workflow_events = ensure_image_task(
+                    event.item_id, event.output_index
+                )
+                updated = apply_image_task_updates(tracker, status="loading")
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
                     )
-                    for workflow_event in workflow_events:
-                        yield workflow_event
-                    if ctx.workflow_item and (task_added or updated):
-                        task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
-                        update_cls = (
-                            WorkflowTaskAdded if task_added else WorkflowTaskUpdated
-                        )
-                        yield ThreadItemUpdated(
-                            item_id=ctx.workflow_item.id,
-                            update=update_cls(
-                                task=tracker.task,
-                                task_index=task_index,
-                            ),
-                        )
-                elif event.type == "response.reasoning_summary_text.delta":
-                    if not ctx.workflow_item:
-                        continue
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.image_generation_call.partial_image":
+                tracker, task_added, workflow_events = ensure_image_task(
+                    event.item_id, event.output_index
+                )
+                raw_partial_b64 = _coerce_optional_str(
+                    _event_attr(event, "partial_image_b64")
+                )
+                raw_partial_url = _coerce_optional_str(
+                    _event_attr(event, "partial_image_url")
+                )
+                payload = _event_attr(event, "partial_image") or _event_attr(
+                    event, "image"
+                )
+                payload_b64, payload_url, payload_format = _extract_image_payload(
+                    payload, output_index=event.output_index
+                )
+                if raw_partial_b64 is None:
+                    raw_partial_b64 = payload_b64
+                if raw_partial_url is None:
+                    raw_partial_url = payload_url
+                updated = apply_image_task_updates(
+                    tracker,
+                    status="loading",
+                    partial_b64=raw_partial_b64,
+                    partial_url=raw_partial_url,
+                    output_format=payload_format,
+                )
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.image_generation_call.completed":
+                tracker, task_added, workflow_events = ensure_image_task(
+                    event.item_id, event.output_index
+                )
+                complete_b64, complete_url, complete_format = _extract_image_payload(
+                    _event_attr(event, "image") or _event_attr(event, "result"),
+                    output_index=event.output_index,
+                )
+                updated = apply_image_task_updates(
+                    tracker,
+                    status="complete",
+                    final_b64=complete_b64,
+                    final_url=complete_url,
+                    output_format=complete_format,
+                )
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.reasoning_summary_text.delta":
+                if not ctx.workflow_item:
+                    continue
 
-                    # stream the first thought in a new workflow so that we can show it earlier
-                    if (
-                        ctx.workflow_item.workflow.type == "reasoning"
-                        and len(ctx.workflow_item.workflow.tasks) == 0
-                    ):
-                        streaming_thought = StreamingThoughtTracker(
-                            item_id=event.item_id,
-                            index=event.summary_index,
-                            task=ThoughtTask(content=event.delta),
-                        )
-                        ctx.workflow_item.workflow.tasks.append(streaming_thought.task)
-                        yield ThreadItemUpdated(
-                            item_id=ctx.workflow_item.id,
-                            update=WorkflowTaskAdded(
-                                task=streaming_thought.task,
-                                task_index=0,
+                # stream the first thought in a new workflow so that we can show it earlier
+                if (
+                    ctx.workflow_item.workflow.type == "reasoning"
+                    and len(ctx.workflow_item.workflow.tasks) == 0
+                ):
+                    streaming_thought = StreamingThoughtTracker(
+                        item_id=event.item_id,
+                        index=event.summary_index,
+                        task=ThoughtTask(content=event.delta),
+                    )
+                    ctx.workflow_item.workflow.tasks.append(streaming_thought.task)
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=WorkflowTaskAdded(
+                            task=streaming_thought.task,
+                            task_index=0,
+                        ),
+                    )
+                elif (
+                    streaming_thought
+                    and streaming_thought.task in ctx.workflow_item.workflow.tasks
+                    and event.item_id == streaming_thought.item_id
+                    and event.summary_index == streaming_thought.index
+                ):
+                    streaming_thought.task.content += event.delta
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=WorkflowTaskUpdated(
+                            task=streaming_thought.task,
+                            task_index=ctx.workflow_item.workflow.tasks.index(
+                                streaming_thought.task
                             ),
-                        )
-                    elif (
+                        ),
+                    )
+            elif event.type == "response.reasoning_summary_text.done":
+                if ctx.workflow_item:
+                    if (
                         streaming_thought
                         and streaming_thought.task in ctx.workflow_item.workflow.tasks
                         and event.item_id == streaming_thought.item_id
                         and event.summary_index == streaming_thought.index
                     ):
-                        streaming_thought.task.content += event.delta
-                        yield ThreadItemUpdated(
-                            item_id=ctx.workflow_item.id,
-                            update=WorkflowTaskUpdated(
-                                task=streaming_thought.task,
-                                task_index=ctx.workflow_item.workflow.tasks.index(
-                                    streaming_thought.task
-                                ),
-                            ),
+                        task = streaming_thought.task
+                        task.content = event.text
+                        streaming_thought = None
+                        update = WorkflowTaskUpdated(
+                            task=task,
+                            task_index=ctx.workflow_item.workflow.tasks.index(task),
                         )
-                elif event.type == "response.reasoning_summary_text.done":
-                    if ctx.workflow_item:
-                        if (
-                            streaming_thought
-                            and streaming_thought.task in ctx.workflow_item.workflow.tasks
-                            and event.item_id == streaming_thought.item_id
-                            and event.summary_index == streaming_thought.index
-                        ):
-                            task = streaming_thought.task
-                            task.content = event.text
-                            streaming_thought = None
-                            update = WorkflowTaskUpdated(
-                                task=task,
-                                task_index=ctx.workflow_item.workflow.tasks.index(task),
-                            )
-                        else:
-                            task = ThoughtTask(content=event.text)
-                            ctx.workflow_item.workflow.tasks.append(task)
-                            update = WorkflowTaskAdded(
-                                task=task,
-                                task_index=ctx.workflow_item.workflow.tasks.index(task),
-                            )
-                        yield ThreadItemUpdated(
-                            item_id=ctx.workflow_item.id,
-                            update=update,
+                    else:
+                        task = ThoughtTask(content=event.text)
+                        ctx.workflow_item.workflow.tasks.append(task)
+                        update = WorkflowTaskAdded(
+                            task=task,
+                            task_index=ctx.workflow_item.workflow.tasks.index(task),
                         )
-                elif event.type == "response.function_call_arguments.delta":
-                    tracker, task_added, workflow_events = ensure_function_task(event.item_id)
-                    for workflow_event in workflow_events:
-                        yield workflow_event
-                    updated = apply_function_task_updates(
-                        tracker,
-                        arguments_delta=event.delta,
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update,
                     )
-                    if ctx.workflow_item and (task_added or updated):
-                        task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
-                        update_cls = (
-                            WorkflowTaskAdded if task_added else WorkflowTaskUpdated
-                        )
-                        yield ThreadItemUpdated(
-                            item_id=ctx.workflow_item.id,
-                            update=update_cls(
-                                task=tracker.task,
-                                task_index=task_index,
-                            ),
-                        )
-                elif event.type == "response.function_call_arguments.done":
+            elif event.type == "response.function_call_arguments.delta":
+                tracker, task_added, workflow_events = ensure_function_task(event.item_id)
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                updated = apply_function_task_updates(
+                    tracker,
+                    arguments_delta=event.delta,
+                )
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.function_call_arguments.done":
+                tracker, task_added, workflow_events = ensure_function_task(
+                    event.item_id,
+                    name=getattr(event, "name", None),
+                )
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                updated = apply_function_task_updates(
+                    tracker,
+                    arguments=event.arguments,
+                    name=getattr(event, "name", None),
+                )
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.output_item.done":
+                item = event.item
+                if item.type == "message":
+                    produced_items.add(item.id)
+                    yield ThreadItemDoneEvent(
+                        item=AssistantMessageItem(
+                            # Reusing the Responses message ID
+                            id=item.id,
+                            thread_id=thread.id,
+                            content=[_convert_content(c) for c in item.content],
+                            created_at=datetime.now(),
+                        ),
+                    )
+                elif item.type == "function_call":
                     tracker, task_added, workflow_events = ensure_function_task(
-                        event.item_id,
-                        name=getattr(event, "name", None),
+                        item.id,
+                        name=getattr(item, "name", None),
+                        call_id=getattr(item, "call_id", None),
                     )
                     for workflow_event in workflow_events:
                         yield workflow_event
                     updated = apply_function_task_updates(
                         tracker,
-                        arguments=event.arguments,
-                        name=getattr(event, "name", None),
+                        status=getattr(item, "status", None),
+                        arguments=getattr(item, "arguments", None),
+                        name=getattr(item, "name", None),
                     )
                     if ctx.workflow_item and (task_added or updated):
                         task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
@@ -2106,216 +2145,177 @@ async def stream_agent_response(
                                 task_index=task_index,
                             ),
                         )
-                elif event.type == "response.output_item.done":
-                    item = event.item
-                    if item.type == "message":
-                        produced_items.add(item.id)
-                        yield ThreadItemDoneEvent(
-                            item=AssistantMessageItem(
-                                # Reusing the Responses message ID
-                                id=item.id,
-                                thread_id=thread.id,
-                                content=[_convert_content(c) for c in item.content],
-                                created_at=datetime.now(),
-                            ),
-                        )
-                    elif item.type == "function_call":
-                        tracker, task_added, workflow_events = ensure_function_task(
-                            item.id,
-                            name=getattr(item, "name", None),
-                            call_id=getattr(item, "call_id", None),
-                        )
-                        for workflow_event in workflow_events:
-                            yield workflow_event
+                elif item.type == "function_call_output":
+                    tracker = get_function_task_by_call_id(
+                        getattr(item, "call_id", None)
+                    )
+                    if tracker:
                         updated = apply_function_task_updates(
                             tracker,
+                            output=getattr(item, "output", None),
                             status=getattr(item, "status", None),
-                            arguments=getattr(item, "arguments", None),
-                            name=getattr(item, "name", None),
                         )
-                        if ctx.workflow_item and (task_added or updated):
-                            task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
-                            update_cls = (
-                                WorkflowTaskAdded if task_added else WorkflowTaskUpdated
-                            )
-                            yield ThreadItemUpdated(
-                                item_id=ctx.workflow_item.id,
-                                update=update_cls(
-                                    task=tracker.task,
-                                    task_index=task_index,
-                                ),
-                            )
-                    elif item.type == "function_call_output":
-                        tracker = get_function_task_by_call_id(
-                            getattr(item, "call_id", None)
-                        )
-                        if tracker:
-                            updated = apply_function_task_updates(
-                                tracker,
-                                output=getattr(item, "output", None),
-                                status=getattr(item, "status", None),
-                            )
-                            if ctx.workflow_item and updated:
-                                task_index = ctx.workflow_item.workflow.tasks.index(
-                                    tracker.task
-                                )
-                                yield ThreadItemUpdated(
-                                    item_id=ctx.workflow_item.id,
-                                    update=WorkflowTaskUpdated(
-                                        task=tracker.task,
-                                        task_index=task_index,
-                                    ),
-                                )
-                    elif item.type == "computer_call":
-                        tracker, task_added, workflow_events = ensure_computer_task(
-                            item.id,
-                            call_id=getattr(item, "call_id", None),
-                        )
-                        for workflow_event in workflow_events:
-                            yield workflow_event
-                        updated = apply_computer_call_updates(
-                            tracker,
-                            cast(ResponseComputerToolCall, item),
-                        )
-                        if ctx.workflow_item and (task_added or updated):
+                        if ctx.workflow_item and updated:
                             task_index = ctx.workflow_item.workflow.tasks.index(
                                 tracker.task
                             )
-                            update_cls = (
-                                WorkflowTaskAdded if task_added else WorkflowTaskUpdated
-                            )
                             yield ThreadItemUpdated(
                                 item_id=ctx.workflow_item.id,
-                                update=update_cls(
+                                update=WorkflowTaskUpdated(
                                     task=tracker.task,
                                     task_index=task_index,
                                 ),
                             )
-                        produced_items.add(item.id)
-                    elif item.type == "computer_call_output":
-                        tracker = get_computer_task_by_call_id(
-                            getattr(item, "call_id", None)
+                elif item.type == "computer_call":
+                    tracker, task_added, workflow_events = ensure_computer_task(
+                        item.id,
+                        call_id=getattr(item, "call_id", None),
+                    )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    updated = apply_computer_call_updates(
+                        tracker,
+                        cast(ResponseComputerToolCall, item),
+                    )
+                    if ctx.workflow_item and (task_added or updated):
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            tracker.task
                         )
-                        if tracker:
-                            updated = apply_computer_output_updates(
-                                tracker,
-                                call_id=getattr(item, "call_id", None),
-                                status=getattr(item, "status", None),
-                                raw_output=getattr(item, "output", None),
+                        update_cls = (
+                            WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                        )
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=update_cls(
+                                task=tracker.task,
+                                task_index=task_index,
+                            ),
+                        )
+                    produced_items.add(item.id)
+                elif item.type == "computer_call_output":
+                    tracker = get_computer_task_by_call_id(
+                        getattr(item, "call_id", None)
+                    )
+                    if tracker:
+                        updated = apply_computer_output_updates(
+                            tracker,
+                            call_id=getattr(item, "call_id", None),
+                            status=getattr(item, "status", None),
+                            raw_output=getattr(item, "output", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
                             )
-                            if ctx.workflow_item and updated:
-                                task_index = ctx.workflow_item.workflow.tasks.index(
-                                    tracker.task
-                                )
-                                yield ThreadItemUpdated(
-                                    item_id=ctx.workflow_item.id,
-                                    update=WorkflowTaskUpdated(
-                                        task=tracker.task,
-                                        task_index=task_index,
-                                    ),
-                                )
-                    elif item.type == "web_search_call":
-                        for search_event in upsert_search_task(
-                            cast(ResponseFunctionWebSearch, item), status="complete"
-                        ):
-                            yield search_event
-                    elif item.type == "image_generation_call":
-                        tracker = image_tasks.get((item.id, event.output_index))
-                        if tracker is not None:
-                            final_b64: str | None = None
-                            final_url: str | None = None
-                            output_format: str | None = None
-                            raw_result = getattr(item, "result", None)
-                            if isinstance(raw_result, str):
-                                candidate = _coerce_optional_str(raw_result)
-                                if candidate:
-                                    if candidate.startswith("data:") or "://" in candidate:
-                                        final_url = candidate
-                                    else:
-                                        final_b64 = candidate
-                            else:
-                                final_b64, final_url, output_format = _extract_image_payload(
-                                    raw_result,
-                                    output_index=event.output_index,
-                                )
-                            updated = apply_image_task_updates(
-                                tracker,
-                                status="complete",
-                                final_b64=final_b64,
-                                final_url=final_url,
-                                output_format=output_format,
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
                             )
-                            if ctx.workflow_item and updated:
-                                task_index = ctx.workflow_item.workflow.tasks.index(
-                                    tracker.task
-                                )
-                                yield ThreadItemUpdated(
-                                    item_id=ctx.workflow_item.id,
-                                    update=WorkflowTaskUpdated(
-                                        task=tracker.task,
-                                        task_index=task_index,
-                                    ),
-                                )
-                elif event.type == "response.web_search_call.in_progress":
-                    for search_event in update_search_task_status(
-                        event.item_id, "loading"
+                elif item.type == "web_search_call":
+                    for search_event in upsert_search_task(
+                        cast(ResponseFunctionWebSearch, item), status="complete"
                     ):
                         yield search_event
-                elif event.type == "response.web_search_call.searching":
-                    for search_event in update_search_task_status(
-                        event.item_id, "loading"
-                    ):
-                        yield search_event
-                elif event.type == "response.web_search_call.completed":
-                    for search_event in update_search_task_status(
-                        event.item_id, "complete"
-                    ):
-                        yield search_event
+                elif item.type == "image_generation_call":
+                    tracker = image_tasks.get((item.id, event.output_index))
+                    if tracker is not None:
+                        final_b64: str | None = None
+                        final_url: str | None = None
+                        output_format: str | None = None
+                        raw_result = getattr(item, "result", None)
+                        if isinstance(raw_result, str):
+                            candidate = _coerce_optional_str(raw_result)
+                            if candidate:
+                                if candidate.startswith("data:") or "://" in candidate:
+                                    final_url = candidate
+                                else:
+                                    final_b64 = candidate
+                        else:
+                            final_b64, final_url, output_format = _extract_image_payload(
+                                raw_result,
+                                output_index=event.output_index,
+                            )
+                        updated = apply_image_task_updates(
+                            tracker,
+                            status="complete",
+                            final_b64=final_b64,
+                            final_url=final_url,
+                            output_format=output_format,
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+            elif event.type == "response.web_search_call.in_progress":
+                for search_event in update_search_task_status(
+                    event.item_id, "loading"
+                ):
+                    yield search_event
+            elif event.type == "response.web_search_call.searching":
+                for search_event in update_search_task_status(
+                    event.item_id, "loading"
+                ):
+                    yield search_event
+            elif event.type == "response.web_search_call.completed":
+                for search_event in update_search_task_status(
+                    event.item_id, "complete"
+                ):
+                    yield search_event
 
-        except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered):
-            for item_id in produced_items:
-                yield ThreadItemRemovedEvent(item_id=item_id)
+    except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered):
+        for item_id in produced_items:
+            yield ThreadItemRemovedEvent(item_id=item_id)
 
-            # Drain remaining events without processing them
-            context._complete()
-            queue_iterator.drain_and_complete()
-            image_tasks.clear()
-            search_tasks.clear()
-            function_tasks.clear()
-            function_tasks_by_call_id.clear()
-
-            raise
-
+        # Drain remaining events without processing them
         context._complete()
+        queue_iterator.drain_and_complete()
+        image_tasks.clear()
+        search_tasks.clear()
+        function_tasks.clear()
+        function_tasks_by_call_id.clear()
 
-        # Drain remaining events
-        async for event in queue_iterator:
-            yield event.event
+        raise
 
-        # If there is still an active workflow at the end of the run, store
-        # it's current state so that we can continue it in the next turn.
-        if ctx.workflow_item:
-            await ctx.store.add_thread_item(
-                thread.id, ctx.workflow_item, ctx.request_context
-            )
+    context._complete()
 
-        if context.client_tool_call:
-            yield ThreadItemDoneEvent(
-                item=ClientToolCallItem(
-                    id=current_item_id
-                    or context.store.generate_item_id(
-                        "tool_call", thread, context.request_context
-                    ),
-                    thread_id=thread.id,
-                    name=context.client_tool_call.name,
-                    arguments=context.client_tool_call.arguments,
-                    created_at=datetime.now(),
-                    call_id=current_tool_call
-                    or context.store.generate_item_id(
-                        "tool_call", thread, context.request_context
-                    ),
+    # Drain remaining events
+    async for event in queue_iterator:
+        yield event.event
+
+    # If there is still an active workflow at the end of the run, store
+    # it's current state so that we can continue it in the next turn.
+    if ctx.workflow_item:
+        await ctx.store.add_thread_item(
+            thread.id, ctx.workflow_item, ctx.request_context
+        )
+
+    if context.client_tool_call:
+        yield ThreadItemDoneEvent(
+            item=ClientToolCallItem(
+                id=current_item_id
+                or context.store.generate_item_id(
+                    "tool_call", thread, context.request_context
                 ),
-            )
+                thread_id=thread.id,
+                name=context.client_tool_call.name,
+                arguments=context.client_tool_call.arguments,
+                created_at=datetime.now(),
+                call_id=current_tool_call
+                or context.store.generate_item_id(
+                    "tool_call", thread, context.request_context
+                ),
+            ),
+        )
 
 
 TWidget = TypeVar("TWidget", bound=Markdown | Text)
