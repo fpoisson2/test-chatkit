@@ -94,7 +94,7 @@ export function useWorkflowDeployment(
   // Access contexts
   const { setSaveState, setSaveMessage, lastSavedSnapshotRef } = useSaveContext();
   const { deployToProduction, setIsDeploying, closeDeployModal } = useModalContext();
-  const { hasPendingChanges, updateHasPendingChanges } = useGraphContext();
+  const { hasPendingChangesRef, updateHasPendingChanges } = useGraphContext();
   const {
     selectedWorkflowId,
     setSelectedVersionId,
@@ -123,25 +123,24 @@ export function useWorkflowDeployment(
 
     setIsDeploying(true);
 
-    // Save pending changes before deployment
-    if (hasPendingChanges) {
-      await handleSave();
+    // Always save before deployment to ensure latest changes are persisted
+    await handleSave();
 
-      if (hasPendingChanges) {
-        setIsDeploying(false);
-        setSaveState("error");
-        setSaveMessage(t("workflowBuilder.deploy.pendingChangesError"));
-        return;
-      }
+    // Check if save succeeded using ref (avoids stale closure)
+    if (hasPendingChangesRef.current) {
+      setIsDeploying(false);
+      setSaveState("error");
+      setSaveMessage(t("workflowBuilder.deploy.pendingChangesError"));
+      return;
+    }
 
-      // Re-resolve version ID after save (draft may have changed)
-      versionIdToPromote = resolveVersionIdToPromote(true) ?? versionIdToPromote;
-      if (!versionIdToPromote) {
-        setIsDeploying(false);
-        setSaveState("error");
-        setSaveMessage(t("workflowBuilder.deploy.missingTarget"));
-        return;
-      }
+    // Re-resolve version ID after save (draft may have changed)
+    versionIdToPromote = resolveVersionIdToPromote(true) ?? versionIdToPromote;
+    if (!versionIdToPromote) {
+      setIsDeploying(false);
+      setSaveState("error");
+      setSaveMessage(t("workflowBuilder.deploy.missingTarget"));
+      return;
     }
 
     const graphPayload = buildGraphPayload();
@@ -202,7 +201,7 @@ export function useWorkflowDeployment(
     setSaveMessage,
     t,
     setIsDeploying,
-    hasPendingChanges,
+    hasPendingChangesRef,
     handleSave,
     buildGraphPayload,
     deployToProductionMutation,
