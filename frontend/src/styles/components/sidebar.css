@@ -1444,8 +1444,8 @@
   background: transparent;
   border: none;
   color: var(--color-text-emphasis);
-  width: var(--control-size-md);
-  height: var(--control-size-md);
+  width: 30px;
+  height: 30px;
   padding: 0;
   border-radius: var(--radius-xl);
   cursor: pointer;
