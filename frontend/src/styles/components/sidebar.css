@@ -241,6 +241,34 @@
   }
 }
 
+/* Mobile/Touch: larger touch targets for better accessibility */
+/* Apple recommends 44pt minimum touch targets */
+@media (hover: none) and (pointer: coarse) {
+  .react-flow__handle {
+    --handle-size: calc(var(--spacing) * 8) !important;
+    width: var(--handle-size) !important;
+    height: var(--handle-size) !important;
+    border-width: 3px;
+    box-shadow:
+      var(--shadow-soft),
+      0 0 0 6px rgba(99, 102, 241, 0.2);
+    position: relative;
+  }
+
+  /* Invisible touch target for easier tapping */
+  .react-flow__handle::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 48px;
+    height: 48px;
+    transform: translate(-50%, -50%);
+    border-radius: var(--radius-full);
+    pointer-events: auto;
+  }
+}
+
 .chatkit-sidebar__header {
   display: flex;
   flex-direction: column;
