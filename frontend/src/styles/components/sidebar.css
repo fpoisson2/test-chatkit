@@ -1297,6 +1297,7 @@
   height: 28px;
   width: auto;
   object-fit: contain;
+  margin: 0;
 }
 
 @media (max-width: 1023px) {
@@ -1846,7 +1847,6 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__logo-image {
   display: block;
-  margin-inline: auto;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand-title {
