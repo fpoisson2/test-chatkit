@@ -1453,9 +1453,10 @@
   align-items: center;
   justify-content: center;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transition-duration: var(--transition-duration-basic);
-  transition-property: color, opacity, transform;
+  transition-property: color, opacity, visibility, transform;
   transition-timing-function: var(--transition-ease-basic);
   transition-delay: 0s;
 }
@@ -1468,6 +1469,7 @@
 
 .chatkit-sidebar--open .chatkit-sidebar__dismiss {
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
   transition-delay: var(--chatkit-sidebar-open-duration);
 }
@@ -1833,20 +1835,19 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__topline {
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   width: 100%;
   gap: calc(var(--spacing) * 2.5);
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand {
-  justify-content: center;
-  flex-direction: column;
+  justify-content: flex-start;
+  flex-direction: row;
   align-items: center;
   gap: calc(var(--spacing) * 3);
   flex: 0 0 auto;
-  margin-inline: auto;
-  width: 100%;
+  width: auto;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand-mark {
@@ -1856,7 +1857,6 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__logo-image {
   display: block;
-  align-self: flex-start;
   height: 28px;
 }
 
@@ -1885,9 +1885,14 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
   margin-inline: auto;
 }
 
-.chatkit-sidebar--collapsed .chatkit-sidebar__label,
-.chatkit-sidebar--collapsed .chatkit-sidebar__dismiss {
+.chatkit-sidebar--collapsed .chatkit-sidebar__label {
   display: none;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__dismiss {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__app-switcher {
