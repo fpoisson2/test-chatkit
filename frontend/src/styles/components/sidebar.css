@@ -1290,16 +1290,12 @@
 }
 
 .chatkit-sidebar__logo-image {
+  display: block;
   height: 28px;
   width: auto;
   object-fit: contain;
   margin: 0;
   padding-left: 26px;
-  /* Prevent flicker during sidebar transitions by isolating the layer */
-  isolation: isolate;
-  contain: layout style;
-  will-change: transform;
-  transform: translateZ(0);
 }
 
 .chatkit-sidebar__logo-image--compact {
@@ -1861,7 +1857,6 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__logo-image {
-  display: block;
   height: 28px;
 }
 
