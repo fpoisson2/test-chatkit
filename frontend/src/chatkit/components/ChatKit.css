@@ -907,26 +907,26 @@
 
 /* Light theme adjustments */
 [data-theme="light"] .chatkit-file {
-  background: #e5e7eb;
-  border-color: rgba(0, 0, 0, 0.1);
-  color: #1f2937;
+  background: var(--color-surface-secondary);
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 [data-theme="light"] .chatkit-file-download:hover {
-  background: #d1d5db;
-  border-color: rgba(0, 0, 0, 0.2);
+  background: var(--color-surface-hover, rgba(0, 0, 0, 0.1));
+  border-color: var(--color-border);
 }
 
 /* Dark theme adjustments */
 [data-theme="dark"] .chatkit-file {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
+  background: var(--color-surface-secondary);
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 [data-theme="dark"] .chatkit-file-download:hover {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: var(--color-surface-hover, rgba(255, 255, 255, 0.15));
+  border-color: var(--color-border);
 }
 
 /* Attachments container */
