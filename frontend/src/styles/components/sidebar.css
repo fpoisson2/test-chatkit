@@ -1834,12 +1834,18 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
   align-items: center;
   gap: calc(var(--spacing) * 3);
   flex: 0 0 auto;
+  margin-inline: auto;
   width: 100%;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand-mark {
   width: var(--control-size-sm);
   height: var(--control-size-sm);
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__logo-image {
+  display: block;
+  margin-inline: auto;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand-title {
