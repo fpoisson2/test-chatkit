@@ -1814,9 +1814,11 @@ html[data-theme="dark"] .chatkit-sidebar__profile-caret {
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__header {
   align-items: center;
+  justify-content: center;
   padding-inline: 0;
   gap: calc(var(--spacing) * 3.5);
   text-align: center;
+  width: 100%;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__topline {
