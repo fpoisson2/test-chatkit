@@ -104,7 +104,7 @@
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__scroll-area {
-  padding-left: var(--chatkit-sidebar-padding-x);
+  padding-left: 6px;
   gap: 0;
 }
 
@@ -148,7 +148,7 @@
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__scroll-area {
-  padding-left: var(--chatkit-sidebar-padding-x);
+  padding-left: 6px;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__main {
@@ -185,7 +185,7 @@
   }
 
   .chatkit-sidebar__scroll-area {
-    padding-left: var(--chatkit-sidebar-padding-x);
+    padding-left: 6px;
   }
 
   .chatkit-sidebar__main {
