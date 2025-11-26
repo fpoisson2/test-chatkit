@@ -92,7 +92,6 @@ export async function uploadAttachment(options: {
     });
 
     xhr.addEventListener('load', () => {
-      console.log('[uploadAttachment] Response:', xhr.status, xhr.statusText, xhr.responseText);
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
@@ -110,17 +109,13 @@ export async function uploadAttachment(options: {
 
     xhr.open('POST', finalUploadUrl);
 
-    // Ajouter les headers SAUF Content-Type (le navigateur le définit automatiquement pour FormData)
-    console.log('[uploadAttachment] Headers to send:', Object.keys(headers).filter(k => k.toLowerCase() !== 'content-type'));
+    // Add headers except Content-Type (browser sets it automatically for FormData with correct boundary)
     Object.entries(headers).forEach(([key, value]) => {
-      // Ne pas définir Content-Type pour les uploads FormData - le navigateur le fait automatiquement
-      // avec la bonne boundary pour multipart/form-data
       if (key.toLowerCase() !== 'content-type') {
         xhr.setRequestHeader(key, value);
       }
     });
 
-    console.log('[uploadAttachment] Sending FormData with file:', file.name, file.size, file.type);
     xhr.send(formData);
   });
 }

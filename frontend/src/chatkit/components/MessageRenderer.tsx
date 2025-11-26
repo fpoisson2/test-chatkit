@@ -10,6 +10,7 @@ import { LoadingIndicator } from './LoadingIndicator';
 import { DevToolsScreencast } from './DevToolsScreencast';
 import { SSHTerminal } from './SSHTerminal';
 import { VNCScreencast } from './VNCScreencast';
+import { FileAttachmentDisplay } from './FileAttachmentDisplay';
 import { ImageWithBlobUrl } from '../utils';
 
 export interface MessageRendererProps {
@@ -71,41 +72,9 @@ function findAttachment(
 }
 
 /**
- * Renders a file attachment with download link
- */
-function FileAttachmentDisplay({
-  attachmentId,
-  attachment,
-}: {
-  attachmentId: string;
-  attachment?: { id: string; name: string; mime_type: string; type: string };
-}): JSX.Element {
-  const displayName = attachment?.name || attachmentId;
-  const downloadUrl = `/api/chatkit/attachments/${attachmentId}`;
-
-  return (
-    <a
-      href={downloadUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="chatkit-file chatkit-file-download"
-      title={`Télécharger ${displayName}`}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-        <line x1="12" y1="18" x2="12" y2="12"></line>
-        <polyline points="9 15 12 18 15 15"></polyline>
-      </svg>
-      <span className="chatkit-file-name">{displayName}</span>
-    </a>
-  );
-}
-
-/**
  * Renders a user message
  */
-function UserMessageContent({ item, theme }: { item: ThreadItem; theme?: string }): JSX.Element {
+function UserMessageContent({ item, theme, authToken }: { item: ThreadItem; theme?: string; authToken?: string }): JSX.Element {
   if (item.type !== 'user_message') return <></>;
 
   return (
@@ -116,11 +85,12 @@ function UserMessageContent({ item, theme }: { item: ThreadItem; theme?: string 
           {content.type === 'input_tag' && (
             <span className="chatkit-tag">{content.text}</span>
           )}
-          {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" />}
+          {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" authToken={authToken} />}
           {content.type === 'file' && (
             <FileAttachmentDisplay
               attachmentId={content.file}
               attachment={findAttachment(content.file, item.attachments)}
+              authToken={authToken}
             />
           )}
         </div>
@@ -135,6 +105,7 @@ function UserMessageContent({ item, theme }: { item: ThreadItem; theme?: string 
                 key={`att-${idx}`}
                 attachmentId={att.id}
                 attachment={att}
+                authToken={authToken}
               />
             ))}
         </div>
@@ -578,7 +549,7 @@ export function MessageRenderer({
   return (
     <div className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}>
       {item.type === 'user_message' && (
-        <UserMessageContent item={item} theme={theme} />
+        <UserMessageContent item={item} theme={theme} authToken={authToken} />
       )}
 
       {item.type === 'assistant_message' && (

@@ -800,7 +800,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             if isinstance(item, dict):
                 item_type = item.get("type", "")
                 if item_type == "input_text":
-                    simplified.append(item)
+                    # Convert dict to proper ResponseInputTextParam
+                    text_content = item.get("text", "")
+                    simplified.append(
+                        ResponseInputTextParam(type="input_text", text=text_content)
+                    )
                     has_text = True
                 # Skip input_file, input_image, and other binary content types
                 # We'll add attachment descriptions separately
@@ -828,11 +832,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         # If we have attachments, add their descriptions as text
         if attachment_descriptions:
             desc_text = " ".join(attachment_descriptions)
-            simplified.append({"type": "input_text", "text": desc_text})
+            simplified.append(ResponseInputTextParam(type="input_text", text=desc_text))
 
         # If no content at all, provide a fallback
         if not simplified:
-            simplified.append({"type": "input_text", "text": "Nouvelle conversation"})
+            simplified.append(
+                ResponseInputTextParam(type="input_text", text="Nouvelle conversation")
+            )
 
         return simplified
 

@@ -6,6 +6,9 @@
 export { ImageWithBlobUrl } from './ImageWithBlobUrl';
 export type { ImageWithBlobUrlProps } from './ImageWithBlobUrl';
 
+// File icons
+export { getFileTypeIcon } from './fileIcons';
+
 // Constantes
 export * from './constants';
 

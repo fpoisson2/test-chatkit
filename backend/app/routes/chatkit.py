@@ -474,15 +474,11 @@ async def upload_chatkit_attachment(
     form = await request.form()
     file = form.get("file")
 
-    # Debug logging
-    logger.info(f"Form keys: {list(form.keys())}")
-    logger.info(f"File value: {file}, type: {type(file)}")
-
     # Check if file exists and has required file-like attributes
     if not file or not hasattr(file, 'read'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Le champ 'file' est requis et doit être un fichier. Received: {type(file)}",
+            detail="Le champ 'file' est requis et doit être un fichier.",
         )
 
     try:

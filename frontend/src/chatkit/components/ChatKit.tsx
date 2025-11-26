@@ -136,9 +136,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   // Callback pour la soumission du Composer
   const handleComposerSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[]) => {
-    console.log('[ChatKit] handleComposerSubmit called with:', { message, attachmentsCount: uploadedAttachments.length });
-    console.log('[ChatKit] Uploaded attachments:', uploadedAttachments.map(a => ({ id: a.id, type: a.type, status: a.status })));
-
     // Construire le contenu du message
     const content: UserMessageContent[] = [];
     if (message) {
@@ -146,16 +143,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
     for (const att of uploadedAttachments) {
       if (att.status === 'uploaded') {
-        const contentItem = {
+        content.push({
           type: att.type as 'image' | 'file',
           [att.type]: att.id,
-        } as UserMessageContent;
-        console.log('[ChatKit] Adding attachment content item:', contentItem);
-        content.push(contentItem);
+        } as UserMessageContent);
       }
     }
-
-    console.log('[ChatKit] Final content to send:', content);
 
     // Envoyer le message
     await control.sendMessage(content);

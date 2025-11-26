@@ -79,27 +79,20 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
           ? [{ type: 'input_text' as const, text: content }]
           : content;
 
-        console.log('[useMessageStreaming] Raw content received:', messageContent);
-
         // Extract attachment IDs from content items of type 'image' or 'file'
         // and filter content to only include valid message content types
         const attachmentIds: string[] = [];
         const filteredContent = messageContent.filter((item) => {
           if (item.type === 'image' && 'image' in item) {
-            console.log('[useMessageStreaming] Found image attachment:', item.image);
             attachmentIds.push(item.image);
             return false;
           }
           if (item.type === 'file' && 'file' in item) {
-            console.log('[useMessageStreaming] Found file attachment:', item.file);
             attachmentIds.push(item.file);
             return false;
           }
           return true;
         });
-
-        console.log('[useMessageStreaming] Extracted attachmentIds:', attachmentIds);
-        console.log('[useMessageStreaming] Filtered content:', filteredContent);
 
         const input = {
           content: filteredContent,
@@ -107,8 +100,6 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
           quoted_text: null,
           inference_options: opts?.inferenceOptions || {},
         };
-
-        console.log('[useMessageStreaming] Final input to send:', JSON.stringify(input));
 
         const isRealThread = targetThreadId && !isTempThreadId(targetThreadId);
         const payload = isRealThread
