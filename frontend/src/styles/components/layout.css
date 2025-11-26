@@ -111,7 +111,7 @@
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__scroll-area {
-  padding-inline: 6px;
+  padding-inline: 0 6px;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__main {
