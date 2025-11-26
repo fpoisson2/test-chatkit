@@ -9,7 +9,9 @@
 
   /* Sidebar Dimensions */
   --chatkit-sidebar-width: min(320px, 85vw);
-  --chatkit-sidebar-collapsed-width: clamp(48px, 9vw, 64px);
+  --chatkit-sidebar-collapsed-width: calc(
+    clamp(var(--control-size-xs), 3.2vw, var(--control-size-md)) + calc(var(--spacing) * 9)
+  );
 }
 
 /* Mobile sidebar adjustments */
