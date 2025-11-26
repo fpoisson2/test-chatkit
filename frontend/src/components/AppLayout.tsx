@@ -501,7 +501,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                     <img
                       src={edxoLogo}
                       alt="EDxo"
-                      className="chatkit-sidebar__logo-image"
+                      className={`chatkit-sidebar__logo-image${
+                        isSidebarCollapsed ? " chatkit-sidebar__logo-image--compact" : ""
+                      }`}
                     />
                   </div>
                   <div className="chatkit-sidebar__actions">
