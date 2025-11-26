@@ -633,6 +633,9 @@ export function MyChat() {
               "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
               "application/pdf": [".pdf"],
               "text/plain": [".txt", ".md"],
+              // DOCX files - will be converted to PDF on the server
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+              "application/msword": [".doc"],
             },
           }
         : { enabled: false },

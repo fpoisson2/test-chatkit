@@ -48,7 +48,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libreadline-dev \
       libffi-dev \
       libz-dev \
-      liblzma-dev
+      liblzma-dev \
+      # LibreOffice for DOCX to PDF conversion
+      libreoffice-writer-nogui \
+      libreoffice-java-common
 
 
 # -----------------------------------------------------------------------------
@@ -166,6 +169,7 @@ COPY --from=python-deps /usr/local/lib/python3.11/site-packages /usr/local/lib/p
 COPY --from=python-deps /usr/local/bin /usr/local/bin
 
 # Installer les libs runtime requises par Chromium (noms corrigés pour Debian Trixie)
+# et LibreOffice pour la conversion DOCX vers PDF
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
@@ -189,7 +193,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libasound2 \
       libpango-1.0-0 \
       libcairo2 \
-      libatspi2.0-0
+      libatspi2.0-0 \
+      # LibreOffice for DOCX to PDF conversion
+      libreoffice-writer-nogui \
+      libreoffice-java-common
 
 # S'assurer que les libs partagées sont trouvées
 RUN ldconfig
