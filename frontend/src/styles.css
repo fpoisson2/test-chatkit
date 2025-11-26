@@ -1122,6 +1122,10 @@ button {
   color: var(--text-muted);
 }
 
+.chatkit-sidebar--collapsed .chatkit-sidebar__workflow-compact-group-title {
+  display: none;
+}
+
 .chatkit-sidebar__workflow-compact-list {
   list-style: none;
   margin: 0;
