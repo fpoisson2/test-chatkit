@@ -79,9 +79,24 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
           ? [{ type: 'input_text' as const, text: content }]
           : content;
 
+        // Extract attachment IDs from content items of type 'image' or 'file'
+        // and filter content to only include valid message content types
+        const attachmentIds: string[] = [];
+        const filteredContent = messageContent.filter((item) => {
+          if (item.type === 'image' && 'image' in item) {
+            attachmentIds.push(item.image);
+            return false;
+          }
+          if (item.type === 'file' && 'file' in item) {
+            attachmentIds.push(item.file);
+            return false;
+          }
+          return true;
+        });
+
         const input = {
-          content: messageContent,
-          attachments: [],
+          content: filteredContent,
+          attachments: attachmentIds,
           quoted_text: null,
           inference_options: opts?.inferenceOptions || {},
         };
