@@ -1021,6 +1021,7 @@ export const fr: TranslationDictionary = {
   "workflowBuilder.node.kind.agent": "Agent",
   "workflowBuilder.node.kind.voice_agent": "Agent vocal",
   "workflowBuilder.node.kind.outbound_call": "Appel sortant",
+  "workflowBuilder.node.kind.computer_use": "Utilisation de l'ordinateur",
   "workflowBuilder.node.kind.condition": "Condition",
   "workflowBuilder.node.kind.state": "Bloc état",
   "workflowBuilder.node.kind.transform": "Bloc transform",

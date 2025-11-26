@@ -968,6 +968,7 @@ export const en: TranslationDictionary = {
   "workflowBuilder.node.kind.agent": "Agent",
   "workflowBuilder.node.kind.voice_agent": "Voice agent",
   "workflowBuilder.node.kind.outbound_call": "Outbound call",
+  "workflowBuilder.node.kind.computer_use": "Computer use",
   "workflowBuilder.node.kind.condition": "Condition",
   "workflowBuilder.node.kind.state": "State block",
   "workflowBuilder.node.kind.transform": "Transform block",
