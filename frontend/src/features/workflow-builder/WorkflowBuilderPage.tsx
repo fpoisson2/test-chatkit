@@ -1147,6 +1147,9 @@ const WorkflowBuilderPage = () => {
 
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
 
+  // Track previous panel state for history management
+  const previousPanelOpenForHistoryRef = useRef<boolean>(isPropertiesPanelOpen);
+
   useEffect(() => {
     const history = historyRef.current;
     if (!selectedWorkflowId) {
@@ -1173,7 +1176,8 @@ const WorkflowBuilderPage = () => {
       history.pendingSnapshot = null;
       return;
     }
-    if (isNodeDragInProgressRef.current) {
+    // Accumulate changes while dragging or while properties panel is open
+    if (isNodeDragInProgressRef.current || isPropertiesPanelOpen) {
       history.pendingSnapshot = graphSnapshot;
       return;
     }
@@ -1184,7 +1188,24 @@ const WorkflowBuilderPage = () => {
       history.future = [];
       history.last = nextSnapshot;
     }
-  }, [graphSnapshot, selectedWorkflowId]);
+  }, [graphSnapshot, selectedWorkflowId, isPropertiesPanelOpen]);
+
+  // Commit pending history when properties panel closes
+  useEffect(() => {
+    const wasPanelOpen = previousPanelOpenForHistoryRef.current;
+    previousPanelOpenForHistoryRef.current = isPropertiesPanelOpen;
+
+    if (wasPanelOpen && !isPropertiesPanelOpen) {
+      const history = historyRef.current;
+      const pending = history.pendingSnapshot;
+      if (pending && history.last && history.last !== pending) {
+        history.past = [...history.past, history.last].slice(-HISTORY_LIMIT);
+        history.future = [];
+        history.last = pending;
+      }
+      history.pendingSnapshot = null;
+    }
+  }, [isPropertiesPanelOpen]);
 
   const conditionGraphError = useMemo(() => validateGraphStructure(nodes, edges), [edges, nodes]);
 
@@ -1303,6 +1324,7 @@ const WorkflowBuilderPage = () => {
     isExporting,
     isHydratingRef,
     isImporting,
+    isPropertiesPanelOpen,
     lastSavedSnapshotRef,
     loadVersions,
     loadWorkflows,

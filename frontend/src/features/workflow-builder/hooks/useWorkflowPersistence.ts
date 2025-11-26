@@ -56,6 +56,7 @@ type UseWorkflowPersistenceParams = {
   isExporting: boolean;
   isHydratingRef: React.MutableRefObject<boolean>;
   isImporting: boolean;
+  isPropertiesPanelOpen?: boolean;
   lastSavedSnapshotRef: React.MutableRefObject<string | null>;
   loadVersions: LoadVersionsFn;
   loadWorkflows: LoadWorkflowsFn;
@@ -108,6 +109,7 @@ const useWorkflowPersistence = ({
   isExporting,
   isHydratingRef,
   isImporting,
+  isPropertiesPanelOpen = false,
   lastSavedSnapshotRef,
   loadVersions,
   loadWorkflows,
@@ -134,6 +136,7 @@ const useWorkflowPersistence = ({
   viewportRef,
 }: UseWorkflowPersistenceParams): UseWorkflowPersistenceResult => {
   const autoSaveTimeoutRef = useRef<number | null>(null);
+  const previousPanelOpenRef = useRef<boolean>(isPropertiesPanelOpen);
 
   useEffect(() => {
     if (!selectedWorkflowId) {
@@ -418,13 +421,47 @@ const useWorkflowPersistence = ({
     viewportRef,
   ]);
 
+  // Save when properties panel closes (if there are pending changes)
+  useEffect(() => {
+    const wasPanelOpen = previousPanelOpenRef.current;
+    previousPanelOpenRef.current = isPropertiesPanelOpen;
+
+    // Trigger save when panel closes and there are pending changes
+    if (wasPanelOpen && !isPropertiesPanelOpen && hasPendingChanges) {
+      if (
+        !disableSave &&
+        saveState !== "saving" &&
+        !loading &&
+        selectedWorkflowId
+      ) {
+        // Clear any pending timeout and save immediately
+        if (autoSaveTimeoutRef.current !== null) {
+          clearTimeout(autoSaveTimeoutRef.current);
+          autoSaveTimeoutRef.current = null;
+        }
+        void handleSave();
+      }
+    }
+  }, [
+    isPropertiesPanelOpen,
+    hasPendingChanges,
+    disableSave,
+    saveState,
+    loading,
+    selectedWorkflowId,
+    handleSave,
+  ]);
+
+  // Autosave with debounce - only when panel is NOT open
+  // This handles changes made outside the properties panel (node position, connections, etc.)
   useEffect(() => {
     if (
       !hasPendingChanges ||
       disableSave ||
       saveState === "saving" ||
       loading ||
-      !selectedWorkflowId
+      !selectedWorkflowId ||
+      isPropertiesPanelOpen // Don't autosave while panel is open
     ) {
       if (autoSaveTimeoutRef.current !== null) {
         clearTimeout(autoSaveTimeoutRef.current);
@@ -452,6 +489,7 @@ const useWorkflowPersistence = ({
     disableSave,
     handleSave,
     hasPendingChanges,
+    isPropertiesPanelOpen,
     loading,
     saveState,
     selectedWorkflowId,
