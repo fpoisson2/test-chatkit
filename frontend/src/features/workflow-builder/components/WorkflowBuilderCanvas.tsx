@@ -364,6 +364,7 @@ const WorkflowBuilderCanvas = ({
                     onConnect={onConnect}
                     defaultEdgeOptions={defaultEdgeOptions}
                     connectionLineStyle={connectionLineStyle}
+                    connectionRadius={isMobileLayout ? 40 : 20}
                     nodesDraggable={!isMobileLayout}
                     selectionOnDrag={!isMobileLayout}
                     panOnDrag={isMobileLayout ? true : [1, 2]}
