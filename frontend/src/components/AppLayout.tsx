@@ -507,19 +507,17 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                     />
                   </div>
                   <div className="chatkit-sidebar__actions">
-                    {isSidebarOpen ? (
-                      <button
-                        type="button"
-                        className="chatkit-sidebar__dismiss"
-                        onClick={closeSidebar}
-                        tabIndex={sidebarTabIndex}
-                        aria-label={t("app.sidebar.close")}
-                      >
-                        <span aria-hidden="true" className="chatkit-sidebar__dismiss-icon">
-                          <SidebarIcon name="close" />
-                        </span>
-                      </button>
-                    ) : null}
+                    <button
+                      type="button"
+                      className="chatkit-sidebar__dismiss"
+                      onClick={closeSidebar}
+                      tabIndex={sidebarTabIndex}
+                      aria-label={t("app.sidebar.close")}
+                    >
+                      <span aria-hidden="true" className="chatkit-sidebar__dismiss-icon">
+                        <SidebarIcon name="close" />
+                      </span>
+                    </button>
                   </div>
                 </div>
                 {renderAppSwitcher()}
