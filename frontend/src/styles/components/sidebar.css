@@ -104,7 +104,7 @@
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__scroll-area {
-  padding-left: 6px;
+  padding-left: 0;
   gap: 0;
 }
 
