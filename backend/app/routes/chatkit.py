@@ -467,9 +467,20 @@ async def get_thread_image(
 async def upload_chatkit_attachment(
     attachment_id: str,
     request: Request,
-    file: Annotated[UploadFile, File()],
     current_user: User = Depends(get_current_user),
 ):
+    # Manually extract file from form data to avoid Pydantic forward reference issues
+    # caused by `from __future__ import annotations`
+    form = await request.form()
+    file = form.get("file")
+
+    # Check if file exists and has required file-like attributes
+    if not file or not hasattr(file, 'read'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le champ 'file' est requis et doit être un fichier.",
+        )
+
     try:
         server = get_chatkit_server()
     except (

@@ -186,7 +186,24 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
     ) -> ResponseInputContentParam:
         """Convertir une pièce jointe en contenu compatible avec le modèle."""
 
+        logger.info(
+            "📎 attachment_to_message_content called: attachment_id=%s, "
+            "attachment_name=%s, mime_type=%s, open_attachment=%s, request_context=%s",
+            attachment.id,
+            getattr(attachment, "name", None),
+            getattr(attachment, "mime_type", None),
+            self._open_attachment is not None,
+            self._request_context is not None,
+        )
+
         if self._open_attachment is None or self._request_context is None:
+            logger.warning(
+                "📎 Falling back to text description for attachment %s: "
+                "open_attachment=%s, request_context=%s",
+                attachment.id,
+                self._open_attachment is not None,
+                self._request_context is not None,
+            )
             return self._describe_attachment_as_text(attachment)
 
         try:
@@ -213,12 +230,25 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
         data_url = f"data:{resolved_mime};base64,{b64_payload}"
 
         if resolved_mime.startswith("image/"):
+            logger.info(
+                "📎 Attachment %s converted to input_image: mime=%s, data_size=%d",
+                attachment.id,
+                resolved_mime,
+                len(data),
+            )
             return ResponseInputImageParam(
                 type="input_image",
                 detail="auto",
                 image_url=data_url,
             )
 
+        logger.info(
+            "📎 Attachment %s converted to input_file: mime=%s, filename=%s, data_size=%d",
+            attachment.id,
+            resolved_mime,
+            resolved_name,
+            len(data),
+        )
         return ResponseInputFileParam(
             type="input_file",
             file_data=data_url,
@@ -752,6 +782,66 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             if not stream_completed:
                 _schedule_background_drain()
 
+    def _simplify_input_for_title(
+        self,
+        agent_input: list[Any],
+        input_item: UserMessageItem,
+    ) -> list[Any]:
+        """Convert file/image content to text descriptions for title generation.
+
+        Some LLMs (like Groq) don't support input_file or input_image content types.
+        This method replaces binary content with text descriptions while preserving
+        any existing text content.
+        """
+        simplified = []
+        has_text = False
+
+        for item in agent_input:
+            if isinstance(item, dict):
+                item_type = item.get("type", "")
+                if item_type == "input_text":
+                    # Convert dict to proper ResponseInputTextParam
+                    text_content = item.get("text", "")
+                    simplified.append(
+                        ResponseInputTextParam(type="input_text", text=text_content)
+                    )
+                    has_text = True
+                # Skip input_file, input_image, and other binary content types
+                # We'll add attachment descriptions separately
+            elif hasattr(item, "type"):
+                if item.type == "input_text":
+                    simplified.append(item)
+                    has_text = True
+
+        # Build attachment descriptions from the original message
+        attachment_descriptions = []
+        if hasattr(input_item, "attachments") and input_item.attachments:
+            for att in input_item.attachments:
+                att_name = getattr(att, "name", "fichier")
+                att_type = getattr(att, "type", "file")
+                mime_type = getattr(att, "mime_type", "")
+                if mime_type:
+                    attachment_descriptions.append(
+                        f"[Pièce jointe: {att_name} ({mime_type})]"
+                    )
+                else:
+                    attachment_descriptions.append(
+                        f"[Pièce jointe: {att_name} ({att_type})]"
+                    )
+
+        # If we have attachments, add their descriptions as text
+        if attachment_descriptions:
+            desc_text = " ".join(attachment_descriptions)
+            simplified.append(ResponseInputTextParam(type="input_text", text=desc_text))
+
+        # If no content at all, provide a fallback
+        if not simplified:
+            simplified.append(
+                ResponseInputTextParam(type="input_text", text="Nouvelle conversation")
+            )
+
+        return simplified
+
     async def _maybe_update_thread_title(
         self,
         thread: ThreadMetadata,
@@ -779,6 +869,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         if not agent_input:
             return
+
+        # For title generation, convert file/image content to text descriptions
+        # because some LLMs (like Groq) don't support input_file/input_image
+        agent_input = self._simplify_input_for_title(agent_input, input_item)
 
         metadata = {"__trace_source__": "thread-title", "thread_id": thread.id}
         try:

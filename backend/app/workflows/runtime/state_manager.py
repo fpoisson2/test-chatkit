@@ -137,7 +137,25 @@ class StateInitializer:
                                 original_count - len(filtered_history)
                             )
 
+                    # Debug: log user messages with attachments in history
+                    from chatkit.types import UserMessageItem as UMI
+                    for item in filtered_history:
+                        if isinstance(item, UMI):
+                            attachments = getattr(item, "attachments", []) or []
+                            if attachments:
+                                logger.info(
+                                    "📎 History UserMessageItem found: id=%s, attachments_count=%d, attachments=%s",
+                                    item.id,
+                                    len(attachments),
+                                    [{"id": a.id, "name": getattr(a, "name", None)} for a in attachments],
+                                )
+
                     if filtered_history:
+                        logger.info(
+                            "📎 Converting %d thread items to agent input using %s",
+                            len(filtered_history),
+                            type(thread_item_converter).__name__,
+                        )
                         converted_history = await thread_item_converter.to_agent_input(
                             filtered_history
                         )

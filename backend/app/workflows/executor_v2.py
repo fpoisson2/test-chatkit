@@ -564,6 +564,40 @@ async def run_workflow_v2(
         if in_while_loop_iteration and (sanitized_previous_response_id or pending_wait_state):
             conversation_history_input = []
 
+        # Debug: log what's being sent to the LLM
+        def _summarize_content(content):
+            """Summarize content for logging."""
+            if not content:
+                return []
+            result = []
+            for item in content:
+                if isinstance(item, dict):
+                    item_type = item.get("type", "unknown")
+                    if item_type in ("input_image", "input_file"):
+                        data = item.get("image_url") or item.get("file_data") or ""
+                        data_len = len(data) if isinstance(data, str) else 0
+                        result.append(f"{item_type}(size={data_len})")
+                    else:
+                        result.append(item_type)
+                elif hasattr(item, "type"):
+                    result.append(getattr(item, "type", "unknown"))
+                else:
+                    result.append(str(type(item).__name__))
+            return result
+
+        for idx, msg in enumerate(conversation_history_input[:5]):  # Log first 5 messages
+            if isinstance(msg, dict):
+                role = msg.get("role", "unknown")
+                content = msg.get("content", [])
+            else:
+                role = getattr(msg, "role", "unknown")
+                content = getattr(msg, "content", [])
+            content_summary = _summarize_content(content) if isinstance(content, list) else str(type(content))
+            logger.info(
+                "📎 LLM Input[%d]: role=%s, content_types=%s",
+                idx, role, content_summary,
+            )
+
         try:
             result = Runner.run_streamed(
                 agent,

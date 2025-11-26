@@ -10,6 +10,7 @@ import { LoadingIndicator } from './LoadingIndicator';
 import { DevToolsScreencast } from './DevToolsScreencast';
 import { SSHTerminal } from './SSHTerminal';
 import { VNCScreencast } from './VNCScreencast';
+import { FileAttachmentDisplay } from './FileAttachmentDisplay';
 import { ImageWithBlobUrl } from '../utils';
 
 export interface MessageRendererProps {
@@ -61,9 +62,19 @@ const isLikelyJson = (value: string): boolean => {
 };
 
 /**
+ * Helper to find attachment details by ID
+ */
+function findAttachment(
+  attachmentId: string,
+  attachments?: Array<{ id: string; name: string; mime_type: string; type: string }>
+) {
+  return attachments?.find(att => att.id === attachmentId);
+}
+
+/**
  * Renders a user message
  */
-function UserMessageContent({ item, theme }: { item: ThreadItem; theme?: string }): JSX.Element {
+function UserMessageContent({ item, theme, authToken }: { item: ThreadItem; theme?: string; authToken?: string }): JSX.Element {
   if (item.type !== 'user_message') return <></>;
 
   return (
@@ -74,18 +85,31 @@ function UserMessageContent({ item, theme }: { item: ThreadItem; theme?: string 
           {content.type === 'input_tag' && (
             <span className="chatkit-tag">{content.text}</span>
           )}
-          {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" />}
+          {content.type === 'image' && <ImageWithBlobUrl src={content.image} alt="" authToken={authToken} />}
           {content.type === 'file' && (
-            <div className="chatkit-file">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-              </svg>
-              {content.file}
-            </div>
+            <FileAttachmentDisplay
+              attachmentId={content.file}
+              attachment={findAttachment(content.file, item.attachments)}
+              authToken={authToken}
+            />
           )}
         </div>
       ))}
+      {/* Render any attachments not in content (legacy support) */}
+      {item.attachments && item.attachments.length > 0 && (
+        <div className="chatkit-attachments">
+          {item.attachments
+            .filter(att => !item.content.some(c => c.type === 'file' && c.file === att.id))
+            .map((att, idx) => (
+              <FileAttachmentDisplay
+                key={`att-${idx}`}
+                attachmentId={att.id}
+                attachment={att}
+                authToken={authToken}
+              />
+            ))}
+        </div>
+      )}
       {item.quoted_text && (
         <div className="chatkit-quoted-text">
           <blockquote>{item.quoted_text}</blockquote>
@@ -525,7 +549,7 @@ export function MessageRenderer({
   return (
     <div className={`chatkit-message chatkit-message-${messageClass} chatkit-item-${item.type}`}>
       {item.type === 'user_message' && (
-        <UserMessageContent item={item} theme={theme} />
+        <UserMessageContent item={item} theme={theme} authToken={authToken} />
       )}
 
       {item.type === 'assistant_message' && (

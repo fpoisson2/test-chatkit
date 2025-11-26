@@ -851,15 +851,77 @@
 .chatkit-file {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 8px 12px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .chatkit-file svg {
   flex-shrink: 0;
+}
+
+.chatkit-file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chatkit-file-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.chatkit-file-download-icon {
+  opacity: 0.6;
+  margin-left: 4px;
+}
+
+/* File download button */
+.chatkit-file-download {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s, border-color 0.2s;
+}
+
+.chatkit-file-download:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.chatkit-file-download:hover .chatkit-file-download-icon {
+  opacity: 1;
+}
+
+.chatkit-file-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* Light theme adjustments */
+[data-theme="light"] .chatkit-file {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .chatkit-file-download:hover {
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Attachments container */
+.chatkit-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 /* ===== WORKFLOWS ===== */
