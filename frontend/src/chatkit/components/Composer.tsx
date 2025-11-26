@@ -56,6 +56,8 @@ export function Composer({
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -262,6 +264,44 @@ export function Composer({
     onAttachmentsChange(attachments.filter(att => att.id !== id));
   }, [attachments, onAttachmentsChange]);
 
+  // Handlers pour le drag and drop
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+
+    if (!config?.attachments?.enabled) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFileSelect(files);
+    }
+  }, [config?.attachments?.enabled, handleFileSelect]);
+
   // Soumettre le message
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -353,7 +393,26 @@ export function Composer({
       )}
 
       {/* Composer */}
-      <div className="chatkit-composer">
+      <div
+        className={`chatkit-composer ${isDragging ? 'is-dragging' : ''}`}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {/* Drop overlay */}
+        {isDragging && config?.attachments?.enabled && (
+          <div className="chatkit-drop-overlay">
+            <div className="chatkit-drop-overlay-content">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>Déposez vos fichiers ici</span>
+            </div>
+          </div>
+        )}
         <form
           onSubmit={handleSubmit}
           className={`chatkit-composer-form ${isModelSelectorEnabled && availableModels.length > 0 ? 'is-multiline' : 'is-singleline'}`}
