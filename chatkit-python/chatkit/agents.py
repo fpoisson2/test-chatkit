@@ -1516,40 +1516,53 @@ async def stream_agent_response(
             # For other errors, re-raise
             raise
 
-    try:
-        async for event in _merge_generators(safe_stream_events(), queue_iterator):
-            # Events emitted from agent context helpers
-            if isinstance(event, _EventWrapper):
-                event = event.event
-                if (
-                    event.type == "thread.item.added"
-                    or event.type == "thread.item.done"
-                ):
-                    # End the current workflow if visual item is added after it
-                    if (
-                        ctx.workflow_item
-                        and ctx.workflow_item.id != event.item.id
-                        and event.item.type != "client_tool_call"
-                        and event.item.type != "hidden_context_item"
-                    ):
-                        yield end_workflow(ctx.workflow_item)
+        try:
+            async for event in _merge_generators(safe_stream_events(), queue_iterator):
+            
+                usage_details = _event_attr(event, "usage") or _event_attr(
+                    event, "response_usage"
+                )
+                if usage_details is None:
+                    usage_details = _event_attr(event, "model_usage")
 
-                    # track the current workflow if one is added
+                if usage_details is not None:
+                    try:
+                        setattr(event, "usage", usage_details)
+                    except Exception:
+                        LOGGER.debug("Unable to attach usage to event %s", event)
+
+                # Events emitted from agent context helpers
+                if isinstance(event, _EventWrapper):
+                    event = event.event
                     if (
                         event.type == "thread.item.added"
-                        and event.item.type == "workflow"
+                        or event.type == "thread.item.done"
                     ):
-                        ctx.workflow_item = event.item
-                        search_tasks.clear()
-                        image_tasks.clear()
-                        function_tasks.clear()
-                        function_tasks_by_call_id.clear()
+                        # End the current workflow if visual item is added after it
+                        if (
+                            ctx.workflow_item
+                            and ctx.workflow_item.id != event.item.id
+                            and event.item.type != "client_tool_call"
+                            and event.item.type != "hidden_context_item"
+                        ):
+                            yield end_workflow(ctx.workflow_item)
 
-                    # track integration produced items so we can clean them up if
-                    # there is a guardrail tripwire
-                    produced_items.add(event.item.id)
-                yield event
-                continue
+                        # track the current workflow if one is added
+                        if (
+                            event.type == "thread.item.added"
+                            and event.item.type == "workflow"
+                        ):
+                            ctx.workflow_item = event.item
+                            search_tasks.clear()
+                            image_tasks.clear()
+                            function_tasks.clear()
+                            function_tasks_by_call_id.clear()
+
+                        # track integration produced items so we can clean them up if
+                        # there is a guardrail tripwire
+                        produced_items.add(event.item.id)
+                    yield event
+                    continue
 
             if event.type == "run_item_stream_event":
                 run_item_event = event

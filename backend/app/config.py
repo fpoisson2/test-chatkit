@@ -174,6 +174,32 @@ def ensure_lti_key_material(
     return private_pem, public_pem
 
 
+def _parse_model_pricing(raw_value: str | None) -> dict[str, dict[str, float]]:
+    if not raw_value:
+        return {}
+
+    try:
+        data = json.loads(raw_value)
+    except json.JSONDecodeError:
+        logger.warning("Invalid WORKFLOW_MODEL_PRICING value; expected JSON mapping")
+        return {}
+
+    if not isinstance(data, Mapping):
+        logger.warning("WORKFLOW_MODEL_PRICING must be a mapping keyed by model name")
+        return {}
+
+    pricing: dict[str, dict[str, float]] = {}
+    for key, value in data.items():
+        if not isinstance(key, str) or not isinstance(value, Mapping):
+            continue
+        pricing[key] = {
+            "input_cost_per_token": float(value.get("input_cost_per_token", 0.0)),
+            "output_cost_per_token": float(value.get("output_cost_per_token", 0.0)),
+        }
+
+    return pricing
+
+
 @dataclass(frozen=True)
 class ModelProviderConfig:
     """Profil de connexion pour un fournisseur de modèles."""
@@ -310,6 +336,8 @@ class Settings:
         lti_tool_private_key: Clé privée PEM utilisée pour signer les réponses et
             les JWKS.
         lti_tool_key_id: Identifiant (kid) de la clé LTI, si disponible.
+        workflow_model_pricing: Tarif par modèle pour estimer le coût des runs de
+            workflow.
     """
 
     allowed_origins: list[str]
@@ -359,6 +387,7 @@ class Settings:
     lti_tool_key_id: str | None
     lti_tool_private_key_path: str | None
     lti_tool_public_key_path: str | None
+    workflow_model_pricing: dict[str, dict[str, float]]
 
     @property
     def chatkit_api_base(self) -> str:
@@ -745,6 +774,10 @@ class Settings:
             lti_tool_key_id=get_stripped("LTI_TOOL_KEY_ID"),
             lti_tool_private_key_path=str(resolved_private_key_path),
             lti_tool_public_key_path=str(resolved_public_key_path),
+            workflow_model_pricing=_parse_model_pricing(
+                env.get("WORKFLOW_MODEL_PRICING")
+                or env.get("WORKFLOW_MODEL_PRICING_JSON")
+            ),
         )
 
 
