@@ -7,6 +7,7 @@ import { ImageWithBlobUrl, TEXTAREA_MAX_HEIGHT_PX } from '../utils';
 import {
   Attachment,
   uploadAttachment,
+  createAttachment,
   createFilePreview,
   generateAttachmentId,
   validateFile
@@ -444,25 +445,55 @@ export function Composer({
     if (!hasContent || isLoading) return;
 
     try {
-      // Upload des attachments d'abord
+      // Two-phase upload for attachments
+      // Phase 1: Create attachment on backend to get server ID and upload URL
+      // Phase 2: Upload the file to the server-provided URL
+      const uploadedAttachments: Attachment[] = [...attachments];
+
       if (attachments.length > 0 && apiConfig?.url) {
-        for (const att of attachments) {
+        for (let i = 0; i < attachments.length; i++) {
+          const att = attachments[i];
+
+          // Update status to uploading
           onAttachmentsChange(attachments.map(a =>
             a.id === att.id ? { ...a, status: 'uploading' as const } : a
           ));
 
           try {
+            // Phase 1: Create attachment to get backend ID and upload URL
+            const createResponse = await createAttachment({
+              url: apiConfig.url,
+              headers: apiConfig.headers,
+              name: att.file.name,
+              size: att.file.size,
+              mimeType: att.file.type || 'application/octet-stream',
+            });
+
+            const backendId = createResponse.id;
+            const uploadUrl = createResponse.upload_url;
+
+            // Phase 2: Upload the file using the backend-provided URL
             await uploadAttachment({
               url: apiConfig.url,
               headers: apiConfig.headers,
-              attachmentId: att.id,
+              attachmentId: backendId,
               file: att.file,
+              uploadUrl: uploadUrl,
             });
 
+            // Update the attachment with the backend ID and mark as uploaded
+            uploadedAttachments[i] = {
+              ...att,
+              id: backendId,  // Use the backend-provided ID
+              status: 'uploaded' as const,
+              uploadUrl: uploadUrl,
+            };
+
             onAttachmentsChange(attachments.map(a =>
-              a.id === att.id ? { ...a, status: 'uploaded' as const } : a
+              a.id === att.id ? uploadedAttachments[i] : a
             ));
           } catch (err) {
+            console.error('[Composer] Failed to upload attachment:', err);
             onAttachmentsChange(attachments.map(a =>
               a.id === att.id ? { ...a, status: 'error' as const, error: String(err) } : a
             ));
@@ -470,8 +501,9 @@ export function Composer({
         }
       }
 
-      // Soumettre le message
-      await onSubmit(message, attachments);
+      // Submit the message with attachments that have backend IDs
+      const successfulAttachments = uploadedAttachments.filter(a => a.status === 'uploaded');
+      await onSubmit(message, successfulAttachments);
     } catch (error) {
       console.error('[Composer] Failed to send message:', error);
     }

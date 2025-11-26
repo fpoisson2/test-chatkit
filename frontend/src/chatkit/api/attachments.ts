@@ -10,24 +10,73 @@ export interface Attachment {
   preview?: string;
   status: 'pending' | 'uploading' | 'uploaded' | 'error';
   error?: string;
+  uploadUrl?: string;
+}
+
+export interface CreateAttachmentResponse {
+  id: string;
+  name: string;
+  mime_type: string;
+  type: 'file' | 'image';
+  upload_url?: string;
 }
 
 /**
- * Upload un attachment vers le serveur
+ * Crée un attachment via le protocole ChatKit (Phase 1 du two-phase upload)
+ * Retourne l'ID et l'URL d'upload du backend
+ */
+export async function createAttachment(options: {
+  url: string;
+  headers?: Record<string, string>;
+  name: string;
+  size: number;
+  mimeType: string;
+}): Promise<CreateAttachmentResponse> {
+  const { url, headers = {}, name, size, mimeType } = options;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      type: 'attachments.create',
+      params: {
+        name,
+        size,
+        mime_type: mimeType,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to create attachment: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.attachment || data;
+}
+
+/**
+ * Upload un attachment vers le serveur (Phase 2 du two-phase upload)
  */
 export async function uploadAttachment(options: {
   url: string;
   headers?: Record<string, string>;
   attachmentId: string;
   file: File;
+  uploadUrl?: string;
   onProgress?: (progress: number) => void;
 }): Promise<void> {
-  const { url, headers = {}, attachmentId, file, onProgress } = options;
+  const { url, headers = {}, attachmentId, file, uploadUrl, onProgress } = options;
 
   const formData = new FormData();
   formData.append('file', file);
 
-  const uploadUrl = `${url}/attachments/${attachmentId}/upload`;
+  // Use the backend-provided upload URL if available, otherwise fallback to default
+  const finalUploadUrl = uploadUrl || `${url}/attachments/${attachmentId}/upload`;
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -55,7 +104,7 @@ export async function uploadAttachment(options: {
       reject(new Error('Upload aborted'));
     });
 
-    xhr.open('POST', uploadUrl);
+    xhr.open('POST', finalUploadUrl);
 
     // Ajouter les headers
     Object.entries(headers).forEach(([key, value]) => {
