@@ -86,11 +86,11 @@
 /* Mobile/Touch: larger touch targets for better accessibility (44px minimum recommended) */
 @media (hover: none) and (pointer: coarse) {
   .resizerHandle {
-    width: 26px;
-    height: 26px;
-    padding: 14px;
-    border-width: 3px;
-    box-shadow: 0 0 0 10px rgba(168, 85, 247, 0.3);
+    width: 28px !important;
+    height: 28px !important;
+    padding: 16px !important;
+    border-width: 4px;
+    box-shadow: 0 0 0 12px rgba(168, 85, 247, 0.35);
   }
 
   /* Larger invisible touch target */
@@ -99,10 +99,11 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 54px;
-    height: 54px;
+    width: 56px;
+    height: 56px;
     transform: translate(-50%, -50%);
     border-radius: 9999px;
+    pointer-events: auto;
   }
 }
 
