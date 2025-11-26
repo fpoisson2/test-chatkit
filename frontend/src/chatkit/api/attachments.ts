@@ -106,9 +106,13 @@ export async function uploadAttachment(options: {
 
     xhr.open('POST', finalUploadUrl);
 
-    // Ajouter les headers
+    // Ajouter les headers SAUF Content-Type (le navigateur le définit automatiquement pour FormData)
     Object.entries(headers).forEach(([key, value]) => {
-      xhr.setRequestHeader(key, value);
+      // Ne pas définir Content-Type pour les uploads FormData - le navigateur le fait automatiquement
+      // avec la bonne boundary pour multipart/form-data
+      if (key.toLowerCase() !== 'content-type') {
+        xhr.setRequestHeader(key, value);
+      }
     });
 
     xhr.send(formData);
