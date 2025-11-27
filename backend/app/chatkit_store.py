@@ -363,12 +363,14 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         workflow = getattr(definition, "workflow", None)
         workflow_id = getattr(workflow, "id", getattr(definition, "workflow_id", None))
         workflow_slug = getattr(workflow, "slug", None)
+        workflow_display_name = getattr(workflow, "display_name", None)
         if workflow_slug is None:
             raise RuntimeError("Le workflow actif n'a pas de slug défini")
         return {
             "id": workflow_id,
             "slug": workflow_slug,
             "definition_id": definition.id,
+            "display_name": workflow_display_name,
         }
 
     @staticmethod
