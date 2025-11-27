@@ -94,26 +94,40 @@ export function ConversationsSidebarSection({
     }
     setError(null);
 
+    // Reset pagination cursor when doing initial load or refresh
+    const cursorToUse = (isInitial || isRefresh) ? undefined : after;
+
     try {
       const response = await listThreads({
         url: api.url,
         headers: api.headers,
         limit: 20,
         order: "desc",
-        after: isInitial || isRefresh ? undefined : after,
+        after: cursorToUse,
       });
 
       const newThreads = response.data || [];
-      const updatedThreads = (isInitial || isRefresh) ? newThreads : [...threads, ...newThreads];
       const updatedHasMore = newThreads.length === 20;
-      const updatedAfter = newThreads.length > 0 ? newThreads[newThreads.length - 1].id : after;
 
-      setThreads(updatedThreads);
+      // For initial load or refresh, replace all threads; otherwise append
+      setThreads((currentThreads) => {
+        const updatedThreads = (isInitial || isRefresh) ? newThreads : [...currentThreads, ...newThreads];
+        cachedThreads = updatedThreads;
+        return updatedThreads;
+      });
+
       setHasMore(updatedHasMore);
-      setAfter(updatedAfter);
-
-      cachedThreads = updatedThreads;
       cachedHasMore = updatedHasMore;
+
+      // Update pagination cursor - reset for initial/refresh, update for load more
+      if (isInitial || isRefresh) {
+        const newAfter = newThreads.length > 0 ? newThreads[newThreads.length - 1].id : undefined;
+        setAfter(newAfter);
+      } else {
+        setAfter((currentAfter) =>
+          newThreads.length > 0 ? newThreads[newThreads.length - 1].id : currentAfter
+        );
+      }
     } catch (err) {
       console.error("[ConversationsSidebarSection] Failed to load threads:", err);
       setError("Impossible de charger les conversations");
@@ -125,7 +139,7 @@ export function ConversationsSidebarSection({
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  }, [api, after, threads]);
+  }, [api, after]);
 
   useEffect(() => {
     if (api) {
