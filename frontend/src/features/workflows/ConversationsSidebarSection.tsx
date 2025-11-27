@@ -348,15 +348,13 @@ export function ConversationsSidebarSection({
                     disabled={isDeleting}
                     aria-current={isActive ? "true" : undefined}
                   >
+                    {isThreadLoading && (
+                      <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
+                    )}
                     <span className="conversations-sidebar-section__thread-title">{threadTitle}</span>
-                    <span className="conversations-sidebar-section__thread-meta">
-                      {isThreadLoading && (
-                        <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
-                      )}
-                      {dateStr && (
-                        <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
-                      )}
-                    </span>
+                    {dateStr && (
+                      <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
+                    )}
                   </button>
                   <div className="conversations-sidebar-section__actions" data-conversation-menu-container="">
                     <button
