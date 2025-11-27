@@ -888,6 +888,7 @@ export function MyChat() {
       outboundCallError,
       hangupOutboundCall,
       user?.email,
+      isSidebarOpen,
     ],
   );
 
