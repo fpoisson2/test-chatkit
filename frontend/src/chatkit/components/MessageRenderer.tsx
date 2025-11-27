@@ -30,6 +30,8 @@ export interface MessageRendererProps {
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (screencast: { token: string; itemId: string } | null) => void;
   onContinueWorkflow: () => void;
+  // Admin props for cost tracking
+  isAdmin?: boolean;
 }
 
 /**
@@ -120,6 +122,19 @@ function UserMessageContent({ item, theme, authToken }: { item: ThreadItem; them
 }
 
 /**
+ * Helper function to format cost
+ */
+function formatCost(cost: number): string {
+  if (cost < 0.0001) {
+    return `$${cost.toFixed(6)}`;
+  } else if (cost < 0.01) {
+    return `$${cost.toFixed(4)}`;
+  } else {
+    return `$${cost.toFixed(2)}`;
+  }
+}
+
+/**
  * Renders an assistant message
  */
 function AssistantMessageContent({
@@ -129,6 +144,7 @@ function AssistantMessageContent({
   onCopyMessage,
   createWidgetContext,
   loadingLabel,
+  isAdmin,
 }: {
   item: ThreadItem;
   theme?: string;
@@ -136,8 +152,11 @@ function AssistantMessageContent({
   onCopyMessage: (messageId: string, content: string) => void;
   createWidgetContext: (itemId: string) => WidgetContext;
   loadingLabel: string;
+  isAdmin?: boolean;
 }): JSX.Element {
   if (item.type !== 'assistant_message') return <></>;
+
+  const usageMetadata = item.usage_metadata;
 
   return (
     <>
@@ -189,6 +208,24 @@ function AssistantMessageContent({
             </svg>
           )}
         </button>
+      )}
+      {/* Cost tracking for admins */}
+      {isAdmin && usageMetadata && item.status !== 'in_progress' && (
+        <div className="chatkit-usage-metadata">
+          <span className="chatkit-usage-tokens">
+            {usageMetadata.input_tokens} + {usageMetadata.output_tokens} tokens
+          </span>
+          {usageMetadata.cost > 0 && (
+            <span className="chatkit-usage-cost">
+              {formatCost(usageMetadata.cost)}
+            </span>
+          )}
+          {usageMetadata.model && (
+            <span className="chatkit-usage-model">
+              {usageMetadata.model}
+            </span>
+          )}
+        </div>
       )}
     </>
   );
@@ -532,6 +569,7 @@ export function MessageRenderer({
   onScreencastConnectionError,
   onActiveScreencastChange,
   onContinueWorkflow,
+  isAdmin,
 }: MessageRendererProps): JSX.Element | null {
   // Don't render end_of_turn
   if (item.type === 'end_of_turn') {
@@ -560,6 +598,7 @@ export function MessageRenderer({
           onCopyMessage={onCopyMessage}
           createWidgetContext={createWidgetContext}
           loadingLabel={loadingLabel}
+          isAdmin={isAdmin}
         />
       )}
 

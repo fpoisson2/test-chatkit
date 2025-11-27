@@ -83,6 +83,21 @@ export interface AssistantMessageContentPartDoneEvent extends ThreadStreamEventB
   content: AssistantMessageContent;
 }
 
+// ===== Événements d'utilisation (coût et tokens) =====
+
+export interface UsageMetadata {
+  input_tokens: number;
+  output_tokens: number;
+  cost: number;
+  model?: string;
+}
+
+export interface AssistantMessageUsageEvent extends ThreadStreamEventBase {
+  type: 'assistant_message.usage';
+  item_id: string;
+  usage: UsageMetadata;
+}
+
 // ===== Événements de workflow =====
 
 export interface WorkflowTaskAddedEvent extends ThreadStreamEventBase {
@@ -216,6 +231,7 @@ export type ThreadStreamEvent =
   | AssistantMessageContentPartTextDeltaEvent
   | AssistantMessageContentPartAnnotationAddedEvent
   | AssistantMessageContentPartDoneEvent
+  | AssistantMessageUsageEvent
   | WorkflowTaskAddedEvent
   | WorkflowTaskUpdatedEvent
   | WidgetRootUpdatedEvent
