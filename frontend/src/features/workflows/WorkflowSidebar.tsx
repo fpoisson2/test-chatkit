@@ -1152,8 +1152,12 @@ export const ChatWorkflowSidebar = ({
       return filteredWorkflows;
     }
     // Get pinned workflows first, then limit recent ones
-    const pinnedWorkflows = filteredWorkflows.filter((w) => isWorkflowPinned(pinnedLookup, w.id, "local"));
-    const unpinnedWorkflows = filteredWorkflows.filter((w) => !isWorkflowPinned(pinnedLookup, w.id, "local"));
+    const pinnedWorkflows = filteredWorkflows.filter((w) =>
+      isWorkflowPinned({ kind: "local", workflow: w }, pinnedLookup)
+    );
+    const unpinnedWorkflows = filteredWorkflows.filter((w) =>
+      !isWorkflowPinned({ kind: "local", workflow: w }, pinnedLookup)
+    );
     // Always show pinned, limit unpinned to maxRecentWorkflows
     return [...pinnedWorkflows, ...unpinnedWorkflows.slice(0, maxRecentWorkflows)];
   }, [filteredWorkflows, searchQuery, showAllWorkflows, pinnedLookup, maxRecentWorkflows]);
@@ -1162,8 +1166,12 @@ export const ChatWorkflowSidebar = ({
     if (searchQuery.trim() || showAllWorkflows) {
       return filteredHostedWorkflows;
     }
-    const pinnedHosted = filteredHostedWorkflows.filter((h) => isWorkflowPinned(pinnedLookup, h.slug, "hosted"));
-    const unpinnedHosted = filteredHostedWorkflows.filter((h) => !isWorkflowPinned(pinnedLookup, h.slug, "hosted"));
+    const pinnedHosted = filteredHostedWorkflows.filter((h) =>
+      isWorkflowPinned({ kind: "hosted", workflow: h }, pinnedLookup)
+    );
+    const unpinnedHosted = filteredHostedWorkflows.filter((h) =>
+      !isWorkflowPinned({ kind: "hosted", workflow: h }, pinnedLookup)
+    );
     return [...pinnedHosted, ...unpinnedHosted.slice(0, maxRecentWorkflows)];
   }, [filteredHostedWorkflows, searchQuery, showAllWorkflows, pinnedLookup, maxRecentWorkflows]);
 
