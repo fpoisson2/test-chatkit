@@ -391,9 +391,8 @@ export function ConversationsSidebarSection({
                       {isThreadLoading && (
                         <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
                       )}
-                      <span className="conversations-sidebar-section__thread-title">{threadTitle}</span>
+                      <TruncatedText className="conversations-sidebar-section__thread-title">{threadTitle}</TruncatedText>
                     </span>
-                    <TruncatedText className="conversations-sidebar-section__thread-title">{threadTitle}</TruncatedText>
                     {dateStr && (
                       <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
                     )}
