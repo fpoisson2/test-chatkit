@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 from enum import Enum
 from typing import Any
 
@@ -19,6 +20,9 @@ from ..models import User
 logger = logging.getLogger("chatkit.computer")
 
 router = APIRouter(prefix="/api/computer", tags=["computer"])
+
+# Session expiration time in seconds (1 hour)
+SESSION_EXPIRATION_SECONDS = 3600
 
 
 # Pydantic models for browser control
@@ -47,16 +51,48 @@ class BrowserHistoryDirection(str, Enum):
 
 
 # Store debug URLs per session token
-# Format: {token: {"debug_url": str, "user_id": int, "browser": HostedBrowser | None, "driver": _BaseBrowserDriver | None}}
+# Format: {token: {"debug_url": str, "user_id": int, "browser": HostedBrowser | None, "driver": _BaseBrowserDriver | None, "created_at": float}}
 _DEBUG_SESSIONS: dict[str, dict[str, Any]] = {}
 
 # Store SSH sessions per token
-# Format: {token: {"ssh": HostedSSH, "user_id": int, "config": SSHConfig}}
+# Format: {token: {"ssh": HostedSSH, "user_id": int, "config": SSHConfig, "created_at": float}}
 _SSH_SESSIONS: dict[str, dict[str, Any]] = {}
 
 # Store VNC sessions per token
-# Format: {token: {"vnc": HostedVNC, "user_id": int, "config": VNCConfig}}
+# Format: {token: {"vnc": HostedVNC, "user_id": int, "config": VNCConfig, "created_at": float}}
 _VNC_SESSIONS: dict[str, dict[str, Any]] = {}
+
+
+def _cleanup_expired_sessions() -> None:
+    """Remove expired sessions from all session stores."""
+    current_time = time.time()
+
+    # Cleanup debug sessions
+    expired_debug = [
+        token for token, session in _DEBUG_SESSIONS.items()
+        if current_time - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS
+    ]
+    for token in expired_debug:
+        logger.info(f"Expiring debug session {token[:8]}...")
+        del _DEBUG_SESSIONS[token]
+
+    # Cleanup SSH sessions
+    expired_ssh = [
+        token for token, session in _SSH_SESSIONS.items()
+        if current_time - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS
+    ]
+    for token in expired_ssh:
+        logger.info(f"Expiring SSH session {token[:8]}...")
+        del _SSH_SESSIONS[token]
+
+    # Cleanup VNC sessions
+    expired_vnc = [
+        token for token, session in _VNC_SESSIONS.items()
+        if current_time - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS
+    ]
+    for token in expired_vnc:
+        logger.info(f"Expiring VNC session {token[:8]}...")
+        del _VNC_SESSIONS[token]
 
 
 def register_debug_session(debug_url: str, user_id: int | None = None) -> str:
@@ -70,10 +106,14 @@ def register_debug_session(debug_url: str, user_id: int | None = None) -> str:
     Returns:
         A unique session token to use for accessing this debug URL
     """
+    # Clean up expired sessions before creating new ones
+    _cleanup_expired_sessions()
+
     token = secrets.token_urlsafe(32)
     _DEBUG_SESSIONS[token] = {
         "debug_url": debug_url,
         "user_id": user_id,
+        "created_at": time.time(),
     }
     logger.info(f"Registered debug session {token[:8]}... for user {user_id}")
     return token
@@ -92,6 +132,12 @@ def get_debug_session(token: str, user_id: int | None = None) -> str | None:
     """
     session = _DEBUG_SESSIONS.get(token)
     if not session:
+        return None
+
+    # Check if session has expired
+    if time.time() - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS:
+        logger.info(f"Debug session {token[:8]}... has expired")
+        del _DEBUG_SESSIONS[token]
         return None
 
     # Check authorization if user_id is provided
@@ -130,11 +176,15 @@ def register_ssh_session(
     Returns:
         A unique session token
     """
+    # Clean up expired sessions before creating new ones
+    _cleanup_expired_sessions()
+
     token = secrets.token_urlsafe(32)
     _SSH_SESSIONS[token] = {
         "ssh": ssh_instance,
         "config": ssh_config,
         "user_id": user_id,
+        "created_at": time.time(),
     }
     logger.info(f"Registered SSH session {token[:8]}... for user {user_id}")
     return token
@@ -153,6 +203,12 @@ def get_ssh_session(token: str, user_id: int | None = None) -> dict[str, Any] | 
     """
     session = _SSH_SESSIONS.get(token)
     if not session:
+        return None
+
+    # Check if session has expired
+    if time.time() - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS:
+        logger.info(f"SSH session {token[:8]}... has expired")
+        del _SSH_SESSIONS[token]
         return None
 
     # Check authorization if user_id is provided
@@ -191,11 +247,15 @@ def register_vnc_session(
     Returns:
         A unique session token
     """
+    # Clean up expired sessions before creating new ones
+    _cleanup_expired_sessions()
+
     token = secrets.token_urlsafe(32)
     _VNC_SESSIONS[token] = {
         "vnc": vnc_instance,
         "config": vnc_config,
         "user_id": user_id,
+        "created_at": time.time(),
     }
     logger.info(f"Registered VNC session {token[:8]}... for user {user_id}")
     return token
@@ -214,6 +274,12 @@ def get_vnc_session(token: str, user_id: int | None = None) -> dict[str, Any] | 
     """
     session = _VNC_SESSIONS.get(token)
     if not session:
+        return None
+
+    # Check if session has expired
+    if time.time() - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS:
+        logger.info(f"VNC session {token[:8]}... has expired")
+        del _VNC_SESSIONS[token]
         return None
 
     # Check authorization if user_id is provided

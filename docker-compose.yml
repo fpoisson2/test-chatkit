@@ -22,10 +22,10 @@ services:
       CHATKIT_API_BASE: ${CHATKIT_API_BASE:-https://api.openai.com}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CHATKIT_WORKFLOW_ID: ${CHATKIT_WORKFLOW_ID:-}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
-      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?AUTH_SECRET_KEY is required - generate with: openssl rand -base64 32}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -76,7 +76,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-chatkit}
       POSTGRES_USER: ${POSTGRES_USER:-chatkit}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatkit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
   redis:
@@ -109,12 +109,12 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CHATKIT_WORKFLOW_ID: ${CHATKIT_WORKFLOW_ID:-}
       # Database
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       # Celery
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_BROKER_URL:-redis://localhost:6379/0}
       # Auth (required by app initialization)
-      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?AUTH_SECRET_KEY is required - generate with: openssl rand -base64 32}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

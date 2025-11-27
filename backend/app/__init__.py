@@ -27,8 +27,28 @@ else:
         from fastapi import FastAPI, Request
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
+        from starlette.middleware.base import BaseHTTPMiddleware
 
         from .config import get_settings
+
+        class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+            """Middleware to add security headers to all responses."""
+
+            async def dispatch(self, request: Request, call_next):
+                response = await call_next(request)
+                # Prevent clickjacking
+                response.headers["X-Frame-Options"] = "DENY"
+                # Prevent MIME type sniffing
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                # XSS protection (legacy browsers)
+                response.headers["X-XSS-Protection"] = "1; mode=block"
+                # Referrer policy
+                response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                # Permissions policy (restrict browser features)
+                response.headers["Permissions-Policy"] = (
+                    "geolocation=(), microphone=(), camera=()"
+                )
+                return response
 
         # Try to import slowapi for rate limiting (optional)
         try:
@@ -99,13 +119,18 @@ else:
                 "Install with: pip install slowapi>=0.1.9"
             )
 
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.allowed_origins,
-            allow_methods=["*"],
-            allow_headers=["*"],
-            allow_credentials=True,
-        )
+        # Add security headers middleware first (outermost)
+        app.add_middleware(SecurityHeadersMiddleware)
+
+        # Add CORS middleware only if allowed_origins is configured
+        if settings.allowed_origins:
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origins=settings.allowed_origins,
+                allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+                allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+                allow_credentials=True,
+            )
 
         # Add SlowAPI middleware for rate limiting (if available)
         if _RATE_LIMITING_AVAILABLE and SlowAPIMiddleware:
