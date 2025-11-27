@@ -22,6 +22,12 @@ type UseWorkflowComposerModelsResult = {
   composerModels: ComposerModel[] | null;
   loading: boolean;
   error: string | null;
+  /**
+   * Indicates whether a workflow was successfully analyzed.
+   * When true, the composerModels value is definitive (null means no user choice mode).
+   * When false, the workflow hasn't been loaded yet or params are missing.
+   */
+  workflowDetected: boolean;
 };
 
 /**
@@ -36,9 +42,13 @@ export const useWorkflowComposerModels = ({
   const [composerModels, setComposerModels] = useState<ComposerModel[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [workflowDetected, setWorkflowDetected] = useState(false);
 
   useEffect(() => {
     console.log("[useWorkflowComposerModels] params:", { token: !!token, workflowId, activeVersionId });
+
+    // Reset state when params change
+    setWorkflowDetected(false);
 
     if (!token || !workflowId || !activeVersionId) {
       console.log("[useWorkflowComposerModels] Missing params, skipping");
@@ -85,6 +95,7 @@ export const useWorkflowComposerModels = ({
         if (!agentNode?.parameters) {
           console.log("[useWorkflowComposerModels] No agent parameters found");
           setComposerModels(null);
+          setWorkflowDetected(true);
           setLoading(false);
           return;
         }
@@ -98,6 +109,7 @@ export const useWorkflowComposerModels = ({
         if (selectionMode !== "user_choice") {
           console.log("[useWorkflowComposerModels] Not user_choice mode");
           setComposerModels(null);
+          setWorkflowDetected(true);
           setLoading(false);
           return;
         }
@@ -108,6 +120,7 @@ export const useWorkflowComposerModels = ({
         if (userModelOptions.length === 0) {
           console.log("[useWorkflowComposerModels] No user model options");
           setComposerModels(null);
+          setWorkflowDetected(true);
           setLoading(false);
           return;
         }
@@ -149,6 +162,7 @@ export const useWorkflowComposerModels = ({
 
         console.log("[useWorkflowComposerModels] Setting composer models:", models);
         setComposerModels(models);
+        setWorkflowDetected(true);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -166,5 +180,5 @@ export const useWorkflowComposerModels = ({
     };
   }, [token, workflowId, activeVersionId]);
 
-  return { composerModels, loading, error };
+  return { composerModels, loading, error, workflowDetected };
 };
