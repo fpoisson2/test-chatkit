@@ -17,6 +17,7 @@ export interface ThreadWorkflowMetadata {
   id?: number;
   slug?: string;
   definition_id?: string;
+  display_name?: string;
 }
 
 export interface ConversationsSidebarSectionProps {

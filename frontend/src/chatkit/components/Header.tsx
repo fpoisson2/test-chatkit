@@ -14,6 +14,7 @@ export interface HeaderConfig {
 export interface HeaderProps {
   config?: HeaderConfig | false;
   title: string;
+  workflowName?: string;
   showNewThreadButton?: boolean;
   showHistoryButton?: boolean;
   onNewThread: () => void;
@@ -25,6 +26,7 @@ export interface HeaderProps {
 export function Header({
   config,
   title,
+  workflowName,
   showNewThreadButton = true,
   showHistoryButton = true,
   onNewThread,
@@ -55,7 +57,12 @@ export function Header({
       {config?.customContent ? (
         <div className="chatkit-header-custom">{config.customContent}</div>
       ) : (
-        <div className="chatkit-header-title">{title}</div>
+        <div className="chatkit-header-title-container">
+          <span className="chatkit-header-title">{title}</span>
+          {workflowName && (
+            <span className="chatkit-header-workflow-badge">{workflowName}</span>
+          )}
+        </div>
       )}
       <div className="chatkit-header-actions">
         <button

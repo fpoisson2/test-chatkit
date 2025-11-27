@@ -596,13 +596,20 @@
   height: 20px;
 }
 
-.chatkit-header-title {
+.chatkit-header-title-container {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  min-width: 0;
+}
+
+.chatkit-header-title {
   text-align: left;
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-text-md-size);
   color: var(--color-text);
-  padding-left: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -610,6 +617,25 @@
 
 [data-theme="dark"] .chatkit-header-title {
   color: var(--color-text);
+}
+
+.chatkit-header-workflow-badge {
+  flex-shrink: 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--color-text-muted, #64748b);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .chatkit-header-workflow-badge {
+  background: rgba(148, 163, 184, 0.15);
+  color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(148, 163, 184, 0.25);
 }
 
 .chatkit-header-custom {

@@ -459,6 +459,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     return t('chatkit.thread.conversation');
   };
 
+  // Récupérer le nom du workflow d'origine
+  const getWorkflowName = (): string | undefined => {
+    if (showStartScreen || !control.thread) {
+      return undefined;
+    }
+
+    const workflowMetadata = control.thread.metadata?.workflow as {
+      display_name?: string;
+      slug?: string;
+    } | undefined;
+
+    return workflowMetadata?.display_name || workflowMetadata?.slug;
+  };
+
   return (
     <div
       className={`chatkit ${className || ''}`}
@@ -488,6 +502,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       <Header
         config={header}
         title={getThreadTitle()}
+        workflowName={getWorkflowName()}
         showNewThreadButton={!showStartScreen}
         showHistoryButton={false}
         onNewThread={handleNewThread}
