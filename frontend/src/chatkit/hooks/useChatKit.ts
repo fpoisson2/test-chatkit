@@ -54,6 +54,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   // Abort controllers management
   const { abortControllersRef } = useAbortControllers();
 
+
   // Thread loading and refresh
   const { fetchUpdates } = useThreadLoader({
     api,
