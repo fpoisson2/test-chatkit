@@ -616,6 +616,42 @@ export function MyChat() {
     missingDomainKeyWarningShownRef,
   });
 
+  // Configuration API simplifiée pour le composant de conversations dans la sidebar
+  const sidebarApiConfig = useMemo(() => {
+    if (!token) return null;
+    // Extract URL from apiConfig - handle both hosted and custom configs
+    const apiUrl = debugSnapshot.apiUrl || '/api/chatkit';
+    return {
+      url: apiUrl,
+      headers: { Authorization: `Bearer ${token}` },
+    };
+  }, [token, debugSnapshot.apiUrl]);
+
+  // Callbacks pour la gestion des threads depuis la sidebar
+  const handleSidebarThreadSelect = useCallback((threadId: string) => {
+    // Persist the selected thread and reload the chat
+    persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
+    setInitialThreadId(threadId);
+    setChatInstanceKey((value) => value + 1);
+  }, [sessionOwner, persistenceSlug]);
+
+  const handleSidebarThreadDeleted = useCallback((deletedThreadId: string) => {
+    // If the deleted thread is the current one, clear it and start fresh
+    const currentId = (currentThread?.id as string | undefined) ?? initialThreadId;
+    if (currentId === deletedThreadId) {
+      clearStoredThreadId(sessionOwner, persistenceSlug);
+      setInitialThreadId(null);
+      setChatInstanceKey((value) => value + 1);
+    }
+  }, [sessionOwner, persistenceSlug, currentThread, initialThreadId]);
+
+  const handleNewConversation = useCallback(() => {
+    // Clear stored thread to start a new conversation
+    clearStoredThreadId(sessionOwner, persistenceSlug);
+    setInitialThreadId(null);
+    setChatInstanceKey((value) => value + 1);
+  }, [sessionOwner, persistenceSlug]);
+
   const debugSignature = useMemo(() => JSON.stringify(debugSnapshot), [debugSnapshot]);
 
   useEffect(() => {
@@ -1011,6 +1047,11 @@ export function MyChat() {
           mode={mode}
           setMode={setMode}
           onWorkflowActivated={handleWorkflowActivated}
+          api={sidebarApiConfig}
+          currentThreadId={(currentThread?.id as string | undefined) ?? initialThreadId ?? null}
+          onThreadSelect={handleSidebarThreadSelect}
+          onThreadDeleted={handleSidebarThreadDeleted}
+          onNewConversation={handleNewConversation}
         />
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (

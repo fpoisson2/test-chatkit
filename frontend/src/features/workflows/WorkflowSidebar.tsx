@@ -27,6 +27,7 @@ import { workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
+import type { ChatKitAPIConfig } from "../../chatkit/types";
 import { useDuplicateWorkflow } from "../../hooks/useWorkflows";
 import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
@@ -39,6 +40,8 @@ import WorkflowSidebarSection, {
   WorkflowSidebarCompact,
 } from "./WorkflowSidebarSection";
 import type { WorkflowSidebarListItemMenuProps } from "./WorkflowSidebarListItem";
+import { SidebarSearchInput } from "./SidebarSearchInput";
+import { ConversationsSidebarSection } from "./ConversationsSidebarSection";
 import {
   getWorkflowInitials,
   isWorkflowPinned,
@@ -361,9 +364,31 @@ type ChatWorkflowSidebarProps = {
   mode: HostedFlowMode;
   setMode: (mode: HostedFlowMode) => void;
   onWorkflowActivated: (selection: WorkflowActivation, context: ActivationContext) => void;
+  /** API configuration for fetching conversations */
+  api?: ChatKitAPIConfig | null;
+  /** Currently selected thread ID */
+  currentThreadId?: string | null;
+  /** Callback when a thread is selected from the conversations list */
+  onThreadSelect?: (threadId: string) => void;
+  /** Callback when a thread is deleted */
+  onThreadDeleted?: (threadId: string) => void;
+  /** Callback to create a new conversation */
+  onNewConversation?: () => void;
+  /** Maximum number of workflows to show before "show more" (default: 5) */
+  maxRecentWorkflows?: number;
 };
 
-export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
+export const ChatWorkflowSidebar = ({
+  mode,
+  setMode,
+  onWorkflowActivated,
+  api,
+  currentThreadId,
+  onThreadSelect,
+  onThreadDeleted,
+  onNewConversation,
+  maxRecentWorkflows = 5,
+}: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
@@ -372,6 +397,10 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
   const isLtiUser = Boolean(user?.is_lti);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showAllWorkflows, setShowAllWorkflows] = useState(false);
 
   // Use the shared workflow sidebar state
   const {
@@ -1092,9 +1121,61 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     [t],
   );
 
+  // Filter workflows based on search query
+  const filteredWorkflows = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return workflows;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return workflows.filter((workflow) =>
+      workflow.display_name.toLowerCase().includes(query) ||
+      workflow.slug.toLowerCase().includes(query) ||
+      (workflow.description?.toLowerCase().includes(query) ?? false)
+    );
+  }, [workflows, searchQuery]);
+
+  const filteredHostedWorkflows = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return hostedWorkflows;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return hostedWorkflows.filter((hosted) =>
+      hosted.label.toLowerCase().includes(query) ||
+      hosted.slug.toLowerCase().includes(query) ||
+      (hosted.description?.toLowerCase().includes(query) ?? false)
+    );
+  }, [hostedWorkflows, searchQuery]);
+
+  // Limit workflows when not searching and not showing all
+  const displayedWorkflows = useMemo(() => {
+    if (searchQuery.trim() || showAllWorkflows) {
+      return filteredWorkflows;
+    }
+    // Get pinned workflows first, then limit recent ones
+    const pinnedWorkflows = filteredWorkflows.filter((w) => isWorkflowPinned(pinnedLookup, w.id, "local"));
+    const unpinnedWorkflows = filteredWorkflows.filter((w) => !isWorkflowPinned(pinnedLookup, w.id, "local"));
+    // Always show pinned, limit unpinned to maxRecentWorkflows
+    return [...pinnedWorkflows, ...unpinnedWorkflows.slice(0, maxRecentWorkflows)];
+  }, [filteredWorkflows, searchQuery, showAllWorkflows, pinnedLookup, maxRecentWorkflows]);
+
+  const displayedHostedWorkflows = useMemo(() => {
+    if (searchQuery.trim() || showAllWorkflows) {
+      return filteredHostedWorkflows;
+    }
+    const pinnedHosted = filteredHostedWorkflows.filter((h) => isWorkflowPinned(pinnedLookup, h.slug, "hosted"));
+    const unpinnedHosted = filteredHostedWorkflows.filter((h) => !isWorkflowPinned(pinnedLookup, h.slug, "hosted"));
+    return [...pinnedHosted, ...unpinnedHosted.slice(0, maxRecentWorkflows)];
+  }, [filteredHostedWorkflows, searchQuery, showAllWorkflows, pinnedLookup, maxRecentWorkflows]);
+
+  const hasHiddenWorkflows = useMemo(() => {
+    if (searchQuery.trim() || showAllWorkflows) return false;
+    return filteredWorkflows.length > displayedWorkflows.length ||
+           filteredHostedWorkflows.length > displayedHostedWorkflows.length;
+  }, [filteredWorkflows, filteredHostedWorkflows, displayedWorkflows, displayedHostedWorkflows, searchQuery, showAllWorkflows]);
+
   const sidebarEntries = useWorkflowSidebarEntries({
-    workflows,
-    hostedWorkflows,
+    workflows: displayedWorkflows,
+    hostedWorkflows: displayedHostedWorkflows,
     lastUsedAt,
     pinnedLookup,
     workflowCollator,
@@ -1219,33 +1300,96 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         </button>
       ) : null;
 
+    // Create show more/less button for workflows
+    const workflowsFooter = (
+      <>
+        {hasHiddenWorkflows && (
+          <button
+            type="button"
+            className="chatkit-sidebar__section-show-more"
+            onClick={() => setShowAllWorkflows(true)}
+          >
+            {t("workflows.showAll")} ({workflows.length + hostedWorkflows.length})
+          </button>
+        )}
+        {showAllWorkflows && !searchQuery.trim() && (
+          <button
+            type="button"
+            className="chatkit-sidebar__section-show-less"
+            onClick={() => setShowAllWorkflows(false)}
+          >
+            {t("workflows.showLess")}
+          </button>
+        )}
+        {footerContent}
+      </>
+    );
+
     return (
-      <WorkflowSidebarSection
-        sectionId={sectionId}
-        title={t("workflows.defaultSectionTitle")}
-        entries={sidebarEntries}
-        pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
-        defaultSectionTitle={t("workflows.defaultSectionTitle")}
-        floatingAction={
-          isAdmin
-            ? {
-              label: t("workflowBuilder.createWorkflow.openModal"),
-              onClick: handleOpenBuilder,
-            }
-            : undefined
-        }
-        footerContent={footerContent}
-        variant={sectionVariant}
-      />
+      <div className="chatkit-sidebar__content-wrapper">
+        {/* Search input */}
+        <div className="chatkit-sidebar__search-wrapper">
+          <SidebarSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={t("sidebar.searchPlaceholder")}
+            ariaLabel={t("sidebar.searchAriaLabel")}
+          />
+        </div>
+
+        {/* Workflows section */}
+        <WorkflowSidebarSection
+          sectionId={sectionId}
+          title={t("workflows.defaultSectionTitle")}
+          entries={sidebarEntries}
+          pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
+          defaultSectionTitle={t("workflows.recentSectionTitle")}
+          floatingAction={
+            isAdmin
+              ? {
+                label: t("workflowBuilder.createWorkflow.openModal"),
+                onClick: handleOpenBuilder,
+              }
+              : undefined
+          }
+          footerContent={workflowsFooter}
+          variant={sectionVariant}
+        />
+
+        {/* Conversations section */}
+        {api && onThreadSelect && (
+          <ConversationsSidebarSection
+            api={api}
+            currentThreadId={currentThreadId ?? null}
+            onThreadSelect={onThreadSelect}
+            onThreadDeleted={onThreadDeleted}
+            onNewConversation={onNewConversation}
+            searchQuery={searchQuery}
+            maxVisible={10}
+            title={t("sidebar.conversationsTitle")}
+            emptyMessage={t("sidebar.conversationsEmpty")}
+            isCollapsed={isSidebarCollapsed}
+          />
+        )}
+      </div>
     );
   }, [
+    api,
+    currentThreadId,
     error,
     handleOpenBuilder,
+    hasHiddenWorkflows,
     hostedWorkflows,
     isAdmin,
     isMobileLayout,
+    isSidebarCollapsed,
     loadWorkflows,
     loading,
+    onNewConversation,
+    onThreadDeleted,
+    onThreadSelect,
+    searchQuery,
+    showAllWorkflows,
     sidebarEntries,
     t,
     user,
