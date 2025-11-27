@@ -873,6 +873,15 @@ async def run_workflow_v2(
                     "Response attributes: usage=%s",
                     getattr(response_obj, "usage", "N/A"),
                 )
+                # Check for LiteLLM hidden params (contains response_cost)
+                hidden_params = getattr(response_obj, "_hidden_params", None)
+                if hidden_params:
+                    logger.info("Response _hidden_params: %s", hidden_params)
+
+            # Also check for raw_responses or _raw_responses
+            raw_responses = getattr(result, "raw_responses", None) or getattr(result, "_raw_responses", None)
+            if raw_responses:
+                logger.info("Found raw_responses: %s", type(raw_responses))
 
             usage_from_result = _coerce_usage(
                 getattr(result, "usage", None)
