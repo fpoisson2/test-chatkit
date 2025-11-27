@@ -429,7 +429,6 @@ export function ConversationsSidebarSection({
                   <span className="conversations-sidebar-section__thread-title-row">
                     <TruncatedText className="conversations-sidebar-section__thread-title">Nouvelle conversation</TruncatedText>
                   </span>
-                  <span className="conversations-sidebar-section__thread-date">Maintenant</span>
                 </button>
               </li>
             )}
