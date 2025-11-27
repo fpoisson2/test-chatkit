@@ -1,7 +1,7 @@
 /**
  * AnimatedTitle - Component that animates text changes letter by letter
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useLayoutEffect, useRef } from "react";
 import "./AnimatedTitle.css";
 
 export interface AnimatedTitleProps {
@@ -25,7 +25,7 @@ export function AnimatedTitle({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Clear any ongoing animation
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
