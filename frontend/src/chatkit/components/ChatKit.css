@@ -1164,6 +1164,18 @@
   height: 16px;
   border-radius: 50%;
   background: var(--color-text, #1f2937);
+  animation: chatkit-workflow-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes chatkit-workflow-pulse {
+  0%, 100% {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes fadeIn {
