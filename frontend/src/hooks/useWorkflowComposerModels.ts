@@ -47,14 +47,14 @@ export const useWorkflowComposerModels = ({
   useEffect(() => {
     console.log("[useWorkflowComposerModels] params:", { token: !!token, workflowId, activeVersionId });
 
-    // Reset state when params change
+    // Reset ALL state when params change to avoid stale data during transition
     setWorkflowDetected(false);
+    setComposerModels(null);
+    setError(null);
 
     if (!token || !workflowId || !activeVersionId) {
       console.log("[useWorkflowComposerModels] Missing params, skipping");
-      setComposerModels(null);
       setLoading(false);
-      setError(null);
       return;
     }
 
