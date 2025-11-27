@@ -443,12 +443,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             if workflow_id is None:
                 workflow_id = getattr(definition, "workflow_id", None)
             workflow_slug = getattr(workflow, "slug", None)
+            workflow_display_name = getattr(workflow, "display_name", None)
             if workflow_slug is None:
                 raise RuntimeError("Aucun slug de workflow actif n'est disponible")
             workflow_metadata = {
                 "id": workflow_id,
                 "slug": workflow_slug,
                 "definition_id": definition.id,
+                "display_name": workflow_display_name,
             }
 
             thread = Thread(
