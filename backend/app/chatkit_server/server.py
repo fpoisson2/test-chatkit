@@ -915,6 +915,16 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         thread.title = normalized_title
 
+        # Persist the thread title to the store
+        try:
+            await self.store.save_thread(thread, context=context)
+        except Exception as exc:  # pragma: no cover - persistence best effort
+            logger.warning(
+                "Échec de la sauvegarde du titre pour le fil %s",
+                thread.id,
+                exc_info=exc,
+            )
+
     async def action(
         self,
         thread: ThreadMetadata,
