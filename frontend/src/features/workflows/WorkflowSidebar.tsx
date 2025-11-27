@@ -370,8 +370,8 @@ type ChatWorkflowSidebarProps = {
   api?: ChatKitAPIConfig | null;
   /** Currently selected thread ID */
   currentThreadId?: string | null;
-  /** Set of thread IDs that are currently loading */
-  loadingThreadIds?: Set<string>;
+  /** Set of thread IDs that are currently streaming */
+  streamingThreadIds?: Set<string>;
   /** Callback when a thread is selected from the conversations list */
   onThreadSelect?: (threadId: string, workflowMetadata?: import("./ConversationsSidebarSection").ThreadWorkflowMetadata) => void;
   /** Callback when a thread is deleted */
@@ -392,7 +392,7 @@ export const ChatWorkflowSidebar = ({
   onWorkflowActivated,
   api,
   currentThreadId,
-  loadingThreadIds,
+  streamingThreadIds,
   onThreadSelect,
   onThreadDeleted,
   onNewConversation,
@@ -1428,7 +1428,7 @@ export const ChatWorkflowSidebar = ({
           <ConversationsSidebarSection
             api={api}
             currentThreadId={currentThreadId ?? null}
-            loadingThreadIds={loadingThreadIds}
+            streamingThreadIds={streamingThreadIds}
             onThreadSelect={onThreadSelect}
             onThreadDeleted={onThreadDeleted}
             onNewConversation={onNewConversation}
@@ -1457,13 +1457,13 @@ export const ChatWorkflowSidebar = ({
     isSidebarCollapsed,
     loadWorkflows,
     loading,
-    loadingThreadIds,
     onNewConversation,
     onThreadDeleted,
     onThreadSelect,
     searchQuery,
     showAllWorkflows,
     sidebarEntries,
+    streamingThreadIds,
     t,
     user,
     workflows,
