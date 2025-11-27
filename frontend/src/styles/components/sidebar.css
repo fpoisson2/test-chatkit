@@ -780,9 +780,11 @@
   min-width: 0;
   display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   line-height: var(--leading-tight);
+  /* Text fade gradient effect instead of ellipsis */
+  mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent 100%);
 }
 
 

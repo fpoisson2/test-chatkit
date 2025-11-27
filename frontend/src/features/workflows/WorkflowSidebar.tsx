@@ -1429,6 +1429,7 @@ export const ChatWorkflowSidebar = ({
             title={t("sidebar.conversationsTitle")}
             emptyMessage={t("sidebar.conversationsEmpty")}
             isCollapsed={isSidebarCollapsed}
+            isMobileLayout={isMobileLayout}
           />
         )}
       </div>
