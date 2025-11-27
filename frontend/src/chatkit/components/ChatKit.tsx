@@ -20,7 +20,7 @@ import { Header } from './Header';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useScreencast } from '../hooks/useScreencast';
 import type { Attachment } from '../api/attachments';
-import { createFilePreview, generateAttachmentId, validateFile } from '../api/attachments';
+import { createAttachment, createFilePreview, generateAttachmentId, uploadAttachment, validateFile } from '../api/attachments';
 import { COPY_FEEDBACK_DELAY_MS } from '../utils';
 import './ChatKit.css';
 
@@ -212,23 +212,82 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         continue;
       }
 
-      const id = generateAttachmentId();
+      const localId = generateAttachmentId();
       const preview = await createFilePreview(file);
       const type = file.type.startsWith('image/') ? 'image' : 'file';
 
       newAttachments.push({
-        id,
+        id: localId,
         file,
         type,
         preview: preview || undefined,
         status: 'pending',
+        progress: 0,
       });
     }
 
-    if (newAttachments.length > 0) {
-      setAttachments([...attachmentsRef.current, ...newAttachments]);
+    if (newAttachments.length === 0) {
+      return;
     }
-  }, [attachmentsConfig]);
+
+    // Add attachments immediately with pending status
+    const updatedAttachments = [...attachmentsRef.current, ...newAttachments];
+    setAttachments(updatedAttachments);
+
+    // Start uploading each file immediately if API is configured
+    if (api?.url) {
+      for (const att of newAttachments) {
+        // Update status to uploading
+        setAttachments(prev => prev.map(a =>
+          a.id === att.id ? { ...a, status: 'uploading' as const, progress: 0 } : a
+        ));
+
+        try {
+          // Phase 1: Create attachment to get backend ID and upload URL
+          const createResponse = await createAttachment({
+            url: api.url,
+            headers: api.headers,
+            name: att.file.name,
+            size: att.file.size,
+            mimeType: att.file.type || 'application/octet-stream',
+          });
+
+          const backendId = createResponse.id;
+          const uploadUrl = createResponse.upload_url;
+
+          // Phase 2: Upload the file with progress tracking
+          await uploadAttachment({
+            url: api.url,
+            headers: api.headers,
+            attachmentId: backendId,
+            file: att.file,
+            uploadUrl: uploadUrl,
+            onProgress: (progress) => {
+              setAttachments(prev => prev.map(a =>
+                a.id === att.id ? { ...a, progress: Math.round(progress) } : a
+              ));
+            },
+          });
+
+          // Update with backend ID and mark as uploaded
+          setAttachments(prev => prev.map(a =>
+            a.id === att.id ? {
+              ...a,
+              id: backendId,
+              status: 'uploaded' as const,
+              progress: 100,
+              uploadUrl: uploadUrl,
+            } : a
+          ));
+        } catch (err) {
+          console.error('[ChatKit] Failed to upload attachment:', err);
+          setAttachments(prev => prev.map(a =>
+            a.id === att.id ? { ...a, status: 'error' as const, error: String(err) } : a
+          ));
+        }
+      }
+    }
+  }, [attachmentsConfig, api?.url, api?.headers]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
