@@ -2,6 +2,7 @@
  * Types de configuration ChatKit
  */
 
+import type { ReactNode } from 'react';
 import type { RadiusValue, WidgetIcon } from './base';
 import type {
   Action,
@@ -71,6 +72,8 @@ export interface ChatKitOptions {
       icon: string;
       onClick: () => void;
     };
+    /** Custom content to render in the header (e.g., workflow selector) */
+    customContent?: ReactNode;
   };
   history?: {
     enabled?: boolean;

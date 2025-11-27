@@ -781,6 +781,15 @@ export function MyChat() {
                 onClick: openSidebar,
               },
             }),
+            ...(mode === "local" && workflows.length > 0 ? {
+              customContent: (
+                <WorkflowSelector
+                  workflows={workflows}
+                  selectedWorkflowId={workflowSelection.kind === "local" ? workflowSelection.workflow?.id ?? null : null}
+                  onWorkflowChange={handleWorkflowSelectorChange}
+                />
+              ),
+            } : {}),
           },
         }),
         ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history ? {
@@ -927,8 +936,10 @@ export function MyChat() {
       composerModels,
       composerPlaceholder,
       currentThread?.id,
+      handleWorkflowSelectorChange,
       initialThreadId,
       isAtVoiceAgentStep,
+      mode,
       openSidebar,
       preferredColorScheme,
       sessionOwner,
@@ -957,6 +968,8 @@ export function MyChat() {
       hangupOutboundCall,
       user?.email,
       isSidebarOpen,
+      workflows,
+      workflowSelection,
     ],
   );
 
@@ -1086,32 +1099,26 @@ export function MyChat() {
           onNewConversation={handleNewConversation}
           hideWorkflows
         />
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
-          {/* Workflow selector at top of chat area */}
-          {mode === "local" && (
-            <WorkflowSelector
-              workflows={workflows}
-              selectedWorkflowId={workflowSelection.kind === "local" ? workflowSelection.workflow?.id ?? null : null}
-              onWorkflowChange={handleWorkflowSelectorChange}
-            />
-          )}
-          {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
-            <WorkflowChatInstance
-              key={`${instanceId}-${instance.instanceKey}`}
-              workflowId={instanceId}
-              chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
-              token={token}
-              activeWorkflow={instance.workflow}
-              initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
-              reportError={reportError}
-              mode={instance.mode}
-              isActive={instanceId === currentWorkflowId}
-              autoStartEnabled={!hasVoiceAgent}
-              onRequestRefreshReady={
-                instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
-              }
-            />
-          ))}
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", overflow: "hidden" }}>
+          <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+            {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
+              <WorkflowChatInstance
+                key={`${instanceId}-${instance.instanceKey}`}
+                workflowId={instanceId}
+                chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
+                token={token}
+                activeWorkflow={instance.workflow}
+                initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
+                reportError={reportError}
+                mode={instance.mode}
+                isActive={instanceId === currentWorkflowId}
+                autoStartEnabled={!hasVoiceAgent}
+                onRequestRefreshReady={
+                  instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
+                }
+              />
+            ))}
+          </div>
         </div>
       </div>
     </>
