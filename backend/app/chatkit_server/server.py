@@ -917,7 +917,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         raw_title = getattr(run, "final_output", "")
         if isinstance(raw_title, str):
-            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip("\"'`"'"«»")
+            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip('''"'`"'"«»''')
         else:
             try:
                 normalized_title = str(raw_title).strip()
