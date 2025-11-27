@@ -22,6 +22,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const wasCompletedOnMountRef = useRef<boolean>(false);
   const hasMountedRef = useRef<boolean>(false);
   const minDisplayTimeRef = useRef<number | null>(null);
+  const isCompletedRef = useRef<boolean>(false);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -37,6 +38,9 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const isReasoning = workflow.type === 'reasoning';
   const isCompleted = workflow.completed === true || workflow.summary !== undefined;
   const currentTaskCount = workflow.tasks.length;
+
+  // Synchroniser isCompletedRef avec isCompleted pour l'utiliser dans les callbacks
+  isCompletedRef.current = isCompleted;
 
   // Obtenir le type de la tâche actuelle ou de la dernière tâche
   const getCurrentTaskType = (): string | null => {
@@ -86,10 +90,13 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         isProcessingRef.current = false;
         minDisplayTimeRef.current = null;
         processQueue();
-      } else {
-        // Pas de tâche en attente, continuer à afficher la tâche actuelle
-        // On reste en mode processing jusqu'à ce qu'une nouvelle tâche arrive
+      } else if (isCompletedRef.current) {
+        // Workflow terminé et pas de tâche en attente, masquer la tâche
+        setDisplayedTask(null);
+        isProcessingRef.current = false;
+        minDisplayTimeRef.current = null;
       }
+      // Sinon, continuer à afficher la tâche actuelle jusqu'à ce qu'une nouvelle arrive
     }, 2000);
   };
 
