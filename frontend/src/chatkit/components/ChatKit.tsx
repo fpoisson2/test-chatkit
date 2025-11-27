@@ -682,6 +682,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         apiConfig={api.url ? { url: api.url, headers: api.headers } : undefined}
         onFilesSelected={handleFilesSelected}
         isDraggingFiles={isDraggingFiles}
+        forceMultilineMode={composer?.forceMultilineMode}
       />
 
     </div>

@@ -50,6 +50,8 @@ export interface ComposerProps {
   onFilesSelected: (files: FileList | null) => void;
   /** Indique si un drag-and-drop de fichiers est en cours */
   isDraggingFiles?: boolean;
+  /** Force le mode multiline indépendamment des autres conditions (pour éviter le flickering pendant les transitions) */
+  forceMultilineMode?: boolean;
 }
 
 export function Composer({
@@ -66,6 +68,7 @@ export function Composer({
   apiConfig,
   onFilesSelected,
   isDraggingFiles = false,
+  forceMultilineMode = false,
 }: ComposerProps): JSX.Element {
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
@@ -129,8 +132,9 @@ export function Composer({
   // Forcer le mode multiline quand le sélecteur de modèle est activé
   const forceMultiline = isModelSelectorEnabled && availableModels.length > 0;
 
-  // Le mode effectif du formulaire (multiline si forcé OU si le contenu le nécessite)
-  const effectiveMultiline = forceMultiline || isMultiline;
+  // Le mode effectif du formulaire (multiline si forcé via prop, via config, OU si le contenu le nécessite)
+  // forceMultilineMode a la priorité absolue pour éviter le flickering pendant les transitions
+  const effectiveMultiline = forceMultilineMode || forceMultiline || isMultiline;
 
   // Ajuster automatiquement la hauteur du textarea
   // Note: La classe CSS est définie uniquement dans le JSX via effectiveMultiline pour éviter les conflits

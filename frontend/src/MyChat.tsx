@@ -795,16 +795,15 @@ export function MyChat() {
   const isTransitioningWorkflow = currentWorkflowIdForModels !== null &&
     currentWorkflowIdForModels !== loadedWorkflowIdRef.current;
 
-  // Pendant la transition, utiliser un modèle factice pour forcer le mode multiline
-  // Cela évite le flickering : le formulaire reste en multiline pendant la transition,
-  // puis passe en singleline seulement si le nouveau workflow n'a pas de modèles
-  const PLACEHOLDER_MODELS = [{ id: '__loading__', label: 'Chargement...', default: true }];
+  // Utiliser les modèles du workflow ou le fallback localStorage
+  const composerModels = workflowDetected ? workflowComposerModels : localStorageComposerModels;
 
-  const composerModels = isTransitioningWorkflow
-    ? PLACEHOLDER_MODELS  // Forcer multiline pendant la transition
-    : (workflowDetected ? workflowComposerModels : localStorageComposerModels);
+  // Forcer le mode multiline pendant la transition pour éviter le flickering
+  // Le formulaire reste en multiline pendant la transition, puis passe en singleline
+  // seulement si le nouveau workflow n'a pas de modèles (une seule transition)
+  const forceMultilineMode = isTransitioningWorkflow;
 
-  console.log("[MyChat] composerModels:", composerModels, "transitioning:", isTransitioningWorkflow, "loading:", workflowModelsLoading);
+  console.log("[MyChat] composerModels:", composerModels, "forceMultilineMode:", forceMultilineMode, "transitioning:", isTransitioningWorkflow);
 
   const chatkitOptions = useMemo(
     () => {
@@ -887,6 +886,7 @@ export function MyChat() {
           placeholder: composerPlaceholder,
           attachments: attachmentsConfig,
           ...(composerModels ? { models: composerModels } : {}),
+          forceMultilineMode,
         },
         widgets: {
           voiceSession: {
@@ -1010,6 +1010,7 @@ export function MyChat() {
       attachmentsConfig,
       composerModels,
       composerPlaceholder,
+      forceMultilineMode,
       currentThread?.id,
       handleWorkflowSelectorChange,
       initialThreadId,

@@ -119,6 +119,8 @@ export interface ChatKitOptions {
           options: ComposerModel[];
         }
       | ComposerModel[];
+    /** Force le mode multiline indépendamment des autres conditions (pour éviter le flickering pendant les transitions) */
+    forceMultilineMode?: boolean;
   };
   widgets?: {
     voiceSession?: VoiceSessionWidgetContext;
