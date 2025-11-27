@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 from agents.mcp import MCPServerSse
+from httpx_sse import SSEError
 
 from ..database import SessionLocal
 from ..models import McpServer
@@ -106,6 +107,27 @@ async def probe_mcp_connection(
         return {
             "status": "timeout",
             "detail": "Le serveur MCP n'a pas répondu avant l'expiration du délai.",
+        }
+    except SSEError as exc:
+        error_message = str(exc)
+        logger.warning(
+            "Test de connexion MCP échoué (SSE) pour %s | erreur=%s",
+            _safe_url(server),
+            error_message,
+        )
+        if "text/html" in error_message.lower():
+            detail = (
+                "Le serveur MCP a renvoyé une page HTML au lieu d'un flux SSE. "
+                "Vérifiez que l'URL est correcte et que le serveur MCP est accessible."
+            )
+        else:
+            detail = (
+                f"Erreur de connexion SSE au serveur MCP: {error_message}. "
+                "Vérifiez que l'URL est correcte et que le serveur supporte SSE."
+            )
+        return {
+            "status": "sse_error",
+            "detail": detail,
         }
     except Exception as exc:  # pragma: no cover - robustesse
         logger.exception("Erreur inattendue lors du test de connexion MCP")
