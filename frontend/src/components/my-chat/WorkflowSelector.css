@@ -2,24 +2,168 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  position: relative;
 }
 
 .workflow-selector__label {
-  font-size: 0.875rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   font-weight: 500;
-  color: var(--color-text-secondary, #666);
+  color: var(--color-text-muted, #888);
   white-space: nowrap;
+  opacity: 0.7;
 }
 
-.workflow-selector__select {
-  flex: 1;
-  max-width: 250px;
-  padding: 0.375rem 0.5rem;
+.workflow-selector__dropdown-wrapper {
+  position: relative;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.workflow-selector__trigger {
+  width: 100%;
+  min-width: 180px;
+  padding: 0.5rem 0.75rem;
+  padding-right: 2rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--surface-border, #d0d0d0);
+  background: var(--surface-strong, #fff);
+  color: var(--text-color, #333);
   font-size: 0.875rem;
-  border: 1px solid var(--color-border, #d0d0d0);
-  border-radius: 4px;
-  background-color: var(--color-surface, #fff);
-  color: var(--color-text, #333);
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+
+.workflow-selector__trigger::after {
+  content: "";
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0.6;
+}
+
+.workflow-selector__trigger:hover:not(:disabled) {
+  border-color: var(--color-accent, #0066cc);
+}
+
+.workflow-selector__trigger:focus {
+  outline: none;
+  border-color: var(--color-accent, #0066cc);
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.15);
+}
+
+.workflow-selector__trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.workflow-selector__trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.workflow-selector__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 100%;
+  max-height: 280px;
+  background: var(--surface-strong, #fff);
+  border: 1px solid var(--surface-border, #d0d0d0);
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.workflow-selector__search-wrapper {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--surface-border, #e0e0e0);
+}
+
+.workflow-selector__search {
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--surface-border, #d0d0d0);
+  border-radius: 0.5rem;
+  background: var(--surface-color, #f8f8f8);
+  color: var(--text-color, #333);
+  font-size: 0.8rem;
+}
+
+.workflow-selector__search:focus {
+  outline: none;
+  border-color: var(--color-accent, #0066cc);
+}
+
+.workflow-selector__search::placeholder {
+  color: var(--color-text-muted, #999);
+}
+
+.workflow-selector__options {
+  overflow-y: auto;
+  max-height: 220px;
+  padding: 0.25rem;
+}
+
+.workflow-selector__option {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-color, #333);
+  cursor: pointer;
+  border-radius: 0.5rem;
+  margin: 2px 0;
+  transition: background-color 0.1s ease;
+}
+
+.workflow-selector__option:hover {
+  background: var(--surface-hover, #f0f0f0);
+}
+
+.workflow-selector__option--selected {
+  background: var(--color-accent-light, #e6f0ff);
+  font-weight: 500;
+}
+
+.workflow-selector__option--selected:hover {
+  background: var(--color-accent-light, #d9e8ff);
+}
+
+.workflow-selector__no-results {
+  padding: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #888);
+  text-align: center;
+  font-style: italic;
+}
+
+/* Legacy select styles - kept for fallback */
+.workflow-selector__select {
+  min-width: 180px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--surface-border, #d0d0d0);
+  background: var(--surface-strong, #fff);
+  color: var(--text-color, #333);
+  font-size: 0.875rem;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -31,7 +175,7 @@
 .workflow-selector__select:focus {
   outline: none;
   border-color: var(--color-accent, #0066cc);
-  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.15);
 }
 
 .workflow-selector__select:disabled {
@@ -41,11 +185,32 @@
 
 /* Dark mode support */
 [data-theme="dark"] .workflow-selector__label {
-  color: var(--color-text-secondary, #999);
+  color: var(--color-text-muted, #777);
 }
 
+[data-theme="dark"] .workflow-selector__trigger,
 [data-theme="dark"] .workflow-selector__select {
-  background-color: var(--color-surface, #2a2a2a);
-  border-color: var(--color-border, #404040);
-  color: var(--color-text, #e0e0e0);
+  background: var(--surface-strong, #2a2a2a);
+  border-color: var(--surface-border, #404040);
+  color: var(--text-color, #e0e0e0);
+}
+
+[data-theme="dark"] .workflow-selector__dropdown {
+  background: var(--surface-strong, #2a2a2a);
+  border-color: var(--surface-border, #404040);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .workflow-selector__search {
+  background: var(--surface-color, #1e1e1e);
+  border-color: var(--surface-border, #404040);
+  color: var(--text-color, #e0e0e0);
+}
+
+[data-theme="dark"] .workflow-selector__option:hover {
+  background: var(--surface-hover, #3a3a3a);
+}
+
+[data-theme="dark"] .workflow-selector__option--selected {
+  background: var(--color-accent-dark, #1a3a5c);
 }
