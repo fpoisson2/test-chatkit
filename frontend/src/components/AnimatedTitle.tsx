@@ -11,19 +11,40 @@ export interface AnimatedTitleProps {
   letterDuration?: number;
   /** Delay in ms between disappear and appear animations (default: 50ms) */
   transitionDelay?: number;
+  /** Stable identifier to maintain animation state across remounts (e.g., thread.id) */
+  stableId?: string;
 }
+
+// Module-level storage to persist display text across component remounts
+const displayTextCache = new Map<string, string>();
 
 export function AnimatedTitle({
   children,
   className = "",
   letterDuration = 30,
   transitionDelay = 50,
+  stableId,
 }: AnimatedTitleProps): JSX.Element {
-  const [displayText, setDisplayText] = useState(children);
+  // Get cached display text if available and we have a stable ID
+  const getCachedOrCurrent = () => {
+    if (stableId && displayTextCache.has(stableId)) {
+      return displayTextCache.get(stableId)!;
+    }
+    return children;
+  };
+
+  const [displayText, setDisplayText] = useState(getCachedOrCurrent);
   const [isAnimating, setIsAnimating] = useState(false);
-  const prevTextRef = useRef(children);
+  const prevTextRef = useRef(displayText);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update cache whenever displayText changes
+  useLayoutEffect(() => {
+    if (stableId) {
+      displayTextCache.set(stableId, displayText);
+    }
+  }, [displayText, stableId]);
 
   useLayoutEffect(() => {
     // Clear any ongoing animation

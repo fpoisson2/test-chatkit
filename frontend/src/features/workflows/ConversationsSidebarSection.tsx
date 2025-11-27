@@ -464,7 +464,7 @@ export function ConversationsSidebarSection({
                         <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
                       )}
                       <TruncatedText className="conversations-sidebar-section__thread-title">
-                        <AnimatedTitle>{threadTitle}</AnimatedTitle>
+                        <AnimatedTitle stableId={thread.id}>{threadTitle}</AnimatedTitle>
                       </TruncatedText>
                     </span>
                   </button>
