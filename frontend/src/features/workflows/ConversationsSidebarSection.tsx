@@ -1,6 +1,3 @@
-/**
- * ConversationsSidebarSection - Section displaying all conversations in the sidebar
- */
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode, type MutableRefObject } from "react";
 import type { Thread, ChatKitAPIConfig } from "../../chatkit/types";
 import { listThreads, deleteThread, updateThreadTitle } from "../../chatkit/api/streaming/api";
@@ -106,6 +103,14 @@ export function ConversationsSidebarSection({
   const [after, setAfter] = useState<string | undefined>(undefined);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // --- NOUVEAUX ÉTATS POUR L'ANIMATION DE TITRE ---
+  const [animatedTitle, setAnimatedTitle] = useState<string | null>(null); // Titre actuellement animé
+  const [isAnimatingOut, setIsAnimatingOut] = useState(false); // Est-ce qu'on est en train de supprimer l'ancien titre ?
+  const [isAnimatingIn, setIsAnimatingIn] = useState(false); // Est-ce qu'on est en train d'écrire le nouveau titre ?
+  const prevIsNewConversationActiveRef = useRef(isNewConversationActive);
+  const prevCurrentThreadIdRef = useRef(currentThreadId);
+  // --------------------------------------------------
 
   // Action menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -318,7 +323,7 @@ export function ConversationsSidebarSection({
     [openMenuId, isMobileLayout, handleMenuOpen]
   );
 
-// 1. Fusionner les threads du serveur avec le snapshot actif actuel (PRIORITÉ AU SNAPSHOT)
+  // 1. Fusionner les threads du serveur avec le snapshot actif actuel (PRIORITÉ AU SNAPSHOT)
   // Cela empêche le serveur d'écraser le titre tant que le thread est actif
   const threadsWithActiveData = useMemo(() => {
     if (!activeThreadSnapshot?.id) return threads;
@@ -340,7 +345,7 @@ export function ConversationsSidebarSection({
 
   // 2. Filter threads by search query (Utiliser threadsWithActiveData au lieu de threads)
   const filteredThreads = useMemo(() => {
-    const listToFilter = threadsWithActiveData; // Changement ici
+    const listToFilter = threadsWithActiveData;
 
     if (!searchQuery.trim()) {
       return listToFilter;
@@ -352,9 +357,7 @@ export function ConversationsSidebarSection({
     });
   }, [threadsWithActiveData, searchQuery]);
 
-
-
-// 3. Determine which threads to display (Optimistic Insert)
+  // 3. Determine which threads to display (Optimistic Insert)
   const displayedThreads = useMemo(() => {
     // Liste de base
     let list = isExpanded || searchQuery.trim()
@@ -363,13 +366,14 @@ export function ConversationsSidebarSection({
 
     // --- FIX OPTIMISTE ---
     // Si on a un ID actif mais qu'il n'est pas encore dans la liste (latence réseau création)
-    if (currentThreadId && !isNewConversationActive) {
+    // On n'ajoute pas ici si l'animation de sortie est en cours, car `animatedTitle` le gérera.
+    if (currentThreadId && !isNewConversationActive && !isAnimatingOut) {
       const exists = list.some(t => t.id === currentThreadId);
-      
+
       if (!exists) {
         // On utilise le snapshot s'il correspond, sinon un placeholder
         const snapshot = activeThreadSnapshot?.id === currentThreadId ? activeThreadSnapshot : null;
-        
+
         const optimisticThread: Thread = snapshot ? { ...snapshot } : ({
           id: currentThreadId,
           title: snapshot?.title || "Nouvelle conversation", // Titre du snapshot prioritaire
@@ -384,8 +388,75 @@ export function ConversationsSidebarSection({
     // ---------------------
 
     return list;
-  }, [filteredThreads, isExpanded, maxVisible, searchQuery, currentThreadId, isNewConversationActive, activeThreadSnapshot]);
+  }, [filteredThreads, isExpanded, maxVisible, searchQuery, currentThreadId, isNewConversationActive, isAnimatingOut, activeThreadSnapshot]);
+
   const hasHiddenThreads = filteredThreads.length > maxVisible && !isExpanded && !searchQuery.trim();
+
+  // --- LOGIQUE D'ANIMATION DE TITRE ---
+  useEffect(() => {
+    const prevIsNew = prevIsNewConversationActiveRef.current;
+    prevIsNewConversationActiveRef.current = isNewConversationActive;
+
+    const prevThread = prevCurrentThreadIdRef.current;
+    prevCurrentThreadIdRef.current = currentThreadId;
+
+    // Condition pour démarrer l'animation:
+    // 1. On était sur une "nouvelle conversation" (prevIsNew était true)
+    // 2. On n'est PLUS sur une "nouvelle conversation" (isNewConversationActive est false)
+    // 3. Un nouveau thread ID est maintenant actif (currentThreadId est non null et a changé)
+    const shouldStartAnimation = prevIsNew && !isNewConversationActive && currentThreadId && (currentThreadId !== prevThread);
+
+    if (shouldStartAnimation) {
+      const newThreadTitle = getThreadTitle(activeThreadSnapshot || displayedThreads[0]);
+      
+      // On commence par "Nouvelle conversation" pour l'effet de destruction
+      setAnimatedTitle("Nouvelle conversation");
+      setIsAnimatingOut(true);
+
+      let currentTitle = "Nouvelle conversation";
+      let outIndex = currentTitle.length - 1;
+
+      // Animation de suppression (typing out)
+      const typeOutInterval = setInterval(() => {
+        if (outIndex >= 0) {
+          currentTitle = currentTitle.substring(0, outIndex);
+          setAnimatedTitle(currentTitle);
+          outIndex--;
+        } else {
+          clearInterval(typeOutInterval);
+          setIsAnimatingOut(false);
+          setIsAnimatingIn(true); // Passer à l'animation d'écriture
+          
+          let inIndex = 0;
+          const targetTitle = newThreadTitle;
+          let newAnimatingTitle = "";
+
+          // Animation d'écriture (typing in)
+          const typeInInterval = setInterval(() => {
+            if (inIndex < targetTitle.length) {
+              newAnimatingTitle += targetTitle[inIndex];
+              setAnimatedTitle(newAnimatingTitle);
+              inIndex++;
+            } else {
+              clearInterval(typeInInterval);
+              setIsAnimatingIn(false);
+              setAnimatedTitle(null); // Réinitialiser pour que le titre réel prenne le relais
+            }
+          }, 50); // Vitesse d'écriture (50ms par caractère)
+        }
+      }, 50); // Vitesse de suppression (50ms par caractère)
+    }
+  }, [isNewConversationActive, currentThreadId, activeThreadSnapshot, displayedThreads]); // Dépendances importantes
+
+  // Si une animation est en cours, le titre de la "nouvelle conversation" doit être spécial
+  const newConversationTitle = useMemo(() => {
+    if (isAnimatingOut || isAnimatingIn) {
+      return animatedTitle || ""; // Affiche le titre animé
+    }
+    return "Nouvelle conversation"; // Titre par défaut
+  }, [animatedTitle, isAnimatingOut, isAnimatingIn]);
+  // ------------------------------------
+
 
   if (isCollapsed) {
     return null;
@@ -439,26 +510,42 @@ export function ConversationsSidebarSection({
             Réessayer
           </button>
         </div>
-      ) : displayedThreads.length === 0 && !isNewConversationActive ? (
+      ) : displayedThreads.length === 0 && !isNewConversationActive && !isAnimatingOut && !isAnimatingIn ? (
+        // Ajouter les conditions d'animation pour masquer le message vide pendant l'animation
         <p className="conversations-sidebar-section__empty">{emptyMessage}</p>
       ) : (
         <>
           <ul className="conversations-sidebar-section__list">
             {/* Show draft "New conversation" entry when active */}
-            {isNewConversationActive && !searchQuery.trim() && (
+            {/* Condition modifiée pour inclure l'animation */}
+            {(isNewConversationActive || isAnimatingOut || isAnimatingIn) && !searchQuery.trim() && (
               <li className="conversations-sidebar-section__item">
                 <button
                   type="button"
-                  className="conversations-sidebar-section__thread-button conversations-sidebar-section__thread-button--active"
+                  // Rendre le bouton actif si c'est la "nouvelle conversation" standard ou si l'animation est en cours
+                  className={`conversations-sidebar-section__thread-button ${isNewConversationActive || isAnimatingOut || isAnimatingIn ? "conversations-sidebar-section__thread-button--active" : ""}`}
                   aria-current="true"
+                  // Désactiver le bouton pendant l'animation pour éviter les clics prématurés
+                  disabled={isAnimatingOut || isAnimatingIn}
+                  onClick={isNewConversationActive ? onNewConversation : undefined} // Le onClick doit être le onNewConversation initial
                 >
                   <span className="conversations-sidebar-section__thread-title-row">
-                    <TruncatedText className="conversations-sidebar-section__thread-title">Nouvelle conversation</TruncatedText>
+                    {/* Utilise le titre animé si l'animation est en cours */}
+                    <TruncatedText className="conversations-sidebar-section__thread-title">
+                      {newConversationTitle}
+                    </TruncatedText>
                   </span>
                 </button>
               </li>
             )}
             {displayedThreads.map((thread) => {
+              // Si le thread actuel est celui qui est en cours d'animation,
+              // et que l'animation est encore en train de "construire" le titre,
+              // on ne l'affiche pas encore pour éviter le conflit.
+              if ((isAnimatingOut || isAnimatingIn) && thread.id === currentThreadId) {
+                return null;
+              }
+
               const items = normalizeItems(thread);
               const isActive = thread.id === currentThreadId;
               const isDeleting = deletingThreadId === thread.id;
