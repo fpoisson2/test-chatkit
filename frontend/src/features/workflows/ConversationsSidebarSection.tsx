@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode, type MutableRefObject } from "react";
 import type { Thread, ChatKitAPIConfig } from "../../chatkit/types";
-import { listThreads, deleteThread } from "../../chatkit/api/streaming/api";
+import { listThreads, deleteThread, updateThreadMetadata } from "../../chatkit/api/streaming/api";
 import {
   type ActionMenuPlacement,
   computeWorkflowActionMenuPlacement,
@@ -200,6 +200,44 @@ export function ConversationsSidebarSection({
     }
   }, [api, threads, currentThreadId, onThreadDeleted]);
 
+  const handleRenameThread = useCallback(async (threadId: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!api) return;
+
+    const newTitle = window.prompt("Nouveau nom de la conversation :", currentTitle);
+    if (newTitle === null || newTitle.trim() === "" || newTitle.trim() === currentTitle) return;
+
+    const trimmedTitle = newTitle.trim();
+
+    try {
+      await updateThreadMetadata({
+        url: api.url,
+        headers: api.headers,
+        threadId,
+        metadata: { title: trimmedTitle },
+      });
+
+      // Update local state
+      const updatedThreads = threads.map((thread) => {
+        if (thread.id === threadId) {
+          return {
+            ...thread,
+            metadata: {
+              ...thread.metadata,
+              title: trimmedTitle,
+            },
+          };
+        }
+        return thread;
+      });
+      setThreads(updatedThreads);
+      cachedThreads = updatedThreads;
+    } catch (err) {
+      console.error("[ConversationsSidebarSection] Failed to rename thread:", err);
+      alert("Impossible de renommer la conversation.");
+    }
+  }, [api, threads]);
+
   // Close menu when clicking outside
   useEffect(() => {
     if (!openMenuId) return;
@@ -374,6 +412,18 @@ export function ConversationsSidebarSection({
                         style={getActionMenuStyle(isMobileLayout, menuPlacement)}
                         ref={menuRef}
                       >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMenuClose();
+                            handleRenameThread(thread.id, threadTitle, e);
+                          }}
+                          disabled={isDeleting}
+                          style={getActionMenuItemStyle(isMobileLayout)}
+                        >
+                          Renommer
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => {
