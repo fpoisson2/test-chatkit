@@ -281,8 +281,18 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
           ));
         } catch (err) {
           console.error('[ChatKit] Failed to upload attachment:', err);
+          // Parse error message for user-friendly display
+          let errorMessage = 'Échec de l\'upload';
+          const errString = String(err);
+          if (errString.includes('413') || errString.includes('Request Entity Too Large')) {
+            errorMessage = 'Fichier trop volumineux (limite serveur dépassée)';
+          } else if (errString.includes('Network error') || errString.includes('Failed to fetch')) {
+            errorMessage = 'Erreur réseau';
+          } else if (errString.includes('401') || errString.includes('403')) {
+            errorMessage = 'Non autorisé';
+          }
           setAttachments(prev => prev.map(a =>
-            a.id === att.id ? { ...a, status: 'error' as const, error: String(err) } : a
+            a.id === att.id ? { ...a, status: 'error' as const, error: errorMessage } : a
           ));
         }
       }

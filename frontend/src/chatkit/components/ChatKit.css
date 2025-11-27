@@ -740,8 +740,30 @@
 }
 
 .chatkit-attachment-error {
-  border-color: #f00;
-  background: #fee;
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+[data-theme="dark"] .chatkit-attachment-error {
+  border-color: #f87171;
+  background: rgba(220, 38, 38, 0.15);
+}
+
+.chatkit-attachment-error-message {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 6px;
+  font-size: 9px;
+  font-weight: 500;
+  color: #fff;
+  background: #dc2626;
+  border-radius: 0 0 7px 7px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Upload progress bar */

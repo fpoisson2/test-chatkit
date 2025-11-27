@@ -308,6 +308,11 @@ export function Composer({
                       <span className="chatkit-attachment-progress-text">{att.progress || 0}%</span>
                     </div>
                   )}
+                  {att.status === 'error' && att.error && (
+                    <div className="chatkit-attachment-error-message" title={att.error}>
+                      {att.error}
+                    </div>
+                  )}
                   <div className="chatkit-attachment-actions">
                     <button
                       type="button"
