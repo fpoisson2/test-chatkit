@@ -464,9 +464,6 @@ export function ConversationsSidebarSection({
                       )}
                       <TruncatedText className="conversations-sidebar-section__thread-title">{threadTitle}</TruncatedText>
                     </span>
-                    {dateStr && (
-                      <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
-                    )}
                   </button>
                   <div className="conversations-sidebar-section__actions" data-conversation-menu-container="">
                     <button
