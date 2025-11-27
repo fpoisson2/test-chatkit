@@ -790,12 +790,21 @@ async def run_workflow_v2(
                 async for event in stream_agent_response(agent_context, result):
                     if _should_forward_agent_event(event, suppress=suppress_stream_events):
                         await _emit_stream_event(event)
+                    # Debug: log event type and check for usage attributes
+                    event_usage = getattr(event, "usage", None)
+                    event_model_usage = getattr(event, "model_usage", None)
+                    event_usage_info = getattr(event, "usage_info", None)
+                    if event_usage or event_model_usage or event_usage_info:
+                        logger.info(
+                            "Event with usage: type=%s, usage=%s, model_usage=%s, usage_info=%s",
+                            getattr(event, "type", type(event)),
+                            event_usage, event_model_usage, event_usage_info,
+                        )
                     usage_from_event = _coerce_usage(
-                        getattr(event, "usage", None)
-                        or getattr(event, "model_usage", None)
-                        or getattr(event, "usage_info", None)
+                        event_usage or event_model_usage or event_usage_info
                     )
                     if usage_from_event:
+                        logger.info("Recorded usage from event: %s", usage_from_event)
                         _record_usage(agent_identifier, model_name, usage_from_event)
                     delta_text = _extract_delta(event)
                     if delta_text:
@@ -840,16 +849,59 @@ async def run_workflow_v2(
 
             # Update conversation history
             conversation_history.extend([item.to_input_item() for item in result.new_items])
+
+            # Debug: log result attributes for usage extraction
+            logger.info(
+                "Result type: %s, all_attrs: %s",
+                type(result),
+                [a for a in dir(result) if not a.startswith('_')],
+            )
+            logger.info(
+                "Result attributes: usage=%s, response=%s, model_usage=%s",
+                getattr(result, "usage", "N/A"),
+                type(getattr(result, "response", None)),
+                getattr(result, "model_usage", "N/A"),
+            )
+            response_obj = getattr(result, "response", None)
+            if response_obj:
+                logger.info(
+                    "Response type: %s, all_attrs: %s",
+                    type(response_obj),
+                    [a for a in dir(response_obj) if not a.startswith('_')],
+                )
+                logger.info(
+                    "Response attributes: usage=%s",
+                    getattr(response_obj, "usage", "N/A"),
+                )
+
             usage_from_result = _coerce_usage(
                 getattr(result, "usage", None)
                 or getattr(getattr(result, "response", None), "usage", None)
                 or getattr(result, "model_usage", None)
             )
+            logger.debug("usage_from_result after coerce: %s", usage_from_result)
             if usage_from_result:
                 _record_usage(agent_identifier, model_name, usage_from_result)
 
+            # Debug: log agent_usage state
+            logger.debug("agent_usage dict after recording: %s", {k: (v.input_tokens, v.output_tokens, v.cost) for k, v in agent_usage.items()})
+
             # Emit usage event for this agent step
             agent_step_usage = agent_usage.get(agent_identifier)
+            logger.debug("agent_step_usage for %s: %s", agent_identifier, agent_step_usage)
+
+            # Debug: log new_items
+            for idx, item in enumerate(result.new_items):
+                item_type = getattr(item, "type", None)
+                item_id = getattr(item, "id", None)
+                raw_item = getattr(item, "raw_item", None)
+                logger.debug(
+                    "result.new_items[%d]: type=%s, id=%s, raw_item_type=%s, raw_item_id=%s",
+                    idx, item_type, item_id,
+                    getattr(raw_item, "type", None) if raw_item else None,
+                    getattr(raw_item, "id", None) if raw_item else None,
+                )
+
             if agent_step_usage and (agent_step_usage.input_tokens > 0 or agent_step_usage.output_tokens > 0):
                 # Find the assistant message item ID from result.new_items
                 assistant_item_id = None
