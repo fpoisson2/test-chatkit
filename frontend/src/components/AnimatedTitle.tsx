@@ -15,8 +15,15 @@ export interface AnimatedTitleProps {
   stableId?: string;
 }
 
-// Module-level storage to persist display text across component remounts
-const displayTextCache = new Map<string, string>();
+// Module-level storage to persist display text and previous text across component remounts
+interface CachedState {
+  displayText: string;
+  prevText: string;
+}
+const stateCache = new Map<string, CachedState>();
+
+// Track the last displayed text globally (used when mounting a component for the first time)
+let lastGlobalDisplayText: string | null = null;
 
 export function AnimatedTitle({
   children,
@@ -25,24 +32,37 @@ export function AnimatedTitle({
   transitionDelay = 50,
   stableId,
 }: AnimatedTitleProps): JSX.Element {
-  // Get cached display text if available and we have a stable ID
-  const getCachedOrCurrent = () => {
-    if (stableId && displayTextCache.has(stableId)) {
-      return displayTextCache.get(stableId)!;
+  // Get cached state if available
+  const getInitialState = () => {
+    if (stableId && stateCache.has(stableId)) {
+      // Component was previously mounted with this ID - use cached state
+      return stateCache.get(stableId)!;
     }
-    return children;
+
+    // First time mounting with this ID - use global last text if available
+    if (lastGlobalDisplayText !== null && lastGlobalDisplayText !== children) {
+      return { displayText: lastGlobalDisplayText, prevText: lastGlobalDisplayText };
+    }
+
+    return { displayText: children, prevText: children };
   };
 
-  const [displayText, setDisplayText] = useState(getCachedOrCurrent);
+  const initialState = getInitialState();
+  const [displayText, setDisplayText] = useState(initialState.displayText);
   const [isAnimating, setIsAnimating] = useState(false);
-  const prevTextRef = useRef(displayText);
+  const prevTextRef = useRef(initialState.prevText);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update cache whenever displayText changes
+  // Update cache and global last text whenever displayText changes
   useLayoutEffect(() => {
+    lastGlobalDisplayText = displayText;
+
     if (stableId) {
-      displayTextCache.set(stableId, displayText);
+      stateCache.set(stableId, {
+        displayText: displayText,
+        prevText: prevTextRef.current,
+      });
     }
   }, [displayText, stableId]);
 
