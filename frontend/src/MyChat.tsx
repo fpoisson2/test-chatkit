@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatKitOptions, StartScreenPrompt } from "./chatkit";
+import type { Thread } from "./chatkit/types";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
@@ -1154,6 +1155,7 @@ export function MyChat() {
           onWorkflowActivated={handleWorkflowActivated}
           api={sidebarApiConfig}
           currentThreadId={(currentThread?.id as string | undefined) ?? initialThreadId ?? null}
+          activeThreadSnapshot={(currentThread as Thread | null) ?? null}
           streamingThreadIds={streamingThreadIds}
           onThreadSelect={handleSidebarThreadSelect}
           onThreadDeleted={handleSidebarThreadDeleted}

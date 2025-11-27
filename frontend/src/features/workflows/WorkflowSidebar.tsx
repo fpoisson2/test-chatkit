@@ -27,7 +27,7 @@ import { workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
-import type { ChatKitAPIConfig } from "../../chatkit/types";
+import type { ChatKitAPIConfig, Thread } from "../../chatkit/types";
 import { useDuplicateWorkflow } from "../../hooks/useWorkflows";
 import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
@@ -370,6 +370,8 @@ type ChatWorkflowSidebarProps = {
   api?: ChatKitAPIConfig | null;
   /** Currently selected thread ID */
   currentThreadId?: string | null;
+  /** Latest snapshot of the active thread to keep sidebar titles in sync */
+  activeThreadSnapshot?: Thread | null;
   /** Set of thread IDs that are currently streaming */
   streamingThreadIds?: Set<string>;
   /** Callback when a thread is selected from the conversations list */
@@ -392,6 +394,7 @@ export const ChatWorkflowSidebar = ({
   onWorkflowActivated,
   api,
   currentThreadId,
+  activeThreadSnapshot,
   streamingThreadIds,
   onThreadSelect,
   onThreadDeleted,
@@ -1428,6 +1431,7 @@ export const ChatWorkflowSidebar = ({
           <ConversationsSidebarSection
             api={api}
             currentThreadId={currentThreadId ?? null}
+            activeThreadSnapshot={activeThreadSnapshot ?? null}
             streamingThreadIds={streamingThreadIds}
             onThreadSelect={onThreadSelect}
             onThreadDeleted={onThreadDeleted}
