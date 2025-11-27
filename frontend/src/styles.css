@@ -271,7 +271,7 @@ button {
 
 @media (max-width: 768px) {
   .chatkit-layout {
-    --chatkit-sidebar-width: min(340px, calc(100vw - clamp(16px, 6vw, 48px)));
+    --chatkit-sidebar-width: min(280px, calc(100vw - clamp(16px, 6vw, 48px)));
   }
 }
 
