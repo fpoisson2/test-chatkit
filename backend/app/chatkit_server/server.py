@@ -52,6 +52,7 @@ from chatkit.types import (
     ThreadMetadata,
     ThreadsCreateReq,
     ThreadStreamEvent,
+    ThreadUpdatedEvent,
     UserMessageInput,
     UserMessageItem,
     UserMessageTextContent,
@@ -781,11 +782,29 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             background_task = asyncio.create_task(_drain_remaining_events())
             background_task.add_done_callback(_log_async_exception)
 
+        # Store original title to detect changes
+        original_title = thread.title
+
         stream_completed = False
         try:
             async for event in _workflow_stream():
                 yield event
             stream_completed = True
+
+            # Wait for title generation to complete and emit update event if title changed
+            if title_task is not None:
+                try:
+                    await title_task
+                except Exception:
+                    pass  # Title generation failure is logged in _maybe_update_thread_title
+
+                if thread.title and thread.title != original_title:
+                    logger.info(
+                        "🔤 Emitting ThreadUpdatedEvent for thread %s with title: %r",
+                        thread.id,
+                        thread.title,
+                    )
+                    yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
         finally:
             if not stream_completed:
                 _schedule_background_drain()
