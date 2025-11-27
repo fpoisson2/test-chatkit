@@ -37,6 +37,12 @@ export function AnimatedTitle({
 }: AnimatedTitleProps): JSX.Element {
   // Get cached state if available
   const getInitialState = () => {
+    // When disabled, always show text directly without any animation setup
+    // This prevents flash when component mounts during streaming
+    if (disabled) {
+      return { displayText: children, prevText: children };
+    }
+
     if (stableId && stateCache.has(stableId)) {
       // Component was previously mounted with this ID - use cached state
       return stateCache.get(stableId)!;
@@ -78,18 +84,21 @@ export function AnimatedTitle({
       clearTimeout(animationTimeoutRef.current);
     }
 
-    // Check if text has actually changed
-    if (prevTextRef.current === children) {
+    const newText = children;
+
+    // If disabled, always ensure displayText matches children (no animation)
+    // This handles both text changes and disabled state changes
+    if (disabled) {
+      if (displayText !== newText || prevTextRef.current !== newText) {
+        setDisplayText(newText);
+        setIsAnimating(false);
+        prevTextRef.current = newText;
+      }
       return;
     }
 
-    const newText = children;
-
-    // If disabled, just update text directly without animation
-    if (disabled) {
-      setDisplayText(newText);
-      setIsAnimating(false);
-      prevTextRef.current = newText;
+    // Check if text has actually changed
+    if (prevTextRef.current === children) {
       return;
     }
 
@@ -183,6 +192,8 @@ export function AnimatedTitle({
         clearTimeout(animationTimeoutRef.current);
       }
     };
+  // Note: displayText is intentionally not in deps to avoid re-running during animation
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [children, letterDuration, transitionDelay, disabled]);
 
   return (
