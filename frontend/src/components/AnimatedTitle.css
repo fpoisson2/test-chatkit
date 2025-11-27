@@ -1,0 +1,10 @@
+.animated-title {
+  display: inline-block;
+  min-width: 1ch; /* Prevent collapse when empty */
+  transition: opacity 0.1s ease;
+}
+
+.animated-title--animating {
+  /* Optional: Add subtle visual feedback during animation */
+  opacity: 0.95;
+}

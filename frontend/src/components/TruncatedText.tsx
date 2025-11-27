@@ -1,11 +1,12 @@
 /**
  * TruncatedText - A component that applies a gradient fade effect only when text overflows
  */
+import { type ReactNode } from "react";
 import { useTextOverflow } from "../hooks/useTextOverflow";
 
 export interface TruncatedTextProps {
-  /** The text content to display */
-  children: string;
+  /** The content to display (can be text or React components) */
+  children: ReactNode;
   /** Base CSS class name */
   className: string;
   /** Additional class name to add when text is truncated (defaults to `${className}--truncated`) */
