@@ -23,7 +23,11 @@ from ..schemas import (
     WorkflowDuplicateRequest,
     WorkflowImportRequest,
     WorkflowProductionUpdate,
+    WorkflowShareRequest,
+    WorkflowSharedUserResponse,
+    WorkflowShareUpdateRequest,
     WorkflowSummaryResponse,
+    WorkflowUnshareRequest,
     WorkflowUpdateRequest,
     WorkflowVersionCreateRequest,
     WorkflowVersionSummaryResponse,
@@ -106,7 +110,7 @@ async def list_workflows(
     # LTI users can only see workflows from their LTI resource links
     # They should only access the specific workflow assigned via deeplink
     if current_user.is_lti:
-        from ..models import LTIUserSession, Workflow
+        from ..models import LTIUserSession
         from sqlalchemy import select, desc
 
         # Get the most recent launched LTI session for this user
@@ -135,10 +139,29 @@ async def list_workflows(
 
         return []
 
-    # Other non-admin users have no access
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis"
+    # Regular users can see their own workflows and workflows shared with them
+    from ..models import Workflow, workflow_shares
+    from sqlalchemy import select, or_
+
+    # Query workflows where user is owner OR workflow is shared with user
+    stmt = (
+        select(Workflow)
+        .outerjoin(workflow_shares, Workflow.id == workflow_shares.c.workflow_id)
+        .where(
+            or_(
+                Workflow.owner_id == current_user.id,
+                workflow_shares.c.user_id == current_user.id,
+            )
+        )
+        .distinct()
+        .order_by(Workflow.updated_at.desc())
     )
+    workflows = list(session.scalars(stmt).unique().all())
+
+    return [
+        WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
+        for w in workflows
+    ]
 
 
 @router.get(
@@ -197,13 +220,22 @@ async def create_workflow(
         get_workflow_persistence_service
     ),
 ) -> WorkflowDefinitionResponse:
-    _ensure_admin(current_user)
+    # LTI users cannot create workflows
+    if current_user.is_lti:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Les utilisateurs LTI ne peuvent pas créer de workflows"
+        )
+
+    # Set owner_id for non-admin users, admin-created workflows have no owner
+    owner_id = None if current_user.is_admin else current_user.id
+
     try:
         definition = service.create_workflow(
             slug=payload.slug,
             display_name=payload.display_name,
             description=payload.description,
             graph_payload=payload.graph.model_dump() if payload.graph else None,
+            owner_id=owner_id,
             session=session,
         )
     except WorkflowValidationError as exc:
@@ -286,7 +318,22 @@ async def delete_workflow(
         get_workflow_persistence_service
     ),
 ) -> Response:
-    _ensure_admin(current_user)
+    from ..models import Workflow
+
+    # Get the workflow to check ownership
+    workflow = session.get(Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Workflow non trouvé"
+        )
+
+    # Only admin or owner can delete a workflow
+    if not current_user.is_admin and workflow.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seul le propriétaire peut supprimer ce workflow",
+        )
+
     try:
         service.delete_workflow(workflow_id, session=session)
     except WorkflowNotFoundError as exc:
@@ -314,10 +361,48 @@ async def duplicate_workflow(
         get_workflow_persistence_service
     ),
 ) -> WorkflowSummaryResponse:
-    _ensure_admin(current_user)
+    from sqlalchemy import select
+    from ..models import Workflow, workflow_shares
+
+    # LTI users cannot duplicate workflows
+    if current_user.is_lti:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Les utilisateurs LTI ne peuvent pas dupliquer de workflows",
+        )
+
+    # Get the workflow to check access
+    workflow = session.get(Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Workflow non trouvé"
+        )
+
+    # Check if user has access to this workflow (owner, shared with write, or admin)
+    can_duplicate = current_user.is_admin or workflow.owner_id == current_user.id
+
+    if not can_duplicate:
+        # Check if shared with write permission
+        share_stmt = select(workflow_shares.c.permission).where(
+            workflow_shares.c.workflow_id == workflow_id,
+            workflow_shares.c.user_id == current_user.id,
+        )
+        share_permission = session.scalar(share_stmt)
+        can_duplicate = share_permission == "write"
+
+    if not can_duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous n'avez pas la permission de dupliquer ce workflow",
+        )
+
+    # Set owner_id for non-admin users duplicating
+    # Admin duplication keeps no owner (system workflow)
+    owner_id = None if current_user.is_admin else current_user.id
+
     try:
-        workflow = service.duplicate_workflow(
-            workflow_id, payload.display_name, session=session
+        new_workflow = service.duplicate_workflow(
+            workflow_id, payload.display_name, owner_id=owner_id, session=session
         )
     except WorkflowNotFoundError as exc:
         raise HTTPException(
@@ -327,7 +412,7 @@ async def duplicate_workflow(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
         ) from exc
-    return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
+    return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(new_workflow))
 
 
 @router.get(
@@ -570,3 +655,211 @@ async def update_workflow_appearance(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
     return WorkflowAppearanceResponse.model_validate(data)
+
+
+# ============================================================================
+# Workflow Sharing Endpoints
+# ============================================================================
+
+
+def _get_workflow_for_sharing(
+    workflow_id: int, current_user: User, session: Session
+) -> "Workflow":
+    """Get a workflow and verify the user can share it (owner or admin)."""
+    from ..models import Workflow
+
+    workflow = session.get(Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Workflow non trouvé"
+        )
+
+    # Only owner or admin can share a workflow
+    if not current_user.is_admin and workflow.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seul le propriétaire peut partager ce workflow",
+        )
+
+    return workflow
+
+
+@router.get(
+    "/api/workflows/{workflow_id}/shares",
+    response_model=list[WorkflowSharedUserResponse],
+)
+async def list_workflow_shares(
+    workflow_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> list[WorkflowSharedUserResponse]:
+    """List users a workflow is shared with."""
+    from sqlalchemy import select
+    from ..models import workflow_shares
+
+    workflow = _get_workflow_for_sharing(workflow_id, current_user, session)
+
+    # Get shares with permissions
+    stmt = select(
+        User.id, User.email, workflow_shares.c.permission
+    ).join(
+        workflow_shares, User.id == workflow_shares.c.user_id
+    ).where(
+        workflow_shares.c.workflow_id == workflow_id
+    )
+    shares = session.execute(stmt).all()
+
+    return [
+        WorkflowSharedUserResponse(id=row.id, email=row.email, permission=row.permission)
+        for row in shares
+    ]
+
+
+@router.post(
+    "/api/workflows/{workflow_id}/shares",
+    response_model=WorkflowSharedUserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def share_workflow(
+    workflow_id: int,
+    payload: WorkflowShareRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowSharedUserResponse:
+    """Share a workflow with another user by email."""
+    from sqlalchemy import select, insert
+    from ..models import workflow_shares
+
+    workflow = _get_workflow_for_sharing(workflow_id, current_user, session)
+
+    # Validate permission value
+    if payload.permission not in ("read", "write"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La permission doit être 'read' ou 'write'",
+        )
+
+    # Find the target user by email
+    target_user = session.scalar(
+        select(User).where(User.email == payload.user_email)
+    )
+    if target_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilisateur non trouvé avec cet email",
+        )
+
+    # Cannot share with yourself
+    if target_user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vous ne pouvez pas partager un workflow avec vous-même",
+        )
+
+    # Cannot share with the owner
+    if target_user.id == workflow.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vous ne pouvez pas partager un workflow avec son propriétaire",
+        )
+
+    # Check if already shared
+    if target_user in workflow.shared_with:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ce workflow est déjà partagé avec cet utilisateur",
+        )
+
+    # Add the share with permission using raw insert
+    stmt = insert(workflow_shares).values(
+        workflow_id=workflow_id,
+        user_id=target_user.id,
+        permission=payload.permission,
+    )
+    session.execute(stmt)
+    session.commit()
+
+    return WorkflowSharedUserResponse(
+        id=target_user.id, email=target_user.email, permission=payload.permission
+    )
+
+
+@router.delete(
+    "/api/workflows/{workflow_id}/shares/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unshare_workflow(
+    workflow_id: int,
+    user_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """Remove a user's access to a shared workflow."""
+    workflow = _get_workflow_for_sharing(workflow_id, current_user, session)
+
+    # Find the user to remove
+    target_user = None
+    for user in workflow.shared_with:
+        if user.id == user_id:
+            target_user = user
+            break
+
+    if target_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ce workflow n'est pas partagé avec cet utilisateur",
+        )
+
+    workflow.shared_with.remove(target_user)
+    session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch(
+    "/api/workflows/{workflow_id}/shares/{user_id}",
+    response_model=WorkflowSharedUserResponse,
+)
+async def update_share_permission(
+    workflow_id: int,
+    user_id: int,
+    payload: WorkflowShareUpdateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowSharedUserResponse:
+    """Update a user's permission for a shared workflow."""
+    from sqlalchemy import select, update
+    from ..models import workflow_shares
+
+    workflow = _get_workflow_for_sharing(workflow_id, current_user, session)
+
+    # Validate permission value
+    if payload.permission not in ("read", "write"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La permission doit être 'read' ou 'write'",
+        )
+
+    # Find the target user
+    target_user = session.get(User, user_id)
+    if target_user is None or target_user not in workflow.shared_with:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ce workflow n'est pas partagé avec cet utilisateur",
+        )
+
+    # Update the permission
+    stmt = (
+        update(workflow_shares)
+        .where(
+            workflow_shares.c.workflow_id == workflow_id,
+            workflow_shares.c.user_id == user_id,
+        )
+        .values(permission=payload.permission)
+    )
+    session.execute(stmt)
+    session.commit()
+
+    return WorkflowSharedUserResponse(
+        id=target_user.id, email=target_user.email, permission=payload.permission
+    )

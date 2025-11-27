@@ -32,6 +32,7 @@ import { useDuplicateWorkflow } from "../../hooks/useWorkflows";
 import { useEscapeKeyHandler } from "../workflow-builder/hooks/useEscapeKeyHandler";
 import { useOutsidePointerDown } from "../workflow-builder/hooks/useOutsidePointerDown";
 import type { WorkflowAppearanceTarget } from "./WorkflowAppearanceModal";
+import { ShareWorkflowModal } from "./ShareWorkflowModal";
 import type {
   ActionMenuPlacement,
   WorkflowActionMenuItem,
@@ -429,6 +430,7 @@ export const ChatWorkflowSidebar = ({
   const workflowMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const duplicateWorkflowMutation = useDuplicateWorkflow();
+  const [shareModalWorkflow, setShareModalWorkflow] = useState<WorkflowSummary | null>(null);
 
   const closeWorkflowMenu = useCallback(() => {
     setOpenWorkflowMenuId(null);
@@ -1022,16 +1024,23 @@ export const ChatWorkflowSidebar = ({
       onTogglePin: () => void;
       onCloseMenu: () => void;
     }): WorkflowActionMenuItem[] => {
-      if (!isAdmin) return [];
+      // Check if user is the owner of this workflow
+      const isOwner = user?.id === workflow.owner_id;
+      // User can manage if admin or owner
+      const canManage = isAdmin || isOwner;
+
+      if (!canManage) return [];
 
       const pinLabel = isPinned
         ? t("workflows.unpinAction")
         : t("workflows.pinAction");
 
-      const canDelete = !loading;
+      const canDelete = !loading && canManage;
       const canExport = workflow.active_version_id !== null;
+      // Owner can share, or admin can share system workflows (no owner)
+      const canShare = isOwner || (isAdmin && workflow.owner_id === null);
 
-      return [
+      const items: WorkflowActionMenuItem[] = [
         {
           key: "pin",
           label: pinLabel,
@@ -1042,55 +1051,77 @@ export const ChatWorkflowSidebar = ({
             onCloseMenu();
           },
         },
-        {
-          key: "duplicate",
-          label: t("workflowBuilder.localSection.duplicateAction"),
-          onSelect: () => void handleDuplicateWorkflow(workflow),
-          disabled:
-            !isAdmin ||
-            loading ||
-            updatingWorkflowId === workflow.id ||
-            workflow.active_version_id === null ||
-            !token,
-        },
-        {
-          key: "rename",
-          label: t("workflowBuilder.localSection.renameAction"),
-          onSelect: () => {
-            onCloseMenu();
-            void handleRenameWorkflow(workflow);
-          },
-          disabled: loading,
-        },
-        {
-          key: "export",
-          label: t("workflowBuilder.localSection.exportAction"),
-          onSelect: () => {
-            onCloseMenu();
-            void handleExportWorkflow(workflow);
-          },
-          disabled: !canExport || loading,
-        },
-        {
-          key: "appearance",
-          label: t("workflowBuilder.localSection.customizeAction"),
-          onSelect: () => {
-            onCloseMenu();
-            handleOpenAppearance(workflow);
-          },
-          disabled: loading,
-        },
-        {
-          key: "delete",
-          label: t("workflowBuilder.localSection.deleteAction"),
-          onSelect: () => {
-            onCloseMenu();
-            void handleDeleteWorkflow(workflow);
-          },
-          disabled: !canDelete,
-          danger: true,
-        },
       ];
+
+      // Share option - only for owner
+      if (canShare) {
+        items.push({
+          key: "share",
+          label: t("workflows.shareAction"),
+          onSelect: () => {
+            onCloseMenu();
+            setShareModalWorkflow(workflow);
+          },
+          disabled: loading,
+        });
+      }
+
+      // Admin-only actions
+      if (isAdmin) {
+        items.push(
+          {
+            key: "duplicate",
+            label: t("workflowBuilder.localSection.duplicateAction"),
+            onSelect: () => void handleDuplicateWorkflow(workflow),
+            disabled:
+              loading ||
+              updatingWorkflowId === workflow.id ||
+              workflow.active_version_id === null ||
+              !token,
+          },
+          {
+            key: "rename",
+            label: t("workflowBuilder.localSection.renameAction"),
+            onSelect: () => {
+              onCloseMenu();
+              void handleRenameWorkflow(workflow);
+            },
+            disabled: loading,
+          },
+          {
+            key: "export",
+            label: t("workflowBuilder.localSection.exportAction"),
+            onSelect: () => {
+              onCloseMenu();
+              void handleExportWorkflow(workflow);
+            },
+            disabled: !canExport || loading,
+          },
+          {
+            key: "appearance",
+            label: t("workflowBuilder.localSection.customizeAction"),
+            onSelect: () => {
+              onCloseMenu();
+              handleOpenAppearance(workflow);
+            },
+            disabled: loading,
+          },
+        );
+      }
+
+      // Delete action - available for owner and admin
+      items.push({
+        key: "delete",
+        label: t("workflowBuilder.localSection.deleteAction"),
+        onSelect: () => {
+          onCloseMenu();
+          void handleDeleteWorkflow(workflow);
+        },
+        disabled: !canDelete,
+        danger: true,
+      });
+
+      return items;
     },
     [
       handleDuplicateWorkflow,
@@ -1102,6 +1133,7 @@ export const ChatWorkflowSidebar = ({
       loading,
       token,
       updatingWorkflowId,
+      user,
     ],
   );
 
@@ -1438,7 +1470,25 @@ export const ChatWorkflowSidebar = ({
     sidebarContent,
   ]);
 
-  return null;
+  const handleShareModalClose = useCallback(() => {
+    setShareModalWorkflow(null);
+  }, []);
+
+  const handleSharesUpdated = useCallback((updatedWorkflow: WorkflowSummary) => {
+    setWorkflows((current) =>
+      current.map((w) => (w.id === updatedWorkflow.id ? updatedWorkflow : w))
+    );
+  }, [setWorkflows]);
+
+  return (
+    <ShareWorkflowModal
+      token={token}
+      isOpen={shareModalWorkflow !== null}
+      workflow={shareModalWorkflow}
+      onClose={handleShareModalClose}
+      onSharesUpdated={handleSharesUpdated}
+    />
+  );
 };
 
 // ============================================================================

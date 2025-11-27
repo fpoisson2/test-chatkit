@@ -1,4 +1,4 @@
-import type { WorkflowSummary } from "../types/workflows";
+import type { WorkflowSharedUser, WorkflowSummary } from "../types/workflows";
 
 type NullableString = string | null | undefined;
 
@@ -1697,6 +1697,53 @@ export const workflowsApi = {
       body: JSON.stringify({ version_id: versionId }),
     });
     return response.json();
+  },
+
+  // Workflow sharing methods
+  async listShares(token: string | null, workflowId: number): Promise<WorkflowSharedUser[]> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async shareWorkflow(
+    token: string | null,
+    workflowId: number,
+    userEmail: string,
+    permission: "read" | "write" = "read",
+  ): Promise<WorkflowSharedUser> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ user_email: userEmail, permission }),
+    });
+    return response.json();
+  },
+
+  async updateSharePermission(
+    token: string | null,
+    workflowId: number,
+    userId: number,
+    permission: "read" | "write",
+  ): Promise<WorkflowSharedUser> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/shares/${userId}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ permission }),
+    });
+    return response.json();
+  },
+
+  async unshareWorkflow(
+    token: string | null,
+    workflowId: number,
+    userId: number,
+  ): Promise<void> {
+    await requestWithFallback(`/api/workflows/${workflowId}/shares/${userId}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
   },
 };
 

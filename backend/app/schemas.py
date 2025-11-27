@@ -1191,6 +1191,12 @@ class WorkflowDefinitionUpdate(BaseModel):
     graph: WorkflowGraphInput
 
 
+class WorkflowSharedUserResponse(BaseModel):
+    id: int
+    email: str
+    permission: str = "read"  # 'read' or 'write'
+
+
 class WorkflowSummaryResponse(BaseModel):
     id: int
     slug: str
@@ -1201,6 +1207,9 @@ class WorkflowSummaryResponse(BaseModel):
     active_version_id: int | None = None
     active_version_number: int | None = None
     is_chatkit_default: bool
+    owner_id: int | None = None
+    owner_email: str | None = None
+    shared_with: list[WorkflowSharedUserResponse] = Field(default_factory=list)
     lti_enabled: bool
     lti_registration_ids: list[int] = Field(default_factory=list)
     lti_show_sidebar: bool = True
@@ -1257,6 +1266,19 @@ class WorkflowChatKitUpdate(BaseModel):
 
 class WorkflowDuplicateRequest(BaseModel):
     display_name: str
+
+
+class WorkflowShareRequest(BaseModel):
+    user_email: EmailStr
+    permission: str = "read"  # 'read' or 'write'
+
+
+class WorkflowShareUpdateRequest(BaseModel):
+    permission: str  # 'read' or 'write'
+
+
+class WorkflowUnshareRequest(BaseModel):
+    user_id: int
 
 
 class WorkflowViewportEntry(BaseModel):
