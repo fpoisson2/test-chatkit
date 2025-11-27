@@ -1163,6 +1163,7 @@ export function MyChat() {
           onThreadDeleted={handleSidebarThreadDeleted}
           onNewConversation={handleNewConversation}
           hideWorkflows
+          isNewConversationActive={initialThreadId === null}
         />
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", overflow: "hidden" }}>
           <div style={{ flex: 1, position: "relative", minHeight: 0 }}>

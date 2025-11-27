@@ -382,6 +382,8 @@ type ChatWorkflowSidebarProps = {
   maxRecentWorkflows?: number;
   /** Hide workflows section (only show conversations) */
   hideWorkflows?: boolean;
+  /** When true, shows a "New conversation" draft entry in the conversations list */
+  isNewConversationActive?: boolean;
 };
 
 export const ChatWorkflowSidebar = ({
@@ -396,6 +398,7 @@ export const ChatWorkflowSidebar = ({
   onNewConversation,
   maxRecentWorkflows = 5,
   hideWorkflows = false,
+  isNewConversationActive = false,
 }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -1435,6 +1438,7 @@ export const ChatWorkflowSidebar = ({
             emptyMessage={t("sidebar.conversationsEmpty")}
             isCollapsed={isSidebarCollapsed}
             isMobileLayout={isMobileLayout}
+            isNewConversationActive={isNewConversationActive}
           />
         )}
       </div>
@@ -1449,6 +1453,7 @@ export const ChatWorkflowSidebar = ({
     hostedWorkflows,
     isAdmin,
     isMobileLayout,
+    isNewConversationActive,
     isSidebarCollapsed,
     loadWorkflows,
     loading,
