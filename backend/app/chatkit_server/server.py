@@ -944,8 +944,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             # Log system prompt and model for debugging
             agent_instructions = getattr(self._title_agent, "instructions", None)
             agent_model = getattr(self._title_agent, "model", None)
-            logger.debug(
-                "🔤 Thread %s: Calling Runner.run for title generation | model=%s | system_prompt=%r | user_input=%r",
+            logger.info(
+                "🔤 Thread %s: Title generation LLM call | model=%s | system_prompt=%r | user_message=%r",
                 thread.id,
                 agent_model,
                 agent_instructions,
