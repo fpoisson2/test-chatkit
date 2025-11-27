@@ -782,34 +782,29 @@ export function MyChat() {
     activeVersionId: workflowForComposer?.active_version_id ?? null,
   });
 
-  console.log("[MyChat] workflowForComposer:", workflowForComposer?.id, workflowForComposer?.active_version_id);
-  console.log("[MyChat] workflowComposerModels:", workflowComposerModels, "workflowDetected:", workflowDetected, "loading:", workflowModelsLoading);
+  // Mémoriser le workflowId pour lequel les modèles ont été chargés
+  // Cela permet de détecter une transition vers un nouveau workflow
+  const loadedWorkflowIdRef = useRef<number | null>(null);
 
-  // Mémoriser les derniers modèles stables ET le workflowId correspondant
-  // Cela évite le flickering du formulaire pendant le chargement d'un nouveau workflow
-  const stableComposerModelsRef = useRef<{
-    models: typeof workflowComposerModels;
-    workflowId: number | null;
-  }>({ models: null, workflowId: null });
-
-  // Mettre à jour les modèles stables seulement quand le chargement est terminé
+  // Mettre à jour le workflowId chargé quand le chargement est terminé
   if (!workflowModelsLoading && workflowDetected) {
-    stableComposerModelsRef.current = {
-      models: workflowComposerModels,
-      workflowId: currentWorkflowIdForModels,
-    };
+    loadedWorkflowIdRef.current = currentWorkflowIdForModels;
   }
 
   // Détecter si on est en transition vers un nouveau workflow
-  // (le workflowId actuel est différent de celui des derniers modèles stables)
-  const isTransitioningWorkflow = currentWorkflowIdForModels !== stableComposerModelsRef.current.workflowId;
+  const isTransitioningWorkflow = currentWorkflowIdForModels !== null &&
+    currentWorkflowIdForModels !== loadedWorkflowIdRef.current;
 
-  // Utiliser les modèles stables pendant la transition OU le chargement pour éviter le flickering
-  // Sinon utiliser le fallback localStorage (pour les cas sans workflow)
-  const composerModels = (workflowModelsLoading || isTransitioningWorkflow)
-    ? stableComposerModelsRef.current.models  // Garder les anciens modèles pendant le chargement/transition
+  // Pendant la transition, utiliser un modèle factice pour forcer le mode multiline
+  // Cela évite le flickering : le formulaire reste en multiline pendant la transition,
+  // puis passe en singleline seulement si le nouveau workflow n'a pas de modèles
+  const PLACEHOLDER_MODELS = [{ id: '__loading__', label: 'Chargement...', default: true }];
+
+  const composerModels = isTransitioningWorkflow
+    ? PLACEHOLDER_MODELS  // Forcer multiline pendant la transition
     : (workflowDetected ? workflowComposerModels : localStorageComposerModels);
-  console.log("[MyChat] final composerModels:", composerModels, "loading:", workflowModelsLoading, "transitioning:", isTransitioningWorkflow);
+
+  console.log("[MyChat] composerModels:", composerModels, "transitioning:", isTransitioningWorkflow, "loading:", workflowModelsLoading);
 
   const chatkitOptions = useMemo(
     () => {
