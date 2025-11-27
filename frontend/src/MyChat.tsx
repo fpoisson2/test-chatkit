@@ -782,18 +782,23 @@ export function MyChat() {
     activeVersionId: workflowForComposer?.active_version_id ?? null,
   });
 
-  // Mémoriser le workflowId pour lequel les modèles ont été chargés
-  // Cela permet de détecter une transition vers un nouveau workflow
-  const loadedWorkflowIdRef = useRef<number | null>(null);
+  // Mémoriser le workflowId pour lequel les modèles ont été chargés avec succès
+  // IMPORTANT: Utiliser un état au lieu d'une ref pour déclencher un re-render
+  // quand la transition est terminée
+  const [loadedWorkflowId, setLoadedWorkflowId] = useState<number | null>(null);
 
-  // Mettre à jour le workflowId chargé quand le chargement est terminé
-  if (!workflowModelsLoading && workflowDetected) {
-    loadedWorkflowIdRef.current = currentWorkflowIdForModels;
-  }
+  // Mettre à jour le workflowId chargé APRÈS le render via useEffect
+  // Cela garantit que isTransitioningWorkflow reste true pendant tout le cycle de render
+  useEffect(() => {
+    if (!workflowModelsLoading && workflowDetected && currentWorkflowIdForModels !== null) {
+      // Ne mettre à jour que si on a vraiment fini de charger ce workflow
+      setLoadedWorkflowId(currentWorkflowIdForModels);
+    }
+  }, [workflowModelsLoading, workflowDetected, currentWorkflowIdForModels]);
 
   // Détecter si on est en transition vers un nouveau workflow
   const isTransitioningWorkflow = currentWorkflowIdForModels !== null &&
-    currentWorkflowIdForModels !== loadedWorkflowIdRef.current;
+    currentWorkflowIdForModels !== loadedWorkflowId;
 
   // Utiliser les modèles du workflow ou le fallback localStorage
   const composerModels = workflowDetected ? workflowComposerModels : localStorageComposerModels;
@@ -803,7 +808,7 @@ export function MyChat() {
   // seulement si le nouveau workflow n'a pas de modèles (une seule transition)
   const forceMultilineMode = isTransitioningWorkflow;
 
-  console.log("[MyChat] composerModels:", composerModels, "forceMultilineMode:", forceMultilineMode, "transitioning:", isTransitioningWorkflow);
+  console.log("[MyChat] composerModels:", composerModels, "forceMultilineMode:", forceMultilineMode, "loadedWorkflowId:", loadedWorkflowId, "currentWorkflowId:", currentWorkflowIdForModels);
 
   const chatkitOptions = useMemo(
     () => {
