@@ -775,19 +775,30 @@ export function MyChat() {
   }, [activeWorkflow, workflows, providerSelectedWorkflowId]);
 
   // Charger les modèles configurés dans le workflow si disponibles
-  const { composerModels: workflowComposerModels, workflowDetected } = useWorkflowComposerModels({
+  const { composerModels: workflowComposerModels, workflowDetected, loading: workflowModelsLoading } = useWorkflowComposerModels({
     token,
     workflowId: workflowForComposer?.id ?? null,
     activeVersionId: workflowForComposer?.active_version_id ?? null,
   });
 
   console.log("[MyChat] workflowForComposer:", workflowForComposer?.id, workflowForComposer?.active_version_id);
-  console.log("[MyChat] workflowComposerModels:", workflowComposerModels, "workflowDetected:", workflowDetected);
+  console.log("[MyChat] workflowComposerModels:", workflowComposerModels, "workflowDetected:", workflowDetected, "loading:", workflowModelsLoading);
 
-  // Utiliser les modèles du workflow si le workflow a été analysé (même si null = pas de choix utilisateur)
+  // Mémoriser les derniers modèles stables (quand le chargement est terminé)
+  // Cela évite le flickering du formulaire pendant le chargement d'un nouveau workflow
+  const stableComposerModelsRef = useRef<typeof workflowComposerModels>(null);
+
+  // Mettre à jour les modèles stables seulement quand le chargement est terminé
+  if (!workflowModelsLoading && workflowDetected) {
+    stableComposerModelsRef.current = workflowComposerModels;
+  }
+
+  // Utiliser les modèles stables pendant le chargement pour éviter le flickering
   // Sinon utiliser le fallback localStorage (pour les cas sans workflow)
-  const composerModels = workflowDetected ? workflowComposerModels : localStorageComposerModels;
-  console.log("[MyChat] final composerModels:", composerModels);
+  const composerModels = workflowModelsLoading
+    ? stableComposerModelsRef.current  // Garder les anciens modèles pendant le chargement
+    : (workflowDetected ? workflowComposerModels : localStorageComposerModels);
+  console.log("[MyChat] final composerModels:", composerModels, "using stable:", workflowModelsLoading);
 
   const chatkitOptions = useMemo(
     () => {
