@@ -43,6 +43,7 @@ import WorkflowSidebarSection, {
 import type { WorkflowSidebarListItemMenuProps } from "./WorkflowSidebarListItem";
 import { SidebarSearchInput } from "./SidebarSearchInput";
 import { ConversationsSidebarSection } from "./ConversationsSidebarSection";
+import { TruncatedText } from "../../components/TruncatedText";
 import {
   getWorkflowInitials,
   isWorkflowPinned,
@@ -233,7 +234,7 @@ export const useWorkflowSidebarEntries = (
                 tabIndex={!callbacks.onHostedClick ? -1 : undefined}
                 title={hosted.description ?? t("workflows.hostedBadge")}
               >
-                <span className="chatkit-sidebar__workflow-label">{hosted.label}</span>
+                <TruncatedText className="chatkit-sidebar__workflow-label">{hosted.label}</TruncatedText>
                 <span className="chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--hosted">
                   {t("workflows.hostedBadge")}
                 </span>
@@ -307,7 +308,7 @@ export const useWorkflowSidebarEntries = (
               aria-current={isActive ? "true" : undefined}
               title={workflow.description ?? undefined}
             >
-              <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
+              <TruncatedText className="chatkit-sidebar__workflow-label">{workflow.display_name}</TruncatedText>
             </button>
           ),
           compact: {
@@ -1583,6 +1584,7 @@ export const WorkflowBuilderSidebar = ({
     hostedLoading,
     hostedError,
     selectedWorkflowId,
+    loadWorkflows,
   } = useWorkflowContext();
 
   const { isCreatingWorkflow } = useModalContext();
@@ -1823,9 +1825,19 @@ export const WorkflowBuilderSidebar = ({
         ? (
           <>
             {hostedError ? (
-              <p className="chatkit-sidebar__section-error" aria-live="polite">
-                {hostedError}
-              </p>
+              <>
+                <p className="chatkit-sidebar__section-error" aria-live="polite">
+                  {hostedError}
+                </p>
+                <button
+                  type="button"
+                  className="chatkit-sidebar__section-button"
+                  onClick={() => void loadWorkflows()}
+                  disabled={hostedLoading}
+                >
+                  Réessayer
+                </button>
+              </>
             ) : null}
             {hostedLoading && managedHosted.length === 0 ? (
               <p className="chatkit-sidebar__section-text" aria-live="polite">
@@ -1841,9 +1853,19 @@ export const WorkflowBuilderSidebar = ({
     let emptyContent: ReactNode | undefined;
     if (loadError) {
       emptyContent = (
-        <p className="chatkit-sidebar__section-error" aria-live="polite">
-          {loadError}
-        </p>
+        <>
+          <p className="chatkit-sidebar__section-error" aria-live="polite">
+            {loadError}
+          </p>
+          <button
+            type="button"
+            className="chatkit-sidebar__section-button"
+            onClick={() => void loadWorkflows()}
+            disabled={loading}
+          >
+            Réessayer
+          </button>
+        </>
       );
     } else if (loading && sidebarEntries.length === 0) {
       emptyContent = (
@@ -1902,6 +1924,7 @@ export const WorkflowBuilderSidebar = ({
     isMobileLayout,
     loadError,
     loading,
+    loadWorkflows,
     managedHosted,
     onOpenCreateModal,
     sidebarEntries,

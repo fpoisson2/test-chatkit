@@ -71,6 +71,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     composer,
     theme,
     api,
+    isAdmin,
   } = options;
 
   const attachmentsConfig = composer?.attachments;
@@ -559,6 +560,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
                   onScreencastConnectionError={handleScreencastConnectionError}
                   onActiveScreencastChange={setActiveScreencast}
                   onContinueWorkflow={handleContinueWorkflow}
+                  isAdmin={isAdmin}
                 />,
               ];
 

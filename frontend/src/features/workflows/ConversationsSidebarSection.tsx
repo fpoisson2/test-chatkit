@@ -3,13 +3,14 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode, type MutableRefObject } from "react";
 import type { Thread, ChatKitAPIConfig } from "../../chatkit/types";
-import { listThreads, deleteThread } from "../../chatkit/api/streaming/api";
+import { listThreads, deleteThread, updateThreadMetadata } from "../../chatkit/api/streaming/api";
 import {
   type ActionMenuPlacement,
   computeWorkflowActionMenuPlacement,
   getActionMenuStyle,
   getActionMenuItemStyle,
 } from "./WorkflowActionMenu";
+import { TruncatedText } from "../../components/TruncatedText";
 import "./ConversationsSidebarSection.css";
 
 export interface ThreadWorkflowMetadata {
@@ -201,6 +202,44 @@ export function ConversationsSidebarSection({
     }
   }, [api, threads, currentThreadId, onThreadDeleted]);
 
+  const handleRenameThread = useCallback(async (threadId: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!api) return;
+
+    const newTitle = window.prompt("Nouveau nom de la conversation :", currentTitle);
+    if (newTitle === null || newTitle.trim() === "" || newTitle.trim() === currentTitle) return;
+
+    const trimmedTitle = newTitle.trim();
+
+    try {
+      await updateThreadMetadata({
+        url: api.url,
+        headers: api.headers,
+        threadId,
+        metadata: { title: trimmedTitle },
+      });
+
+      // Update local state
+      const updatedThreads = threads.map((thread) => {
+        if (thread.id === threadId) {
+          return {
+            ...thread,
+            metadata: {
+              ...thread.metadata,
+              title: trimmedTitle,
+            },
+          };
+        }
+        return thread;
+      });
+      setThreads(updatedThreads);
+      cachedThreads = updatedThreads;
+    } catch (err) {
+      console.error("[ConversationsSidebarSection] Failed to rename thread:", err);
+      alert("Impossible de renommer la conversation.");
+    }
+  }, [api, threads]);
+
   // Close menu when clicking outside
   useEffect(() => {
     if (!openMenuId) return;
@@ -281,20 +320,20 @@ export function ConversationsSidebarSection({
 
   return (
     <section className="conversations-sidebar-section" aria-labelledby="conversations-section-title">
-      <div className="conversations-sidebar-section__header">
-        <h3 id="conversations-section-title" className="conversations-sidebar-section__title">
+      <div className="chatkit-sidebar__section-header">
+        <h2 id="conversations-section-title" className="chatkit-sidebar__section-title">
           {title}
-        </h3>
+        </h2>
         {onNewConversation && (
-          <div className="conversations-sidebar-section__floating-action">
+          <div className="chatkit-sidebar__section-floating-action">
             <button
               type="button"
-              className="conversations-sidebar-section__new-button"
+              className="chatkit-sidebar__section-icon-button"
               onClick={onNewConversation}
               aria-label="Nouvelle conversation"
               title="Nouvelle conversation"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 5v14M5 12h14" />
               </svg>
             </button>
@@ -354,6 +393,7 @@ export function ConversationsSidebarSection({
                       )}
                       <span className="conversations-sidebar-section__thread-title">{threadTitle}</span>
                     </span>
+                    <TruncatedText className="conversations-sidebar-section__thread-title">{threadTitle}</TruncatedText>
                     {dateStr && (
                       <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
                     )}
@@ -381,6 +421,18 @@ export function ConversationsSidebarSection({
                         style={getActionMenuStyle(isMobileLayout, menuPlacement)}
                         ref={menuRef}
                       >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMenuClose();
+                            handleRenameThread(thread.id, threadTitle, e);
+                          }}
+                          disabled={isDeleting}
+                          style={getActionMenuItemStyle(isMobileLayout)}
+                        >
+                          Renommer
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => {
