@@ -357,39 +357,38 @@ export function ConversationsSidebarSection({
     });
   }, [threadsWithActiveData, searchQuery]);
 
-  // 3. Determine which threads to display (Optimistic Insert)
-  const displayedThreads = useMemo(() => {
+// 3. Determine which threads to display (Optimistic Insert)
+const displayedThreads = useMemo(() => {
     // Liste de base
     let list = isExpanded || searchQuery.trim()
-      ? filteredThreads
-      : filteredThreads.slice(0, maxVisible);
+        ? filteredThreads
+        : filteredThreads.slice(0, maxVisible);
 
     // --- FIX OPTIMISTE ---
     // Si on a un ID actif mais qu'il n'est pas encore dans la liste (latence réseau création)
-    // On n'ajoute pas ici si l'animation de sortie est en cours, car `animatedTitle` le gérera.
-    if (currentThreadId && !isNewConversationActive && !isAnimatingOut) {
-      const exists = list.some(t => t.id === currentThreadId);
+    // On n'ajoute pas ici si l'animation est en cours (isAnimatingOut ou isAnimatingIn).
+    if (currentThreadId && !isNewConversationActive && !isAnimatingOut && !isAnimatingIn) { // 👈 AJOUT DE !isAnimatingIn
+        const exists = list.some(t => t.id === currentThreadId);
 
-      if (!exists) {
-        // On utilise le snapshot s'il correspond, sinon un placeholder
-        const snapshot = activeThreadSnapshot?.id === currentThreadId ? activeThreadSnapshot : null;
+        if (!exists) {
+            // On utilise le snapshot s'il correspond, sinon un placeholder
+            const snapshot = activeThreadSnapshot?.id === currentThreadId ? activeThreadSnapshot : null;
 
-        const optimisticThread: Thread = snapshot ? { ...snapshot } : ({
-          id: currentThreadId,
-          title: snapshot?.title || "Nouvelle conversation", // Titre du snapshot prioritaire
-          created_at: new Date().toISOString(),
-          items: [],
-          metadata: {},
-        } as unknown as Thread);
+            const optimisticThread: Thread = snapshot ? { ...snapshot } : ({
+                id: currentThreadId,
+                title: snapshot?.title || "Conversation sans titre", // Mettre "Conversation sans titre" ici, car il sera géré en dessous
+                created_at: new Date().toISOString(),
+                items: [],
+                metadata: {},
+            } as unknown as Thread);
 
-        return [optimisticThread, ...list];
-      }
+            return [optimisticThread, ...list];
+        }
     }
     // ---------------------
 
     return list;
-  }, [filteredThreads, isExpanded, maxVisible, searchQuery, currentThreadId, isNewConversationActive, isAnimatingOut, activeThreadSnapshot]);
-
+}, [filteredThreads, isExpanded, maxVisible, searchQuery, currentThreadId, isNewConversationActive, isAnimatingOut, isAnimatingIn, activeThreadSnapshot]); // 👈 AJOUT DE isAnimatingIn
   const hasHiddenThreads = filteredThreads.length > maxVisible && !isExpanded && !searchQuery.trim();
 
   // --- LOGIQUE D'ANIMATION DE TITRE ---
@@ -554,6 +553,15 @@ export function ConversationsSidebarSection({
               const dateStr = items.length > 0 ? formatRelativeDate(items[0].created_at) : "";
               const isMenuOpen = openMenuId === thread.id;
               const menuId = `conversation-menu-${thread.id}`;
+
+              // --- NOUVELLE LOGIQUE POUR LE TITRE ---
+              let threadTitle = getThreadTitle(thread);
+              const isCurrentlyAnimating = isActive && isAnimatingIn; // Seulement si c'est le thread actif ET que l'on écrit le nouveau titre
+
+              if (isCurrentlyAnimating) {
+                  threadTitle = animatedTitle || "";
+              }
+              // ------------------------------------
 
               // Extract workflow metadata from thread
               const workflowMetadata = thread.metadata?.workflow as ThreadWorkflowMetadata | undefined;
