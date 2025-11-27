@@ -942,18 +942,22 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         try:
             # Log system prompt and model for debugging
-            agent_instructions = getattr(self._title_agent, "instructions", None)
+            agent_instructions = getattr(self._title_agent, "instructions", None) or ""
             agent_model = getattr(self._title_agent, "model", None)
+
+            # Combine system prompt with user message to ensure both are sent to the LLM
+            # Some providers (like Groq via LiteLLM) may not properly handle agent instructions
+            combined_input = f"{agent_instructions}\n\nMessage de l'utilisateur:\n{title_input}"
+
             logger.info(
-                "🔤 Thread %s: Title generation LLM call | model=%s | system_prompt=%r | user_message=%r",
+                "🔤 Thread %s: Title generation LLM call | model=%s | combined_input=%r",
                 thread.id,
                 agent_model,
-                agent_instructions,
-                title_input,
+                combined_input,
             )
             run = await Runner.run(
                 self._title_agent,
-                input=title_input,
+                input=combined_input,
                 run_config=run_config,
             )
         except (
