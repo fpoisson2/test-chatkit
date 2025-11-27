@@ -17,6 +17,6 @@
 /* Mobile sidebar adjustments */
 @media (max-width: 768px) {
   :root {
-    --chatkit-sidebar-width: min(340px, calc(100vw - clamp(16px, 6vw, 48px)));
+    --chatkit-sidebar-width: min(280px, calc(100vw - clamp(16px, 6vw, 48px)));
   }
 }

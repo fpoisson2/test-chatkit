@@ -264,17 +264,7 @@ button {
   flex: 1 1 auto;
   width: 100%;
   background: var(--main-background);
-  --chatkit-sidebar-width: min(320px, 85vw);
-  --chatkit-sidebar-collapsed-width: calc(
-    clamp(var(--control-size-xs), 3.2vw, var(--control-size-md)) + calc(var(--spacing) * 9)
-  );
   overflow: hidden;
-}
-
-@media (max-width: 768px) {
-  .chatkit-layout {
-    --chatkit-sidebar-width: min(340px, calc(100vw - clamp(16px, 6vw, 48px)));
-  }
 }
 
 .chatkit-layout__main {
