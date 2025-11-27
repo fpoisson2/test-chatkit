@@ -1052,7 +1052,7 @@
   border-top: 1px solid var(--color-border-subtle);
   background: transparent;
   position: relative;
-  padding-left: 32px;
+  padding-left: 0;
   max-width: 800px;
   margin: 0 auto;
 }
