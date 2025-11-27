@@ -172,6 +172,32 @@ export function ConversationsSidebarSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api?.url]);
 
+  // Auto-refresh when currentThreadId changes to a thread not in the list
+  // This handles the case when a new conversation is created via ChatKit
+  const prevThreadIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!api || !currentThreadId) {
+      prevThreadIdRef.current = currentThreadId;
+      return;
+    }
+
+    // Only trigger refresh if the thread ID actually changed
+    if (prevThreadIdRef.current === currentThreadId) {
+      return;
+    }
+
+    prevThreadIdRef.current = currentThreadId;
+
+    // Check if this thread exists in our cached list
+    const threadExists = threads.some((thread) => thread.id === currentThreadId);
+
+    // If the thread doesn't exist in our list, refresh to fetch it
+    if (!threadExists) {
+      console.debug("[ConversationsSidebarSection] New thread detected, refreshing list:", currentThreadId);
+      loadThreads(true, true);
+    }
+  }, [api, currentThreadId, threads, loadThreads]);
+
   const handleDeleteThread = useCallback(async (threadId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!api) return;
