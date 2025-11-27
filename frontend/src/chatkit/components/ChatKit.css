@@ -740,8 +740,63 @@
 }
 
 .chatkit-attachment-error {
-  border-color: #f00;
-  background: #fee;
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+[data-theme="dark"] .chatkit-attachment-error {
+  border-color: #f87171;
+  background: rgba(220, 38, 38, 0.15);
+}
+
+.chatkit-attachment-error-message {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 6px;
+  font-size: 9px;
+  font-weight: 500;
+  color: #fff;
+  background: #dc2626;
+  border-radius: 0 0 7px 7px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Upload progress bar */
+.chatkit-attachment-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 18px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 0 0 7px 7px;
+  overflow: hidden;
+}
+
+.chatkit-attachment-progress-bar {
+  height: 100%;
+  background: var(--color-primary, #3b82f6);
+  transition: width 0.15s ease-out;
+}
+
+.chatkit-attachment-progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .chatkit-attachment-progress {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .chatkit-attachment-actions {
