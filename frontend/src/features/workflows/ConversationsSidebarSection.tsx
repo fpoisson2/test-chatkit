@@ -353,17 +353,6 @@ export function ConversationsSidebarSection({
   }, [threadsWithActiveData, searchQuery]);
 
 
-  // Filter threads by search query
-  const filteredThreads = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return threads;
-    }
-    const query = searchQuery.toLowerCase().trim();
-    return threads.filter((thread) => {
-      const title = getThreadTitle(thread).toLowerCase();
-      return title.includes(query);
-    });
-  }, [threads, searchQuery]);
 
 // 3. Determine which threads to display (Optimistic Insert)
   const displayedThreads = useMemo(() => {
