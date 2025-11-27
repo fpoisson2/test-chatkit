@@ -352,12 +352,40 @@ export function ConversationsSidebarSection({
   }, [threads, searchQuery]);
 
   // Determine which threads to display
+// Determine which threads to display
   const displayedThreads = useMemo(() => {
-    if (isExpanded || searchQuery.trim()) {
-      return filteredThreads;
+    // 1. Base list logic
+    let list = isExpanded || searchQuery.trim() 
+      ? filteredThreads 
+      : filteredThreads.slice(0, maxVisible);
+
+    // 2. OPTIMISTIC UPDATE
+    // Si nous avons un ID actif, que ce n'est plus un brouillon (isNewConversationActive = false),
+    // mais que le thread n'est PAS encore dans la liste affichée (latence API),
+    // on l'ajoute manuellement en haut de liste.
+    if (currentThreadId && !isNewConversationActive) {
+      const isAlreadyInList = list.some((t) => t.id === currentThreadId);
+
+      if (!isAlreadyInList) {
+        // On essaie de récupérer les infos du snapshot s'il correspond, sinon on crée un placeholder
+        const snapshot = activeThreadSnapshot?.id === currentThreadId ? activeThreadSnapshot : null;
+
+        // Création d'un objet Thread temporaire pour combler le vide visuel
+        const optimisticThread: Thread = snapshot ? { ...snapshot } : ({
+          id: currentThreadId,
+          title: "Nouvelle conversation", // Titre par défaut en attendant l'API
+          created_at: new Date().toISOString(),
+          items: [],
+          metadata: {},
+        } as unknown as Thread);
+
+        // On l'ajoute en tout premier
+        return [optimisticThread, ...list];
+      }
     }
-    return filteredThreads.slice(0, maxVisible);
-  }, [filteredThreads, isExpanded, maxVisible, searchQuery]);
+
+    return list;
+  }, [filteredThreads, isExpanded, maxVisible, searchQuery, currentThreadId, isNewConversationActive, activeThreadSnapshot]);
 
   const hasHiddenThreads = filteredThreads.length > maxVisible && !isExpanded && !searchQuery.trim();
 
