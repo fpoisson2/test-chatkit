@@ -129,7 +129,11 @@ export function Composer({
   // Forcer le mode multiline quand le sélecteur de modèle est activé
   const forceMultiline = isModelSelectorEnabled && availableModels.length > 0;
 
+  // Le mode effectif du formulaire (multiline si forcé OU si le contenu le nécessite)
+  const effectiveMultiline = forceMultiline || isMultiline;
+
   // Ajuster automatiquement la hauteur du textarea
+  // Note: La classe CSS est définie uniquement dans le JSX via effectiveMultiline pour éviter les conflits
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -139,22 +143,11 @@ export function Composer({
       setIsMultiline(false);
       textarea.style.height = '';
       singleLineHeightRef.current = null;
-      const form = textarea.closest('.chatkit-composer-form');
-      if (form) {
-        form.classList.remove('is-multiline');
-        form.classList.add('is-singleline');
-      }
       return;
     }
 
-    // Si on force le multiline, toujours appliquer le mode multiline
+    // Si on force le multiline, ajuster seulement la hauteur du textarea
     if (forceMultiline) {
-      const form = textarea.closest('.chatkit-composer-form');
-      if (form) {
-        form.classList.add('is-multiline');
-        form.classList.remove('is-singleline');
-      }
-      // Ajuster la hauteur du textarea
       textarea.style.height = 'auto';
       const scrollHeight = textarea.scrollHeight;
       textarea.style.height = `${Math.min(Math.max(scrollHeight, 24), TEXTAREA_MAX_HEIGHT_PX)}px`;
@@ -208,7 +201,7 @@ export function Composer({
     const nextHeight = Math.max(isMultiline ? multilineContentHeight : singleLineContentHeight, baseHeight);
     textarea.style.height = `${Math.min(nextHeight, TEXTAREA_MAX_HEIGHT_PX)}px`;
 
-    // Changer le mode si nécessaire
+    // Changer le mode si nécessaire (sans manipuler classList - c'est géré par le JSX)
     if (shouldBeMultiline !== isMultiline) {
       if (modeChangeTimeoutRef.current) {
         clearTimeout(modeChangeTimeoutRef.current);
@@ -217,11 +210,6 @@ export function Composer({
 
       modeChangeTimeoutRef.current = setTimeout(() => {
         setIsMultiline(shouldBeMultiline);
-        const form = textarea.closest('.chatkit-composer-form');
-        if (form) {
-          form.classList.toggle('is-multiline', shouldBeMultiline);
-          form.classList.toggle('is-singleline', !shouldBeMultiline);
-        }
         modeChangeTimeoutRef.current = null;
       }, 50);
     }
@@ -285,7 +273,7 @@ export function Composer({
       <div className="chatkit-composer">
         <form
           onSubmit={handleSubmit}
-          className={`chatkit-composer-form ${isModelSelectorEnabled && availableModels.length > 0 ? 'is-multiline' : 'is-singleline'}${attachments.length > 0 ? ' has-attachments' : ''}${isDraggingFiles ? ' is-dragging' : ''}`}
+          className={`chatkit-composer-form ${effectiveMultiline ? 'is-multiline' : 'is-singleline'}${attachments.length > 0 ? ' has-attachments' : ''}${isDraggingFiles ? ' is-dragging' : ''}`}
         >
           {/* Attachments preview inside form */}
           {attachments.length > 0 && (
