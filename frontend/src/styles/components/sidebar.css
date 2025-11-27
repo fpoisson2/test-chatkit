@@ -1135,11 +1135,6 @@
   display: none;
 }
 
-/* Add spacing to the right of the floating action button on mobile */
-.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-floating-action {
-  margin-right: calc(var(--spacing) * 2);
-}
-
 /* Fix button text contrast on mobile dark mode */
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-button {
   color: var(--gray-25);
