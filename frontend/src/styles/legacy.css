@@ -2235,3 +2235,39 @@ button {
   text-align: center;
   padding: calc(var(--spacing) * 4);
 }
+
+.share-workflow-modal__select {
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  min-width: 140px;
+}
+
+.share-workflow-modal__select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.share-workflow-modal__select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.share-workflow-modal__select--small {
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2);
+  min-width: 120px;
+}
+
+.share-workflow-modal__user {
+  gap: calc(var(--spacing) * 2);
+}
+
+.share-workflow-modal__user-email {
+  flex: 1;
+}

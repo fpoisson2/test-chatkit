@@ -2462,9 +2462,21 @@ class WorkflowService:
                 db.close()
 
     def duplicate_workflow(
-        self, workflow_id: int, new_name: str, *, session: Session | None = None
+        self,
+        workflow_id: int,
+        new_name: str,
+        *,
+        owner_id: int | None = None,
+        session: Session | None = None,
     ) -> Workflow:
-        """Duplique un workflow existant avec un nouveau nom."""
+        """Duplique un workflow existant avec un nouveau nom.
+
+        Args:
+            workflow_id: ID du workflow à dupliquer
+            new_name: Nom du nouveau workflow
+            owner_id: ID du propriétaire du nouveau workflow (None pour les workflows système)
+            session: Session de base de données optionnelle
+        """
         db, owns_session = self._get_session(session)
         try:
             # Récupère le workflow original
@@ -2500,11 +2512,12 @@ class WorkflowService:
                 new_slug = f"{base_slug}-{counter}"
                 counter += 1
 
-            # Crée le nouveau workflow
+            # Crée le nouveau workflow (without copying shares - new owner starts fresh)
             new_workflow = Workflow(
                 slug=new_slug,
                 display_name=new_name,
                 description=original_workflow.description,
+                owner_id=owner_id,
             )
             db.add(new_workflow)
             db.flush()
@@ -3335,7 +3348,36 @@ def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
 
 
 def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
+    from sqlalchemy.orm import object_session
+    from ..models import workflow_shares, User
+
     active_version = workflow.active_version
+
+    # Get shared users with permissions
+    shared_with_data = []
+    session = object_session(workflow)
+    if session and workflow.shared_with:
+        # Query for permission data
+        stmt = select(
+            User.id, User.email, workflow_shares.c.permission
+        ).join(
+            workflow_shares, User.id == workflow_shares.c.user_id
+        ).where(
+            workflow_shares.c.workflow_id == workflow.id
+        )
+        for row in session.execute(stmt):
+            shared_with_data.append({
+                "id": row.id,
+                "email": row.email,
+                "permission": row.permission,
+            })
+    else:
+        # Fallback without permission (shouldn't happen in practice)
+        shared_with_data = [
+            {"id": user.id, "email": user.email, "permission": "read"}
+            for user in workflow.shared_with
+        ]
+
     return {
         "id": workflow.id,
         "slug": workflow.slug,
@@ -3348,10 +3390,7 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "is_chatkit_default": workflow.is_chatkit_default,
         "owner_id": workflow.owner_id,
         "owner_email": workflow.owner.email if workflow.owner else None,
-        "shared_with": [
-            {"id": user.id, "email": user.email}
-            for user in workflow.shared_with
-        ],
+        "shared_with": shared_with_data,
         "lti_enabled": workflow.lti_enabled,
         "lti_registration_ids": [reg.id for reg in workflow.lti_registrations],
         "lti_show_sidebar": workflow.lti_show_sidebar,

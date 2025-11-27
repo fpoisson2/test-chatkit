@@ -1194,6 +1194,7 @@ class WorkflowDefinitionUpdate(BaseModel):
 class WorkflowSharedUserResponse(BaseModel):
     id: int
     email: str
+    permission: str = "read"  # 'read' or 'write'
 
 
 class WorkflowSummaryResponse(BaseModel):
@@ -1269,6 +1270,11 @@ class WorkflowDuplicateRequest(BaseModel):
 
 class WorkflowShareRequest(BaseModel):
     user_email: EmailStr
+    permission: str = "read"  # 'read' or 'write'
+
+
+class WorkflowShareUpdateRequest(BaseModel):
+    permission: str  # 'read' or 'write'
 
 
 class WorkflowUnshareRequest(BaseModel):

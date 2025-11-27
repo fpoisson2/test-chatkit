@@ -1,6 +1,9 @@
+export type WorkflowSharePermission = "read" | "write";
+
 export type WorkflowSharedUser = {
   id: number;
   email: string;
+  permission: WorkflowSharePermission;
 };
 
 export type WorkflowSummary = {

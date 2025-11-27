@@ -1711,11 +1711,26 @@ export const workflowsApi = {
     token: string | null,
     workflowId: number,
     userEmail: string,
+    permission: "read" | "write" = "read",
   ): Promise<WorkflowSharedUser> {
     const response = await requestWithFallback(`/api/workflows/${workflowId}/shares`, {
       method: "POST",
       headers: withAuthHeaders(token),
-      body: JSON.stringify({ user_email: userEmail }),
+      body: JSON.stringify({ user_email: userEmail, permission }),
+    });
+    return response.json();
+  },
+
+  async updateSharePermission(
+    token: string | null,
+    workflowId: number,
+    userId: number,
+    permission: "read" | "write",
+  ): Promise<WorkflowSharedUser> {
+    const response = await requestWithFallback(`/api/workflows/${workflowId}/shares/${userId}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ permission }),
     });
     return response.json();
   },

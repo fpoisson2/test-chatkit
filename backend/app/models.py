@@ -61,6 +61,12 @@ workflow_shares = Table(
     Column("workflow_id", Integer, ForeignKey("workflows.id", ondelete="CASCADE"), primary_key=True),
     Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
     Column(
+        "permission",
+        String(16),
+        nullable=False,
+        default="read",
+    ),
+    Column(
         "shared_at",
         DateTime(timezone=True),
         nullable=False,
