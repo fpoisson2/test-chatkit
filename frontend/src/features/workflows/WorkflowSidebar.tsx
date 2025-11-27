@@ -1579,6 +1579,7 @@ export const WorkflowBuilderSidebar = ({
     hostedLoading,
     hostedError,
     selectedWorkflowId,
+    loadWorkflows,
   } = useWorkflowContext();
 
   const { isCreatingWorkflow } = useModalContext();
@@ -1819,9 +1820,19 @@ export const WorkflowBuilderSidebar = ({
         ? (
           <>
             {hostedError ? (
-              <p className="chatkit-sidebar__section-error" aria-live="polite">
-                {hostedError}
-              </p>
+              <>
+                <p className="chatkit-sidebar__section-error" aria-live="polite">
+                  {hostedError}
+                </p>
+                <button
+                  type="button"
+                  className="chatkit-sidebar__section-button"
+                  onClick={() => void loadWorkflows()}
+                  disabled={hostedLoading}
+                >
+                  Réessayer
+                </button>
+              </>
             ) : null}
             {hostedLoading && managedHosted.length === 0 ? (
               <p className="chatkit-sidebar__section-text" aria-live="polite">
@@ -1837,9 +1848,19 @@ export const WorkflowBuilderSidebar = ({
     let emptyContent: ReactNode | undefined;
     if (loadError) {
       emptyContent = (
-        <p className="chatkit-sidebar__section-error" aria-live="polite">
-          {loadError}
-        </p>
+        <>
+          <p className="chatkit-sidebar__section-error" aria-live="polite">
+            {loadError}
+          </p>
+          <button
+            type="button"
+            className="chatkit-sidebar__section-button"
+            onClick={() => void loadWorkflows()}
+            disabled={loading}
+          >
+            Réessayer
+          </button>
+        </>
       );
     } else if (loading && sidebarEntries.length === 0) {
       emptyContent = (
@@ -1898,6 +1919,7 @@ export const WorkflowBuilderSidebar = ({
     isMobileLayout,
     loadError,
     loading,
+    loadWorkflows,
     managedHosted,
     onOpenCreateModal,
     sidebarEntries,
