@@ -6,6 +6,7 @@ import { useAppLayout } from "./components/AppLayout";
 import { LoadingOverlay } from "./components/feedback/LoadingOverlay";
 import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
 import { ChatWorkflowSidebar, type WorkflowActivation } from "./features/workflows/WorkflowSidebar";
+import type { ThreadWorkflowMetadata } from "./features/workflows/ConversationsSidebarSection";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import {
   useAppearanceSettings,
@@ -199,7 +200,7 @@ export function MyChat() {
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
   const { openSidebar, setHideSidebar, isSidebarOpen } = useAppLayout();
-  const { loading: workflowsLoading, workflows, selectedWorkflowId: providerSelectedWorkflowId } = useWorkflowSidebar();
+  const { loading: workflowsLoading, workflows, selectedWorkflowId: providerSelectedWorkflowId, setSelectedWorkflowId } = useWorkflowSidebar();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -628,12 +629,27 @@ export function MyChat() {
   }, [token, debugSnapshot.apiUrl]);
 
   // Callbacks pour la gestion des threads depuis la sidebar
-  const handleSidebarThreadSelect = useCallback((threadId: string) => {
+  const handleSidebarThreadSelect = useCallback((threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
+    // Check if we need to switch workflows
+    const currentWorkflowId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id : null;
+    const threadWorkflowId = workflowMetadata?.id;
+
+    if (threadWorkflowId != null && threadWorkflowId !== currentWorkflowId) {
+      // Find the workflow in the list
+      const targetWorkflow = workflows.find((w) => w.id === threadWorkflowId);
+      if (targetWorkflow) {
+        // Switch to the workflow first
+        setSelectedWorkflowId(threadWorkflowId);
+        // Update local workflow selection state
+        setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+      }
+    }
+
     // Persist the selected thread and reload the chat
     persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
     setInitialThreadId(threadId);
     setChatInstanceKey((value) => value + 1);
-  }, [sessionOwner, persistenceSlug]);
+  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId]);
 
   const handleSidebarThreadDeleted = useCallback((deletedThreadId: string) => {
     // If the deleted thread is the current one, clear it and start fresh

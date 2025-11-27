@@ -6,10 +6,16 @@ import type { Thread, ChatKitAPIConfig } from "../../chatkit/types";
 import { listThreads, deleteThread } from "../../chatkit/api/streaming/api";
 import "./ConversationsSidebarSection.css";
 
+export interface ThreadWorkflowMetadata {
+  id?: number;
+  slug?: string;
+  definition_id?: string;
+}
+
 export interface ConversationsSidebarSectionProps {
   api: ChatKitAPIConfig | null;
   currentThreadId: string | null;
-  onThreadSelect: (threadId: string) => void;
+  onThreadSelect: (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => void;
   onThreadDeleted?: (threadId: string) => void;
   onNewConversation?: () => void;
   searchQuery?: string;
@@ -257,12 +263,15 @@ export function ConversationsSidebarSection({
               const threadTitle = getThreadTitle(thread);
               const dateStr = items.length > 0 ? formatRelativeDate(items[0].created_at) : "";
 
+              // Extract workflow metadata from thread
+              const workflowMetadata = thread.metadata?.workflow as ThreadWorkflowMetadata | undefined;
+
               return (
                 <li key={thread.id} className="conversations-sidebar-section__item">
                   <button
                     type="button"
                     className={`conversations-sidebar-section__thread-button${isActive ? " conversations-sidebar-section__thread-button--active" : ""}`}
-                    onClick={() => onThreadSelect(thread.id)}
+                    onClick={() => onThreadSelect(thread.id, workflowMetadata)}
                     disabled={isDeleting}
                     aria-current={isActive ? "true" : undefined}
                   >
