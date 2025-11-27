@@ -13,7 +13,6 @@ import type {
 } from '../types';
 import { WidgetRenderer } from '../widgets';
 import type { WidgetContext } from '../widgets';
-import { ThreadHistory } from './ThreadHistory';
 import { Composer } from './Composer';
 import { MessageRenderer } from './MessageRenderer';
 import { Header } from './Header';
@@ -35,7 +34,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const { t } = useI18n();
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -68,7 +66,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
   const {
     header,
-    history,
     startScreen,
     disclaimer,
     composer,
@@ -181,18 +178,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
   };
 
-  // Sélectionner un thread de l'historique
-  const handleThreadSelect = (threadId: string) => {
-    if (options.onThreadChange) {
-      options.onThreadChange({ threadId });
-    }
-  };
-
-  const handleThreadDeleted = (threadId: string) => {
-    if (options.onThreadChange && control.thread?.id === threadId) {
-      options.onThreadChange({ threadId: null });
-    }
-  };
 
   const handleFilesSelected = useCallback(async (files: FileList | null) => {
     if (!attachmentsConfig?.enabled || !files || files.length === 0) {
@@ -504,9 +489,8 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         config={header}
         title={getThreadTitle()}
         showNewThreadButton={!showStartScreen}
-        showHistoryButton={history?.enabled !== false}
+        showHistoryButton={false}
         onNewThread={handleNewThread}
-        onToggleHistory={() => setShowHistory(!showHistory)}
       />
 
       {/* Messages */}
@@ -650,17 +634,6 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         isDraggingFiles={isDraggingFiles}
       />
 
-      {/* Thread History Modal */}
-      {showHistory && (
-          <ThreadHistory
-            api={options.api}
-            currentThreadId={control.thread?.id || null}
-            loadingThreadIds={control.loadingThreadIds}
-            onThreadSelect={handleThreadSelect}
-            onThreadDeleted={handleThreadDeleted}
-            onClose={() => setShowHistory(false)}
-          />
-        )}
     </div>
   );
 }
