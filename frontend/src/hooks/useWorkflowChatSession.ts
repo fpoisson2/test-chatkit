@@ -60,6 +60,7 @@ export const useWorkflowChatSession = ({
     reportError,
     enabled: true, // Always enabled to support workflow sync in both local and hosted modes
     autoStartEnabled,
+    isStreaming: control.isLoading,
   });
 
   const requestRefresh = mode === "hosted" ? hostedRequestRefresh : workflowSync.requestRefresh;
