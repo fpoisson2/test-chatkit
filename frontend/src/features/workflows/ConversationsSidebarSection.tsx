@@ -279,20 +279,20 @@ export function ConversationsSidebarSection({
 
   return (
     <section className="conversations-sidebar-section" aria-labelledby="conversations-section-title">
-      <div className="conversations-sidebar-section__header">
-        <h3 id="conversations-section-title" className="conversations-sidebar-section__title">
+      <div className="chatkit-sidebar__section-header">
+        <h2 id="conversations-section-title" className="chatkit-sidebar__section-title">
           {title}
-        </h3>
+        </h2>
         {onNewConversation && (
-          <div className="conversations-sidebar-section__floating-action">
+          <div className="chatkit-sidebar__section-floating-action">
             <button
               type="button"
-              className="conversations-sidebar-section__new-button"
+              className="chatkit-sidebar__section-icon-button"
               onClick={onNewConversation}
               aria-label="Nouvelle conversation"
               title="Nouvelle conversation"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 5v14M5 12h14" />
               </svg>
             </button>
