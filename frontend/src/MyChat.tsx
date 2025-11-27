@@ -630,27 +630,42 @@ export function MyChat() {
   }, [token, debugSnapshot.apiUrl]);
 
   // Callbacks pour la gestion des threads depuis la sidebar
-  const handleSidebarThreadSelect = useCallback((threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
+  const handleSidebarThreadSelect = useCallback(async (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
     // Check if we need to switch workflows
     const currentWorkflowId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id : null;
     const threadWorkflowId = workflowMetadata?.id;
+
+    let targetSlug = persistenceSlug;
 
     if (threadWorkflowId != null && threadWorkflowId !== currentWorkflowId) {
       // Find the workflow in the list
       const targetWorkflow = workflows.find((w) => w.id === threadWorkflowId);
       if (targetWorkflow) {
-        // Switch to the workflow first
+        // Calculate the new persistence slug for the target workflow
+        targetSlug = resolvePersistenceSlug(mode, { kind: "local", workflow: targetWorkflow });
+
+        // Update backend workflow for admin users (must complete before loading thread)
+        if (user?.is_admin && token) {
+          try {
+            await workflowsApi.setChatkitWorkflow(token, threadWorkflowId);
+            console.log('[MyChat] Backend workflow updated to:', threadWorkflowId);
+          } catch (err) {
+            console.error('[MyChat] Failed to update backend workflow:', err);
+          }
+        }
+
+        // Switch to the workflow
         setSelectedWorkflowId(threadWorkflowId);
         // Update local workflow selection state
         setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
       }
     }
 
-    // Persist the selected thread and reload the chat
-    persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
+    // Persist the selected thread with the correct slug and reload the chat
+    persistStoredThreadId(sessionOwner, threadId, targetSlug);
     setInitialThreadId(threadId);
     setChatInstanceKey((value) => value + 1);
-  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId]);
+  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin]);
 
   const handleSidebarThreadDeleted = useCallback((deletedThreadId: string) => {
     // If the deleted thread is the current one, clear it and start fresh
@@ -792,7 +807,7 @@ export function MyChat() {
                 onClick: openSidebar,
               },
             }),
-            ...(mode === "local" && workflows.length > 0 ? {
+            ...(mode === "local" && workflows.length > 0 && initialThreadId === null ? {
               customContent: (
                 <WorkflowSelector
                   workflows={workflows}
