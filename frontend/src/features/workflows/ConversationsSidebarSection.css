@@ -10,56 +10,7 @@
   padding: 0;
 }
 
-.conversations-sidebar-section__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: calc(var(--spacing) * 3);
-  width: 100%;
-}
-
-.conversations-sidebar-section__title {
-  margin: 0;
-  font-size: var(--font-text-sm-size);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  flex: 1;
-  min-width: 0;
-}
-
-.conversations-sidebar-section__floating-action {
-  display: flex;
-  align-items: center;
-  height: 2rem;
-  margin-left: auto;
-}
-
-.conversations-sidebar-section__new-button {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  padding: calc(var(--spacing) * 1.5);
-  border-radius: var(--radius-md);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all var(--transition-duration-basic);
-}
-
-.conversations-sidebar-section__new-button:hover,
-.conversations-sidebar-section__new-button:focus-visible {
-  background: var(--alpha-08);
-  color: var(--color-text-emphasis);
-}
-
-.conversations-sidebar-section__new-button svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-}
+/* Header styles now use chatkit-sidebar__section-* classes from sidebar.css for consistency */
 
 .conversations-sidebar-section__loading {
   display: flex;
