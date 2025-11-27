@@ -1066,7 +1066,7 @@
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title {
-  color: var(--color-text-strong);
+  color: var(--text-muted);
 }
 
 .chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-text {
