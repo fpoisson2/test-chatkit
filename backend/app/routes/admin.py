@@ -6,7 +6,7 @@ import logging
 import re
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -92,8 +92,8 @@ async def get_app_settings(
 @router.patch("/api/admin/app-settings", response_model=AppSettingsResponse)
 @limiter.limit(get_rate_limit("admin"))
 async def patch_app_settings(
-    payload: AppSettingsUpdateRequest,
     request: Request,
+    payload: AppSettingsUpdateRequest = Body(...),
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
