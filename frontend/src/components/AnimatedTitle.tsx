@@ -54,17 +54,22 @@ export function AnimatedTitle({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update cache and global last text whenever displayText changes
+  // Update global last text whenever displayText changes
   useLayoutEffect(() => {
     lastGlobalDisplayText = displayText;
+  }, [displayText]);
 
-    if (stableId) {
+  // Update cache only at stable states (not during animation)
+  // This prevents the cache from containing intermediate animation states
+  // which would cause a flash if the component is remounted during animation
+  useLayoutEffect(() => {
+    if (stableId && !isAnimating) {
       stateCache.set(stableId, {
         displayText: displayText,
         prevText: prevTextRef.current,
       });
     }
-  }, [displayText, stableId]);
+  }, [displayText, stableId, isAnimating]);
 
   useLayoutEffect(() => {
     // Clear any ongoing animation
