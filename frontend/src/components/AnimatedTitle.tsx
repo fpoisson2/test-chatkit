@@ -22,10 +22,14 @@ export function AnimatedTitle({
   const [displayText, setDisplayText] = useState(children);
   const [isAnimating, setIsAnimating] = useState(false);
   const prevTextRef = useRef(children);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Clear any ongoing animation
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
     if (animationTimeoutRef.current) {
       clearTimeout(animationTimeoutRef.current);
     }
@@ -38,7 +42,8 @@ export function AnimatedTitle({
     const oldText = prevTextRef.current;
     const newText = children;
 
-    // Start animation
+    // Ensure display shows old text before animation starts
+    setDisplayText(oldText);
     setIsAnimating(true);
 
     // Phase 1: Disappear old text letter by letter (from end to start)
@@ -46,16 +51,27 @@ export function AnimatedTitle({
       return new Promise<void>((resolve) => {
         let currentLength = oldText.length;
 
-        const disappearInterval = setInterval(() => {
+        const tick = () => {
           currentLength--;
           if (currentLength <= 0) {
-            clearInterval(disappearInterval);
+            if (intervalRef.current) {
+              clearInterval(intervalRef.current);
+              intervalRef.current = null;
+            }
             setDisplayText("");
             resolve();
           } else {
             setDisplayText(oldText.substring(0, currentLength));
           }
-        }, letterDuration);
+        };
+
+        // Execute first tick immediately to avoid delay
+        tick();
+
+        // Continue with interval if not finished
+        if (currentLength > 0) {
+          intervalRef.current = setInterval(tick, letterDuration);
+        }
       });
     };
 
@@ -64,15 +80,26 @@ export function AnimatedTitle({
       return new Promise<void>((resolve) => {
         let currentLength = 0;
 
-        const appearInterval = setInterval(() => {
+        const tick = () => {
           currentLength++;
           setDisplayText(newText.substring(0, currentLength));
 
           if (currentLength >= newText.length) {
-            clearInterval(appearInterval);
+            if (intervalRef.current) {
+              clearInterval(intervalRef.current);
+              intervalRef.current = null;
+            }
             resolve();
           }
-        }, letterDuration);
+        };
+
+        // Execute first tick immediately to avoid delay
+        tick();
+
+        // Continue with interval if not finished
+        if (currentLength < newText.length) {
+          intervalRef.current = setInterval(tick, letterDuration);
+        }
       });
     };
 
@@ -96,6 +123,9 @@ export function AnimatedTitle({
 
     // Cleanup
     return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
