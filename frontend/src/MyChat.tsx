@@ -245,11 +245,19 @@ export function MyChat() {
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(new Set());
+  const [isNewConversationStreaming, setIsNewConversationStreaming] = useState(false);
+  // Ref to track if we started streaming on a new conversation (for use in onThreadChange closure)
+  const wasNewConversationStreamingRef = useRef(false);
+  // Ref to track the current streaming thread ID (to avoid closure issues in onResponseEnd)
+  const currentStreamingThreadIdRef = useRef<string | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
+  // Track if user is in "new conversation" draft mode (no thread created yet)
+  // This prevents restoring stored threads when switching workflows on a new conversation
+  const isNewConversationDraftRef = useRef<boolean>(false);
 
   // Detect LTI user early so we can use it in chatkitOptions
   const isLtiUser = user?.is_lti ?? false;
@@ -323,6 +331,12 @@ export function MyChat() {
     loadStoredThreadId(sessionOwner, persistenceSlug),
   );
 
+  // Sync the new conversation draft ref with initialThreadId state
+  // This ensures the ref is correct even when initialThreadId is null at startup
+  useEffect(() => {
+    isNewConversationDraftRef.current = initialThreadId === null;
+  }, [initialThreadId]);
+
   const resetChatState = useCallback(
     ({
       selection,
@@ -343,6 +357,9 @@ export function MyChat() {
       lastThreadSnapshotRef.current = null;
       setCurrentThread(null);
       setStreamingThreadIds(new Set());
+      setIsNewConversationStreaming(false);
+      wasNewConversationStreamingRef.current = false;
+      currentStreamingThreadIdRef.current = null;
 
       const nextInitialThreadId = preserveStoredThread
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
@@ -492,6 +509,9 @@ export function MyChat() {
 
   const handleWorkflowActivated = useCallback(
     (selection: WorkflowActivation, { reason }: { reason: "initial" | "user" }) => {
+      // If user is in a new conversation draft, don't restore stored threads when switching workflows
+      const shouldPreserveStoredThread = !isNewConversationDraftRef.current;
+
       setWorkflowSelection((current) => {
         if (selection.kind === "hosted") {
           const wasHosted = current.kind === "hosted";
@@ -501,7 +521,7 @@ export function MyChat() {
           if (reason === "user" && !wasHosted) {
             resetChatState({
               selection,
-              preserveStoredThread: true,
+              preserveStoredThread: shouldPreserveStoredThread,
               targetMode: "hosted",
             });
             resetError();
@@ -528,7 +548,7 @@ export function MyChat() {
         if ((reason === "user" || reason === "initial") && currentId !== nextId && nextId !== null) {
           resetChatState({
             selection,
-            preserveStoredThread: true,
+            preserveStoredThread: shouldPreserveStoredThread,
             targetMode: nextMode,
           });
           resetError();
@@ -590,9 +610,11 @@ export function MyChat() {
       };
 
       // Reset chat state to switch to new workflow (like handleWorkflowActivated does)
+      // Don't restore stored thread if user is in a new conversation draft
+      const shouldPreserveStoredThread = !isNewConversationDraftRef.current;
       resetChatState({
         selection,
-        preserveStoredThread: true,
+        preserveStoredThread: shouldPreserveStoredThread,
         targetMode: mode,
       });
       resetError();
@@ -610,6 +632,12 @@ export function MyChat() {
       clearStoredThreadId(previousOwner, persistenceSlug);
     }
     previousSessionOwnerRef.current = sessionOwner;
+
+    // Don't restore stored thread if user is in a new conversation draft state
+    // This prevents switching to an existing conversation when user changes workflow on a new conversation
+    if (isNewConversationDraftRef.current) {
+      return;
+    }
 
     const storedThreadId = loadStoredThreadId(sessionOwner, persistenceSlug);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
@@ -635,6 +663,9 @@ export function MyChat() {
 
   // Callbacks pour la gestion des threads depuis la sidebar
   const handleSidebarThreadSelect = useCallback(async (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
+    // User is selecting an existing thread, clear the new conversation draft state
+    isNewConversationDraftRef.current = false;
+
     // Check if we need to switch workflows
     const currentWorkflowId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id : null;
     const threadWorkflowId = workflowMetadata?.id;
@@ -695,8 +726,13 @@ export function MyChat() {
     lastThreadSnapshotRef.current = null;
     setCurrentThread(null);
     setStreamingThreadIds(new Set());
+    setIsNewConversationStreaming(false);
+    wasNewConversationStreamingRef.current = false;
+    currentStreamingThreadIdRef.current = null;
     setInitialThreadId(null);
     setChatInstanceKey((value) => value + 1);
+    // Mark that we're in a new conversation draft state
+    isNewConversationDraftRef.current = true;
   }, [sessionOwner, persistenceSlug]);
 
   // Handle workflow change from the selector dropdown
@@ -937,16 +973,31 @@ export function MyChat() {
         onResponseStart: () => {
           resetError();
           // Add current thread to streaming state during response
-          const activeThreadId = (currentThread?.id as string | undefined) ?? initialThreadId;
-          if (activeThreadId) {
-            setStreamingThreadIds(prev => new Set(prev).add(activeThreadId));
+          // Use initialThreadId as the source of truth - if null, we're on a new conversation
+          if (initialThreadId === null) {
+            // New conversation - use special streaming state
+            setIsNewConversationStreaming(true);
+            wasNewConversationStreamingRef.current = true;
+            currentStreamingThreadIdRef.current = null; // Will be set in onThreadChange
+          } else {
+            wasNewConversationStreamingRef.current = false;
+            const activeThreadId = (currentThread?.id as string | undefined) ?? initialThreadId;
+            currentStreamingThreadIdRef.current = activeThreadId ?? null;
+            if (activeThreadId) {
+              setStreamingThreadIds(prev => new Set(prev).add(activeThreadId));
+            }
           }
         },
         onResponseEnd: () => {
           console.debug("[ChatKit] response end");
           requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
           // Remove current thread from streaming state after response
-          const activeThreadId = (currentThread?.id as string | undefined) ?? initialThreadId;
+          // Always clear isNewConversationStreaming (it's a no-op if already false)
+          // This handles the case where thread was created during streaming
+          setIsNewConversationStreaming(false);
+          wasNewConversationStreamingRef.current = false;
+          // Use ref to get the actual streaming thread ID (avoids stale closure issue)
+          const activeThreadId = currentStreamingThreadIdRef.current;
           if (activeThreadId) {
             setStreamingThreadIds(prev => {
               const next = new Set(prev);
@@ -954,6 +1005,7 @@ export function MyChat() {
               return next;
             });
           }
+          currentStreamingThreadIdRef.current = null;
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
@@ -961,8 +1013,19 @@ export function MyChat() {
             clearStoredThreadId(sessionOwner, persistenceSlug);
             setInitialThreadId(null);
           } else {
+            // Thread is now created/loaded, clear the new conversation draft state
+            isNewConversationDraftRef.current = false;
             persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
             setInitialThreadId((current) => (current === threadId ? current : threadId));
+
+            // If we were streaming on a new conversation, transfer the streaming indicator
+            // from isNewConversationStreaming to the new thread in streamingThreadIds
+            if (wasNewConversationStreamingRef.current) {
+              setStreamingThreadIds(prev => new Set(prev).add(threadId));
+              setIsNewConversationStreaming(false);
+              // Track the new thread ID for cleanup in onResponseEnd
+              currentStreamingThreadIdRef.current = threadId;
+            }
           }
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
@@ -1160,14 +1223,15 @@ export function MyChat() {
           setMode={setMode}
           onWorkflowActivated={handleWorkflowActivated}
           api={sidebarApiConfig}
-          currentThreadId={(currentThread?.id as string | undefined) ?? initialThreadId ?? null}
-          activeThreadSnapshot={(currentThread as Thread | null) ?? null}
+          currentThreadId={initialThreadId === null ? null : ((currentThread?.id as string | undefined) ?? initialThreadId)}
+          activeThreadSnapshot={initialThreadId === null ? null : (currentThread as Thread | null)}
           streamingThreadIds={streamingThreadIds}
           onThreadSelect={handleSidebarThreadSelect}
           onThreadDeleted={handleSidebarThreadDeleted}
           onNewConversation={handleNewConversation}
           hideWorkflows
           isNewConversationActive={initialThreadId === null}
+          isNewConversationStreaming={isNewConversationStreaming}
         />
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", overflow: "hidden" }}>
           <div style={{ flex: 1, position: "relative", minHeight: 0 }}>

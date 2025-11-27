@@ -13,6 +13,8 @@ export interface AnimatedTitleProps {
   transitionDelay?: number;
   /** Stable identifier to maintain animation state across remounts (e.g., thread.id) */
   stableId?: string;
+  /** When true, disables animation and shows text directly (useful during streaming) */
+  disabled?: boolean;
 }
 
 // Module-level storage to persist display text and previous text across component remounts
@@ -31,9 +33,16 @@ export function AnimatedTitle({
   letterDuration = 30,
   transitionDelay = 50,
   stableId,
+  disabled = false,
 }: AnimatedTitleProps): JSX.Element {
   // Get cached state if available
   const getInitialState = () => {
+    // When disabled, always show text directly without any animation setup
+    // This prevents flash when component mounts during streaming
+    if (disabled) {
+      return { displayText: children, prevText: children };
+    }
+
     if (stableId && stateCache.has(stableId)) {
       // Component was previously mounted with this ID - use cached state
       return stateCache.get(stableId)!;
@@ -75,13 +84,25 @@ export function AnimatedTitle({
       clearTimeout(animationTimeoutRef.current);
     }
 
+    const newText = children;
+
+    // If disabled, always ensure displayText matches children (no animation)
+    // This handles both text changes and disabled state changes
+    if (disabled) {
+      if (displayText !== newText || prevTextRef.current !== newText) {
+        setDisplayText(newText);
+        setIsAnimating(false);
+        prevTextRef.current = newText;
+      }
+      return;
+    }
+
     // Check if text has actually changed
     if (prevTextRef.current === children) {
       return;
     }
 
     const oldText = prevTextRef.current;
-    const newText = children;
 
     // Ensure display shows old text before animation starts
     setDisplayText(oldText);
@@ -171,7 +192,9 @@ export function AnimatedTitle({
         clearTimeout(animationTimeoutRef.current);
       }
     };
-  }, [children, letterDuration, transitionDelay]);
+  // Note: displayText is intentionally not in deps to avoid re-running during animation
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [children, letterDuration, transitionDelay, disabled]);
 
   return (
     <span

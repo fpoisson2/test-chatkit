@@ -38,6 +38,8 @@ export interface ConversationsSidebarSectionProps {
   isMobileLayout?: boolean;
   /** When true, shows a "New conversation" draft entry at the top of the list */
   isNewConversationActive?: boolean;
+  /** When true, shows a streaming spinner on the "New conversation" entry */
+  isNewConversationStreaming?: boolean;
 }
 
 // Cache at module level to persist data between mounts
@@ -98,6 +100,7 @@ export function ConversationsSidebarSection({
   isCollapsed = false,
   isMobileLayout = false,
   isNewConversationActive = false,
+  isNewConversationStreaming = false,
   activeThreadSnapshot,
 }: ConversationsSidebarSectionProps): JSX.Element | null {
   const [threads, setThreads] = useState<Thread[]>(cachedThreads);
@@ -429,6 +432,9 @@ export function ConversationsSidebarSection({
                   aria-current="true"
                 >
                   <span className="conversations-sidebar-section__thread-title-row">
+                    {isNewConversationStreaming && (
+                      <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
+                    )}
                     <TruncatedText className="conversations-sidebar-section__thread-title">Nouvelle conversation</TruncatedText>
                   </span>
                 </button>
@@ -465,7 +471,7 @@ export function ConversationsSidebarSection({
                         <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
                       )}
                       <TruncatedText className="conversations-sidebar-section__thread-title">
-                        <AnimatedTitle stableId={thread.id}>{threadTitle}</AnimatedTitle>
+                        <AnimatedTitle stableId={thread.id} disabled={isStreaming}>{threadTitle}</AnimatedTitle>
                       </TruncatedText>
                     </span>
                   </button>

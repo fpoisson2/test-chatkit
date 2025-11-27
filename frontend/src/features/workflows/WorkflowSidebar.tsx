@@ -386,6 +386,8 @@ type ChatWorkflowSidebarProps = {
   hideWorkflows?: boolean;
   /** When true, shows a "New conversation" draft entry in the conversations list */
   isNewConversationActive?: boolean;
+  /** When true, shows a streaming spinner on the "New conversation" entry */
+  isNewConversationStreaming?: boolean;
 };
 
 export const ChatWorkflowSidebar = ({
@@ -402,6 +404,7 @@ export const ChatWorkflowSidebar = ({
   maxRecentWorkflows = 5,
   hideWorkflows = false,
   isNewConversationActive = false,
+  isNewConversationStreaming = false,
 }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -1443,6 +1446,7 @@ export const ChatWorkflowSidebar = ({
             isCollapsed={isSidebarCollapsed}
             isMobileLayout={isMobileLayout}
             isNewConversationActive={isNewConversationActive}
+            isNewConversationStreaming={isNewConversationStreaming}
           />
         )}
       </div>
@@ -1458,6 +1462,7 @@ export const ChatWorkflowSidebar = ({
     isAdmin,
     isMobileLayout,
     isNewConversationActive,
+    isNewConversationStreaming,
     isSidebarCollapsed,
     loadWorkflows,
     loading,
