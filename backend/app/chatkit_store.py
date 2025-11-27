@@ -668,9 +668,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
             stmt = select(ChatThread).where(ChatThread.owner_id == owner_id)
             if order == "desc":
-                stmt = stmt.order_by(ChatThread.created_at.desc(), ChatThread.id.desc())
+                stmt = stmt.order_by(ChatThread.updated_at.desc(), ChatThread.id.desc())
             else:
-                stmt = stmt.order_by(ChatThread.created_at.asc(), ChatThread.id.asc())
+                stmt = stmt.order_by(ChatThread.updated_at.asc(), ChatThread.id.asc())
             records = session.execute(stmt).scalars().all()
 
             matching: list[tuple[ChatThread, dict[str, Any]]] = []
