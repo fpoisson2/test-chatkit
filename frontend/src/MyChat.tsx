@@ -640,6 +640,7 @@ export function MyChat() {
     const threadWorkflowId = workflowMetadata?.id;
 
     let targetSlug = persistenceSlug;
+    let workflowChanged = false;
 
     if (threadWorkflowId != null && threadWorkflowId !== currentWorkflowId) {
       // Find the workflow in the list
@@ -662,6 +663,7 @@ export function MyChat() {
         setSelectedWorkflowId(threadWorkflowId);
         // Update local workflow selection state
         setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+        workflowChanged = true;
       }
     }
 
@@ -670,7 +672,11 @@ export function MyChat() {
     persistStoredThreadId(sessionOwner, threadId, targetSlug);
 
     setInitialThreadId(threadId);
-    setChatInstanceKey((value) => value + 1);
+    // Only increment chatInstanceKey when switching workflows to force instance update
+    // For same-workflow thread switches, avoid remounting to prevent welcome screen flash
+    if (workflowChanged) {
+      setChatInstanceKey((value) => value + 1);
+    }
   }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin]);
 
   const handleSidebarThreadDeleted = useCallback((deletedThreadId: string) => {

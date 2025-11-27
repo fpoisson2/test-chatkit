@@ -79,11 +79,13 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
           threadId: initialThread,
         })
           .then((loadedThread) => {
+            // Clear loading state BEFORE setting thread to avoid race condition
+            // where typing indicator shows up when thread is set but loading not yet cleared
+            setThreadLoading(loadedThread.id, false);
             setThread(loadedThread);
             threadCacheRef.current.set(loadedThread.id, loadedThread);
             activeThreadIdRef.current = loadedThread.id;
             visibleThreadIdRef.current = loadedThread.id;
-            setThreadLoading(loadedThread.id, false);
             onThreadLoadEnd?.({ threadId: initialThread });
             onLog?.({ name: 'thread.load.end', data: { thread: loadedThread, source: 'server' } });
           })
