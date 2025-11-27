@@ -35,8 +35,14 @@ export function AnimatedTitle({
   // Get cached state if available
   const getInitialState = () => {
     if (stableId && stateCache.has(stableId)) {
-      // Component was previously mounted with this ID - use cached state
-      return stateCache.get(stableId)!;
+      const cached = stateCache.get(stableId)!;
+      // If the cached state matches the new children, return it as-is (no animation needed)
+      // Otherwise, return the cached displayText as both display and prev to start animation from there
+      if (cached.displayText === children) {
+        return cached;
+      }
+      // New title arrived - use cached displayText as starting point for animation
+      return { displayText: cached.displayText, prevText: cached.displayText };
     }
 
     // First time mounting with this ID - use global last text if available
@@ -44,7 +50,9 @@ export function AnimatedTitle({
       return { displayText: lastGlobalDisplayText, prevText: lastGlobalDisplayText };
     }
 
-    return { displayText: children, prevText: children };
+    // No cache and no suitable lastGlobalDisplayText
+    // Start from empty string to animate the title appearing letter by letter
+    return { displayText: "", prevText: "" };
   };
 
   const initialState = getInitialState();
