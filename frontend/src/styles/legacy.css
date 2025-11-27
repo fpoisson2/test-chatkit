@@ -2088,3 +2088,150 @@ button {
     }
   }
 }
+
+/* ===================================================================
+   Share Workflow Modal Styles
+   =================================================================== */
+
+.share-workflow-modal {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 4);
+  padding: calc(var(--spacing) * 2) 0;
+}
+
+.share-workflow-modal__error {
+  padding: calc(var(--spacing) * 3);
+  background-color: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: var(--radius-lg);
+  color: var(--danger-color);
+  font-size: var(--font-text-sm-size);
+}
+
+.share-workflow-modal__success {
+  padding: calc(var(--spacing) * 3);
+  background-color: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: var(--radius-lg);
+  color: #16a34a;
+  font-size: var(--font-text-sm-size);
+}
+
+.share-workflow-modal__form {
+  display: flex;
+  gap: calc(var(--spacing) * 3);
+  align-items: flex-end;
+}
+
+.share-workflow-modal__input-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1.5);
+}
+
+.share-workflow-modal__label {
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.share-workflow-modal__input {
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.share-workflow-modal__input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.share-workflow-modal__input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.share-workflow-modal__button {
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+.share-workflow-modal__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.share-workflow-modal__button--primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.share-workflow-modal__button--primary:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+
+.share-workflow-modal__button--danger {
+  background-color: transparent;
+  color: var(--danger-color);
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2.5);
+}
+
+.share-workflow-modal__button--danger:hover:not(:disabled) {
+  background-color: rgba(220, 38, 38, 0.1);
+}
+
+.share-workflow-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+}
+
+.share-workflow-modal__list-title {
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+
+.share-workflow-modal__users {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+}
+
+.share-workflow-modal__user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  background-color: var(--color-surface-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.share-workflow-modal__user-email {
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text);
+}
+
+.share-workflow-modal__empty {
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: calc(var(--spacing) * 4);
+}

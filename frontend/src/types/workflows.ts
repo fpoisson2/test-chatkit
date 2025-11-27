@@ -1,3 +1,8 @@
+export type WorkflowSharedUser = {
+  id: number;
+  email: string;
+};
+
 export type WorkflowSummary = {
   id: number;
   slug: string;
@@ -6,6 +11,9 @@ export type WorkflowSummary = {
   active_version_id: number | null;
   active_version_number: number | null;
   is_chatkit_default: boolean;
+  owner_id: number | null;
+  owner_email: string | null;
+  shared_with: WorkflowSharedUser[];
   lti_enabled: boolean;
   lti_registration_ids: number[];
   lti_show_sidebar: boolean;

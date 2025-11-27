@@ -2193,6 +2193,7 @@ class WorkflowService:
         display_name: str,
         description: str | None = None,
         graph_payload: dict[str, Any] | None = None,
+        owner_id: int | None = None,
         session: Session | None = None,
     ) -> WorkflowDefinition:
         db, owns_session = self._get_session(session)
@@ -2207,7 +2208,7 @@ class WorkflowService:
             if existing is not None:
                 raise WorkflowValidationError("Un workflow avec ce slug existe déjà.")
             workflow = Workflow(
-                slug=slug, display_name=display_name, description=description
+                slug=slug, display_name=display_name, description=description, owner_id=owner_id
             )
             db.add(workflow)
             db.flush()
@@ -3345,6 +3346,12 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "active_version_id": workflow.active_version_id,
         "active_version_number": active_version.version if active_version else None,
         "is_chatkit_default": workflow.is_chatkit_default,
+        "owner_id": workflow.owner_id,
+        "owner_email": workflow.owner.email if workflow.owner else None,
+        "shared_with": [
+            {"id": user.id, "email": user.email}
+            for user in workflow.shared_with
+        ],
         "lti_enabled": workflow.lti_enabled,
         "lti_registration_ids": [reg.id for reg in workflow.lti_registrations],
         "lti_show_sidebar": workflow.lti_show_sidebar,

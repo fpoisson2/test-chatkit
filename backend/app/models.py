@@ -54,6 +54,21 @@ workflow_lti_registrations = Table(
 )
 
 
+# Association table for sharing workflows with users
+workflow_shares = Table(
+    "workflow_shares",
+    Base.metadata,
+    Column("workflow_id", Integer, ForeignKey("workflows.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "shared_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    ),
+)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -388,6 +403,12 @@ class Workflow(Base):
     slug: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     active_version_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("workflow_definitions.id", ondelete="SET NULL"),
@@ -418,6 +439,13 @@ class Workflow(Base):
         nullable=False,
         default=lambda: datetime.datetime.now(datetime.UTC),
         onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    owner: Mapped[User | None] = relationship("User", foreign_keys=[owner_id])
+    shared_with: Mapped[list[User]] = relationship(
+        "User",
+        secondary=workflow_shares,
+        backref="shared_workflows",
     )
 
     versions: Mapped[list[WorkflowDefinition]] = relationship(
