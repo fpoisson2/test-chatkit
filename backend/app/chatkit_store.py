@@ -654,6 +654,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         after: str | None,
         order: str,
         context: ChatKitRequestContext,
+        all_workflows: bool = False,
     ) -> Page[ThreadMetadata]:
         owner_id = self._require_user_id(context)
 
@@ -675,7 +676,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                     session=session,
                     expected_workflow=expected,
                 )
-                if matches:
+                # When all_workflows is True, include all threads regardless of workflow match
+                if all_workflows or matches:
                     matching.append((record, payload))
 
             filtered_records = [record for record, _payload in matching]

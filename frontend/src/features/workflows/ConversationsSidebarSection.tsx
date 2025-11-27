@@ -104,6 +104,7 @@ export function ConversationsSidebarSection({
         limit: 20,
         order: "desc",
         after: cursorToUse,
+        allWorkflows: true,
       });
 
       const newThreads = response.data || [];

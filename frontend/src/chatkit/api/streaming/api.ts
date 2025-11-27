@@ -58,6 +58,7 @@ export interface ListThreadsOptions {
   limit?: number;
   order?: 'asc' | 'desc';
   after?: string;
+  allWorkflows?: boolean;
 }
 
 export interface DeleteThreadOptions {
@@ -258,12 +259,13 @@ export async function updateThreadMetadata(options: UpdateThreadMetadataOptions)
  * Liste les threads avec pagination
  */
 export async function listThreads(options: ListThreadsOptions): Promise<ThreadListResponse> {
-  const { url, headers = {}, limit, order = 'desc', after } = options;
+  const { url, headers = {}, limit, order = 'desc', after, allWorkflows = false } = options;
 
   const payload: any = {
     type: 'threads.list',
     params: {
       order,
+      all_workflows: allWorkflows,
     },
   };
 
