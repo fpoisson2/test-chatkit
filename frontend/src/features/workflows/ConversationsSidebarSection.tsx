@@ -22,6 +22,8 @@ export interface ThreadWorkflowMetadata {
 export interface ConversationsSidebarSectionProps {
   api: ChatKitAPIConfig | null;
   currentThreadId: string | null;
+  /** Latest snapshot of the active thread to keep the list in sync */
+  activeThreadSnapshot?: Thread | null;
   streamingThreadIds?: Set<string>;
   onThreadSelect: (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => void;
   onThreadDeleted?: (threadId: string) => void;
@@ -94,6 +96,7 @@ export function ConversationsSidebarSection({
   isCollapsed = false,
   isMobileLayout = false,
   isNewConversationActive = false,
+  activeThreadSnapshot,
 }: ConversationsSidebarSectionProps): JSX.Element | null {
   const [threads, setThreads] = useState<Thread[]>(cachedThreads);
   const [isLoading, setIsLoading] = useState(false);
@@ -174,6 +177,28 @@ export function ConversationsSidebarSection({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api?.url]);
+
+  // Keep sidebar entry in sync with the latest active thread snapshot (title, metadata...)
+  useEffect(() => {
+    if (!activeThreadSnapshot?.id) {
+      return;
+    }
+
+    setThreads((currentThreads) => {
+      const targetIndex = currentThreads.findIndex((thread) => thread.id === activeThreadSnapshot.id);
+      if (targetIndex === -1) {
+        return currentThreads;
+      }
+
+      const existing = currentThreads[targetIndex];
+      const updated = { ...existing, ...activeThreadSnapshot, metadata: { ...existing.metadata, ...activeThreadSnapshot.metadata } };
+
+      const nextThreads = [...currentThreads];
+      nextThreads[targetIndex] = updated;
+      cachedThreads = nextThreads;
+      return nextThreads;
+    });
+  }, [activeThreadSnapshot]);
 
   // Auto-refresh when currentThreadId changes to a thread not in the list
   // This handles the case when a new conversation is created via ChatKit

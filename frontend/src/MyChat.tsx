@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatKitOptions, StartScreenPrompt } from "./chatkit";
+import type { Thread } from "./chatkit/types";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
@@ -340,6 +341,8 @@ export function MyChat() {
       }
 
       lastThreadSnapshotRef.current = null;
+      setCurrentThread(null);
+      setStreamingThreadIds(new Set());
 
       const nextInitialThreadId = preserveStoredThread
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
@@ -683,6 +686,9 @@ export function MyChat() {
   const handleNewConversation = useCallback(() => {
     // Clear stored thread to start a new conversation
     clearStoredThreadId(sessionOwner, persistenceSlug);
+    lastThreadSnapshotRef.current = null;
+    setCurrentThread(null);
+    setStreamingThreadIds(new Set());
     setInitialThreadId(null);
     setChatInstanceKey((value) => value + 1);
   }, [sessionOwner, persistenceSlug]);
@@ -1149,6 +1155,7 @@ export function MyChat() {
           onWorkflowActivated={handleWorkflowActivated}
           api={sidebarApiConfig}
           currentThreadId={(currentThread?.id as string | undefined) ?? initialThreadId ?? null}
+          activeThreadSnapshot={(currentThread as Thread | null) ?? null}
           streamingThreadIds={streamingThreadIds}
           onThreadSelect={handleSidebarThreadSelect}
           onThreadDeleted={handleSidebarThreadDeleted}
