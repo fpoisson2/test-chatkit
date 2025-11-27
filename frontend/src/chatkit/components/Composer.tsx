@@ -282,6 +282,11 @@ export function Composer({
               attachmentId: backendId,
               file: att.file,
               uploadUrl: uploadUrl,
+              onProgress: (progress) => {
+                onAttachmentsChange(attachments.map(a =>
+                  a.id === att.id ? { ...a, progress: Math.round(progress) } : a
+                ));
+              },
             });
 
             // Update the attachment with the backend ID and mark as uploaded
@@ -350,6 +355,15 @@ export function Composer({
                     </div>
                   )}
                   <div className="chatkit-attachment-name">{att.file.name}</div>
+                  {att.status === 'uploading' && (
+                    <div className="chatkit-attachment-progress">
+                      <div
+                        className="chatkit-attachment-progress-bar"
+                        style={{ width: `${att.progress || 0}%` }}
+                      />
+                      <span className="chatkit-attachment-progress-text">{att.progress || 0}%</span>
+                    </div>
+                  )}
                   <div className="chatkit-attachment-actions">
                     <button
                       type="button"
