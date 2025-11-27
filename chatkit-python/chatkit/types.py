@@ -64,6 +64,7 @@ class ThreadListParams(BaseModel):
     limit: int | None = None
     order: Literal["asc", "desc"] = "desc"
     after: str | None = None
+    all_workflows: bool = False
 
 
 class ThreadsListReq(BaseReq):

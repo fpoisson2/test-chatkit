@@ -340,6 +340,7 @@ class ChatKitServer(ABC, Generic[TContext]):
                     after=params.after,
                     order=params.order,
                     context=context,
+                    all_workflows=params.all_workflows,
                 )
                 return self._serialize(
                     Page(

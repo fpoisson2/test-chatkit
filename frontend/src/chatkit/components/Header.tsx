@@ -1,4 +1,4 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 
 export interface HeaderAction {
   icon: string;
@@ -8,6 +8,7 @@ export interface HeaderAction {
 export interface HeaderConfig {
   enabled?: boolean;
   leftAction?: HeaderAction;
+  customContent?: ReactNode;
 }
 
 export interface HeaderProps {
@@ -52,7 +53,12 @@ export function Header({
           ) : config.leftAction.icon}
         </button>
       )}
-      <div className="chatkit-header-title">{title}</div>
+      {/* Custom content (e.g., workflow selector) or default title */}
+      {config?.customContent ? (
+        <div className="chatkit-header-custom">{config.customContent}</div>
+      ) : (
+        <div className="chatkit-header-title">{title}</div>
+      )}
       <div className="chatkit-header-actions">
         <button
           className="chatkit-header-action"

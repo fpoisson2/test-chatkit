@@ -370,13 +370,15 @@ type ChatWorkflowSidebarProps = {
   /** Currently selected thread ID */
   currentThreadId?: string | null;
   /** Callback when a thread is selected from the conversations list */
-  onThreadSelect?: (threadId: string) => void;
+  onThreadSelect?: (threadId: string, workflowMetadata?: import("./ConversationsSidebarSection").ThreadWorkflowMetadata) => void;
   /** Callback when a thread is deleted */
   onThreadDeleted?: (threadId: string) => void;
   /** Callback to create a new conversation */
   onNewConversation?: () => void;
   /** Maximum number of workflows to show before "show more" (default: 5) */
   maxRecentWorkflows?: number;
+  /** Hide workflows section (only show conversations) */
+  hideWorkflows?: boolean;
 };
 
 export const ChatWorkflowSidebar = ({
@@ -389,6 +391,7 @@ export const ChatWorkflowSidebar = ({
   onThreadDeleted,
   onNewConversation,
   maxRecentWorkflows = 5,
+  hideWorkflows = false,
 }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -1179,6 +1182,7 @@ export const ChatWorkflowSidebar = ({
   }, [hostedWorkflows, searchQuery]);
 
   // Limit workflows when not searching and not showing all
+  // Sort unpinned workflows by lastUsedAt before limiting to ensure most recent are shown
   const displayedWorkflows = useMemo(() => {
     if (searchQuery.trim() || showAllWorkflows) {
       return filteredWorkflows;
@@ -1190,9 +1194,15 @@ export const ChatWorkflowSidebar = ({
     const unpinnedWorkflows = filteredWorkflows.filter((w) =>
       !isWorkflowPinned({ kind: "local", workflow: w }, pinnedLookup)
     );
+    // Sort unpinned workflows by lastUsedAt (most recent first) before limiting
+    const sortedUnpinned = orderWorkflowEntries(
+      unpinnedWorkflows.map((w) => ({ kind: "local" as const, workflow: w })),
+      lastUsedAt,
+      { collator: workflowCollator ?? undefined, pinnedLookup, sortMode: "recent" }
+    ).map((entry) => entry.workflow);
     // Always show pinned, limit unpinned to maxRecentWorkflows
-    return [...pinnedWorkflows, ...unpinnedWorkflows.slice(0, maxRecentWorkflows)];
-  }, [filteredWorkflows, searchQuery, showAllWorkflows, pinnedLookup, maxRecentWorkflows]);
+    return [...pinnedWorkflows, ...sortedUnpinned.slice(0, maxRecentWorkflows)];
+  }, [filteredWorkflows, searchQuery, showAllWorkflows, pinnedLookup, maxRecentWorkflows, lastUsedAt, workflowCollator]);
 
   const displayedHostedWorkflows = useMemo(() => {
     if (searchQuery.trim() || showAllWorkflows) {
@@ -1204,8 +1214,14 @@ export const ChatWorkflowSidebar = ({
     const unpinnedHosted = filteredHostedWorkflows.filter((h) =>
       !isWorkflowPinned({ kind: "hosted", workflow: h }, pinnedLookup)
     );
-    return [...pinnedHosted, ...unpinnedHosted.slice(0, maxRecentWorkflows)];
-  }, [filteredHostedWorkflows, searchQuery, showAllWorkflows, pinnedLookup, maxRecentWorkflows]);
+    // Sort unpinned hosted workflows by lastUsedAt (most recent first) before limiting
+    const sortedUnpinned = orderWorkflowEntries(
+      unpinnedHosted.map((h) => ({ kind: "hosted" as const, workflow: h })),
+      lastUsedAt,
+      { collator: workflowCollator ?? undefined, pinnedLookup, sortMode: "recent" }
+    ).map((entry) => entry.workflow);
+    return [...pinnedHosted, ...sortedUnpinned.slice(0, maxRecentWorkflows)];
+  }, [filteredHostedWorkflows, searchQuery, showAllWorkflows, pinnedLookup, maxRecentWorkflows, lastUsedAt, workflowCollator]);
 
   const hasHiddenWorkflows = useMemo(() => {
     if (searchQuery.trim() || showAllWorkflows) return false;
@@ -1367,34 +1383,38 @@ export const ChatWorkflowSidebar = ({
 
     return (
       <div className="chatkit-sidebar__content-wrapper">
-        {/* Search input */}
-        <div className="chatkit-sidebar__search-wrapper">
-          <SidebarSearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder={t("sidebar.searchPlaceholder")}
-            ariaLabel={t("sidebar.searchAriaLabel")}
-          />
-        </div>
+        {/* Search input - only show if workflows are visible */}
+        {!hideWorkflows && (
+          <div className="chatkit-sidebar__search-wrapper">
+            <SidebarSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={t("sidebar.searchPlaceholder")}
+              ariaLabel={t("sidebar.searchAriaLabel")}
+            />
+          </div>
+        )}
 
-        {/* Workflows section */}
-        <WorkflowSidebarSection
-          sectionId={sectionId}
-          title={t("workflows.defaultSectionTitle")}
-          entries={sidebarEntries}
-          pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
-          defaultSectionTitle={t("workflows.recentSectionTitle")}
-          floatingAction={
-            isAdmin
-              ? {
-                label: t("workflowBuilder.createWorkflow.openModal"),
-                onClick: handleOpenBuilder,
-              }
-              : undefined
-          }
-          footerContent={workflowsFooter}
-          variant={sectionVariant}
-        />
+        {/* Workflows section - hidden when hideWorkflows is true */}
+        {!hideWorkflows && (
+          <WorkflowSidebarSection
+            sectionId={sectionId}
+            title={t("workflows.defaultSectionTitle")}
+            entries={sidebarEntries}
+            pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
+            defaultSectionTitle={t("workflows.recentSectionTitle")}
+            floatingAction={
+              isAdmin
+                ? {
+                  label: t("workflowBuilder.createWorkflow.openModal"),
+                  onClick: handleOpenBuilder,
+                }
+                : undefined
+            }
+            footerContent={workflowsFooter}
+            variant={sectionVariant}
+          />
+        )}
 
         {/* Conversations section */}
         {api && onThreadSelect && (
@@ -1404,7 +1424,7 @@ export const ChatWorkflowSidebar = ({
             onThreadSelect={onThreadSelect}
             onThreadDeleted={onThreadDeleted}
             onNewConversation={onNewConversation}
-            searchQuery={searchQuery}
+            searchQuery={hideWorkflows ? "" : searchQuery}
             maxVisible={10}
             title={t("sidebar.conversationsTitle")}
             emptyMessage={t("sidebar.conversationsEmpty")}
@@ -1419,6 +1439,7 @@ export const ChatWorkflowSidebar = ({
     error,
     handleOpenBuilder,
     hasHiddenWorkflows,
+    hideWorkflows,
     hostedWorkflows,
     isAdmin,
     isMobileLayout,
@@ -1441,6 +1462,11 @@ export const ChatWorkflowSidebar = ({
       return null;
     }
 
+    // Don't show compact workflow view when workflows are hidden
+    if (hideWorkflows) {
+      return null;
+    }
+
     return (
       <WorkflowSidebarCompact
         entries={sidebarEntries}
@@ -1449,7 +1475,7 @@ export const ChatWorkflowSidebar = ({
         isSidebarCollapsed={isSidebarCollapsed}
       />
     );
-  }, [error, isSidebarCollapsed, loading, sidebarEntries, t, user]);
+  }, [error, hideWorkflows, isSidebarCollapsed, loading, sidebarEntries, t, user]);
 
   useEffect(() => {
     // Don't render sidebar content for LTI users - they have a global loading overlay instead

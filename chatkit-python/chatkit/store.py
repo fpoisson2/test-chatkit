@@ -109,6 +109,7 @@ class Store(ABC, Generic[TContext]):
         after: str | None,
         order: str,
         context: TContext,
+        all_workflows: bool = False,
     ) -> Page[ThreadMetadata]:
         pass
 

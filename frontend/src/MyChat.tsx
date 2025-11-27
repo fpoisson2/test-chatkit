@@ -5,7 +5,9 @@ import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { LoadingOverlay } from "./components/feedback/LoadingOverlay";
 import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
+import { WorkflowSelector } from "./components/my-chat/WorkflowSelector";
 import { ChatWorkflowSidebar, type WorkflowActivation } from "./features/workflows/WorkflowSidebar";
+import type { ThreadWorkflowMetadata } from "./features/workflows/ConversationsSidebarSection";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import {
   useAppearanceSettings,
@@ -199,7 +201,7 @@ export function MyChat() {
     activeWorkflow: activeAppearanceWorkflow,
   } = useAppearanceSettings();
   const { openSidebar, setHideSidebar, isSidebarOpen } = useAppLayout();
-  const { loading: workflowsLoading, workflows, selectedWorkflowId: providerSelectedWorkflowId } = useWorkflowSidebar();
+  const { loading: workflowsLoading, workflows, selectedWorkflowId: providerSelectedWorkflowId, setSelectedWorkflowId } = useWorkflowSidebar();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -628,12 +630,27 @@ export function MyChat() {
   }, [token, debugSnapshot.apiUrl]);
 
   // Callbacks pour la gestion des threads depuis la sidebar
-  const handleSidebarThreadSelect = useCallback((threadId: string) => {
+  const handleSidebarThreadSelect = useCallback((threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
+    // Check if we need to switch workflows
+    const currentWorkflowId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id : null;
+    const threadWorkflowId = workflowMetadata?.id;
+
+    if (threadWorkflowId != null && threadWorkflowId !== currentWorkflowId) {
+      // Find the workflow in the list
+      const targetWorkflow = workflows.find((w) => w.id === threadWorkflowId);
+      if (targetWorkflow) {
+        // Switch to the workflow first
+        setSelectedWorkflowId(threadWorkflowId);
+        // Update local workflow selection state
+        setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+      }
+    }
+
     // Persist the selected thread and reload the chat
     persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
     setInitialThreadId(threadId);
     setChatInstanceKey((value) => value + 1);
-  }, [sessionOwner, persistenceSlug]);
+  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId]);
 
   const handleSidebarThreadDeleted = useCallback((deletedThreadId: string) => {
     // If the deleted thread is the current one, clear it and start fresh
@@ -651,6 +668,21 @@ export function MyChat() {
     setInitialThreadId(null);
     setChatInstanceKey((value) => value + 1);
   }, [sessionOwner, persistenceSlug]);
+
+  // Handle workflow change from the selector dropdown
+  const handleWorkflowSelectorChange = useCallback((workflowId: number) => {
+    const targetWorkflow = workflows.find((w) => w.id === workflowId);
+    if (targetWorkflow) {
+      // Update provider selection
+      setSelectedWorkflowId(workflowId);
+      // Update local workflow selection state
+      setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+      // Clear current thread and start fresh for the new workflow
+      clearStoredThreadId(sessionOwner, persistenceSlug);
+      setInitialThreadId(null);
+      setChatInstanceKey((value) => value + 1);
+    }
+  }, [workflows, setSelectedWorkflowId, sessionOwner, persistenceSlug]);
 
   const debugSignature = useMemo(() => JSON.stringify(debugSnapshot), [debugSnapshot]);
 
@@ -749,6 +781,15 @@ export function MyChat() {
                 onClick: openSidebar,
               },
             }),
+            ...(mode === "local" && workflows.length > 0 ? {
+              customContent: (
+                <WorkflowSelector
+                  workflows={workflows}
+                  selectedWorkflowId={workflowSelection.kind === "local" ? workflowSelection.workflow?.id ?? null : null}
+                  onWorkflowChange={handleWorkflowSelectorChange}
+                />
+              ),
+            } : {}),
           },
         }),
         ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history ? {
@@ -895,8 +936,10 @@ export function MyChat() {
       composerModels,
       composerPlaceholder,
       currentThread?.id,
+      handleWorkflowSelectorChange,
       initialThreadId,
       isAtVoiceAgentStep,
+      mode,
       openSidebar,
       preferredColorScheme,
       sessionOwner,
@@ -925,6 +968,8 @@ export function MyChat() {
       hangupOutboundCall,
       user?.email,
       isSidebarOpen,
+      workflows,
+      workflowSelection,
     ],
   );
 
@@ -1052,25 +1097,28 @@ export function MyChat() {
           onThreadSelect={handleSidebarThreadSelect}
           onThreadDeleted={handleSidebarThreadDeleted}
           onNewConversation={handleNewConversation}
+          hideWorkflows
         />
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
-          {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
-            <WorkflowChatInstance
-              key={`${instanceId}-${instance.instanceKey}`}
-              workflowId={instanceId}
-              chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
-              token={token}
-              activeWorkflow={instance.workflow}
-              initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
-              reportError={reportError}
-              mode={instance.mode}
-              isActive={instanceId === currentWorkflowId}
-              autoStartEnabled={!hasVoiceAgent}
-              onRequestRefreshReady={
-                instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
-              }
-            />
-          ))}
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", overflow: "hidden" }}>
+          <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+            {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
+              <WorkflowChatInstance
+                key={`${instanceId}-${instance.instanceKey}`}
+                workflowId={instanceId}
+                chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
+                token={token}
+                activeWorkflow={instance.workflow}
+                initialThreadId={instanceId === currentWorkflowId ? initialThreadId : instance.initialThreadId}
+                reportError={reportError}
+                mode={instance.mode}
+                isActive={instanceId === currentWorkflowId}
+                autoStartEnabled={!hasVoiceAgent}
+                onRequestRefreshReady={
+                  instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
+                }
+              />
+            ))}
+          </div>
         </div>
       </div>
     </>
