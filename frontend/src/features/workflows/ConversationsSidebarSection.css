@@ -144,32 +144,6 @@
   display: block;
   white-space: nowrap;
   overflow: hidden;
-  display: inline-block;                    /* déjà là, mais on le garde */
-  min-width: 80px;                          /* évite le saut brutal de largeur */
-  transition: 
-    opacity 0.28s ease,
-    transform 0.28s ease,
-    background-color 0.6s ease;
-}
-
-/* Appliquée seulement quand le titre vient de changer */
-.conversations-sidebar-section__thread-title--updating {
-  opacity: 0.75;
-  transform: translateY(1px);
-  background: color-mix(in srgb, var(--primary-color) 18%, transparent);
-  border-radius: 4px;
-  animation: titlePulse 0.9s ease-out forwards;
-}
-
-@keyframes titlePulse {
-  0%   { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-  40%  { background: color-mix(in srgb, var(--primary-color) 28%, transparent); }
-  100% { background: transparent; }
-}
-
-/* Optionnel : version dark mode */
-:root[data-theme="dark"] .conversations-sidebar-section__thread-title--updating {
-  background: color-mix(in srgb, var(--primary-color) 22%, transparent);
 }
 
 /* Text fade gradient effect - only applied when text overflows */
