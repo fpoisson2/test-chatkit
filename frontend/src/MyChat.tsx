@@ -926,10 +926,24 @@ export function MyChat() {
         },
         onResponseStart: () => {
           resetError();
+          // Add current thread to loading state during response
+          const activeThreadId = (currentThread?.id as string | undefined) ?? initialThreadId;
+          if (activeThreadId) {
+            setSidebarLoadingThreadIds(prev => new Set(prev).add(activeThreadId));
+          }
         },
         onResponseEnd: () => {
           console.debug("[ChatKit] response end");
           requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
+          // Remove current thread from loading state after response
+          const activeThreadId = (currentThread?.id as string | undefined) ?? initialThreadId;
+          if (activeThreadId) {
+            setSidebarLoadingThreadIds(prev => {
+              const next = new Set(prev);
+              next.delete(activeThreadId);
+              return next;
+            });
+          }
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
