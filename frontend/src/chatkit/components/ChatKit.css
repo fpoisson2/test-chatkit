@@ -2384,3 +2384,49 @@
 [data-theme="dark"] .chatkit-disclaimer {
   background: var(--chatkit-dark-bg-primary);
 }
+
+/* ===== Usage Metadata (Cost Tracking for Admins) ===== */
+
+.chatkit-usage-metadata {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #888;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.chatkit-usage-tokens {
+  color: #666;
+}
+
+.chatkit-usage-cost {
+  color: #059669;
+  font-weight: 500;
+}
+
+.chatkit-usage-model {
+  color: #6b7280;
+  font-style: italic;
+}
+
+[data-theme="dark"] .chatkit-usage-metadata {
+  background: rgba(255, 255, 255, 0.05);
+  color: #aaa;
+}
+
+[data-theme="dark"] .chatkit-usage-tokens {
+  color: #999;
+}
+
+[data-theme="dark"] .chatkit-usage-cost {
+  color: #34d399;
+}
+
+[data-theme="dark"] .chatkit-usage-model {
+  color: #9ca3af;
+}

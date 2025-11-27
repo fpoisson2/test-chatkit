@@ -12,13 +12,49 @@ import logging
 import os
 import re
 import time
+import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from .handlers.factory import create_state_machine
 from .runtime.state_machine import ExecutionContext
+
+# Import litellm for cost calculation (optional dependency)
+try:
+    import litellm
+except ImportError:
+    litellm = None
+
+
+@dataclass
+class UsageMetadata:
+    """Metadata for token usage and cost tracking."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost: float = 0.0
+    model: str | None = None
+
+
+@dataclass
+class AssistantMessageUsageEvent:
+    """Event emitted with usage information after an assistant message."""
+
+    type: str = "assistant_message.usage"
+    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    item_id: str = ""
+    usage: UsageMetadata = field(default_factory=UsageMetadata)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "type": self.type,
+            "event_id": self.event_id,
+            "item_id": self.item_id,
+            "usage": asdict(self.usage),
+        }
 
 
 @dataclass
@@ -190,6 +226,23 @@ async def run_workflow_v2(
         return pricing_map.get(model_name) or pricing_map.get(model_name.lower())
 
     def _calculate_cost(model_name: str | None, usage: TokenUsage) -> float:
+        """Calculate cost using litellm if available, otherwise fall back to manual pricing."""
+        # Try litellm.completion_cost() first
+        if litellm is not None and model_name:
+            try:
+                cost = litellm.completion_cost(
+                    model=model_name,
+                    prompt="",  # We already have token counts
+                    completion="",
+                    prompt_tokens=usage.input_tokens,
+                    completion_tokens=usage.output_tokens,
+                )
+                if cost and cost > 0:
+                    return float(cost)
+            except Exception as e:
+                logger.debug("litellm.completion_cost failed for model %s: %s", model_name, e)
+
+        # Fall back to manual pricing from settings
         pricing = _pricing_for_model(model_name)
         if not pricing:
             return 0.0
@@ -794,6 +847,42 @@ async def run_workflow_v2(
             )
             if usage_from_result:
                 _record_usage(agent_identifier, model_name, usage_from_result)
+
+            # Emit usage event for this agent step
+            agent_step_usage = agent_usage.get(agent_identifier)
+            if agent_step_usage and (agent_step_usage.input_tokens > 0 or agent_step_usage.output_tokens > 0):
+                # Find the assistant message item ID from result.new_items
+                assistant_item_id = None
+                for item in result.new_items:
+                    item_type = getattr(item, "type", None)
+                    if item_type == "message" or item_type == "assistant_message":
+                        assistant_item_id = getattr(item, "id", None)
+                        break
+                    # Also check for MessageOutputItem which wraps the message
+                    raw_item = getattr(item, "raw_item", None)
+                    if raw_item and getattr(raw_item, "type", None) == "message":
+                        assistant_item_id = getattr(raw_item, "id", None)
+                        break
+
+                if assistant_item_id:
+                    usage_event = AssistantMessageUsageEvent(
+                        item_id=assistant_item_id,
+                        usage=UsageMetadata(
+                            input_tokens=agent_step_usage.input_tokens,
+                            output_tokens=agent_step_usage.output_tokens,
+                            cost=agent_step_usage.cost,
+                            model=model_name,
+                        ),
+                    )
+                    await _emit_stream_event(usage_event)
+                    logger.debug(
+                        "Emitted usage event for %s: input=%d, output=%d, cost=$%.6f",
+                        assistant_item_id,
+                        agent_step_usage.input_tokens,
+                        agent_step_usage.output_tokens,
+                        agent_step_usage.cost,
+                    )
+
             return result
         finally:
             # Cleanup MCP servers

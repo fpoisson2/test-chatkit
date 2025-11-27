@@ -850,6 +850,8 @@ export function MyChat() {
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
+        // Show usage metadata (cost, tokens) for admin users
+        isAdmin: user?.is_admin,
       } satisfies ChatKitOptions;
     },
     [
@@ -888,6 +890,7 @@ export function MyChat() {
       outboundCallError,
       hangupOutboundCall,
       user?.email,
+      user?.is_admin,
       isSidebarOpen,
     ],
   );

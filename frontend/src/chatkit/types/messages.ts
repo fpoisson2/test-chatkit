@@ -104,6 +104,15 @@ export interface AssistantMessageWidgetContent {
 
 export type AssistantMessageContent = AssistantMessageTextContent | AssistantMessageWidgetContent;
 
+// ===== Types pour les métadonnées d'utilisation =====
+
+export interface UsageMetadata {
+  input_tokens: number;
+  output_tokens: number;
+  cost: number;
+  model?: string;
+}
+
 export interface AssistantMessageItem {
   type: 'assistant_message';
   id: string;
@@ -111,6 +120,7 @@ export interface AssistantMessageItem {
   created_at: string;
   status?: 'in_progress' | 'completed' | 'failed';
   reasoning_id?: string;
+  usage_metadata?: UsageMetadata;
 }
 
 export interface ClientToolCallItem {
