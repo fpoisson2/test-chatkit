@@ -825,20 +825,43 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         """
         text_parts = []
 
+        def extract_text_from_content(content: Any) -> None:
+            """Extract text from content items (handles nested structures)."""
+            if isinstance(content, list):
+                for content_item in content:
+                    extract_text_from_content(content_item)
+            elif isinstance(content, dict):
+                content_type = content.get("type", "")
+                if content_type == "input_text":
+                    text_content = content.get("text", "")
+                    if text_content:
+                        text_parts.append(text_content)
+            elif hasattr(content, "type"):
+                if getattr(content, "type", "") == "input_text":
+                    text_content = getattr(content, "text", "")
+                    if text_content:
+                        text_parts.append(text_content)
+
         for item in agent_input:
             if isinstance(item, dict):
                 item_type = item.get("type", "")
                 if item_type == "input_text":
+                    # Direct input_text at root level
                     text_content = item.get("text", "")
                     if text_content:
                         text_parts.append(text_content)
+                elif "content" in item:
+                    # Message with nested content (e.g., from to_agent_input)
+                    extract_text_from_content(item.get("content"))
                 # Skip input_file, input_image, and other binary content types
                 # We'll add attachment descriptions separately
             elif hasattr(item, "type"):
-                if item.type == "input_text":
+                if getattr(item, "type", "") == "input_text":
                     text_content = getattr(item, "text", "")
                     if text_content:
                         text_parts.append(text_content)
+                elif hasattr(item, "content"):
+                    extract_text_from_content(getattr(item, "content", None))
 
         # Build attachment descriptions from the original message
         if hasattr(input_item, "attachments") and input_item.attachments:
