@@ -104,12 +104,11 @@ export function Composer({
       return;
     }
 
-    const currentModelExists = availableModels.some((model) => model.id === selectedModelId);
-    if (currentModelExists) return;
-
+    // Always select the default model when availableModels change
+    // This ensures the model selection is reset when switching between conversations
     const defaultModel = availableModels.find((model) => model.default) ?? availableModels[0];
     setSelectedModelId(defaultModel?.id ?? null);
-  }, [availableModels, isModelSelectorEnabled, selectedModelId]);
+  }, [availableModels, isModelSelectorEnabled]);
 
   // Fermer le dropdown quand on clique en dehors
   useEffect(() => {
