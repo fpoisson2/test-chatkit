@@ -1173,7 +1173,7 @@ export function MyChat() {
           <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
             {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
               <WorkflowChatInstance
-                key={`${instanceId}-${instance.instanceKey}`}
+                key={instanceId}
                 workflowId={instanceId}
                 chatkitOptions={instanceId === currentWorkflowId ? chatkitOptions : instance.chatkitOptions}
                 token={token}

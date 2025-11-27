@@ -9,6 +9,7 @@ export interface UseAbortControllersReturn {
   abortAndReplace: (key: string) => AbortController;
   cleanup: (key: string) => void;
   cleanupMultiple: (keys: string[]) => void;
+  abortAll: () => void;
 }
 
 // Délai pour différencier un vrai unmount d'un remount StrictMode
@@ -64,11 +65,17 @@ export function useAbortControllers(): UseAbortControllersReturn {
     keys.forEach((key) => abortControllersRef.current.delete(key));
   }, []);
 
+  const abortAll = useCallback(() => {
+    abortControllersRef.current.forEach((controller) => controller.abort());
+    abortControllersRef.current.clear();
+  }, []);
+
   return {
     abortControllersRef,
     getOrCreateController,
     abortAndReplace,
     cleanup,
     cleanupMultiple,
+    abortAll,
   };
 }

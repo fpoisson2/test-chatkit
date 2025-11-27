@@ -8,6 +8,7 @@ export interface UseThreadLoadingReturn {
   setThreadLoading: (threadId: string | null | undefined, value: boolean) => void;
   isLoading: (currentThreadId: string | null | undefined, getThreadKey: (id: string | null | undefined) => string) => boolean;
   getLoadingThreadIds: () => Set<string>;
+  clearAllLoading: () => void;
 }
 
 export function useThreadLoading(getThreadKey: (threadId: string | null | undefined) => string): UseThreadLoadingReturn {
@@ -45,10 +46,15 @@ export function useThreadLoading(getThreadKey: (threadId: string | null | undefi
     return ids;
   }, [loadingByThread]);
 
+  const clearAllLoading = useCallback(() => {
+    setLoadingByThread({});
+  }, []);
+
   return {
     loadingByThread,
     setThreadLoading,
     isLoading,
     getLoadingThreadIds,
+    clearAllLoading,
   };
 }
