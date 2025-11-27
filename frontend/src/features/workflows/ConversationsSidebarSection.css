@@ -14,7 +14,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: calc(var(--spacing) * 2);
+  gap: calc(var(--spacing) * 3);
+  width: 100%;
 }
 
 .conversations-sidebar-section__title {
@@ -24,6 +25,15 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  flex: 1;
+  min-width: 0;
+}
+
+.conversations-sidebar-section__floating-action {
+  display: flex;
+  align-items: center;
+  height: 2rem;
+  margin-left: auto;
 }
 
 .conversations-sidebar-section__new-button {
