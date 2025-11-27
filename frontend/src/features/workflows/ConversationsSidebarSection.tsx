@@ -178,27 +178,6 @@ export function ConversationsSidebarSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api?.url]);
 
-  // Keep sidebar entry in sync with the latest active thread snapshot (title, metadata...)
-  useEffect(() => {
-    if (!activeThreadSnapshot?.id) {
-      return;
-    }
-
-    setThreads((currentThreads) => {
-      const targetIndex = currentThreads.findIndex((thread) => thread.id === activeThreadSnapshot.id);
-      if (targetIndex === -1) {
-        return currentThreads;
-      }
-
-      const existing = currentThreads[targetIndex];
-      const updated = { ...existing, ...activeThreadSnapshot, metadata: { ...existing.metadata, ...activeThreadSnapshot.metadata } };
-
-      const nextThreads = [...currentThreads];
-      nextThreads[targetIndex] = updated;
-      cachedThreads = nextThreads;
-      return nextThreads;
-    });
-  }, [activeThreadSnapshot]);
 
   // Auto-refresh when currentThreadId changes to a thread not in the list
   // This handles the case when a new conversation is created via ChatKit
@@ -339,6 +318,41 @@ export function ConversationsSidebarSection({
     [openMenuId, isMobileLayout, handleMenuOpen]
   );
 
+// 1. Fusionner les threads du serveur avec le snapshot actif actuel (PRIORITÉ AU SNAPSHOT)
+  // Cela empêche le serveur d'écraser le titre tant que le thread est actif
+  const threadsWithActiveData = useMemo(() => {
+    if (!activeThreadSnapshot?.id) return threads;
+
+    return threads.map((thread) => {
+      if (thread.id === activeThreadSnapshot.id) {
+        // On écrase les données du serveur par celles du snapshot (plus fraîches)
+        return {
+          ...thread,
+          ...activeThreadSnapshot,
+          metadata: { ...thread.metadata, ...activeThreadSnapshot.metadata },
+          // On s'assure que si le snapshot a des items, on les garde (pour le calcul de la date/titre)
+          items: activeThreadSnapshot.items || thread.items
+        };
+      }
+      return thread;
+    });
+  }, [threads, activeThreadSnapshot]);
+
+  // 2. Filter threads by search query (Utiliser threadsWithActiveData au lieu de threads)
+  const filteredThreads = useMemo(() => {
+    const listToFilter = threadsWithActiveData; // Changement ici
+
+    if (!searchQuery.trim()) {
+      return listToFilter;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return listToFilter.filter((thread) => {
+      const title = getThreadTitle(thread).toLowerCase();
+      return title.includes(query);
+    });
+  }, [threadsWithActiveData, searchQuery]);
+
+
   // Filter threads by search query
   const filteredThreads = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -351,42 +365,37 @@ export function ConversationsSidebarSection({
     });
   }, [threads, searchQuery]);
 
-  // Determine which threads to display
-// Determine which threads to display
+// 3. Determine which threads to display (Optimistic Insert)
   const displayedThreads = useMemo(() => {
-    // 1. Base list logic
-    let list = isExpanded || searchQuery.trim() 
-      ? filteredThreads 
+    // Liste de base
+    let list = isExpanded || searchQuery.trim()
+      ? filteredThreads
       : filteredThreads.slice(0, maxVisible);
 
-    // 2. OPTIMISTIC UPDATE
-    // Si nous avons un ID actif, que ce n'est plus un brouillon (isNewConversationActive = false),
-    // mais que le thread n'est PAS encore dans la liste affichée (latence API),
-    // on l'ajoute manuellement en haut de liste.
+    // --- FIX OPTIMISTE ---
+    // Si on a un ID actif mais qu'il n'est pas encore dans la liste (latence réseau création)
     if (currentThreadId && !isNewConversationActive) {
-      const isAlreadyInList = list.some((t) => t.id === currentThreadId);
-
-      if (!isAlreadyInList) {
-        // On essaie de récupérer les infos du snapshot s'il correspond, sinon on crée un placeholder
+      const exists = list.some(t => t.id === currentThreadId);
+      
+      if (!exists) {
+        // On utilise le snapshot s'il correspond, sinon un placeholder
         const snapshot = activeThreadSnapshot?.id === currentThreadId ? activeThreadSnapshot : null;
-
-        // Création d'un objet Thread temporaire pour combler le vide visuel
+        
         const optimisticThread: Thread = snapshot ? { ...snapshot } : ({
           id: currentThreadId,
-          title: "Nouvelle conversation", // Titre par défaut en attendant l'API
+          title: snapshot?.title || "Nouvelle conversation", // Titre du snapshot prioritaire
           created_at: new Date().toISOString(),
           items: [],
           metadata: {},
         } as unknown as Thread);
 
-        // On l'ajoute en tout premier
         return [optimisticThread, ...list];
       }
     }
+    // ---------------------
 
     return list;
   }, [filteredThreads, isExpanded, maxVisible, searchQuery, currentThreadId, isNewConversationActive, activeThreadSnapshot]);
-
   const hasHiddenThreads = filteredThreads.length > maxVisible && !isExpanded && !searchQuery.trim();
 
   if (isCollapsed) {
