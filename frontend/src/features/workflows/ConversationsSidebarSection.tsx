@@ -1,9 +1,15 @@
 /**
  * ConversationsSidebarSection - Section displaying all conversations in the sidebar
  */
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode, type MutableRefObject } from "react";
 import type { Thread, ChatKitAPIConfig } from "../../chatkit/types";
 import { listThreads, deleteThread } from "../../chatkit/api/streaming/api";
+import {
+  type ActionMenuPlacement,
+  computeWorkflowActionMenuPlacement,
+  getActionMenuStyle,
+  getActionMenuItemStyle,
+} from "./WorkflowActionMenu";
 import "./ConversationsSidebarSection.css";
 
 export interface ThreadWorkflowMetadata {
@@ -23,6 +29,7 @@ export interface ConversationsSidebarSectionProps {
   title?: string;
   emptyMessage?: string;
   isCollapsed?: boolean;
+  isMobileLayout?: boolean;
 }
 
 // Cache at module level to persist data between mounts
@@ -80,6 +87,7 @@ export function ConversationsSidebarSection({
   title = "Conversations",
   emptyMessage = "Aucune conversation",
   isCollapsed = false,
+  isMobileLayout = false,
 }: ConversationsSidebarSectionProps): JSX.Element | null {
   const [threads, setThreads] = useState<Thread[]>(cachedThreads);
   const [isLoading, setIsLoading] = useState(false);
@@ -89,6 +97,12 @@ export function ConversationsSidebarSection({
   const [after, setAfter] = useState<string | undefined>(undefined);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Action menu state
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPlacement, setMenuPlacement] = useState<ActionMenuPlacement>("down");
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const loadThreads = useCallback(async (isInitial = false, isRefresh = false) => {
     if (!api) return;
@@ -185,6 +199,54 @@ export function ConversationsSidebarSection({
     }
   }, [api, threads, currentThreadId, onThreadDeleted]);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!openMenuId) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(target) &&
+        menuTriggerRef.current &&
+        !menuTriggerRef.current.contains(target)
+      ) {
+        setOpenMenuId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openMenuId]);
+
+  const handleMenuOpen = useCallback((threadId: string, placement: ActionMenuPlacement) => {
+    setMenuPlacement(placement);
+    setOpenMenuId(threadId);
+  }, []);
+
+  const handleMenuClose = useCallback(() => {
+    setOpenMenuId(null);
+  }, []);
+
+  const handleMenuTriggerClick = useCallback(
+    (threadId: string, event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const trigger = event.currentTarget;
+      menuTriggerRef.current = trigger;
+
+      if (openMenuId === threadId) {
+        setOpenMenuId(null);
+        return;
+      }
+
+      const nextPlacement = isMobileLayout
+        ? computeWorkflowActionMenuPlacement(trigger)
+        : "down";
+      handleMenuOpen(threadId, nextPlacement);
+    },
+    [openMenuId, isMobileLayout, handleMenuOpen]
+  );
+
   // Filter threads by search query
   const filteredThreads = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -222,17 +284,19 @@ export function ConversationsSidebarSection({
           {title}
         </h3>
         {onNewConversation && (
-          <button
-            type="button"
-            className="conversations-sidebar-section__new-button"
-            onClick={onNewConversation}
-            aria-label="Nouvelle conversation"
-            title="Nouvelle conversation"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
+          <div className="conversations-sidebar-section__floating-action">
+            <button
+              type="button"
+              className="conversations-sidebar-section__new-button"
+              onClick={onNewConversation}
+              aria-label="Nouvelle conversation"
+              title="Nouvelle conversation"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </div>
         )}
       </div>
 
@@ -262,12 +326,18 @@ export function ConversationsSidebarSection({
               const isDeleting = deletingThreadId === thread.id;
               const threadTitle = getThreadTitle(thread);
               const dateStr = items.length > 0 ? formatRelativeDate(items[0].created_at) : "";
+              const isMenuOpen = openMenuId === thread.id;
+              const menuId = `conversation-menu-${thread.id}`;
 
               // Extract workflow metadata from thread
               const workflowMetadata = thread.metadata?.workflow as ThreadWorkflowMetadata | undefined;
 
               return (
-                <li key={thread.id} className="conversations-sidebar-section__item">
+                <li
+                  key={thread.id}
+                  className="conversations-sidebar-section__item"
+                  data-has-actions=""
+                >
                   <button
                     type="button"
                     className={`conversations-sidebar-section__thread-button${isActive ? " conversations-sidebar-section__thread-button--active" : ""}`}
@@ -280,16 +350,46 @@ export function ConversationsSidebarSection({
                       <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
                     )}
                   </button>
-                  <button
-                    type="button"
-                    className="conversations-sidebar-section__delete-button"
-                    onClick={(e) => handleDeleteThread(thread.id, e)}
-                    disabled={isDeleting}
-                    aria-label="Supprimer cette conversation"
-                    title="Supprimer"
-                  >
-                    {isDeleting ? "…" : "×"}
-                  </button>
+                  <div className="conversations-sidebar-section__actions" data-conversation-menu-container="">
+                    <button
+                      type="button"
+                      className="conversations-sidebar-section__action-button"
+                      data-conversation-menu-trigger=""
+                      aria-haspopup="true"
+                      aria-expanded={isMenuOpen}
+                      aria-controls={menuId}
+                      disabled={isDeleting}
+                      onClick={(e) => handleMenuTriggerClick(thread.id, e)}
+                    >
+                      <span aria-hidden="true">…</span>
+                      <span className="visually-hidden">Actions pour {threadTitle}</span>
+                    </button>
+                    {isMenuOpen && (
+                      <div
+                        id={menuId}
+                        role="menu"
+                        data-conversation-menu=""
+                        className="conversations-sidebar-section__menu"
+                        style={getActionMenuStyle(isMobileLayout, menuPlacement)}
+                        ref={menuRef}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMenuClose();
+                            handleDeleteThread(thread.id, e);
+                          }}
+                          disabled={isDeleting}
+                          style={{
+                            ...getActionMenuItemStyle(isMobileLayout, { danger: true }),
+                          }}
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </li>
               );
             })}
