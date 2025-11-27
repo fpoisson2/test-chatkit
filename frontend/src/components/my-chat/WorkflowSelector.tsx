@@ -1,7 +1,7 @@
 /**
  * WorkflowSelector - Dropdown to select the active workflow for new conversations
  */
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import type { WorkflowSummary } from "../../types/workflows";
 import "./WorkflowSelector.css";
 
@@ -18,12 +18,6 @@ export function WorkflowSelector({
   onWorkflowChange,
   disabled = false,
 }: WorkflowSelectorProps): JSX.Element | null {
-  // Only show active workflows (those with active_version_id)
-  const activeWorkflows = useMemo(() =>
-    workflows.filter((w) => w.active_version_id !== null),
-    [workflows]
-  );
-
   const handleChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     const workflowId = parseInt(event.target.value, 10);
     if (!isNaN(workflowId)) {
@@ -31,12 +25,12 @@ export function WorkflowSelector({
     }
   }, [onWorkflowChange]);
 
-  // Don't render if there are no active workflows
-  if (activeWorkflows.length === 0) {
+  // Don't render if there are no workflows
+  if (workflows.length === 0) {
     return null;
   }
 
-  const selectedWorkflow = activeWorkflows.find((w) => w.id === selectedWorkflowId);
+  const selectedWorkflow = workflows.find((w) => w.id === selectedWorkflowId);
 
   return (
     <div className="workflow-selector">
@@ -48,14 +42,14 @@ export function WorkflowSelector({
         className="workflow-selector__select"
         value={selectedWorkflowId ?? ""}
         onChange={handleChange}
-        disabled={disabled || activeWorkflows.length === 1}
+        disabled={disabled || workflows.length === 1}
       >
         {!selectedWorkflow && (
           <option value="" disabled>
             Sélectionner un workflow
           </option>
         )}
-        {activeWorkflows.map((workflow) => (
+        {workflows.map((workflow) => (
           <option key={workflow.id} value={workflow.id}>
             {workflow.display_name}
           </option>
