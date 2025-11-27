@@ -670,19 +670,30 @@ export function MyChat() {
   }, [sessionOwner, persistenceSlug]);
 
   // Handle workflow change from the selector dropdown
-  const handleWorkflowSelectorChange = useCallback((workflowId: number) => {
+  const handleWorkflowSelectorChange = useCallback(async (workflowId: number) => {
     const targetWorkflow = workflows.find((w) => w.id === workflowId);
     if (targetWorkflow) {
       // Update provider selection
       setSelectedWorkflowId(workflowId);
       // Update local workflow selection state
       setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+
+      // Update backend workflow for admin users (must complete before resetting chat)
+      if (user?.is_admin && token) {
+        try {
+          await workflowsApi.setChatkitWorkflow(token, workflowId);
+          console.log('[MyChat] Backend workflow updated to:', workflowId);
+        } catch (err) {
+          console.error('[MyChat] Failed to update backend workflow:', err);
+        }
+      }
+
       // Clear current thread and start fresh for the new workflow
       clearStoredThreadId(sessionOwner, persistenceSlug);
       setInitialThreadId(null);
       setChatInstanceKey((value) => value + 1);
     }
-  }, [workflows, setSelectedWorkflowId, sessionOwner, persistenceSlug]);
+  }, [workflows, setSelectedWorkflowId, sessionOwner, persistenceSlug, token, user?.is_admin]);
 
   const debugSignature = useMemo(() => JSON.stringify(debugSnapshot), [debugSnapshot]);
 

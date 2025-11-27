@@ -394,7 +394,12 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
-                thread.title = request.params.title
+                if request.params.title is not None:
+                    thread.title = request.params.title
+                if request.params.metadata is not None:
+                    if thread.metadata is None:
+                        thread.metadata = {}
+                    thread.metadata.update(request.params.metadata)
                 await self.store.save_thread(thread, context=context)
                 return self._serialize(self._to_thread_response(thread))
             case ThreadsDeleteReq():

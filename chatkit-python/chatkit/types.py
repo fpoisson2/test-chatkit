@@ -201,7 +201,8 @@ class ThreadUpdateParams(BaseModel):
     """Parameters for updating a thread's properties."""
 
     thread_id: str
-    title: str
+    title: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class ThreadsDeleteReq(BaseReq):
