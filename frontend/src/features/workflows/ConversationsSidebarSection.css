@@ -171,14 +171,6 @@
   flex-shrink: 0;
 }
 
-.conversations-sidebar-section__thread-button--loading {
-  pointer-events: none;
-}
-
-.conversations-sidebar-section__thread-button--loading .conversations-sidebar-section__thread-title {
-  opacity: 0.6;
-}
-
 /* Action menu container - aligned with workflow styling */
 .conversations-sidebar-section__actions {
   position: absolute;

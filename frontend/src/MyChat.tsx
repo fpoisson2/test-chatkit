@@ -243,7 +243,7 @@ export function MyChat() {
 
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
-  const [sidebarLoadingThreadIds, setSidebarLoadingThreadIds] = useState<Set<string>>(new Set());
+  const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(new Set());
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
@@ -666,9 +666,6 @@ export function MyChat() {
     // Persist the selected thread with the correct slug and reload the chat
     persistStoredThreadId(sessionOwner, threadId, targetSlug);
 
-    // Mark this thread as loading in the sidebar
-    setSidebarLoadingThreadIds(prev => new Set(prev).add(threadId));
-
     setInitialThreadId(threadId);
     setChatInstanceKey((value) => value + 1);
   }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin]);
@@ -927,19 +924,19 @@ export function MyChat() {
         },
         onResponseStart: () => {
           resetError();
-          // Add current thread to loading state during response
+          // Add current thread to streaming state during response
           const activeThreadId = (currentThread?.id as string | undefined) ?? initialThreadId;
           if (activeThreadId) {
-            setSidebarLoadingThreadIds(prev => new Set(prev).add(activeThreadId));
+            setStreamingThreadIds(prev => new Set(prev).add(activeThreadId));
           }
         },
         onResponseEnd: () => {
           console.debug("[ChatKit] response end");
           requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
-          // Remove current thread from loading state after response
+          // Remove current thread from streaming state after response
           const activeThreadId = (currentThread?.id as string | undefined) ?? initialThreadId;
           if (activeThreadId) {
-            setSidebarLoadingThreadIds(prev => {
+            setStreamingThreadIds(prev => {
               const next = new Set(prev);
               next.delete(activeThreadId);
               return next;
@@ -961,12 +958,6 @@ export function MyChat() {
         },
         onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load end", { threadId });
-          // Remove from sidebar loading state
-          setSidebarLoadingThreadIds(prev => {
-            const next = new Set(prev);
-            next.delete(threadId);
-            return next;
-          });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
           if (entry?.data && typeof entry.data === "object") {
@@ -1158,7 +1149,7 @@ export function MyChat() {
           onWorkflowActivated={handleWorkflowActivated}
           api={sidebarApiConfig}
           currentThreadId={(currentThread?.id as string | undefined) ?? initialThreadId ?? null}
-          loadingThreadIds={sidebarLoadingThreadIds}
+          streamingThreadIds={streamingThreadIds}
           onThreadSelect={handleSidebarThreadSelect}
           onThreadDeleted={handleSidebarThreadDeleted}
           onNewConversation={handleNewConversation}
