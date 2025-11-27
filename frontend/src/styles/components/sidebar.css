@@ -25,6 +25,39 @@
   --chatkit-sidebar-open-duration: 0.95s;
 }
 
+/* Sidebar content wrapper for search + sections layout */
+.chatkit-sidebar__content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 5);
+}
+
+.chatkit-sidebar__search-wrapper {
+  margin-bottom: calc(var(--spacing) * 1);
+}
+
+/* Show more/less buttons for workflow list */
+.chatkit-sidebar__section-show-more,
+.chatkit-sidebar__section-show-less {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--primary-color);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+  padding: calc(var(--spacing) * 2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-duration-basic);
+  text-align: center;
+  margin-top: calc(var(--spacing) * 1);
+}
+
+.chatkit-sidebar__section-show-more:hover,
+.chatkit-sidebar__section-show-less:hover {
+  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+
 .chatkit-sidebar {
   position: absolute;
   inset: 0 auto 0 0;

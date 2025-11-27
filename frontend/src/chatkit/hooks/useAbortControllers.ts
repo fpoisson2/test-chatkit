@@ -11,14 +11,28 @@ export interface UseAbortControllersReturn {
   cleanupMultiple: (keys: string[]) => void;
 }
 
+// Délai pour différencier un vrai unmount d'un remount StrictMode
+const UNMOUNT_DELAY_MS = 100;
+
 export function useAbortControllers(): UseAbortControllersReturn {
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const unmountTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup on unmount
+  // Cleanup on unmount - avec délai pour ignorer les remounts StrictMode
   useEffect(() => {
+    // Annuler tout abort programmé lors du remount
+    if (unmountTimeoutRef.current) {
+      clearTimeout(unmountTimeoutRef.current);
+      unmountTimeoutRef.current = null;
+    }
+
     return () => {
-      abortControllersRef.current.forEach((controller) => controller.abort());
-      abortControllersRef.current.clear();
+      // Programmer l'abort avec un délai
+      // Si le composant se remonte rapidement (StrictMode), le timeout sera annulé
+      unmountTimeoutRef.current = setTimeout(() => {
+        abortControllersRef.current.forEach((controller) => controller.abort());
+        abortControllersRef.current.clear();
+      }, UNMOUNT_DELAY_MS);
     };
   }, []);
 

@@ -4,7 +4,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ComposerModel, ChatKitOptions } from '../types';
 import { ImageWithBlobUrl, TEXTAREA_MAX_HEIGHT_PX, getFileTypeIcon } from '../utils';
-import { Attachment, uploadAttachment, createAttachment } from '../api/attachments';
+import type { Attachment } from '../api/attachments';
 
 /**
  * Télécharge un fichier en créant un lien de téléchargement
@@ -238,6 +238,9 @@ export function Composer({
     onAttachmentsChange(attachments.filter(att => att.id !== id));
   }, [attachments, onAttachmentsChange]);
 
+  // Check if any attachment is still uploading or pending
+  const hasUploadingAttachments = attachments.some(att => att.status === 'uploading' || att.status === 'pending');
+
   // Soumettre le message
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -245,67 +248,13 @@ export function Composer({
     const message = value.trim();
     const hasContent = message || attachments.length > 0;
 
-    if (!hasContent || isLoading) return;
+    // Don't submit if no content, loading, or uploads still in progress
+    if (!hasContent || isLoading || hasUploadingAttachments) return;
 
     try {
-      // Two-phase upload for attachments
-      // Phase 1: Create attachment on backend to get server ID and upload URL
-      // Phase 2: Upload the file to the server-provided URL
-      const uploadedAttachments: Attachment[] = [...attachments];
-
-      if (attachments.length > 0 && apiConfig?.url) {
-        for (let i = 0; i < attachments.length; i++) {
-          const att = attachments[i];
-
-          // Update status to uploading
-          onAttachmentsChange(attachments.map(a =>
-            a.id === att.id ? { ...a, status: 'uploading' as const } : a
-          ));
-
-          try {
-            // Phase 1: Create attachment to get backend ID and upload URL
-            const createResponse = await createAttachment({
-              url: apiConfig.url,
-              headers: apiConfig.headers,
-              name: att.file.name,
-              size: att.file.size,
-              mimeType: att.file.type || 'application/octet-stream',
-            });
-
-            const backendId = createResponse.id;
-            const uploadUrl = createResponse.upload_url;
-
-            // Phase 2: Upload the file using the backend-provided URL
-            await uploadAttachment({
-              url: apiConfig.url,
-              headers: apiConfig.headers,
-              attachmentId: backendId,
-              file: att.file,
-              uploadUrl: uploadUrl,
-            });
-
-            // Update the attachment with the backend ID and mark as uploaded
-            uploadedAttachments[i] = {
-              ...att,
-              id: backendId,
-              status: 'uploaded' as const,
-              uploadUrl: uploadUrl,
-            };
-
-            onAttachmentsChange(attachments.map(a =>
-              a.id === att.id ? uploadedAttachments[i] : a
-            ));
-          } catch (err) {
-            console.error('[Composer] Failed to upload attachment:', err);
-            onAttachmentsChange(attachments.map(a =>
-              a.id === att.id ? { ...a, status: 'error' as const, error: String(err) } : a
-            ));
-          }
-        }
-      }
-
-      // Submit the message with attachments that have backend IDs
-      const successfulAttachments = uploadedAttachments.filter(a => a.status === 'uploaded');
+      // Files are already uploaded by ChatKit when selected
+      // Just filter to get successfully uploaded attachments
+      const successfulAttachments = attachments.filter(a => a.status === 'uploaded');
       await onSubmit(message, successfulAttachments);
     } catch (error) {
       console.error('[Composer] Failed to send message:', error);
@@ -327,7 +276,7 @@ export function Composer({
     ? disabledMessage || ''
     : (config?.placeholder || 'Posez votre question...');
 
-  const canSubmit = (value.trim() || attachments.length > 0) && !isLoading && !isDisabled;
+  const canSubmit = (value.trim() || attachments.length > 0) && !isLoading && !isDisabled && !hasUploadingAttachments;
   const attachmentsEnabled = config?.attachments?.enabled || config?.attachments !== false;
 
   return (
@@ -350,6 +299,20 @@ export function Composer({
                     </div>
                   )}
                   <div className="chatkit-attachment-name">{att.file.name}</div>
+                  {att.status === 'uploading' && (
+                    <div className="chatkit-attachment-progress">
+                      <div
+                        className="chatkit-attachment-progress-bar"
+                        style={{ width: `${att.progress || 0}%` }}
+                      />
+                      <span className="chatkit-attachment-progress-text">{att.progress || 0}%</span>
+                    </div>
+                  )}
+                  {att.status === 'error' && att.error && (
+                    <div className="chatkit-attachment-error-message" title={att.error}>
+                      {att.error}
+                    </div>
+                  )}
                   <div className="chatkit-attachment-actions">
                     <button
                       type="button"

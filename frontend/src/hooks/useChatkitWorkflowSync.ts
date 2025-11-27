@@ -12,6 +12,8 @@ type UseChatkitWorkflowSyncParams = {
   reportError: (message: string, detail?: unknown) => void;
   enabled?: boolean;
   autoStartEnabled?: boolean;
+  /** Si true, ne pas appeler fetchUpdates lors du retour de focus (streaming en cours) */
+  isStreaming?: boolean;
 };
 
 type UseChatkitWorkflowSyncResult = {
@@ -30,12 +32,17 @@ export const useChatkitWorkflowSync = ({
   reportError,
   enabled = true,
   autoStartEnabled = true,
+  isStreaming = false,
 }: UseChatkitWorkflowSyncParams): UseChatkitWorkflowSyncResult => {
   const [chatkitWorkflowInfo, setChatkitWorkflowInfo] = useState<ChatKitWorkflowInfo | null>(null);
   const autoStartAttemptRef = useRef(false);
   const fetchUpdatesRef = useRef<(() => Promise<void>) | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousThreadIdRef = useRef<string | null>(initialThreadId);
+  const isStreamingRef = useRef(isStreaming);
+
+  // Keep isStreamingRef in sync
+  isStreamingRef.current = isStreaming;
 
   useEffect(() => {
     fetchUpdatesRef.current = fetchUpdates;
@@ -225,6 +232,14 @@ export const useChatkitWorkflowSync = ({
     let rafHandle: number | null = null;
 
     const refreshConversation = () => {
+      // Ne pas rafraîchir si un streaming est en cours pour éviter d'écraser le contenu streamé
+      if (isStreamingRef.current) {
+        if (import.meta.env.DEV) {
+          console.log("[ChatKit] Streaming en cours, skip du refresh après retour d'onglet");
+        }
+        return;
+      }
+
       const now = Date.now();
       if (now - lastVisibilityRefreshRef.current < 500) {
         return;

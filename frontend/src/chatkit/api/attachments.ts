@@ -11,6 +11,8 @@ export interface Attachment {
   status: 'pending' | 'uploading' | 'uploaded' | 'error';
   error?: string;
   uploadUrl?: string;
+  /** Upload progress percentage (0-100) */
+  progress?: number;
 }
 
 export interface CreateAttachmentResponse {
