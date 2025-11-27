@@ -318,8 +318,14 @@ export function ConversationsSidebarSection({
     return null;
   }
 
+  const sectionVariant = isMobileLayout ? "overlay" : "default";
+
   return (
-    <section className="conversations-sidebar-section" aria-labelledby="conversations-section-title">
+    <section
+      className="conversations-sidebar-section"
+      aria-labelledby="conversations-section-title"
+      data-variant={sectionVariant === "overlay" ? "overlay" : undefined}
+    >
       <div className="chatkit-sidebar__section-header">
         <h2 id="conversations-section-title" className="chatkit-sidebar__section-title">
           {title}

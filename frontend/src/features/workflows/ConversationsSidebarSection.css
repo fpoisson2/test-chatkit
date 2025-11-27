@@ -6,7 +6,7 @@
 .conversations-sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--spacing) * 2);
+  gap: calc(var(--spacing) * 3);
   padding: 0;
 }
 
@@ -315,6 +315,35 @@
 :root:not([data-theme="dark"]) .conversations-sidebar-section__menu button:focus-visible:not([disabled]),
 :root[data-theme="light"] .conversations-sidebar-section__menu button:focus-visible:not([disabled]) {
   color: var(--color-text-strong) !important;
+}
+
+/* Overlay variant styles (mobile sidebar) - aligned with chatkit-sidebar__section overlay */
+.conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-title {
+  color: var(--color-text-strong);
+}
+
+.conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
+  color: var(--gray-25);
+}
+
+.conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+.conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: var(--gray-25);
+  background: color-mix(in srgb, var(--gray-25) 15%, transparent);
+}
+
+/* Light mode fix for visibility in overlay */
+:root:not([data-theme="dark"]) .conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button,
+:root[data-theme="light"] .conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button {
+  color: var(--gray-900) !important;
+}
+
+:root:not([data-theme="dark"]) .conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+:root[data-theme="light"] .conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:hover,
+:root:not([data-theme="dark"]) .conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible,
+:root[data-theme="light"] .conversations-sidebar-section[data-variant="overlay"] .chatkit-sidebar__section-icon-button:focus-visible {
+  color: var(--gray-900) !important;
+  background: color-mix(in srgb, var(--gray-900) 12%, transparent);
 }
 
 /* Visually hidden utility class */
