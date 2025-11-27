@@ -1,12 +1,15 @@
 /**
- * Composant pour afficher du contenu markdown
+ * Composant pour afficher du contenu markdown avec support LaTeX
  */
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useI18n } from '../../i18n/I18nProvider';
+import 'katex/dist/katex.min.css';
 import './MarkdownRenderer.css';
 
 export interface MarkdownRendererProps {
@@ -110,7 +113,8 @@ export function MarkdownRenderer({ content, theme = 'light' }: MarkdownRendererP
           th: ({ children }) => <th className="chatkit-markdown-th">{children}</th>,
           td: ({ children }) => <td className="chatkit-markdown-td">{children}</td>,
         }}
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
       >
         {content}
       </ReactMarkdown>
