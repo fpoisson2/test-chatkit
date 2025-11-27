@@ -31,8 +31,8 @@ export function WorkflowSelector({
     }
   }, [onWorkflowChange]);
 
-  // Don't render if there's only one workflow or none
-  if (activeWorkflows.length <= 1) {
+  // Don't render if there are no active workflows
+  if (activeWorkflows.length === 0) {
     return null;
   }
 
@@ -48,7 +48,7 @@ export function WorkflowSelector({
         className="workflow-selector__select"
         value={selectedWorkflowId ?? ""}
         onChange={handleChange}
-        disabled={disabled}
+        disabled={disabled || activeWorkflows.length === 1}
       >
         {!selectedWorkflow && (
           <option value="" disabled>
