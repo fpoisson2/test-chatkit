@@ -418,6 +418,11 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 metadata["workflow"] = dict(expected_workflow)
                 matches = True
                 changed = True
+            elif self._has_complete_workflow_metadata(workflow_metadata):
+                # Le thread appartient à un workflow différent mais a des métadonnées
+                # complètes : autoriser le chargement pour permettre de voir les
+                # conversations d'autres workflows
+                matches = True
             elif not self._has_complete_workflow_metadata(workflow_metadata):
                 metadata["workflow"] = dict(expected_workflow)
                 matches = True
