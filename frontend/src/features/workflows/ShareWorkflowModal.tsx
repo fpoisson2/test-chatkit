@@ -176,7 +176,7 @@ export const ShareWorkflowModal = ({
     : t("workflows.share.titleGeneric");
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} size="md">
+    <Modal open={isOpen} onClose={onClose} title={modalTitle} size="md">
       <div className="share-workflow-modal">
         {error && (
           <div className="share-workflow-modal__error" role="alert">
