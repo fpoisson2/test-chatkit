@@ -1,7 +1,7 @@
 /**
  * ConversationsSidebarSection - Section displaying all conversations in the sidebar
  */
-import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode, type MutableRefObject } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Thread, ChatKitAPIConfig } from "../../chatkit/types";
 import { listThreads, deleteThread, updateThreadTitle } from "../../chatkit/api/streaming/api";
 import {
@@ -107,14 +107,10 @@ export function ConversationsSidebarSection({
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // --- ÉTATS POUR L'ANIMATION DE TITRE ---
-  const [animatedTitle, setAnimatedTitle] = useState<string | null>(null); // Titre actuellement animé
-  const [isAnimatingOut, setIsAnimatingOut] = useState(false); // On efface "Nouvelle conversation"
-  const [isAnimatingIn, setIsAnimatingIn] = useState(false); // On écrit le nouveau titre
+  // Animation de titre pour le thread actif
+  const [animatedTitle, setAnimatedTitle] = useState<string | null>(null);
+  const [isTitleAnimating, setIsTitleAnimating] = useState(false);
   const prevIsNewConversationActiveRef = useRef(isNewConversationActive);
-  const prevCurrentThreadIdRef = useRef(currentThreadId);
-  const shouldAnimateOnNextThreadRef = useRef(false); // Flag pour déclencher l’animation au prochain changement de thread
-  // --------------------------------------------------
 
   // Action menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -189,6 +185,32 @@ export function ConversationsSidebarSection({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api?.url]);
+
+  // Keep sidebar entry in sync with the latest active thread snapshot (title, metadata...)
+  useEffect(() => {
+    if (!activeThreadSnapshot?.id) {
+      return;
+    }
+
+    setThreads((currentThreads) => {
+      const targetIndex = currentThreads.findIndex((thread) => thread.id === activeThreadSnapshot.id);
+      if (targetIndex === -1) {
+        return currentThreads;
+      }
+
+      const existing = currentThreads[targetIndex];
+      const updated = {
+        ...existing,
+        ...activeThreadSnapshot,
+        metadata: { ...existing.metadata, ...activeThreadSnapshot.metadata },
+      };
+
+      const nextThreads = [...currentThreads];
+      nextThreads[targetIndex] = updated;
+      cachedThreads = nextThreads;
+      return nextThreads;
+    });
+  }, [activeThreadSnapshot]);
 
   // Auto-refresh when currentThreadId changes to a thread not in the list
   // This handles the case when a new conversation is created via ChatKit
@@ -333,190 +355,85 @@ export function ConversationsSidebarSection({
     [openMenuId, isMobileLayout, handleMenuOpen]
   );
 
-  // 1. Fusionner les threads du serveur avec le snapshot actif actuel (PRIORITÉ AU SNAPSHOT)
-  // Cela empêche le serveur d'écraser le titre tant que le thread est actif
-  const threadsWithActiveData = useMemo(() => {
-    if (!activeThreadSnapshot?.id) return threads;
-
-    return threads.map((thread) => {
-      if (thread.id === activeThreadSnapshot.id) {
-        // On écrase les données du serveur par celles du snapshot (plus fraîches)
-        return {
-          ...thread,
-          ...activeThreadSnapshot,
-          metadata: { ...thread.metadata, ...activeThreadSnapshot.metadata },
-          items: activeThreadSnapshot.items || thread.items,
-        };
-      }
-      return thread;
-    });
-  }, [threads, activeThreadSnapshot]);
-
-  // 2. Filter threads by search query (Utiliser threadsWithActiveData au lieu de threads)
+  // Filter threads by search query
   const filteredThreads = useMemo(() => {
-    const listToFilter = threadsWithActiveData;
-
     if (!searchQuery.trim()) {
-      return listToFilter;
+      return threads;
     }
     const query = searchQuery.toLowerCase().trim();
-    return listToFilter.filter((thread) => {
+    return threads.filter((thread) => {
       const title = getThreadTitle(thread).toLowerCase();
       return title.includes(query);
     });
-  }, [threadsWithActiveData, searchQuery]);
+  }, [threads, searchQuery]);
 
-  // 3. Determine which threads to display (Optimistic Insert)
+  // Determine which threads to display
   const displayedThreads = useMemo(() => {
-    let list =
-      isExpanded || searchQuery.trim() ? filteredThreads : filteredThreads.slice(0, maxVisible);
-
-    // Si on a un ID actif mais qu'il n'est pas encore dans la liste (latence réseau création)
-    // On n'ajoute pas ici si l'animation est en cours (isAnimatingOut ou isAnimatingIn).
-    if (currentThreadId && !isNewConversationActive && !isAnimatingOut && !isAnimatingIn) {
-      const exists = list.some((t) => t.id === currentThreadId);
-
-      if (!exists) {
-        // On utilise le snapshot s'il correspond, sinon un placeholder
-        const snapshot = activeThreadSnapshot?.id === currentThreadId ? activeThreadSnapshot : null;
-
-        const optimisticThread: Thread = snapshot
-          ? { ...snapshot }
-          : ({
-              id: currentThreadId,
-              title: "Conversation sans titre",
-              created_at: new Date().toISOString(),
-              items: [],
-              metadata: {},
-            } as unknown as Thread);
-
-        return [optimisticThread, ...list];
-      }
+    if (isExpanded || searchQuery.trim()) {
+      return filteredThreads;
     }
-
-    return list;
-  }, [
-    filteredThreads,
-    isExpanded,
-    maxVisible,
-    searchQuery,
-    currentThreadId,
-    isNewConversationActive,
-    isAnimatingOut,
-    isAnimatingIn,
-    activeThreadSnapshot,
-  ]);
+    return filteredThreads.slice(0, maxVisible);
+  }, [filteredThreads, isExpanded, maxVisible, searchQuery]);
 
   const hasHiddenThreads =
     filteredThreads.length > maxVisible && !isExpanded && !searchQuery.trim();
 
-  // --- LOGIQUE D'ANIMATION : QUITTER "Nouvelle conversation" ---
+  // --- EFFET D'ANIMATION : sortie de "Nouvelle conversation" → titre réel ---
   useEffect(() => {
     const prevIsNew = prevIsNewConversationActiveRef.current;
-
-    // Si on vient juste de quitter le mode "Nouvelle conversation", on marque
-    // qu'on veut animer au prochain changement de threadId.
-    if (prevIsNew && !isNewConversationActive) {
-      shouldAnimateOnNextThreadRef.current = true;
-    }
-
     prevIsNewConversationActiveRef.current = isNewConversationActive;
 
-    // Si on réactive le mode "Nouvelle conversation", on reset tout
-    if (isNewConversationActive) {
-      setAnimatedTitle(null);
-      setIsAnimatingOut(false);
-      setIsAnimatingIn(false);
-      shouldAnimateOnNextThreadRef.current = false;
-    }
-  }, [isNewConversationActive]);
+    // On veut animer uniquement lorsque :
+    // - on passe de isNewConversationActive = true → false
+    // - on a un thread actif
+    // - le snapshot correspond à ce thread (on a un titre à animer)
+    if (
+      prevIsNew &&
+      !isNewConversationActive &&
+      currentThreadId &&
+      activeThreadSnapshot &&
+      activeThreadSnapshot.id === currentThreadId
+    ) {
+      const finalTitle = getThreadTitle(activeThreadSnapshot);
+      const startText = "Nouvelle conversation";
 
-  // --- LOGIQUE D'ANIMATION : CHANGEMENT DE THREAD ACTIF ---
-  useEffect(() => {
-    const prevThread = prevCurrentThreadIdRef.current;
+      let current = startText;
+      setAnimatedTitle(current);
+      setIsTitleAnimating(true);
 
-    if (!currentThreadId || currentThreadId === prevThread) {
-      prevCurrentThreadIdRef.current = currentThreadId;
-      return;
-    }
+      let phase: "delete" | "type" = "delete";
+      let idx = current.length;
 
-    prevCurrentThreadIdRef.current = currentThreadId;
-
-    // On n'anime que si on a marqué qu'il fallait le faire
-    if (!shouldAnimateOnNextThreadRef.current) {
-      return;
-    }
-
-    // On consomme le flag (une seule animation)
-    shouldAnimateOnNextThreadRef.current = false;
-
-    const fallbackThread =
-      activeThreadSnapshot && activeThreadSnapshot.id === currentThreadId
-        ? activeThreadSnapshot
-        : displayedThreads.find((t) => t.id === currentThreadId) ?? null;
-
-    const newThreadTitle = fallbackThread
-      ? getThreadTitle(fallbackThread)
-      : "Conversation sans titre";
-
-    // Étape 1 : on part de "Nouvelle conversation"
-    setAnimatedTitle("Nouvelle conversation");
-    setIsAnimatingOut(true);
-
-    let typeOutId: number | null = null;
-    let typeInId: number | null = null;
-
-    let currentTitle = "Nouvelle conversation";
-    let outIndex = currentTitle.length - 1;
-
-    typeOutId = window.setInterval(() => {
-      if (outIndex >= 0) {
-        currentTitle = currentTitle.substring(0, outIndex);
-        setAnimatedTitle(currentTitle);
-        outIndex--;
-      } else {
-        if (typeOutId !== null) {
-          window.clearInterval(typeOutId);
-        }
-        setIsAnimatingOut(false);
-        setIsAnimatingIn(true);
-
-        let inIndex = 0;
-        let newAnimatingTitle = "";
-
-        typeInId = window.setInterval(() => {
-          if (inIndex < newThreadTitle.length) {
-            newAnimatingTitle += newThreadTitle[inIndex];
-            setAnimatedTitle(newAnimatingTitle);
-            inIndex++;
-          } else {
-            if (typeInId !== null) {
-              window.clearInterval(typeInId);
-            }
-            setIsAnimatingIn(false);
-            setAnimatedTitle(null); // On laisse le vrai titre prendre le relais
+      const intervalId = window.setInterval(() => {
+        if (phase === "delete") {
+          idx -= 1;
+          if (idx <= 0) {
+            current = "";
+            setAnimatedTitle(current);
+            phase = "type";
+            idx = 0;
+            return;
           }
-        }, 50);
-      }
-    }, 50);
+          current = startText.slice(0, idx);
+          setAnimatedTitle(current);
+        } else {
+          if (idx >= finalTitle.length) {
+            setAnimatedTitle(finalTitle);
+            setIsTitleAnimating(false);
+            window.clearInterval(intervalId);
+            return;
+          }
+          idx += 1;
+          current = finalTitle.slice(0, idx);
+          setAnimatedTitle(current);
+        }
+      }, 50);
 
-    return () => {
-      if (typeOutId !== null) {
-        window.clearInterval(typeOutId);
-      }
-      if (typeInId !== null) {
-        window.clearInterval(typeInId);
-      }
-    };
-  }, [currentThreadId, activeThreadSnapshot, displayedThreads]);
-
-  // Si une animation est en cours, le titre de la "nouvelle conversation" doit être spécial
-  const newConversationTitle = useMemo(() => {
-    if (isAnimatingOut || isAnimatingIn) {
-      return animatedTitle || "";
+      return () => {
+        window.clearInterval(intervalId);
+      };
     }
-    return "Nouvelle conversation";
-  }, [animatedTitle, isAnimatingOut, isAnimatingIn]);
+  }, [isNewConversationActive, currentThreadId, activeThreadSnapshot]);
 
   if (isCollapsed) {
     return null;
@@ -579,43 +496,28 @@ export function ConversationsSidebarSection({
             Réessayer
           </button>
         </div>
-      ) : displayedThreads.length === 0 &&
-        !isNewConversationActive &&
-        !isAnimatingOut &&
-        !isAnimatingIn ? (
+      ) : displayedThreads.length === 0 && !isNewConversationActive ? (
         <p className="conversations-sidebar-section__empty">{emptyMessage}</p>
       ) : (
         <>
           <ul className="conversations-sidebar-section__list">
-            {/* Entrée "Nouvelle conversation" (incluant le cas animé) */}
-            {(isNewConversationActive || isAnimatingOut || isAnimatingIn) && !searchQuery.trim() && (
+            {/* Entrée "Nouvelle conversation" quand active */}
+            {isNewConversationActive && !searchQuery.trim() && (
               <li className="conversations-sidebar-section__item">
                 <button
                   type="button"
-                  className={`conversations-sidebar-section__thread-button ${
-                    isNewConversationActive || isAnimatingOut || isAnimatingIn
-                      ? "conversations-sidebar-section__thread-button--active"
-                      : ""
-                  }`}
+                  className="conversations-sidebar-section__thread-button conversations-sidebar-section__thread-button--active"
                   aria-current="true"
-                  disabled={isAnimatingOut || isAnimatingIn}
-                  onClick={isNewConversationActive ? onNewConversation : undefined}
                 >
                   <span className="conversations-sidebar-section__thread-title-row">
                     <TruncatedText className="conversations-sidebar-section__thread-title">
-                      {newConversationTitle}
+                      Nouvelle conversation
                     </TruncatedText>
                   </span>
                 </button>
               </li>
             )}
-
             {displayedThreads.map((thread) => {
-              // Pendant l'animation, on masque la ligne du thread qui vient d'être créé
-              if ((isAnimatingOut || isAnimatingIn) && thread.id === currentThreadId) {
-                return null;
-              }
-
               const items = normalizeItems(thread);
               const isActive = thread.id === currentThreadId;
               const isDeleting = deletingThreadId === thread.id;
@@ -624,12 +526,10 @@ export function ConversationsSidebarSection({
               const isMenuOpen = openMenuId === thread.id;
               const menuId = `conversation-menu-${thread.id}`;
 
-              // Titre du thread (pendant l’animation d’entrée, on affiche animatedTitle)
+              // Titre du thread : si animation en cours pour le thread actif, on utilise animatedTitle
               let threadTitle = getThreadTitle(thread);
-              const isCurrentlyAnimating = isActive && isAnimatingIn;
-
-              if (isCurrentlyAnimating) {
-                threadTitle = animatedTitle || "";
+              if (isActive && isTitleAnimating && animatedTitle !== null) {
+                threadTitle = animatedTitle;
               }
 
               // Extract workflow metadata from thread
@@ -663,7 +563,7 @@ export function ConversationsSidebarSection({
                         {threadTitle}
                       </TruncatedText>
                     </span>
-                    {/* Si tu veux réutiliser dateStr un jour, tu peux l’ajouter ici */}
+                    {/* dateStr dispo si tu veux l'afficher plus tard */}
                   </button>
                   <div
                     className="conversations-sidebar-section__actions"
