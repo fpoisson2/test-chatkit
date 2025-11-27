@@ -252,6 +252,112 @@ def _add_workflow_steps_parent_slug_column(connection) -> None:
     )
 
 
+def _workflows_has_owner_id_column(connection) -> bool:
+    """Check if workflows table has owner_id column."""
+    inspector = inspect(connection)
+    if not inspector.has_table("workflows"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("workflows")}
+    return "owner_id" in columns
+
+
+def _add_workflows_owner_id_column(connection) -> None:
+    """Add owner_id column to workflows table."""
+    inspector = inspect(connection)
+
+    if not inspector.has_table("workflows"):
+        logger.warning(
+            "Cannot add owner_id column to workflows because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("workflows")
+    }
+
+    if "owner_id" in existing_columns:
+        return
+
+    # Add owner_id column
+    connection.execute(
+        text("ALTER TABLE workflows ADD COLUMN owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
+    )
+
+    # Add index for faster lookups
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_workflows_owner_id ON workflows(owner_id)")
+    )
+
+
+def _workflow_shares_table_exists(connection) -> bool:
+    """Check if workflow_shares table exists."""
+    inspector = inspect(connection)
+    return inspector.has_table("workflow_shares")
+
+
+def _create_workflow_shares_table(connection) -> None:
+    """Create workflow_shares table for sharing workflows with users."""
+    inspector = inspect(connection)
+
+    if inspector.has_table("workflow_shares"):
+        return
+
+    connection.execute(
+        text("""
+            CREATE TABLE workflow_shares (
+                workflow_id INTEGER NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                permission VARCHAR(16) NOT NULL DEFAULT 'read',
+                shared_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (workflow_id, user_id),
+                CONSTRAINT ck_workflow_shares_permission CHECK (permission IN ('read', 'write'))
+            )
+        """)
+    )
+
+    # Add index for user lookups
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_workflow_shares_user_id ON workflow_shares(user_id)")
+    )
+
+
+def _workflow_shares_has_permission_column(connection) -> bool:
+    """Check if workflow_shares table has permission column."""
+    inspector = inspect(connection)
+    if not inspector.has_table("workflow_shares"):
+        return True  # If table doesn't exist, we'll create it with the column
+    columns = {column["name"] for column in inspector.get_columns("workflow_shares")}
+    return "permission" in columns
+
+
+def _add_workflow_shares_permission_column(connection) -> None:
+    """Add permission column to workflow_shares table."""
+    inspector = inspect(connection)
+
+    if not inspector.has_table("workflow_shares"):
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("workflow_shares")
+    }
+
+    if "permission" in existing_columns:
+        return
+
+    # Add permission column with default 'read'
+    connection.execute(
+        text("ALTER TABLE workflow_shares ADD COLUMN permission VARCHAR(16) NOT NULL DEFAULT 'read'")
+    )
+
+    # Add check constraint
+    connection.execute(
+        text("""
+            ALTER TABLE workflow_shares ADD CONSTRAINT ck_workflow_shares_permission
+            CHECK (permission IN ('read', 'write'))
+        """)
+    )
+
+
 def check_and_apply_migrations():
     """
     Check and apply all pending database migrations on startup.
@@ -313,6 +419,24 @@ def check_and_apply_migrations():
             "description": "Add parent_slug column for explicit parent-child relationships in workflows",
             "check_fn": _workflow_steps_has_parent_slug_column,
             "apply_fn": _add_workflow_steps_parent_slug_column,
+        },
+        {
+            "id": "008_add_workflow_owner_id",
+            "description": "Add owner_id column to workflows for ownership tracking",
+            "check_fn": _workflows_has_owner_id_column,
+            "apply_fn": _add_workflows_owner_id_column,
+        },
+        {
+            "id": "009_create_workflow_shares_table",
+            "description": "Create workflow_shares table for sharing workflows with users",
+            "check_fn": _workflow_shares_table_exists,
+            "apply_fn": _create_workflow_shares_table,
+        },
+        {
+            "id": "010_add_workflow_shares_permission",
+            "description": "Add permission column to workflow_shares for read/write access control",
+            "check_fn": _workflow_shares_has_permission_column,
+            "apply_fn": _add_workflow_shares_permission_column,
         },
     ]
 
