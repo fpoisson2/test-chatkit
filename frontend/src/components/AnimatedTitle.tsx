@@ -13,6 +13,8 @@ export interface AnimatedTitleProps {
   transitionDelay?: number;
   /** Stable identifier to maintain animation state across remounts (e.g., thread.id) */
   stableId?: string;
+  /** When true, disables animation and shows text directly (useful during streaming) */
+  disabled?: boolean;
 }
 
 // Module-level storage to persist display text and previous text across component remounts
@@ -31,6 +33,7 @@ export function AnimatedTitle({
   letterDuration = 30,
   transitionDelay = 50,
   stableId,
+  disabled = false,
 }: AnimatedTitleProps): JSX.Element {
   // Get cached state if available
   const getInitialState = () => {
@@ -80,8 +83,17 @@ export function AnimatedTitle({
       return;
     }
 
-    const oldText = prevTextRef.current;
     const newText = children;
+
+    // If disabled, just update text directly without animation
+    if (disabled) {
+      setDisplayText(newText);
+      setIsAnimating(false);
+      prevTextRef.current = newText;
+      return;
+    }
+
+    const oldText = prevTextRef.current;
 
     // Ensure display shows old text before animation starts
     setDisplayText(oldText);
@@ -171,7 +183,7 @@ export function AnimatedTitle({
         clearTimeout(animationTimeoutRef.current);
       }
     };
-  }, [children, letterDuration, transitionDelay]);
+  }, [children, letterDuration, transitionDelay, disabled]);
 
   return (
     <span
