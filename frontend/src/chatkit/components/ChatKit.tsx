@@ -465,9 +465,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
 
     if (!control.thread) {
-      // If we're loading a thread, don't show "New Conversation" temporarily
-      // Only show it when we're truly starting a new conversation (not loading)
-      if (control.isLoading) {
+      // If we're loading a thread OR transitioning to a new thread, don't show "New Conversation"
+      // isTransitioningToNewThread catches the initial mount before isLoading becomes true
+      // This prevents the "New Conversation" flash when switching workflows
+      if (control.isLoading || isLoadingAnyThread || isTransitioningToNewThread) {
         return '';
       }
       return t('chatkit.thread.newConversation');

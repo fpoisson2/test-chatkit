@@ -47,13 +47,16 @@ export const useWorkflowComposerModels = ({
   useEffect(() => {
     console.log("[useWorkflowComposerModels] params:", { token: !!token, workflowId, activeVersionId });
 
-    // Reset ALL state when params change to avoid stale data during transition
-    setWorkflowDetected(false);
-    setComposerModels(null);
+    // Don't reset state immediately when params change - keep previous values during loading
+    // to avoid form flickering. State will be updated once new data is loaded.
+    // Only reset error to allow retry.
     setError(null);
 
     if (!token || !workflowId || !activeVersionId) {
       console.log("[useWorkflowComposerModels] Missing params, skipping");
+      // Only reset state when we truly have no workflow to load
+      setWorkflowDetected(false);
+      setComposerModels(null);
       setLoading(false);
       return;
     }
