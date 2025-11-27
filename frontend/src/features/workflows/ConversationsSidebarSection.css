@@ -171,12 +171,21 @@
   background: color-mix(in srgb, var(--primary-color) 16%, transparent);
 }
 
+.conversations-sidebar-section__thread-title-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  max-width: 100%;
+  min-width: 0;
+}
+
 .conversations-sidebar-section__thread-title {
   font-size: var(--font-text-sm-size);
   font-weight: var(--font-weight-medium);
   color: var(--color-text);
   line-height: var(--leading-tight);
-  max-width: 100%;
+  flex: 1;
+  min-width: 0;
   /* Text fade gradient effect */
   position: relative;
   display: block;
@@ -197,8 +206,8 @@
 }
 
 .conversations-sidebar-section__thread-spinner {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 2px solid var(--color-border);
   border-top-color: var(--primary-color);
   border-radius: 50%;
@@ -212,11 +221,6 @@
 
 .conversations-sidebar-section__thread-button--loading .conversations-sidebar-section__thread-title {
   opacity: 0.6;
-}
-
-/* Show spinner always when loading (not just on hover like the action button) */
-.conversations-sidebar-section__item:has(.conversations-sidebar-section__thread-button--loading) .conversations-sidebar-section__action-button {
-  display: none;
 }
 
 /* Action menu container - aligned with workflow styling */
