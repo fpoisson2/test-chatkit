@@ -467,23 +467,35 @@ async def outbound_call_events_websocket(websocket: WebSocket):
 
     queue = await events_mgr.register_listener()
 
+    # Event to signal that the connection should close
+    closing = asyncio.Event()
+
     async def send_events():
         """Task to send events from queue to client."""
         try:
-            while True:
+            while not closing.is_set():
                 try:
                     event_json = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    if closing.is_set():
+                        break
                     await websocket.send_text(event_json)
                 except asyncio.TimeoutError:
+                    if closing.is_set():
+                        break
                     # Envoyer un ping pour maintenir la connexion
                     await websocket.send_text(json.dumps({"type": "ping"}))
+        except asyncio.CancelledError:
+            logger.debug("Send events task cancelled")
+            raise
         except Exception as e:
-            logger.error("Error sending events: %s", e)
+            if not closing.is_set():
+                logger.debug("Send events ended: %s", e)
+            closing.set()
 
     async def receive_commands():
         """Task to receive commands from client."""
         try:
-            while True:
+            while not closing.is_set():
                 message = await websocket.receive_text()
                 data = json.loads(message)
 
@@ -494,26 +506,63 @@ async def outbound_call_events_websocket(websocket: WebSocket):
                         call_manager = get_outbound_call_manager()
                         success = await call_manager.hangup_call(call_id)
 
-                        # Send response
-                        await websocket.send_text(json.dumps({
-                            "type": "hangup_response",
-                            "call_id": call_id,
-                            "success": success
-                        }))
+                        if not closing.is_set():
+                            # Send response
+                            await websocket.send_text(json.dumps({
+                                "type": "hangup_response",
+                                "call_id": call_id,
+                                "success": success
+                            }))
                     else:
                         logger.warning("Hangup command missing call_id")
+        except asyncio.CancelledError:
+            logger.debug("Receive commands task cancelled")
+            raise
+        except WebSocketDisconnect:
+            logger.debug("WebSocket disconnected in receive_commands")
+            closing.set()
         except Exception as e:
-            logger.error("Error receiving commands: %s", e)
+            if not closing.is_set():
+                logger.debug("Receive commands ended: %s", e)
+            closing.set()
 
+    send_task = None
+    receive_task = None
     try:
         # Run both tasks concurrently
-        await asyncio.gather(
-            send_events(),
-            receive_commands()
+        send_task = asyncio.create_task(send_events())
+        receive_task = asyncio.create_task(receive_commands())
+
+        # Wait for either task to complete (usually receive_commands on disconnect)
+        done, pending = await asyncio.wait(
+            [send_task, receive_task],
+            return_when=asyncio.FIRST_COMPLETED
         )
+
+        # Signal closing and cancel pending tasks
+        closing.set()
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for outbound call events")
+        closing.set()
     except Exception as e:
         logger.error("Error in outbound call events WebSocket: %s", e, exc_info=True)
+        closing.set()
     finally:
+        # Ensure tasks are cancelled
+        closing.set()
+        for task in [send_task, receive_task]:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         await events_mgr.unregister_listener(queue)
+        logger.debug("WebSocket connection cleaned up for outbound call events")
