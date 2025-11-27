@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode, type MutableRefObject } from "react";
 import type { Thread, ChatKitAPIConfig } from "../../chatkit/types";
-import { listThreads, deleteThread, updateThreadMetadata } from "../../chatkit/api/streaming/api";
+import { listThreads, deleteThread, updateThreadTitle } from "../../chatkit/api/streaming/api";
 import {
   type ActionMenuPlacement,
   computeWorkflowActionMenuPlacement,
@@ -212,22 +212,19 @@ export function ConversationsSidebarSection({
     const trimmedTitle = newTitle.trim();
 
     try {
-      await updateThreadMetadata({
+      await updateThreadTitle({
         url: api.url,
         headers: api.headers,
         threadId,
-        metadata: { title: trimmedTitle },
+        title: trimmedTitle,
       });
 
-      // Update local state
+      // Update local state - update thread.title directly
       const updatedThreads = threads.map((thread) => {
         if (thread.id === threadId) {
           return {
             ...thread,
-            metadata: {
-              ...thread.metadata,
-              title: trimmedTitle,
-            },
+            title: trimmedTitle,
           };
         }
         return thread;

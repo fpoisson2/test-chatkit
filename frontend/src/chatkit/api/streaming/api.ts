@@ -52,6 +52,13 @@ export interface UpdateThreadMetadataOptions {
   metadata: Record<string, unknown>;
 }
 
+export interface UpdateThreadTitleOptions {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+  title: string;
+}
+
 export interface ListThreadsOptions {
   url: string;
   headers?: Record<string, string>;
@@ -245,6 +252,33 @@ export async function updateThreadMetadata(options: UpdateThreadMetadataOptions)
       params: {
         thread_id: threadId,
         metadata,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+}
+
+/**
+ * Met à jour le titre d'un thread
+ */
+export async function updateThreadTitle(options: UpdateThreadTitleOptions): Promise<void> {
+  const { url, headers = {}, threadId, title } = options;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      type: 'threads.update',
+      params: {
+        thread_id: threadId,
+        title,
       },
     }),
   });
