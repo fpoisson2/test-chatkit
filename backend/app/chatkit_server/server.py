@@ -941,7 +941,16 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             run_config = RunConfig(**run_config_kwargs)
 
         try:
-            logger.debug("🔤 Thread %s: Calling Runner.run for title generation", thread.id)
+            # Log system prompt and model for debugging
+            agent_instructions = getattr(self._title_agent, "instructions", None)
+            agent_model = getattr(self._title_agent, "model", None)
+            logger.debug(
+                "🔤 Thread %s: Calling Runner.run for title generation | model=%s | system_prompt=%r | user_input=%r",
+                thread.id,
+                agent_model,
+                agent_instructions,
+                title_input,
+            )
             run = await Runner.run(
                 self._title_agent,
                 input=title_input,
