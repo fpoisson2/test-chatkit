@@ -1,0 +1,122 @@
+/**
+ * Sidebar Search Input Styles
+ */
+
+.sidebar-search-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.sidebar-search-input__icon {
+  position: absolute;
+  left: calc(var(--spacing) * 3);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.sidebar-search-input__icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.sidebar-search-input__field {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+  border-radius: var(--radius-xl);
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  padding-left: calc(var(--spacing) * 9);
+  padding-right: calc(var(--spacing) * 8);
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-emphasis);
+  transition-duration: var(--transition-duration-basic);
+  transition-property: border-color, box-shadow, background-color;
+  transition-timing-function: var(--transition-ease-basic);
+}
+
+.sidebar-search-input__field::placeholder {
+  color: var(--text-muted);
+}
+
+.sidebar-search-input__field:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 20%, transparent);
+}
+
+.sidebar-search-input__field:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Remove default search input styles */
+.sidebar-search-input__field::-webkit-search-decoration,
+.sidebar-search-input__field::-webkit-search-cancel-button,
+.sidebar-search-input__field::-webkit-search-results-button,
+.sidebar-search-input__field::-webkit-search-results-decoration {
+  display: none;
+}
+
+.sidebar-search-input__clear {
+  position: absolute;
+  right: calc(var(--spacing) * 2);
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  padding: calc(var(--spacing) * 1);
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-duration-basic);
+}
+
+.sidebar-search-input__clear:hover,
+.sidebar-search-input__clear:focus-visible {
+  background: var(--alpha-10);
+  color: var(--color-text-emphasis);
+}
+
+.sidebar-search-input__clear svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+/* Dark mode adjustments */
+:root[data-theme="dark"] .sidebar-search-input__field {
+  background: var(--surface-strong);
+  border-color: var(--surface-border);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .sidebar-search-input__field::placeholder {
+  color: var(--text-muted);
+}
+
+/* Mobile overlay variant */
+.chatkit-sidebar__section[data-variant="overlay"] .sidebar-search-input__field {
+  background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
+  border-color: var(--alpha-20);
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .sidebar-search-input__field:focus {
+  background: var(--surface-strong);
+  border-color: var(--primary-color);
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .sidebar-search-input__icon {
+  color: var(--text-muted);
+}
