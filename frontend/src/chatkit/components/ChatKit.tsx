@@ -85,6 +85,13 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [control.thread?.items.length]);
 
+  // Clear the composer when switching threads
+  useEffect(() => {
+    setInputValue('');
+    setAttachments([]);
+    lastUserMessageIdRef.current = null;
+  }, [control.thread?.id]);
+
   // Clear the composer once a new user message is added to the thread
   useEffect(() => {
     const items = (control.thread?.items || []) as ThreadItem[];
@@ -430,8 +437,17 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     outboundCall: options.widgets?.outboundCall,
   }), [control, options.widgets?.voiceSession, options.widgets?.outboundCall]);
 
-  // Afficher le start screen si pas de messages ET qu'on n'est pas en train de charger
-  const showStartScreen = !control.isLoading && (!control.thread || control.thread.items.length === 0);
+  // Afficher le start screen seulement si aucun thread n'est présent (vraie nouvelle conversation)
+  // Ne PAS afficher si :
+  // - On a un thread (même vide)
+  // - On est en train de charger un thread
+  // - On est en transition vers un nouveau thread (initialThread !== current thread)
+  // Cela évite le flash lors du changement de thread dû à la race condition entre setState
+  const isLoadingAnyThread = control.loadingThreadIds.size > 0;
+  const isTransitioningToNewThread =
+    options.initialThread != null &&
+    options.initialThread !== control.thread?.id;
+  const showStartScreen = !isLoadingAnyThread && !control.thread && !isTransitioningToNewThread;
 
   // Vérifier si le thread est fermé ou verrouillé
   const threadStatus = control.thread?.status;
@@ -449,6 +465,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
 
     if (!control.thread) {
+      // If we're loading a thread, don't show "New Conversation" temporarily
+      // Only show it when we're truly starting a new conversation (not loading)
+      if (control.isLoading) {
+        return '';
+      }
       return t('chatkit.thread.newConversation');
     }
 
@@ -605,7 +626,20 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         {(() => {
           const items = control.thread?.items || [];
           const lastItem = items[items.length - 1];
-          const isWaitingForAssistant = control.isLoading && (!lastItem || lastItem.type === 'user_message');
+          // Only show typing indicator if we're STREAMING a response (not just loading a thread)
+          // - Must be loading exactly ONE thread (the current one)
+          // - That thread must have at least one message
+          // - The last message must be from the user
+          // This prevents showing the indicator when finishing loading a thread (race condition)
+          const hasMessages = items.length > 0;
+          const isOnlyLoadingCurrentThread =
+            control.thread &&
+            control.loadingThreadIds.size === 1 &&
+            control.loadingThreadIds.has(control.thread.id);
+          const isWaitingForAssistant =
+            isOnlyLoadingCurrentThread &&
+            hasMessages &&
+            (!lastItem || lastItem.type === 'user_message');
 
           if (!isWaitingForAssistant) {
             return null;
