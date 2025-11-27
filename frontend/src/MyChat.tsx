@@ -5,6 +5,7 @@ import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { LoadingOverlay } from "./components/feedback/LoadingOverlay";
 import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance";
+import { WorkflowSelector } from "./components/my-chat/WorkflowSelector";
 import { ChatWorkflowSidebar, type WorkflowActivation } from "./features/workflows/WorkflowSidebar";
 import type { ThreadWorkflowMetadata } from "./features/workflows/ConversationsSidebarSection";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
@@ -668,6 +669,21 @@ export function MyChat() {
     setChatInstanceKey((value) => value + 1);
   }, [sessionOwner, persistenceSlug]);
 
+  // Handle workflow change from the selector dropdown
+  const handleWorkflowSelectorChange = useCallback((workflowId: number) => {
+    const targetWorkflow = workflows.find((w) => w.id === workflowId);
+    if (targetWorkflow) {
+      // Update provider selection
+      setSelectedWorkflowId(workflowId);
+      // Update local workflow selection state
+      setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+      // Clear current thread and start fresh for the new workflow
+      clearStoredThreadId(sessionOwner, persistenceSlug);
+      setInitialThreadId(null);
+      setChatInstanceKey((value) => value + 1);
+    }
+  }, [workflows, setSelectedWorkflowId, sessionOwner, persistenceSlug]);
+
   const debugSignature = useMemo(() => JSON.stringify(debugSnapshot), [debugSnapshot]);
 
   useEffect(() => {
@@ -1068,8 +1084,17 @@ export function MyChat() {
           onThreadSelect={handleSidebarThreadSelect}
           onThreadDeleted={handleSidebarThreadDeleted}
           onNewConversation={handleNewConversation}
+          hideWorkflows
         />
         <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", position: "relative" }}>
+          {/* Workflow selector at top of chat area */}
+          {mode === "local" && (
+            <WorkflowSelector
+              workflows={workflows}
+              selectedWorkflowId={workflowSelection.kind === "local" ? workflowSelection.workflow?.id ?? null : null}
+              onWorkflowChange={handleWorkflowSelectorChange}
+            />
+          )}
           {Array.from(activeInstances.entries()).map(([instanceId, instance]) => (
             <WorkflowChatInstance
               key={`${instanceId}-${instance.instanceKey}`}

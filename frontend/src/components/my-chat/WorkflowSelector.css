@@ -1,0 +1,55 @@
+.workflow-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--chatkit-bg-secondary, #f5f5f5);
+  border-bottom: 1px solid var(--chatkit-border-color, #e0e0e0);
+}
+
+.workflow-selector__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--chatkit-text-secondary, #666);
+  white-space: nowrap;
+}
+
+.workflow-selector__select {
+  flex: 1;
+  max-width: 300px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--chatkit-border-color, #d0d0d0);
+  border-radius: 6px;
+  background-color: var(--chatkit-bg-primary, #fff);
+  color: var(--chatkit-text-primary, #333);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.workflow-selector__select:hover:not(:disabled) {
+  border-color: var(--chatkit-accent-color, #0066cc);
+}
+
+.workflow-selector__select:focus {
+  outline: none;
+  border-color: var(--chatkit-accent-color, #0066cc);
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+}
+
+.workflow-selector__select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Dark mode support */
+[data-theme="dark"] .workflow-selector {
+  background-color: var(--chatkit-bg-secondary, #2a2a2a);
+  border-bottom-color: var(--chatkit-border-color, #404040);
+}
+
+[data-theme="dark"] .workflow-selector__select {
+  background-color: var(--chatkit-bg-primary, #1a1a1a);
+  border-color: var(--chatkit-border-color, #404040);
+  color: var(--chatkit-text-primary, #e0e0e0);
+}

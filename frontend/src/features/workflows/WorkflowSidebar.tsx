@@ -370,13 +370,15 @@ type ChatWorkflowSidebarProps = {
   /** Currently selected thread ID */
   currentThreadId?: string | null;
   /** Callback when a thread is selected from the conversations list */
-  onThreadSelect?: (threadId: string) => void;
+  onThreadSelect?: (threadId: string, workflowMetadata?: import("./ConversationsSidebarSection").ThreadWorkflowMetadata) => void;
   /** Callback when a thread is deleted */
   onThreadDeleted?: (threadId: string) => void;
   /** Callback to create a new conversation */
   onNewConversation?: () => void;
   /** Maximum number of workflows to show before "show more" (default: 5) */
   maxRecentWorkflows?: number;
+  /** Hide workflows section (only show conversations) */
+  hideWorkflows?: boolean;
 };
 
 export const ChatWorkflowSidebar = ({
@@ -389,6 +391,7 @@ export const ChatWorkflowSidebar = ({
   onThreadDeleted,
   onNewConversation,
   maxRecentWorkflows = 5,
+  hideWorkflows = false,
 }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -1380,34 +1383,38 @@ export const ChatWorkflowSidebar = ({
 
     return (
       <div className="chatkit-sidebar__content-wrapper">
-        {/* Search input */}
-        <div className="chatkit-sidebar__search-wrapper">
-          <SidebarSearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder={t("sidebar.searchPlaceholder")}
-            ariaLabel={t("sidebar.searchAriaLabel")}
-          />
-        </div>
+        {/* Search input - only show if workflows are visible */}
+        {!hideWorkflows && (
+          <div className="chatkit-sidebar__search-wrapper">
+            <SidebarSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={t("sidebar.searchPlaceholder")}
+              ariaLabel={t("sidebar.searchAriaLabel")}
+            />
+          </div>
+        )}
 
-        {/* Workflows section */}
-        <WorkflowSidebarSection
-          sectionId={sectionId}
-          title={t("workflows.defaultSectionTitle")}
-          entries={sidebarEntries}
-          pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
-          defaultSectionTitle={t("workflows.recentSectionTitle")}
-          floatingAction={
-            isAdmin
-              ? {
-                label: t("workflowBuilder.createWorkflow.openModal"),
-                onClick: handleOpenBuilder,
-              }
-              : undefined
-          }
-          footerContent={workflowsFooter}
-          variant={sectionVariant}
-        />
+        {/* Workflows section - hidden when hideWorkflows is true */}
+        {!hideWorkflows && (
+          <WorkflowSidebarSection
+            sectionId={sectionId}
+            title={t("workflows.defaultSectionTitle")}
+            entries={sidebarEntries}
+            pinnedSectionTitle={t("workflows.pinnedSectionTitle")}
+            defaultSectionTitle={t("workflows.recentSectionTitle")}
+            floatingAction={
+              isAdmin
+                ? {
+                  label: t("workflowBuilder.createWorkflow.openModal"),
+                  onClick: handleOpenBuilder,
+                }
+                : undefined
+            }
+            footerContent={workflowsFooter}
+            variant={sectionVariant}
+          />
+        )}
 
         {/* Conversations section */}
         {api && onThreadSelect && (
@@ -1417,7 +1424,7 @@ export const ChatWorkflowSidebar = ({
             onThreadSelect={onThreadSelect}
             onThreadDeleted={onThreadDeleted}
             onNewConversation={onNewConversation}
-            searchQuery={searchQuery}
+            searchQuery={hideWorkflows ? "" : searchQuery}
             maxVisible={10}
             title={t("sidebar.conversationsTitle")}
             emptyMessage={t("sidebar.conversationsEmpty")}
@@ -1432,6 +1439,7 @@ export const ChatWorkflowSidebar = ({
     error,
     handleOpenBuilder,
     hasHiddenWorkflows,
+    hideWorkflows,
     hostedWorkflows,
     isAdmin,
     isMobileLayout,
@@ -1454,6 +1462,11 @@ export const ChatWorkflowSidebar = ({
       return null;
     }
 
+    // Don't show compact workflow view when workflows are hidden
+    if (hideWorkflows) {
+      return null;
+    }
+
     return (
       <WorkflowSidebarCompact
         entries={sidebarEntries}
@@ -1462,7 +1475,7 @@ export const ChatWorkflowSidebar = ({
         isSidebarCollapsed={isSidebarCollapsed}
       />
     );
-  }, [error, isSidebarCollapsed, loading, sidebarEntries, t, user]);
+  }, [error, hideWorkflows, isSidebarCollapsed, loading, sidebarEntries, t, user]);
 
   useEffect(() => {
     // Don't render sidebar content for LTI users - they have a global loading overlay instead
