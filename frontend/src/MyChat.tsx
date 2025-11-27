@@ -1012,15 +1012,23 @@ export function MyChat() {
     setActiveInstances((prev) => {
       const existing = prev.get(currentWorkflowId);
 
-      // If instance already exists, don't modify it - preserve its state completely
+      // If instance already exists, update its instanceKey to force re-render when chatInstanceKey changes
       if (existing) {
-        return prev;
+        // Only update if chatInstanceKey has changed (indicates conversation switch)
+        if (existing.instanceKey === chatInstanceKey) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.set(currentWorkflowId, {
+          ...existing,
+          instanceKey: chatInstanceKey,
+        });
+        return next;
       }
 
       const next = new Map(prev);
 
       // Create new instance only if it doesn't exist
-      instanceKeyCounterRef.current += 1;
       next.set(currentWorkflowId, {
         workflowId: currentWorkflowId,
         mode,
@@ -1028,7 +1036,7 @@ export function MyChat() {
         initialThreadId,
         chatkitOptions,
         createdAt: Date.now(),
-        instanceKey: instanceKeyCounterRef.current,
+        instanceKey: chatInstanceKey,
       });
 
       // Limit cache size - remove oldest instances
@@ -1047,7 +1055,7 @@ export function MyChat() {
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentWorkflowId]);
+  }, [currentWorkflowId, chatInstanceKey]);
 
   const handleRequestRefreshReady = useCallback((requestRefresh: () => Promise<void>) => {
     requestRefreshRef.current = requestRefresh;
