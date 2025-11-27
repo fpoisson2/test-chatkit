@@ -487,6 +487,24 @@ function handleContentPartDone(
 }
 
 /**
+ * Applique un événement assistant_message.usage
+ */
+function handleUsageMetadata(
+  thread: Thread,
+  itemId: string,
+  usage: { input_tokens: number; output_tokens: number; cost: number; model?: string }
+): Thread {
+  const items = thread.items.map((item) => {
+    if (item.id === itemId && item.type === 'assistant_message') {
+      return { ...item, usage_metadata: usage };
+    }
+    return item;
+  });
+
+  return { ...thread, items };
+}
+
+/**
  * Applique un événement delta à un thread
  */
 export function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
@@ -571,6 +589,9 @@ export function applyDelta(thread: Thread, event: ThreadStreamEvent): Thread {
 
     case 'assistant_message.content_part.done':
       return handleContentPartDone(thread, event.item_id, event.content_index, event.content);
+
+    case 'assistant_message.usage':
+      return handleUsageMetadata(thread, event.item_id, event.usage);
 
     default:
       // Events like progress_update and notice don't modify the thread

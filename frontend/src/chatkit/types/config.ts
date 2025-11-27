@@ -134,6 +134,8 @@ export interface ChatKitOptions {
   onThreadLoadStart?: (event: { threadId: string }) => void;
   onThreadLoadEnd?: (event: { threadId: string }) => void;
   onLog?: (entry: { name: string; data?: Record<string, unknown> }) => void;
+  /** Show usage metadata (cost, tokens) for admin users */
+  isAdmin?: boolean;
 }
 
 // ===== Control ChatKit =====

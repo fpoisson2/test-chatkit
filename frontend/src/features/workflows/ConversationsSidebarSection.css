@@ -10,56 +10,7 @@
   padding: 0;
 }
 
-.conversations-sidebar-section__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: calc(var(--spacing) * 3);
-  width: 100%;
-}
-
-.conversations-sidebar-section__title {
-  margin: 0;
-  font-size: var(--font-text-sm-size);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  flex: 1;
-  min-width: 0;
-}
-
-.conversations-sidebar-section__floating-action {
-  display: flex;
-  align-items: center;
-  height: 2rem;
-  margin-left: auto;
-}
-
-.conversations-sidebar-section__new-button {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  padding: calc(var(--spacing) * 1.5);
-  border-radius: var(--radius-md);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all var(--transition-duration-basic);
-}
-
-.conversations-sidebar-section__new-button:hover,
-.conversations-sidebar-section__new-button:focus-visible {
-  background: var(--alpha-08);
-  color: var(--color-text-emphasis);
-}
-
-.conversations-sidebar-section__new-button svg {
-  display: block;
-  width: 16px;
-  height: 16px;
-}
+/* Header styles now use chatkit-sidebar__section-* classes from sidebar.css for consistency */
 
 .conversations-sidebar-section__loading {
   display: flex;
@@ -171,17 +122,31 @@
   background: color-mix(in srgb, var(--primary-color) 16%, transparent);
 }
 
+.conversations-sidebar-section__thread-title-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  max-width: 100%;
+  min-width: 0;
+}
+
 .conversations-sidebar-section__thread-title {
   font-size: var(--font-text-sm-size);
   font-weight: var(--font-weight-medium);
   color: var(--color-text);
   line-height: var(--leading-tight);
-  max-width: 100%;
+  flex: 1;
+  min-width: 0;
   /* Text fade gradient effect */
+  max-width: 100%;
   position: relative;
   display: block;
   white-space: nowrap;
   overflow: hidden;
+}
+
+/* Text fade gradient effect - only applied when text overflows */
+.conversations-sidebar-section__thread-title--truncated {
   mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent 100%);
   -webkit-mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent 100%);
 }
@@ -194,6 +159,24 @@
 .conversations-sidebar-section__thread-date {
   font-size: var(--font-text-xs-size);
   color: var(--text-muted);
+}
+
+.conversations-sidebar-section__thread-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: conversations-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.conversations-sidebar-section__thread-button--loading {
+  pointer-events: none;
+}
+
+.conversations-sidebar-section__thread-button--loading .conversations-sidebar-section__thread-title {
+  opacity: 0.6;
 }
 
 /* Action menu container - aligned with workflow styling */

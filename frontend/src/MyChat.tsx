@@ -243,6 +243,7 @@ export function MyChat() {
 
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
+  const [sidebarLoadingThreadIds, setSidebarLoadingThreadIds] = useState<Set<string>>(new Set());
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
@@ -661,8 +662,13 @@ export function MyChat() {
       }
     }
 
+
     // Persist the selected thread with the correct slug and reload the chat
     persistStoredThreadId(sessionOwner, threadId, targetSlug);
+
+    // Mark this thread as loading in the sidebar
+    setSidebarLoadingThreadIds(prev => new Set(prev).add(threadId));
+
     setInitialThreadId(threadId);
     setChatInstanceKey((value) => value + 1);
   }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin]);
@@ -940,6 +946,12 @@ export function MyChat() {
         },
         onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load end", { threadId });
+          // Remove from sidebar loading state
+          setSidebarLoadingThreadIds(prev => {
+            const next = new Set(prev);
+            next.delete(threadId);
+            return next;
+          });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
           if (entry?.data && typeof entry.data === "object") {
@@ -953,6 +965,8 @@ export function MyChat() {
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
+        // Show usage metadata (cost, tokens) for admin users
+        isAdmin: user?.is_admin,
       } satisfies ChatKitOptions;
     },
     [
@@ -993,6 +1007,7 @@ export function MyChat() {
       outboundCallError,
       hangupOutboundCall,
       user?.email,
+      user?.is_admin,
       isSidebarOpen,
       workflows,
       workflowSelection,
@@ -1128,6 +1143,7 @@ export function MyChat() {
           onWorkflowActivated={handleWorkflowActivated}
           api={sidebarApiConfig}
           currentThreadId={(currentThread?.id as string | undefined) ?? initialThreadId ?? null}
+          loadingThreadIds={sidebarLoadingThreadIds}
           onThreadSelect={handleSidebarThreadSelect}
           onThreadDeleted={handleSidebarThreadDeleted}
           onNewConversation={handleNewConversation}

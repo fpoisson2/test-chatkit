@@ -17,7 +17,6 @@ export interface HeaderProps {
   showNewThreadButton?: boolean;
   showHistoryButton?: boolean;
   onNewThread: () => void;
-  onToggleHistory: () => void;
 }
 
 /**
@@ -29,7 +28,6 @@ export function Header({
   showNewThreadButton = true,
   showHistoryButton = true,
   onNewThread,
-  onToggleHistory,
 }: HeaderProps): JSX.Element | null {
   // Don't render if header is disabled
   if (config === false || config?.enabled === false) {
@@ -74,7 +72,7 @@ export function Header({
         {showHistoryButton && (
           <button
             className="chatkit-header-action"
-            onClick={onToggleHistory}
+            disabled
             aria-label="Historique"
             title="Historique des conversations"
           >
