@@ -1023,6 +1023,31 @@
   opacity: 0.6;
 }
 
+/* Hide action button by default, show on hover/focus */
+.chatkit-sidebar__workflow-action-button {
+  opacity: 0;
+  pointer-events: none;
+  transition-property: background-color, color, opacity, transform;
+  transition-duration: var(--transition-duration-basic);
+  transition-timing-function: var(--transition-ease-basic);
+}
+
+.chatkit-sidebar__workflow-list-item:hover .chatkit-sidebar__workflow-action-button,
+.chatkit-sidebar__workflow-list-item:focus-within .chatkit-sidebar__workflow-action-button,
+.chatkit-sidebar__workflow-action-button:focus-visible,
+.chatkit-sidebar__workflow-action-button[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* On mobile, always show action buttons */
+@media (max-width: 768px) {
+  .chatkit-sidebar__workflow-action-button {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button {
   color: var(--color-text);
 }
