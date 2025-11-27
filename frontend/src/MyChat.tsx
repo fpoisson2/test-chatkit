@@ -243,6 +243,7 @@ export function MyChat() {
 
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
+  const [sidebarLoadingThreadIds, setSidebarLoadingThreadIds] = useState<Set<string>>(new Set());
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
@@ -646,6 +647,9 @@ export function MyChat() {
       }
     }
 
+    // Mark this thread as loading in the sidebar
+    setSidebarLoadingThreadIds(prev => new Set(prev).add(threadId));
+
     // Persist the selected thread and reload the chat
     persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
     setInitialThreadId(threadId);
@@ -914,6 +918,12 @@ export function MyChat() {
         },
         onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load end", { threadId });
+          // Remove from sidebar loading state
+          setSidebarLoadingThreadIds(prev => {
+            const next = new Set(prev);
+            next.delete(threadId);
+            return next;
+          });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
           if (entry?.data && typeof entry.data === "object") {
@@ -1094,6 +1104,7 @@ export function MyChat() {
           onWorkflowActivated={handleWorkflowActivated}
           api={sidebarApiConfig}
           currentThreadId={(currentThread?.id as string | undefined) ?? initialThreadId ?? null}
+          loadingThreadIds={sidebarLoadingThreadIds}
           onThreadSelect={handleSidebarThreadSelect}
           onThreadDeleted={handleSidebarThreadDeleted}
           onNewConversation={handleNewConversation}

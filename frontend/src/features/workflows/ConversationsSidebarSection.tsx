@@ -21,6 +21,7 @@ export interface ThreadWorkflowMetadata {
 export interface ConversationsSidebarSectionProps {
   api: ChatKitAPIConfig | null;
   currentThreadId: string | null;
+  loadingThreadIds?: Set<string>;
   onThreadSelect: (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => void;
   onThreadDeleted?: (threadId: string) => void;
   onNewConversation?: () => void;
@@ -79,6 +80,7 @@ const formatRelativeDate = (dateString: string): string => {
 export function ConversationsSidebarSection({
   api,
   currentThreadId,
+  loadingThreadIds,
   onThreadSelect,
   onThreadDeleted,
   onNewConversation,
@@ -324,6 +326,7 @@ export function ConversationsSidebarSection({
               const items = normalizeItems(thread);
               const isActive = thread.id === currentThreadId;
               const isDeleting = deletingThreadId === thread.id;
+              const isThreadLoading = loadingThreadIds?.has(thread.id) ?? false;
               const threadTitle = getThreadTitle(thread);
               const dateStr = items.length > 0 ? formatRelativeDate(items[0].created_at) : "";
               const isMenuOpen = openMenuId === thread.id;
@@ -340,15 +343,20 @@ export function ConversationsSidebarSection({
                 >
                   <button
                     type="button"
-                    className={`conversations-sidebar-section__thread-button${isActive ? " conversations-sidebar-section__thread-button--active" : ""}`}
+                    className={`conversations-sidebar-section__thread-button${isActive ? " conversations-sidebar-section__thread-button--active" : ""}${isThreadLoading ? " conversations-sidebar-section__thread-button--loading" : ""}`}
                     onClick={() => onThreadSelect(thread.id, workflowMetadata)}
                     disabled={isDeleting}
                     aria-current={isActive ? "true" : undefined}
                   >
                     <span className="conversations-sidebar-section__thread-title">{threadTitle}</span>
-                    {dateStr && (
-                      <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
-                    )}
+                    <span className="conversations-sidebar-section__thread-meta">
+                      {isThreadLoading && (
+                        <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
+                      )}
+                      {dateStr && (
+                        <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
+                      )}
+                    </span>
                   </button>
                   <div className="conversations-sidebar-section__actions" data-conversation-menu-container="">
                     <button
