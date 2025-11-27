@@ -1008,8 +1008,8 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
       const canDelete = !loading && canManage;
       const canExport = workflow.active_version_id !== null;
-      // Only owner can share (admins cannot share workflows they don't own)
-      const canShare = isOwner;
+      // Owner can share, or admin can share system workflows (no owner)
+      const canShare = isOwner || (isAdmin && workflow.owner_id === null);
 
       const items: WorkflowActionMenuItem[] = [
         {
