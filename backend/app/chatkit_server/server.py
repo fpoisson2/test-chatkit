@@ -558,6 +558,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         input_user_message: UserMessageItem | None,
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        logger.debug(
+            "🔄 respond() called for thread %s, has_user_message: %s",
+            thread.id,
+            input_user_message is not None,
+        )
         # Validate thread status - block messages if conversation is closed or locked
         if isinstance(thread.status, (ClosedStatus, LockedStatus)):
             status_type = getattr(thread.status, "type", "unknown")
@@ -581,6 +586,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             return
 
         thread_item_converter = self._thread_item_converter.for_context(context)
+
+        # Start title generation in background, but keep a reference to ensure it runs
+        title_task: asyncio.Task[None] | None = None
         if input_user_message is not None:
             title_task = asyncio.create_task(
                 self._maybe_update_thread_title(
@@ -838,7 +846,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         *,
         converter: ThreadItemConverter | None = None,
     ) -> None:
+        logger.debug(
+            "🔤 _maybe_update_thread_title called for thread %s, current title: %r",
+            thread.id,
+            thread.title,
+        )
         if thread.title:
+            logger.debug("🔤 Thread %s already has a title, skipping generation", thread.id)
             return
 
         try:
@@ -856,12 +870,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             return
 
         if not agent_input:
+            logger.debug("🔤 Thread %s: agent_input is empty, skipping title generation", thread.id)
             return
 
         # For title generation, convert to a plain string because:
         # 1. Some LLMs (like Groq) don't support input_file/input_image
         # 2. The agents SDK's LiteLLM converter doesn't handle ResponseInputTextParam
         title_input = self._simplify_input_for_title(agent_input, input_item)
+        logger.debug("🔤 Thread %s: Starting title generation with input: %r", thread.id, title_input)
 
         metadata = {"__trace_source__": "thread-title", "thread_id": thread.id}
         try:
@@ -883,6 +899,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             run_config = RunConfig(**run_config_kwargs)
 
         try:
+            logger.debug("🔤 Thread %s: Calling Runner.run for title generation", thread.id)
             run = await Runner.run(
                 self._title_agent,
                 input=title_input,
@@ -900,7 +917,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         raw_title = getattr(run, "final_output", "")
         if isinstance(raw_title, str):
-            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip("\"'`”’“«»")
+            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip("\"'`"'"«»")
         else:
             try:
                 normalized_title = str(raw_title).strip()
@@ -914,10 +931,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             normalized_title = normalized_title[:117].rstrip() + "..."
 
         thread.title = normalized_title
+        logger.info("🔤 Thread %s: Generated title: %r", thread.id, normalized_title)
 
         # Persist the thread title to the store
         try:
             await self.store.save_thread(thread, context=context)
+            logger.info("🔤 Thread %s: Title saved to store successfully", thread.id)
         except Exception as exc:  # pragma: no cover - persistence best effort
             logger.warning(
                 "Échec de la sauvegarde du titre pour le fil %s",
@@ -1495,6 +1514,18 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             f"🎯 DÉBUT WORKFLOW: thread_id={thread.id}, task_id={id(current_task) if current_task else 'N/A'}"
         )
         set_current_thread_id(thread.id)
+
+        # Generate thread title if needed (for new threads in workflows)
+        if input_user_message is not None:
+            title_task = asyncio.create_task(
+                self._maybe_update_thread_title(
+                    thread,
+                    input_user_message,
+                    agent_context.request_context,
+                    converter=thread_item_converter,
+                )
+            )
+            title_task.add_done_callback(_log_async_exception)
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
