@@ -43,6 +43,7 @@ import WorkflowSidebarSection, {
 import type { WorkflowSidebarListItemMenuProps } from "./WorkflowSidebarListItem";
 import { SidebarSearchInput } from "./SidebarSearchInput";
 import { ConversationsSidebarSection } from "./ConversationsSidebarSection";
+import { TruncatedText } from "../../components/TruncatedText";
 import {
   getWorkflowInitials,
   isWorkflowPinned,
@@ -233,7 +234,7 @@ export const useWorkflowSidebarEntries = (
                 tabIndex={!callbacks.onHostedClick ? -1 : undefined}
                 title={hosted.description ?? t("workflows.hostedBadge")}
               >
-                <span className="chatkit-sidebar__workflow-label">{hosted.label}</span>
+                <TruncatedText className="chatkit-sidebar__workflow-label">{hosted.label}</TruncatedText>
                 <span className="chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--hosted">
                   {t("workflows.hostedBadge")}
                 </span>
@@ -307,7 +308,7 @@ export const useWorkflowSidebarEntries = (
               aria-current={isActive ? "true" : undefined}
               title={workflow.description ?? undefined}
             >
-              <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
+              <TruncatedText className="chatkit-sidebar__workflow-label">{workflow.display_name}</TruncatedText>
             </button>
           ),
           compact: {
