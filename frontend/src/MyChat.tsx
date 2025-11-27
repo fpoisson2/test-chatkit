@@ -340,6 +340,8 @@ export function MyChat() {
       }
 
       lastThreadSnapshotRef.current = null;
+      setCurrentThread(null);
+      setStreamingThreadIds(new Set());
 
       const nextInitialThreadId = preserveStoredThread
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
@@ -683,6 +685,9 @@ export function MyChat() {
   const handleNewConversation = useCallback(() => {
     // Clear stored thread to start a new conversation
     clearStoredThreadId(sessionOwner, persistenceSlug);
+    lastThreadSnapshotRef.current = null;
+    setCurrentThread(null);
+    setStreamingThreadIds(new Set());
     setInitialThreadId(null);
     setChatInstanceKey((value) => value + 1);
   }, [sessionOwner, persistenceSlug]);
