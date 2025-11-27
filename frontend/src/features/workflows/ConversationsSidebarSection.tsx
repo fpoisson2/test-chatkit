@@ -10,6 +10,7 @@ import {
   getActionMenuStyle,
   getActionMenuItemStyle,
 } from "./WorkflowActionMenu";
+import { TruncatedText } from "../../components/TruncatedText";
 import "./ConversationsSidebarSection.css";
 
 export interface ThreadWorkflowMetadata {
@@ -345,7 +346,7 @@ export function ConversationsSidebarSection({
                     disabled={isDeleting}
                     aria-current={isActive ? "true" : undefined}
                   >
-                    <span className="conversations-sidebar-section__thread-title">{threadTitle}</span>
+                    <TruncatedText className="conversations-sidebar-section__thread-title">{threadTitle}</TruncatedText>
                     {dateStr && (
                       <span className="conversations-sidebar-section__thread-date">{dateStr}</span>
                     )}

@@ -128,11 +128,14 @@
   color: var(--color-text);
   line-height: var(--leading-tight);
   max-width: 100%;
-  /* Text fade gradient effect */
   position: relative;
   display: block;
   white-space: nowrap;
   overflow: hidden;
+}
+
+/* Text fade gradient effect - only applied when text overflows */
+.conversations-sidebar-section__thread-title--truncated {
   mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent 100%);
   -webkit-mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent 100%);
 }
