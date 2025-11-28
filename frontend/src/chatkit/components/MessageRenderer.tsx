@@ -187,7 +187,14 @@ function AssistantMessageContent({
   const handleExportDocx = async () => {
     setExportingFormat('docx');
     try {
-      await exportToDocx(getTextContent());
+      const content = getTextContent();
+      if (!content || content.trim().length === 0) {
+        console.warn('No text content to export');
+        return;
+      }
+      await exportToDocx(content);
+    } catch (error) {
+      console.error('Failed to export to DOCX:', error);
     } finally {
       setExportingFormat(null);
     }

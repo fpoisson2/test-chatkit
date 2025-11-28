@@ -2,38 +2,49 @@
  * Utility functions for exporting assistant messages to PDF and DOCX
  */
 import { saveAs } from 'file-saver';
-import { convertMarkdownToDocx } from '@mohtasham/md-to-docx';
+import { convertMarkdownToDocx, downloadDocx } from '@mohtasham/md-to-docx';
 
 /**
  * Export markdown content to DOCX format using md-to-docx library
  * This provides much better formatting than manual parsing
  */
 export async function exportToDocx(markdownContent: string, filename?: string): Promise<void> {
-  const blob = await convertMarkdownToDocx(markdownContent, {
-    documentType: 'document',
-    style: {
-      // Font sizes (in half-points, so 24 = 12pt)
-      heading1Size: 32,
-      heading2Size: 28,
-      heading3Size: 24,
-      heading4Size: 22,
-      heading5Size: 20,
-      paragraphSize: 24,
-      listItemSize: 24,
-      codeBlockSize: 20,
-      blockquoteSize: 24,
-      // Spacing (in twips: 240 = single line, 276 = 1.15x, 360 = 1.5x, 480 = double)
-      headingSpacing: 240,
-      paragraphSpacing: 200,
-      lineSpacing: 276,
-      // Alignment
-      paragraphAlignment: 'LEFT',
-      blockquoteAlignment: 'LEFT',
-    },
-  });
+  try {
+    const blob = await convertMarkdownToDocx(markdownContent, {
+      documentType: 'document',
+      style: {
+        // Font sizes (in half-points, so 24 = 12pt)
+        heading1Size: 32,
+        heading2Size: 28,
+        heading3Size: 24,
+        heading4Size: 22,
+        heading5Size: 20,
+        paragraphSize: 24,
+        listItemSize: 24,
+        codeBlockSize: 20,
+        blockquoteSize: 24,
+        // Spacing (in twips: 240 = single line, 276 = 1.15x, 360 = 1.5x, 480 = double)
+        headingSpacing: 240,
+        paragraphSpacing: 200,
+        lineSpacing: 276,
+        // Alignment
+        paragraphAlignment: 'LEFT',
+        blockquoteAlignment: 'LEFT',
+      },
+    });
 
-  const name = filename || `message-${Date.now()}`;
-  saveAs(blob, `${name}.docx`);
+    if (!blob) {
+      throw new Error('convertMarkdownToDocx returned no blob');
+    }
+
+    const name = filename || `message-${Date.now()}`;
+
+    // Use the library's built-in download function for better compatibility
+    downloadDocx(blob, `${name}.docx`);
+  } catch (error) {
+    console.error('exportToDocx error:', error);
+    throw error;
+  }
 }
 
 /**
