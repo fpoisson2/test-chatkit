@@ -17,12 +17,31 @@ from sqlalchemy.orm import Session
 from ..database import get_session
 from ..dependencies import get_current_user, require_admin
 from ..models import OutboundCall, SipAccount, User, WorkflowDefinition
+from ..security import decode_access_token
 from ..telephony.audio_stream_manager import get_audio_stream_manager
 from ..telephony.outbound_call_manager import get_outbound_call_manager
 
 logger = logging.getLogger("chatkit.routes.outbound")
 
 router = APIRouter()
+
+
+async def _authenticate_websocket(websocket: WebSocket) -> dict | None:
+    """Authenticate WebSocket connection using JWT token from query params.
+
+    Returns the decoded token payload if valid, None otherwise.
+    """
+    token = websocket.query_params.get("token")
+    if not token:
+        logger.warning("WebSocket connection rejected: missing token")
+        return None
+
+    try:
+        payload = decode_access_token(token)
+        return payload
+    except Exception as e:
+        logger.warning(f"WebSocket connection rejected: invalid token - {e}")
+        return None
 
 
 class InitiateCallRequest(BaseModel):
@@ -363,6 +382,8 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
     """
     Stream audio en temps réel d'un appel sortant via WebSocket.
 
+    Requires authentication via ?token=JWT query parameter.
+
     Le client reçoit :
     - Des messages texte JSON pour les notifications ("connected", "end",
       "ping", "error")
@@ -372,6 +393,12 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
         websocket: Connexion WebSocket
         call_id: ID de l'appel
     """
+    # Authenticate before accepting connection
+    auth_payload = await _authenticate_websocket(websocket)
+    if not auth_payload:
+        await websocket.close(code=4001, reason="Authentication required")
+        return
+
     await websocket.accept()
     audio_stream_mgr = get_audio_stream_manager()
     queue = None
@@ -457,7 +484,21 @@ async def stream_call_audio(websocket: WebSocket, call_id: str):
 
 @router.websocket("/api/outbound/events")
 async def outbound_call_events_websocket(websocket: WebSocket):
-    """WebSocket pour les événements et commandes d'appels sortants."""
+    """WebSocket pour les événements et commandes d'appels sortants.
+
+    Requires admin authentication via ?token=JWT query parameter.
+    """
+    # Authenticate before accepting connection
+    auth_payload = await _authenticate_websocket(websocket)
+    if not auth_payload:
+        await websocket.close(code=4001, reason="Authentication required")
+        return
+
+    # Check admin privileges
+    if not auth_payload.get("is_admin"):
+        await websocket.close(code=4003, reason="Admin privileges required")
+        return
+
     from ..telephony.outbound_events_manager import get_outbound_events_manager
 
     events_mgr = get_outbound_events_manager()

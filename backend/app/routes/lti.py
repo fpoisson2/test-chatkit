@@ -12,6 +12,7 @@ from ..database import get_session
 from ..dependencies import get_current_user
 from ..lti.service import LTIService
 from ..models import User
+from ..rate_limit import limiter, get_rate_limit
 
 router = APIRouter()
 
@@ -54,6 +55,7 @@ async def get_jwks(session: Session = Depends(get_session)) -> dict[str, Any]:
 
 
 @router.post("/api/lti/login")
+@limiter.limit(get_rate_limit("lti_login"))
 async def lti_login(
     request: Request, service: LTIService = Depends(_get_service)
 ):
@@ -62,6 +64,7 @@ async def lti_login(
 
 
 @router.post("/api/lti/launch")
+@limiter.limit(get_rate_limit("lti_launch"))
 async def lti_launch(
     request: Request, service: LTIService = Depends(_get_service)
 ):
