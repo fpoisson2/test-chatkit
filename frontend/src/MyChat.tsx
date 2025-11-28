@@ -248,8 +248,6 @@ export function MyChat() {
   const [isNewConversationStreaming, setIsNewConversationStreaming] = useState(false);
   // Ref to track if we started streaming on a new conversation (for use in onThreadChange closure)
   const wasNewConversationStreamingRef = useRef(false);
-  // Ref to track the current streaming thread ID (to avoid closure issues in onResponseEnd)
-  const currentStreamingThreadIdRef = useRef<string | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
@@ -359,7 +357,6 @@ export function MyChat() {
       setStreamingThreadIds(new Set());
       setIsNewConversationStreaming(false);
       wasNewConversationStreamingRef.current = false;
-      currentStreamingThreadIdRef.current = null;
 
       const nextInitialThreadId = preserveStoredThread
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
@@ -728,7 +725,6 @@ export function MyChat() {
     setStreamingThreadIds(new Set());
     setIsNewConversationStreaming(false);
     wasNewConversationStreamingRef.current = false;
-    currentStreamingThreadIdRef.current = null;
     setInitialThreadId(null);
     setChatInstanceKey((value) => value + 1);
     // Mark that we're in a new conversation draft state
@@ -970,42 +966,35 @@ export function MyChat() {
           console.groupEnd();
           reportError(error.message, error);
         },
-        onResponseStart: () => {
+        onResponseStart: ({ threadId }: { threadId: string | null }) => {
           resetError();
           // Add current thread to streaming state during response
-          // Use initialThreadId as the source of truth - if null, we're on a new conversation
-          if (initialThreadId === null) {
+          // If threadId is null, we're starting a new conversation
+          if (threadId === null) {
             // New conversation - use special streaming state
             setIsNewConversationStreaming(true);
             wasNewConversationStreamingRef.current = true;
-            currentStreamingThreadIdRef.current = null; // Will be set in onThreadChange
           } else {
             wasNewConversationStreamingRef.current = false;
-            const activeThreadId = (currentThread?.id as string | undefined) ?? initialThreadId;
-            currentStreamingThreadIdRef.current = activeThreadId ?? null;
-            if (activeThreadId) {
-              setStreamingThreadIds(prev => new Set(prev).add(activeThreadId));
-            }
+            setStreamingThreadIds(prev => new Set(prev).add(threadId));
           }
         },
-        onResponseEnd: () => {
-          console.debug("[ChatKit] response end");
+        onResponseEnd: ({ finalThreadId }: { threadId: string | null; finalThreadId: string | null }) => {
+          console.debug("[ChatKit] response end", { finalThreadId });
           requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
           // Remove current thread from streaming state after response
           // Always clear isNewConversationStreaming (it's a no-op if already false)
           // This handles the case where thread was created during streaming
           setIsNewConversationStreaming(false);
           wasNewConversationStreamingRef.current = false;
-          // Use ref to get the actual streaming thread ID (avoids stale closure issue)
-          const activeThreadId = currentStreamingThreadIdRef.current;
-          if (activeThreadId) {
+          // Use finalThreadId passed from the streaming hook to correctly identify which thread to remove
+          if (finalThreadId) {
             setStreamingThreadIds(prev => {
               const next = new Set(prev);
-              next.delete(activeThreadId);
+              next.delete(finalThreadId);
               return next;
             });
           }
-          currentStreamingThreadIdRef.current = null;
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
@@ -1023,8 +1012,6 @@ export function MyChat() {
             if (wasNewConversationStreamingRef.current) {
               setStreamingThreadIds(prev => new Set(prev).add(threadId));
               setIsNewConversationStreaming(false);
-              // Track the new thread ID for cleanup in onResponseEnd
-              currentStreamingThreadIdRef.current = threadId;
             }
           }
         },

@@ -16,8 +16,8 @@ export interface UseMessageStreamingOptions {
   setThreadLoading: (threadId: string | null | undefined, value: boolean) => void;
   getThreadKey: (threadId: string | null | undefined) => string;
   isTempThreadId: (threadId: string | null | undefined) => boolean;
-  onResponseStart?: () => void;
-  onResponseEnd?: () => void;
+  onResponseStart?: (event: { threadId: string | null }) => void;
+  onResponseEnd?: (event: { threadId: string | null; finalThreadId: string | null }) => void;
   onThreadChange?: (event: { threadId: string | null }) => void;
   onError?: (error: { error: Error }) => void;
   onLog?: (entry: { name: string; data?: Record<string, unknown> }) => void;
@@ -70,7 +70,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
 
       setThreadLoading(targetThreadId, true);
       setError(null);
-      onResponseStart?.();
+      onResponseStart?.({ threadId: targetThreadId });
 
       let updatedThread: Thread | null = null;
 
@@ -176,7 +176,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
           }
         }
 
-        onResponseEnd?.();
+        onResponseEnd?.({ threadId: targetThreadId, finalThreadId: updatedThread?.id ?? targetThreadId });
       } catch (err) {
         const e = err instanceof Error ? err : new Error(String(err));
         setError(e);
