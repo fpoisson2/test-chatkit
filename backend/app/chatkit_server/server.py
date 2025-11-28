@@ -133,6 +133,11 @@ logger = logging.getLogger("chatkit.server")
 _active_streaming_threads: dict[str, asyncio.Event] = {}
 _streaming_lock = asyncio.Lock()
 
+# Registry to track event subscribers for each thread
+# Maps thread_id to a list of asyncio.Queue instances that should receive events
+_thread_event_subscribers: dict[str, list[asyncio.Queue[Any]]] = {}
+_subscribers_lock = asyncio.Lock()
+
 
 async def _register_streaming_thread(thread_id: str) -> asyncio.Event:
     """Register a thread as actively streaming and return a completion event."""
@@ -153,6 +158,43 @@ async def _unregister_streaming_thread(thread_id: str) -> None:
 def _is_thread_streaming(thread_id: str) -> bool:
     """Check if a thread is currently streaming."""
     return thread_id in _active_streaming_threads
+
+
+async def _subscribe_to_thread_events(thread_id: str) -> asyncio.Queue[Any]:
+    """Subscribe to receive events for a thread. Returns a queue that will receive events."""
+    async with _subscribers_lock:
+        if thread_id not in _thread_event_subscribers:
+            _thread_event_subscribers[thread_id] = []
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        _thread_event_subscribers[thread_id].append(queue)
+        logger.info("Subscribed to thread %s events, total subscribers: %d",
+                    thread_id, len(_thread_event_subscribers[thread_id]))
+        return queue
+
+
+async def _unsubscribe_from_thread_events(thread_id: str, queue: asyncio.Queue[Any]) -> None:
+    """Unsubscribe from receiving events for a thread."""
+    async with _subscribers_lock:
+        if thread_id in _thread_event_subscribers:
+            try:
+                _thread_event_subscribers[thread_id].remove(queue)
+                logger.info("Unsubscribed from thread %s events, remaining subscribers: %d",
+                            thread_id, len(_thread_event_subscribers[thread_id]))
+                if not _thread_event_subscribers[thread_id]:
+                    del _thread_event_subscribers[thread_id]
+            except ValueError:
+                pass  # Queue not in list
+
+
+async def _broadcast_event_to_subscribers(thread_id: str, event: Any) -> None:
+    """Broadcast an event to all subscribers of a thread."""
+    async with _subscribers_lock:
+        subscribers = _thread_event_subscribers.get(thread_id, [])
+        for queue in subscribers:
+            try:
+                queue.put_nowait(event)
+            except Exception:
+                logger.warning("Failed to broadcast event to subscriber for thread %s", thread_id)
 
 
 def _log_async_exception(task: asyncio.Task[Any]) -> None:
@@ -1643,6 +1685,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 ):
                     most_recent_widget_item_id = event.item_id
                 await event_queue.put(event)
+                # Broadcast event to any subscribers (e.g., clients resuming streaming)
+                await _broadcast_event_to_subscribers(thread.id, event)
 
             async def on_step_stream(
                 update: WorkflowStepStreamUpdate,
@@ -1878,7 +1922,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         This method:
         1. Loads the current thread state with all items
         2. Emits a ThreadUpdatedEvent with the full thread state
-        3. If streaming is still active in memory, continues streaming
+        3. If streaming is still active, subscribes to events and yields them in real-time
         4. If streaming has completed, updates metadata and returns
         """
         logger.info("Resume streaming requested for thread %s", thread.id)
@@ -1908,23 +1952,51 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         yield ThreadUpdatedEvent(thread=self._to_thread_response(full_thread))
 
         if is_still_streaming:
-            # Streaming is still active - emit a progress update to indicate we're resuming
-            yield ProgressUpdateEvent(text="")
+            # Streaming is still active - subscribe to events and yield them
+            logger.info("Subscribing to streaming events for thread %s", thread.id)
+            event_queue = await _subscribe_to_thread_events(thread.id)
 
-            # Wait for the streaming to complete
-            # The actual events are being streamed in background, we just need to wait
-            event = _active_streaming_threads.get(thread.id)
-            if event:
-                logger.info("Waiting for active streaming to complete for thread %s", thread.id)
-                await event.wait()
-                logger.info("Streaming completed for thread %s", thread.id)
-
-            # Reload the thread to get the final state
             try:
-                final_thread = await self._load_full_thread(thread.id, context)
-                yield ThreadUpdatedEvent(thread=self._to_thread_response(final_thread))
-            except Exception as exc:
-                logger.warning("Failed to reload thread %s after streaming: %s", thread.id, exc)
+                # Emit a progress update to indicate we're resuming
+                yield ProgressUpdateEvent(text="")
+
+                # Get the completion event to know when streaming is done
+                completion_event = _active_streaming_threads.get(thread.id)
+
+                while True:
+                    # Check if streaming has completed
+                    if completion_event and completion_event.is_set():
+                        # Drain any remaining events from the queue
+                        while not event_queue.empty():
+                            try:
+                                event = event_queue.get_nowait()
+                                yield event
+                            except asyncio.QueueEmpty:
+                                break
+                        break
+
+                    try:
+                        # Wait for events with a short timeout to periodically check completion
+                        event = await asyncio.wait_for(event_queue.get(), timeout=0.5)
+                        yield event
+                    except asyncio.TimeoutError:
+                        # Check if streaming is still active
+                        if not _is_thread_streaming(thread.id):
+                            logger.info("Streaming ended for thread %s", thread.id)
+                            break
+                        continue
+
+                # Reload the thread to get the final state
+                try:
+                    final_thread = await self._load_full_thread(thread.id, context)
+                    yield ThreadUpdatedEvent(thread=self._to_thread_response(final_thread))
+                except Exception as exc:
+                    logger.warning("Failed to reload thread %s after streaming: %s", thread.id, exc)
+
+            finally:
+                # Always unsubscribe when done
+                await _unsubscribe_from_thread_events(thread.id, event_queue)
+                logger.info("Unsubscribed from streaming events for thread %s", thread.id)
         else:
             # Streaming has completed - check if metadata needs updating
             metadata = dict(thread.metadata) if isinstance(thread.metadata, Mapping) else {}
