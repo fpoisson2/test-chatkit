@@ -195,14 +195,13 @@
   line-height: 1;
   width: var(--control-size-xs);
   height: var(--control-size-xs);
-  border-radius: var(--radius-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   cursor: pointer;
   transition-duration: var(--transition-duration-basic);
-  transition-property: background-color, color, opacity, transform;
+  transition-property: color, opacity, transform;
   transition-timing-function: var(--transition-ease-basic);
   /* Hidden by default, show on hover/focus */
   opacity: 0;
@@ -211,7 +210,6 @@
 
 .conversations-sidebar-section__action-button:hover,
 .conversations-sidebar-section__action-button:focus-visible {
-  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
   color: var(--primary-hover);
   outline: none;
 }
