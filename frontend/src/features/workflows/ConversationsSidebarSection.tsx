@@ -36,10 +36,8 @@ export interface ConversationsSidebarSectionProps {
   emptyMessage?: string;
   isCollapsed?: boolean;
   isMobileLayout?: boolean;
-  /** When true, shows a "New conversation" draft entry at the top of the list */
+  /** When true, a new conversation is being drafted (used for empty state logic) */
   isNewConversationActive?: boolean;
-  /** When true, shows a streaming spinner on the "New conversation" entry */
-  isNewConversationStreaming?: boolean;
 }
 
 // Cache at module level to persist data between mounts
@@ -100,7 +98,6 @@ export function ConversationsSidebarSection({
   isCollapsed = false,
   isMobileLayout = false,
   isNewConversationActive = false,
-  isNewConversationStreaming = false,
   activeThreadSnapshot,
 }: ConversationsSidebarSectionProps): JSX.Element | null {
   const [threads, setThreads] = useState<Thread[]>(cachedThreads);
@@ -423,23 +420,6 @@ export function ConversationsSidebarSection({
       ) : (
         <>
           <ul className="conversations-sidebar-section__list">
-            {/* Show draft "New conversation" entry when active */}
-            {isNewConversationActive && !searchQuery.trim() && (
-              <li className="conversations-sidebar-section__item">
-                <button
-                  type="button"
-                  className="conversations-sidebar-section__thread-button conversations-sidebar-section__thread-button--active"
-                  aria-current="true"
-                >
-                  <span className="conversations-sidebar-section__thread-title-row">
-                    {isNewConversationStreaming && (
-                      <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
-                    )}
-                    <TruncatedText className="conversations-sidebar-section__thread-title">Nouvelle conversation</TruncatedText>
-                  </span>
-                </button>
-              </li>
-            )}
             {displayedThreads.map((thread) => {
               const items = normalizeItems(thread);
               const isActive = thread.id === currentThreadId;
