@@ -434,7 +434,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         if changed:
             record.payload = payload
-            record.updated_at = dt.datetime.now(dt.UTC)
+            # Ne pas mettre à jour updated_at lors de la synchronisation des métadonnées
+            # internes (definition_id, owner_id) pour éviter de modifier l'ordre de tri
+            # des conversations dans la sidebar
             session.add(record)
             session.commit()
 
