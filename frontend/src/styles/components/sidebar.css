@@ -91,6 +91,7 @@
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
+  scrollbar-gutter: stable;
 }
 
 .chatkit-sidebar__scroll-area::-webkit-scrollbar {
