@@ -454,7 +454,11 @@ export function ConversationsSidebarSection({
               const isActive = thread.id === currentThreadId;
               const isDeleting = deletingThreadId === thread.id;
               const isStreaming = streamingThreadIds?.has(thread.id) ?? false;
-              const threadTitle = getThreadTitle(thread);
+              // For active thread, prefer title from snapshot (most up-to-date source)
+              const snapshotTitle = isActive && activeThreadSnapshot?.id === thread.id
+                ? (activeThreadSnapshot.title || (activeThreadSnapshot.metadata?.title as string | undefined))
+                : undefined;
+              const threadTitle = snapshotTitle || getThreadTitle(thread);
               const dateStr = items.length > 0 ? formatRelativeDate(items[0].created_at) : "";
               const isMenuOpen = openMenuId === thread.id;
               const menuId = `conversation-menu-${thread.id}`;
