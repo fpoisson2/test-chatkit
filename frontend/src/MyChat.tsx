@@ -736,7 +736,8 @@ export function MyChat() {
     clearStoredThreadId(sessionOwner, persistenceSlug);
     lastThreadSnapshotRef.current = null;
     setCurrentThread(null);
-    setStreamingThreadIds(new Set());
+    // Don't clear streamingThreadIds - let streaming threads keep their spinner
+    // They will be removed from the set when streaming ends via onResponseEnd
     setIsNewConversationStreaming(false);
     wasNewConversationStreamingRef.current = false;
     setInitialThreadId(null);
@@ -983,8 +984,9 @@ export function MyChat() {
         onResponseStart: ({ threadId }: { threadId: string | null }) => {
           resetError();
           // Add current thread to streaming state during response
-          // If threadId is null, we're starting a new conversation
-          if (threadId === null) {
+          // If threadId is null or a temp ID, we're starting a new conversation
+          const isTempId = threadId?.startsWith('__temp_thread_');
+          if (threadId === null || isTempId) {
             // New conversation - use special streaming state
             setIsNewConversationStreaming(true);
             wasNewConversationStreamingRef.current = true;
@@ -1043,17 +1045,18 @@ export function MyChat() {
               lastThreadSnapshotRef.current = thread;
               // Debug: Log title info to trace why it's not appearing in sidebar
               const metadata = thread.metadata as Record<string, unknown> | undefined;
-              console.debug("[ChatKit] onLog thread update - title info:", {
+              const hasTitle = !!(thread.title || metadata?.title);
+              console.log("[ChatKit] onLog thread update - title info:", {
+                logName: entry.name,
                 threadId: thread.id,
                 title: thread.title,
                 metadataTitle: metadata?.title,
-                hasMetadata: !!metadata,
+                hasTitle,
               });
               // Update state to trigger re-render and useOutboundCallDetector
               setCurrentThread(thread);
             }
           }
-          console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
         // Show usage metadata (cost, tokens) for admin users
         isAdmin: user?.is_admin,
