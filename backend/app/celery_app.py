@@ -38,7 +38,7 @@ celery_app = Celery(
     "chatkit",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.language_generation"]
+    include=["app.tasks.language_generation", "app.tasks.streaming_cleanup"]
 )
 
 # Configuration
@@ -53,4 +53,15 @@ celery_app.conf.update(
     task_soft_time_limit=3300,  # Warning après 55 minutes
     worker_prefetch_multiplier=1,  # Une tâche à la fois par worker
     worker_max_tasks_per_child=50,  # Redémarrer après 50 tâches
+    # Periodic task schedules (requires celery beat)
+    beat_schedule={
+        "cleanup-streaming-sessions-hourly": {
+            "task": "app.tasks.streaming_cleanup.cleanup_streaming_sessions",
+            "schedule": 3600.0,  # Every hour
+            "kwargs": {
+                "max_age_hours": 24,
+                "stuck_timeout_hours": 1,
+            },
+        },
+    },
 )

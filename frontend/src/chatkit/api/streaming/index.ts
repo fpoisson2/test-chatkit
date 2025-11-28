@@ -29,6 +29,10 @@ export interface StreamOptions {
   onError?: (error: Error) => void;
   onClientToolCall?: (toolCall: ClientToolCallItem) => Promise<unknown>;
   signal?: AbortSignal;
+  /** Called when a streaming session is created (from thread metadata) */
+  onSessionCreated?: (sessionId: string, threadId: string) => void;
+  /** Called for each event with an event_id (for tracking resume position) */
+  onEventId?: (eventId: string) => void;
 }
 
 /**
@@ -45,6 +49,8 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
     onError,
     onClientToolCall,
     signal,
+    onSessionCreated,
+    onEventId,
   } = options;
 
   let currentThread: Thread | null = initialThread || null;
@@ -113,9 +119,28 @@ export async function streamChatKitEvents(options: StreamOptions): Promise<Threa
       buffer = remainder;
 
       for (const event of events) {
+        // Extract event_id if present (added by backend for resume capability)
+        const eventWithId = event as ThreadStreamEvent & { event_id?: string };
+        if (eventWithId.event_id) {
+          onEventId?.(eventWithId.event_id);
+        }
+
         // Appliquer l'événement au thread
         if (currentThread || event.type === 'thread.created') {
           currentThread = applyDelta(currentThread || { id: '', items: [] }, event);
+        }
+
+        // Extract streaming session ID from thread.created or thread.updated events
+        if (
+          (event.type === 'thread.created' || event.type === 'thread.updated') &&
+          'thread' in event &&
+          event.thread
+        ) {
+          const metadata = event.thread.metadata as Record<string, unknown> | undefined;
+          const sessionId = metadata?.active_streaming_session as string | undefined;
+          if (sessionId && event.thread.id) {
+            onSessionCreated?.(sessionId, event.thread.id);
+          }
         }
 
         // Notifier les callbacks

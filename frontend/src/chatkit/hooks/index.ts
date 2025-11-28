@@ -24,3 +24,10 @@ export type { UseThreadActionsOptions, UseThreadActionsReturn } from './useThrea
 // Screencast hook
 export { useScreencast } from './useScreencast';
 export type { UseScreencastOptions, UseScreencastReturn, ScreencastState, ScreencastScreenshot } from './useScreencast';
+
+// Streaming resume hooks
+export { useStreamingResume } from './useStreamingResume';
+export type { StreamingResumeState, StreamingSessionStatus } from './useStreamingResume';
+
+export { useEventReplay } from './useEventReplay';
+export type { ReplayProgress } from './useEventReplay';

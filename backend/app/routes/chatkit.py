@@ -1472,3 +1472,143 @@ async def chatkit_endpoint(
     if isinstance(result, StreamingResult):
         return StreamingResponse(result, media_type="text/event-stream")
     return Response(content=result.json, media_type="application/json")
+
+
+# =============================================================================
+# Streaming Session Resume Endpoints
+# =============================================================================
+
+
+@router.get("/api/chatkit/stream/status")
+async def get_stream_status(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Get the status of a streaming session for resume logic.
+
+    Returns session status, thread ID, and last event ID.
+    Used by frontend to determine if a stream can be resumed.
+    """
+    from ..streaming_session import get_streaming_session_manager
+    # Use same owner_id format as server.py: user_id or email or "anonymous"
+    owner_id = str(current_user.id) if current_user.id else (current_user.email or "anonymous")
+
+    session_manager = get_streaming_session_manager()
+    session_status = await session_manager.get_session_status(session_id, owner_id)
+
+    if not session_status:
+        raise HTTPException(
+            status_code=404,
+            detail="Streaming session not found",
+        )
+
+    return session_status
+
+
+@router.get("/api/chatkit/stream/events")
+async def get_stream_events(
+    session_id: str,
+    after: str | None = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get events from a streaming session for replay.
+
+    Returns all events after the given event_id.
+    Used by frontend to replay missed events after page refresh.
+    """
+    from ..streaming_session import get_streaming_session_manager
+    # Use same owner_id format as server.py: user_id or email or "anonymous"
+    owner_id = str(current_user.id) if current_user.id else (current_user.email or "anonymous")
+
+    session_manager = get_streaming_session_manager()
+    events = await session_manager.get_events_after(
+        session_id=session_id,
+        after_event_id=after,
+        owner_id=owner_id,
+    )
+
+    return {"events": events}
+
+
+@router.get("/api/chatkit/stream/resume/{session_id}")
+async def resume_stream(
+    session_id: str,
+    last_event_id: str | None = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Resume an active streaming session as SSE.
+
+    Sends missed events first, then polls for new events.
+    Used by frontend to reconnect to an active stream after page refresh.
+    """
+    import asyncio
+    import json
+
+    from ..streaming_session import get_streaming_session_manager
+    # Use same owner_id format as server.py: user_id or email or "anonymous"
+    owner_id = str(current_user.id) if current_user.id else (current_user.email or "anonymous")
+
+    session_manager = get_streaming_session_manager()
+    session_status = await session_manager.get_session_status(session_id, owner_id)
+
+    if not session_status:
+        raise HTTPException(
+            status_code=404,
+            detail="Streaming session not found",
+        )
+
+    if session_status["status"] != "active":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session is not active (status: {session_status['status']})",
+        )
+
+    async def event_generator():
+        """Generate SSE events for resume stream."""
+        last_seen_id = last_event_id
+        poll_interval = 0.5  # 500ms between polls
+        max_idle_polls = 120  # Stop after ~60 seconds of no new events
+
+        idle_polls = 0
+        while idle_polls < max_idle_polls:
+            # Check if session is still active
+            current_status = await session_manager.get_session_status(
+                session_id, owner_id
+            )
+            if not current_status or current_status["status"] != "active":
+                # Session completed or errored - send remaining events and stop
+                events = await session_manager.get_events_after(
+                    session_id, last_seen_id, owner_id
+                )
+                for event in events:
+                    yield f"id: {event['event_id']}\ndata: {json.dumps(event['data'])}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # Get new events
+            events = await session_manager.get_events_after(
+                session_id, last_seen_id, owner_id
+            )
+
+            if events:
+                idle_polls = 0
+                for event in events:
+                    yield f"id: {event['event_id']}\ndata: {json.dumps(event['data'])}\n\n"
+                    last_seen_id = event["event_id"]
+            else:
+                idle_polls += 1
+
+            await asyncio.sleep(poll_interval)
+
+        # Timed out waiting for events
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

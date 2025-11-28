@@ -31,7 +31,14 @@ import {
   clearStoredThreadId,
   loadStoredThreadId,
   persistStoredThreadId,
+  setThreadIdInUrl,
 } from "./utils/chatkitThread";
+import {
+  clearStreamingSession,
+  loadStreamingSession,
+  saveStreamingSession,
+  updateLastEventId,
+} from "./utils/streamingSession";
 import type { WorkflowSummary } from "./types/workflows";
 import type { AppearanceSettings } from "./utils/backend";
 
@@ -729,6 +736,9 @@ export function MyChat() {
     // Persist the selected thread with the correct slug and reload the chat
     persistStoredThreadId(sessionOwner, threadId, targetSlug);
 
+    // Update URL to reflect the selected thread
+    setThreadIdInUrl(threadId);
+
     setInitialThreadId(threadId);
     // Only increment chatInstanceKey when switching workflows to force instance update
     // For same-workflow thread switches, avoid remounting to prevent welcome screen flash
@@ -742,6 +752,8 @@ export function MyChat() {
     const currentId = (currentThread?.id as string | undefined) ?? initialThreadId;
     if (currentId === deletedThreadId) {
       clearStoredThreadId(sessionOwner, persistenceSlug);
+      // Clear the thread from URL since it was deleted
+      setThreadIdInUrl(null);
       setInitialThreadId(null);
       setChatInstanceKey((value) => value + 1);
     }
@@ -750,6 +762,8 @@ export function MyChat() {
   const handleNewConversation = useCallback(() => {
     // Clear stored thread to start a new conversation
     clearStoredThreadId(sessionOwner, persistenceSlug);
+    // Clear the thread from URL for new conversation
+    setThreadIdInUrl(null);
     lastThreadSnapshotRef.current = null;
     setCurrentThread(null);
     // Don't clear streamingThreadIds - let streaming threads keep their spinner
@@ -1027,16 +1041,22 @@ export function MyChat() {
               return next;
             });
           }
+          // Clear streaming session tracking - response completed normally
+          clearStreamingSession();
+          // Keep the thread ID in the URL for sharing - only clear the streaming session
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
           if (threadId === null) {
             clearStoredThreadId(sessionOwner, persistenceSlug);
+            setThreadIdInUrl(null);
             setInitialThreadId(null);
           } else {
             // Thread is now created/loaded, clear the new conversation draft state
             isNewConversationDraftRef.current = false;
             persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
+            // Update URL with the new/loaded thread ID
+            setThreadIdInUrl(threadId);
             setInitialThreadId((current) => (current === threadId ? current : threadId));
 
             // If we were streaming on a new conversation, transfer the streaming indicator
@@ -1069,8 +1089,37 @@ export function MyChat() {
                 metadataTitle: metadata?.title,
                 hasTitle,
               });
+
+              // Track streaming session for resume capability
+              const sessionId = metadata?.active_streaming_session as string | undefined;
+              console.info("[ChatKit] Checking for streaming session:", {
+                sessionId,
+                threadId: thread.id,
+                metadata,
+              });
+              if (sessionId && thread.id) {
+                console.info("[ChatKit] Saving streaming session:", sessionId);
+                saveStreamingSession({
+                  sessionId,
+                  threadId: thread.id as string,
+                  lastEventId: null,
+                  startedAt: Date.now(),
+                });
+                // Update URL so that refreshing the page will load this thread
+                setThreadIdInUrl(thread.id as string);
+              }
+
               // Update state to trigger re-render and useOutboundCallDetector
               setCurrentThread(thread);
+            }
+
+            // Track event_id for resume position
+            if ("event" in data && data.event) {
+              const event = data.event as Record<string, unknown>;
+              const eventId = event.event_id as string | undefined;
+              if (eventId) {
+                updateLastEventId(eventId);
+              }
             }
           }
         },

@@ -140,6 +140,60 @@ class ChatAttachment(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
 
 
+class StreamingSession(Base):
+    """Tracks active streaming sessions for resume capability."""
+
+    __tablename__ = "streaming_sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("chat_threads.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    owner_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active"
+    )  # 'active', 'completed', 'error'
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_event_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class StreamingEvent(Base):
+    """Stores streaming events for replay capability."""
+
+    __tablename__ = "streaming_events"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("streaming_sessions.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    event_data: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "sequence_number", name="uq_session_sequence"),
+        Index("idx_streaming_events_session_seq", "session_id", "sequence_number"),
+    )
+
+
 class AvailableModel(Base):
     __tablename__ = "available_models"
 

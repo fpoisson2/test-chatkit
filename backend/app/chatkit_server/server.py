@@ -76,6 +76,7 @@ from ..chatkit_store import PostgresChatKitStore
 from ..config import Settings
 from ..database import SessionLocal
 from ..models import WorkflowStep
+from ..streaming_session import get_streaming_session_manager
 from ..widgets import WidgetLibraryService
 from ..workflows import (
     WorkflowService,
@@ -588,6 +589,24 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
+        # Create streaming session for resume capability
+        streaming_session_manager = get_streaming_session_manager()
+        owner_id = context.user_id or context.email or "anonymous"
+        streaming_session = await streaming_session_manager.create_session(
+            thread_id=thread.id,
+            owner_id=owner_id,
+        )
+        streaming_session_id = streaming_session.id
+
+        # Store session ID in thread metadata for client tracking
+        if thread.metadata is None:
+            thread.metadata = {}
+        if isinstance(thread.metadata, dict):
+            thread.metadata["active_streaming_session"] = streaming_session_id
+
+        # Emit ThreadUpdatedEvent so client receives the session ID
+        yield ThreadUpdatedEvent(thread=thread)
+
         thread_item_converter = self._thread_item_converter.for_context(context)
 
         # Start title generation in background, but keep a reference to ensure it runs
@@ -787,9 +806,38 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         # Store original title to detect changes
         original_title = thread.title
 
+        # Helper to persist and yield events with event_id
+        async def _persist_and_yield_event(
+            event: ThreadStreamEvent,
+        ) -> ThreadStreamEvent:
+            """Persist event to streaming session and add event_id."""
+            try:
+                event_data = (
+                    event.model_dump(mode="json")
+                    if hasattr(event, "model_dump")
+                    else {"type": getattr(event, "type", "unknown")}
+                )
+                event_id = await streaming_session_manager.persist_event(
+                    session_id=streaming_session_id,
+                    event_type=getattr(event, "type", "unknown"),
+                    event_data=event_data,
+                )
+                # Add event_id to the event data (will be in the serialized JSON)
+                if hasattr(event, "__dict__"):
+                    event.__dict__["event_id"] = event_id
+            except Exception as exc:
+                logger.warning(
+                    "Failed to persist streaming event for session %s: %s",
+                    streaming_session_id,
+                    exc,
+                )
+            return event
+
         stream_completed = False
+        stream_error: str | None = None
         try:
             async for event in _workflow_stream():
+                event = await _persist_and_yield_event(event)
                 yield event
             stream_completed = True
 
@@ -806,8 +854,32 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         thread.id,
                         thread.title,
                     )
-                    yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
+                    title_event = ThreadUpdatedEvent(
+                        thread=self._to_thread_response(thread)
+                    )
+                    title_event = await _persist_and_yield_event(title_event)
+                    yield title_event
+        except Exception as exc:
+            stream_error = str(exc)
+            raise
         finally:
+            # Complete the streaming session
+            try:
+                # Clear active session from thread metadata
+                if isinstance(thread.metadata, dict):
+                    thread.metadata.pop("active_streaming_session", None)
+
+                await streaming_session_manager.complete_session(
+                    session_id=streaming_session_id,
+                    error=stream_error if not stream_completed else None,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to complete streaming session %s: %s",
+                    streaming_session_id,
+                    exc,
+                )
+
             if not stream_completed:
                 _schedule_background_drain()
 

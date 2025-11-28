@@ -1564,3 +1564,9 @@ class ActiveWorkflowSessionsResponse(BaseModel):
 
     sessions: list[ActiveWorkflowSession]
     total_count: int
+
+
+# Rebuild models that use forward references to ensure Pydantic can resolve them
+# This is required when using `from __future__ import annotations`
+ModelProviderSettingsUpdate.model_rebuild()
+AppSettingsUpdateRequest.model_rebuild()

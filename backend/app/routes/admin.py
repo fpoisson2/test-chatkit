@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import datetime
 import logging
@@ -28,6 +26,7 @@ from ..dependencies import require_admin
 from ..i18n_utils import resolve_frontend_i18n_path
 from ..mcp.server_service import McpServerService
 from ..model_providers import configure_model_provider
+from ..secret_utils import SecretKeyUnavailableError
 from ..rate_limit import get_rate_limit, limiter
 from ..models import (
     ChatAttachment,
@@ -126,6 +125,11 @@ async def patch_app_settings(
     try:
         result = update_admin_settings(session, **kwargs)
     except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except SecretKeyUnavailableError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
