@@ -42,6 +42,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const lastUserMessageIdRef = useRef<string | null>(null);
   const formDataRef = useRef<FormData | null>(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const dragCounterRef = useRef(0);
   const attachmentsRef = useRef<Attachment[]>([]);
 
@@ -149,6 +150,32 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       previousKeyboardOffsetRef.current = keyboardOffset;
     }
   }, [keyboardOffset]);
+
+  // Tracker la position du scroll pour afficher/masquer le bouton "scroll to bottom"
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      // Considérer "en bas" si on est à moins de 100px du bas
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShowScrollButton(!isAtBottom);
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    // Vérifier l'état initial
+    handleScroll();
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  // Fonction pour défiler vers le bas
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   // Callback pour la soumission du Composer
   const handleComposerSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[]) => {
@@ -658,6 +685,19 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Scroll to bottom button */}
+      {showScrollButton && (
+        <button
+          className="chatkit-scroll-to-bottom"
+          onClick={scrollToBottom}
+          aria-label="Aller en bas"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+      )}
 
       {/* Error display */}
       {control.error && (
