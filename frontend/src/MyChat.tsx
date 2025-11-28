@@ -245,20 +245,6 @@ export function MyChat() {
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(new Set());
-
-  // Debug: Log currentThread changes for sidebar title debugging
-  useEffect(() => {
-    if (currentThread) {
-      const metadata = currentThread.metadata as Record<string, unknown> | undefined;
-      console.debug("[MyChat] currentThread changed:", {
-        id: currentThread.id,
-        title: currentThread.title,
-        metadataTitle: metadata?.title,
-        initialThreadId,
-        willPassToSidebar: initialThreadId !== null,
-      });
-    }
-  }, [currentThread, initialThreadId]);
   const [isNewConversationStreaming, setIsNewConversationStreaming] = useState(false);
   // Ref to track if we started streaming on a new conversation (for use in onThreadChange closure)
   const wasNewConversationStreamingRef = useRef(false);
@@ -342,6 +328,20 @@ export function MyChat() {
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
     loadStoredThreadId(sessionOwner, persistenceSlug),
   );
+
+  // Debug: Log currentThread changes for sidebar title debugging
+  useEffect(() => {
+    if (currentThread) {
+      const metadata = currentThread.metadata as Record<string, unknown> | undefined;
+      console.debug("[MyChat] currentThread changed:", {
+        id: currentThread.id,
+        title: currentThread.title,
+        metadataTitle: metadata?.title,
+        initialThreadId,
+        willPassToSidebar: initialThreadId !== null,
+      });
+    }
+  }, [currentThread, initialThreadId]);
 
   // Sync the new conversation draft ref with initialThreadId state
   // This ensures the ref is correct even when initialThreadId is null at startup
