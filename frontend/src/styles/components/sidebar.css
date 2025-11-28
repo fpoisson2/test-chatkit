@@ -22,7 +22,7 @@
  */
 
 :root {
-  --chatkit-sidebar-open-duration: 0.95s;
+  --chatkit-sidebar-open-duration: 0.55s;
 }
 
 /* Sidebar content wrapper for search + sections layout */
@@ -75,7 +75,7 @@
   --chatkit-sidebar-padding-x: calc(var(--spacing) * 6);
   --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   overflow: hidden;
-  transition: margin-left var(--chatkit-sidebar-open-duration) var(--cubic-enter);
+  transition: margin-left var(--chatkit-sidebar-open-duration) var(--cubic-move);
   pointer-events: none;
 }
 
@@ -151,13 +151,13 @@
 
 .chatkit-layout--desktop {
   display: grid;
-  grid-template-columns: minmax(0, var(--chatkit-sidebar-collapsed-width)) 1fr;
+  grid-template-columns: var(--chatkit-sidebar-collapsed-width) 1fr;
   align-items: stretch;
-  transition: grid-template-columns var(--chatkit-sidebar-open-duration) var(--cubic-enter);
+  transition: grid-template-columns var(--chatkit-sidebar-open-duration) var(--cubic-move);
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open {
-  grid-template-columns: minmax(0, var(--chatkit-sidebar-width)) 1fr;
+  grid-template-columns: var(--chatkit-sidebar-width) 1fr;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-hidden {
