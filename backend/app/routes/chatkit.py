@@ -1470,5 +1470,11 @@ async def chatkit_endpoint(
     )
 
     if isinstance(result, StreamingResult):
-        return StreamingResponse(result, media_type="text/event-stream")
+        # Disable buffering for SSE to ensure events stream in real-time
+        headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+            "Connection": "keep-alive",
+        }
+        return StreamingResponse(result, media_type="text/event-stream", headers=headers)
     return Response(content=result.json, media_type="application/json")
