@@ -39,6 +39,10 @@ RATE_LIMITS = {
     "auth_login": "5/minute",  # 5 login attempts per minute
     "auth_register": "3/hour",  # 3 registrations per hour
 
+    # LTI endpoints - strict limits to prevent brute force
+    "lti_login": "10/minute",  # 10 LTI login attempts per minute
+    "lti_launch": "10/minute",  # 10 LTI launch attempts per minute
+
     # API endpoints - moderate limits for normal usage
     "api_default": "60/minute",  # 60 requests per minute for general API calls
     "api_read": "100/minute",  # Higher limit for read operations

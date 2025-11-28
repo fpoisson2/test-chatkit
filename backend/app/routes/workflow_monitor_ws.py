@@ -22,6 +22,7 @@ from ..schemas import (
     WorkflowStepInfo,
     WorkflowUserInfo,
 )
+from ..security import decode_access_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -238,6 +239,7 @@ async def workflow_monitor_websocket(
     """
     WebSocket endpoint pour le monitoring en temps réel des workflows.
 
+    Requires admin authentication via ?token=JWT query parameter.
     Envoie périodiquement les mises à jour des sessions actives.
     """
     # Vérifier l'authentification via token
@@ -246,11 +248,21 @@ async def workflow_monitor_websocket(
         await websocket.close(code=4001, reason="Missing authentication token")
         return
 
-    # Valider que l'utilisateur est admin (simplifié pour l'exemple)
-    # En production, utiliser get_current_user_from_websocket
+    # Decode and validate JWT token
     try:
-        # Note: dans une vraie app, décode le JWT et vérifie is_admin
-        # Pour simplifier, on accepte la connexion
+        payload = decode_access_token(token)
+    except Exception as e:
+        logger.warning(f"WebSocket auth failed: invalid token - {e}")
+        await websocket.close(code=4001, reason="Invalid authentication token")
+        return
+
+    # Check admin privileges
+    if not payload.get("is_admin"):
+        logger.warning(f"WebSocket auth failed: user {payload.get('sub')} is not admin")
+        await websocket.close(code=4003, reason="Admin privileges required")
+        return
+
+    try:
         await manager.connect(websocket)
 
         # Envoyer les données initiales

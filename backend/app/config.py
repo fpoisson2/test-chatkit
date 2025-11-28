@@ -483,10 +483,15 @@ class Settings:
 
     @staticmethod
     def _parse_allowed_origins(raw_value: str | None) -> list[str]:
+        """Parse allowed origins from environment variable.
+
+        Security: Returns empty list by default instead of ["*"] to prevent
+        overly permissive CORS. In production, ALLOWED_ORIGINS must be explicitly set.
+        """
         if not raw_value:
-            return ["*"]
+            return []
         parts = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
-        return parts or ["*"]
+        return parts
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Settings:

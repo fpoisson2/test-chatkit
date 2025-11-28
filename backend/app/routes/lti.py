@@ -9,7 +9,10 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_session
+from ..dependencies import get_current_user
 from ..lti.service import LTIService
+from ..models import User
+from ..rate_limit import limiter, get_rate_limit
 
 router = APIRouter()
 
@@ -52,6 +55,7 @@ async def get_jwks(session: Session = Depends(get_session)) -> dict[str, Any]:
 
 
 @router.post("/api/lti/login")
+@limiter.limit(get_rate_limit("lti_login"))
 async def lti_login(
     request: Request, service: LTIService = Depends(_get_service)
 ):
@@ -60,6 +64,7 @@ async def lti_login(
 
 
 @router.post("/api/lti/launch")
+@limiter.limit(get_rate_limit("lti_launch"))
 async def lti_launch(
     request: Request, service: LTIService = Depends(_get_service)
 ):
@@ -150,8 +155,14 @@ def _as_str_sequence(value: Any) -> list[str]:
 
 
 @router.get("/api/lti/registrations")
-async def list_lti_registrations(session: Session = Depends(get_session)) -> list[dict[str, Any]]:
-    """Liste toutes les registrations LTI disponibles."""
+async def list_lti_registrations(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """Liste toutes les registrations LTI disponibles.
+
+    Requires authentication to prevent information disclosure.
+    """
     from ..models import LTIRegistration
     from sqlalchemy import select
 
@@ -170,9 +181,12 @@ async def list_lti_registrations(session: Session = Depends(get_session)) -> lis
 @router.get("/api/lti/workflows")
 async def list_lti_workflows(
     issuer: str | None = None,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     """Liste tous les workflows disponibles pour LTI Deep Linking.
+
+    Requires authentication to prevent information disclosure.
 
     Args:
         issuer: Optionnel. Si fourni, ne retourne que les workflows autorisés pour cet issuer.
@@ -213,7 +227,8 @@ async def list_lti_workflows(
 
 @router.get("/api/lti/current-workflow")
 async def get_current_lti_workflow(
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any] | None:
     """Get the workflow associated with the current user's LTI session.
 
@@ -221,26 +236,18 @@ async def get_current_lti_workflow(
     directly in the LTI launch URL and stored in localStorage on the frontend.
     This endpoint remains for backward compatibility only.
 
-    This endpoint can be called without authentication and will return None
-    if the user is not authenticated or not an LTI user.
+    Requires authentication - returns workflow info only for LTI users.
     """
-    from ..dependencies import get_optional_user
     from ..models import LTIUserSession
     from sqlalchemy import select, desc
 
-    # Try to get current user (optional, won't raise if not authenticated)
-    try:
-        user = await get_optional_user(None, session)
-    except Exception:
-        return None
-
-    if not user or not user.is_lti:
+    if not current_user.is_lti:
         return None
 
     # Find the most recent LTI session for this user
     lti_session = session.scalar(
         select(LTIUserSession)
-        .where(LTIUserSession.user_id == user.id)
+        .where(LTIUserSession.user_id == current_user.id)
         .order_by(desc(LTIUserSession.launched_at))
         .limit(1)
     )

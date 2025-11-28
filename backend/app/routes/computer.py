@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import secrets
+import time
 from enum import Enum
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -15,10 +18,96 @@ from pydantic import BaseModel
 
 from ..dependencies import get_current_user
 from ..models import User
+from ..security import decode_access_token
 
 logger = logging.getLogger("chatkit.computer")
 
 router = APIRouter(prefix="/api/computer", tags=["computer"])
+
+# Session expiration time in seconds (1 hour)
+SESSION_EXPIRATION_SECONDS = 3600
+
+
+def _is_safe_url(url: str) -> tuple[bool, str]:
+    """Validate URL to prevent SSRF attacks.
+
+    Returns (is_safe, error_message).
+    Blocks:
+    - Private IP ranges (10.x, 172.16-31.x, 192.168.x, 127.x)
+    - Link-local addresses (169.254.x)
+    - Localhost
+    - Non-http(s) protocols
+    - Cloud metadata endpoints (169.254.169.254)
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False, "Invalid URL format"
+
+    # Only allow http and https
+    if parsed.scheme not in ("http", "https"):
+        return False, f"Protocol '{parsed.scheme}' not allowed. Use http or https."
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "URL must have a hostname"
+
+    # Block localhost variants
+    localhost_names = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+    if hostname.lower() in localhost_names:
+        return False, "Localhost URLs are not allowed"
+
+    # Try to resolve hostname to IP and check if it's private
+    try:
+        # Check if hostname is already an IP address
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private:
+            return False, "Private IP addresses are not allowed"
+        if ip.is_loopback:
+            return False, "Loopback addresses are not allowed"
+        if ip.is_link_local:
+            return False, "Link-local addresses are not allowed"
+        if ip.is_reserved:
+            return False, "Reserved addresses are not allowed"
+        # Block cloud metadata endpoint
+        if str(ip) == "169.254.169.254":
+            return False, "Cloud metadata endpoint is not allowed"
+    except ValueError:
+        # Not an IP address, it's a hostname - allow it but block known internal patterns
+        hostname_lower = hostname.lower()
+        blocked_patterns = [
+            "internal", "local", "private", "intranet",
+            "corp", "lan", "localhost", "metadata"
+        ]
+        for pattern in blocked_patterns:
+            if pattern in hostname_lower:
+                return False, f"Hostname containing '{pattern}' is not allowed"
+
+    return True, ""
+
+
+async def _authenticate_websocket(websocket: WebSocket) -> dict | None:
+    """Authenticate WebSocket connection using JWT token from query params.
+
+    Returns the decoded token payload if valid, None otherwise.
+    """
+    token = websocket.query_params.get("auth_token")
+    if not token:
+        # Also check for token in headers for compatibility
+        auth_header = websocket.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+
+    if not token:
+        logger.warning("WebSocket connection rejected: missing auth token")
+        return None
+
+    try:
+        payload = decode_access_token(token)
+        return payload
+    except Exception as e:
+        logger.warning(f"WebSocket connection rejected: invalid token - {e}")
+        return None
 
 
 # Pydantic models for browser control
@@ -47,16 +136,48 @@ class BrowserHistoryDirection(str, Enum):
 
 
 # Store debug URLs per session token
-# Format: {token: {"debug_url": str, "user_id": int, "browser": HostedBrowser | None, "driver": _BaseBrowserDriver | None}}
+# Format: {token: {"debug_url": str, "user_id": int, "browser": HostedBrowser | None, "driver": _BaseBrowserDriver | None, "created_at": float}}
 _DEBUG_SESSIONS: dict[str, dict[str, Any]] = {}
 
 # Store SSH sessions per token
-# Format: {token: {"ssh": HostedSSH, "user_id": int, "config": SSHConfig}}
+# Format: {token: {"ssh": HostedSSH, "user_id": int, "config": SSHConfig, "created_at": float}}
 _SSH_SESSIONS: dict[str, dict[str, Any]] = {}
 
 # Store VNC sessions per token
-# Format: {token: {"vnc": HostedVNC, "user_id": int, "config": VNCConfig}}
+# Format: {token: {"vnc": HostedVNC, "user_id": int, "config": VNCConfig, "created_at": float}}
 _VNC_SESSIONS: dict[str, dict[str, Any]] = {}
+
+
+def _cleanup_expired_sessions() -> None:
+    """Remove expired sessions from all session stores."""
+    current_time = time.time()
+
+    # Cleanup debug sessions
+    expired_debug = [
+        token for token, session in _DEBUG_SESSIONS.items()
+        if current_time - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS
+    ]
+    for token in expired_debug:
+        logger.info(f"Expiring debug session {token[:8]}...")
+        del _DEBUG_SESSIONS[token]
+
+    # Cleanup SSH sessions
+    expired_ssh = [
+        token for token, session in _SSH_SESSIONS.items()
+        if current_time - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS
+    ]
+    for token in expired_ssh:
+        logger.info(f"Expiring SSH session {token[:8]}...")
+        del _SSH_SESSIONS[token]
+
+    # Cleanup VNC sessions
+    expired_vnc = [
+        token for token, session in _VNC_SESSIONS.items()
+        if current_time - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS
+    ]
+    for token in expired_vnc:
+        logger.info(f"Expiring VNC session {token[:8]}...")
+        del _VNC_SESSIONS[token]
 
 
 def register_debug_session(debug_url: str, user_id: int | None = None) -> str:
@@ -70,10 +191,14 @@ def register_debug_session(debug_url: str, user_id: int | None = None) -> str:
     Returns:
         A unique session token to use for accessing this debug URL
     """
+    # Clean up expired sessions before creating new ones
+    _cleanup_expired_sessions()
+
     token = secrets.token_urlsafe(32)
     _DEBUG_SESSIONS[token] = {
         "debug_url": debug_url,
         "user_id": user_id,
+        "created_at": time.time(),
     }
     logger.info(f"Registered debug session {token[:8]}... for user {user_id}")
     return token
@@ -92,6 +217,12 @@ def get_debug_session(token: str, user_id: int | None = None) -> str | None:
     """
     session = _DEBUG_SESSIONS.get(token)
     if not session:
+        return None
+
+    # Check if session has expired
+    if time.time() - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS:
+        logger.info(f"Debug session {token[:8]}... has expired")
+        del _DEBUG_SESSIONS[token]
         return None
 
     # Check authorization if user_id is provided
@@ -130,11 +261,15 @@ def register_ssh_session(
     Returns:
         A unique session token
     """
+    # Clean up expired sessions before creating new ones
+    _cleanup_expired_sessions()
+
     token = secrets.token_urlsafe(32)
     _SSH_SESSIONS[token] = {
         "ssh": ssh_instance,
         "config": ssh_config,
         "user_id": user_id,
+        "created_at": time.time(),
     }
     logger.info(f"Registered SSH session {token[:8]}... for user {user_id}")
     return token
@@ -153,6 +288,12 @@ def get_ssh_session(token: str, user_id: int | None = None) -> dict[str, Any] | 
     """
     session = _SSH_SESSIONS.get(token)
     if not session:
+        return None
+
+    # Check if session has expired
+    if time.time() - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS:
+        logger.info(f"SSH session {token[:8]}... has expired")
+        del _SSH_SESSIONS[token]
         return None
 
     # Check authorization if user_id is provided
@@ -191,11 +332,15 @@ def register_vnc_session(
     Returns:
         A unique session token
     """
+    # Clean up expired sessions before creating new ones
+    _cleanup_expired_sessions()
+
     token = secrets.token_urlsafe(32)
     _VNC_SESSIONS[token] = {
         "vnc": vnc_instance,
         "config": vnc_config,
         "user_id": user_id,
+        "created_at": time.time(),
     }
     logger.info(f"Registered VNC session {token[:8]}... for user {user_id}")
     return token
@@ -214,6 +359,12 @@ def get_vnc_session(token: str, user_id: int | None = None) -> dict[str, Any] | 
     """
     session = _VNC_SESSIONS.get(token)
     if not session:
+        return None
+
+    # Check if session has expired
+    if time.time() - session.get("created_at", 0) > SESSION_EXPIRATION_SECONDS:
+        logger.info(f"VNC session {token[:8]}... has expired")
+        del _VNC_SESSIONS[token]
         return None
 
     # Check authorization if user_id is provided
@@ -298,16 +449,25 @@ async def proxy_cdp_websocket(websocket: WebSocket, token: str, target: str) -> 
     """
     Proxy WebSocket connection to Chrome DevTools Protocol.
 
+    Requires authentication via ?auth_token=JWT query parameter.
+
     Args:
         token: The debug session token
         target: The CDP target path (e.g., /devtools/page/ABC123)
     """
-    # Accept the client WebSocket connection first
+    # Authenticate user first
+    auth_payload = await _authenticate_websocket(websocket)
+    if not auth_payload:
+        await websocket.close(code=4001, reason="Authentication required")
+        return
+
+    user_id = int(auth_payload.get("sub", 0))
+
+    # Accept the client WebSocket connection
     await websocket.accept()
 
-    # Note: WebSocket doesn't have built-in auth like HTTP endpoints
-    # The token provides session-based authorization
-    debug_url = get_debug_session(token, user_id=None)  # No user_id check for WS
+    # Validate session with user authorization check
+    debug_url = get_debug_session(token, user_id=user_id)
     if not debug_url:
         await websocket.close(code=1008, reason="Invalid or unauthorized debug session")
         return
@@ -519,6 +679,17 @@ async def navigate_test_browser(
     Returns:
         Success message
     """
+    # SSRF Protection: Validate URL before navigation
+    is_safe, error_msg = _is_safe_url(request.url)
+    if not is_safe:
+        logger.warning(
+            f"SSRF attempt blocked: user {current_user.id} tried to navigate to {request.url}: {error_msg}"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"URL not allowed: {error_msg}"
+        )
+
     session = _DEBUG_SESSIONS.get(token)
     if not session:
         raise HTTPException(status_code=404, detail="Browser session not found")
@@ -546,11 +717,13 @@ async def navigate_test_browser(
                 status_code=500,
                 detail="Browser page not available"
             )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"Failed to navigate browser: {exc}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Navigation failed: {str(exc)}"
+            detail="Navigation failed"
         )
 
 
@@ -668,6 +841,8 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
     """
     WebSocket endpoint for interactive SSH terminal.
 
+    Requires authentication via ?auth_token=JWT query parameter.
+
     The client sends input data, and the server sends back terminal output.
     Uses xterm.js on the frontend to render the terminal.
 
@@ -676,11 +851,19 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
     """
     import asyncio
 
-    # Accept the client WebSocket connection first
+    # Authenticate user first
+    auth_payload = await _authenticate_websocket(websocket)
+    if not auth_payload:
+        await websocket.close(code=4001, reason="Authentication required")
+        return
+
+    user_id = int(auth_payload.get("sub", 0))
+
+    # Accept the client WebSocket connection
     await websocket.accept()
 
-    # Get SSH session
-    session = get_ssh_session(token, user_id=None)
+    # Get SSH session with user authorization check
+    session = get_ssh_session(token, user_id=user_id)
     if not session:
         await websocket.close(code=1008, reason="Invalid or unauthorized SSH session")
         return
@@ -753,6 +936,8 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
     """
     WebSocket endpoint for VNC - proxies directly to VNC server via TCP.
 
+    Requires authentication via ?auth_token=JWT query parameter.
+
     This is a WebSocket-to-TCP proxy that translates noVNC/RFB WebSocket
     messages directly to the VNC server, without going through websockify.
 
@@ -760,6 +945,14 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
         token: The VNC session token
     """
     import asyncio
+
+    # Authenticate user first
+    auth_payload = await _authenticate_websocket(websocket)
+    if not auth_payload:
+        await websocket.close(code=4001, reason="Authentication required")
+        return
+
+    user_id = int(auth_payload.get("sub", 0))
 
     # Check if client requested a subprotocol (noVNC requires "binary")
     requested_protocols = websocket.headers.get("sec-websocket-protocol", "")
@@ -773,8 +966,8 @@ async def vnc_websocket_proxy(websocket: WebSocket, token: str) -> None:
         await websocket.accept()
         logger.info("VNC WebSocket: accepted without subprotocol")
 
-    # Get VNC session
-    session = get_vnc_session(token, user_id=None)
+    # Get VNC session with user authorization check
+    session = get_vnc_session(token, user_id=user_id)
     if not session:
         await websocket.close(code=1008, reason="Invalid or unauthorized VNC session")
         return
