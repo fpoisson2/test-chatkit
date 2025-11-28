@@ -190,6 +190,8 @@ async def _broadcast_event_to_subscribers(thread_id: str, event: Any) -> None:
     """Broadcast an event to all subscribers of a thread."""
     async with _subscribers_lock:
         subscribers = _thread_event_subscribers.get(thread_id, [])
+        if subscribers:
+            logger.debug("Broadcasting to %d subscribers for thread %s", len(subscribers), thread_id)
         for queue in subscribers:
             try:
                 queue.put_nowait(event)
@@ -1686,6 +1688,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     most_recent_widget_item_id = event.item_id
                 await event_queue.put(event)
                 # Broadcast event to any subscribers (e.g., clients resuming streaming)
+                event_type = type(event).__name__
+                logger.debug("Broadcasting event %s to thread %s subscribers", event_type, thread.id)
                 await _broadcast_event_to_subscribers(thread.id, event)
 
             async def on_step_stream(
@@ -1965,7 +1969,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
                 # Track time for keepalive
                 last_event_time = asyncio.get_event_loop().time()
-                KEEPALIVE_INTERVAL = 15.0  # Send keepalive every 15 seconds
+                KEEPALIVE_INTERVAL = 3.0  # Send keepalive every 3 seconds to prevent proxy/browser timeouts
 
                 while True:
                     # Check if streaming has completed
@@ -1982,6 +1986,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     try:
                         # Wait for events with a short timeout to periodically check completion
                         event = await asyncio.wait_for(event_queue.get(), timeout=0.5)
+                        event_type = type(event).__name__
+                        logger.debug("Resume streaming received event %s for thread %s", event_type, thread.id)
                         yield event
                         last_event_time = asyncio.get_event_loop().time()
                     except asyncio.TimeoutError:
