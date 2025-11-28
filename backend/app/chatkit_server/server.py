@@ -192,7 +192,12 @@ async def _broadcast_event_to_subscribers(thread_id: str, event: Any) -> None:
         subscribers = _thread_event_subscribers.get(thread_id, [])
         if subscribers:
             event_type = getattr(event, "type", type(event).__name__)
-            logger.info("Broadcasting %s to %d subscribers for thread %s", event_type, len(subscribers), thread_id)
+            # Log more details for ThreadItemUpdated events
+            if event_type == "thread.item.updated" and hasattr(event, "update"):
+                update_type = getattr(event.update, "type", type(event.update).__name__)
+                logger.info("Broadcasting %s (update: %s) to %d subscribers for thread %s", event_type, update_type, len(subscribers), thread_id)
+            else:
+                logger.info("Broadcasting %s to %d subscribers for thread %s", event_type, len(subscribers), thread_id)
         for queue in subscribers:
             try:
                 queue.put_nowait(event)
