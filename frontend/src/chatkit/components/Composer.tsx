@@ -233,6 +233,13 @@ export function Composer({
     };
   }, [value, isMultiline, forceMultiline]);
 
+  // Focus textarea on mount (e.g., after workflow selection)
+  useEffect(() => {
+    if (textareaRef.current && !isDisabled) {
+      textareaRef.current.focus();
+    }
+  }, [isDisabled]);
+
   // Supprimer un attachment
   const removeAttachment = useCallback((id: string) => {
     onAttachmentsChange(attachments.filter(att => att.id !== id));
