@@ -148,8 +148,8 @@
 
 /* Text fade gradient effect - only applied when text overflows */
 .conversations-sidebar-section__thread-title--truncated {
-  mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 4rem), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 4rem), transparent 100%);
 }
 
 .conversations-sidebar-section__thread-button--active .conversations-sidebar-section__thread-title {
@@ -183,6 +183,7 @@
   justify-content: flex-end;
   gap: calc(var(--spacing) * 0.625);
   z-index: 1;
+  outline: none;
 }
 
 .conversations-sidebar-section__action-button {
