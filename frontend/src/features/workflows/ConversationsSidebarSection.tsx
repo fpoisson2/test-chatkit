@@ -463,10 +463,20 @@ export function ConversationsSidebarSection({
               const isActive = thread.id === currentThreadId;
               const isDeleting = deletingThreadId === thread.id;
               const isStreaming = streamingThreadIds?.has(thread.id) ?? false;
+
               // For active thread, prefer title from snapshot (most up-to-date source)
-              const snapshotTitle = isActive && activeThreadSnapshot?.id === thread.id
-                ? (activeThreadSnapshot.title || (activeThreadSnapshot.metadata?.title as string | undefined))
-                : undefined;
+              // Check both title and metadata.title as the backend may use either location
+              let snapshotTitle: string | undefined;
+              if (isActive && activeThreadSnapshot?.id === thread.id) {
+                // Try direct title first
+                if (typeof activeThreadSnapshot.title === "string" && activeThreadSnapshot.title.trim()) {
+                  snapshotTitle = activeThreadSnapshot.title.trim();
+                }
+                // Fall back to metadata.title
+                else if (typeof activeThreadSnapshot.metadata?.title === "string" && (activeThreadSnapshot.metadata.title as string).trim()) {
+                  snapshotTitle = (activeThreadSnapshot.metadata.title as string).trim();
+                }
+              }
               const threadTitle = snapshotTitle || getThreadTitle(thread);
 
               // Debug: Log title resolution for active thread
