@@ -119,7 +119,7 @@
   margin-top: 8px;
 }
 
-/* Bouton de copie */
+/* Bouton de copie (legacy - kept for backward compatibility) */
 .chatkit-copy-button {
   display: flex;
   align-items: center;
@@ -147,6 +147,77 @@
 
 .chatkit-copy-button.copied {
   color: var(--status-success);
+}
+
+/* Message action buttons container */
+.chatkit-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+/* Action buttons (copy, export PDF, export DOCX) */
+.chatkit-action-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chatkit-action-button:hover:not(:disabled) {
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.chatkit-action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chatkit-action-button svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.chatkit-action-button.copied {
+  color: var(--status-success);
+}
+
+.chatkit-action-button.exporting {
+  color: var(--color-primary, #3b82f6);
+}
+
+.chatkit-action-label {
+  font-weight: 500;
+}
+
+/* Spinner animation for exporting state */
+.chatkit-spinner {
+  animation: chatkit-spin 1s linear infinite;
+}
+
+@keyframes chatkit-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dark theme adjustments for action buttons */
+[data-theme="dark"] .chatkit-action-button:hover:not(:disabled) {
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
 }
 
 .chatkit-error {

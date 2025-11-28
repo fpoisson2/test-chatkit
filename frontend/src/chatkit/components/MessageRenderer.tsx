@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { ThreadItem } from '../types';
 import type { WidgetContext } from '../widgets';
 import { WidgetRenderer } from '../widgets';
@@ -11,7 +11,8 @@ import { DevToolsScreencast } from './DevToolsScreencast';
 import { SSHTerminal } from './SSHTerminal';
 import { VNCScreencast } from './VNCScreencast';
 import { FileAttachmentDisplay } from './FileAttachmentDisplay';
-import { ImageWithBlobUrl } from '../utils';
+import { ImageWithBlobUrl, exportToDocx, exportToPdf } from '../utils';
+import { useI18n } from '../../i18n/I18nProvider';
 
 export interface MessageRendererProps {
   item: ThreadItem;
@@ -154,9 +155,37 @@ function AssistantMessageContent({
   loadingLabel: string;
   isAdmin?: boolean;
 }): JSX.Element {
+  const { t } = useI18n();
+  const [exportingFormat, setExportingFormat] = useState<'pdf' | 'docx' | null>(null);
+
   if (item.type !== 'assistant_message') return <></>;
 
   const usageMetadata = item.usage_metadata;
+
+  const getTextContent = () => {
+    return item.content
+      .filter((c: any) => c.type === 'output_text')
+      .map((c: any) => c.text)
+      .join('\n\n');
+  };
+
+  const handleExportPdf = async () => {
+    setExportingFormat('pdf');
+    try {
+      await exportToPdf(getTextContent(), undefined, theme as 'light' | 'dark');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
+  const handleExportDocx = async () => {
+    setExportingFormat('docx');
+    try {
+      await exportToDocx(getTextContent());
+    } finally {
+      setExportingFormat(null);
+    }
+  };
 
   return (
     <>
@@ -187,27 +216,70 @@ function AssistantMessageContent({
         {item.status === 'in_progress' && <LoadingIndicator label={loadingLabel} />}
       </div>
       {item.status !== 'in_progress' && (
-        <button
-          className={`chatkit-copy-button ${copiedMessageId === item.id ? 'copied' : ''}`}
-          onClick={() => {
-            const textContent = item.content
-              .filter((c: any) => c.type === 'output_text')
-              .map((c: any) => c.text)
-              .join('\n\n');
-            onCopyMessage(item.id, textContent);
-          }}
-        >
-          {copiedMessageId === item.id ? (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-          )}
-        </button>
+        <div className="chatkit-message-actions">
+          {/* Copy button */}
+          <button
+            className={`chatkit-action-button ${copiedMessageId === item.id ? 'copied' : ''}`}
+            onClick={() => onCopyMessage(item.id, getTextContent())}
+            title={t('chatkit.message.copy')}
+          >
+            {copiedMessageId === item.id ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            )}
+          </button>
+
+          {/* Export PDF button */}
+          <button
+            className={`chatkit-action-button ${exportingFormat === 'pdf' ? 'exporting' : ''}`}
+            onClick={handleExportPdf}
+            disabled={exportingFormat !== null}
+            title={t('chatkit.export.pdf')}
+          >
+            {exportingFormat === 'pdf' ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="chatkit-spinner">
+                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10"></circle>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <path d="M9 15h6"></path>
+                <path d="M9 11h6"></path>
+              </svg>
+            )}
+            <span className="chatkit-action-label">PDF</span>
+          </button>
+
+          {/* Export DOCX button */}
+          <button
+            className={`chatkit-action-button ${exportingFormat === 'docx' ? 'exporting' : ''}`}
+            onClick={handleExportDocx}
+            disabled={exportingFormat !== null}
+            title={t('chatkit.export.docx')}
+          >
+            {exportingFormat === 'docx' ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="chatkit-spinner">
+                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10"></circle>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <path d="M16 13H8"></path>
+                <path d="M16 17H8"></path>
+                <path d="M10 9H8"></path>
+              </svg>
+            )}
+            <span className="chatkit-action-label">DOCX</span>
+          </button>
+        </div>
       )}
       {/* Cost tracking for admins */}
       {isAdmin && usageMetadata && item.status !== 'in_progress' && (

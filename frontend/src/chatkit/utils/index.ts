@@ -12,6 +12,9 @@ export { getFileTypeIcon } from './fileIcons';
 // Constantes
 export * from './constants';
 
+// Export utilities
+export { exportToDocx, exportToPdf } from './exportUtils';
+
 // Helpers de style
 export {
   isRecord,
