@@ -63,3 +63,39 @@ Copy `.env.example` to `.env` and configure:
 - **Python**: Black formatting (88 chars), isort imports, Ruff linting, type hints required
 - **TypeScript**: Strict mode, no implicit `any`, functional components with hooks
 - **Testing**: 80% minimum coverage, pytest-asyncio for backend, Vitest for frontend
+
+## Docker Commands
+
+```bash
+docker-compose up -d          # Start all containers in background
+docker-compose restart        # Restart all containers (after code changes)
+docker-compose down           # Stop all containers
+docker-compose logs -f        # Follow logs from all containers
+docker-compose logs -f backend  # Follow logs from specific container
+```
+
+## Git SSH Configuration
+
+SSH is configured for GitHub authentication. The remote uses SSH URL:
+```
+git@github.com:fpoisson2/test-chatkit.git
+```
+
+SSH key location: `~/.ssh/id_ed25519`
+
+To verify SSH connection:
+```bash
+ssh -T git@github.com
+```
+
+Push/pull will work without password prompts.
+
+## Git Workflow
+
+Always create a branch for changes, then commit and push:
+```bash
+git checkout -b feature/my-feature   # Create and switch to new branch
+git add .                            # Stage changes
+git commit -m "Description"          # Commit
+git push -u origin feature/my-feature # Push and set upstream
+```
