@@ -245,6 +245,20 @@ export function MyChat() {
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(new Set());
+
+  // Debug: Log currentThread changes for sidebar title debugging
+  useEffect(() => {
+    if (currentThread) {
+      const metadata = currentThread.metadata as Record<string, unknown> | undefined;
+      console.debug("[MyChat] currentThread changed:", {
+        id: currentThread.id,
+        title: currentThread.title,
+        metadataTitle: metadata?.title,
+        initialThreadId,
+        willPassToSidebar: initialThreadId !== null,
+      });
+    }
+  }, [currentThread, initialThreadId]);
   const [isNewConversationStreaming, setIsNewConversationStreaming] = useState(false);
   // Ref to track if we started streaming on a new conversation (for use in onThreadChange closure)
   const wasNewConversationStreamingRef = useRef(false);
@@ -1027,6 +1041,14 @@ export function MyChat() {
             if ("thread" in data && data.thread) {
               const thread = data.thread as Record<string, unknown>;
               lastThreadSnapshotRef.current = thread;
+              // Debug: Log title info to trace why it's not appearing in sidebar
+              const metadata = thread.metadata as Record<string, unknown> | undefined;
+              console.debug("[ChatKit] onLog thread update - title info:", {
+                threadId: thread.id,
+                title: thread.title,
+                metadataTitle: metadata?.title,
+                hasMetadata: !!metadata,
+              });
               // Update state to trigger re-render and useOutboundCallDetector
               setCurrentThread(thread);
             }

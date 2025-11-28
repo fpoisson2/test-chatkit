@@ -209,6 +209,15 @@ export function ConversationsSidebarSection({
       return;
     }
 
+    // Debug: Log the snapshot to trace title updates
+    const snapshotTitle = activeThreadSnapshot.title || (activeThreadSnapshot.metadata?.title as string | undefined);
+    console.debug("[ConversationsSidebarSection] activeThreadSnapshot sync:", {
+      id: activeThreadSnapshot.id,
+      title: activeThreadSnapshot.title,
+      metadataTitle: activeThreadSnapshot.metadata?.title,
+      resolvedTitle: snapshotTitle,
+    });
+
     setThreads((currentThreads) => {
       const targetIndex = currentThreads.findIndex((thread) => thread.id === activeThreadSnapshot.id);
 
@@ -459,6 +468,22 @@ export function ConversationsSidebarSection({
                 ? (activeThreadSnapshot.title || (activeThreadSnapshot.metadata?.title as string | undefined))
                 : undefined;
               const threadTitle = snapshotTitle || getThreadTitle(thread);
+
+              // Debug: Log title resolution for active thread
+              if (isActive) {
+                console.debug("[ConversationsSidebarSection] Rendering active thread:", {
+                  threadId: thread.id,
+                  currentThreadId,
+                  hasSnapshot: !!activeThreadSnapshot,
+                  snapshotId: activeThreadSnapshot?.id,
+                  snapshotTitle: activeThreadSnapshot?.title,
+                  snapshotMetadataTitle: activeThreadSnapshot?.metadata?.title,
+                  threadInListTitle: thread.title,
+                  threadInListMetadataTitle: thread.metadata?.title,
+                  resolvedSnapshotTitle: snapshotTitle,
+                  finalTitle: threadTitle,
+                });
+              }
               const dateStr = items.length > 0 ? formatRelativeDate(items[0].created_at) : "";
               const isMenuOpen = openMenuId === thread.id;
               const menuId = `conversation-menu-${thread.id}`;

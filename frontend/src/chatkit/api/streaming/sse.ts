@@ -19,7 +19,17 @@ export function parseSSELine(line: string): ThreadStreamEvent | null {
   }
 
   try {
-    return JSON.parse(jsonStr) as ThreadStreamEvent;
+    const event = JSON.parse(jsonStr) as ThreadStreamEvent;
+    // Debug: Log thread.updated events with title info
+    if (event.type === 'thread.updated' && 'thread' in event) {
+      const threadEvent = event as { type: string; thread: { id?: string; title?: string; metadata?: unknown } };
+      console.debug('[ChatKit SSE] thread.updated event:', {
+        threadId: threadEvent.thread?.id,
+        title: threadEvent.thread?.title,
+        metadata: threadEvent.thread?.metadata,
+      });
+    }
+    return event;
   } catch (error) {
     console.warn('[ChatKit] Failed to parse SSE line:', line, error);
     return null;
