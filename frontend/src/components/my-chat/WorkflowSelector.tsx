@@ -20,8 +20,10 @@ export function WorkflowSelector({
 }: WorkflowSelectorProps): JSX.Element | null {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const optionsRef = useRef<HTMLDivElement>(null);
 
   const handleSelect = useCallback(
     (workflowId: number) => {
@@ -75,6 +77,28 @@ export function WorkflowSelector({
     );
   }, [workflows, searchTerm]);
 
+  // Reset focused index when filtered workflows change
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [filteredWorkflows]);
+
+  // Reset focused index when dropdown closes
+  useEffect(() => {
+    if (!isOpen) {
+      setFocusedIndex(-1);
+    }
+  }, [isOpen]);
+
+  // Scroll focused option into view
+  useEffect(() => {
+    if (focusedIndex >= 0 && optionsRef.current) {
+      const focusedElement = optionsRef.current.children[focusedIndex] as HTMLElement;
+      if (focusedElement) {
+        focusedElement.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [focusedIndex]);
+
   // Don't render if there are no workflows
   if (workflows.length === 0) {
     return null;
@@ -87,8 +111,27 @@ export function WorkflowSelector({
     if (event.key === "Escape") {
       setIsOpen(false);
       setSearchTerm("");
-    } else if (event.key === "Enter" && filteredWorkflows.length === 1) {
-      handleSelect(filteredWorkflows[0].id);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (filteredWorkflows.length > 0) {
+        setFocusedIndex((prev) =>
+          prev < filteredWorkflows.length - 1 ? prev + 1 : 0
+        );
+      }
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (filteredWorkflows.length > 0) {
+        setFocusedIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredWorkflows.length - 1
+        );
+      }
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (focusedIndex >= 0 && focusedIndex < filteredWorkflows.length) {
+        handleSelect(filteredWorkflows[focusedIndex].id);
+      } else if (filteredWorkflows.length === 1) {
+        handleSelect(filteredWorkflows[0].id);
+      }
     }
   };
 
@@ -122,19 +165,20 @@ export function WorkflowSelector({
                 onClick={(e) => e.stopPropagation()}
               />
             </div>
-            <div className="workflow-selector__options">
+            <div className="workflow-selector__options" ref={optionsRef}>
               {filteredWorkflows.length > 0 ? (
-                filteredWorkflows.map((workflow) => (
+                filteredWorkflows.map((workflow, index) => (
                   <div
                     key={workflow.id}
                     className={`workflow-selector__option${
                       workflow.id === selectedWorkflowId
                         ? " workflow-selector__option--selected"
                         : ""
-                    }`}
+                    }${index === focusedIndex ? " workflow-selector__option--focused" : ""}`}
                     role="option"
                     aria-selected={workflow.id === selectedWorkflowId}
                     onClick={() => handleSelect(workflow.id)}
+                    onMouseEnter={() => setFocusedIndex(index)}
                   >
                     {workflow.display_name}
                   </div>
