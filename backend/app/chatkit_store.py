@@ -661,7 +661,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         after: str | None,
         order: str,
         context: ChatKitRequestContext,
-        all_workflows: bool = False,
+        all_workflows: bool = True,
     ) -> Page[ThreadMetadata]:
         owner_id = self._require_user_id(context)
 
