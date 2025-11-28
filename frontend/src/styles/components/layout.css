@@ -77,13 +77,13 @@
 
 .chatkit-layout--desktop {
   display: grid;
-  grid-template-columns: minmax(0, var(--chatkit-sidebar-collapsed-width)) 1fr;
+  grid-template-columns: var(--chatkit-sidebar-collapsed-width) 1fr;
   align-items: stretch;
-  transition: grid-template-columns 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: grid-template-columns var(--chatkit-sidebar-open-duration) var(--cubic-move);
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open {
-  grid-template-columns: minmax(0, var(--chatkit-sidebar-width)) 1fr;
+  grid-template-columns: var(--chatkit-sidebar-width) 1fr;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-hidden {
