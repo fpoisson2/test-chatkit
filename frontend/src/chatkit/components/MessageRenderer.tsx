@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { ThreadItem } from '../types';
 import type { WidgetContext } from '../widgets';
 import { WidgetRenderer } from '../widgets';
@@ -157,6 +157,7 @@ function AssistantMessageContent({
 }): JSX.Element {
   const { t } = useI18n();
   const [exportingFormat, setExportingFormat] = useState<'pdf' | 'docx' | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   if (item.type !== 'assistant_message') return <></>;
 
@@ -172,7 +173,12 @@ function AssistantMessageContent({
   const handleExportPdf = async () => {
     setExportingFormat('pdf');
     try {
-      await exportToPdf(getTextContent(), undefined, theme as 'light' | 'dark');
+      // Use the DOM element if available, otherwise fall back to markdown
+      if (contentRef.current) {
+        await exportToPdf(contentRef.current, undefined, theme as 'light' | 'dark');
+      } else {
+        await exportToPdf(getTextContent(), undefined, theme as 'light' | 'dark');
+      }
     } finally {
       setExportingFormat(null);
     }
@@ -189,7 +195,7 @@ function AssistantMessageContent({
 
   return (
     <>
-      <div className="chatkit-message-content">
+      <div className="chatkit-message-content" ref={contentRef}>
         {item.content
           .filter((content) => {
             if (content.type !== 'output_text') {
