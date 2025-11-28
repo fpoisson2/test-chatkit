@@ -190,6 +190,9 @@ async def _broadcast_event_to_subscribers(thread_id: str, event: Any) -> None:
     """Broadcast an event to all subscribers of a thread."""
     async with _subscribers_lock:
         subscribers = _thread_event_subscribers.get(thread_id, [])
+        if subscribers:
+            event_type = getattr(event, "type", type(event).__name__)
+            logger.info("Broadcasting %s to %d subscribers for thread %s", event_type, len(subscribers), thread_id)
         for queue in subscribers:
             try:
                 queue.put_nowait(event)
@@ -1984,6 +1987,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     try:
                         # Wait for events with a short timeout to periodically check completion
                         event = await asyncio.wait_for(event_queue.get(), timeout=0.5)
+                        event_type = getattr(event, "type", type(event).__name__)
+                        logger.info("Resume streaming yielding event: %s for thread %s", event_type, thread.id)
                         yield event
                         await asyncio.sleep(0)  # Force flush after each event
                         last_event_time = asyncio.get_event_loop().time()
