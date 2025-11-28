@@ -1959,6 +1959,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             try:
                 # Emit a progress update to indicate we're resuming
                 yield ProgressUpdateEvent(text="")
+                await asyncio.sleep(0)  # Force flush
 
                 # Get the completion event to know when streaming is done
                 completion_event = _active_streaming_threads.get(thread.id)
@@ -1975,6 +1976,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                             try:
                                 event = event_queue.get_nowait()
                                 yield event
+                                await asyncio.sleep(0)  # Force flush between events
                             except asyncio.QueueEmpty:
                                 break
                         break
@@ -1983,6 +1985,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         # Wait for events with a short timeout to periodically check completion
                         event = await asyncio.wait_for(event_queue.get(), timeout=0.5)
                         yield event
+                        await asyncio.sleep(0)  # Force flush after each event
                         last_event_time = asyncio.get_event_loop().time()
                     except asyncio.TimeoutError:
                         # Check if streaming is still active
@@ -1994,6 +1997,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         current_time = asyncio.get_event_loop().time()
                         if current_time - last_event_time >= KEEPALIVE_INTERVAL:
                             yield ProgressUpdateEvent(text="")
+                            await asyncio.sleep(0)  # Force flush
                             last_event_time = current_time
                         continue
 
