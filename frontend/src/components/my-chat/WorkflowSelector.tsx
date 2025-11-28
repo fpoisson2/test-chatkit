@@ -94,7 +94,6 @@ export function WorkflowSelector({
 
   return (
     <div className="workflow-selector" ref={wrapperRef}>
-      <span className="workflow-selector__label">workflow</span>
       <div className="workflow-selector__dropdown-wrapper">
         <button
           type="button"
@@ -104,6 +103,7 @@ export function WorkflowSelector({
           aria-haspopup="listbox"
           aria-expanded={isOpen}
         >
+          <span className="workflow-selector__label">workflow</span>
           <span className="workflow-selector__trigger-text">
             {selectedWorkflow?.display_name ?? "Sélectionner..."}
           </span>
