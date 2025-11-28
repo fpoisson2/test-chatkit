@@ -23,6 +23,7 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   const hasMountedRef = useRef<boolean>(false);
   const minDisplayTimeRef = useRef<number | null>(null);
   const isCompletedRef = useRef<boolean>(false);
+  const isResumingStreamingRef = useRef<boolean>(false);
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -72,10 +73,24 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   );
 
   // Détecter si le workflow était déjà complet au premier render
+  // et si on reprend un streaming en cours (workflow incomplet avec des tâches)
   if (!hasMountedRef.current) {
     hasMountedRef.current = true;
     wasCompletedOnMountRef.current = isCompleted;
+
+    // Si le workflow n'est pas complet et a des tâches, on reprend un streaming
+    if (!isCompleted && currentTaskCount > 0) {
+      isResumingStreamingRef.current = true;
+      // Initialiser previousTaskCountRef pour que les nouvelles tâches soient détectées
+      previousTaskCountRef.current = currentTaskCount;
+      lastCompletedIndexRef.current = currentTaskCount - 2; // Permettre à la dernière tâche d'être affichée
+    }
   }
+
+  // Quand on reprend un streaming, afficher la dernière tâche
+  const resumingTask = isResumingStreamingRef.current && !isCompleted && currentTaskCount > 0
+    ? workflow.tasks[currentTaskCount - 1]
+    : null;
 
   // Fonction pour traiter la file d'attente
   const processQueue = () => {
@@ -231,9 +246,16 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
       </div>
 
       {/* Afficher le premier thought en streaming (sans animation de fade) */}
-      {!expanded && streamingTask && !displayedTask && (
+      {!expanded && streamingTask && !displayedTask && !resumingTask && (
         <div className="chatkit-workflow-last-task chatkit-workflow-streaming-task">
           <TaskRenderer task={streamingTask} theme={theme} />
+        </div>
+      )}
+
+      {/* Afficher la tâche en cours lors de la reprise du streaming */}
+      {!expanded && resumingTask && !displayedTask && (
+        <div className="chatkit-workflow-last-task chatkit-workflow-streaming-task">
+          <TaskRenderer task={resumingTask} theme={theme} />
         </div>
       )}
 

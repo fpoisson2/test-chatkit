@@ -102,6 +102,9 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
     resumedThreadIdRef.current = thread.id;
     callbacksRef.current.onLog?.({ name: 'thread.resume.start', data: { threadId: thread.id } });
 
+    // Set loading state to show typing indicator
+    setThreadLoading(thread.id, true);
+
     try {
       const abortController = getAbortController(thread.id);
       const body = buildResumeStreamingPayload(thread.id);
@@ -137,8 +140,10 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
       }
     } finally {
       isResumingRef.current = false;
+      // Clear loading state when streaming completes
+      setThreadLoading(thread.id, false);
     }
-  }, [api.url, api.headers, getAbortController, setThread, threadCacheRef]);
+  }, [api.url, api.headers, getAbortController, setThread, threadCacheRef, setThreadLoading]);
 
   // Store load callbacks in refs to avoid triggering useEffect re-runs
   const loadCallbacksRef = useRef({
