@@ -183,6 +183,7 @@
   justify-content: flex-end;
   gap: calc(var(--spacing) * 0.625);
   z-index: 1;
+  outline: none;
 }
 
 .conversations-sidebar-section__action-button {
