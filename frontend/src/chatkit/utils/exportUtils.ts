@@ -22,10 +22,10 @@ export async function exportToDocx(markdownContent: string, filename?: string): 
       listItemSize: 24,
       codeBlockSize: 20,
       blockquoteSize: 24,
-      // Spacing (lineSpacing is a multiplier: 1.0 = single, 1.15 = 1.15x, 1.5 = 1.5x)
+      // Spacing (in twips: 240 = single line, 276 = 1.15x, 360 = 1.5x, 480 = double)
       headingSpacing: 240,
       paragraphSpacing: 200,
-      lineSpacing: 1.15,
+      lineSpacing: 276,
       // Alignment
       paragraphAlignment: 'LEFT',
       blockquoteAlignment: 'LEFT',
