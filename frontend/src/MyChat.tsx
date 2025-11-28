@@ -256,6 +256,8 @@ export function MyChat() {
   // Track if user is in "new conversation" draft mode (no thread created yet)
   // This prevents restoring stored threads when switching workflows on a new conversation
   const isNewConversationDraftRef = useRef<boolean>(false);
+  // Track if this is the initial mount - we should always try to restore the thread on first load
+  const isInitialMountRef = useRef<boolean>(true);
 
   // Detect LTI user early so we can use it in chatkitOptions
   const isLtiUser = user?.is_lti ?? false;
@@ -344,8 +346,12 @@ export function MyChat() {
   }, [currentThread, initialThreadId]);
 
   // Sync the new conversation draft ref with initialThreadId state
-  // This ensures the ref is correct even when initialThreadId is null at startup
+  // Only update after initial mount to avoid blocking thread restoration on page refresh
   useEffect(() => {
+    // Skip on initial mount - the persistenceSlug effect will handle initial state
+    if (isInitialMountRef.current) {
+      return;
+    }
     isNewConversationDraftRef.current = initialThreadId === null;
   }, [initialThreadId]);
 
@@ -644,14 +650,24 @@ export function MyChat() {
     }
     previousSessionOwnerRef.current = sessionOwner;
 
-    // Don't restore stored thread if user is in a new conversation draft state
+    // On initial mount, always try to restore the stored thread
+    // After that, don't restore if user is in a new conversation draft state
     // This prevents switching to an existing conversation when user changes workflow on a new conversation
-    if (isNewConversationDraftRef.current) {
+    if (!isInitialMountRef.current && isNewConversationDraftRef.current) {
       return;
     }
 
     const storedThreadId = loadStoredThreadId(sessionOwner, persistenceSlug);
-    setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
+    if (storedThreadId) {
+      // Found a stored thread, restore it and clear initial mount flag
+      isInitialMountRef.current = false;
+      isNewConversationDraftRef.current = false;
+      setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
+    } else if (isInitialMountRef.current && persistenceSlug) {
+      // No stored thread found on initial mount with a valid workflow slug
+      // Clear the initial mount flag but keep draft state
+      isInitialMountRef.current = false;
+    }
   }, [persistenceSlug, sessionOwner]);
 
   const { apiConfig, attachmentsEnabled, debugSnapshot } = useChatApiConfig({
