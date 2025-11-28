@@ -53,6 +53,23 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
 
   // Track if we're currently resuming streaming to avoid duplicate attempts
   const isResumingRef = useRef(false);
+  // Track which thread we've already attempted to resume (to prevent re-triggering on re-renders)
+  const resumedThreadIdRef = useRef<string | null>(null);
+
+  // Store callbacks in refs to avoid triggering useEffect re-runs
+  const callbacksRef = useRef({
+    onThreadUpdate,
+    onStreamEvent,
+    onError,
+    onLog,
+  });
+  // Update refs on each render
+  callbacksRef.current = {
+    onThreadUpdate,
+    onStreamEvent,
+    onError,
+    onLog,
+  };
 
   // Reset thread when initialThread becomes null
   useEffect(() => {
@@ -67,52 +84,78 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
 
   // Resume streaming for a thread that was interrupted
   const resumeStreaming = useCallback(async (thread: Thread) => {
+    // Prevent duplicate resume attempts for the same thread
     if (isResumingRef.current) {
-      onLog?.({ name: 'thread.resume.skip', data: { threadId: thread.id, reason: 'already_resuming' } });
+      callbacksRef.current.onLog?.({ name: 'thread.resume.skip', data: { threadId: thread.id, reason: 'already_resuming' } });
+      return;
+    }
+
+    // Check if we've already attempted to resume this specific thread
+    if (resumedThreadIdRef.current === thread.id) {
+      callbacksRef.current.onLog?.({ name: 'thread.resume.skip', data: { threadId: thread.id, reason: 'already_attempted' } });
       return;
     }
 
     isResumingRef.current = true;
-    onLog?.({ name: 'thread.resume.start', data: { threadId: thread.id } });
+    resumedThreadIdRef.current = thread.id;
+    callbacksRef.current.onLog?.({ name: 'thread.resume.start', data: { threadId: thread.id } });
 
     try {
       const abortController = getAbortController(thread.id);
-      const payload = buildResumeStreamingPayload(thread.id);
+      const body = buildResumeStreamingPayload(thread.id);
 
       await streamChatKitEvents({
         url: api.url,
         headers: api.headers,
-        payload,
+        body,
         initialThread: thread,
         signal: abortController.signal,
         onThreadUpdate: (updatedThread) => {
           setThread(updatedThread);
           threadCacheRef.current.set(updatedThread.id, updatedThread);
-          onThreadUpdate?.(updatedThread);
+          callbacksRef.current.onThreadUpdate?.(updatedThread);
         },
         onEvent: (event) => {
-          onStreamEvent?.(event);
+          callbacksRef.current.onStreamEvent?.(event);
         },
         onError: (err) => {
           console.error('[ChatKit] Error resuming streaming:', err);
-          onError?.({ error: err });
+          callbacksRef.current.onError?.({ error: err });
         },
       });
 
-      onLog?.({ name: 'thread.resume.end', data: { threadId: thread.id } });
+      callbacksRef.current.onLog?.({ name: 'thread.resume.end', data: { threadId: thread.id } });
     } catch (err) {
-      console.error('[ChatKit] Failed to resume streaming:', err);
-      onError?.({ error: err instanceof Error ? err : new Error(String(err)) });
+      // Don't log abort errors as they are expected when navigating away
+      if (err instanceof Error && err.name === 'AbortError') {
+        callbacksRef.current.onLog?.({ name: 'thread.resume.aborted', data: { threadId: thread.id } });
+      } else {
+        console.error('[ChatKit] Failed to resume streaming:', err);
+        callbacksRef.current.onError?.({ error: err instanceof Error ? err : new Error(String(err)) });
+      }
     } finally {
       isResumingRef.current = false;
     }
-  }, [api.url, api.headers, getAbortController, setThread, threadCacheRef, onThreadUpdate, onStreamEvent, onError, onLog]);
+  }, [api.url, api.headers, getAbortController, setThread, threadCacheRef]);
+
+  // Store load callbacks in refs to avoid triggering useEffect re-runs
+  const loadCallbacksRef = useRef({
+    onThreadLoadStart,
+    onThreadLoadEnd,
+  });
+  loadCallbacksRef.current = {
+    onThreadLoadStart,
+    onThreadLoadEnd,
+  };
 
   // Load initial thread
   useEffect(() => {
+    // Reset resume tracking when thread changes
+    resumedThreadIdRef.current = null;
+
     if (initialThread) {
-      onThreadLoadStart?.({ threadId: initialThread });
-      onLog?.({ name: 'thread.load.start', data: { threadId: initialThread } });
+      loadCallbacksRef.current.onThreadLoadStart?.({ threadId: initialThread });
+      callbacksRef.current.onLog?.({ name: 'thread.load.start', data: { threadId: initialThread } });
 
       // Check cache first for instant display
       const cachedThread = threadCacheRef.current.get(initialThread);
@@ -121,12 +164,12 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
         setThread(cachedThread);
         activeThreadIdRef.current = cachedThread.id;
         visibleThreadIdRef.current = cachedThread.id;
-        onThreadLoadEnd?.({ threadId: initialThread });
-        onLog?.({ name: 'thread.load.end', data: { thread: cachedThread, source: 'cache' } });
+        loadCallbacksRef.current.onThreadLoadEnd?.({ threadId: initialThread });
+        callbacksRef.current.onLog?.({ name: 'thread.load.end', data: { thread: cachedThread, source: 'cache' } });
 
         // Check if we need to resume streaming for cached thread
         if (isThreadStreaming(cachedThread)) {
-          onLog?.({ name: 'thread.resume.detected', data: { threadId: cachedThread.id, source: 'cache' } });
+          callbacksRef.current.onLog?.({ name: 'thread.resume.detected', data: { threadId: cachedThread.id, source: 'cache' } });
           resumeStreaming(cachedThread);
         }
       } else {
@@ -145,12 +188,12 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
             threadCacheRef.current.set(loadedThread.id, loadedThread);
             activeThreadIdRef.current = loadedThread.id;
             visibleThreadIdRef.current = loadedThread.id;
-            onThreadLoadEnd?.({ threadId: initialThread });
-            onLog?.({ name: 'thread.load.end', data: { thread: loadedThread, source: 'server' } });
+            loadCallbacksRef.current.onThreadLoadEnd?.({ threadId: initialThread });
+            callbacksRef.current.onLog?.({ name: 'thread.load.end', data: { thread: loadedThread, source: 'server' } });
 
             // Check if we need to resume streaming for the loaded thread
             if (isThreadStreaming(loadedThread)) {
-              onLog?.({ name: 'thread.resume.detected', data: { threadId: loadedThread.id, source: 'server' } });
+              callbacksRef.current.onLog?.({ name: 'thread.resume.detected', data: { threadId: loadedThread.id, source: 'server' } });
               resumeStreaming(loadedThread);
             }
           })
@@ -162,10 +205,10 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
               activeThreadIdRef.current = tempId;
               visibleThreadIdRef.current = tempId;
               setThread(null);
-              onThreadLoadEnd?.({ threadId: initialThread });
+              loadCallbacksRef.current.onThreadLoadEnd?.({ threadId: initialThread });
             } else {
               console.error('[ChatKit] Failed to load initial thread:', err);
-              onError?.({ error: err instanceof Error ? err : new Error(errorMessage) });
+              callbacksRef.current.onError?.({ error: err instanceof Error ? err : new Error(errorMessage) });
             }
           })
           .finally(() => {
@@ -173,7 +216,9 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
           });
       }
     }
-  }, [initialThread, api.url, api.headers, onThreadLoadStart, onThreadLoadEnd, onError, onLog, setThreadLoading, generateTempThreadId, threadCacheRef, activeThreadIdRef, visibleThreadIdRef, setThread, resumeStreaming]);
+  // Note: resumeStreaming is stable (only depends on api.url, api.headers, getAbortController, setThread, threadCacheRef)
+  // Callbacks are accessed via refs to prevent unnecessary re-runs
+  }, [initialThread, api.url, api.headers, setThreadLoading, generateTempThreadId, threadCacheRef, activeThreadIdRef, visibleThreadIdRef, setThread, resumeStreaming]);
 
   // Fetch thread updates
   const fetchUpdates = useCallback(async () => {
@@ -196,15 +241,15 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
       activeThreadIdRef.current = updatedThread.id;
       visibleThreadIdRef.current = updatedThread.id;
       setThreadLoading(updatedThread.id, false);
-      onLog?.({ name: 'thread.refresh', data: { thread: updatedThread } });
+      callbacksRef.current.onLog?.({ name: 'thread.refresh', data: { thread: updatedThread } });
     } catch (err) {
       console.error('[ChatKit] Failed to fetch updates:', err);
       const error = err instanceof Error ? err : new Error(String(err));
-      onError?.({ error });
+      callbacksRef.current.onError?.({ error });
     } finally {
       setThreadLoading(targetThreadId, false);
     }
-  }, [api.url, api.headers, onError, onLog, setThreadLoading, isTempThreadId, visibleThreadIdRef, activeThreadIdRef, threadCacheRef, setThread]);
+  }, [api.url, api.headers, setThreadLoading, isTempThreadId, visibleThreadIdRef, activeThreadIdRef, threadCacheRef, setThread]);
 
   return {
     fetchUpdates,
