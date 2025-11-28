@@ -42,6 +42,17 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
   // Synchroniser isCompletedRef avec isCompleted pour l'utiliser dans les callbacks
   isCompletedRef.current = isCompleted;
 
+  // Détecter si on est en train de streamer le premier thought d'un workflow reasoning
+  // Condition: workflow reasoning, une seule tâche de type thought, workflow pas encore complété
+  const isStreamingFirstThought =
+    isReasoning &&
+    !isCompleted &&
+    currentTaskCount === 1 &&
+    workflow.tasks[0]?.type === 'thought';
+
+  // La tâche à afficher en streaming (le premier thought pendant qu'il se construit)
+  const streamingTask = isStreamingFirstThought ? workflow.tasks[0] : null;
+
   // Obtenir le type de la tâche actuelle ou de la dernière tâche
   const getCurrentTaskType = (): string | null => {
     if (displayedTask) {
@@ -219,7 +230,14 @@ export function WorkflowRenderer({ workflow, className = '', theme = 'light' }: 
         </button>
       </div>
 
-      {/* Afficher la dernière tâche complète */}
+      {/* Afficher le premier thought en streaming (sans animation de fade) */}
+      {!expanded && streamingTask && !displayedTask && (
+        <div className="chatkit-workflow-last-task chatkit-workflow-streaming-task">
+          <TaskRenderer task={streamingTask} theme={theme} />
+        </div>
+      )}
+
+      {/* Afficher la dernière tâche complète (avec animation) */}
       {!expanded && displayedTask && (
         <div className="chatkit-workflow-last-task" key={fadeKey}>
           <TaskRenderer task={displayedTask} theme={theme} />
