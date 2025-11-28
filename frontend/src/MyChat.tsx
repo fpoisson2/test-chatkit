@@ -1201,20 +1201,34 @@ export function MyChat() {
     }
 
     // Once ready, stay ready (don't reset)
-    if (ltiReady || !activeWorkflow || workflowsLoading) {
+    if (ltiReady) {
       return;
     }
 
-    console.log('[MyChat] LTI workflow selected, waiting for ChatKit to render...');
+    // If workflow is loaded and not loading, wait a bit for ChatKit to render
+    if (activeWorkflow && !workflowsLoading) {
+      console.log('[MyChat] LTI workflow selected, waiting for ChatKit to render...');
+      const timer = setTimeout(() => {
+        console.log('[MyChat] LTI initialization complete');
+        setLtiReady(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
 
-    // Give ChatKit time to initialize and render (covers all app.init phases)
-    const timer = setTimeout(() => {
-      console.log('[MyChat] LTI initialization complete');
+    // Fallback timeout: if workflow doesn't load within 3 seconds, show content anyway
+    // This prevents permanent blank screen if localStorage has stale LTI data
+    console.log('[MyChat] LTI context detected, waiting for workflow to load...');
+    const fallbackTimer = setTimeout(() => {
+      console.log('[MyChat] LTI fallback timeout - showing content without workflow');
+      // Clean up stale localStorage if user is not actually an LTI user
+      if (!isLtiUser) {
+        localStorage.removeItem('lti_launch_workflow_id');
+      }
       setLtiReady(true);
-    }, 500);
+    }, 3000);
 
-    return () => clearTimeout(timer);
-  }, [ltiReady, isLtiContext, activeWorkflow, workflowsLoading]);
+    return () => clearTimeout(fallbackTimer);
+  }, [ltiReady, isLtiContext, isLtiUser, activeWorkflow, workflowsLoading]);
 
   const shouldShowLoadingOverlay = isLtiContext && !ltiReady;
 
