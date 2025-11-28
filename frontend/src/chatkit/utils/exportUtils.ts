@@ -1,348 +1,86 @@
 /**
  * Utility functions for exporting assistant messages to PDF and DOCX
  */
-import {
-  Document,
-  Packer,
-  Paragraph,
-  TextRun,
-  HeadingLevel,
-  AlignmentType,
-  BorderStyle,
-  Table,
-  TableCell,
-  TableRow,
-  WidthType,
-} from 'docx';
 import { saveAs } from 'file-saver';
-
-// Simple markdown parser for DOCX export
-interface ParsedBlock {
-  type: 'paragraph' | 'heading' | 'code' | 'list' | 'blockquote' | 'table';
-  level?: number;
-  content: string;
-  items?: string[];
-  ordered?: boolean;
-  rows?: string[][];
-}
-
-function parseMarkdown(markdown: string): ParsedBlock[] {
-  const blocks: ParsedBlock[] = [];
-  const lines = markdown.split('\n');
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Code blocks
-    if (line.startsWith('```')) {
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith('```')) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      blocks.push({ type: 'code', content: codeLines.join('\n') });
-      i++;
-      continue;
-    }
-
-    // Headings
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-    if (headingMatch) {
-      blocks.push({
-        type: 'heading',
-        level: headingMatch[1].length,
-        content: headingMatch[2],
-      });
-      i++;
-      continue;
-    }
-
-    // Blockquotes
-    if (line.startsWith('>')) {
-      const quoteLines: string[] = [];
-      while (i < lines.length && lines[i].startsWith('>')) {
-        quoteLines.push(lines[i].replace(/^>\s?/, ''));
-        i++;
-      }
-      blocks.push({ type: 'blockquote', content: quoteLines.join('\n') });
-      continue;
-    }
-
-    // Unordered lists
-    if (line.match(/^[-*+]\s+/)) {
-      const items: string[] = [];
-      while (i < lines.length && lines[i].match(/^[-*+]\s+/)) {
-        items.push(lines[i].replace(/^[-*+]\s+/, ''));
-        i++;
-      }
-      blocks.push({ type: 'list', content: '', items, ordered: false });
-      continue;
-    }
-
-    // Ordered lists
-    if (line.match(/^\d+\.\s+/)) {
-      const items: string[] = [];
-      while (i < lines.length && lines[i].match(/^\d+\.\s+/)) {
-        items.push(lines[i].replace(/^\d+\.\s+/, ''));
-        i++;
-      }
-      blocks.push({ type: 'list', content: '', items, ordered: true });
-      continue;
-    }
-
-    // Tables
-    if (line.includes('|') && lines[i + 1]?.match(/^\|?[\s-:|]+\|?$/)) {
-      const rows: string[][] = [];
-      while (i < lines.length && lines[i].includes('|')) {
-        if (!lines[i].match(/^\|?[\s-:|]+\|?$/)) {
-          const cells = lines[i]
-            .split('|')
-            .map((cell) => cell.trim())
-            .filter((cell) => cell !== '');
-          rows.push(cells);
-        }
-        i++;
-      }
-      blocks.push({ type: 'table', content: '', rows });
-      continue;
-    }
-
-    // Regular paragraphs
-    if (line.trim()) {
-      const paragraphLines: string[] = [];
-      while (
-        i < lines.length &&
-        lines[i].trim() &&
-        !lines[i].startsWith('#') &&
-        !lines[i].startsWith('```') &&
-        !lines[i].startsWith('>') &&
-        !lines[i].match(/^[-*+]\s+/) &&
-        !lines[i].match(/^\d+\.\s+/)
-      ) {
-        paragraphLines.push(lines[i]);
-        i++;
-      }
-      blocks.push({ type: 'paragraph', content: paragraphLines.join(' ') });
-      continue;
-    }
-
-    i++;
-  }
-
-  return blocks;
-}
-
-function parseInlineFormatting(text: string): TextRun[] {
-  const runs: TextRun[] = [];
-  // Simple regex-based parsing for bold, italic, code, and links
-  const regex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\([^)]+\))|([^*`[\]]+)/g;
-  let match;
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match[2]) {
-      // Bold
-      runs.push(new TextRun({ text: match[2], bold: true }));
-    } else if (match[4]) {
-      // Italic
-      runs.push(new TextRun({ text: match[4], italics: true }));
-    } else if (match[6]) {
-      // Inline code
-      runs.push(
-        new TextRun({
-          text: match[6],
-          font: 'Courier New',
-          shading: { fill: 'E8E8E8' },
-        })
-      );
-    } else if (match[8]) {
-      // Link (just show text)
-      runs.push(new TextRun({ text: match[8], color: '0066CC', underline: {} }));
-    } else if (match[9]) {
-      // Regular text
-      runs.push(new TextRun({ text: match[9] }));
-    }
-  }
-
-  return runs.length > 0 ? runs : [new TextRun({ text })];
-}
-
-function getHeadingLevel(level: number): HeadingLevel {
-  switch (level) {
-    case 1:
-      return HeadingLevel.HEADING_1;
-    case 2:
-      return HeadingLevel.HEADING_2;
-    case 3:
-      return HeadingLevel.HEADING_3;
-    case 4:
-      return HeadingLevel.HEADING_4;
-    case 5:
-      return HeadingLevel.HEADING_5;
-    default:
-      return HeadingLevel.HEADING_6;
-  }
-}
+import { convertMarkdownToDocx } from '@mohtasham/md-to-docx';
 
 /**
- * Export markdown content to DOCX format
+ * Export markdown content to DOCX format using md-to-docx library
+ * This provides much better formatting than manual parsing
  */
 export async function exportToDocx(markdownContent: string, filename?: string): Promise<void> {
-  const blocks = parseMarkdown(markdownContent);
-  const children: (Paragraph | Table)[] = [];
-
-  for (const block of blocks) {
-    switch (block.type) {
-      case 'heading':
-        children.push(
-          new Paragraph({
-            children: parseInlineFormatting(block.content),
-            heading: getHeadingLevel(block.level || 1),
-            spacing: { before: 240, after: 120 },
-          })
-        );
-        break;
-
-      case 'paragraph':
-        children.push(
-          new Paragraph({
-            children: parseInlineFormatting(block.content),
-            spacing: { after: 200 },
-          })
-        );
-        break;
-
-      case 'code':
-        children.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: block.content,
-                font: 'Courier New',
-                size: 20,
-              }),
-            ],
-            shading: { fill: 'F5F5F5' },
-            border: {
-              top: { style: BorderStyle.SINGLE, size: 1, color: 'DDDDDD' },
-              bottom: { style: BorderStyle.SINGLE, size: 1, color: 'DDDDDD' },
-              left: { style: BorderStyle.SINGLE, size: 1, color: 'DDDDDD' },
-              right: { style: BorderStyle.SINGLE, size: 1, color: 'DDDDDD' },
-            },
-            spacing: { before: 200, after: 200 },
-          })
-        );
-        break;
-
-      case 'blockquote':
-        children.push(
-          new Paragraph({
-            children: parseInlineFormatting(block.content),
-            indent: { left: 720 },
-            border: {
-              left: { style: BorderStyle.SINGLE, size: 24, color: '3B82F6' },
-            },
-            spacing: { before: 200, after: 200 },
-          })
-        );
-        break;
-
-      case 'list':
-        if (block.items) {
-          block.items.forEach((item, index) => {
-            const bullet = block.ordered ? `${index + 1}. ` : '• ';
-            children.push(
-              new Paragraph({
-                children: [new TextRun({ text: bullet }), ...parseInlineFormatting(item)],
-                indent: { left: 720 },
-                spacing: { after: 80 },
-              })
-            );
-          });
-        }
-        break;
-
-      case 'table':
-        if (block.rows && block.rows.length > 0) {
-          const tableRows = block.rows.map(
-            (row, rowIndex) =>
-              new TableRow({
-                children: row.map(
-                  (cell) =>
-                    new TableCell({
-                      children: [
-                        new Paragraph({
-                          children: parseInlineFormatting(cell),
-                          alignment: AlignmentType.LEFT,
-                        }),
-                      ],
-                      shading: rowIndex === 0 ? { fill: 'F0F0F0' } : undefined,
-                    })
-                ),
-              })
-          );
-
-          children.push(
-            new Table({
-              rows: tableRows,
-              width: { size: 100, type: WidthType.PERCENTAGE },
-            })
-          );
-        }
-        break;
-    }
-  }
-
-  const doc = new Document({
-    sections: [
-      {
-        properties: {},
-        children,
-      },
-    ],
+  const blob = await convertMarkdownToDocx(markdownContent, {
+    documentType: 'document',
+    style: {
+      // Font sizes (in half-points, so 24 = 12pt)
+      heading1Size: 32,
+      heading2Size: 28,
+      heading3Size: 24,
+      heading4Size: 22,
+      heading5Size: 20,
+      paragraphSize: 24,
+      listItemSize: 24,
+      codeBlockSize: 20,
+      blockquoteSize: 24,
+      // Spacing
+      headingSpacing: 240,
+      paragraphSpacing: 200,
+      lineSpacing: 1.15,
+      // Alignment
+      paragraphAlignment: 'LEFT',
+      blockquoteAlignment: 'LEFT',
+    },
   });
 
-  const blob = await Packer.toBlob(doc);
   const name = filename || `message-${Date.now()}`;
   saveAs(blob, `${name}.docx`);
 }
 
 /**
  * Export content to PDF format using html2pdf.js
- * Captures the rendered HTML element to preserve styling
+ * Can capture either a DOM element directly or convert markdown to HTML
  */
 export async function exportToPdf(
-  markdownContent: string,
+  contentOrElement: string | HTMLElement,
   filename?: string,
   theme?: 'light' | 'dark'
 ): Promise<void> {
   // Dynamically import html2pdf to avoid SSR issues
   const html2pdf = (await import('html2pdf.js')).default;
 
-  // Create a temporary container with the markdown content rendered as HTML
-  const container = document.createElement('div');
-  container.style.cssText = `
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-    color: ${theme === 'dark' ? '#e0e0e0' : '#1a1a1a'};
-    background: ${theme === 'dark' ? '#1a1a1a' : '#ffffff'};
-    padding: 40px;
-    max-width: 800px;
-  `;
+  let container: HTMLElement;
+  let shouldRemove = false;
 
-  // Convert markdown to HTML with inline styles
-  container.innerHTML = markdownToStyledHtml(markdownContent, theme);
-
-  // Temporarily add to DOM for rendering
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
-  document.body.appendChild(container);
+  if (typeof contentOrElement === 'string') {
+    // Legacy: create from markdown
+    container = document.createElement('div');
+    container.style.cssText = `
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: ${theme === 'dark' ? '#e0e0e0' : '#1a1a1a'};
+      background: ${theme === 'dark' ? '#1a1a1a' : '#ffffff'};
+      padding: 40px;
+      max-width: 800px;
+    `;
+    container.innerHTML = markdownToStyledHtml(contentOrElement, theme);
+    container.style.position = 'fixed';
+    container.style.left = '-9999px';
+    document.body.appendChild(container);
+    shouldRemove = true;
+  } else {
+    // New: clone the DOM element and prepare it for PDF export
+    container = prepareElementForPdfExport(contentOrElement, theme);
+    document.body.appendChild(container);
+    shouldRemove = true;
+  }
 
   const name = filename || `message-${Date.now()}`;
 
   try {
+    // Wait for fonts and images to load
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     await html2pdf()
       .set({
         margin: [15, 15, 15, 15],
@@ -352,6 +90,7 @@ export async function exportToPdf(
           scale: 2,
           useCORS: true,
           logging: false,
+          backgroundColor: theme === 'dark' ? '#1a1a1a' : '#ffffff',
         },
         jsPDF: {
           unit: 'mm',
@@ -362,8 +101,132 @@ export async function exportToPdf(
       .from(container)
       .save();
   } finally {
-    document.body.removeChild(container);
+    if (shouldRemove) {
+      document.body.removeChild(container);
+    }
   }
+}
+
+/**
+ * Prepare a DOM element for PDF export by cloning and applying inline styles
+ */
+function prepareElementForPdfExport(element: HTMLElement, theme?: 'light' | 'dark'): HTMLElement {
+  const isDark = theme === 'dark';
+  const textColor = isDark ? '#e0e0e0' : '#1a1a1a';
+  const bgColor = isDark ? '#1a1a1a' : '#ffffff';
+  const codeBg = isDark ? '#2d2d2d' : '#f5f5f5';
+  const borderColor = isDark ? '#444' : '#ddd';
+  const linkColor = isDark ? '#60a5fa' : '#2563eb';
+
+  // Create a wrapper with proper styling
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = `
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    color: ${textColor};
+    background: ${bgColor};
+    padding: 40px;
+    max-width: 800px;
+    position: fixed;
+    left: -9999px;
+    top: 0;
+  `;
+
+  // Clone the element
+  const clone = element.cloneNode(true) as HTMLElement;
+
+  // Remove copy buttons and other UI elements
+  clone.querySelectorAll('.chatkit-copy-code-button, .chatkit-action-button').forEach(el => el.remove());
+
+  // Apply inline styles to all elements for PDF rendering
+  applyInlineStylesForPdf(clone, { textColor, bgColor, codeBg, borderColor, linkColor, isDark });
+
+  wrapper.appendChild(clone);
+  return wrapper;
+}
+
+/**
+ * Recursively apply inline styles to elements for PDF export
+ */
+function applyInlineStylesForPdf(
+  element: HTMLElement,
+  colors: { textColor: string; bgColor: string; codeBg: string; borderColor: string; linkColor: string; isDark: boolean }
+): void {
+  const { textColor, codeBg, borderColor, linkColor } = colors;
+
+  // Apply styles based on class names
+  if (element.classList.contains('chatkit-markdown-paragraph')) {
+    element.style.cssText += `margin: 0 0 1em 0; color: ${textColor};`;
+  }
+
+  if (element.classList.contains('chatkit-markdown-heading')) {
+    element.style.cssText += `font-weight: 600; color: ${textColor}; margin: 1.5em 0 0.75em 0;`;
+  }
+  if (element.classList.contains('chatkit-markdown-h1')) {
+    element.style.cssText += `font-size: 24px; border-bottom: 2px solid ${borderColor}; padding-bottom: 10px;`;
+  }
+  if (element.classList.contains('chatkit-markdown-h2')) {
+    element.style.cssText += `font-size: 20px; border-bottom: 1px solid ${borderColor}; padding-bottom: 8px;`;
+  }
+  if (element.classList.contains('chatkit-markdown-h3')) {
+    element.style.cssText += `font-size: 18px;`;
+  }
+
+  if (element.classList.contains('chatkit-markdown-code-inline')) {
+    element.style.cssText += `background: ${codeBg}; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.9em; border: 1px solid ${borderColor};`;
+  }
+
+  if (element.classList.contains('chatkit-code-block-wrapper') || element.classList.contains('chatkit-markdown-code-block')) {
+    element.style.cssText += `background: ${codeBg}; padding: 16px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 14px; margin: 16px 0; border: 1px solid ${borderColor}; overflow-x: auto;`;
+  }
+
+  if (element.classList.contains('chatkit-markdown-blockquote')) {
+    element.style.cssText += `border-left: 4px solid #3b82f6; padding: 12px 16px; margin: 16px 0; background: ${codeBg}; border-radius: 0 8px 8px 0;`;
+  }
+
+  if (element.classList.contains('chatkit-markdown-list')) {
+    element.style.cssText += `padding-left: 24px; margin: 12px 0;`;
+  }
+  if (element.classList.contains('chatkit-markdown-list-item')) {
+    element.style.cssText += `margin: 4px 0;`;
+  }
+
+  if (element.classList.contains('chatkit-markdown-link')) {
+    element.style.cssText += `color: ${linkColor}; text-decoration: none;`;
+  }
+
+  if (element.classList.contains('chatkit-markdown-strong')) {
+    element.style.cssText += `font-weight: 600;`;
+  }
+
+  if (element.classList.contains('chatkit-markdown-table')) {
+    element.style.cssText += `width: 100%; border-collapse: collapse; margin: 16px 0;`;
+  }
+  if (element.classList.contains('chatkit-markdown-th')) {
+    element.style.cssText += `padding: 12px; text-align: left; font-weight: 600; border: 1px solid ${borderColor}; background: ${codeBg};`;
+  }
+  if (element.classList.contains('chatkit-markdown-td')) {
+    element.style.cssText += `padding: 12px; border: 1px solid ${borderColor};`;
+  }
+
+  // Handle pre and code elements inside code blocks
+  if (element.tagName === 'PRE' && element.closest('.chatkit-code-block-wrapper')) {
+    element.style.cssText += `margin: 0; white-space: pre-wrap; word-wrap: break-word;`;
+  }
+  if (element.tagName === 'CODE' && !element.classList.contains('chatkit-markdown-code-inline')) {
+    const parent = element.closest('.chatkit-code-block-wrapper');
+    if (parent) {
+      element.style.cssText += `font-family: 'Courier New', monospace; font-size: 14px; white-space: pre-wrap;`;
+    }
+  }
+
+  // Recursively process children
+  Array.from(element.children).forEach(child => {
+    if (child instanceof HTMLElement) {
+      applyInlineStylesForPdf(child, colors);
+    }
+  });
 }
 
 /**
