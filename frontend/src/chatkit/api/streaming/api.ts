@@ -392,3 +392,32 @@ export async function listItems(options: ListItemsOptions): Promise<ItemListResp
   const data = await response.json();
   return data;
 }
+
+export interface ResumeStreamingOptions {
+  url: string;
+  headers?: Record<string, string>;
+  threadId: string;
+}
+
+/**
+ * Build the payload for resuming streaming on a thread
+ */
+export function buildResumeStreamingPayload(threadId: string) {
+  return {
+    type: 'threads.resume_streaming',
+    params: {
+      thread_id: threadId,
+    },
+  };
+}
+
+/**
+ * Check if a thread has active streaming based on its metadata
+ */
+export function isThreadStreaming(thread: Thread): boolean {
+  const metadata = thread.metadata as Record<string, unknown> | undefined;
+  if (!metadata) return false;
+
+  const streaming = metadata.streaming as { is_active?: boolean } | undefined;
+  return streaming?.is_active === true;
+}

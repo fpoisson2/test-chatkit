@@ -52,7 +52,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   } = useThreadLoading(getThreadKey);
 
   // Abort controllers management
-  const { abortControllersRef } = useAbortControllers();
+  const { abortControllersRef, getOrCreateController } = useAbortControllers();
 
 
   // Thread loading and refresh
@@ -67,6 +67,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     getThreadKey,
     generateTempThreadId,
     isTempThreadId,
+    getAbortController: getOrCreateController,
+    onThreadUpdate: (thread) => onThreadChange?.({ thread }),
     onThreadLoadStart,
     onThreadLoadEnd,
     onError,

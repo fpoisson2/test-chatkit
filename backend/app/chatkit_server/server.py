@@ -128,6 +128,32 @@ except Exception:  # pragma: no cover - module non initialisé
 
 logger = logging.getLogger("chatkit.server")
 
+# Registry to track active streaming threads
+# Maps thread_id to an asyncio.Event that is set when streaming completes
+_active_streaming_threads: dict[str, asyncio.Event] = {}
+_streaming_lock = asyncio.Lock()
+
+
+async def _register_streaming_thread(thread_id: str) -> asyncio.Event:
+    """Register a thread as actively streaming and return a completion event."""
+    async with _streaming_lock:
+        event = asyncio.Event()
+        _active_streaming_threads[thread_id] = event
+        return event
+
+
+async def _unregister_streaming_thread(thread_id: str) -> None:
+    """Unregister a thread from active streaming and signal completion."""
+    async with _streaming_lock:
+        event = _active_streaming_threads.pop(thread_id, None)
+        if event:
+            event.set()
+
+
+def _is_thread_streaming(thread_id: str) -> bool:
+    """Check if a thread is currently streaming."""
+    return thread_id in _active_streaming_threads
+
 
 def _log_async_exception(task: asyncio.Task[Any]) -> None:
     try:
@@ -1578,6 +1604,21 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             title_task.add_done_callback(_log_async_exception)
 
+        # Register this thread as actively streaming
+        streaming_event = await _register_streaming_thread(thread.id)
+
+        # Mark streaming as active in thread metadata
+        thread_metadata_dict = dict(thread.metadata) if isinstance(thread.metadata, Mapping) else {}
+        thread_metadata_dict["streaming"] = {
+            "is_active": True,
+            "started_at": datetime.now().isoformat(),
+        }
+        thread.metadata = thread_metadata_dict
+        try:
+            await self.store.save_thread(thread, context=agent_context.request_context)
+        except Exception:
+            logger.warning("Failed to save streaming state for thread %s", thread.id, exc_info=True)
+
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
 
@@ -1811,7 +1852,112 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             logger.info("Workflow en erreur inattendue pour le fil %s", thread.id)
         finally:
+            # Mark streaming as completed in thread metadata
+            try:
+                thread_metadata_final = dict(thread.metadata) if isinstance(thread.metadata, Mapping) else {}
+                thread_metadata_final["streaming"] = {
+                    "is_active": False,
+                    "completed_at": datetime.now().isoformat(),
+                }
+                thread.metadata = thread_metadata_final
+                await self.store.save_thread(thread, context=agent_context.request_context)
+            except Exception:
+                logger.warning("Failed to save streaming completion state for thread %s", thread.id, exc_info=True)
+
+            # Unregister from active streaming threads
+            await _unregister_streaming_thread(thread.id)
             event_queue.put_nowait(_STREAM_DONE)
+
+    async def resume_streaming(
+        self,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        """Resume streaming for a thread that was interrupted (e.g., page refresh).
+
+        This method:
+        1. Loads the current thread state with all items
+        2. Emits a ThreadUpdatedEvent with the full thread state
+        3. If streaming is still active in memory, continues streaming
+        4. If streaming has completed, updates metadata and returns
+        """
+        logger.info("Resume streaming requested for thread %s", thread.id)
+
+        # Load the full thread with all items
+        try:
+            full_thread = await self._load_full_thread(thread.id, context)
+        except Exception as exc:
+            logger.error("Failed to load thread %s for resume: %s", thread.id, exc)
+            yield ErrorEvent(
+                code=ErrorCode.STREAM_ERROR,
+                message="Impossible de charger la conversation",
+                allow_retry=True,
+            )
+            return
+
+        # Check if streaming is still active in memory
+        is_still_streaming = _is_thread_streaming(thread.id)
+        logger.info(
+            "Thread %s: is_still_streaming=%s, metadata.streaming=%s",
+            thread.id,
+            is_still_streaming,
+            thread.metadata.get("streaming") if isinstance(thread.metadata, Mapping) else None,
+        )
+
+        # Emit the full thread state as an update event
+        yield ThreadUpdatedEvent(thread=self._to_thread_response(full_thread))
+
+        if is_still_streaming:
+            # Streaming is still active - emit a progress update to indicate we're resuming
+            yield ProgressUpdateEvent(text="")
+
+            # Wait for the streaming to complete
+            # The actual events are being streamed in background, we just need to wait
+            event = _active_streaming_threads.get(thread.id)
+            if event:
+                logger.info("Waiting for active streaming to complete for thread %s", thread.id)
+                await event.wait()
+                logger.info("Streaming completed for thread %s", thread.id)
+
+            # Reload the thread to get the final state
+            try:
+                final_thread = await self._load_full_thread(thread.id, context)
+                yield ThreadUpdatedEvent(thread=self._to_thread_response(final_thread))
+            except Exception as exc:
+                logger.warning("Failed to reload thread %s after streaming: %s", thread.id, exc)
+        else:
+            # Streaming has completed - check if metadata needs updating
+            metadata = dict(thread.metadata) if isinstance(thread.metadata, Mapping) else {}
+            streaming_info = metadata.get("streaming", {})
+
+            if streaming_info.get("is_active", False):
+                # Metadata says streaming is active but it's not in memory
+                # This means the server restarted or the streaming completed
+                # Update metadata to reflect completion
+                logger.info("Updating stale streaming metadata for thread %s", thread.id)
+                metadata["streaming"] = {
+                    "is_active": False,
+                    "completed_at": datetime.now().isoformat(),
+                }
+                thread.metadata = metadata
+                try:
+                    await self.store.save_thread(thread, context=context)
+                except Exception:
+                    logger.warning("Failed to update streaming metadata for thread %s", thread.id, exc_info=True)
+
+        logger.info("Resume streaming completed for thread %s", thread.id)
+
+    async def _load_full_thread(self, thread_id: str, context: ChatKitRequestContext) -> Thread:
+        """Load a thread with all its items."""
+        thread_meta = await self.store.load_thread(thread_id, context=context)
+        thread_items = await self.store.load_thread_items(
+            thread_id,
+            after=None,
+            limit=1000,  # Load all items
+            order="asc",
+            context=context,
+        )
+        return Thread(**thread_meta.model_dump(), items=thread_items)
 
     async def _prepare_auto_start_thread_items(
         self,

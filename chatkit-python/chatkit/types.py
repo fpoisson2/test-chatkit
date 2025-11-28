@@ -218,12 +218,26 @@ class ThreadDeleteParams(BaseModel):
     thread_id: str
 
 
+class ThreadsResumeStreamingReq(BaseReq):
+    """Request to resume streaming for a thread that was interrupted."""
+
+    type: Literal["threads.resume_streaming"] = "threads.resume_streaming"
+    params: ThreadResumeStreamingParams
+
+
+class ThreadResumeStreamingParams(BaseModel):
+    """Parameters for resuming streaming on a thread."""
+
+    thread_id: str
+
+
 StreamingReq = (
     ThreadsCreateReq
     | ThreadsAddUserMessageReq
     | ThreadsAddClientToolOutputReq
     | ThreadsRetryAfterItemReq
     | ThreadsCustomActionReq
+    | ThreadsResumeStreamingReq
 )
 """Union of request types that produce streaming responses."""
 
@@ -257,6 +271,7 @@ def is_streaming_req(request: ChatKitReq) -> TypeIs[StreamingReq]:
             ThreadsRetryAfterItemReq,
             ThreadsAddClientToolOutputReq,
             ThreadsCustomActionReq,
+            ThreadsResumeStreamingReq,
         ),
     )
 

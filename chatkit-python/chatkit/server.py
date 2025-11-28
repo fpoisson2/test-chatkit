@@ -59,6 +59,7 @@ from .types import (
     ThreadsDeleteReq,
     ThreadsGetByIdReq,
     ThreadsListReq,
+    ThreadsResumeStreamingReq,
     ThreadsRetryAfterItemReq,
     ThreadStreamEvent,
     ThreadsUpdateReq,
@@ -298,6 +299,31 @@ class ChatKitServer(ABC, Generic[TContext]):
         context: TContext,
     ) -> None:
         pass
+
+    def resume_streaming(
+        self,
+        thread: ThreadMetadata,
+        context: TContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        """Resume streaming for a thread that was interrupted.
+
+        This method should be overridden by subclasses to implement
+        the actual resume logic. The default implementation returns
+        an empty iterator (no events to stream).
+
+        Args:
+            thread: Metadata for the thread to resume.
+            context: Arbitrary per-request context provided by the caller.
+
+        Returns:
+            An async iterator that yields events for the resumed stream.
+        """
+        # Default implementation: return empty async iterator
+        async def _empty_iterator() -> AsyncIterator[ThreadStreamEvent]:
+            return
+            yield  # type: ignore[misc]  # Make this a generator
+
+        return _empty_iterator()
 
     def action(
         self,
@@ -583,6 +609,17 @@ class ChatKitServer(ABC, Generic[TContext]):
                         item,
                         context,
                     ),
+                ):
+                    yield event
+
+            case ThreadsResumeStreamingReq():
+                thread_metadata = await self.store.load_thread(
+                    request.params.thread_id, context=context
+                )
+                async for event in self._process_events(
+                    thread_metadata,
+                    context,
+                    lambda: self.resume_streaming(thread_metadata, context),
                 ):
                     yield event
 
