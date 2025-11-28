@@ -24,9 +24,6 @@ interface CachedState {
 }
 const stateCache = new Map<string, CachedState>();
 
-// Track the last displayed text globally (used when mounting a component for the first time)
-let lastGlobalDisplayText: string | null = null;
-
 export function AnimatedTitle({
   children,
   className = "",
@@ -48,9 +45,10 @@ export function AnimatedTitle({
       return stateCache.get(stableId)!;
     }
 
-    // First time mounting with this ID - use global last text if available
-    if (lastGlobalDisplayText !== null && lastGlobalDisplayText !== children) {
-      return { displayText: lastGlobalDisplayText, prevText: lastGlobalDisplayText };
+    // First time mounting with this ID - start with empty string to animate appearance
+    // This prevents the "overwriting" effect where a new thread appears to erase another title
+    if (stableId) {
+      return { displayText: "", prevText: "" };
     }
 
     return { displayText: children, prevText: children };
@@ -60,13 +58,12 @@ export function AnimatedTitle({
   const [displayText, setDisplayText] = useState(initialState.displayText);
   const [isAnimating, setIsAnimating] = useState(false);
   const prevTextRef = useRef(initialState.prevText);
+  const targetTextRef = useRef(children); // Track the target text for cleanup
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update cache and global last text whenever displayText changes
+  // Update cache whenever displayText changes
   useLayoutEffect(() => {
-    lastGlobalDisplayText = displayText;
-
     if (stableId) {
       stateCache.set(stableId, {
         displayText: displayText,
@@ -76,15 +73,18 @@ export function AnimatedTitle({
   }, [displayText, stableId]);
 
   useLayoutEffect(() => {
-    // Clear any ongoing animation
+    // Clear any ongoing animation and finalize to target text
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
     if (animationTimeoutRef.current) {
       clearTimeout(animationTimeoutRef.current);
+      animationTimeoutRef.current = null;
     }
 
     const newText = children;
+    targetTextRef.current = newText;
 
     // If disabled, always ensure displayText matches children (no animation)
     // This handles both text changes and disabled state changes
@@ -183,13 +183,22 @@ export function AnimatedTitle({
 
     animate();
 
-    // Cleanup
+    // Cleanup: finalize animation state if interrupted
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
+        animationTimeoutRef.current = null;
+      }
+      // Update cache with final target text to prevent incomplete titles on remount
+      if (stableId) {
+        stateCache.set(stableId, {
+          displayText: targetTextRef.current,
+          prevText: targetTextRef.current,
+        });
       }
     };
   // Note: displayText is intentionally not in deps to avoid re-running during animation

@@ -36,10 +36,8 @@ export interface ConversationsSidebarSectionProps {
   emptyMessage?: string;
   isCollapsed?: boolean;
   isMobileLayout?: boolean;
-  /** When true, shows a "New conversation" draft entry at the top of the list */
+  /** When true, a new conversation is being drafted (used for empty state logic) */
   isNewConversationActive?: boolean;
-  /** When true, shows a streaming spinner on the "New conversation" entry */
-  isNewConversationStreaming?: boolean;
 }
 
 // Cache at module level to persist data between mounts
@@ -100,7 +98,6 @@ export function ConversationsSidebarSection({
   isCollapsed = false,
   isMobileLayout = false,
   isNewConversationActive = false,
-  isNewConversationStreaming = false,
   activeThreadSnapshot,
 }: ConversationsSidebarSectionProps): JSX.Element | null {
   const [threads, setThreads] = useState<Thread[]>(cachedThreads);
@@ -111,6 +108,9 @@ export function ConversationsSidebarSection({
   const [after, setAfter] = useState<string | undefined>(undefined);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Track thread IDs that were created during this session (for title animation)
+  const [newlyCreatedThreadIds, setNewlyCreatedThreadIds] = useState<Set<string>>(new Set());
 
   // Action menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -146,7 +146,23 @@ export function ConversationsSidebarSection({
 
       // For initial load or refresh, replace all threads; otherwise append
       setThreads((currentThreads) => {
-        const updatedThreads = (isInitial || isRefresh) ? newThreads : [...currentThreads, ...newThreads];
+        let updatedThreads = (isInitial || isRefresh) ? newThreads : [...currentThreads, ...newThreads];
+
+        // Apply latest snapshot if available (to preserve title updates that arrived during load)
+        const snapshot = latestSnapshotRef.current;
+        if (snapshot?.id) {
+          const snapshotIndex = updatedThreads.findIndex((t) => t.id === snapshot.id);
+          if (snapshotIndex !== -1) {
+            // Update existing thread with snapshot data
+            const existing = updatedThreads[snapshotIndex];
+            updatedThreads = [...updatedThreads];
+            updatedThreads[snapshotIndex] = { ...existing, ...snapshot, metadata: { ...existing.metadata, ...snapshot.metadata } };
+          } else {
+            // Thread not in list yet, add it at the top
+            updatedThreads = [snapshot, ...updatedThreads];
+          }
+        }
+
         cachedThreads = updatedThreads;
         return updatedThreads;
       });
@@ -183,16 +199,35 @@ export function ConversationsSidebarSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api?.url]);
 
+  // Keep a ref to the latest snapshot for use after loadThreads completes
+  const latestSnapshotRef = useRef<Thread | null>(null);
+  latestSnapshotRef.current = activeThreadSnapshot ?? null;
+
   // Keep sidebar entry in sync with the latest active thread snapshot (title, metadata...)
   useEffect(() => {
     if (!activeThreadSnapshot?.id) {
       return;
     }
 
+    // Debug: Log the snapshot to trace title updates
+    const snapshotTitle = activeThreadSnapshot.title || (activeThreadSnapshot.metadata?.title as string | undefined);
+    console.debug("[ConversationsSidebarSection] activeThreadSnapshot sync:", {
+      id: activeThreadSnapshot.id,
+      title: activeThreadSnapshot.title,
+      metadataTitle: activeThreadSnapshot.metadata?.title,
+      resolvedTitle: snapshotTitle,
+    });
+
     setThreads((currentThreads) => {
       const targetIndex = currentThreads.findIndex((thread) => thread.id === activeThreadSnapshot.id);
+
+      // If thread doesn't exist yet, add it at the top (it's a new thread created during this session)
       if (targetIndex === -1) {
-        return currentThreads;
+        // Mark this thread as newly created for title animation
+        setNewlyCreatedThreadIds((prev) => new Set(prev).add(activeThreadSnapshot.id));
+        const nextThreads = [activeThreadSnapshot, ...currentThreads];
+        cachedThreads = nextThreads;
+        return nextThreads;
       }
 
       const existing = currentThreads[targetIndex];
@@ -423,32 +458,38 @@ export function ConversationsSidebarSection({
       ) : (
         <>
           <ul className="conversations-sidebar-section__list">
-            {/* Show draft "New conversation" entry when active */}
-            {isNewConversationActive && !searchQuery.trim() && (
-              <li className="conversations-sidebar-section__item">
-                <button
-                  type="button"
-                  className="conversations-sidebar-section__thread-button conversations-sidebar-section__thread-button--active"
-                  aria-current="true"
-                >
-                  <span className="conversations-sidebar-section__thread-title-row">
-                    {isNewConversationStreaming && (
-                      <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
-                    )}
-                    <TruncatedText className="conversations-sidebar-section__thread-title">Nouvelle conversation</TruncatedText>
-                  </span>
-                </button>
-              </li>
-            )}
             {displayedThreads.map((thread) => {
               const items = normalizeItems(thread);
               const isActive = thread.id === currentThreadId;
               const isDeleting = deletingThreadId === thread.id;
               const isStreaming = streamingThreadIds?.has(thread.id) ?? false;
-              const threadTitle = getThreadTitle(thread);
+              // For active thread, prefer title from snapshot (most up-to-date source)
+              const snapshotTitle = isActive && activeThreadSnapshot?.id === thread.id
+                ? (activeThreadSnapshot.title || (activeThreadSnapshot.metadata?.title as string | undefined))
+                : undefined;
+              const threadTitle = snapshotTitle || getThreadTitle(thread);
+
+              // Debug: Log title resolution for active thread
+              if (isActive) {
+                console.debug("[ConversationsSidebarSection] Rendering active thread:", {
+                  threadId: thread.id,
+                  currentThreadId,
+                  hasSnapshot: !!activeThreadSnapshot,
+                  snapshotId: activeThreadSnapshot?.id,
+                  snapshotTitle: activeThreadSnapshot?.title,
+                  snapshotMetadataTitle: activeThreadSnapshot?.metadata?.title,
+                  threadInListTitle: thread.title,
+                  threadInListMetadataTitle: thread.metadata?.title,
+                  resolvedSnapshotTitle: snapshotTitle,
+                  finalTitle: threadTitle,
+                });
+              }
               const dateStr = items.length > 0 ? formatRelativeDate(items[0].created_at) : "";
               const isMenuOpen = openMenuId === thread.id;
               const menuId = `conversation-menu-${thread.id}`;
+              // Only animate title for threads created during this session (not on initial page load)
+              const isNewlyCreated = newlyCreatedThreadIds.has(thread.id);
+              const disableTitleAnimation = isStreaming || !isNewlyCreated;
 
               // Extract workflow metadata from thread
               const workflowMetadata = thread.metadata?.workflow as ThreadWorkflowMetadata | undefined;
@@ -471,7 +512,7 @@ export function ConversationsSidebarSection({
                         <span className="conversations-sidebar-section__thread-spinner" aria-label="En cours" />
                       )}
                       <TruncatedText className="conversations-sidebar-section__thread-title">
-                        <AnimatedTitle stableId={thread.id} disabled={isStreaming}>{threadTitle}</AnimatedTitle>
+                        <AnimatedTitle stableId={thread.id} disabled={disableTitleAnimation}>{threadTitle}</AnimatedTitle>
                       </TruncatedText>
                     </span>
                   </button>
