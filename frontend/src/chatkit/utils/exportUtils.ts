@@ -61,11 +61,14 @@ export async function exportToPdf(
       color: ${theme === 'dark' ? '#e0e0e0' : '#1a1a1a'};
       background: ${theme === 'dark' ? '#1a1a1a' : '#ffffff'};
       padding: 40px;
-      max-width: 800px;
+      width: 800px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: -9999;
+      opacity: 0.99;
     `;
     container.innerHTML = markdownToStyledHtml(contentOrElement, theme);
-    container.style.position = 'fixed';
-    container.style.left = '-9999px';
     document.body.appendChild(container);
     shouldRemove = true;
   } else {
@@ -119,6 +122,8 @@ function prepareElementForPdfExport(element: HTMLElement, theme?: 'light' | 'dar
   const linkColor = isDark ? '#60a5fa' : '#2563eb';
 
   // Create a wrapper with proper styling
+  // Use position: absolute with z-index instead of left: -9999px
+  // because html2canvas cannot capture off-screen elements properly
   const wrapper = document.createElement('div');
   wrapper.style.cssText = `
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
@@ -127,10 +132,12 @@ function prepareElementForPdfExport(element: HTMLElement, theme?: 'light' | 'dar
     color: ${textColor};
     background: ${bgColor};
     padding: 40px;
-    max-width: 800px;
-    position: fixed;
-    left: -9999px;
+    width: 800px;
+    position: absolute;
     top: 0;
+    left: 0;
+    z-index: -9999;
+    opacity: 0.99;
   `;
 
   // Clone the element
