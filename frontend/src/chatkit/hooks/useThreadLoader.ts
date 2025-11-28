@@ -55,6 +55,8 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
   const isResumingRef = useRef(false);
   // Track which thread we've already attempted to resume (to prevent re-triggering on re-renders)
   const resumedThreadIdRef = useRef<string | null>(null);
+  // Track previous initialThread to detect actual changes
+  const prevInitialThreadRef = useRef<string | null | undefined>(undefined);
 
   // Store callbacks in refs to avoid triggering useEffect re-runs
   const callbacksRef = useRef({
@@ -150,8 +152,11 @@ export function useThreadLoader(options: UseThreadLoaderOptions): UseThreadLoade
 
   // Load initial thread
   useEffect(() => {
-    // Reset resume tracking when thread changes
-    resumedThreadIdRef.current = null;
+    // Only reset resume tracking when thread actually changes
+    if (prevInitialThreadRef.current !== initialThread) {
+      resumedThreadIdRef.current = null;
+      prevInitialThreadRef.current = initialThread;
+    }
 
     if (initialThread) {
       loadCallbacksRef.current.onThreadLoadStart?.({ threadId: initialThread });

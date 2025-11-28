@@ -1963,6 +1963,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 # Get the completion event to know when streaming is done
                 completion_event = _active_streaming_threads.get(thread.id)
 
+                # Track time for keepalive
+                last_event_time = asyncio.get_event_loop().time()
+                KEEPALIVE_INTERVAL = 15.0  # Send keepalive every 15 seconds
+
                 while True:
                     # Check if streaming has completed
                     if completion_event and completion_event.is_set():
@@ -1979,11 +1983,18 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         # Wait for events with a short timeout to periodically check completion
                         event = await asyncio.wait_for(event_queue.get(), timeout=0.5)
                         yield event
+                        last_event_time = asyncio.get_event_loop().time()
                     except asyncio.TimeoutError:
                         # Check if streaming is still active
                         if not _is_thread_streaming(thread.id):
                             logger.info("Streaming ended for thread %s", thread.id)
                             break
+
+                        # Send keepalive to prevent connection timeout
+                        current_time = asyncio.get_event_loop().time()
+                        if current_time - last_event_time >= KEEPALIVE_INTERVAL:
+                            yield ProgressUpdateEvent(text="")
+                            last_event_time = current_time
                         continue
 
                 # Reload the thread to get the final state
