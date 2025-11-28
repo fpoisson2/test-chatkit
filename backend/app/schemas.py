@@ -478,6 +478,10 @@ class AppSettingsUpdateRequest(BaseModel):
     )
 
 
+# Rebuild models with forward references after definition
+AppSettingsUpdateRequest.model_rebuild()
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
