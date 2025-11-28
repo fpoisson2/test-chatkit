@@ -616,11 +616,10 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread_metadata = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
-                async for event in self._process_events(
-                    thread_metadata,
-                    context,
-                    lambda: self.resume_streaming(thread_metadata, context),
-                ):
+                # Don't use _process_events for resume_streaming because:
+                # 1. Events are already being persisted by the original stream
+                # 2. We're just relaying events, not generating new ones
+                async for event in self.resume_streaming(thread_metadata, context):
                     yield event
 
             case _:
