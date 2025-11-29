@@ -963,6 +963,9 @@ async def stream_agent_response(
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
     current_reasoning_id: str | None = None
+    # Track the message ID from response.output_item.added to ensure consistency
+    # with response.output_item.done (LiteLLM may generate different IDs)
+    current_message_id: str | None = None
 
     def _get_value(raw: Any, key: str) -> Any:
         if isinstance(raw, dict):
@@ -1698,6 +1701,9 @@ async def stream_agent_response(
                 if event.part.type == "reasoning_text":
                     continue
                 content = _convert_content(event.part)
+                # Track the item_id from content events for LiteLLM consistency
+                if current_message_id is None and event.item_id:
+                    current_message_id = event.item_id
                 yield ThreadItemUpdated(
                     item_id=event.item_id,
                     update=AssistantMessageContentPartAdded(
@@ -1706,6 +1712,9 @@ async def stream_agent_response(
                     ),
                 )
             elif event.type == "response.output_text.delta":
+                # Track the item_id from text delta events for LiteLLM consistency
+                if current_message_id is None and event.item_id:
+                    current_message_id = event.item_id
                 yield ThreadItemUpdated(
                     item_id=event.item_id,
                     update=AssistantMessageContentPartTextDelta(
@@ -1738,6 +1747,9 @@ async def stream_agent_response(
                     if ctx.workflow_item:
                         yield end_workflow(ctx.workflow_item)
                     produced_items.add(item.id)
+                    # Store the message ID for use with response.output_item.done
+                    # LiteLLM may generate different IDs between added and done events
+                    current_message_id = item.id
                     yield ThreadItemAddedEvent(
                         item=AssistantMessageItem(
                             # Reusing the Responses message ID
@@ -2109,16 +2121,21 @@ async def stream_agent_response(
             elif event.type == "response.output_item.done":
                 item = event.item
                 if item.type == "message":
-                    produced_items.add(item.id)
+                    # Use the message ID from response.output_item.added if available
+                    # to ensure consistency (LiteLLM may generate different IDs)
+                    message_id = current_message_id if current_message_id else item.id
+                    produced_items.add(message_id)
                     yield ThreadItemDoneEvent(
                         item=AssistantMessageItem(
-                            # Reusing the Responses message ID
-                            id=item.id,
+                            # Reusing the Responses message ID (or the one from added event)
+                            id=message_id,
                             thread_id=thread.id,
                             content=[_convert_content(c) for c in item.content],
                             created_at=datetime.now(),
                         ),
                     )
+                    # Reset the message ID tracker
+                    current_message_id = None
                 elif item.type == "function_call":
                     tracker, task_added, workflow_events = ensure_function_task(
                         item.id,
