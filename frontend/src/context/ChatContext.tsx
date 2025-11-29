@@ -2,14 +2,11 @@ import { createContext, useContext, useRef, useState, type ReactNode } from "rea
 import type { WorkflowActivation } from "../features/workflows/WorkflowSidebar";
 
 export type ChatState = {
-  // Thread state
   currentThread: Record<string, unknown> | null;
   initialThreadId: string | null;
   streamingThreadIds: Set<string>;
   isNewConversationStreaming: boolean;
   chatInstanceKey: number;
-
-  // Workflow state
   workflowSelection: WorkflowActivation;
 };
 
@@ -29,6 +26,9 @@ export type ChatStateRefs = {
   isInitialMountRef: React.MutableRefObject<boolean>;
   requestRefreshRef: React.MutableRefObject<((context?: string) => Promise<void> | undefined) | null>;
   stopVoiceSessionRef: React.MutableRefObject<(() => void) | null>;
+  previousSessionOwnerRef: React.MutableRefObject<string | null>;
+  missingDomainKeyWarningShownRef: React.MutableRefObject<boolean>;
+  prevUrlThreadIdRef: React.MutableRefObject<string | undefined>;
 };
 
 export type ChatContextValue = {
@@ -41,12 +41,14 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 
 export type ChatProviderProps = {
   children: ReactNode;
+  initialThreadId?: string | null;
+  urlThreadId?: string;
 };
 
-export function ChatProvider({ children }: ChatProviderProps) {
+export function ChatProvider({ children, initialThreadId: propsInitialThreadId = null, urlThreadId }: ChatProviderProps) {
   // Thread state
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
-  const [initialThreadId, setInitialThreadId] = useState<string | null>(null);
+  const [initialThreadId, setInitialThreadId] = useState<string | null>(propsInitialThreadId);
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(new Set());
   const [isNewConversationStreaming, setIsNewConversationStreaming] = useState(false);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
@@ -64,6 +66,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const isInitialMountRef = useRef<boolean>(true);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
+  const previousSessionOwnerRef = useRef<string | null>(null);
+  const missingDomainKeyWarningShownRef = useRef(false);
+  const prevUrlThreadIdRef = useRef<string | undefined>(urlThreadId);
 
   const value: ChatContextValue = {
     state: {
@@ -89,6 +94,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
       isInitialMountRef,
       requestRefreshRef,
       stopVoiceSessionRef,
+      previousSessionOwnerRef,
+      missingDomainKeyWarningShownRef,
+      prevUrlThreadIdRef,
     },
   };
 
