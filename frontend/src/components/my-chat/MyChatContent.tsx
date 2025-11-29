@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import type { ChatKitOptions } from "../../chatkit";
 import type { Thread } from "../../chatkit/types";
@@ -26,11 +26,12 @@ import { useChatkitWidgets } from "../../hooks/useChatkitWidgets";
 import { useResetChatState } from "../../hooks/useResetChatState";
 import { useWorkflowState } from "../../hooks/useWorkflowState";
 import { useSidebarActions } from "../../hooks/useSidebarActions";
+import { useUrlThreadSync } from "../../hooks/useUrlThreadSync";
+import { useSessionOwnerSync } from "../../hooks/useSessionOwnerSync";
 import { getOrCreateDeviceId } from "../../utils/device";
 import { loadComposerModelsConfig } from "../../utils/composerModels";
 import { useWorkflowComposerModels } from "../../hooks/useWorkflowComposerModels";
-import { clearStoredChatKitSecret } from "../../utils/chatkitSession";
-import { clearStoredThreadId, loadStoredThreadId, persistStoredThreadId } from "../../utils/chatkitThread";
+import { loadStoredThreadId } from "../../utils/chatkitThread";
 import { resolvePersistenceSlug, buildSessionStorageKey } from "../../utils/chatStorage";
 import { useChatContext } from "../../context/ChatContext";
 
@@ -56,28 +57,16 @@ export function MyChatContent() {
     currentThread,
     initialThreadId,
     streamingThreadIds,
-    isNewConversationStreaming,
     chatInstanceKey,
     workflowSelection,
   } = state;
+  const { setWorkflowSelection, setInitialThreadId } = setters;
   const {
-    setCurrentThread,
-    setInitialThreadId,
-    setStreamingThreadIds,
-    setIsNewConversationStreaming,
-    setChatInstanceKey,
-    setWorkflowSelection,
-  } = setters;
-  const {
-    lastThreadSnapshotRef,
-    wasNewConversationStreamingRef,
     isNewConversationDraftRef,
     isInitialMountRef,
     requestRefreshRef,
     stopVoiceSessionRef,
-    previousSessionOwnerRef,
     missingDomainKeyWarningShownRef,
-    prevUrlThreadIdRef,
   } = refs;
 
   // Hosted flow
@@ -98,13 +87,11 @@ export function MyChatContent() {
     }
   }, [urlThreadId, sessionOwner, persistenceSlug, initialThreadId, setInitialThreadId, isInitialMountRef]);
 
-  // Reset chat state hook
+  // Reset chat state hook (uses context internally)
   const { resetChatState } = useResetChatState({
     mode,
     sessionOwner,
     workflowSelection,
-    refs: { lastThreadSnapshotRef, wasNewConversationStreamingRef, stopVoiceSessionRef },
-    setters: { setCurrentThread, setStreamingThreadIds, setIsNewConversationStreaming, setInitialThreadId, setChatInstanceKey },
   });
 
   // ChatKit session
@@ -159,52 +146,16 @@ export function MyChatContent() {
     if (!isSame) void setAppearanceWorkflow(desired);
   }, [activeAppearanceWorkflow, appearanceWorkflowReference, setAppearanceWorkflow]);
 
-  // URL sync
-  useEffect(() => {
-    const prevUrlThreadId = prevUrlThreadIdRef.current;
-    prevUrlThreadIdRef.current = urlThreadId;
-    if (prevUrlThreadId === urlThreadId) return;
-    const currentUrlThreadId = urlThreadId ?? null;
-    if (currentUrlThreadId !== null && currentUrlThreadId !== initialThreadId) {
-      isNewConversationDraftRef.current = false;
-      persistStoredThreadId(sessionOwner, currentUrlThreadId, persistenceSlug);
-      setInitialThreadId(currentUrlThreadId);
-      setChatInstanceKey((v) => v + 1);
-      return;
-    }
-    if (currentUrlThreadId === null && prevUrlThreadId !== undefined) {
-      clearStoredThreadId(sessionOwner, persistenceSlug);
-      isNewConversationDraftRef.current = true;
-      setInitialThreadId(null);
-      setChatInstanceKey((v) => v + 1);
-    }
-  }, [urlThreadId, initialThreadId, sessionOwner, persistenceSlug, setInitialThreadId, setChatInstanceKey, isNewConversationDraftRef, prevUrlThreadIdRef]);
+  // URL thread sync (extracted hook - uses context internally)
+  useUrlThreadSync({ urlThreadId, sessionOwner, persistenceSlug });
 
   // Draft state sync
   useEffect(() => {
     if (!isInitialMountRef.current) isNewConversationDraftRef.current = initialThreadId === null;
   }, [initialThreadId, isInitialMountRef, isNewConversationDraftRef]);
 
-  // Session owner change
-  useEffect(() => {
-    const previousOwner = previousSessionOwnerRef.current;
-    if (previousOwner && previousOwner !== sessionOwner) {
-      clearStoredChatKitSecret(buildSessionStorageKey(previousOwner, "hosted"));
-      clearStoredThreadId(previousOwner, "hosted");
-      clearStoredChatKitSecret(buildSessionStorageKey(previousOwner, persistenceSlug));
-      clearStoredThreadId(previousOwner, persistenceSlug);
-    }
-    previousSessionOwnerRef.current = sessionOwner;
-    if (!isInitialMountRef.current && isNewConversationDraftRef.current) return;
-    const storedThreadId = loadStoredThreadId(sessionOwner, persistenceSlug);
-    if (storedThreadId) {
-      isInitialMountRef.current = false;
-      isNewConversationDraftRef.current = false;
-      setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
-    } else if (isInitialMountRef.current && persistenceSlug) {
-      isInitialMountRef.current = false;
-    }
-  }, [persistenceSlug, sessionOwner, setInitialThreadId, isInitialMountRef, isNewConversationDraftRef, previousSessionOwnerRef]);
+  // Session owner sync (extracted hook - uses context internally)
+  useSessionOwnerSync({ sessionOwner, persistenceSlug });
 
   // Workflow capabilities
   const { hasVoiceAgent, hasOutboundCall } = useWorkflowCapabilities(token, activeWorkflow?.id ?? null, activeWorkflow?.active_version_id ?? null);
@@ -226,19 +177,15 @@ export function MyChatContent() {
 
   useEffect(() => { stopVoiceSessionRef.current = stopVoiceSession; }, [stopVoiceSession, stopVoiceSessionRef]);
 
-  // Sidebar actions
+  // Sidebar actions (uses context internally)
   const { handleSidebarThreadSelect, handleSidebarThreadDeleted, handleNewConversation, handleWorkflowSelectorChange } = useSidebarActions({
-    sessionOwner, persistenceSlug, mode, workflowSelection, workflows, currentThread, initialThreadId, token, isAdmin: user?.is_admin ?? false,
-    refs: { lastThreadSnapshotRef, wasNewConversationStreamingRef, isNewConversationDraftRef },
-    setters: { setCurrentThread, setIsNewConversationStreaming, setInitialThreadId, setChatInstanceKey, setWorkflowSelection: setManagedWorkflowSelection, setSelectedWorkflowId },
+    sessionOwner, persistenceSlug, mode, workflows, token, isAdmin: user?.is_admin ?? false,
+    setManagedWorkflowSelection, setSelectedWorkflowId,
   });
 
-  // ChatKit callbacks
+  // ChatKit callbacks (uses context internally)
   const chatkitCallbacks = useChatkitCallbacks({
-    sessionOwner, persistenceSlug,
-    refs: { lastThreadSnapshotRef, wasNewConversationStreamingRef, isNewConversationDraftRef, requestRefreshRef },
-    setters: { setCurrentThread, setStreamingThreadIds, setIsNewConversationStreaming, setInitialThreadId },
-    reportError, resetError,
+    sessionOwner, persistenceSlug, reportError, resetError,
   });
 
   // Widgets config

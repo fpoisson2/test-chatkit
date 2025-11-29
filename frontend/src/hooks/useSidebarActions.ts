@@ -4,37 +4,20 @@ import type { WorkflowActivation } from "../features/workflows/WorkflowSidebar";
 import type { ThreadWorkflowMetadata } from "../features/workflows/ConversationsSidebarSection";
 import type { WorkflowSummary } from "../types/workflows";
 import type { HostedFlowMode } from "./useHostedFlow";
+import { useChatContext } from "../context/ChatContext";
 import { workflowsApi } from "../utils/backend";
 import { clearStoredThreadId, persistStoredThreadId } from "../utils/chatkitThread";
 import { resolvePersistenceSlug } from "../utils/chatStorage";
-
-export type SidebarActionRefs = {
-  lastThreadSnapshotRef: React.MutableRefObject<Record<string, unknown> | null>;
-  wasNewConversationStreamingRef: React.MutableRefObject<boolean>;
-  isNewConversationDraftRef: React.MutableRefObject<boolean>;
-};
-
-export type SidebarActionSetters = {
-  setCurrentThread: React.Dispatch<React.SetStateAction<Record<string, unknown> | null>>;
-  setIsNewConversationStreaming: React.Dispatch<React.SetStateAction<boolean>>;
-  setInitialThreadId: React.Dispatch<React.SetStateAction<string | null>>;
-  setChatInstanceKey: React.Dispatch<React.SetStateAction<number>>;
-  setWorkflowSelection: React.Dispatch<React.SetStateAction<WorkflowActivation>>;
-  setSelectedWorkflowId: (id: number | null) => void;
-};
 
 export type UseSidebarActionsOptions = {
   sessionOwner: string;
   persistenceSlug: string | null;
   mode: HostedFlowMode;
-  workflowSelection: WorkflowActivation;
   workflows: WorkflowSummary[];
-  currentThread: Record<string, unknown> | null;
-  initialThreadId: string | null;
   token: string | null;
   isAdmin: boolean;
-  refs: SidebarActionRefs;
-  setters: SidebarActionSetters;
+  setManagedWorkflowSelection: React.Dispatch<React.SetStateAction<WorkflowActivation>>;
+  setSelectedWorkflowId: (id: number | null) => void;
 };
 
 export type SidebarActions = {
@@ -48,31 +31,28 @@ export function useSidebarActions({
   sessionOwner,
   persistenceSlug,
   mode,
-  workflowSelection,
   workflows,
-  currentThread,
-  initialThreadId,
   token,
   isAdmin,
-  refs,
-  setters,
+  setManagedWorkflowSelection,
+  setSelectedWorkflowId,
 }: UseSidebarActionsOptions): SidebarActions {
   const navigate = useNavigate();
 
-  const {
-    lastThreadSnapshotRef,
-    wasNewConversationStreamingRef,
-    isNewConversationDraftRef,
-  } = refs;
-
+  // Get state, setters, and refs from context
+  const { state, setters, refs } = useChatContext();
+  const { currentThread, initialThreadId, workflowSelection } = state;
   const {
     setCurrentThread,
     setIsNewConversationStreaming,
     setInitialThreadId,
     setChatInstanceKey,
-    setWorkflowSelection,
-    setSelectedWorkflowId,
   } = setters;
+  const {
+    lastThreadSnapshotRef,
+    wasNewConversationStreamingRef,
+    isNewConversationDraftRef,
+  } = refs;
 
   const handleSidebarThreadSelect = useCallback(
     async (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
@@ -94,7 +74,7 @@ export function useSidebarActions({
           }
 
           setSelectedWorkflowId(threadWorkflowId);
-          setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+          setManagedWorkflowSelection({ kind: "local", workflow: targetWorkflow });
           workflowChanged = true;
         }
       }
@@ -118,7 +98,7 @@ export function useSidebarActions({
       navigate,
       isNewConversationDraftRef,
       setSelectedWorkflowId,
-      setWorkflowSelection,
+      setManagedWorkflowSelection,
       setInitialThreadId,
       setChatInstanceKey,
     ],
@@ -165,7 +145,7 @@ export function useSidebarActions({
       const targetWorkflow = workflows.find((w) => w.id === workflowId);
       if (targetWorkflow) {
         setSelectedWorkflowId(workflowId);
-        setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+        setManagedWorkflowSelection({ kind: "local", workflow: targetWorkflow });
 
         if (isAdmin && token) {
           await workflowsApi.setChatkitWorkflow(token, workflowId).catch(console.error);
@@ -183,7 +163,7 @@ export function useSidebarActions({
       token,
       isAdmin,
       setSelectedWorkflowId,
-      setWorkflowSelection,
+      setManagedWorkflowSelection,
       setInitialThreadId,
       setChatInstanceKey,
     ],

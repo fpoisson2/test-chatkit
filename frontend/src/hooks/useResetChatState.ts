@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { WorkflowActivation } from "../features/workflows/WorkflowSidebar";
 import type { HostedFlowMode } from "./useHostedFlow";
+import { useChatContext } from "../context/ChatContext";
 import { clearStoredChatKitSecret } from "../utils/chatkitSession";
 import { clearStoredThreadId, loadStoredThreadId } from "../utils/chatkitThread";
 import { resolvePersistenceSlug, buildSessionStorageKey } from "../utils/chatStorage";
@@ -11,26 +12,10 @@ export type ResetChatStateOptions = {
   targetMode?: HostedFlowMode;
 };
 
-export type ThreadStateRefs = {
-  lastThreadSnapshotRef: React.MutableRefObject<Record<string, unknown> | null>;
-  wasNewConversationStreamingRef: React.MutableRefObject<boolean>;
-  stopVoiceSessionRef: React.MutableRefObject<(() => void) | null>;
-};
-
-export type ThreadStateSetters = {
-  setCurrentThread: React.Dispatch<React.SetStateAction<Record<string, unknown> | null>>;
-  setStreamingThreadIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-  setIsNewConversationStreaming: React.Dispatch<React.SetStateAction<boolean>>;
-  setInitialThreadId: React.Dispatch<React.SetStateAction<string | null>>;
-  setChatInstanceKey: React.Dispatch<React.SetStateAction<number>>;
-};
-
 export type UseResetChatStateOptions = {
   mode: HostedFlowMode;
   sessionOwner: string;
   workflowSelection: WorkflowActivation;
-  refs: ThreadStateRefs;
-  setters: ThreadStateSetters;
 };
 
 export type UseResetChatStateReturn = {
@@ -42,15 +27,9 @@ export function useResetChatState({
   mode,
   sessionOwner,
   workflowSelection,
-  refs,
-  setters,
 }: UseResetChatStateOptions): UseResetChatStateReturn {
-  const {
-    lastThreadSnapshotRef,
-    wasNewConversationStreamingRef,
-    stopVoiceSessionRef,
-  } = refs;
-
+  // Get refs and setters from context
+  const { setters, refs } = useChatContext();
   const {
     setCurrentThread,
     setStreamingThreadIds,
@@ -58,6 +37,11 @@ export function useResetChatState({
     setInitialThreadId,
     setChatInstanceKey,
   } = setters;
+  const {
+    lastThreadSnapshotRef,
+    wasNewConversationStreamingRef,
+    stopVoiceSessionRef,
+  } = refs;
 
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
 

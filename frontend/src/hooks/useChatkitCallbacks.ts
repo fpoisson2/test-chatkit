@@ -1,28 +1,13 @@
 import { useCallback } from "react";
+import { useChatContext } from "../context/ChatContext";
 import {
   clearStoredThreadId,
   persistStoredThreadId,
 } from "../utils/chatkitThread";
 
-export type ChatkitCallbackRefs = {
-  lastThreadSnapshotRef: React.MutableRefObject<Record<string, unknown> | null>;
-  wasNewConversationStreamingRef: React.MutableRefObject<boolean>;
-  isNewConversationDraftRef: React.MutableRefObject<boolean>;
-  requestRefreshRef: React.MutableRefObject<((context?: string) => Promise<void> | undefined) | null>;
-};
-
-export type ChatkitCallbackSetters = {
-  setCurrentThread: React.Dispatch<React.SetStateAction<Record<string, unknown> | null>>;
-  setStreamingThreadIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-  setIsNewConversationStreaming: React.Dispatch<React.SetStateAction<boolean>>;
-  setInitialThreadId: React.Dispatch<React.SetStateAction<string | null>>;
-};
-
 export type UseChatkitCallbacksOptions = {
   sessionOwner: string;
   persistenceSlug: string | null;
-  refs: ChatkitCallbackRefs;
-  setters: ChatkitCallbackSetters;
   reportError: (message: string, error?: Error) => void;
   resetError: () => void;
 };
@@ -40,24 +25,23 @@ export type ChatkitCallbacks = {
 export function useChatkitCallbacks({
   sessionOwner,
   persistenceSlug,
-  refs,
-  setters,
   reportError,
   resetError,
 }: UseChatkitCallbacksOptions): ChatkitCallbacks {
-  const {
-    lastThreadSnapshotRef,
-    wasNewConversationStreamingRef,
-    isNewConversationDraftRef,
-    requestRefreshRef,
-  } = refs;
-
+  // Get refs and setters from context
+  const { setters, refs } = useChatContext();
   const {
     setCurrentThread,
     setStreamingThreadIds,
     setIsNewConversationStreaming,
     setInitialThreadId,
   } = setters;
+  const {
+    lastThreadSnapshotRef,
+    wasNewConversationStreamingRef,
+    isNewConversationDraftRef,
+    requestRefreshRef,
+  } = refs;
 
   const onThreadChange = useCallback(
     ({ threadId }: { threadId: string | null }) => {
