@@ -23,10 +23,8 @@ export async function exportToDocx(markdownContent: string, filename?: string): 
         listItemSize: 24,
         codeBlockSize: 20,
         blockquoteSize: 24,
-        // Spacing
-        headingSpacing: 240,
-        paragraphSpacing: 200,
-        lineSpacing: 1.15, // Must be between 1 and 3 (1 = single, 1.5 = 1.5x, 2 = double)
+        // Line spacing (must be between 1 and 3)
+        lineSpacing: 1,
         // Alignment
         paragraphAlignment: 'LEFT',
         blockquoteAlignment: 'LEFT',
