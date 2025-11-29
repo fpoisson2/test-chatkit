@@ -10,28 +10,8 @@ import { convertMarkdownToDocx, downloadDocx } from '@mohtasham/md-to-docx';
  */
 export async function exportToDocx(markdownContent: string, filename?: string): Promise<void> {
   try {
-    const blob = await convertMarkdownToDocx(markdownContent, {
-      documentType: 'document',
-      style: {
-        // Font sizes (in half-points, so 24 = 12pt)
-        heading1Size: 32,
-        heading2Size: 28,
-        heading3Size: 24,
-        heading4Size: 22,
-        heading5Size: 20,
-        paragraphSize: 24,
-        listItemSize: 24,
-        codeBlockSize: 20,
-        blockquoteSize: 24,
-        // Spacing (in twips: 240 = single line, 276 = 1.15x, 360 = 1.5x, 480 = double)
-        headingSpacing: 240,
-        paragraphSpacing: 200,
-        lineSpacing: 276,
-        // Alignment
-        paragraphAlignment: 'LEFT',
-        blockquoteAlignment: 'LEFT',
-      },
-    });
+    // Use minimal options to avoid NaN parsing issues in the library
+    const blob = await convertMarkdownToDocx(markdownContent);
 
     if (!blob) {
       throw new Error('convertMarkdownToDocx returned no blob');
