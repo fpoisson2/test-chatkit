@@ -11,8 +11,18 @@ export interface UseThreadLoadingReturn {
   clearAllLoading: () => void;
 }
 
-export function useThreadLoading(getThreadKey: (threadId: string | null | undefined) => string): UseThreadLoadingReturn {
-  const [loadingByThread, setLoadingByThread] = useState<Record<string, boolean>>({});
+export function useThreadLoading(
+  getThreadKey: (threadId: string | null | undefined) => string,
+  initialThreadId?: string | null
+): UseThreadLoadingReturn {
+  // Initialize loading state synchronously if we have an initial thread to load
+  // This prevents the "new conversation" flash on page refresh
+  const [loadingByThread, setLoadingByThread] = useState<Record<string, boolean>>(() => {
+    if (initialThreadId) {
+      return { [initialThreadId]: true };
+    }
+    return {};
+  });
 
   const setThreadLoading = useCallback((threadId: string | null | undefined, value: boolean) => {
     const key = getThreadKey(threadId);

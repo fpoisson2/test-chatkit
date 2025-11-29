@@ -492,9 +492,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     }
 
     if (!control.thread) {
-      // If we're loading a thread, don't show "New Conversation" temporarily
-      // Only show it when we're truly starting a new conversation (not loading)
-      if (control.isLoading) {
+      // If we're loading a thread or transitioning to one, don't show "New Conversation"
+      // Only show it when we're truly starting a new conversation (not loading/transitioning)
+      if (control.isLoading || isLoadingAnyThread || isTransitioningToNewThread) {
         return '';
       }
       return t('chatkit.thread.newConversation');
