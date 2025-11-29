@@ -130,9 +130,9 @@
     --color-text-muted: #a1a1aa;
 
     /* Surface Colors */
-    --color-surface: #18181b;
-    --color-surface-subtle: #111114;
-    --color-border-subtle: rgba(228, 228, 231, 0.16);
+    --color-surface: var(--appearance-dark-surface);
+    --color-surface-subtle: var(--appearance-dark-surface-subtle);
+    --color-border-subtle: var(--appearance-dark-border);
     --surface-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
     --surface-strong: var(--color-surface);
     --surface-border: var(--color-border-subtle);
@@ -140,9 +140,9 @@
     /* Semantic Aliases */
     --text-color: var(--color-text);
     --text-muted: var(--color-text-muted);
-    --main-background: #09090b;
-    --primary-color: #38bdf8;
-    --primary-hover: #0ea5e9;
+    --main-background: var(--appearance-dark-surface-subtle);
+    --primary-color: var(--appearance-accent);
+    --primary-hover: var(--appearance-accent-hover);
 
     /* Sidebar Colors */
     --sidebar-background: var(--color-surface-subtle);
