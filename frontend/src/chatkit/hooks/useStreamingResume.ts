@@ -17,7 +17,6 @@ import {
   shouldAttemptResume,
   updateLastEventId,
 } from "../../utils/streamingSession";
-import { setThreadIdInUrl } from "../../utils/chatkitThread";
 
 export interface StreamingSessionStatus {
   session_id: string;
@@ -76,8 +75,14 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
     savedSessionThreadId: null,
   });
 
-  const checkedRef = useRef<string | null>("__not_checked__");  // Track which threadId we checked
+  // Track which threadId we successfully checked (to avoid duplicate checks)
+  // Only updated after async operation completes to handle React Strict Mode properly
+  const checkedRef = useRef<string | null>("__not_checked__");
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Memoize headers to avoid unnecessary effect re-runs
+  const headersRef = useRef(headers);
+  headersRef.current = headers;
 
   // Check for resumable session on mount or when threadId changes
   useEffect(() => {
@@ -101,17 +106,18 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
       return;
     }
 
-    // Skip if we already checked for this exact threadId
+    // Skip if we already successfully checked for this exact threadId
     // Use a special marker to distinguish "never checked" from "checked with null"
     if (checkedRef.current === threadId) {
       console.info("[useStreamingResume] Already checked for this threadId, skipping");
       return;
     }
-    checkedRef.current = threadId;
 
     console.info("[useStreamingResume] Loaded session from storage:", savedSession);
     if (!savedSession) {
       console.info("[useStreamingResume] No saved session found");
+      // Mark as checked even when no session found (for this threadId)
+      checkedRef.current = threadId;
       return;
     }
 
@@ -119,6 +125,7 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
     // We only need to check/resume for sessions from previous page loads
     if (!shouldResume) {
       console.info("[useStreamingResume] Session was created by current page, no need to resume");
+      checkedRef.current = threadId;
       return;
     }
 
@@ -133,6 +140,9 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
       // Don't return - still check the session status to see if we should redirect
     }
 
+    // Capture current threadId for use in async callback
+    const currentThreadId = threadId;
+
     const checkAndResume = async () => {
       setState((s) => ({ ...s, isResuming: true }));
       abortControllerRef.current = new AbortController();
@@ -146,19 +156,22 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
         console.info("[useStreamingResume] Checking session status at:", statusUrl.toString());
 
         const statusResponse = await fetch(statusUrl.toString(), {
-          headers,
+          headers: headersRef.current,
           signal: abortControllerRef.current.signal,
         });
 
         console.info("[useStreamingResume] Status response:", statusResponse.status, statusResponse.statusText);
 
         if (!statusResponse.ok) {
-          // Session not found or expired
+          // Session not found or expired - clear session tracking but keep thread in URL
+          // The thread can still be loaded normally even if streaming session is gone
           const errorText = await statusResponse.text().catch(() => "");
-          console.info("[useStreamingResume] Session not found or expired, clearing. Error:", errorText);
+          console.info("[useStreamingResume] Session not found or expired, clearing session. Error:", errorText);
           clearStreamingSession();
-          setThreadIdInUrl(null);
+          // Don't clear thread from URL - let normal thread loading take over
           setState((s) => ({ ...s, isResuming: false, savedSessionThreadId: null }));
+          // Mark as checked so we don't retry
+          checkedRef.current = currentThreadId;
           return;
         }
 
@@ -180,6 +193,7 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
           console.info("[useStreamingResume] Session is active for different thread, signaling for redirect");
           // Don't clear - let caller handle navigation
           setState((s) => ({ ...s, isResuming: false }));
+          checkedRef.current = currentThreadId;
           return;
         }
 
@@ -199,7 +213,7 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
           }
 
           const eventsResponse = await fetch(eventsUrl.toString(), {
-            headers,
+            headers: headersRef.current,
             signal: abortControllerRef.current.signal,
           });
 
@@ -228,12 +242,17 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
 
         clearStreamingSession();
         setState((s) => ({ ...s, savedSessionThreadId: null }));
+        // Mark as checked after successful completion
+        checkedRef.current = currentThreadId;
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           console.error("[ChatKit] Resume check failed:", error);
+          // Only mark as checked if it's not an abort (abort = cleanup, don't mark)
+          clearStreamingSession();
+          setState((s) => ({ ...s, savedSessionThreadId: null }));
+          checkedRef.current = currentThreadId;
         }
-        clearStreamingSession();
-        setState((s) => ({ ...s, savedSessionThreadId: null }));
+        // Don't mark checked on abort - let the next mount retry
       } finally {
         setState((s) => ({ ...s, isResuming: false }));
       }
@@ -244,7 +263,8 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
     return () => {
       abortControllerRef.current?.abort();
     };
-  }, [apiUrl, enabled, headers, onReconnect, onReplay, threadId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl, enabled, onReconnect, onReplay, threadId]);
 
   // Start tracking a new streaming session
   const startTracking = useCallback((sessionId: string, threadId: string) => {
