@@ -629,18 +629,59 @@ class ChatKitServer(ABC, Generic[TContext]):
         context: TContext,
         stream: Callable[[], AsyncIterator[ThreadStreamEvent]],
     ) -> AsyncIterator[ThreadStreamEvent]:
+        import time
+        from chatkit.types import AssistantMessageContentPartTextDelta
+
         await asyncio.sleep(0)  # allow the response to start streaming
 
         last_thread = thread.model_copy(deep=True)
+        active_items: dict[str, ThreadItem] = {}
+        last_save_time: dict[str, float] = {}
+        SAVE_INTERVAL = 1.0  # seconds
 
         try:
             with agents_sdk_user_agent_override():
                 async for event in stream():
                     match event:
+                        case ThreadItemAddedEvent():
+                            active_items[event.item.id] = event.item.model_copy(
+                                deep=True
+                            )
+
+                        case ThreadItemUpdated():
+                            if event.item_id in active_items:
+                                item = active_items[event.item_id]
+                                if (
+                                    isinstance(item, AssistantMessageItem)
+                                    and isinstance(
+                                        event.update,
+                                        AssistantMessageContentPartTextDelta,
+                                    )
+                                ):
+                                    content_index = event.update.content_index
+                                    delta = event.update.delta
+                                    if 0 <= content_index < len(item.content):
+                                        content = item.content[content_index]
+                                        if hasattr(content, "text"):
+                                            content.text += delta
+
+                                    now = time.time()
+                                    if (
+                                        now - last_save_time.get(event.item_id, 0)
+                                        > SAVE_INTERVAL
+                                    ):
+                                        await self.store.save_item(
+                                            thread.id, item, context=context
+                                        )
+                                        last_save_time[event.item_id] = now
+
                         case ThreadItemDoneEvent():
                             # Replace temporary IDs (e.g., __fake_id__) with real unique IDs
                             # The agents SDK sometimes uses placeholder IDs that conflict across threads
                             item = event.item
+                            active_items.pop(item.id, None)
+                            last_save_time.pop(item.id, None)
+
                             if item.id.startswith("__"):
                                 # Determine the store item type based on the item's type field
                                 item_type: StoreItemType
