@@ -65,6 +65,7 @@ else:
             auth,
             computer,
             docs,
+            health,
             languages,
             lti,
             mcp,
@@ -142,6 +143,7 @@ else:
         app.include_router(workflow_monitor_ws.router)
         app.include_router(computer.router)
         app.include_router(docs.router)
+        app.include_router(health.router)
         app.include_router(languages.router)
         app.include_router(lti.router)
         app.include_router(model_registry.router)
