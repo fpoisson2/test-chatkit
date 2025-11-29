@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { ChatKitOptions, StartScreenPrompt } from "./chatkit";
+import type { ChatKitOptions } from "./chatkit";
 import type { Thread } from "./chatkit/types";
 
 import { useAuth } from "./auth";
@@ -23,6 +23,10 @@ import { useWorkflowCapabilities } from "./hooks/useWorkflowCapabilities";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
 import { useLtiContext } from "./hooks/useLtiContext";
+import { useChatTheme } from "./hooks/useChatTheme";
+import { useChatkitCallbacks } from "./hooks/useChatkitCallbacks";
+import { useChatInstanceCache } from "./hooks/useChatInstanceCache";
+import { useChatkitWidgets } from "./hooks/useChatkitWidgets";
 import { getOrCreateDeviceId } from "./utils/device";
 import { loadComposerModelsConfig } from "./utils/composerModels";
 import { useWorkflowComposerModels } from "./hooks/useWorkflowComposerModels";
@@ -33,13 +37,6 @@ import {
   loadStoredThreadId,
   persistStoredThreadId,
 } from "./utils/chatkitThread";
-import {
-  buildSurfacePalette,
-  resolveSurfaceColors,
-  resolveThemeColorScheme,
-  normalizeText,
-  parseStartScreenPrompts,
-} from "./utils/appearance";
 import type { WorkflowSummary } from "./types/workflows";
 
 type WeatherToolCall = {
@@ -101,6 +98,8 @@ export function MyChat() {
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
+
+  // Workflow selection state
   const [workflowSelection, setWorkflowSelection] = useState<WorkflowActivation>({
     kind: "local",
     workflow: null,
@@ -121,43 +120,22 @@ export function MyChat() {
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
 
-  // Keep track of active workflow instances to preserve state
-  type WorkflowInstanceData = {
-    workflowId: string;
-    mode: HostedFlowMode;
-    workflow: WorkflowSummary | null;
-    initialThreadId: string | null;
-    chatkitOptions: ChatKitOptions;
-    createdAt: number;
-    instanceKey: number;
-  };
-  const [activeInstances, setActiveInstances] = useState<Map<string, WorkflowInstanceData>>(
-    new Map()
-  );
-  const MAX_CACHED_INSTANCES = 5;
-  const instanceKeyCounterRef = useRef(0);
-
+  // Thread state
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [currentThread, setCurrentThread] = useState<Record<string, unknown> | null>(null);
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(new Set());
   const [isNewConversationStreaming, setIsNewConversationStreaming] = useState(false);
-  // Ref to track if we started streaming on a new conversation (for use in onThreadChange closure)
   const wasNewConversationStreamingRef = useRef(false);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
-  // Track if user is in "new conversation" draft mode (no thread created yet)
-  // This prevents restoring stored threads when switching workflows on a new conversation
   const isNewConversationDraftRef = useRef<boolean>(false);
-  // Track if this is the initial mount - we should always try to restore the thread on first load
   const isInitialMountRef = useRef<boolean>(true);
 
-  // Detect LTI user early so we can use it in chatkitOptions
+  // LTI context
   const isLtiUser = user?.is_lti ?? false;
-
-  // Use LTI context hook for loading overlay and sidebar management
   const { isLtiContext, shouldShowLoadingOverlay } = useLtiContext({
     isLtiUser,
     activeWorkflow,
@@ -165,17 +143,22 @@ export function MyChat() {
     setHideSidebar,
   });
 
+  // Theme
+  const themeConfig = useChatTheme({
+    appearanceSettings,
+    preferredColorScheme,
+  });
+
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
   }, [workflowSelection]);
 
-  // Detect outbound calls via WebSocket events (like voice sessions)
+  // Outbound call handlers
   const handleOutboundTranscript = useCallback(() => {
     requestRefreshRef.current?.("[OutboundCall] Transcription en direct");
   }, []);
 
   const handleOutboundCallEnd = useCallback(() => {
-    // Refresh the thread to show final transcriptions and audio links
     requestRefreshRef.current?.("[OutboundCall] Appel terminé");
   }, []);
 
@@ -190,6 +173,7 @@ export function MyChat() {
     onDisable: handleHostedFlowDisabled,
   });
 
+  // Appearance workflow sync
   const appearanceWorkflowReference = useMemo<AppearanceWorkflowReference>(() => {
     if (mode === "hosted") {
       return hostedWorkflowSlug ? { kind: "hosted", slug: hostedWorkflowSlug } : null;
@@ -205,66 +189,49 @@ export function MyChat() {
     const current = activeAppearanceWorkflow;
     const isSame =
       (!desired && !current) ||
-      (desired?.kind === "local" &&
-        current?.kind === "local" &&
-        desired.id === current.id) ||
-      (desired?.kind === "hosted" &&
-        current?.kind === "hosted" &&
-        desired.slug === current.slug);
+      (desired?.kind === "local" && current?.kind === "local" && desired.id === current.id) ||
+      (desired?.kind === "hosted" && current?.kind === "hosted" && desired.slug === current.slug);
 
-    if (isSame) {
-      return;
+    if (!isSame) {
+      void setAppearanceWorkflow(desired);
     }
-
-    void setAppearanceWorkflow(desired);
-  }, [
-    activeAppearanceWorkflow,
-    appearanceWorkflowReference,
-    setAppearanceWorkflow,
-  ]);
+  }, [activeAppearanceWorkflow, appearanceWorkflowReference, setAppearanceWorkflow]);
 
   const persistenceSlug = resolvePersistenceSlug(mode, workflowSelection);
   const sessionStorageKey = buildSessionStorageKey(sessionOwner, persistenceSlug);
 
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
-    // Priority: URL param > localStorage
     urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug),
   );
 
-  // Track the previous URL threadId to detect external navigation (back/forward)
   const prevUrlThreadIdRef = useRef<string | undefined>(urlThreadId);
 
-  // Sync state from URL only when URL changes externally (browser back/forward)
+  // URL sync effect
   useEffect(() => {
     const prevUrlThreadId = prevUrlThreadIdRef.current;
     prevUrlThreadIdRef.current = urlThreadId;
 
-    // Only react if URL actually changed (not on initial mount or our own navigation)
-    if (prevUrlThreadId === urlThreadId) {
-      return;
-    }
+    if (prevUrlThreadId === urlThreadId) return;
 
     const currentUrlThreadId = urlThreadId ?? null;
 
-    // URL changed to a conversation - load it
     if (currentUrlThreadId !== null && currentUrlThreadId !== initialThreadId) {
       isNewConversationDraftRef.current = false;
       persistStoredThreadId(sessionOwner, currentUrlThreadId, persistenceSlug);
       setInitialThreadId(currentUrlThreadId);
-      setChatInstanceKey((value) => value + 1);
+      setChatInstanceKey((v) => v + 1);
       return;
     }
 
-    // URL changed to home - start new conversation
     if (currentUrlThreadId === null && prevUrlThreadId !== undefined) {
       clearStoredThreadId(sessionOwner, persistenceSlug);
       isNewConversationDraftRef.current = true;
       setInitialThreadId(null);
-      setChatInstanceKey((value) => value + 1);
+      setChatInstanceKey((v) => v + 1);
     }
   }, [urlThreadId, initialThreadId, sessionOwner, persistenceSlug]);
 
-  // Debug: Log currentThread changes for sidebar title debugging
+  // Debug logging
   useEffect(() => {
     if (currentThread) {
       const metadata = currentThread.metadata as Record<string, unknown> | undefined;
@@ -273,34 +240,25 @@ export function MyChat() {
         title: currentThread.title,
         metadataTitle: metadata?.title,
         initialThreadId,
-        willPassToSidebar: initialThreadId !== null,
       });
     }
   }, [currentThread, initialThreadId]);
 
-  // Sync the new conversation draft ref with initialThreadId state
-  // Only update after initial mount to avoid blocking thread restoration on page refresh
   useEffect(() => {
-    // Skip on initial mount - the persistenceSlug effect will handle initial state
-    if (isInitialMountRef.current) {
-      return;
+    if (!isInitialMountRef.current) {
+      isNewConversationDraftRef.current = initialThreadId === null;
     }
-    isNewConversationDraftRef.current = initialThreadId === null;
   }, [initialThreadId]);
 
+  // Reset chat state
   const resetChatState = useCallback(
-    ({
-      selection,
-      preserveStoredThread = false,
-      targetMode,
-    }: ResetChatStateOptions = {}) => {
+    ({ selection, preserveStoredThread = false, targetMode }: ResetChatStateOptions = {}) => {
       const effectiveMode = targetMode ?? mode;
       const effectiveSelection = selection ?? workflowSelection;
       const resolvedSlug = resolvePersistenceSlug(effectiveMode, effectiveSelection);
       const storageKey = buildSessionStorageKey(sessionOwner, resolvedSlug);
 
       clearStoredChatKitSecret(storageKey);
-
       if (!preserveStoredThread) {
         clearStoredThreadId(sessionOwner, resolvedSlug);
       }
@@ -315,9 +273,7 @@ export function MyChat() {
         ? loadStoredThreadId(sessionOwner, resolvedSlug)
         : null;
       setInitialThreadId(nextInitialThreadId);
-      setChatInstanceKey((value) => value + 1);
-
-      // Arrêter la session vocale si elle est en cours
+      setChatInstanceKey((v) => v + 1);
       stopVoiceSessionRef.current?.();
     },
     [mode, sessionOwner, workflowSelection],
@@ -333,18 +289,11 @@ export function MyChat() {
   }, [resetChatState]);
 
   useEffect(() => {
-    const key = normalizeWorkflowStorageKey(
-      resolvePersistenceSlug(mode, workflowSelection),
-    );
-    setWorkflowModes((current) => {
-      if (current[key] === mode) {
-        return current;
-      }
-      return { ...current, [key]: mode };
-    });
+    const key = normalizeWorkflowStorageKey(resolvePersistenceSlug(mode, workflowSelection));
+    setWorkflowModes((current) => (current[key] === mode ? current : { ...current, [key]: mode }));
   }, [mode, workflowSelection]);
 
-  const { getClientSecret, isLoading, error, reportError, resetError } = useChatkitSession({
+  const { getClientSecret, reportError, resetError } = useChatkitSession({
     sessionOwner,
     storageKey: sessionStorageKey,
     token,
@@ -353,46 +302,12 @@ export function MyChat() {
     disableHostedFlow,
   });
 
-  // Detect workflow capabilities to enable appropriate WebSocket connections
   const { hasVoiceAgent, hasOutboundCall } = useWorkflowCapabilities(
     token,
     activeWorkflow?.id ?? null,
-    activeWorkflow?.active_version_id ?? null
+    activeWorkflow?.active_version_id ?? null,
   );
 
-  // Check if current thread is at a voice agent step by looking for VoiceSession widget
-  const isAtVoiceAgentStep = useMemo(() => {
-    if (!hasVoiceAgent || !currentThread) {
-      return false;
-    }
-
-    const items = currentThread.items as unknown[];
-    if (!Array.isArray(items)) {
-      return false;
-    }
-
-    // Look for a WidgetItem with type='widget' containing a VoiceSession widget
-    return items.some((item) => {
-      if (
-        item &&
-        typeof item === "object" &&
-        "type" in item &&
-        item.type === "widget" &&
-        "widget" in item &&
-        item.widget &&
-        typeof item.widget === "object" &&
-        "type" in item.widget &&
-        item.widget.type === "VoiceSession"
-      ) {
-        return true;
-      }
-      return false;
-    });
-  }, [hasVoiceAgent, currentThread]);
-
-  // useWorkflowVoiceSession: Activated when workflow has voice_agent nodes
-  // Note: We keep WebSocket connected when workflow has voice agents to avoid timing issues
-  // The lag fix (no reconnection on threadId changes) is in useWorkflowVoiceSession.ts
   const {
     startVoiceSession,
     stopVoiceSession,
@@ -406,17 +321,10 @@ export function MyChat() {
     threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
     onError: reportError,
     onTranscriptsUpdated: () => {
-      console.log("[MyChat] onTranscriptsUpdated called", {
-        hasRequestRefresh: !!requestRefreshRef.current,
-        currentThreadId: currentThread?.id,
-        initialThreadId,
-      });
       requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
-      console.log("[MyChat] requestRefresh called");
     },
   });
 
-  // useOutboundCallSession: Activated automatically when workflow has outbound_call nodes
   const {
     callId: outboundCallId,
     isActive: outboundCallIsActive,
@@ -426,54 +334,26 @@ export function MyChat() {
     error: outboundCallError,
     hangupCall: hangupOutboundCall,
   } = useOutboundCallSession({
-    enabled: true, // Always connect to receive events immediately when calls start
+    enabled: true,
     authToken: token,
     onTranscript: handleOutboundTranscript,
     onCallEnd: handleOutboundCallEnd,
   });
 
-  // Garder stopVoiceSession dans un ref pour éviter les dépendances circulaires
   useEffect(() => {
     stopVoiceSessionRef.current = stopVoiceSession;
   }, [stopVoiceSession]);
 
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const root = document.documentElement;
-    const colorSchemePreference = appearanceSettings.color_scheme;
-    const resolvedScheme =
-      colorSchemePreference === "light" || colorSchemePreference === "dark"
-        ? colorSchemePreference
-        : preferredColorScheme;
-
-    if (colorSchemePreference === "system") {
-      delete root.dataset.theme;
-      return;
-    }
-
-    root.dataset.theme = resolvedScheme;
-  }, [appearanceSettings.color_scheme, preferredColorScheme]);
-
+  // Workflow activation handler
   const handleWorkflowActivated = useCallback(
     (selection: WorkflowActivation, { reason }: { reason: "initial" | "user" }) => {
-      // If user is in a new conversation draft, don't restore stored threads when switching workflows
       const shouldPreserveStoredThread = !isNewConversationDraftRef.current;
 
       setWorkflowSelection((current) => {
         if (selection.kind === "hosted") {
-          const wasHosted = current.kind === "hosted";
-          if (mode !== "hosted") {
-            setMode("hosted");
-          }
-          if (reason === "user" && !wasHosted) {
-            resetChatState({
-              selection,
-              preserveStoredThread: shouldPreserveStoredThread,
-              targetMode: "hosted",
-            });
+          if (mode !== "hosted") setMode("hosted");
+          if (reason === "user" && current.kind !== "hosted") {
+            resetChatState({ selection, preserveStoredThread: shouldPreserveStoredThread, targetMode: "hosted" });
             resetError();
           }
           return selection;
@@ -484,23 +364,14 @@ export function MyChat() {
         const currentId = previousWorkflow?.id ?? null;
         const nextId = workflow?.id ?? null;
 
-        const workflowSlug = workflow?.slug ?? null;
-        const workflowKey = normalizeWorkflowStorageKey(workflowSlug);
+        const workflowKey = normalizeWorkflowStorageKey(workflow?.slug ?? null);
         const defaultModeForWorkflow = reason === "initial" ? mode : "local";
         const nextMode = workflowModes[workflowKey] ?? defaultModeForWorkflow;
 
-        if (nextMode !== mode) {
-          setMode(nextMode);
-        }
+        if (nextMode !== mode) setMode(nextMode);
 
-        // Reset chat state when workflow changes (for both user selection and initial LTI auto-selection)
-        // This ensures the correct thread is loaded for LTI users when they return
         if ((reason === "user" || reason === "initial") && currentId !== nextId && nextId !== null) {
-          resetChatState({
-            selection,
-            preserveStoredThread: shouldPreserveStoredThread,
-            targetMode: nextMode,
-          });
+          resetChatState({ selection, preserveStoredThread: shouldPreserveStoredThread, targetMode: nextMode });
           resetError();
         }
 
@@ -510,69 +381,27 @@ export function MyChat() {
     [mode, resetChatState, resetError, setMode, workflowModes],
   );
 
-  // Sync workflow selection from provider (e.g. when changed in builder)
+  // Sync workflow from provider
   useEffect(() => {
-    // Skip if in hosted mode
-    if (mode !== "local") {
-      return;
-    }
+    if (mode !== "local" || providerSelectedWorkflowId === null || !token) return;
 
-    // Skip if no provider workflow selected or no token
-    if (providerSelectedWorkflowId === null || !token) {
-      return;
-    }
+    const currentId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id ?? null : null;
+    if (currentId === providerSelectedWorkflowId) return;
 
-    // Check if current selection matches provider
-    const currentId = workflowSelection.kind === "local"
-      ? workflowSelection.workflow?.id ?? null
-      : null;
-
-    // Skip if already synced
-    if (currentId === providerSelectedWorkflowId) {
-      return;
-    }
-
-    // Find the workflow and update selection
     const workflow = workflows.find((w) => w.id === providerSelectedWorkflowId) ?? null;
-
     if (workflow) {
-      console.log('[MyChat] Syncing workflow from provider:', {
-        from: currentId,
-        to: providerSelectedWorkflowId,
-        workflowName: workflow.display_name,
-      });
-
-      // For admin users, set the workflow on the backend
-      const isAdmin = user?.is_admin;
-      if (isAdmin) {
-        workflowsApi.setChatkitWorkflow(token, providerSelectedWorkflowId)
-          .then(() => {
-            console.log('[MyChat] Backend workflow updated to:', providerSelectedWorkflowId);
-          })
-          .catch((err) => {
-            console.error('[MyChat] Failed to update backend workflow:', err);
-          });
+      if (user?.is_admin) {
+        workflowsApi.setChatkitWorkflow(token, providerSelectedWorkflowId).catch(console.error);
       }
 
-      const selection: WorkflowActivation = {
-        kind: "local",
-        workflow,
-      };
-
-      // Reset chat state to switch to new workflow (like handleWorkflowActivated does)
-      // Don't restore stored thread if user is in a new conversation draft
-      const shouldPreserveStoredThread = !isNewConversationDraftRef.current;
-      resetChatState({
-        selection,
-        preserveStoredThread: shouldPreserveStoredThread,
-        targetMode: mode,
-      });
+      const selection: WorkflowActivation = { kind: "local", workflow };
+      resetChatState({ selection, preserveStoredThread: !isNewConversationDraftRef.current, targetMode: mode });
       resetError();
-
       setWorkflowSelection(selection);
     }
   }, [mode, providerSelectedWorkflowId, workflows, workflowSelection, resetChatState, resetError, token, user?.is_admin]);
 
+  // Session owner change effect
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
     if (previousOwner && previousOwner !== sessionOwner) {
@@ -583,22 +412,14 @@ export function MyChat() {
     }
     previousSessionOwnerRef.current = sessionOwner;
 
-    // On initial mount, always try to restore the stored thread
-    // After that, don't restore if user is in a new conversation draft state
-    // This prevents switching to an existing conversation when user changes workflow on a new conversation
-    if (!isInitialMountRef.current && isNewConversationDraftRef.current) {
-      return;
-    }
+    if (!isInitialMountRef.current && isNewConversationDraftRef.current) return;
 
     const storedThreadId = loadStoredThreadId(sessionOwner, persistenceSlug);
     if (storedThreadId) {
-      // Found a stored thread, restore it and clear initial mount flag
       isInitialMountRef.current = false;
       isNewConversationDraftRef.current = false;
       setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
     } else if (isInitialMountRef.current && persistenceSlug) {
-      // No stored thread found on initial mount with a valid workflow slug
-      // Clear the initial mount flag but keep draft state
       isInitialMountRef.current = false;
     }
   }, [persistenceSlug, sessionOwner]);
@@ -610,130 +431,141 @@ export function MyChat() {
     missingDomainKeyWarningShownRef,
   });
 
-  // Configuration API simplifiée pour le composant de conversations dans la sidebar
   const sidebarApiConfig = useMemo(() => {
     if (!token) return null;
-    // Extract URL from apiConfig - handle both hosted and custom configs
-    const apiUrl = debugSnapshot.apiUrl || '/api/chatkit';
     return {
-      url: apiUrl,
+      url: debugSnapshot.apiUrl || "/api/chatkit",
       headers: { Authorization: `Bearer ${token}` },
     };
   }, [token, debugSnapshot.apiUrl]);
 
-  // Callbacks pour la gestion des threads depuis la sidebar
-  const handleSidebarThreadSelect = useCallback(async (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
-    // User is selecting an existing thread, clear the new conversation draft state
-    isNewConversationDraftRef.current = false;
+  // Sidebar thread handlers
+  const handleSidebarThreadSelect = useCallback(
+    async (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
+      isNewConversationDraftRef.current = false;
 
-    // Check if we need to switch workflows
-    const currentWorkflowId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id : null;
-    const threadWorkflowId = workflowMetadata?.id;
+      const currentWorkflowId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id : null;
+      const threadWorkflowId = workflowMetadata?.id;
 
-    let targetSlug = persistenceSlug;
-    let workflowChanged = false;
+      let targetSlug = persistenceSlug;
+      let workflowChanged = false;
 
-    if (threadWorkflowId != null && threadWorkflowId !== currentWorkflowId) {
-      // Find the workflow in the list
-      const targetWorkflow = workflows.find((w) => w.id === threadWorkflowId);
-      if (targetWorkflow) {
-        // Calculate the new persistence slug for the target workflow
-        targetSlug = resolvePersistenceSlug(mode, { kind: "local", workflow: targetWorkflow });
+      if (threadWorkflowId != null && threadWorkflowId !== currentWorkflowId) {
+        const targetWorkflow = workflows.find((w) => w.id === threadWorkflowId);
+        if (targetWorkflow) {
+          targetSlug = resolvePersistenceSlug(mode, { kind: "local", workflow: targetWorkflow });
 
-        // Update backend workflow for admin users (must complete before loading thread)
-        if (user?.is_admin && token) {
-          try {
-            await workflowsApi.setChatkitWorkflow(token, threadWorkflowId);
-            console.log('[MyChat] Backend workflow updated to:', threadWorkflowId);
-          } catch (err) {
-            console.error('[MyChat] Failed to update backend workflow:', err);
+          if (user?.is_admin && token) {
+            await workflowsApi.setChatkitWorkflow(token, threadWorkflowId).catch(console.error);
           }
+
+          setSelectedWorkflowId(threadWorkflowId);
+          setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+          workflowChanged = true;
         }
-
-        // Switch to the workflow
-        setSelectedWorkflowId(threadWorkflowId);
-        // Update local workflow selection state
-        setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
-        workflowChanged = true;
       }
-    }
 
+      persistStoredThreadId(sessionOwner, threadId, targetSlug);
+      navigate(`/c/${threadId}`, { replace: true });
+      setInitialThreadId(threadId);
 
-    // Persist the selected thread with the correct slug and reload the chat
-    persistStoredThreadId(sessionOwner, threadId, targetSlug);
+      if (workflowChanged) {
+        setChatInstanceKey((v) => v + 1);
+      }
+    },
+    [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin, navigate],
+  );
 
-    // Navigate to conversation URL and update state
-    navigate(`/c/${threadId}`, { replace: true });
-    setInitialThreadId(threadId);
-
-    // Only increment chatInstanceKey when switching workflows to force instance update
-    // For same-workflow thread switches, avoid remounting to prevent welcome screen flash
-    if (workflowChanged) {
-      setChatInstanceKey((value) => value + 1);
-    }
-  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin, navigate]);
-
-  const handleSidebarThreadDeleted = useCallback((deletedThreadId: string) => {
-    // If the deleted thread is the current one, clear it and start fresh
-    const currentId = (currentThread?.id as string | undefined) ?? initialThreadId;
-    if (currentId === deletedThreadId) {
-      clearStoredThreadId(sessionOwner, persistenceSlug);
-      setInitialThreadId(null);
-      setChatInstanceKey((value) => value + 1);
-      navigate("/", { replace: true });
-    }
-  }, [sessionOwner, persistenceSlug, currentThread, initialThreadId, navigate]);
+  const handleSidebarThreadDeleted = useCallback(
+    (deletedThreadId: string) => {
+      const currentId = (currentThread?.id as string | undefined) ?? initialThreadId;
+      if (currentId === deletedThreadId) {
+        clearStoredThreadId(sessionOwner, persistenceSlug);
+        setInitialThreadId(null);
+        setChatInstanceKey((v) => v + 1);
+        navigate("/", { replace: true });
+      }
+    },
+    [sessionOwner, persistenceSlug, currentThread, initialThreadId, navigate],
+  );
 
   const handleNewConversation = useCallback(() => {
-    // Clear stored thread to start a new conversation
     clearStoredThreadId(sessionOwner, persistenceSlug);
     lastThreadSnapshotRef.current = null;
     setCurrentThread(null);
-    // Don't clear streamingThreadIds - let streaming threads keep their spinner
-    // They will be removed from the set when streaming ends via onResponseEnd
     setIsNewConversationStreaming(false);
     wasNewConversationStreamingRef.current = false;
-    // Mark that we're in a new conversation draft state
     isNewConversationDraftRef.current = true;
-    // Update state first, then navigate
     setInitialThreadId(null);
-    setChatInstanceKey((value) => value + 1);
-    // Navigate to home URL
+    setChatInstanceKey((v) => v + 1);
     navigate("/", { replace: true });
   }, [sessionOwner, persistenceSlug, navigate]);
 
-  // Handle workflow change from the selector dropdown
-  const handleWorkflowSelectorChange = useCallback(async (workflowId: number) => {
-    const targetWorkflow = workflows.find((w) => w.id === workflowId);
-    if (targetWorkflow) {
-      // Update provider selection
-      setSelectedWorkflowId(workflowId);
-      // Update local workflow selection state
-      setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+  const handleWorkflowSelectorChange = useCallback(
+    async (workflowId: number) => {
+      const targetWorkflow = workflows.find((w) => w.id === workflowId);
+      if (targetWorkflow) {
+        setSelectedWorkflowId(workflowId);
+        setWorkflowSelection({ kind: "local", workflow: targetWorkflow });
 
-      // Update backend workflow for admin users (must complete before resetting chat)
-      if (user?.is_admin && token) {
-        try {
-          await workflowsApi.setChatkitWorkflow(token, workflowId);
-          console.log('[MyChat] Backend workflow updated to:', workflowId);
-        } catch (err) {
-          console.error('[MyChat] Failed to update backend workflow:', err);
+        if (user?.is_admin && token) {
+          await workflowsApi.setChatkitWorkflow(token, workflowId).catch(console.error);
         }
+
+        clearStoredThreadId(sessionOwner, persistenceSlug);
+        setInitialThreadId(null);
+        setChatInstanceKey((v) => v + 1);
       }
+    },
+    [workflows, setSelectedWorkflowId, sessionOwner, persistenceSlug, token, user?.is_admin],
+  );
 
-      // Clear current thread and start fresh for the new workflow
-      clearStoredThreadId(sessionOwner, persistenceSlug);
-      setInitialThreadId(null);
-      setChatInstanceKey((value) => value + 1);
-    }
-  }, [workflows, setSelectedWorkflowId, sessionOwner, persistenceSlug, token, user?.is_admin]);
+  // ChatKit callbacks
+  const chatkitCallbacks = useChatkitCallbacks({
+    sessionOwner,
+    persistenceSlug,
+    refs: {
+      lastThreadSnapshotRef,
+      wasNewConversationStreamingRef,
+      isNewConversationDraftRef,
+      requestRefreshRef,
+    },
+    setters: {
+      setCurrentThread,
+      setStreamingThreadIds,
+      setIsNewConversationStreaming,
+      setInitialThreadId,
+    },
+    reportError,
+    resetError,
+  });
 
-  const debugSignature = useMemo(() => JSON.stringify(debugSnapshot), [debugSnapshot]);
+  // Widgets config
+  const widgetsConfig = useChatkitWidgets({
+    hasVoiceAgent,
+    hasOutboundCall,
+    threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
+    voiceSession: {
+      startVoiceSession,
+      stopVoiceSession,
+      status: voiceStatus,
+      isListening: voiceIsListening,
+      transcripts: voiceTranscripts,
+      interruptSession: interruptVoiceSession,
+      transportError: voiceTransportError,
+    },
+    outboundCall: {
+      callId: outboundCallId,
+      isActive: outboundCallIsActive,
+      status: outboundCallStatus,
+      toNumber: outboundCallToNumber,
+      transcripts: outboundCallTranscripts,
+      error: outboundCallError,
+      hangupCall: hangupOutboundCall,
+    },
+  });
 
-  useEffect(() => {
-    console.info("[ChatKit] Configuration résolue pour le widget", debugSnapshot);
-  }, [debugSignature, debugSnapshot]);
-
+  // Attachments config
   const attachmentsConfig = useMemo(
     () =>
       attachmentsEnabled
@@ -745,7 +577,6 @@ export function MyChat() {
               "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
               "application/pdf": [".pdf"],
               "text/plain": [".txt", ".md"],
-              // DOCX files - will be converted to PDF on the server
               "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
               "application/msword": [".doc"],
             },
@@ -756,17 +587,11 @@ export function MyChat() {
 
   const composerPlaceholder = useMemo(() => {
     const candidate = appearanceSettings.start_screen_placeholder?.trim();
-    return candidate && candidate.length > 0
-      ? candidate
-      : "Posez votre question...";
+    return candidate && candidate.length > 0 ? candidate : "Posez votre question...";
   }, [appearanceSettings.start_screen_placeholder]);
 
   const localStorageComposerModels = useMemo(() => loadComposerModelsConfig(), []);
 
-  // Trouver le workflow à utiliser pour les modèles du composer:
-  // 1. Workflow actif sélectionné
-  // 2. Workflow par défaut (is_chatkit_default)
-  // 3. Workflow sélectionné dans le provider
   const workflowForComposer = useMemo(() => {
     if (activeWorkflow) return activeWorkflow;
     const defaultWorkflow = workflows.find((w) => w.is_chatkit_default);
@@ -777,349 +602,128 @@ export function MyChat() {
     return null;
   }, [activeWorkflow, workflows, providerSelectedWorkflowId]);
 
-  // Charger les modèles configurés dans le workflow si disponibles
   const { composerModels: workflowComposerModels, workflowDetected } = useWorkflowComposerModels({
     token,
     workflowId: workflowForComposer?.id ?? null,
     activeVersionId: workflowForComposer?.active_version_id ?? null,
   });
 
-  console.log("[MyChat] workflowForComposer:", workflowForComposer?.id, workflowForComposer?.active_version_id);
-  console.log("[MyChat] workflowComposerModels:", workflowComposerModels, "workflowDetected:", workflowDetected);
-
-  // Utiliser les modèles du workflow si le workflow a été analysé (même si null = pas de choix utilisateur)
-  // Sinon utiliser le fallback localStorage (pour les cas sans workflow)
   const composerModels = workflowDetected ? workflowComposerModels : localStorageComposerModels;
-  console.log("[MyChat] final composerModels:", composerModels);
 
-  const chatkitOptions = useMemo(
-    () => {
-      const colorScheme = resolveThemeColorScheme(
-        appearanceSettings,
-        preferredColorScheme,
-      );
-      const surfacePalette = buildSurfacePalette(appearanceSettings);
-      const surface = resolveSurfaceColors(surfacePalette, colorScheme);
-      const greeting = normalizeText(appearanceSettings.start_screen_greeting);
-      const prompts = parseStartScreenPrompts(
-        appearanceSettings.start_screen_prompt,
-      );
-      const disclaimerText = normalizeText(
-        appearanceSettings.start_screen_disclaimer,
-      );
+  // Build ChatKit options
+  const chatkitOptions = useMemo(() => {
+    const isLtiContextLocal = user?.is_lti ?? false;
+    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContextLocal;
 
-      // Detect LTI context
-      const isLtiContext = user?.is_lti ?? false;
-      // Apply LTI options only in LTI context
-      const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiContext;
-
-      return {
-        api: apiConfig,
-        initialThread: initialThreadId,
-        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header ? {
-          header: { enabled: false },
-        } : {
-          header: {
-            ...(isSidebarOpen ? {} : {
-              leftAction: {
-                icon: "menu",
-                onClick: openSidebar,
-              },
-            }),
-            ...(mode === "local" && workflows.length > 0 && initialThreadId === null ? {
-              customContent: (
-                <WorkflowSelector
-                  workflows={workflows}
-                  selectedWorkflowId={workflowSelection.kind === "local" ? workflowSelection.workflow?.id ?? null : null}
-                  onWorkflowChange={handleWorkflowSelectorChange}
-                />
-              ),
-            } : {}),
-          },
-        }),
-        ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history ? {
-          history: { enabled: false },
-        } : {}),
-        theme: {
-          colorScheme,
-          radius: "pill",
-          density: "normal",
-          color: {
-            accent: {
-              primary: appearanceSettings.accent_color,
-              level: 1,
+    return {
+      api: apiConfig,
+      initialThread: initialThreadId,
+      ...(shouldApplyLtiOptions && !activeWorkflow?.lti_show_header
+        ? { header: { enabled: false } }
+        : {
+            header: {
+              ...(isSidebarOpen ? {} : { leftAction: { icon: "menu" as const, onClick: openSidebar } }),
+              ...(mode === "local" && workflows.length > 0 && initialThreadId === null
+                ? {
+                    customContent: (
+                      <WorkflowSelector
+                        workflows={workflows}
+                        selectedWorkflowId={workflowSelection.kind === "local" ? workflowSelection.workflow?.id ?? null : null}
+                        onWorkflowChange={handleWorkflowSelectorChange}
+                      />
+                    ),
+                  }
+                : {}),
             },
-            surface: {
-              background: surface.background,
-              foreground: surface.foreground,
-            },
-          },
-          typography: {
-            baseSize: 16,
-            fontFamily: appearanceSettings.body_font,
-            fontFamilyMono:
-              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
-          },
+          }),
+      ...(shouldApplyLtiOptions && !activeWorkflow?.lti_enable_history ? { history: { enabled: false } } : {}),
+      theme: {
+        colorScheme: themeConfig.colorScheme,
+        radius: "pill" as const,
+        density: "normal" as const,
+        color: {
+          accent: { primary: appearanceSettings.accent_color, level: 1 },
+          surface: { background: themeConfig.surface.background, foreground: themeConfig.surface.foreground },
         },
-        startScreen:
-          greeting || prompts.length > 0
-            ? {
-                ...(greeting ? { greeting } : {}),
-                ...(prompts.length > 0 ? { prompts } : {}),
-              }
-            : undefined,
-        disclaimer: disclaimerText ? { text: disclaimerText } : undefined,
-        composer: {
-          placeholder: composerPlaceholder,
-          attachments: attachmentsConfig,
-          ...(composerModels ? { models: composerModels } : {}),
+        typography: {
+          baseSize: 16,
+          fontFamily: appearanceSettings.body_font,
+          fontFamilyMono: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
         },
-        widgets: {
-          voiceSession: {
-            enabled: hasVoiceAgent,
-            threadId: (currentThread?.id as string | undefined) ?? initialThreadId,
-            status: voiceStatus,
-            isListening: voiceIsListening,
-            transcripts: voiceTranscripts,
-            startVoiceSession,
-            stopVoiceSession,
-            interruptSession: interruptVoiceSession,
-            transportError: voiceTransportError,
-          },
-          outboundCall: {
-            enabled: hasOutboundCall,
-            callId: outboundCallId,
-            isActive: outboundCallIsActive,
-            status: outboundCallStatus,
-            toNumber: outboundCallToNumber,
-            transcripts: outboundCallTranscripts,
-            hangupCall: hangupOutboundCall,
-            error: outboundCallError,
-          },
-        },
-        onClientTool: async (toolCall) => {
-          const { name, params } = toolCall as ClientToolCall;
-
-          switch (name) {
-            case "get_weather": {
-              const city = params?.city?.trim();
-              const country = params?.country?.trim();
-
-              if (!city) {
-                throw new Error("Le paramètre 'city' est requis pour l'outil météo.");
-              }
-
-              const searchParams = new URLSearchParams({ city });
-              if (country) {
-                searchParams.set("country", country);
-              }
-
-              const response = await fetch(`/api/tools/weather?${searchParams.toString()}`);
-              if (!response.ok) {
-                const details = await response.text();
-                throw new Error(
-                  `Échec de l'appel météo (${response.status}) : ${details || "réponse vide"}`,
-                );
-              }
-
-              return response.json();
+      },
+      startScreen:
+        themeConfig.greeting || themeConfig.prompts.length > 0
+          ? {
+              ...(themeConfig.greeting ? { greeting: themeConfig.greeting } : {}),
+              ...(themeConfig.prompts.length > 0 ? { prompts: themeConfig.prompts } : {}),
             }
-            default:
-              throw new Error(`Outil client non pris en charge : ${name}`);
+          : undefined,
+      disclaimer: themeConfig.disclaimerText ? { text: themeConfig.disclaimerText } : undefined,
+      composer: {
+        placeholder: composerPlaceholder,
+        attachments: attachmentsConfig,
+        ...(composerModels ? { models: composerModels } : {}),
+      },
+      widgets: widgetsConfig,
+      onClientTool: async (toolCall: unknown) => {
+        const { name, params } = toolCall as ClientToolCall;
+        if (name === "get_weather") {
+          const city = params?.city?.trim();
+          if (!city) throw new Error("Le paramètre 'city' est requis pour l'outil météo.");
+          const searchParams = new URLSearchParams({ city });
+          if (params?.country?.trim()) searchParams.set("country", params.country.trim());
+          const response = await fetch(`/api/tools/weather?${searchParams.toString()}`);
+          if (!response.ok) {
+            const details = await response.text();
+            throw new Error(`Échec de l'appel météo (${response.status}) : ${details || "réponse vide"}`);
           }
-        },
-        onError: ({ error }: { error: Error }) => {
-          console.groupCollapsed("[ChatKit] onError");
-          console.error("error:", error);
-          if (lastThreadSnapshotRef.current) {
-            console.log("thread snapshot:", lastThreadSnapshotRef.current);
-          }
-          console.groupEnd();
-          reportError(error.message, error);
-        },
-        onResponseStart: ({ threadId }: { threadId: string | null }) => {
-          resetError();
-          // Add current thread to streaming state during response
-          // If threadId is null or a temp ID, we're starting a new conversation
-          const isTempId = threadId?.startsWith('__temp_thread_');
-          if (threadId === null || isTempId) {
-            // New conversation - use special streaming state
-            setIsNewConversationStreaming(true);
-            wasNewConversationStreamingRef.current = true;
-          } else {
-            wasNewConversationStreamingRef.current = false;
-            setStreamingThreadIds(prev => new Set(prev).add(threadId));
-          }
-        },
-        onResponseEnd: ({ finalThreadId }: { threadId: string | null; finalThreadId: string | null }) => {
-          console.debug("[ChatKit] response end", { finalThreadId });
-          requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
-          // Remove current thread from streaming state after response
-          // Always clear isNewConversationStreaming (it's a no-op if already false)
-          // This handles the case where thread was created during streaming
-          setIsNewConversationStreaming(false);
-          wasNewConversationStreamingRef.current = false;
-          // Use finalThreadId passed from the streaming hook to correctly identify which thread to remove
-          if (finalThreadId) {
-            setStreamingThreadIds(prev => {
-              const next = new Set(prev);
-              next.delete(finalThreadId);
-              return next;
-            });
-          }
-        },
-        onThreadChange: ({ threadId }: { threadId: string | null }) => {
-          console.debug("[ChatKit] thread change", { threadId });
-          if (threadId === null) {
-            clearStoredThreadId(sessionOwner, persistenceSlug);
-            setInitialThreadId(null);
-          } else {
-            // Thread is now created/loaded, clear the new conversation draft state
-            isNewConversationDraftRef.current = false;
-            persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
-            setInitialThreadId((current) => (current === threadId ? current : threadId));
-
-            // If we were streaming on a new conversation, transfer the streaming indicator
-            // from isNewConversationStreaming to the new thread in streamingThreadIds
-            if (wasNewConversationStreamingRef.current) {
-              setStreamingThreadIds(prev => new Set(prev).add(threadId));
-              setIsNewConversationStreaming(false);
-            }
-          }
-        },
-        onThreadLoadStart: ({ threadId }: { threadId: string }) => {
-          console.debug("[ChatKit] thread load start", { threadId });
-        },
-        onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
-          console.debug("[ChatKit] thread load end", { threadId });
-        },
-        onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
-          if (entry?.data && typeof entry.data === "object") {
-            const data = entry.data as Record<string, unknown>;
-            if ("thread" in data && data.thread) {
-              const thread = data.thread as Record<string, unknown>;
-              lastThreadSnapshotRef.current = thread;
-              // Debug: Log title info to trace why it's not appearing in sidebar
-              const metadata = thread.metadata as Record<string, unknown> | undefined;
-              const hasTitle = !!(thread.title || metadata?.title);
-              console.log("[ChatKit] onLog thread update - title info:", {
-                logName: entry.name,
-                threadId: thread.id,
-                title: thread.title,
-                metadataTitle: metadata?.title,
-                hasTitle,
-              });
-              // Update state to trigger re-render and useOutboundCallDetector
-              setCurrentThread(thread);
-            }
-          }
-        },
-        // Show usage metadata (cost, tokens) for admin users
-        isAdmin: user?.is_admin,
-      } satisfies ChatKitOptions;
-    },
-    [
-      appearanceSettings,
-      apiConfig,
-      attachmentsConfig,
-      composerModels,
-      composerPlaceholder,
-      currentThread?.id,
-      handleWorkflowSelectorChange,
-      initialThreadId,
-      isAtVoiceAgentStep,
-      mode,
-      openSidebar,
-      preferredColorScheme,
-      sessionOwner,
-      activeWorkflow?.id,
-      activeWorkflow?.lti_enabled,
-      activeWorkflow?.lti_show_sidebar,
-      activeWorkflow?.lti_show_header,
-      activeWorkflow?.lti_enable_history,
-      activeWorkflowSlug,
-      persistenceSlug,
-      reportError,
-      startVoiceSession,
-      stopVoiceSession,
-      interruptVoiceSession,
-      voiceIsListening,
-      voiceStatus,
-      voiceTranscripts,
-      voiceTransportError,
-      hasOutboundCall,
-      outboundCallId,
-      outboundCallIsActive,
-      outboundCallStatus,
-      outboundCallToNumber,
-      outboundCallTranscripts,
-      outboundCallError,
-      hangupOutboundCall,
-      user?.email,
-      user?.is_admin,
-      isSidebarOpen,
-      workflows,
-      workflowSelection,
-    ],
-  );
-
-  // Generate unique ID for current workflow
-  const currentWorkflowId = useMemo(() => {
-    if (mode === "hosted") {
-      return `hosted::${hostedWorkflowSlug ?? "__default__"}`;
-    }
-    return `local::${activeWorkflowId ?? "__default__"}`;
-  }, [mode, hostedWorkflowSlug, activeWorkflowId]);
-
-  // Update or create instance for current workflow
-  useEffect(() => {
-    setActiveInstances((prev) => {
-      const existing = prev.get(currentWorkflowId);
-
-      // If instance already exists, update its instanceKey to force re-render when chatInstanceKey changes
-      if (existing) {
-        // Only update if chatInstanceKey has changed (indicates conversation switch)
-        if (existing.instanceKey === chatInstanceKey) {
-          return prev;
+          return response.json();
         }
-        const next = new Map(prev);
-        next.set(currentWorkflowId, {
-          ...existing,
-          instanceKey: chatInstanceKey,
-        });
-        return next;
-      }
+        throw new Error(`Outil client non pris en charge : ${name}`);
+      },
+      onError: chatkitCallbacks.onError,
+      onResponseStart: chatkitCallbacks.onResponseStart,
+      onResponseEnd: chatkitCallbacks.onResponseEnd,
+      onThreadChange: chatkitCallbacks.onThreadChange,
+      onThreadLoadStart: chatkitCallbacks.onThreadLoadStart,
+      onThreadLoadEnd: chatkitCallbacks.onThreadLoadEnd,
+      onLog: chatkitCallbacks.onLog,
+      isAdmin: user?.is_admin,
+    } satisfies ChatKitOptions;
+  }, [
+    apiConfig,
+    initialThreadId,
+    activeWorkflow?.lti_enabled,
+    activeWorkflow?.lti_show_header,
+    activeWorkflow?.lti_enable_history,
+    user?.is_lti,
+    user?.is_admin,
+    isSidebarOpen,
+    openSidebar,
+    mode,
+    workflows,
+    workflowSelection,
+    handleWorkflowSelectorChange,
+    themeConfig,
+    appearanceSettings.accent_color,
+    appearanceSettings.body_font,
+    composerPlaceholder,
+    attachmentsConfig,
+    composerModels,
+    widgetsConfig,
+    chatkitCallbacks,
+  ]);
 
-      const next = new Map(prev);
-
-      // Create new instance only if it doesn't exist
-      next.set(currentWorkflowId, {
-        workflowId: currentWorkflowId,
-        mode,
-        workflow: activeWorkflow,
-        initialThreadId,
-        chatkitOptions,
-        createdAt: Date.now(),
-        instanceKey: chatInstanceKey,
-      });
-
-      // Limit cache size - remove oldest instances
-      if (next.size > MAX_CACHED_INSTANCES) {
-        const entries = Array.from(next.entries());
-        entries.sort((a, b) => a[1].createdAt - b[1].createdAt);
-
-        // Keep current and most recent instances
-        const toKeep = entries
-          .filter(([id]) => id === currentWorkflowId)
-          .concat(entries.filter(([id]) => id !== currentWorkflowId).slice(-MAX_CACHED_INSTANCES + 1));
-
-        return new Map(toKeep);
-      }
-
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentWorkflowId, chatInstanceKey]);
+  // Instance cache
+  const { currentWorkflowId, activeInstances } = useChatInstanceCache({
+    mode,
+    activeWorkflowId,
+    hostedWorkflowSlug,
+    activeWorkflow,
+    initialThreadId,
+    chatkitOptions,
+    chatInstanceKey,
+  });
 
   const handleRequestRefreshReady = useCallback((requestRefresh: () => Promise<void>) => {
     requestRefreshRef.current = requestRefresh;
@@ -1127,13 +731,8 @@ export function MyChat() {
 
   return (
     <>
-      <LoadingOverlay
-        isVisible={shouldShowLoadingOverlay}
-        message="Chargement..."
-        variant="fullscreen"
-      />
-      {/* Hide all content during LTI loading to prevent multiple spinners from showing */}
-      <div style={{ display: shouldShowLoadingOverlay ? 'none' : 'contents' }}>
+      <LoadingOverlay isVisible={shouldShowLoadingOverlay} message="Chargement..." variant="fullscreen" />
+      <div style={{ display: shouldShowLoadingOverlay ? "none" : "contents" }}>
         <ChatWorkflowSidebar
           mode={mode}
           setMode={setMode}
@@ -1162,9 +761,7 @@ export function MyChat() {
                 mode={instance.mode}
                 isActive={instanceId === currentWorkflowId}
                 autoStartEnabled={!hasVoiceAgent}
-                onRequestRefreshReady={
-                  instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined
-                }
+                onRequestRefreshReady={instanceId === currentWorkflowId ? handleRequestRefreshReady : undefined}
               />
             ))}
           </div>
