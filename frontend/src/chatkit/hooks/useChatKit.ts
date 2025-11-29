@@ -44,12 +44,13 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   } = useThreadState(initialThread);
 
   // Loading state management
+  // Pass initialThread to initialize loading state synchronously on mount
   const {
     loadingByThread,
     setThreadLoading,
     isLoading: isLoadingFn,
     getLoadingThreadIds,
-  } = useThreadLoading(getThreadKey);
+  } = useThreadLoading(getThreadKey, initialThread);
 
   // Abort controllers management
   const { abortControllersRef } = useAbortControllers();
