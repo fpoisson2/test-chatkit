@@ -133,6 +133,7 @@ export const setThreadIdInUrl = (threadId: string | null) => {
   }
 
   const url = new URL(window.location.href);
+  const oldUrl = url.toString();
 
   if (threadId) {
     url.searchParams.set("thread", threadId);
@@ -141,7 +142,9 @@ export const setThreadIdInUrl = (threadId: string | null) => {
     url.searchParams.delete("t");
   }
 
-  window.history.replaceState({}, "", url.toString());
+  const newUrl = url.toString();
+  console.info("[ChatKit] setThreadIdInUrl:", { threadId, oldUrl, newUrl, stack: new Error().stack?.split('\n').slice(1, 4).join(' <- ') });
+  window.history.replaceState({}, "", newUrl);
 };
 
 /**
