@@ -15,6 +15,8 @@ export interface UseChatKitReturn {
   control: ChatKitControl;
   fetchUpdates: () => Promise<void>;
   sendUserMessage: (content: UserMessageContent[] | string) => Promise<void>;
+  /** Direct setter for thread state - use carefully, primarily for streaming resume */
+  setThread: (thread: import('../types').Thread | null) => void;
 }
 
 export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
@@ -140,5 +142,6 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     control,
     fetchUpdates,
     sendUserMessage,
+    setThread,
   };
 }

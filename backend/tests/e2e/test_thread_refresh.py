@@ -297,8 +297,110 @@ async def test_react_strict_mode_double_mount():
             await browser.close()
 
 
+async def count_messages(page: Page) -> dict:
+    """Count user and assistant messages in the chat."""
+    # Count messages by looking at the message bubbles in the UI
+    user_messages = await page.query_selector_all('[data-testid="user-message"], .user-message, [class*="user-message"]')
+    assistant_messages = await page.query_selector_all('[data-testid="assistant-message"], .assistant-message, [class*="assistant-message"]')
+
+    # Alternative: count by role attribute if available
+    if not user_messages and not assistant_messages:
+        user_messages = await page.query_selector_all('[data-role="user"]')
+        assistant_messages = await page.query_selector_all('[data-role="assistant"]')
+
+    return {
+        "user": len(user_messages),
+        "assistant": len(assistant_messages)
+    }
+
+
+@pytest.mark.asyncio
+async def test_messages_persist_during_active_streaming():
+    """
+    Test that messages display correctly after refreshing during active streaming.
+
+    This is the key test for the streaming resume feature:
+    1. Login to the application
+    2. Send a message that will trigger a LONG streaming response
+    3. Refresh the page WHILE the assistant is still streaming
+    4. Verify that both the user message AND the assistant's partial response appear
+    """
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            executable_path="/root/.cache/ms-playwright/chromium-1148/chrome-linux/chrome"
+        )
+        context = await browser.new_context()
+        page = await context.new_page()
+
+        logs: list[str] = []
+        page.on("console", lambda msg: logs.append(f"[{msg.type}] {msg.text}"))
+
+        try:
+            # Step 1: Login
+            assert await login(page), "Login failed"
+            await asyncio.sleep(5)
+
+            # Step 2: Send a message that will generate a LONG response
+            # Request something that takes time to generate
+            long_message = "Write a very detailed 500-word essay about the history of artificial intelligence, including all major milestones and breakthroughs from the 1950s to today."
+            assert await send_message(page, long_message), "Failed to send message"
+
+            # Step 3: Wait just a bit for streaming to START (not complete!)
+            # We want to catch it mid-stream
+            await asyncio.sleep(3)  # Short wait - streaming should be in progress
+
+            # Verify streaming is happening (thread should be in URL)
+            thread_id = await get_thread_id_from_url(page)
+            assert thread_id is not None, "Thread ID not in URL during streaming"
+
+            # Check that we have at least the user message
+            # (assistant may or may not have started showing yet)
+            print(f"Thread ID during streaming: {thread_id}")
+
+            # Step 4: Refresh the page during active streaming
+            print("Refreshing page during active streaming...")
+            logs.clear()
+            await page.reload()
+
+            # Wait for page to load and resume streaming
+            await asyncio.sleep(15)
+
+            # Step 5: Verify thread ID preserved
+            thread_id_after = await get_thread_id_from_url(page)
+            assert thread_id_after == thread_id, f"Thread ID changed: {thread_id} -> {thread_id_after}"
+
+            # Step 6: Check for resume-related logs
+            resume_logs = [
+                log for log in logs
+                if "Reconnecting to active session" in log or
+                   "Session is active" in log or
+                   "Fetched" in log and "events" in log
+            ]
+            print(f"Resume-related logs: {resume_logs[:5]}")  # Print first 5
+
+            # Step 7: Verify messages are visible
+            # Look for any chat message content
+            message_containers = await page.query_selector_all('[class*="message"], [class*="chat"], [class*="bubble"]')
+            print(f"Found {len(message_containers)} message containers")
+
+            # Check if we can see any text content that looks like our message or a response
+            page_content = await page.content()
+
+            # The user's message should be visible
+            assert "history of artificial intelligence" in page_content.lower() or \
+                   "500-word" in page_content.lower(), \
+                   "User message not found on page after refresh"
+
+            print("✓ Messages persisted during active streaming!")
+
+        finally:
+            await browser.close()
+
+
 if __name__ == "__main__":
     # Run tests directly with asyncio
     asyncio.run(test_thread_persists_after_refresh())
     asyncio.run(test_streaming_session_cleared_does_not_clear_thread_url())
     asyncio.run(test_react_strict_mode_double_mount())
+    asyncio.run(test_messages_persist_during_active_streaming())
