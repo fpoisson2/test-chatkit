@@ -769,23 +769,29 @@ export function MyChat() {
     // Persist the selected thread with the correct slug and reload the chat
     persistStoredThreadId(sessionOwner, threadId, targetSlug);
 
+    // Navigate to conversation URL and update state
+    isNavigatingRef.current = true;
+    navigate(`/c/${threadId}`, { replace: true });
     setInitialThreadId(threadId);
+
     // Only increment chatInstanceKey when switching workflows to force instance update
     // For same-workflow thread switches, avoid remounting to prevent welcome screen flash
     if (workflowChanged) {
       setChatInstanceKey((value) => value + 1);
     }
-  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin]);
+  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin, navigate]);
 
   const handleSidebarThreadDeleted = useCallback((deletedThreadId: string) => {
     // If the deleted thread is the current one, clear it and start fresh
     const currentId = (currentThread?.id as string | undefined) ?? initialThreadId;
     if (currentId === deletedThreadId) {
       clearStoredThreadId(sessionOwner, persistenceSlug);
+      isNavigatingRef.current = true;
+      navigate("/", { replace: true });
       setInitialThreadId(null);
       setChatInstanceKey((value) => value + 1);
     }
-  }, [sessionOwner, persistenceSlug, currentThread, initialThreadId]);
+  }, [sessionOwner, persistenceSlug, currentThread, initialThreadId, navigate]);
 
   const handleNewConversation = useCallback(() => {
     // Clear stored thread to start a new conversation
@@ -796,11 +802,14 @@ export function MyChat() {
     // They will be removed from the set when streaming ends via onResponseEnd
     setIsNewConversationStreaming(false);
     wasNewConversationStreamingRef.current = false;
+    // Navigate to home URL and update state
+    isNavigatingRef.current = true;
+    navigate("/", { replace: true });
     setInitialThreadId(null);
     setChatInstanceKey((value) => value + 1);
     // Mark that we're in a new conversation draft state
     isNewConversationDraftRef.current = true;
-  }, [sessionOwner, persistenceSlug]);
+  }, [sessionOwner, persistenceSlug, navigate]);
 
   // Handle workflow change from the selector dropdown
   const handleWorkflowSelectorChange = useCallback(async (workflowId: number) => {
