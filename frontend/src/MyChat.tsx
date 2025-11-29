@@ -335,41 +335,41 @@ export function MyChat() {
     urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug),
   );
 
-  // Sync state from URL when URL changes (e.g., browser back/forward, direct navigation)
-  useEffect(() => {
-    if (urlThreadId && urlThreadId !== initialThreadId) {
-      // URL has a thread ID that differs from current state - load it
-      isNewConversationDraftRef.current = false;
-      persistStoredThreadId(sessionOwner, urlThreadId, persistenceSlug);
-      setInitialThreadId(urlThreadId);
-    } else if (!urlThreadId && initialThreadId !== null) {
-      // URL has no thread but state does - this means user navigated to home
-      // Only clear if we're not in the middle of creating a thread
-      if (!isNewConversationDraftRef.current) {
-        clearStoredThreadId(sessionOwner, persistenceSlug);
-        setInitialThreadId(null);
-        setChatInstanceKey((value) => value + 1);
-        isNewConversationDraftRef.current = true;
-      }
-    }
-  }, [urlThreadId, initialThreadId, sessionOwner, persistenceSlug]);
+  // Track if URL change came from our navigation to prevent loops
+  const isNavigatingRef = useRef(false);
 
-  // Sync URL with current thread (when thread changes from within the app)
+  // Single effect to handle URL <-> state synchronization
   useEffect(() => {
     const currentUrlThreadId = urlThreadId ?? null;
 
-    if (initialThreadId === null) {
-      // No thread - navigate to home if not already there
-      if (currentUrlThreadId !== null) {
-        navigate("/", { replace: true });
-      }
-    } else {
-      // Has thread - navigate to conversation URL if different
-      if (currentUrlThreadId !== initialThreadId) {
-        navigate(`/c/${initialThreadId}`, { replace: true });
-      }
+    // If we're in the middle of navigating, skip this cycle
+    if (isNavigatingRef.current) {
+      isNavigatingRef.current = false;
+      return;
     }
-  }, [initialThreadId, urlThreadId, navigate]);
+
+    // Case 1: URL has threadId that differs from state -> sync state from URL
+    if (currentUrlThreadId !== null && currentUrlThreadId !== initialThreadId) {
+      isNewConversationDraftRef.current = false;
+      persistStoredThreadId(sessionOwner, currentUrlThreadId, persistenceSlug);
+      setInitialThreadId(currentUrlThreadId);
+      return;
+    }
+
+    // Case 2: URL is empty but state has threadId -> update URL
+    if (currentUrlThreadId === null && initialThreadId !== null) {
+      isNavigatingRef.current = true;
+      navigate(`/c/${initialThreadId}`, { replace: true });
+      return;
+    }
+
+    // Case 3: State is empty but URL has threadId -> navigate to home
+    if (initialThreadId === null && currentUrlThreadId !== null) {
+      isNavigatingRef.current = true;
+      navigate("/", { replace: true });
+      return;
+    }
+  }, [initialThreadId, urlThreadId, navigate, sessionOwner, persistenceSlug]);
 
   // Debug: Log currentThread changes for sidebar title debugging
   useEffect(() => {
