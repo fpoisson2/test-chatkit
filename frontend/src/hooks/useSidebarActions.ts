@@ -1,0 +1,178 @@
+import { useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import type { WorkflowActivation } from "../features/workflows/WorkflowSidebar";
+import type { ThreadWorkflowMetadata } from "../features/workflows/ConversationsSidebarSection";
+import type { WorkflowSummary } from "../types/workflows";
+import type { HostedFlowMode } from "./useHostedFlow";
+import { useChatContext } from "../context/ChatContext";
+import { workflowsApi } from "../utils/backend";
+import { clearStoredThreadId, persistStoredThreadId } from "../utils/chatkitThread";
+import { resolvePersistenceSlug } from "../utils/chatStorage";
+
+export type UseSidebarActionsOptions = {
+  sessionOwner: string;
+  persistenceSlug: string | null;
+  mode: HostedFlowMode;
+  workflows: WorkflowSummary[];
+  token: string | null;
+  isAdmin: boolean;
+  setManagedWorkflowSelection: React.Dispatch<React.SetStateAction<WorkflowActivation>>;
+  setSelectedWorkflowId: (id: number | null) => void;
+};
+
+export type SidebarActions = {
+  handleSidebarThreadSelect: (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => Promise<void>;
+  handleSidebarThreadDeleted: (deletedThreadId: string) => void;
+  handleNewConversation: () => void;
+  handleWorkflowSelectorChange: (workflowId: number) => Promise<void>;
+};
+
+export function useSidebarActions({
+  sessionOwner,
+  persistenceSlug,
+  mode,
+  workflows,
+  token,
+  isAdmin,
+  setManagedWorkflowSelection,
+  setSelectedWorkflowId,
+}: UseSidebarActionsOptions): SidebarActions {
+  const navigate = useNavigate();
+
+  // Get state, setters, and refs from context
+  const { state, setters, refs } = useChatContext();
+  const { currentThread, initialThreadId, workflowSelection } = state;
+  const {
+    setCurrentThread,
+    setIsNewConversationStreaming,
+    setInitialThreadId,
+    setChatInstanceKey,
+  } = setters;
+  const {
+    lastThreadSnapshotRef,
+    wasNewConversationStreamingRef,
+    isNewConversationDraftRef,
+  } = refs;
+
+  const handleSidebarThreadSelect = useCallback(
+    async (threadId: string, workflowMetadata?: ThreadWorkflowMetadata) => {
+      isNewConversationDraftRef.current = false;
+
+      const currentWorkflowId = workflowSelection.kind === "local" ? workflowSelection.workflow?.id : null;
+      const threadWorkflowId = workflowMetadata?.id;
+
+      let targetSlug = persistenceSlug;
+      let workflowChanged = false;
+
+      if (threadWorkflowId != null && threadWorkflowId !== currentWorkflowId) {
+        const targetWorkflow = workflows.find((w) => w.id === threadWorkflowId);
+        if (targetWorkflow) {
+          targetSlug = resolvePersistenceSlug(mode, { kind: "local", workflow: targetWorkflow });
+
+          if (isAdmin && token) {
+            await workflowsApi.setChatkitWorkflow(token, threadWorkflowId).catch(console.error);
+          }
+
+          setSelectedWorkflowId(threadWorkflowId);
+          setManagedWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+          workflowChanged = true;
+        }
+      }
+
+      persistStoredThreadId(sessionOwner, threadId, targetSlug);
+      navigate(`/c/${threadId}`, { replace: true });
+      setInitialThreadId(threadId);
+
+      if (workflowChanged) {
+        setChatInstanceKey((v) => v + 1);
+      }
+    },
+    [
+      sessionOwner,
+      persistenceSlug,
+      workflowSelection,
+      workflows,
+      mode,
+      token,
+      isAdmin,
+      navigate,
+      isNewConversationDraftRef,
+      setSelectedWorkflowId,
+      setManagedWorkflowSelection,
+      setInitialThreadId,
+      setChatInstanceKey,
+    ],
+  );
+
+  const handleSidebarThreadDeleted = useCallback(
+    (deletedThreadId: string) => {
+      const currentId = (currentThread?.id as string | undefined) ?? initialThreadId;
+      if (currentId === deletedThreadId) {
+        clearStoredThreadId(sessionOwner, persistenceSlug);
+        setInitialThreadId(null);
+        setChatInstanceKey((v) => v + 1);
+        navigate("/", { replace: true });
+      }
+    },
+    [sessionOwner, persistenceSlug, currentThread, initialThreadId, navigate, setInitialThreadId, setChatInstanceKey],
+  );
+
+  const handleNewConversation = useCallback(() => {
+    clearStoredThreadId(sessionOwner, persistenceSlug);
+    lastThreadSnapshotRef.current = null;
+    setCurrentThread(null);
+    setIsNewConversationStreaming(false);
+    wasNewConversationStreamingRef.current = false;
+    isNewConversationDraftRef.current = true;
+    setInitialThreadId(null);
+    setChatInstanceKey((v) => v + 1);
+    navigate("/", { replace: true });
+  }, [
+    sessionOwner,
+    persistenceSlug,
+    navigate,
+    lastThreadSnapshotRef,
+    wasNewConversationStreamingRef,
+    isNewConversationDraftRef,
+    setCurrentThread,
+    setIsNewConversationStreaming,
+    setInitialThreadId,
+    setChatInstanceKey,
+  ]);
+
+  const handleWorkflowSelectorChange = useCallback(
+    async (workflowId: number) => {
+      const targetWorkflow = workflows.find((w) => w.id === workflowId);
+      if (targetWorkflow) {
+        setSelectedWorkflowId(workflowId);
+        setManagedWorkflowSelection({ kind: "local", workflow: targetWorkflow });
+
+        if (isAdmin && token) {
+          await workflowsApi.setChatkitWorkflow(token, workflowId).catch(console.error);
+        }
+
+        clearStoredThreadId(sessionOwner, persistenceSlug);
+        setInitialThreadId(null);
+        setChatInstanceKey((v) => v + 1);
+      }
+    },
+    [
+      workflows,
+      sessionOwner,
+      persistenceSlug,
+      token,
+      isAdmin,
+      setSelectedWorkflowId,
+      setManagedWorkflowSelection,
+      setInitialThreadId,
+      setChatInstanceKey,
+    ],
+  );
+
+  return {
+    handleSidebarThreadSelect,
+    handleSidebarThreadDeleted,
+    handleNewConversation,
+    handleWorkflowSelectorChange,
+  };
+}
