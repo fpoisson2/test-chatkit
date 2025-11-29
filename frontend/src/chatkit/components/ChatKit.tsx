@@ -1,12 +1,11 @@
 /**
- * Composant ChatKit complet avec toutes les fonctionnalités
+ * ChatKit component - Main chat interface with all features
  */
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type {
   ChatKitControl,
   ChatKitOptions,
   ThreadItem,
-  ActionConfig,
   UserMessageContent,
   VoiceSessionWidget,
   OutboundCallWidget,
@@ -18,8 +17,13 @@ import { MessageRenderer } from './MessageRenderer';
 import { Header } from './Header';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useScreencast } from '../hooks/useScreencast';
+import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
+import { useScrollToBottom } from '../hooks/useScrollToBottom';
+import { useDragAndDrop } from '../hooks/useDragAndDrop';
+import { useAttachments } from '../hooks/useAttachments';
+import { useInlineWidgets } from '../hooks/useInlineWidgets';
+import { useWidgetActions } from '../hooks/useWidgetActions';
 import type { Attachment } from '../api/attachments';
-import { createAttachment, createFilePreview, generateAttachmentId, uploadAttachment, validateFile } from '../api/attachments';
 import { COPY_FEEDBACK_DELAY_MS } from '../utils';
 import './ChatKit.css';
 
@@ -33,37 +37,7 @@ export interface ChatKitProps {
 export function ChatKit({ control, options, className, style }: ChatKitProps): JSX.Element {
   const { t } = useI18n();
   const [inputValue, setInputValue] = useState('');
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
-  const previousKeyboardOffsetRef = useRef(0);
-  const lastUserMessageIdRef = useRef<string | null>(null);
-  const formDataRef = useRef<FormData | null>(null);
-  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const dragCounterRef = useRef(0);
-  const attachmentsRef = useRef<Attachment[]>([]);
-
-  useEffect(() => {
-    attachmentsRef.current = attachments;
-  }, [attachments]);
-
-  // Screencast management hook
-  const {
-    activeScreencast,
-    setActiveScreencast,
-    lastScreencastScreenshot,
-    dismissedScreencastItems,
-    failedScreencastTokens,
-    handleScreencastLastFrame,
-    handleScreencastConnectionError,
-  } = useScreencast({
-    threadId: control.thread?.id,
-    threadItems: (control.thread?.items || []) as ThreadItem[],
-    isLoading: control.isLoading,
-  });
 
   const {
     header,
@@ -81,105 +55,95 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   // Extract auth token from API headers for DevToolsScreencast
   const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
 
-  // Auto-scroll vers le bas
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [control.thread?.items.length]);
+  // Scroll management
+  const {
+    messagesEndRef,
+    messagesContainerRef,
+    showScrollButton,
+    scrollToBottom,
+  } = useScrollToBottom(control.thread?.items.length ?? 0);
+
+  // Keyboard offset for mobile virtual keyboards
+  const { keyboardOffset } = useKeyboardOffset(messagesContainerRef);
+
+  // Attachments management
+  const {
+    attachments,
+    setAttachments,
+    handleFilesSelected,
+    clearAttachments,
+  } = useAttachments({
+    attachmentsConfig,
+    apiConfig: api.url ? { url: api.url, headers: api.headers } : undefined,
+  });
+
+  // Drag and drop for file uploads
+  const { isDraggingFiles, dragHandlers } = useDragAndDrop({
+    enabled: attachmentsEnabled,
+    onFilesDropped: handleFilesSelected,
+  });
+
+  // Screencast management hook
+  const {
+    activeScreencast,
+    setActiveScreencast,
+    lastScreencastScreenshot,
+    dismissedScreencastItems,
+    failedScreencastTokens,
+    handleScreencastLastFrame,
+    handleScreencastConnectionError,
+  } = useScreencast({
+    threadId: control.thread?.id,
+    threadItems: (control.thread?.items || []) as ThreadItem[],
+    isLoading: control.isLoading,
+  });
+
+  // Inline widgets (voice/outbound call)
+  const { inlineVoiceWidget, inlineOutboundCallWidget } = useInlineWidgets({
+    threadId: control.thread?.id,
+    widgets: options.widgets,
+  });
+
+  // Widget actions context
+  const { createWidgetContext } = useWidgetActions({
+    control,
+    widgets: options.widgets,
+  });
 
   // Clear the composer when switching threads
   useEffect(() => {
     setInputValue('');
-    setAttachments([]);
-    lastUserMessageIdRef.current = null;
-  }, [control.thread?.id]);
+    clearAttachments();
+  }, [control.thread?.id, clearAttachments]);
 
-  // Clear the composer once a new user message is added to the thread
+  // Track last user message to clear composer after it's added to thread
+  const [lastUserMessageId, setLastUserMessageId] = useState<string | null>(null);
+
   useEffect(() => {
     const items = (control.thread?.items || []) as ThreadItem[];
     if (!items.length) {
-      lastUserMessageIdRef.current = null;
+      setLastUserMessageId(null);
       return;
     }
 
     const lastUserMessage = [...items].reverse().find(item => item.type === 'user_message');
     if (!lastUserMessage) return;
 
-    if (lastUserMessage.id !== lastUserMessageIdRef.current) {
+    if (lastUserMessage.id !== lastUserMessageId) {
       setInputValue('');
-      setAttachments([]);
-      lastUserMessageIdRef.current = lastUserMessage.id;
+      clearAttachments();
+      setLastUserMessageId(lastUserMessage.id);
     }
-  }, [control.thread?.items]);
+  }, [control.thread?.items, lastUserMessageId, clearAttachments]);
 
   // Callback to continue workflow
   const handleContinueWorkflow = useCallback(() => {
     control.customAction(null, { type: 'continue_workflow' });
   }, [control]);
 
-  // Ajuster le décalage du clavier virtuel sur mobile pour ne déplacer que le composer
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.visualViewport) return;
-
-    const viewport = window.visualViewport;
-
-    const updateKeyboardOffset = () => {
-      const heightDiff = window.innerHeight - viewport.height;
-      const offsetTop = viewport.offsetTop ?? 0;
-      const offset = Math.max(0, heightDiff - offsetTop);
-      setKeyboardOffset(offset);
-    };
-
-    updateKeyboardOffset();
-    viewport.addEventListener('resize', updateKeyboardOffset);
-    viewport.addEventListener('scroll', updateKeyboardOffset);
-
-    return () => {
-      viewport.removeEventListener('resize', updateKeyboardOffset);
-      viewport.removeEventListener('scroll', updateKeyboardOffset);
-    };
-  }, []);
-
-  // Conserver la portion visible du chat lorsque le clavier ajuste le viewport
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    const delta = keyboardOffset - previousKeyboardOffsetRef.current;
-    if (delta !== 0) {
-      container.scrollTop += delta;
-      previousKeyboardOffsetRef.current = keyboardOffset;
-    }
-  }, [keyboardOffset]);
-
-  // Tracker la position du scroll pour afficher/masquer le bouton "scroll to bottom"
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      // Considérer "en bas" si on est à moins de 100px du bas
-      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-      setShowScrollButton(!isAtBottom);
-    };
-
-    container.addEventListener('scroll', handleScroll);
-    // Vérifier l'état initial
-    handleScroll();
-
-    return () => {
-      container.removeEventListener('scroll', handleScroll);
-    };
-  }, []);
-
-  // Fonction pour défiler vers le bas
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
-
-  // Callback pour la soumission du Composer
+  // Callback for composer submission
   const handleComposerSubmit = useCallback(async (message: string, uploadedAttachments: Attachment[]) => {
-    // Construire le contenu du message
+    // Build message content
     const content: UserMessageContent[] = [];
     if (message) {
       content.push({ type: 'input_text', text: message });
@@ -193,290 +157,45 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       }
     }
 
-    // Envoyer le message
+    // Send the message
     await control.sendMessage(content);
 
-    // Réinitialiser le formulaire
+    // Reset the form
     setInputValue('');
-    setAttachments([]);
-  }, [control]);
+    clearAttachments();
+  }, [control, clearAttachments]);
 
   const handlePromptClick = (prompt: string) => {
     control.sendMessage(prompt);
   };
 
-  // Créer un nouveau thread
+  // Create a new thread
   const handleNewThread = () => {
     if (options.onThreadChange) {
       options.onThreadChange({ threadId: null });
     }
   };
 
-
-  const handleFilesSelected = useCallback(async (files: FileList | null) => {
-    if (!attachmentsConfig?.enabled || !files || files.length === 0) {
-      return;
-    }
-
-    const filesArray = Array.from(files);
-    const newAttachments: Attachment[] = [];
-
-    for (const file of filesArray) {
-      if (attachmentsConfig.maxCount && attachmentsRef.current.length + newAttachments.length >= attachmentsConfig.maxCount) {
-        break;
-      }
-
-      const validation = validateFile(file, attachmentsConfig);
-      if (!validation.valid) {
-        console.error(`[ChatKit] File validation failed: ${validation.error}`);
-        continue;
-      }
-
-      const localId = generateAttachmentId();
-      const preview = await createFilePreview(file);
-      const type = file.type.startsWith('image/') ? 'image' : 'file';
-
-      newAttachments.push({
-        id: localId,
-        file,
-        type,
-        preview: preview || undefined,
-        status: 'pending',
-        progress: 0,
-      });
-    }
-
-    if (newAttachments.length === 0) {
-      return;
-    }
-
-    // Add attachments immediately with pending status
-    const updatedAttachments = [...attachmentsRef.current, ...newAttachments];
-    setAttachments(updatedAttachments);
-
-    // Start uploading each file immediately if API is configured
-    if (api?.url) {
-      for (const att of newAttachments) {
-        // Update status to uploading
-        setAttachments(prev => prev.map(a =>
-          a.id === att.id ? { ...a, status: 'uploading' as const, progress: 0 } : a
-        ));
-
-        try {
-          // Phase 1: Create attachment to get backend ID and upload URL
-          const createResponse = await createAttachment({
-            url: api.url,
-            headers: api.headers,
-            name: att.file.name,
-            size: att.file.size,
-            mimeType: att.file.type || 'application/octet-stream',
-          });
-
-          const backendId = createResponse.id;
-          const uploadUrl = createResponse.upload_url;
-
-          // Phase 2: Upload the file with progress tracking
-          await uploadAttachment({
-            url: api.url,
-            headers: api.headers,
-            attachmentId: backendId,
-            file: att.file,
-            uploadUrl: uploadUrl,
-            onProgress: (progress) => {
-              setAttachments(prev => prev.map(a =>
-                a.id === att.id ? { ...a, progress: Math.round(progress) } : a
-              ));
-            },
-          });
-
-          // Update with backend ID and mark as uploaded
-          setAttachments(prev => prev.map(a =>
-            a.id === att.id ? {
-              ...a,
-              id: backendId,
-              status: 'uploaded' as const,
-              progress: 100,
-              uploadUrl: uploadUrl,
-            } : a
-          ));
-        } catch (err) {
-          console.error('[ChatKit] Failed to upload attachment:', err);
-          // Parse error message for user-friendly display
-          let errorMessage = 'Échec de l\'upload';
-          const errString = String(err);
-          if (errString.includes('413') || errString.includes('Request Entity Too Large')) {
-            errorMessage = 'Fichier trop volumineux (limite serveur dépassée)';
-          } else if (errString.includes('Network error') || errString.includes('Failed to fetch')) {
-            errorMessage = 'Erreur réseau';
-          } else if (errString.includes('401') || errString.includes('403')) {
-            errorMessage = 'Non autorisé';
-          }
-          setAttachments(prev => prev.map(a =>
-            a.id === att.id ? { ...a, status: 'error' as const, error: errorMessage } : a
-          ));
-        }
-      }
-    }
-  }, [attachmentsConfig, api?.url, api?.headers]);
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    if (!attachmentsEnabled) return;
-
-    dragCounterRef.current += 1;
-    if (e.dataTransfer.types.includes('Files')) {
-      setIsDraggingFiles(true);
-    }
-  }, [attachmentsEnabled]);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    if (!attachmentsEnabled) return;
-
-    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
-    if (dragCounterRef.current === 0) {
-      setIsDraggingFiles(false);
-    }
-  }, [attachmentsEnabled]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    if (!attachmentsEnabled) return;
-  }, [attachmentsEnabled]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    if (!attachmentsEnabled) return;
-
-    dragCounterRef.current = 0;
-    setIsDraggingFiles(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFilesSelected(e.dataTransfer.files);
-    }
-  }, [attachmentsEnabled, handleFilesSelected]);
-
-  // Copier le contenu d'un message
+  // Copy message content
   const handleCopyMessage = (messageId: string, content: string) => {
     navigator.clipboard.writeText(content);
     setCopiedMessageId(messageId);
     setTimeout(() => setCopiedMessageId(null), COPY_FEEDBACK_DELAY_MS);
   };
 
-  const inlineVoiceWidget = useMemo<VoiceSessionWidget | null>(() => {
-    const voiceSession = options.widgets?.voiceSession;
-    if (!voiceSession || voiceSession.enabled === false) {
-      return null;
-    }
-
-    const threadId = control.thread?.id ?? null;
-    const voiceThreadMatches = !voiceSession.threadId || voiceSession.threadId === threadId;
-    if (!voiceThreadMatches) {
-      return null;
-    }
-
-    return {
-      type: 'VoiceSession',
-      title: 'Voix',
-      description: "Contrôlez l'écoute et consultez les transcriptions en temps réel.",
-      startLabel: 'Démarrer',
-      stopLabel: 'Arrêter',
-      showTranscripts: true,
-      ...(options.widgets.voiceSessionWidget ?? {}),
-    };
-  }, [control.thread?.id, options.widgets?.voiceSession, options.widgets?.voiceSessionWidget]);
-
-  const inlineOutboundCallWidget = useMemo<OutboundCallWidget | null>(() => {
-    const outboundCall = options.widgets?.outboundCall;
-    if (!outboundCall || outboundCall.enabled === false) {
-      return null;
-    }
-
-    // Only show when there's an active call
-    if (!outboundCall.isActive && outboundCall.status === 'idle') {
-      return null;
-    }
-
-    return {
-      type: 'OutboundCall',
-      title: 'Appel sortant',
-      description: "Appel en cours. Les transcriptions apparaissent ci-dessous.",
-      hangupLabel: 'Raccrocher',
-      showTranscripts: true,
-      showAudioPlayer: false, // Audio player is rendered separately
-      ...(options.widgets.outboundCallWidget ?? {}),
-    };
-  }, [options.widgets?.outboundCall, options.widgets?.outboundCallWidget]);
-
-  const renderInlineWidgets = (
-    voiceWidget: VoiceSessionWidget | null,
-    outboundCallWidgetProp: OutboundCallWidget | null,
-    context: WidgetContext,
-  ): React.ReactNode => {
-    if (!voiceWidget && !outboundCallWidgetProp) {
-      return null;
-    }
-
-    return (
-      <div className="chatkit-inline-widgets">
-        {voiceWidget && <WidgetRenderer widget={voiceWidget} context={context} />}
-        {outboundCallWidgetProp && <WidgetRenderer widget={outboundCallWidgetProp} context={context} />}
-      </div>
-    );
-  };
-
-  // Créer un callback pour gérer les actions de widgets
-  const createWidgetContext = useCallback((itemId: string): WidgetContext => ({
-    onAction: (actionConfig: ActionConfig) => {
-      // Convert ActionConfig to Action format expected by customAction
-      // ActionConfig structure: { type, payload, handler?, loadingBehavior? }
-      // handler and loadingBehavior are ActionConfig properties, NOT part of payload
-      const { type, payload, handler, loadingBehavior, ...rest } = actionConfig;
-
-      // Collect form data if available
-      const formData = formDataRef.current ? Object.fromEntries(formDataRef.current.entries()) : {};
-
-      // Build the payload combining all data sources
-      // The payload is stored as-is in raw_payload, so data should be at root level
-      // for workflow access via input.action.raw_payload.fieldName
-      const actionPayload = {
-        ...(payload || {}),
-        ...formData,
-        ...rest, // Include any extra properties that aren't ActionConfig metadata
-      };
-
-      const action = {
-        type,
-        // Use 'data' for frontend Action type, will be converted to 'payload' by API
-        data: actionPayload,
-      };
-
-      // Clear form data after use
-      formDataRef.current = null;
-      // Send the action to the backend
-      control.customAction(itemId, action);
-    },
-    onFormData: (data: FormData) => {
-      // Store form data to be included in the next action
-      formDataRef.current = data;
-    },
-    voiceSession: options.widgets?.voiceSession,
-    outboundCall: options.widgets?.outboundCall,
-  }), [control, options.widgets?.voiceSession, options.widgets?.outboundCall]);
-
-  // Afficher le start screen seulement si aucun thread n'est présent (vraie nouvelle conversation)
-  // Ne PAS afficher si :
-  // - On a un thread (même vide)
-  // - On est en train de charger un thread
-  // - On est en transition vers un nouveau thread (initialThread !== current thread)
-  // Cela évite le flash lors du changement de thread dû à la race condition entre setState
+  // Show start screen only when there's no thread present (truly new conversation)
+  // Don't show if:
+  // - We have a thread (even empty)
+  // - We're loading a thread
+  // - We're transitioning to a new thread (initialThread !== current thread)
+  // This prevents flash during thread change due to race condition between setState
   const isLoadingAnyThread = control.loadingThreadIds.size > 0;
   const isTransitioningToNewThread =
     options.initialThread != null &&
     options.initialThread !== control.thread?.id;
   const showStartScreen = !isLoadingAnyThread && !control.thread && !isTransitioningToNewThread;
 
-  // Vérifier si le thread est fermé ou verrouillé
+  // Check if thread is closed or locked
   const threadStatus = control.thread?.status;
   const isThreadClosed = threadStatus?.type === 'closed';
   const isThreadLocked = threadStatus?.type === 'locked';
@@ -485,7 +204,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     ? (threadStatus?.reason || (isThreadClosed ? t('chatkit.thread.closed') : t('chatkit.thread.locked')))
     : null;
 
-  // Récupérer le titre du thread
+  // Get thread title
   const getThreadTitle = (): string => {
     if (showStartScreen) {
       return '';
@@ -507,7 +226,7 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     return t('chatkit.thread.conversation');
   };
 
-  // Récupérer le nom du workflow d'origine
+  // Get origin workflow name
   const getWorkflowName = (): string | undefined => {
     if (showStartScreen || !control.thread) {
       return undefined;
@@ -529,23 +248,12 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         ['--chatkit-keyboard-offset' as const]: `${keyboardOffset}px`,
       }}
       data-theme={theme?.colorScheme}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
+      {...dragHandlers}
     >
       {isDraggingFiles && attachmentsEnabled && (
-        <div className="chatkit-drop-overlay chatkit-drop-overlay--full">
-          <div className="chatkit-drop-overlay-content">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            <span>Déposez vos fichiers ici</span>
-          </div>
-        </div>
+        <DropOverlay />
       )}
+
       {/* Header */}
       <Header
         config={header}
@@ -559,144 +267,46 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
       {/* Messages */}
       <div className="chatkit-messages" ref={messagesContainerRef}>
         {showStartScreen && startScreen ? (
-          <div className="chatkit-start-screen">
-            {startScreen.greeting && (
-              <div className="chatkit-start-greeting">{startScreen.greeting}</div>
-            )}
-            {startScreen.prompts && startScreen.prompts.length > 0 && (
-              <div className="chatkit-start-prompts">
-                {startScreen.prompts.map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    className="chatkit-start-prompt"
-                    onClick={() => handlePromptClick(prompt.prompt)}
-                  >
-                    {prompt.icon && <span className="chatkit-prompt-icon">{prompt.icon}</span>}
-                    <span>{prompt.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <StartScreen
+            greeting={startScreen.greeting}
+            prompts={startScreen.prompts}
+            onPromptClick={handlePromptClick}
+          />
         ) : (
-          (() => {
-            const items = control.thread?.items || [];
-            const inlineWidgetsElement = (inlineVoiceWidget || inlineOutboundCallWidget)
-              ? renderInlineWidgets(inlineVoiceWidget, inlineOutboundCallWidget, createWidgetContext('inline-widgets'))
-              : null;
-            let hasInsertedInlineWidgets = false;
-
-            const inlineWidgetsAfterItem = (candidate: ThreadItem, idx: number): boolean => {
-              if (!inlineWidgetsElement || hasInsertedInlineWidgets) {
-                return false;
-              }
-
-              if (candidate.type === 'user_message') {
-                return true;
-              }
-
-              const isLastItem = idx === items.length - 1;
-              return isLastItem;
-            };
-
-            const renderedItems = items.flatMap((item, idx) => {
-              // Ne pas afficher end_of_turn
-              if (item.type === 'end_of_turn') {
-                return null;
-              }
-
-              const nodes: React.ReactNode[] = [
-                <MessageRenderer
-                  key={item.id}
-                  item={item}
-                  theme={theme?.colorScheme}
-                  copiedMessageId={copiedMessageId}
-                  onCopyMessage={handleCopyMessage}
-                  createWidgetContext={createWidgetContext}
-                  loadingLabel={t('chat.loading')}
-                  activeScreencast={activeScreencast}
-                  lastScreencastScreenshot={lastScreencastScreenshot}
-                  dismissedScreencastItems={dismissedScreencastItems}
-                  failedScreencastTokens={failedScreencastTokens}
-                  authToken={authToken}
-                  onScreencastLastFrame={handleScreencastLastFrame}
-                  onScreencastConnectionError={handleScreencastConnectionError}
-                  onActiveScreencastChange={setActiveScreencast}
-                  onContinueWorkflow={handleContinueWorkflow}
-                  isAdmin={isAdmin}
-                />,
-              ];
-
-              if (inlineWidgetsAfterItem(item, idx)) {
-                hasInsertedInlineWidgets = true;
-                nodes.push(
-                  <React.Fragment key={`inline-widgets-${item.id}`}>
-                    {inlineWidgetsElement}
-                  </React.Fragment>,
-                );
-              }
-
-              return nodes;
-            });
-
-            if (inlineWidgetsElement && !hasInsertedInlineWidgets) {
-              renderedItems.push(
-                <React.Fragment key="inline-widgets-tail">{inlineWidgetsElement}</React.Fragment>,
-              );
-            }
-
-            return renderedItems;
-          })()
+          <MessageList
+            items={control.thread?.items || []}
+            theme={theme?.colorScheme}
+            copiedMessageId={copiedMessageId}
+            onCopyMessage={handleCopyMessage}
+            createWidgetContext={createWidgetContext}
+            loadingLabel={t('chat.loading')}
+            activeScreencast={activeScreencast}
+            lastScreencastScreenshot={lastScreencastScreenshot}
+            dismissedScreencastItems={dismissedScreencastItems}
+            failedScreencastTokens={failedScreencastTokens}
+            authToken={authToken}
+            onScreencastLastFrame={handleScreencastLastFrame}
+            onScreencastConnectionError={handleScreencastConnectionError}
+            onActiveScreencastChange={setActiveScreencast}
+            onContinueWorkflow={handleContinueWorkflow}
+            isAdmin={isAdmin}
+            inlineVoiceWidget={inlineVoiceWidget}
+            inlineOutboundCallWidget={inlineOutboundCallWidget}
+          />
         )}
 
         {/* Loading indicator */}
-        {(() => {
-          const items = control.thread?.items || [];
-          const lastItem = items[items.length - 1];
-          // Only show typing indicator if we're STREAMING a response (not just loading a thread)
-          // - Must be loading exactly ONE thread (the current one)
-          // - That thread must have at least one message
-          // - The last message must be from the user
-          // This prevents showing the indicator when finishing loading a thread (race condition)
-          const hasMessages = items.length > 0;
-          const isOnlyLoadingCurrentThread =
-            control.thread &&
-            control.loadingThreadIds.size === 1 &&
-            control.loadingThreadIds.has(control.thread.id);
-          const isWaitingForAssistant =
-            isOnlyLoadingCurrentThread &&
-            hasMessages &&
-            (!lastItem || lastItem.type === 'user_message');
-
-          if (!isWaitingForAssistant) {
-            return null;
-          }
-
-          return (
-            <div className="chatkit-message chatkit-message-assistant">
-              <div className="chatkit-message-content">
-                <div className="chatkit-workflow-loading">
-                  <div className="chatkit-workflow-loading-spinner"></div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+        <LoadingIndicator
+          thread={control.thread}
+          loadingThreadIds={control.loadingThreadIds}
+        />
 
         <div ref={messagesEndRef} />
       </div>
 
       {/* Scroll to bottom button */}
       {showScrollButton && (
-        <button
-          className="chatkit-scroll-to-bottom"
-          onClick={scrollToBottom}
-          aria-label="Aller en bas"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </button>
+        <ScrollToBottomButton onClick={scrollToBottom} />
       )}
 
       {/* Error display */}
@@ -722,7 +332,237 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
         onFilesSelected={handleFilesSelected}
         isDraggingFiles={isDraggingFiles}
       />
-
     </div>
+  );
+}
+
+// ============================================================================
+// Sub-components
+// ============================================================================
+
+function DropOverlay(): JSX.Element {
+  return (
+    <div className="chatkit-drop-overlay chatkit-drop-overlay--full">
+      <div className="chatkit-drop-overlay-content">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span>Déposez vos fichiers ici</span>
+      </div>
+    </div>
+  );
+}
+
+interface StartScreenProps {
+  greeting?: string;
+  prompts?: Array<{ label: string; prompt: string; icon?: string }>;
+  onPromptClick: (prompt: string) => void;
+}
+
+function StartScreen({ greeting, prompts, onPromptClick }: StartScreenProps): JSX.Element {
+  return (
+    <div className="chatkit-start-screen">
+      {greeting && (
+        <div className="chatkit-start-greeting">{greeting}</div>
+      )}
+      {prompts && prompts.length > 0 && (
+        <div className="chatkit-start-prompts">
+          {prompts.map((prompt, idx) => (
+            <button
+              key={idx}
+              className="chatkit-start-prompt"
+              onClick={() => onPromptClick(prompt.prompt)}
+            >
+              {prompt.icon && <span className="chatkit-prompt-icon">{prompt.icon}</span>}
+              <span>{prompt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface MessageListProps {
+  items: ThreadItem[];
+  theme?: 'light' | 'dark';
+  copiedMessageId: string | null;
+  onCopyMessage: (messageId: string, content: string) => void;
+  createWidgetContext: (itemId: string) => WidgetContext;
+  loadingLabel: string;
+  activeScreencast: { token: string; itemId: string } | null;
+  lastScreencastScreenshot: { itemId: string; src: string; action?: string } | null;
+  dismissedScreencastItems: Set<string>;
+  failedScreencastTokens: Set<string>;
+  authToken?: string;
+  onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
+  onScreencastConnectionError: (token: string) => void;
+  onActiveScreencastChange: (state: { token: string; itemId: string } | null) => void;
+  onContinueWorkflow: () => void;
+  isAdmin?: boolean;
+  inlineVoiceWidget: VoiceSessionWidget | null;
+  inlineOutboundCallWidget: OutboundCallWidget | null;
+}
+
+function MessageList({
+  items,
+  theme,
+  copiedMessageId,
+  onCopyMessage,
+  createWidgetContext,
+  loadingLabel,
+  activeScreencast,
+  lastScreencastScreenshot,
+  dismissedScreencastItems,
+  failedScreencastTokens,
+  authToken,
+  onScreencastLastFrame,
+  onScreencastConnectionError,
+  onActiveScreencastChange,
+  onContinueWorkflow,
+  isAdmin,
+  inlineVoiceWidget,
+  inlineOutboundCallWidget,
+}: MessageListProps): JSX.Element {
+  const renderInlineWidgets = (
+    voiceWidget: VoiceSessionWidget | null,
+    outboundCallWidget: OutboundCallWidget | null,
+    context: WidgetContext,
+  ): React.ReactNode => {
+    if (!voiceWidget && !outboundCallWidget) {
+      return null;
+    }
+
+    return (
+      <div className="chatkit-inline-widgets">
+        {voiceWidget && <WidgetRenderer widget={voiceWidget} context={context} />}
+        {outboundCallWidget && <WidgetRenderer widget={outboundCallWidget} context={context} />}
+      </div>
+    );
+  };
+
+  const inlineWidgetsElement = (inlineVoiceWidget || inlineOutboundCallWidget)
+    ? renderInlineWidgets(inlineVoiceWidget, inlineOutboundCallWidget, createWidgetContext('inline-widgets'))
+    : null;
+  let hasInsertedInlineWidgets = false;
+
+  const inlineWidgetsAfterItem = (candidate: ThreadItem, idx: number): boolean => {
+    if (!inlineWidgetsElement || hasInsertedInlineWidgets) {
+      return false;
+    }
+
+    if (candidate.type === 'user_message') {
+      return true;
+    }
+
+    const isLastItem = idx === items.length - 1;
+    return isLastItem;
+  };
+
+  const renderedItems = items.flatMap((item, idx) => {
+    // Don't render end_of_turn
+    if (item.type === 'end_of_turn') {
+      return null;
+    }
+
+    const nodes: React.ReactNode[] = [
+      <MessageRenderer
+        key={item.id}
+        item={item}
+        theme={theme}
+        copiedMessageId={copiedMessageId}
+        onCopyMessage={onCopyMessage}
+        createWidgetContext={createWidgetContext}
+        loadingLabel={loadingLabel}
+        activeScreencast={activeScreencast}
+        lastScreencastScreenshot={lastScreencastScreenshot}
+        dismissedScreencastItems={dismissedScreencastItems}
+        failedScreencastTokens={failedScreencastTokens}
+        authToken={authToken}
+        onScreencastLastFrame={onScreencastLastFrame}
+        onScreencastConnectionError={onScreencastConnectionError}
+        onActiveScreencastChange={onActiveScreencastChange}
+        onContinueWorkflow={onContinueWorkflow}
+        isAdmin={isAdmin}
+      />,
+    ];
+
+    if (inlineWidgetsAfterItem(item, idx)) {
+      hasInsertedInlineWidgets = true;
+      nodes.push(
+        <React.Fragment key={`inline-widgets-${item.id}`}>
+          {inlineWidgetsElement}
+        </React.Fragment>,
+      );
+    }
+
+    return nodes;
+  });
+
+  if (inlineWidgetsElement && !hasInsertedInlineWidgets) {
+    renderedItems.push(
+      <React.Fragment key="inline-widgets-tail">{inlineWidgetsElement}</React.Fragment>,
+    );
+  }
+
+  return <>{renderedItems}</>;
+}
+
+interface LoadingIndicatorProps {
+  thread: { id: string; items: ThreadItem[] } | null;
+  loadingThreadIds: Set<string>;
+}
+
+function LoadingIndicator({ thread, loadingThreadIds }: LoadingIndicatorProps): JSX.Element | null {
+  const items = thread?.items || [];
+  const lastItem = items[items.length - 1];
+
+  // Only show typing indicator if we're STREAMING a response (not just loading a thread)
+  // - Must be loading exactly ONE thread (the current one)
+  // - That thread must have at least one message
+  // - The last message must be from the user
+  // This prevents showing the indicator when finishing loading a thread (race condition)
+  const hasMessages = items.length > 0;
+  const isOnlyLoadingCurrentThread =
+    thread &&
+    loadingThreadIds.size === 1 &&
+    loadingThreadIds.has(thread.id);
+  const isWaitingForAssistant =
+    isOnlyLoadingCurrentThread &&
+    hasMessages &&
+    (!lastItem || lastItem.type === 'user_message');
+
+  if (!isWaitingForAssistant) {
+    return null;
+  }
+
+  return (
+    <div className="chatkit-message chatkit-message-assistant">
+      <div className="chatkit-message-content">
+        <div className="chatkit-workflow-loading">
+          <div className="chatkit-workflow-loading-spinner"></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ScrollToBottomButtonProps {
+  onClick: () => void;
+}
+
+function ScrollToBottomButton({ onClick }: ScrollToBottomButtonProps): JSX.Element {
+  return (
+    <button
+      className="chatkit-scroll-to-bottom"
+      onClick={onClick}
+      aria-label="Aller en bas"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
   );
 }

@@ -1,0 +1,66 @@
+import { useState, useRef, useEffect, useCallback, RefObject } from 'react';
+
+export interface UseScrollToBottomOptions {
+  /** Distance from bottom (in pixels) to consider "at bottom" */
+  threshold?: number;
+}
+
+export interface UseScrollToBottomReturn {
+  messagesEndRef: RefObject<HTMLDivElement | null>;
+  messagesContainerRef: RefObject<HTMLDivElement | null>;
+  showScrollButton: boolean;
+  scrollToBottom: () => void;
+}
+
+/**
+ * Hook to manage scroll-to-bottom functionality for chat messages.
+ * Handles auto-scrolling on new messages and shows/hides a scroll button.
+ */
+export function useScrollToBottom(
+  itemCount: number,
+  options: UseScrollToBottomOptions = {}
+): UseScrollToBottomReturn {
+  const { threshold = 100 } = options;
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [itemCount]);
+
+  // Track scroll position to show/hide the "scroll to bottom" button
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      // Consider "at bottom" if within threshold pixels from bottom
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold;
+      setShowScrollButton(!isAtBottom);
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    // Check initial state
+    handleScroll();
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [threshold]);
+
+  // Function to scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  return {
+    messagesEndRef,
+    messagesContainerRef,
+    showScrollButton,
+    scrollToBottom,
+  };
+}
