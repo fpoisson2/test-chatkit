@@ -22,6 +22,10 @@ export interface UseMessageStreamingOptions {
   onError?: (error: { error: Error }) => void;
   onLog?: (entry: { name: string; data?: Record<string, unknown> }) => void;
   onClientTool?: (toolCall: { name: string; params: unknown }) => Promise<unknown>;
+  /** Called when a streaming session is created (for resume capability) */
+  onSessionCreated?: (sessionId: string, threadId: string) => void;
+  /** Called for each event ID (for tracking resume position) */
+  onEventId?: (eventId: string) => void;
 }
 
 export interface UseMessageStreamingReturn {
@@ -47,6 +51,8 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
     onError,
     onLog,
     onClientTool,
+    onSessionCreated,
+    onEventId,
   } = options;
 
   const [error, setError] = useState<Error | null>(null);
@@ -165,6 +171,8 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
             setError(err);
             onError?.({ error: err });
           },
+          onSessionCreated,
+          onEventId,
         });
 
         if (updatedThread) {
@@ -192,7 +200,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
         }
       }
     },
-    [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading, isTempThreadId, activeThreadIdRef, visibleThreadIdRef, threadCacheRef, abortControllersRef, setThread]
+    [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, onSessionCreated, onEventId, getThreadKey, setThreadLoading, isTempThreadId, activeThreadIdRef, visibleThreadIdRef, threadCacheRef, abortControllersRef, setThread]
   );
 
   return {

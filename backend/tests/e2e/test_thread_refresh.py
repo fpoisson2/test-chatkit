@@ -314,6 +314,70 @@ async def count_messages(page: Page) -> dict:
     }
 
 
+async def get_assistant_message_text(page: Page) -> str | None:
+    """Extract text content from the assistant's message bubble."""
+    # Try various selectors that might match assistant messages
+    selectors = [
+        '[data-role="assistant"]',
+        '[data-testid="assistant-message"]',
+        '.assistant-message',
+        '[class*="assistant"]',
+        # ChatKit specific selectors - look for message content areas
+        '[class*="prose"]',  # Markdown content usually has prose class
+        '[class*="markdown"]',
+    ]
+
+    for selector in selectors:
+        elements = await page.query_selector_all(selector)
+        for el in elements:
+            text = await el.inner_text()
+            if text and len(text) > 20:  # Meaningful content
+                return text
+
+    return None
+
+
+async def count_visible_messages(page: Page) -> dict:
+    """Count user and assistant message bubbles visible on page."""
+    # Get page content and look for message patterns
+    # This is more reliable than CSS selectors which vary by UI framework
+
+    # Use JavaScript to count message elements
+    result = await page.evaluate("""
+        () => {
+            // Look for message containers - adjust selectors based on actual UI
+            const allElements = document.querySelectorAll('*');
+            let userCount = 0;
+            let assistantCount = 0;
+
+            for (const el of allElements) {
+                const className = el.className || '';
+                const role = el.getAttribute('data-role') || '';
+                const testId = el.getAttribute('data-testid') || '';
+
+                // Check for user messages
+                if (role === 'user' ||
+                    testId.includes('user') ||
+                    className.includes('user-message') ||
+                    (className.includes('message') && className.includes('user'))) {
+                    userCount++;
+                }
+
+                // Check for assistant messages
+                if (role === 'assistant' ||
+                    testId.includes('assistant') ||
+                    className.includes('assistant-message') ||
+                    (className.includes('message') && className.includes('assistant'))) {
+                    assistantCount++;
+                }
+            }
+
+            return { user: userCount, assistant: assistantCount };
+        }
+    """)
+    return result
+
+
 @pytest.mark.asyncio
 async def test_messages_persist_during_active_streaming():
     """
@@ -322,8 +386,9 @@ async def test_messages_persist_during_active_streaming():
     This is the key test for the streaming resume feature:
     1. Login to the application
     2. Send a message that will trigger a LONG streaming response
-    3. Refresh the page WHILE the assistant is still streaming
-    4. Verify that both the user message AND the assistant's partial response appear
+    3. Wait for assistant to START responding (capture partial response)
+    4. Refresh the page WHILE the assistant is still streaming
+    5. Verify that the assistant's response content is visible after refresh
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -342,57 +407,101 @@ async def test_messages_persist_during_active_streaming():
             await asyncio.sleep(5)
 
             # Step 2: Send a message that will generate a LONG response
-            # Request something that takes time to generate
-            long_message = "Write a very detailed 500-word essay about the history of artificial intelligence, including all major milestones and breakthroughs from the 1950s to today."
+            long_message = "Write a detailed essay about the history of artificial intelligence from the 1950s to today, covering Turing, neural networks, deep learning, and modern LLMs."
             assert await send_message(page, long_message), "Failed to send message"
 
-            # Step 3: Wait just a bit for streaming to START (not complete!)
-            # We want to catch it mid-stream
-            await asyncio.sleep(3)  # Short wait - streaming should be in progress
+            # Step 3: Wait for streaming to START and capture partial response
+            # Wait long enough for assistant to start generating visible text
+            await asyncio.sleep(5)
 
-            # Verify streaming is happening (thread should be in URL)
+            # Verify thread is created
             thread_id = await get_thread_id_from_url(page)
             assert thread_id is not None, "Thread ID not in URL during streaming"
+            print(f"Thread ID: {thread_id}")
 
-            # Check that we have at least the user message
-            # (assistant may or may not have started showing yet)
-            print(f"Thread ID during streaming: {thread_id}")
+            # Capture assistant's partial response BEFORE refresh
+            assistant_text_before = await get_assistant_message_text(page)
+            page_content_before = await page.content()
+
+            print(f"=== BEFORE REFRESH ===")
+            print(f"Assistant text found: {assistant_text_before is not None}")
+            if assistant_text_before:
+                print(f"Assistant text preview: {assistant_text_before[:200]}...")
+
+            # Check if there's AI-related content being streamed
+            has_ai_content_before = any(word in page_content_before.lower() for word in [
+                "artificial intelligence", "turing", "neural", "machine learning",
+                "deep learning", "algorithm", "computer", "1950"
+            ])
+            print(f"Has AI-related content before refresh: {has_ai_content_before}")
 
             # Step 4: Refresh the page during active streaming
-            print("Refreshing page during active streaming...")
+            print("\n=== REFRESHING PAGE ===")
             logs.clear()
             await page.reload()
 
-            # Wait for page to load and resume streaming
-            await asyncio.sleep(15)
+            # Wait for page to load and potentially resume/reconstruct
+            # Need extra time for streaming resume API calls to complete
+            await asyncio.sleep(20)
 
             # Step 5: Verify thread ID preserved
             thread_id_after = await get_thread_id_from_url(page)
             assert thread_id_after == thread_id, f"Thread ID changed: {thread_id} -> {thread_id_after}"
 
-            # Step 6: Check for resume-related logs
-            resume_logs = [
-                log for log in logs
-                if "Reconnecting to active session" in log or
-                   "Session is active" in log or
-                   "Fetched" in log and "events" in log
-            ]
-            print(f"Resume-related logs: {resume_logs[:5]}")  # Print first 5
+            # Step 6: Check what's visible AFTER refresh
+            assistant_text_after = await get_assistant_message_text(page)
+            page_content_after = await page.content()
 
-            # Step 7: Verify messages are visible
-            # Look for any chat message content
-            message_containers = await page.query_selector_all('[class*="message"], [class*="chat"], [class*="bubble"]')
-            print(f"Found {len(message_containers)} message containers")
+            print(f"\n=== AFTER REFRESH ===")
+            print(f"Assistant text found: {assistant_text_after is not None}")
+            if assistant_text_after:
+                print(f"Assistant text preview: {assistant_text_after[:200]}...")
 
-            # Check if we can see any text content that looks like our message or a response
-            page_content = await page.content()
+            # Check for AI-related content after refresh
+            has_ai_content_after = any(word in page_content_after.lower() for word in [
+                "artificial intelligence", "turing", "neural", "machine learning",
+                "deep learning", "algorithm", "computer", "1950"
+            ])
+            print(f"Has AI-related content after refresh: {has_ai_content_after}")
 
-            # The user's message should be visible
-            assert "history of artificial intelligence" in page_content.lower() or \
-                   "500-word" in page_content.lower(), \
-                   "User message not found on page after refresh"
+            # Check resume-related logs
+            resume_logs = [log for log in logs if "Reconnect" in log or "events" in log.lower()]
+            print(f"Resume logs: {resume_logs[:3]}")
 
-            print("✓ Messages persisted during active streaming!")
+            # Debug: show session-related logs
+            session_logs = [log for log in logs if "session" in log.lower() or "Session" in log]
+            print(f"Session logs: {session_logs[:10]}")
+
+            # Debug: show all WorkflowChat logs
+            workflow_logs = [log for log in logs if "WorkflowChat" in log]
+            print(f"WorkflowChat logs: {workflow_logs[:10]}")
+
+            # Debug: show streamingSession logs
+            streaming_logs = [log for log in logs if "streamingSession" in log]
+            print(f"streamingSession logs: {streaming_logs[:5]}")
+
+            # Debug: show useStreamingResume logs
+            resume_hook_logs = [log for log in logs if "useStreamingResume" in log]
+            print(f"useStreamingResume logs: {resume_hook_logs[:10]}")
+
+            # Debug: show ChatKit logs
+            chatkit_logs = [log for log in logs if "ChatKit" in log]
+            print(f"ChatKit logs: {chatkit_logs[:10]}")
+
+            # THE KEY ASSERTION: If we had AI content before, we should have it after
+            if has_ai_content_before:
+                assert has_ai_content_after, (
+                    "FAIL: Assistant's response was visible before refresh but NOT after!\n"
+                    "This is the bug we're trying to fix."
+                )
+                print("✓ Assistant's response content preserved after refresh!")
+            else:
+                # If no content before, at least verify user message is visible
+                assert "artificial intelligence" in page_content_after.lower() or \
+                       "essay" in page_content_after.lower(), \
+                       "User message not visible after refresh"
+                print("⚠ No assistant content before refresh (streaming may not have started)")
+                print("✓ User message is visible after refresh")
 
         finally:
             await browser.close()

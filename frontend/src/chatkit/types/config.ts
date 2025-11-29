@@ -134,6 +134,10 @@ export interface ChatKitOptions {
   onThreadLoadStart?: (event: { threadId: string }) => void;
   onThreadLoadEnd?: (event: { threadId: string }) => void;
   onLog?: (entry: { name: string; data?: Record<string, unknown> }) => void;
+  /** Called when a streaming session is created (for resume capability) */
+  onSessionCreated?: (sessionId: string, threadId: string) => void;
+  /** Called for each event ID received during streaming (for tracking resume position) */
+  onEventId?: (eventId: string) => void;
   /** Show usage metadata (cost, tokens) for admin users */
   isAdmin?: boolean;
 }

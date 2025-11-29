@@ -31,6 +31,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     onThreadLoadEnd,
     onLog,
     onClientTool,
+    onSessionCreated,
+    onEventId,
   } = options;
 
   // Thread state management
@@ -93,6 +95,8 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     onError,
     onLog,
     onClientTool,
+    onSessionCreated,
+    onEventId,
   });
 
   // Thread actions

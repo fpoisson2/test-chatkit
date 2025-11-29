@@ -160,7 +160,7 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
           signal: abortControllerRef.current.signal,
         });
 
-        console.info("[useStreamingResume] Status response:", statusResponse.status, statusResponse.statusText);
+        console.info("[useStreamingResume] Status response:", statusResponse.status, statusResponse.statusText, "url:", statusUrl.toString());
 
         if (!statusResponse.ok) {
           // Session not found or expired - clear session tracking but keep thread in URL
@@ -260,8 +260,12 @@ export function useStreamingResume(options: UseStreamingResumeOptions) {
 
     checkAndResume();
 
+    // Don't abort on unmount - React Strict Mode causes quick mount/unmount cycles
+    // that would cancel the session check before it completes. Let the request finish.
+    // The checkedRef prevents duplicate processing if it completes after remount.
     return () => {
-      abortControllerRef.current?.abort();
+      // Intentionally not aborting - let the request complete
+      // abortControllerRef.current?.abort();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiUrl, enabled, onReconnect, onReplay, threadId]);

@@ -31,12 +31,51 @@ export const useWorkflowChatSession = ({
   mode,
   autoStartEnabled = true,
 }: UseWorkflowChatSessionOptions): UseWorkflowChatSessionResult => {
-  const { control, fetchUpdates, sendUserMessage, setThread } = useChatKit(chatkitOptions);
   const hasRefreshedAfterResumeRef = useRef(false);
+
+  // Create refs for session tracking callbacks that will be set by useStreamingResume
+  const startTrackingRef = useRef<((sessionId: string, threadId: string) => void) | null>(null);
+  const trackEventRef = useRef<((eventId: string) => void) | null>(null);
+
+  // Ref to stop tracking when streaming ends
+  const stopTrackingRef = useRef<(() => void) | null>(null);
+
+  // Enhance chatkit options with session tracking callbacks
+  const enhancedOptions = useMemo(() => ({
+    ...chatkitOptions,
+    onSessionCreated: (sessionId: string, threadId: string) => {
+      console.log('[WorkflowChat] Session created:', sessionId, 'for thread:', threadId);
+      startTrackingRef.current?.(sessionId, threadId);
+      // Also call original callback if any
+      chatkitOptions.onSessionCreated?.(sessionId, threadId);
+    },
+    onEventId: (eventId: string) => {
+      trackEventRef.current?.(eventId);
+      // Also call original callback if any
+      chatkitOptions.onEventId?.(eventId);
+    },
+    onResponseEnd: () => {
+      console.log('[WorkflowChat] Response ended, clearing session tracking');
+      stopTrackingRef.current?.();
+      // Also call original callback if any
+      chatkitOptions.onResponseEnd?.();
+    },
+  }), [chatkitOptions]);
+
+  const { control, fetchUpdates, sendUserMessage, setThread } = useChatKit(enhancedOptions);
 
   // Get API config from options
   const apiUrl = chatkitOptions.api.url;
   const apiHeaders = chatkitOptions.api.headers || {};
+
+  // Keep a ref to current thread for use in reconnect callback
+  const threadRef = useRef<Thread | null>(null);
+  useEffect(() => {
+    threadRef.current = control.thread;
+  }, [control.thread]);
+
+  // Track if we've already handled a reconnect for a session
+  const handledSessionsRef = useRef<Set<string>>(new Set());
 
   // Callback to handle reconnection to active streaming sessions
   // For active sessions:
@@ -45,6 +84,13 @@ export const useWorkflowChatSession = ({
   // 3. Apply events to reconstruct the full state including in-progress messages
   // 4. Continue polling for new events until streaming completes
   const handleReconnect = useCallback(async (sessionId: string, lastEventId: string | null) => {
+    // Prevent duplicate handling of the same session
+    if (handledSessionsRef.current.has(sessionId)) {
+      console.log('[WorkflowChat] Session already handled, skipping:', sessionId);
+      return;
+    }
+    handledSessionsRef.current.add(sessionId);
+
     console.log('[WorkflowChat] Reconnecting to active session:', sessionId);
 
     const baseUrl = apiUrl.startsWith("http") ? apiUrl : `${window.location.origin}${apiUrl}`;
@@ -53,6 +99,9 @@ export const useWorkflowChatSession = ({
     try {
       // Step 1: Load the thread first to get the base state
       await fetchUpdates();
+
+      // Wait a bit for the state to update after fetchUpdates
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Step 2: Fetch ALL events from the start of the session (not just after lastEventId)
       // This ensures we can reconstruct the full assistant message
@@ -70,9 +119,13 @@ export const useWorkflowChatSession = ({
       const { events } = await eventsResponse.json();
       console.log('[WorkflowChat] Fetched', events?.length || 0, 'events from session');
 
-      if (events && events.length > 0 && control.thread) {
+      // Get current thread from ref (updated after fetchUpdates)
+      const currentThread = threadRef.current;
+      console.log('[WorkflowChat] currentThread exists:', !!currentThread, 'thread id:', currentThread?.id);
+
+      if (events && events.length > 0 && currentThread) {
         // Step 3: Apply events to reconstruct full state
-        let thread: Thread = control.thread;
+        let thread: Thread = currentThread;
         for (const event of events) {
           if (event.data) {
             thread = applyDelta(thread, event.data as ThreadStreamEvent);
@@ -82,6 +135,8 @@ export const useWorkflowChatSession = ({
         // Update the thread state with reconstructed data
         console.log('[WorkflowChat] Applied', events.length, 'events to reconstruct thread');
         setThread(thread);
+      } else if (events && events.length > 0 && !currentThread) {
+        console.log('[WorkflowChat] No current thread to apply events to - will poll for final state');
       }
 
       // Step 4: Connect to resume stream to continue receiving new events
@@ -144,25 +199,37 @@ export const useWorkflowChatSession = ({
         fetchUpdates().catch(console.error);
       }, 2000);
     }
-  }, [apiUrl, apiHeaders, token, control.thread, fetchUpdates, setThread]);
+  }, [apiUrl, apiHeaders, token, fetchUpdates, setThread]);
 
   // Streaming resume hook - detects and handles interrupted sessions
+  // Enable even without token for initial session check (API calls will use token when available)
   const {
     isResuming,
     needsReplay,
     missedEvents,
     sessionStatus,
     clearMissedEvents,
+    startTracking,
+    trackEvent,
+    stopTracking,
   } = useStreamingResume({
     apiUrl,
     headers: { ...apiHeaders, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     threadId: initialThreadId,
-    enabled: !!initialThreadId && !!token,
+    // Enable if we have a thread ID, token check happens inside for API calls
+    enabled: !!initialThreadId,
     onReconnect: handleReconnect,
     onReplay: (events: ThreadStreamEvent[]) => {
       console.log('[WorkflowChat] Session completed with', events.length, 'missed events - will refresh');
     },
   });
+
+  // Connect session tracking to the refs so they can be used by enhanced options
+  useEffect(() => {
+    startTrackingRef.current = startTracking;
+    trackEventRef.current = trackEvent;
+    stopTrackingRef.current = stopTracking;
+  }, [startTracking, trackEvent, stopTracking]);
 
   // When we detect a completed session, refresh the thread to show final state
   useEffect(() => {
