@@ -789,7 +789,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         stream_completed = False
         try:
-            async for event in _workflow_stream():
+            async for event in self._process_events(
+                thread,
+                context,
+                lambda: _workflow_stream(),
+            ):
                 yield event
             stream_completed = True
 
