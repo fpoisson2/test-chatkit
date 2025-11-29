@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import type { ChatKitOptions, StartScreenPrompt } from "./chatkit";
 import type { Thread } from "./chatkit/types";
 
@@ -195,6 +196,8 @@ const parseStartScreenPrompts = (
 };
 
 export function MyChat() {
+  const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
+  const navigate = useNavigate();
   const { token, user } = useAuth();
   const {
     settings: appearanceSettings,
@@ -328,8 +331,45 @@ export function MyChat() {
   const sessionStorageKey = buildSessionStorageKey(sessionOwner, persistenceSlug);
 
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
-    loadStoredThreadId(sessionOwner, persistenceSlug),
+    // Priority: URL param > localStorage
+    urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug),
   );
+
+  // Sync state from URL when URL changes (e.g., browser back/forward, direct navigation)
+  useEffect(() => {
+    if (urlThreadId && urlThreadId !== initialThreadId) {
+      // URL has a thread ID that differs from current state - load it
+      isNewConversationDraftRef.current = false;
+      persistStoredThreadId(sessionOwner, urlThreadId, persistenceSlug);
+      setInitialThreadId(urlThreadId);
+    } else if (!urlThreadId && initialThreadId !== null) {
+      // URL has no thread but state does - this means user navigated to home
+      // Only clear if we're not in the middle of creating a thread
+      if (!isNewConversationDraftRef.current) {
+        clearStoredThreadId(sessionOwner, persistenceSlug);
+        setInitialThreadId(null);
+        setChatInstanceKey((value) => value + 1);
+        isNewConversationDraftRef.current = true;
+      }
+    }
+  }, [urlThreadId, initialThreadId, sessionOwner, persistenceSlug]);
+
+  // Sync URL with current thread (when thread changes from within the app)
+  useEffect(() => {
+    const currentUrlThreadId = urlThreadId ?? null;
+
+    if (initialThreadId === null) {
+      // No thread - navigate to home if not already there
+      if (currentUrlThreadId !== null) {
+        navigate("/", { replace: true });
+      }
+    } else {
+      // Has thread - navigate to conversation URL if different
+      if (currentUrlThreadId !== initialThreadId) {
+        navigate(`/c/${initialThreadId}`, { replace: true });
+      }
+    }
+  }, [initialThreadId, urlThreadId, navigate]);
 
   // Debug: Log currentThread changes for sidebar title debugging
   useEffect(() => {
