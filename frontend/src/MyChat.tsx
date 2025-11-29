@@ -335,41 +335,38 @@ export function MyChat() {
     urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug),
   );
 
-  // Track if URL change came from our navigation to prevent loops
-  const isNavigatingRef = useRef(false);
+  // Track the previous URL threadId to detect external navigation (back/forward)
+  const prevUrlThreadIdRef = useRef<string | undefined>(urlThreadId);
 
-  // Single effect to handle URL <-> state synchronization
+  // Sync state from URL only when URL changes externally (browser back/forward)
   useEffect(() => {
-    const currentUrlThreadId = urlThreadId ?? null;
+    const prevUrlThreadId = prevUrlThreadIdRef.current;
+    prevUrlThreadIdRef.current = urlThreadId;
 
-    // If we're in the middle of navigating, skip this cycle
-    if (isNavigatingRef.current) {
-      isNavigatingRef.current = false;
+    // Only react if URL actually changed (not on initial mount or our own navigation)
+    if (prevUrlThreadId === urlThreadId) {
       return;
     }
 
-    // Case 1: URL has threadId that differs from state -> sync state from URL
+    const currentUrlThreadId = urlThreadId ?? null;
+
+    // URL changed to a conversation - load it
     if (currentUrlThreadId !== null && currentUrlThreadId !== initialThreadId) {
       isNewConversationDraftRef.current = false;
       persistStoredThreadId(sessionOwner, currentUrlThreadId, persistenceSlug);
       setInitialThreadId(currentUrlThreadId);
+      setChatInstanceKey((value) => value + 1);
       return;
     }
 
-    // Case 2: URL is empty but state has threadId -> update URL
-    if (currentUrlThreadId === null && initialThreadId !== null) {
-      isNavigatingRef.current = true;
-      navigate(`/c/${initialThreadId}`, { replace: true });
-      return;
+    // URL changed to home - start new conversation
+    if (currentUrlThreadId === null && prevUrlThreadId !== undefined) {
+      clearStoredThreadId(sessionOwner, persistenceSlug);
+      isNewConversationDraftRef.current = true;
+      setInitialThreadId(null);
+      setChatInstanceKey((value) => value + 1);
     }
-
-    // Case 3: State is empty but URL has threadId -> navigate to home
-    if (initialThreadId === null && currentUrlThreadId !== null) {
-      isNavigatingRef.current = true;
-      navigate("/", { replace: true });
-      return;
-    }
-  }, [initialThreadId, urlThreadId, navigate, sessionOwner, persistenceSlug]);
+  }, [urlThreadId, initialThreadId, sessionOwner, persistenceSlug]);
 
   // Debug: Log currentThread changes for sidebar title debugging
   useEffect(() => {
@@ -770,7 +767,6 @@ export function MyChat() {
     persistStoredThreadId(sessionOwner, threadId, targetSlug);
 
     // Navigate to conversation URL and update state
-    isNavigatingRef.current = true;
     navigate(`/c/${threadId}`, { replace: true });
     setInitialThreadId(threadId);
 
@@ -786,10 +782,9 @@ export function MyChat() {
     const currentId = (currentThread?.id as string | undefined) ?? initialThreadId;
     if (currentId === deletedThreadId) {
       clearStoredThreadId(sessionOwner, persistenceSlug);
-      isNavigatingRef.current = true;
-      navigate("/", { replace: true });
       setInitialThreadId(null);
       setChatInstanceKey((value) => value + 1);
+      navigate("/", { replace: true });
     }
   }, [sessionOwner, persistenceSlug, currentThread, initialThreadId, navigate]);
 
@@ -802,13 +797,13 @@ export function MyChat() {
     // They will be removed from the set when streaming ends via onResponseEnd
     setIsNewConversationStreaming(false);
     wasNewConversationStreamingRef.current = false;
-    // Navigate to home URL and update state
-    isNavigatingRef.current = true;
-    navigate("/", { replace: true });
-    setInitialThreadId(null);
-    setChatInstanceKey((value) => value + 1);
     // Mark that we're in a new conversation draft state
     isNewConversationDraftRef.current = true;
+    // Update state first, then navigate
+    setInitialThreadId(null);
+    setChatInstanceKey((value) => value + 1);
+    // Navigate to home URL
+    navigate("/", { replace: true });
   }, [sessionOwner, persistenceSlug, navigate]);
 
   // Handle workflow change from the selector dropdown
