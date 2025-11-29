@@ -78,6 +78,7 @@ const RequireUser = ({ children }: { children: ReactElement }) => {
 };
 
 const HomePage = () => <MyChat />;
+const ConversationPage = () => <MyChat />;
 
 const AuthenticatedAppLayout = () => (
   <WorkflowSidebarProvider>
@@ -122,6 +123,7 @@ export const App = () => (
         }
       >
         <Route index element={<HomePage />} />
+        <Route path="c/:threadId" element={<ConversationPage />} />
         <Route
           path="settings"
           element={

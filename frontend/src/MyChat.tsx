@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import type { ChatKitOptions, StartScreenPrompt } from "./chatkit";
 import type { Thread } from "./chatkit/types";
 
@@ -195,6 +196,8 @@ const parseStartScreenPrompts = (
 };
 
 export function MyChat() {
+  const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
+  const navigate = useNavigate();
   const { token, user } = useAuth();
   const {
     settings: appearanceSettings,
@@ -328,8 +331,42 @@ export function MyChat() {
   const sessionStorageKey = buildSessionStorageKey(sessionOwner, persistenceSlug);
 
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
-    loadStoredThreadId(sessionOwner, persistenceSlug),
+    // Priority: URL param > localStorage
+    urlThreadId ?? loadStoredThreadId(sessionOwner, persistenceSlug),
   );
+
+  // Track the previous URL threadId to detect external navigation (back/forward)
+  const prevUrlThreadIdRef = useRef<string | undefined>(urlThreadId);
+
+  // Sync state from URL only when URL changes externally (browser back/forward)
+  useEffect(() => {
+    const prevUrlThreadId = prevUrlThreadIdRef.current;
+    prevUrlThreadIdRef.current = urlThreadId;
+
+    // Only react if URL actually changed (not on initial mount or our own navigation)
+    if (prevUrlThreadId === urlThreadId) {
+      return;
+    }
+
+    const currentUrlThreadId = urlThreadId ?? null;
+
+    // URL changed to a conversation - load it
+    if (currentUrlThreadId !== null && currentUrlThreadId !== initialThreadId) {
+      isNewConversationDraftRef.current = false;
+      persistStoredThreadId(sessionOwner, currentUrlThreadId, persistenceSlug);
+      setInitialThreadId(currentUrlThreadId);
+      setChatInstanceKey((value) => value + 1);
+      return;
+    }
+
+    // URL changed to home - start new conversation
+    if (currentUrlThreadId === null && prevUrlThreadId !== undefined) {
+      clearStoredThreadId(sessionOwner, persistenceSlug);
+      isNewConversationDraftRef.current = true;
+      setInitialThreadId(null);
+      setChatInstanceKey((value) => value + 1);
+    }
+  }, [urlThreadId, initialThreadId, sessionOwner, persistenceSlug]);
 
   // Debug: Log currentThread changes for sidebar title debugging
   useEffect(() => {
@@ -729,13 +766,16 @@ export function MyChat() {
     // Persist the selected thread with the correct slug and reload the chat
     persistStoredThreadId(sessionOwner, threadId, targetSlug);
 
+    // Navigate to conversation URL and update state
+    navigate(`/c/${threadId}`, { replace: true });
     setInitialThreadId(threadId);
+
     // Only increment chatInstanceKey when switching workflows to force instance update
     // For same-workflow thread switches, avoid remounting to prevent welcome screen flash
     if (workflowChanged) {
       setChatInstanceKey((value) => value + 1);
     }
-  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin]);
+  }, [sessionOwner, persistenceSlug, workflowSelection, workflows, setSelectedWorkflowId, mode, token, user?.is_admin, navigate]);
 
   const handleSidebarThreadDeleted = useCallback((deletedThreadId: string) => {
     // If the deleted thread is the current one, clear it and start fresh
@@ -744,8 +784,9 @@ export function MyChat() {
       clearStoredThreadId(sessionOwner, persistenceSlug);
       setInitialThreadId(null);
       setChatInstanceKey((value) => value + 1);
+      navigate("/", { replace: true });
     }
-  }, [sessionOwner, persistenceSlug, currentThread, initialThreadId]);
+  }, [sessionOwner, persistenceSlug, currentThread, initialThreadId, navigate]);
 
   const handleNewConversation = useCallback(() => {
     // Clear stored thread to start a new conversation
@@ -756,11 +797,14 @@ export function MyChat() {
     // They will be removed from the set when streaming ends via onResponseEnd
     setIsNewConversationStreaming(false);
     wasNewConversationStreamingRef.current = false;
-    setInitialThreadId(null);
-    setChatInstanceKey((value) => value + 1);
     // Mark that we're in a new conversation draft state
     isNewConversationDraftRef.current = true;
-  }, [sessionOwner, persistenceSlug]);
+    // Update state first, then navigate
+    setInitialThreadId(null);
+    setChatInstanceKey((value) => value + 1);
+    // Navigate to home URL
+    navigate("/", { replace: true });
+  }, [sessionOwner, persistenceSlug, navigate]);
 
   // Handle workflow change from the selector dropdown
   const handleWorkflowSelectorChange = useCallback(async (workflowId: number) => {
