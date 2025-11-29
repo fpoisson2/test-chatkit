@@ -10,7 +10,6 @@ import { WorkflowChatInstance } from "./components/my-chat/WorkflowChatInstance"
 import { WorkflowSelector } from "./components/my-chat/WorkflowSelector";
 import { ChatWorkflowSidebar, type WorkflowActivation } from "./features/workflows/WorkflowSidebar";
 import type { ThreadWorkflowMetadata } from "./features/workflows/ConversationsSidebarSection";
-import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import {
   useAppearanceSettings,
   type AppearanceWorkflowReference,
@@ -23,6 +22,7 @@ import { useOutboundCallSession } from "./hooks/useOutboundCallSession";
 import { useWorkflowCapabilities } from "./hooks/useWorkflowCapabilities";
 import { useChatApiConfig } from "./hooks/useChatApiConfig";
 import { useWorkflowSidebar } from "./features/workflows/WorkflowSidebarProvider";
+import { useLtiContext } from "./hooks/useLtiContext";
 import { getOrCreateDeviceId } from "./utils/device";
 import { loadComposerModelsConfig } from "./utils/composerModels";
 import { useWorkflowComposerModels } from "./hooks/useWorkflowComposerModels";
@@ -33,8 +33,14 @@ import {
   loadStoredThreadId,
   persistStoredThreadId,
 } from "./utils/chatkitThread";
+import {
+  buildSurfacePalette,
+  resolveSurfaceColors,
+  resolveThemeColorScheme,
+  normalizeText,
+  parseStartScreenPrompts,
+} from "./utils/appearance";
 import type { WorkflowSummary } from "./types/workflows";
-import type { AppearanceSettings } from "./utils/backend";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -80,120 +86,6 @@ const resolvePersistenceSlug = (
 
 const buildSessionStorageKey = (owner: string, slug: string | null | undefined) =>
   `${owner}:${normalizeWorkflowStorageKey(slug)}`;
-
-type ResolvedColorScheme = "light" | "dark";
-
-const clampToRange = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-type SurfacePalette = {
-  light: { background: string; foreground: string; border: string };
-  dark: { background: string; foreground: string; border: string };
-};
-
-const DEFAULT_LIGHT_SURFACE = "#ffffff";
-const DEFAULT_LIGHT_SURFACE_SUBTLE = "#f4f4f5";
-const DEFAULT_LIGHT_BORDER = "rgba(24, 24, 27, 0.12)";
-const DEFAULT_DARK_SURFACE = "#18181b";
-const DEFAULT_DARK_SURFACE_SUBTLE = "#111114";
-const DEFAULT_DARK_BORDER = "rgba(228, 228, 231, 0.16)";
-
-const buildSurfacePalette = (settings: AppearanceSettings): SurfacePalette => {
-  if (!settings.use_custom_surface_colors) {
-    return {
-      light: {
-        background: DEFAULT_LIGHT_SURFACE,
-        foreground: DEFAULT_LIGHT_SURFACE_SUBTLE,
-        border: DEFAULT_LIGHT_BORDER,
-      },
-      dark: {
-        background: DEFAULT_DARK_SURFACE,
-        foreground: DEFAULT_DARK_SURFACE_SUBTLE,
-        border: DEFAULT_DARK_BORDER,
-      },
-    };
-  }
-
-  const hue = clampToRange(settings.surface_hue ?? 222, 0, 360);
-  const tint = clampToRange(settings.surface_tint ?? 92, 0, 100);
-  const shade = clampToRange(settings.surface_shade ?? 16, 0, 100);
-
-  const lightBackground = `hsl(${hue} 28% ${clampToRange(tint, 20, 98)}%)`;
-  const lightForeground = `hsl(${hue} 32% ${clampToRange(tint + 4, 20, 100)}%)`;
-  const lightBorder = `hsla(${hue} 30% ${clampToRange(tint - 38, 0, 90)}%, 0.28)`;
-  const darkBackground = `hsl(${hue} 20% ${clampToRange(shade, 2, 42)}%)`;
-  const darkForeground = `hsl(${hue} 18% ${clampToRange(shade - 6, 0, 32)}%)`;
-  const darkBorder = `hsla(${hue} 34% ${clampToRange(shade + 30, 0, 100)}%, 0.28)`;
-
-  return {
-    light: {
-      background: lightBackground,
-      foreground: lightForeground,
-      border: lightBorder,
-    },
-    dark: {
-      background: darkBackground,
-      foreground: darkForeground,
-      border: darkBorder,
-    },
-  };
-};
-
-const resolveSurfaceColors = (
-  palette: SurfacePalette,
-  scheme: ResolvedColorScheme,
-): SurfacePalette["light"] =>
-  scheme === "dark" ? palette.dark : palette.light;
-
-const resolveThemeColorScheme = (
-  settings: AppearanceSettings,
-  preferred: ResolvedColorScheme,
-): ResolvedColorScheme => {
-  if (settings.color_scheme === "light" || settings.color_scheme === "dark") {
-    return settings.color_scheme;
-  }
-  return preferred;
-};
-
-const normalizeText = (value: string | null | undefined): string | null => {
-  const trimmed = value?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : null;
-};
-
-const parseStartScreenPrompts = (
-  raw: string | null | undefined,
-): StartScreenPrompt[] => {
-  if (!raw) {
-    return [];
-  }
-
-  return raw
-    .split(/\r?\n/)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .map((entry, index) => {
-      const separatorIndex = entry.indexOf("|");
-
-      let label = entry;
-      let prompt = entry;
-
-      if (separatorIndex !== -1) {
-        const rawLabel = entry.slice(0, separatorIndex).trim();
-        const rawPrompt = entry.slice(separatorIndex + 1).trim();
-
-        if (rawLabel || rawPrompt) {
-          label = rawLabel || rawPrompt;
-          prompt = rawPrompt || rawLabel || entry;
-        }
-      }
-
-      return {
-        label,
-        prompt,
-        ...(index === 0 ? { icon: "sparkle" as const } : {}),
-      };
-    });
-};
 
 export function MyChat() {
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
@@ -265,9 +157,13 @@ export function MyChat() {
   // Detect LTI user early so we can use it in chatkitOptions
   const isLtiUser = user?.is_lti ?? false;
 
-  // Detect LTI context even before user is loaded (for early loading overlay)
-  // This checks if we're coming from an LTI launch by looking for the workflow ID in localStorage
-  const isLtiContext = isLtiUser || (localStorage.getItem('lti_launch_workflow_id') !== null);
+  // Use LTI context hook for loading overlay and sidebar management
+  const { isLtiContext, shouldShowLoadingOverlay } = useLtiContext({
+    isLtiUser,
+    activeWorkflow,
+    workflowsLoading,
+    setHideSidebar,
+  });
 
   useEffect(() => {
     latestWorkflowSelectionRef.current = workflowSelection;
@@ -1228,58 +1124,6 @@ export function MyChat() {
   const handleRequestRefreshReady = useCallback((requestRefresh: () => Promise<void>) => {
     requestRefreshRef.current = requestRefresh;
   }, []);
-
-  // Hide sidebar immediately for LTI users (before workflow loads)
-  useEffect(() => {
-    if (isLtiContext) {
-      setHideSidebar(true);
-    }
-  }, [isLtiContext, setHideSidebar]);
-
-  // Apply LTI sidebar visibility setting based on workflow config
-  useEffect(() => {
-    const shouldApplyLtiOptions = activeWorkflow?.lti_enabled && isLtiUser;
-    const shouldHideSidebar = shouldApplyLtiOptions && !activeWorkflow?.lti_show_sidebar;
-
-    if (shouldApplyLtiOptions) {
-      setHideSidebar(shouldHideSidebar);
-    }
-
-    // Cleanup: restore sidebar when unmounting or when conditions change
-    return () => {
-      if (!isLtiUser) {
-        setHideSidebar(false);
-      }
-    };
-  }, [activeWorkflow?.lti_enabled, activeWorkflow?.lti_show_sidebar, isLtiUser, setHideSidebar]);
-
-  // Show loading overlay for LTI users until workflow is loaded and ChatKit has rendered
-  const [ltiReady, setLtiReady] = useState(false);
-
-  useEffect(() => {
-    // If not in LTI context, mark as ready immediately
-    if (!isLtiContext) {
-      setLtiReady(true);
-      return;
-    }
-
-    // Once ready, stay ready (don't reset)
-    if (ltiReady || !activeWorkflow || workflowsLoading) {
-      return;
-    }
-
-    console.log('[MyChat] LTI workflow selected, waiting for ChatKit to render...');
-
-    // Give ChatKit time to initialize and render (covers all app.init phases)
-    const timer = setTimeout(() => {
-      console.log('[MyChat] LTI initialization complete');
-      setLtiReady(true);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [ltiReady, isLtiContext, activeWorkflow, workflowsLoading]);
-
-  const shouldShowLoadingOverlay = isLtiContext && !ltiReady;
 
   return (
     <>
