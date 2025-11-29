@@ -27,11 +27,18 @@ router = APIRouter()
 
 
 async def _authenticate_websocket(websocket: WebSocket) -> dict | None:
-    """Authenticate WebSocket connection using JWT token from query params.
+    """Authenticate WebSocket connection using JWT token from query params or headers.
 
     Returns the decoded token payload if valid, None otherwise.
     """
     token = websocket.query_params.get("token")
+
+    if not token:
+        # Try Authorization header
+        auth_header = websocket.headers.get("authorization")
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+
     if not token:
         logger.warning("WebSocket connection rejected: missing token")
         return None

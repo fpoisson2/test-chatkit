@@ -48,6 +48,7 @@ from chatkit.types import (
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
     ThreadItemRemovedEvent,
+    ThreadItemReplacedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadsCreateReq,
@@ -62,6 +63,8 @@ from chatkit.types import (
     WorkflowItem,
     WorkflowTaskAdded,
     WorkflowTaskUpdated,
+    AssistantMessageContentPartAdded,
+    AssistantMessageContentPartTextDelta,
 )
 from openai.types.responses import (
     ResponseInputContentParam,
@@ -148,6 +151,196 @@ def _get_run_workflow():
     from .. import chatkit as chatkit_module
 
     return chatkit_module.run_workflow
+
+
+_stream_registry: dict[str, StreamProcessor] = {}
+
+
+class StreamProcessor:
+    """Manages an active stream, persistence, and multiple listeners."""
+
+    def __init__(self, thread: ThreadMetadata, store: Any):
+        self.thread = thread
+        self.store = store
+        self.event_queue: asyncio.Queue[Any] = asyncio.Queue()
+        self.active_items: dict[str, Any] = {}
+        self.listeners: list[asyncio.Queue[Any]] = []
+        self._task: asyncio.Task[None] | None = None
+        self._workflow_task: asyncio.Task[None] | None = None
+        self._lock = asyncio.Lock()
+        self._context: ChatKitRequestContext | None = None
+        logger.debug("StreamProcessor initialized for thread %s", thread.id)
+
+    def update_context(self, context: ChatKitRequestContext) -> None:
+        self._context = context
+
+    def start(self, workflow_task: asyncio.Task[None]) -> None:
+        if self._task is not None:
+            logger.debug("StreamProcessor already started for thread %s", self.thread.id)
+            return
+        logger.info("Starting StreamProcessor loop for thread %s", self.thread.id)
+        self._workflow_task = workflow_task
+        self._task = asyncio.create_task(self._run_loop())
+        self._task.add_done_callback(_log_async_exception)
+
+    async def add_listener(self) -> asyncio.Queue[Any]:
+        logger.info("Adding listener to StreamProcessor for thread %s", self.thread.id)
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        async with self._lock:
+            # Send current state snapshot
+            count = 0
+            for item in self.active_items.values():
+                await queue.put(ThreadItemReplacedEvent(item=item))
+                count += 1
+            self.listeners.append(queue)
+        logger.debug("Listener added. Replayed %d active items.", count)
+        return queue
+
+    async def remove_listener(self, queue: asyncio.Queue[Any]) -> None:
+        logger.info("Removing listener from StreamProcessor for thread %s", self.thread.id)
+        async with self._lock:
+            if queue in self.listeners:
+                self.listeners.remove(queue)
+
+    async def _run_loop(self) -> None:
+        import time
+
+        last_save_time: dict[str, float] = {}
+        SAVE_INTERVAL = 1.0  # seconds
+        logger.debug("StreamProcessor loop running for thread %s", self.thread.id)
+
+        try:
+            while True:
+                event = await self.event_queue.get()
+
+                if event is _STREAM_DONE:
+                    logger.info("StreamProcessor received _STREAM_DONE for thread %s", self.thread.id)
+                    # Broadcast done to all listeners
+                    async with self._lock:
+                        for listener in self.listeners:
+                            await listener.put(_STREAM_DONE)
+                    break
+
+                # Update active state
+                if isinstance(event, ThreadItemAddedEvent):
+                    # Keep a deep copy of the item
+                    if hasattr(event.item, "model_copy"):
+                        self.active_items[event.item.id] = event.item.model_copy(
+                            deep=True
+                        )
+                    else:
+                        self.active_items[event.item.id] = event.item
+
+                    # Always persist new items to ensure they exist in DB (upsert)
+                    if self._context:
+                        try:
+                            logger.debug("Persistence: Adding item %s", event.item.id)
+                            await self.store.add_thread_item(
+                                self.thread.id, event.item, context=self._context
+                            )
+                        except Exception:
+                            logger.warning(
+                                "Failed to persist new item %s during stream",
+                                event.item.id,
+                                exc_info=True,
+                            )
+
+                elif isinstance(event, ThreadItemUpdated):
+                    item = self.active_items.get(event.item_id)
+                    if item:
+                        # Update the in-memory item
+                        if isinstance(item, AssistantMessageItem):
+                            if isinstance(event.update, AssistantMessageContentPartTextDelta):
+                                content_index = event.update.content_index
+                                delta = event.update.delta
+                                if 0 <= content_index < len(item.content):
+                                    content = item.content[content_index]
+                                    if hasattr(content, "text"):
+                                        content.text += delta
+                            elif hasattr(event.update, "type") and event.update.type == "assistant_message.content_part.added":
+                                # Handle new content part
+                                content_index = getattr(event.update, "content_index", -1)
+                                new_content = getattr(event.update, "content", None)
+                                if new_content and content_index >= 0:
+                                    if content_index >= len(item.content):
+                                        item.content.append(new_content)
+                                    else:
+                                        item.content.insert(content_index, new_content)
+
+                        elif (
+                            hasattr(event.update, "type")
+                            and event.update.type == "widget.root.updated"
+                        ):
+                             if hasattr(item, "widget") and hasattr(event.update, "widget"):
+                                 item.widget = event.update.widget
+
+                        elif (
+                            hasattr(event.update, "type")
+                            and event.update.type in ("workflow.task.added", "workflow.task.updated")
+                        ):
+                            # Handle workflow task updates
+                            if hasattr(item, "workflow") and item.workflow:
+                                tasks = item.workflow.tasks
+                                if event.update.type == "workflow.task.added":
+                                    # Ensure we don't duplicate if replaying
+                                    if event.update.task_index >= len(tasks):
+                                        tasks.append(event.update.task)
+                                elif event.update.type == "workflow.task.updated":
+                                    if 0 <= event.update.task_index < len(tasks):
+                                        tasks[event.update.task_index] = event.update.task
+
+                        # Persist updates periodically (ALWAYS)
+                        now = time.time()
+                        if (
+                            now - last_save_time.get(event.item_id, 0)
+                            > SAVE_INTERVAL
+                        ) and self._context:
+                            try:
+                                logger.debug("Persistence: Saving item update %s", event.item_id)
+                                await self.store.save_item(
+                                    self.thread.id, item, context=self._context
+                                )
+                                last_save_time[event.item_id] = now
+                            except Exception:
+                                logger.warning(
+                                    "Failed to persist item %s during stream",
+                                    event.item_id,
+                                    exc_info=True,
+                                )
+
+                elif isinstance(event, ThreadItemDoneEvent):
+                    self.active_items.pop(event.item.id, None)
+                    last_save_time.pop(event.item.id, None)
+                    # Always persist final state
+                    if self._context:
+                        try:
+                            # Replace temporary IDs before final save
+                            item = event.item
+                            if item.id.startswith("__"):
+                                # This logic duplicates server.py _process_events but is needed here
+                                pass
+
+                            logger.debug("Persistence: Final save for item %s", item.id)
+                            await self.store.add_thread_item(
+                                self.thread.id, item, context=self._context
+                            )
+                        except Exception:
+                            logger.warning(
+                                "Failed to persist final item %s",
+                                event.item.id,
+                                exc_info=True,
+                            )
+
+                # Broadcast event
+                async with self._lock:
+                    for listener in self.listeners:
+                        await listener.put(event)
+
+        finally:
+            logger.info("StreamProcessor loop finished for thread %s", self.thread.id)
+            # Cleanup registry
+            if _stream_registry.get(self.thread.id) == self:
+                _stream_registry.pop(self.thread.id, None)
 
 
 class ImageAwareThreadItemConverter(ThreadItemConverter):
@@ -555,6 +748,45 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         return AutoStartConfiguration(True, user_text, assistant_text)
 
+    def _ensure_stream_processor(self, thread: ThreadMetadata) -> StreamProcessor:
+        """Get or create a stream processor for the given thread."""
+        processor = _stream_registry.get(thread.id)
+        if processor is None:
+            processor = StreamProcessor(
+                thread=thread,
+                store=self.store,
+            )
+            _stream_registry[thread.id] = processor
+            logger.info("Created new StreamProcessor for thread %s", thread.id)
+        return processor
+
+    async def resume_stream(
+        self,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        logger.info("Resuming stream for thread %s", thread.id)
+        processor = _stream_registry.get(thread.id)
+        if processor is None:
+            logger.warning("No active stream found for thread %s", thread.id)
+            return
+
+        # Ensure processor has the latest request context for saving
+        processor.update_context(context)
+
+        queue = await processor.add_listener()
+        logger.info("Attached to StreamProcessor for thread %s", thread.id)
+        try:
+            while True:
+                event = await queue.get()
+                if event is _STREAM_DONE:
+                    logger.info("Resume stream done for thread %s", thread.id)
+                    break
+                yield event
+        finally:
+            await processor.remove_listener(queue)
+            logger.info("Detached from StreamProcessor for thread %s", thread.id)
+
     async def respond(
         self,
         thread: ThreadMetadata,
@@ -719,83 +951,58 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         if isinstance(previous_response_id, str):
             agent_context.previous_response_id = previous_response_id
 
-        event_queue: asyncio.Queue[Any] = asyncio.Queue()
+        # Use StreamProcessor instead of direct execution
+        processor = self._ensure_stream_processor(thread)
+        processor.update_context(context)
 
+        # Start workflow within processor
+        workflow_task = asyncio.create_task(
+            self._execute_workflow(
+                thread=thread,
+                agent_context=agent_context,
+                workflow_input=workflow_input,
+                event_queue=processor.event_queue,
+                thread_items_history=history.data,
+                thread_item_converter=thread_item_converter,
+                input_user_message=input_user_message,
+            )
+        )
+        workflow_task.add_done_callback(_log_async_exception)
+
+        # Start processor loop
+        processor.start(workflow_task)
+
+        # Send initial events
         for event in pre_stream_events:
             yield event
 
         if workflow_input is None:
             return
 
-        workflow_result = _WorkflowStreamResult(
-            runner=self._execute_workflow(
-                thread=thread,
-                agent_context=agent_context,
-                workflow_input=workflow_input,
-                event_queue=event_queue,
-                thread_items_history=history.data,
-                thread_item_converter=thread_item_converter,
-                input_user_message=input_user_message,
-            ),
-            event_queue=event_queue,
-        )
-
-        async def _workflow_stream() -> AsyncIterator[ThreadStreamEvent]:
-            async for event in workflow_result.stream_events():
-                yield event
-
-        drain_started = False
-
-        async def _drain_remaining_events() -> None:
-            try:
-                logger.debug(
-                    "Poursuite du flux du workflow %s après annulation", thread.id
-                )
-                async for _ in self._process_events(
-                    thread,
-                    context,
-                    lambda: _workflow_stream(),
-                ):
-                    pass
-                try:
-                    await self.store.save_thread(thread, context=context)
-                except Exception:  # pragma: no cover - best effort persistence
-                    logger.warning(
-                        "Impossible d'enregistrer l'état final du fil %s (annulation)",
-                        thread.id,
-                        exc_info=True,
-                    )
-                logger.debug(
-                    "Flux du workflow %s terminé en arrière-plan (statut=%s)",
-                    thread.id,
-                    getattr(getattr(thread, "status", None), "type", None),
-                )
-            except Exception:  # pragma: no cover - robustesse best effort
-                logger.warning(
-                    "Échec lors de la poursuite du workflow en tâche de fond",
-                    exc_info=True,
-                )
-
-        def _schedule_background_drain() -> None:
-            nonlocal drain_started
-            if drain_started:
-                return
-            drain_started = True
-            background_task = asyncio.create_task(_drain_remaining_events())
-            background_task.add_done_callback(_log_async_exception)
+        # Attach listener to processor
+        queue = await processor.add_listener()
 
         # Store original title to detect changes
         original_title = thread.title
 
-        stream_completed = False
+        async def _stream_source():
+            try:
+                while True:
+                    event = await queue.get()
+                    if event is _STREAM_DONE:
+                        break
+                    yield event
+            finally:
+                await processor.remove_listener(queue)
+
         try:
+            # Consume queue via _process_events to ensure persistence
             async for event in self._process_events(
                 thread,
                 context,
-                lambda: _workflow_stream(),
+                _stream_source,
             ):
                 yield event
-            stream_completed = True
 
             # Wait for title generation to complete and emit update event if title changed
             if title_task is not None:
@@ -812,8 +1019,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     )
                     yield ThreadUpdatedEvent(thread=self._to_thread_response(thread))
         finally:
-            if not stream_completed:
-                _schedule_background_drain()
+            # _stream_source already removes listener, but just in case
+            await processor.remove_listener(queue)
 
     def _simplify_input_for_title(
         self,
