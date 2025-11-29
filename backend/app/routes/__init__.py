@@ -5,6 +5,7 @@ __all__ = [
     "auth",
     "chatkit",
     "docs",
+    "health",
     "languages",
     "lti",
     "mcp",
