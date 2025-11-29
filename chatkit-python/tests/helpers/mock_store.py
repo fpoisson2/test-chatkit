@@ -190,6 +190,7 @@ class SQLiteStore(Store[RequestContext]):
         after: str | None,
         order: str,
         context: RequestContext,
+        all_workflows: bool = False,
     ) -> Page[ThreadMetadata]:
         with self._create_connection() as conn:
             created_after: str | None = None
