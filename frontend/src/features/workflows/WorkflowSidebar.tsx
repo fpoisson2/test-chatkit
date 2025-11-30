@@ -1393,20 +1393,18 @@ export const ChatWorkflowSidebar = ({
 
     return (
       <div className="chatkit-sidebar__content-wrapper">
-        {/* Search input - only show if workflows are visible */}
-        {!hideWorkflows && (
-          <div className="chatkit-sidebar__search-wrapper">
-            <SidebarSearchInput
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder={t("sidebar.searchPlaceholder")}
-              ariaLabel={t("sidebar.searchAriaLabel")}
-            />
-          </div>
-        )}
+        {/* Search input */}
+        <div className="chatkit-sidebar__search-wrapper">
+          <SidebarSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={t("sidebar.searchPlaceholder")}
+            ariaLabel={t("sidebar.searchAriaLabel")}
+          />
+        </div>
 
-        {/* Workflows section - hidden when hideWorkflows is true */}
-        {!hideWorkflows && (
+        {/* Workflows section - hidden when hideWorkflows is true unless searching */}
+        {(!hideWorkflows || searchQuery.trim().length > 0) && (
           <WorkflowSidebarSection
             sectionId={sectionId}
             title={t("workflows.defaultSectionTitle")}
@@ -1436,7 +1434,7 @@ export const ChatWorkflowSidebar = ({
             onThreadSelect={onThreadSelect}
             onThreadDeleted={onThreadDeleted}
             onNewConversation={onNewConversation}
-            searchQuery={hideWorkflows ? "" : searchQuery}
+            searchQuery={searchQuery}
             maxVisible={10}
             title={t("sidebar.conversationsTitle")}
             emptyMessage={t("sidebar.conversationsEmpty")}
