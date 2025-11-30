@@ -151,6 +151,22 @@ def prepare_agents(
             )
             continue
 
+        if step.kind == "computer_use":
+            # Check for agent mode in computer_use config
+            parameters = step.parameters or {}
+            tools = parameters.get("tools", [])
+            computer_use_config = None
+            for tool in tools:
+                if isinstance(tool, dict) and tool.get("type") == "computer_use":
+                    computer_use_config = tool.get("computer_use", tool)
+                    break
+
+            mode = computer_use_config.get("mode", "manual") if computer_use_config else "manual"
+            if mode != "agent":
+                # Skip building agent for manual mode
+                logger.debug("Skipping agent build for computer_use step %s (mode=%s)", step.slug, mode)
+                continue
+
         agent_key = (step.agent_key or "").strip()
         builder = AGENT_BUILDERS.get(agent_key)
         overrides_raw = step.parameters or {}
