@@ -127,12 +127,12 @@ export function useScreencast({
 
       if (isLastComputerUseTask && computerUseTask.debug_url_token && !isEffectivelyDone &&
           !failedScreencastTokens.has(computerUseTask.debug_url_token)) {
-        if (taskIsLoading || isLastWorkflowAndStreaming) {
-          newActiveScreencast = {
-            token: computerUseTask.debug_url_token,
-            itemId: item.id,
-          };
-        }
+        // Show screencast if it's not done (terminal) and has a token, regardless of loading state
+        // This supports manual mode where the task might be paused waiting for user input
+        newActiveScreencast = {
+          token: computerUseTask.debug_url_token,
+          itemId: item.id,
+        };
       }
     });
 

@@ -147,6 +147,12 @@ export function DevToolsScreencast({
         const host = window.location.host;
         wsUrl = `${protocol}//${host}${wsUrl}`;
 
+        // Append JWT auth token if available (WebSocket API doesn't support headers)
+        if (authToken) {
+          const separator = wsUrl.includes('?') ? '&' : '?';
+          wsUrl = `${wsUrl}${separator}auth_token=${encodeURIComponent(authToken)}`;
+        }
+
         console.log('[DevToolsScreencast] Connecting to proxy WebSocket:', wsUrl);
         ws = new WebSocket(wsUrl);
         wsRef.current = ws;
