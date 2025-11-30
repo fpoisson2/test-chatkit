@@ -960,6 +960,7 @@ async def stream_agent_response(
     image_tasks: dict[tuple[str, int], ImageTaskTracker] = {}
     computer_tasks: dict[str, ComputerTaskTracker] = {}
     computer_tasks_by_call_id: dict[str, ComputerTaskTracker] = {}
+    active_computer_tracker: ComputerTaskTracker | None = None
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
     current_reasoning_id: str | None = None
@@ -989,7 +990,7 @@ async def stream_agent_response(
         ctx.workflow_item = second_last_item
 
     def end_workflow(item: WorkflowItem):
-        nonlocal search_tasks, image_tasks
+        nonlocal search_tasks, image_tasks, active_computer_tracker
         if item == ctx.workflow_item:
             ctx.workflow_item = None
         delta = datetime.now() - item.created_at
@@ -1004,6 +1005,7 @@ async def stream_agent_response(
         image_tasks.clear()
         computer_tasks.clear()
         computer_tasks_by_call_id.clear()
+        active_computer_tracker = None
         function_tasks.clear()
         function_tasks_by_call_id.clear()
         return ThreadItemDoneEvent(item=item)
@@ -1292,50 +1294,59 @@ async def stream_agent_response(
         *,
         call_id: str | None = None,
     ) -> tuple[ComputerTaskTracker, bool, list[ThreadStreamEvent]]:
+        nonlocal active_computer_tracker
         events = ensure_workflow()
         tracker = computer_tasks.get(item_id)
         task_added = False
 
         if tracker is None:
-            # Get debug_url from computer_tool if available and register a secure session
-            debug_url = None
-            debug_url_token = None
-            computer_tool = get_current_computer_tool()
-            if computer_tool is not None:
-                try:
-                    computer = getattr(computer_tool, "computer", None)
-                    if computer is not None:
-                        debug_url = getattr(computer, "debug_url", None)
-                        if callable(debug_url):
-                            debug_url = debug_url()
-                        if debug_url:
-                            LOGGER.info(f"[ComputerTaskTracker] Obtained debug_url: {debug_url}")
-                            # Register a secure debug session for proxy access
-                            callback = get_debug_session_callback()
-                            if callback is not None:
-                                try:
-                                    # TODO: Pass user_id for better authorization
-                                    debug_url_token = callback(debug_url, user_id=None)
-                                    LOGGER.info(f"[ComputerTaskTracker] Registered debug session token: {debug_url_token[:8]}...")
-                                except Exception as exc:
-                                    LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
-                            else:
-                                LOGGER.warning("[ComputerTaskTracker] Debug session callback not set - screencast will not be available")
-                except Exception as exc:
-                    LOGGER.debug(f"[ComputerTaskTracker] Failed to get debug_url: {exc}")
+            # Check if we already have an active computer tracker for this workflow
+            # If so, reuse it to prevent flickering/closing of the screencast
+            if active_computer_tracker is not None:
+                tracker = active_computer_tracker
+                computer_tasks[item_id] = tracker
+                # Note: We don't set task_added=True because it's already in the workflow
+            else:
+                # Get debug_url from computer_tool if available and register a secure session
+                debug_url = None
+                debug_url_token = None
+                computer_tool = get_current_computer_tool()
+                if computer_tool is not None:
+                    try:
+                        computer = getattr(computer_tool, "computer", None)
+                        if computer is not None:
+                            debug_url = getattr(computer, "debug_url", None)
+                            if callable(debug_url):
+                                debug_url = debug_url()
+                            if debug_url:
+                                LOGGER.info(f"[ComputerTaskTracker] Obtained debug_url: {debug_url}")
+                                # Register a secure debug session for proxy access
+                                callback = get_debug_session_callback()
+                                if callback is not None:
+                                    try:
+                                        # TODO: Pass user_id for better authorization
+                                        debug_url_token = callback(debug_url, user_id=None)
+                                        LOGGER.info(f"[ComputerTaskTracker] Registered debug session token: {debug_url_token[:8]}...")
+                                    except Exception as exc:
+                                        LOGGER.warning(f"[ComputerTaskTracker] Failed to register debug session: {exc}")
+                                else:
+                                    LOGGER.warning("[ComputerTaskTracker] Debug session callback not set - screencast will not be available")
+                    except Exception as exc:
+                        LOGGER.debug(f"[ComputerTaskTracker] Failed to get debug_url: {exc}")
 
-            tracker = ComputerTaskTracker(
-                item_id=item_id,
-                task=ComputerUseTask(
-                    status_indicator="loading",
-                    title=None,
-                    screenshots=[],
-                    action_sequence=[],
-                    debug_url=debug_url,
-                    debug_url_token=debug_url_token,
-                ),
-            )
-            computer_tasks[item_id] = tracker
+                tracker = ComputerTaskTracker(
+                    item_id=item_id,
+                    task=ComputerUseTask(
+                        status_indicator="loading",
+                        title=None,
+                        screenshots=[],
+                        action_sequence=[],
+                        debug_url=debug_url,
+                        debug_url_token=debug_url_token,
+                    ),
+                )
+                computer_tasks[item_id] = tracker
+                active_computer_tracker = tracker
 
         removed_call_id: str | None = None
         if call_id:
