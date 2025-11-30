@@ -14,10 +14,13 @@ export type ImageGenerationToolConfig = {
   partial_images?: number;
 };
 
+export type ComputerUseMode = "agent" | "manual";
+
 export type ComputerUseConfig = {
   display_width: number;
   display_height: number;
   environment: string;
+  mode: ComputerUseMode;
   start_url?: string;
   // SSH-specific configuration
   ssh_host?: string;
@@ -2947,6 +2950,7 @@ const isComputerUseTool = (value: unknown): value is Record<string, unknown> => 
 
 const DEFAULT_COMPUTER_USE_WIDTH = 1024;
 const DEFAULT_COMPUTER_USE_HEIGHT = 768;
+const DEFAULT_COMPUTER_USE_MODE: ComputerUseMode = "agent";
 const SUPPORTED_COMPUTER_ENVIRONMENTS = new Set([
   "browser",
   "mac",
@@ -2955,6 +2959,13 @@ const SUPPORTED_COMPUTER_ENVIRONMENTS = new Set([
   "ssh",
   "vnc",
 ]);
+
+const sanitizeComputerUseMode = (value: unknown): ComputerUseMode => {
+  if (value === "agent" || value === "manual") {
+    return value;
+  }
+  return DEFAULT_COMPUTER_USE_MODE;
+};
 
 const sanitizeComputerDimension = (value: unknown, fallback: number): number => {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -3002,11 +3013,13 @@ const sanitizeComputerUseConfig = (
     DEFAULT_COMPUTER_USE_HEIGHT,
   );
   const environment = sanitizeComputerEnvironment(config.environment);
+  const mode = sanitizeComputerUseMode(config.mode);
 
   const payload: ComputerUseConfig = {
     display_width: width,
     display_height: height,
     environment,
+    mode,
   };
 
   if (typeof config.start_url === "string" && config.start_url.trim()) {
@@ -3866,11 +3879,15 @@ export const getAgentComputerUseConfig = (
     const environment = sanitizeComputerEnvironment(
       (source as Record<string, unknown>).environment,
     );
+    const mode = sanitizeComputerUseMode(
+      (source as Record<string, unknown>).mode,
+    );
 
     const result: ComputerUseConfig = {
       display_width: width,
       display_height: height,
       environment,
+      mode,
     };
 
     const startUrlCandidate =

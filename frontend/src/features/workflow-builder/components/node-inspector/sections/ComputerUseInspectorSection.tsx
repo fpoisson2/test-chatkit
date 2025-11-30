@@ -18,6 +18,7 @@ export const ComputerUseInspectorSection = ({
     display_width: 1024,
     display_height: 768,
     environment: "browser",
+    mode: "agent",
   };
 
   const isSSH = config.environment === "ssh";
@@ -38,6 +39,12 @@ export const ComputerUseInspectorSection = ({
 
   const handleEnvironmentChange = (value: string) => {
     onComputerUseConfigChange(nodeId, { ...config, environment: value });
+  };
+
+  const handleModeChange = (value: string) => {
+    if (value === "agent" || value === "manual") {
+      onComputerUseConfigChange(nodeId, { ...config, mode: value });
+    }
   };
 
   const handleStartUrlChange = (value: string) => {
@@ -182,6 +189,20 @@ export const ComputerUseInspectorSection = ({
               {env}
             </option>
           ))}
+        </select>
+      </label>
+
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
+          Mode
+          <HelpTooltip label="Mode de fonctionnement: Agent (autonome) ou Manuel (contrôlé étape par étape)." />
+        </span>
+        <select
+          value={config.mode || "agent"}
+          onChange={(event) => handleModeChange(event.target.value)}
+        >
+          <option value="agent">Agent</option>
+          <option value="manual">Manuel</option>
         </select>
       </label>
 
