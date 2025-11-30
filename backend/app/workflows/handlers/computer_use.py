@@ -16,6 +16,7 @@ from chatkit.types import (
 )
 
 from .base import BaseNodeHandler
+from .agent import AgentNodeHandler
 
 if TYPE_CHECKING:  # pragma: no cover
     from ...models import WorkflowStep
@@ -35,7 +36,30 @@ class ComputerUseNodeHandler(BaseNodeHandler):
     async def execute(
         self, node: WorkflowStep, context: ExecutionContext
     ) -> NodeResult:
-        """Execute computer_use node - initialize environment and wait for user to finish."""
+        """Execute computer_use node.
+
+        If mode is 'agent': Delegate to AgentNodeHandler to run as an agent.
+        If mode is 'manual': Initialize environment and wait for user to finish.
+        """
+        # First, check the mode
+        parameters = node.parameters or {}
+        tools = parameters.get("tools", [])
+        computer_use_config = None
+        for tool in tools:
+            if isinstance(tool, dict) and tool.get("type") == "computer_use":
+                computer_use_config = tool.get("computer_use", tool)
+                break
+
+        mode = computer_use_config.get("mode", "manual") if computer_use_config else "manual"
+
+        if mode == "agent":
+            logger.info("Executing computer_use node %s in AGENT mode", node.slug)
+            # Delegate to AgentNodeHandler
+            # We don't pass an executor because v2 gets dependencies from context
+            agent_handler = AgentNodeHandler()
+            return await agent_handler._execute_agent(node, context)
+
+        # Manual mode logic
         from ..runtime.state_machine import NodeResult
         from ...tool_factory import build_computer_use_tool
         from ...chatkit_server.context import (
