@@ -137,7 +137,7 @@ html {
 body {
   margin: 0;
   height: 100%;
-  overflow: hidden;
+  /* overflow: hidden; Removed to allow mobile pull-to-refresh */
   background: var(--main-background);
   color: var(--text-color);
   display: flex;
