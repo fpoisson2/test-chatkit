@@ -152,4 +152,6 @@ export interface ChatKitControl {
   retryAfterItem: (itemId: string) => Promise<void>;
   submitFeedback: (itemIds: string[], kind: FeedbackKind) => Promise<void>;
   updateThreadMetadata: (metadata: Record<string, unknown>) => Promise<void>;
+  /** Clear any displayed error */
+  clearError: () => void;
 }

@@ -2,7 +2,7 @@
  * Hook principal pour gérer le chat ChatKit
  * Ce hook orchestre les hooks spécialisés pour une séparation claire des responsabilités
  */
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useCallback } from 'react';
 import type { ChatKitOptions, ChatKitControl, UserMessageContent } from '../types';
 import { useThreadState } from './useThreadState';
 import { useThreadLoading } from './useThreadLoading';
@@ -76,7 +76,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   });
 
   // Message streaming
-  const { error, sendUserMessage, resumeStream } = useMessageStreaming({
+  const { error, setError, sendUserMessage, resumeStream } = useMessageStreaming({
     api,
     thread,
     threadCacheRef,
@@ -145,6 +145,10 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     [getLoadingThreadIds, loadingByThread]
   );
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, [setError]);
+
   // Create control object
   const control: ChatKitControl = {
     thread,
@@ -158,6 +162,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     retryAfterItem,
     submitFeedback,
     updateThreadMetadata,
+    clearError,
   };
 
   return {

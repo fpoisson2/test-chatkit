@@ -26,6 +26,7 @@ export interface UseMessageStreamingOptions {
 
 export interface UseMessageStreamingReturn {
   error: Error | null;
+  setError: (error: Error | null) => void;
   sendUserMessage: (content: UserMessageContent[] | string, options?: { inferenceOptions?: InferenceOptions }) => Promise<void>;
   resumeStream: (threadId: string) => Promise<void>;
 }
@@ -267,6 +268,7 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
 
   return {
     error,
+    setError,
     sendUserMessage,
     resumeStream,
   };

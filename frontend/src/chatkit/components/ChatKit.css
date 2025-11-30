@@ -232,6 +232,29 @@
   color: #c00;
   font-size: 14px;
   z-index: 9;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.chatkit-error:hover {
+  opacity: 0.9;
+}
+
+.chatkit-error-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chatkit-error-close {
+  font-size: 18px;
+  margin-left: 10px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.chatkit-error:hover .chatkit-error-close {
+  opacity: 1;
 }
 
 .chatkit-composer {
