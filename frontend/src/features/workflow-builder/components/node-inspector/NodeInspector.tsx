@@ -628,6 +628,12 @@ const NodeInspector = ({
           nodeId={node.id}
           computerUseConfig={computerUseConfig}
           onComputerUseConfigChange={onAgentComputerUseChange}
+          parameters={parameters}
+          availableModels={availableModels}
+          availableModelsLoading={availableModelsLoading}
+          availableModelsError={availableModelsError}
+          onAgentModelChange={onAgentModelChange}
+          onAgentProviderChange={onAgentProviderChange}
         />
       ) : null}
 
