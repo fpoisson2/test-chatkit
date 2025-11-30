@@ -2,7 +2,11 @@ import { Suspense, useCallback, useEffect, useRef } from "react";
 import * as Select from "@radix-ui/react-select";
 import { ChevronDown } from "lucide-react";
 
-import { ADMIN_SECTIONS, type AdminSectionKey } from "../config/adminSections";
+import {
+  ADMIN_SECTIONS,
+  ADMIN_GROUPS,
+  type AdminSectionKey,
+} from "../config/adminSections";
 import { useI18n } from "../i18n";
 import { LoadingSpinner } from "./LoadingSpinner";
 
@@ -21,12 +25,6 @@ export const AdminModalMobile = ({
 }: AdminModalMobileProps) => {
   const { t } = useI18n();
   const contentRef = useRef<HTMLDivElement | null>(null);
-
-  // Debug: Log number of sections
-  useEffect(() => {
-    console.log('[AdminModalMobile] Total sections:', ADMIN_SECTIONS.length);
-    console.log('[AdminModalMobile] Sections:', ADMIN_SECTIONS.map(s => ({ key: s.key, label: s.labelKey })));
-  }, []);
 
   // Save scroll position when switching tabs
   const handleTabChange = useCallback(
@@ -62,7 +60,10 @@ export const AdminModalMobile = ({
     <div className="admin-modal__mobile">
       <div className="admin-modal__select-wrapper">
         <Select.Root value={activeTab} onValueChange={handleTabChange}>
-          <Select.Trigger className="admin-modal__select-trigger" aria-label="Sélectionner une section">
+          <Select.Trigger
+            className="admin-modal__select-trigger"
+            aria-label="Sélectionner une section"
+          >
             <Select.Value>
               {activeSection ? t(activeSection.labelKey) : ""}
             </Select.Value>
@@ -79,15 +80,40 @@ export const AdminModalMobile = ({
               collisionPadding={20}
             >
               <Select.Viewport className="admin-modal__select-viewport">
-                {ADMIN_SECTIONS.map((section) => (
-                  <Select.Item
-                    key={section.key}
-                    value={section.key}
-                    className="admin-modal__select-item"
-                  >
-                    <Select.ItemText>{t(section.labelKey)}</Select.ItemText>
-                  </Select.Item>
-                ))}
+                {ADMIN_GROUPS.map((group) => {
+                  const availableSections = group.sections.filter(
+                    (sectionKey) => {
+                      return ADMIN_SECTIONS.find((s) => s.key === sectionKey);
+                    },
+                  );
+
+                  if (availableSections.length === 0) return null;
+
+                  return (
+                    <Select.Group key={group.key}>
+                      <Select.Label className="admin-modal__select-label">
+                        {t(group.labelKey)}
+                      </Select.Label>
+                      {availableSections.map((sectionKey) => {
+                        const section = ADMIN_SECTIONS.find(
+                          (s) => s.key === sectionKey,
+                        );
+                        if (!section) return null;
+                        return (
+                          <Select.Item
+                            key={section.key}
+                            value={section.key}
+                            className="admin-modal__select-item"
+                          >
+                            <Select.ItemText>
+                              {t(section.labelKey)}
+                            </Select.ItemText>
+                          </Select.Item>
+                        );
+                      })}
+                    </Select.Group>
+                  );
+                })}
               </Select.Viewport>
             </Select.Content>
           </Select.Portal>
