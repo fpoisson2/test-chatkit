@@ -73,7 +73,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             return ""
 
         # Convert legacy HTML-formatted responses back to raw text/markdown.
-        if "<" in normalized and ">" in normalized:
+        if re.search(r"</?[a-z!?]", normalized, re.IGNORECASE):
             normalized = normalized.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
 
             def _replace_code_block(match: re.Match[str]) -> str:
@@ -95,7 +95,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             )
             normalized = re.sub(r"</p>\s*<p>", "\n\n", normalized, flags=re.IGNORECASE)
             normalized = normalized.replace("<p>", "").replace("</p>", "")
-            normalized = html.unescape(re.sub(r"<[^>]+>", "", normalized))
+            normalized = html.unescape(re.sub(r"</?[a-z!][^>]*>", "", normalized, flags=re.IGNORECASE))
 
         return normalized
 
