@@ -31,6 +31,7 @@ const LTIDeepLinkPage = lazy(() => import("./pages/LTIDeepLinkPage"));
 const LTILaunchPage = lazy(() =>
   import("./pages/LTILaunchPage").then((m) => ({ default: m.LTILaunchPage }))
 );
+const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 // Configure React Query client
 const queryClient = new QueryClient({
@@ -77,6 +78,16 @@ const RequireUser = ({ children }: { children: ReactElement }) => {
   return children;
 };
 
+const AppLayoutGuard = () => {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <LandingPage />;
+  }
+
+  return <AuthenticatedAppLayout />;
+};
+
 const HomePage = () => <MyChat />;
 const ConversationPage = () => <MyChat />;
 
@@ -117,13 +128,20 @@ export const App = () => (
       <Route
         path="/"
         element={
-          <RequireUser>
-            <AuthenticatedAppLayout />
-          </RequireUser>
+          <SuspenseRoute fallback={null}>
+            <AppLayoutGuard />
+          </SuspenseRoute>
         }
       >
         <Route index element={<HomePage />} />
-        <Route path="c/:threadId" element={<ConversationPage />} />
+        <Route
+          path="c/:threadId"
+          element={
+            <RequireUser>
+              <ConversationPage />
+            </RequireUser>
+          }
+        />
         <Route
           path="settings"
           element={
