@@ -25,6 +25,19 @@ export type AdminSection = {
   requireAdmin?: boolean;
 };
 
+export type AdminGroupKey =
+  | "general"
+  | "users"
+  | "ai"
+  | "maintenance"
+  | "help";
+
+export type AdminGroup = {
+  key: AdminGroupKey;
+  labelKey: string;
+  sections: AdminSectionKey[];
+};
+
 export const ADMIN_SECTIONS: AdminSection[] = [
   {
     key: "users",
@@ -185,5 +198,40 @@ export const ADMIN_SECTIONS: AdminSection[] = [
       })),
     ),
     requireAdmin: false,
+  },
+];
+
+export const ADMIN_GROUPS: AdminGroup[] = [
+  {
+    key: "general",
+    labelKey: "admin.groups.general",
+    sections: ["settings", "appearance", "languages", "preferences"],
+  },
+  {
+    key: "users",
+    labelKey: "admin.groups.users",
+    sections: ["users", "lti"],
+  },
+  {
+    key: "ai",
+    labelKey: "admin.groups.ai",
+    sections: [
+      "models",
+      "providers",
+      "vector-stores",
+      "mcp-servers",
+      "widgets",
+      "telephony",
+    ],
+  },
+  {
+    key: "maintenance",
+    labelKey: "admin.groups.maintenance",
+    sections: ["workflow-monitor", "browser-test", "cleanup"],
+  },
+  {
+    key: "help",
+    labelKey: "admin.groups.help",
+    sections: ["docs"],
   },
 ];
