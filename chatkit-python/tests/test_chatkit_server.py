@@ -60,6 +60,8 @@ from chatkit.types import (
     ThreadsDeleteReq,
     ThreadsGetByIdReq,
     ThreadsListReq,
+    ThreadsResumeReq,
+    ThreadResumeParams,
     ThreadsRetryAfterItemReq,
     ThreadStreamEvent,
     ThreadsUpdateReq,
@@ -167,6 +169,17 @@ def make_server(
             if responder is None:
                 return self._empty_responder()
             return responder(thread, input_user_message, context)
+
+        def resume_stream(
+            self,
+            thread: ThreadMetadata,
+            context: Any,
+        ) -> AsyncIterator[ThreadStreamEvent]:
+            if responder is None:
+                return self._empty_responder()
+            # For testing resume, we can just call the responder again or use a specialized one
+            # Ideally we check if `input` is None, which responder handles
+            return responder(thread, None, context)
 
         async def _empty_responder(self) -> AsyncIterator[ThreadStreamEvent]:
             return
@@ -1795,3 +1808,56 @@ async def test_custom_id_generators_on_server():
             if e.type == "thread.item.done" and e.item.type == "user_message"
         )
         assert user_message.id == "message_custom_2_thr_custom_1"
+
+
+async def test_resume_stream():
+    async def responder(
+        thread: ThreadMetadata, input: UserMessageItem | None, context: Any
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        # If input is provided, it's the initial call
+        if input:
+            yield ThreadItemDoneEvent(
+                item=AssistantMessageItem(
+                    id="msg_1",
+                    created_at=datetime.now(),
+                    content=[AssistantMessageContent(text="Initial content")],
+                    thread_id=thread.id,
+                ),
+            )
+        else:
+            # Resumed call
+            yield ThreadItemDoneEvent(
+                item=AssistantMessageItem(
+                    id="msg_2",
+                    created_at=datetime.now(),
+                    content=[AssistantMessageContent(text="Resumed content")],
+                    thread_id=thread.id,
+                ),
+            )
+
+    with make_server(responder) as server:
+        # Initial creation
+        events = await server.process_streaming(
+            ThreadsCreateReq(
+                params=ThreadCreateParams(
+                    input=UserMessageInput(
+                        content=[UserMessageTextContent(text="Hello")],
+                        attachments=[],
+                        inference_options=InferenceOptions(),
+                    )
+                )
+            )
+        )
+        thread = next(
+            event.thread for event in events if event.type == "thread.created"
+        )
+        assert any(e.type == "thread.item.done" and e.item.id == "msg_1" for e in events)
+
+        # Resume stream
+        resume_events = await server.process_streaming(
+            ThreadsResumeReq(
+                params=ThreadResumeParams(thread_id=thread.id)
+            )
+        )
+
+        assert any(e.type == "thread.item.done" and e.item.id == "msg_2" for e in resume_events)

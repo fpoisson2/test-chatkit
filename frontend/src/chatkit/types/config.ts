@@ -146,6 +146,7 @@ export interface ChatKitControl {
   error: Error | null;
   loadingThreadIds: Set<string>;
   sendMessage: (content: UserMessageContent[] | string, options?: { inferenceOptions?: InferenceOptions }) => Promise<void>;
+  resumeStream: (threadId: string) => Promise<void>;
   refresh: () => Promise<void>;
   customAction: (itemId: string | null, action: Action) => Promise<void>;
   retryAfterItem: (itemId: string) => Promise<void>;

@@ -27,6 +27,7 @@ export interface UseMessageStreamingOptions {
 export interface UseMessageStreamingReturn {
   error: Error | null;
   sendUserMessage: (content: UserMessageContent[] | string, options?: { inferenceOptions?: InferenceOptions }) => Promise<void>;
+  resumeStream: (threadId: string) => Promise<void>;
 }
 
 export function useMessageStreaming(options: UseMessageStreamingOptions): UseMessageStreamingReturn {
@@ -51,74 +52,22 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
 
   const [error, setError] = useState<Error | null>(null);
 
-  const sendUserMessage = useCallback(
-    async (content: UserMessageContent[] | string, opts?: { inferenceOptions?: InferenceOptions }) => {
-      const targetThreadId = activeThreadIdRef.current ?? thread?.id ?? null;
+  const handleStream = useCallback(
+    async (
+      targetThreadId: string | null,
+      payload: unknown,
+      controller: AbortController,
+      initialThreadForStream: Thread | null
+    ) => {
       const threadKey = getThreadKey(targetThreadId);
-      const existingController = abortControllersRef.current.get(threadKey);
-      const initialThreadForStream =
-        targetThreadId && !isTempThreadId(targetThreadId)
-          ? threadCacheRef.current.get(targetThreadId) ?? null
-          : null;
-
-      if (existingController) {
-        existingController.abort();
-      }
-
-      const controller = new AbortController();
-      abortControllersRef.current.set(threadKey, controller);
-
       setThreadLoading(targetThreadId, true);
       setError(null);
       onResponseStart?.({ threadId: targetThreadId });
 
       let updatedThread: Thread | null = null;
+      const streamThreadKeyRef = { current: threadKey };
 
       try {
-        const messageContent = typeof content === 'string'
-          ? [{ type: 'input_text' as const, text: content }]
-          : content;
-
-        // Extract attachment IDs from content items of type 'image' or 'file'
-        // and filter content to only include valid message content types
-        const attachmentIds: string[] = [];
-        const filteredContent = messageContent.filter((item) => {
-          if (item.type === 'image' && 'image' in item) {
-            attachmentIds.push(item.image);
-            return false;
-          }
-          if (item.type === 'file' && 'file' in item) {
-            attachmentIds.push(item.file);
-            return false;
-          }
-          return true;
-        });
-
-        const input = {
-          content: filteredContent,
-          attachments: attachmentIds,
-          quoted_text: null,
-          inference_options: opts?.inferenceOptions || {},
-        };
-
-        const isRealThread = targetThreadId && !isTempThreadId(targetThreadId);
-        const payload = isRealThread
-          ? {
-              type: 'threads.add_user_message',
-              params: {
-                thread_id: targetThreadId,
-                input,
-              },
-            }
-          : {
-              type: 'threads.create',
-              params: {
-                input,
-              },
-            };
-
-        const streamThreadKeyRef = { current: threadKey };
-
         await streamChatKitEvents({
           url: api.url,
           headers: api.headers,
@@ -179,8 +128,11 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
         onResponseEnd?.({ threadId: targetThreadId, finalThreadId: updatedThread?.id ?? targetThreadId });
       } catch (err) {
         const e = err instanceof Error ? err : new Error(String(err));
-        setError(e);
-        onError?.({ error: e });
+        // If aborted, don't set global error
+        if (e.name !== 'AbortError') {
+          setError(e);
+          onError?.({ error: e });
+        }
       } finally {
         setThreadLoading(targetThreadId, false);
         if (updatedThread?.id && updatedThread.id !== targetThreadId) {
@@ -192,11 +144,130 @@ export function useMessageStreaming(options: UseMessageStreamingOptions): UseMes
         }
       }
     },
-    [thread, api.url, api.headers, onResponseStart, onResponseEnd, onThreadChange, onError, onLog, onClientTool, getThreadKey, setThreadLoading, isTempThreadId, activeThreadIdRef, visibleThreadIdRef, threadCacheRef, abortControllersRef, setThread]
+    [
+      api.url,
+      api.headers,
+      onResponseStart,
+      onResponseEnd,
+      onThreadChange,
+      onError,
+      onLog,
+      onClientTool,
+      getThreadKey,
+      setThreadLoading,
+      activeThreadIdRef,
+      visibleThreadIdRef,
+      threadCacheRef,
+      abortControllersRef,
+      setThread,
+      thread,
+    ]
+  );
+
+  const sendUserMessage = useCallback(
+    async (content: UserMessageContent[] | string, opts?: { inferenceOptions?: InferenceOptions }) => {
+      const targetThreadId = activeThreadIdRef.current ?? thread?.id ?? null;
+      const threadKey = getThreadKey(targetThreadId);
+      const existingController = abortControllersRef.current.get(threadKey);
+      const initialThreadForStream =
+        targetThreadId && !isTempThreadId(targetThreadId)
+          ? threadCacheRef.current.get(targetThreadId) ?? null
+          : null;
+
+      if (existingController) {
+        existingController.abort();
+      }
+
+      const controller = new AbortController();
+      abortControllersRef.current.set(threadKey, controller);
+
+      const messageContent = typeof content === 'string'
+        ? [{ type: 'input_text' as const, text: content }]
+        : content;
+
+      const attachmentIds: string[] = [];
+      const filteredContent = messageContent.filter((item) => {
+        if (item.type === 'image' && 'image' in item) {
+          attachmentIds.push(item.image);
+          return false;
+        }
+        if (item.type === 'file' && 'file' in item) {
+          attachmentIds.push(item.file);
+          return false;
+        }
+        return true;
+      });
+
+      const input = {
+        content: filteredContent,
+        attachments: attachmentIds,
+        quoted_text: null,
+        inference_options: opts?.inferenceOptions || {},
+      };
+
+      const isRealThread = targetThreadId && !isTempThreadId(targetThreadId);
+      const payload = isRealThread
+        ? {
+            type: 'threads.add_user_message',
+            params: {
+              thread_id: targetThreadId,
+              input,
+            },
+          }
+        : {
+            type: 'threads.create',
+            params: {
+              input,
+            },
+          };
+
+      await handleStream(targetThreadId, payload, controller, initialThreadForStream);
+    },
+    [
+      activeThreadIdRef,
+      thread,
+      getThreadKey,
+      abortControllersRef,
+      isTempThreadId,
+      threadCacheRef,
+      handleStream,
+    ]
+  );
+
+  const resumeStream = useCallback(
+    async (threadId: string) => {
+      const threadKey = getThreadKey(threadId);
+      const existingController = abortControllersRef.current.get(threadKey);
+      const initialThreadForStream = threadCacheRef.current.get(threadId) ?? null;
+
+      if (existingController) {
+        // If streaming is already in progress for this thread, do not interrupt
+        return;
+      }
+
+      const controller = new AbortController();
+      abortControllersRef.current.set(threadKey, controller);
+
+      const payload = {
+        type: 'threads.resume',
+        params: {
+          thread_id: threadId,
+        },
+      };
+
+      await handleStream(threadId, payload, controller, initialThreadForStream);
+    },
+    [
+      getThreadKey,
+      abortControllersRef,
+      threadCacheRef,
+      handleStream,
+    ]
   );
 
   return {
     error,
     sendUserMessage,
+    resumeStream,
   };
 }

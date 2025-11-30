@@ -2,7 +2,7 @@
  * Hook principal pour gérer le chat ChatKit
  * Ce hook orchestre les hooks spécialisés pour une séparation claire des responsabilités
  */
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import type { ChatKitOptions, ChatKitControl, UserMessageContent } from '../types';
 import { useThreadState } from './useThreadState';
 import { useThreadLoading } from './useThreadLoading';
@@ -15,6 +15,7 @@ export interface UseChatKitReturn {
   control: ChatKitControl;
   fetchUpdates: () => Promise<void>;
   sendUserMessage: (content: UserMessageContent[] | string) => Promise<void>;
+  resumeStream: (threadId: string) => Promise<void>;
 }
 
 export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
@@ -75,7 +76,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
   });
 
   // Message streaming
-  const { error, sendUserMessage } = useMessageStreaming({
+  const { error, sendUserMessage, resumeStream } = useMessageStreaming({
     api,
     thread,
     threadCacheRef,
@@ -93,6 +94,27 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     onLog,
     onClientTool,
   });
+
+  // Auto-resume stream when an active thread is loaded
+  const resumedThreadsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const threadId = thread?.id;
+    const status = thread?.status?.type;
+    const isTemp = isTempThreadId(threadId);
+
+    if (
+      threadId &&
+      !isTemp &&
+      status === 'active' &&
+      !resumedThreadsRef.current.has(threadId)
+    ) {
+      resumedThreadsRef.current.add(threadId);
+      resumeStream(threadId).catch((err) => {
+        console.error('[ChatKit] Failed to auto-resume stream:', err);
+      });
+    }
+  }, [thread, isTempThreadId, resumeStream]);
 
   // Thread actions
   const {
@@ -130,6 +152,7 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     error,
     loadingThreadIds,
     sendMessage: sendUserMessage,
+    resumeStream,
     refresh: fetchUpdates,
     customAction,
     retryAfterItem,
@@ -141,5 +164,6 @@ export function useChatKit(options: ChatKitOptions): UseChatKitReturn {
     control,
     fetchUpdates,
     sendUserMessage,
+    resumeStream,
   };
 }
