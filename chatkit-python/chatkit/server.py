@@ -59,11 +59,13 @@ from .types import (
     ThreadsDeleteReq,
     ThreadsGetByIdReq,
     ThreadsListReq,
+    ThreadsResumeReq,
     ThreadsRetryAfterItemReq,
     ThreadStreamEvent,
     ThreadsUpdateReq,
     ThreadUpdatedEvent,
     UserMessageInput,
+    AssistantMessageItem,
     UserMessageItem,
     WidgetComponentUpdated,
     WidgetItem,
@@ -290,6 +292,26 @@ class ChatKitServer(ABC, Generic[TContext]):
         """
         pass
 
+    async def resume_stream(
+        self,
+        thread: ThreadMetadata,
+        context: TContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        """Resume a suspended stream for an existing thread.
+
+        By default, this method yields nothing (no-op). Subclasses can implement logic
+        to reconnect to a background process or queue.
+
+        Args:
+            thread: Metadata for the thread being resumed.
+            context: Arbitrary per-request context.
+
+        Returns:
+            An async iterator yielding events.
+        """
+        if False:
+            yield
+
     async def add_feedback(  # noqa: B027
         self,
         thread_id: str,
@@ -425,6 +447,17 @@ class ChatKitServer(ABC, Generic[TContext]):
         self, request: StreamingReq, context: TContext
     ) -> AsyncGenerator[ThreadStreamEvent, None]:
         match request:
+            case ThreadsResumeReq():
+                thread = await self.store.load_thread(
+                    request.params.thread_id, context=context
+                )
+                async for event in self._process_events(
+                    thread,
+                    context,
+                    lambda: self.resume_stream(thread, context),
+                ):
+                    yield event
+
             case ThreadsCreateReq():
                 thread = Thread(
                     id=self.store.generate_thread_id(context),
@@ -629,18 +662,64 @@ class ChatKitServer(ABC, Generic[TContext]):
         context: TContext,
         stream: Callable[[], AsyncIterator[ThreadStreamEvent]],
     ) -> AsyncIterator[ThreadStreamEvent]:
+        import time
+        from chatkit.types import AssistantMessageContentPartTextDelta
+
         await asyncio.sleep(0)  # allow the response to start streaming
 
         last_thread = thread.model_copy(deep=True)
+        active_items: dict[str, ThreadItem] = {}
+        last_save_time: dict[str, float] = {}
+        SAVE_INTERVAL = 1.0  # seconds
 
         try:
             with agents_sdk_user_agent_override():
                 async for event in stream():
                     match event:
+                        case ThreadItemAddedEvent():
+                            active_items[event.item.id] = event.item.model_copy(
+                                deep=True
+                            )
+                            # Persist immediately so subsequent updates can find the item.
+                            # Use add_thread_item which is typically an insert.
+                            await self.store.add_thread_item(
+                                thread.id, event.item, context=context
+                            )
+
+                        case ThreadItemUpdated():
+                            if event.item_id in active_items:
+                                item = active_items[event.item_id]
+                                if (
+                                    isinstance(item, AssistantMessageItem)
+                                    and isinstance(
+                                        event.update,
+                                        AssistantMessageContentPartTextDelta,
+                                    )
+                                ):
+                                    content_index = event.update.content_index
+                                    delta = event.update.delta
+                                    if 0 <= content_index < len(item.content):
+                                        content = item.content[content_index]
+                                        if hasattr(content, "text"):
+                                            content.text += delta
+
+                                    now = time.time()
+                                    if (
+                                        now - last_save_time.get(event.item_id, 0)
+                                        > SAVE_INTERVAL
+                                    ):
+                                        await self.store.save_item(
+                                            thread.id, item, context=context
+                                        )
+                                        last_save_time[event.item_id] = now
+
                         case ThreadItemDoneEvent():
                             # Replace temporary IDs (e.g., __fake_id__) with real unique IDs
                             # The agents SDK sometimes uses placeholder IDs that conflict across threads
                             item = event.item
+                            active_items.pop(item.id, None)
+                            last_save_time.pop(item.id, None)
+
                             if item.id.startswith("__"):
                                 # Determine the store item type based on the item's type field
                                 item_type: StoreItemType
@@ -664,18 +743,39 @@ class ChatKitServer(ABC, Generic[TContext]):
                                 )
 
                             try:
-                                await self.store.add_thread_item(
+                                # We use save_item here because the item should have been inserted
+                                # on ThreadItemAddedEvent. For stores that support upsert on add (like Postgres),
+                                # add_thread_item works too, but for strict stores (like SQLite mock),
+                                # we must use save_item (update) if it already exists.
+                                await self.store.save_item(
                                     thread.id, item, context=context
                                 )
                             except NotFoundError as e:
-                                # Log but don't fail if item storage fails
-                                # This can happen with concurrent updates
-                                logger.error(f"Failed to store thread item: {e}")
+                                # Fallback to add if save failed (e.g. Added event missed or not handled by store)
+                                try:
+                                    await self.store.add_thread_item(
+                                        thread.id, item, context=context
+                                    )
+                                except Exception as exc:
+                                    logger.error(f"Failed to store thread item (fallback add): {exc}")
+                            except Exception as e:
+                                logger.error(f"Failed to save thread item: {e}")
                         case ThreadItemRemovedEvent():
                             await self.store.delete_thread_item(
                                 thread.id, event.item_id, context=context
                             )
                         case ThreadItemReplacedEvent():
+                            # Update active item if we're tracking it
+                            if event.item.id in active_items:
+                                active_items[event.item.id] = event.item.model_copy(
+                                    deep=True
+                                )
+                            # Or if it's new (e.g. from resume)
+                            elif isinstance(event.item, (AssistantMessageItem, WidgetItem)):
+                                active_items[event.item.id] = event.item.model_copy(
+                                    deep=True
+                                )
+
                             await self.store.save_item(
                                 thread.id, event.item, context=context
                             )

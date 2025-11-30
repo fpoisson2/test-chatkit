@@ -117,6 +117,19 @@ class ThreadCustomActionParams(BaseModel):
     action: Action[str, Any]
 
 
+class ThreadsResumeReq(BaseModel):
+    """Request to resume streaming for a thread."""
+
+    type: Literal["threads.resume"] = "threads.resume"
+    params: ThreadResumeParams
+
+
+class ThreadResumeParams(BaseModel):
+    """Parameters for resuming a thread stream."""
+
+    thread_id: str
+
+
 class ThreadsRetryAfterItemReq(BaseReq):
     """Request to retry processing after a specific thread item."""
 
@@ -224,6 +237,7 @@ StreamingReq = (
     | ThreadsAddClientToolOutputReq
     | ThreadsRetryAfterItemReq
     | ThreadsCustomActionReq
+    | ThreadsResumeReq
 )
 """Union of request types that produce streaming responses."""
 
@@ -257,6 +271,7 @@ def is_streaming_req(request: ChatKitReq) -> TypeIs[StreamingReq]:
             ThreadsRetryAfterItemReq,
             ThreadsAddClientToolOutputReq,
             ThreadsCustomActionReq,
+            ThreadsResumeReq,
         ),
     )
 
