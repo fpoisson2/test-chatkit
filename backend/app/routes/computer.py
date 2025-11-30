@@ -228,7 +228,8 @@ def get_debug_session(token: str, user_id: int | None = None) -> str | None:
     # Check authorization if user_id is provided
     session_user_id = session.get("user_id")
     if user_id is not None and session_user_id is not None:
-        if user_id != session_user_id:
+        # Ensure robust comparison by converting to string
+        if str(user_id) != str(session_user_id):
             logger.warning(
                 f"User {user_id} attempted to access debug session "
                 f"belonging to user {session_user_id}"
@@ -299,7 +300,8 @@ def get_ssh_session(token: str, user_id: int | None = None) -> dict[str, Any] | 
     # Check authorization if user_id is provided
     session_user_id = session.get("user_id")
     if user_id is not None and session_user_id is not None:
-        if user_id != session_user_id:
+        # Ensure robust comparison by converting to string
+        if str(user_id) != str(session_user_id):
             logger.warning(
                 f"User {user_id} attempted to access SSH session "
                 f"belonging to user {session_user_id}"
@@ -370,7 +372,8 @@ def get_vnc_session(token: str, user_id: int | None = None) -> dict[str, Any] | 
     # Check authorization if user_id is provided
     session_user_id = session.get("user_id")
     if user_id is not None and session_user_id is not None:
-        if user_id != session_user_id:
+        # Ensure robust comparison by converting to string
+        if str(user_id) != str(session_user_id):
             logger.warning(
                 f"User {user_id} attempted to access VNC session "
                 f"belonging to user {session_user_id}"
