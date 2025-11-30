@@ -1,19 +1,49 @@
+import { useMemo } from "react";
 import { COMPUTER_USE_ENVIRONMENTS } from "../constants";
 import { HelpTooltip } from "../components/HelpTooltip";
 import styles from "../NodeInspector.module.css";
-import type { ComputerUseConfig } from "../../../types";
+import type { ComputerUseConfig, FlowNode } from "../../../types";
+import { useAgentInspectorState } from "../hooks/useAgentInspectorState";
+import type { AvailableModel } from "../../../../../utils/backend";
+import { useI18n } from "../../../../../i18n";
+import { Field } from "../ui-components";
 
 type ComputerUseInspectorSectionProps = {
   nodeId: string;
   computerUseConfig: ComputerUseConfig | null;
   onComputerUseConfigChange: (nodeId: string, config: ComputerUseConfig | null) => void;
+  // New props for model selection
+  parameters: FlowNode['data']['parameters'];
+  availableModels: AvailableModel[];
+  availableModelsLoading: boolean;
+  availableModelsError: string | null;
+  onAgentModelChange: (
+    nodeId: string,
+    selection: {
+      model: string;
+      providerId?: string | null;
+      providerSlug?: string | null;
+      store?: boolean | null;
+    },
+  ) => void;
+  onAgentProviderChange: (
+    nodeId: string,
+    selection: { providerId?: string | null; providerSlug?: string | null },
+  ) => void;
 };
 
 export const ComputerUseInspectorSection = ({
   nodeId,
   computerUseConfig,
   onComputerUseConfigChange,
+  parameters,
+  availableModels,
+  availableModelsLoading,
+  availableModelsError,
+  onAgentModelChange,
+  onAgentProviderChange,
 }: ComputerUseInspectorSectionProps) => {
+  const { t } = useI18n();
   const config = computerUseConfig || {
     display_width: 1024,
     display_height: 768,
@@ -22,6 +52,35 @@ export const ComputerUseInspectorSection = ({
   };
 
   const isSSH = config.environment === "ssh";
+  const isVNC = config.environment === "vnc";
+  const isAgentMode = (config.mode || "agent") === "agent";
+
+  // State for model selection
+  const {
+    agentModel,
+    agentProviderId,
+    agentProviderSlug,
+    selectedProviderValue,
+    providerOptions,
+    modelsForProvider,
+    matchedModel,
+    selectedModelOption,
+  } = useAgentInspectorState({
+    nodeId,
+    parameters,
+    token: null, // Not needed for model selection
+    widgets: [], // Not needed
+    widgetsLoading: false,
+    widgetsError: null,
+    vectorStores: [], // Not needed
+    vectorStoresLoading: false,
+    vectorStoresError: null,
+    workflows: [], // Not needed
+    currentWorkflowId: null,
+    availableModels,
+    isReasoningModel: () => false, // Not critical for basic selection
+    onAgentImageGenerationChange: () => {}, // Not needed
+  });
 
   const handleWidthChange = (value: string) => {
     const width = parseInt(value, 10);
@@ -143,7 +202,46 @@ export const ComputerUseInspectorSection = ({
     }
   };
 
-  const isVNC = config.environment === "vnc";
+  // Model handlers
+  const handleProviderChange = (value: string) => {
+    if (!value) {
+      onAgentProviderChange(nodeId, { providerId: null, providerSlug: null });
+      return;
+    }
+    const option = providerOptions.find((candidate) => candidate.value === value);
+    onAgentProviderChange(nodeId, {
+      providerId: option?.id ?? null,
+      providerSlug: option?.slug ?? null,
+    });
+  };
+
+  const handleModelChange = (value: string) => {
+    if (!value) {
+      onAgentModelChange(nodeId, {
+        model: '',
+        providerId: agentProviderId || null,
+        providerSlug: agentProviderSlug || null,
+        store: null,
+      });
+      return;
+    }
+    try {
+      const parsed = JSON.parse(value) as {
+        name: string;
+        providerId: string | null;
+        providerSlug: string | null;
+        store: boolean | null;
+      };
+      onAgentModelChange(nodeId, {
+        model: parsed.name,
+        providerId: parsed.providerId,
+        providerSlug: parsed.providerSlug,
+        store: parsed.store,
+      });
+    } catch (error) {
+      console.error('Unable to parse model selection', error);
+    }
+  };
 
   return (
     <>
@@ -205,6 +303,89 @@ export const ComputerUseInspectorSection = ({
           <option value="manual">Manuel</option>
         </select>
       </label>
+
+      {/* Model Selection - Only shown in Agent mode */}
+      {isAgentMode && (
+        <div className={styles.sectionCard} style={{ marginTop: '1rem' }}>
+          <div className={styles.sectionHeader}>
+            <h4 className={styles.sectionTitle}>Modèle de l'agent</h4>
+            <p className={styles.sectionDescription}>
+              Choisissez le modèle à utiliser pour le contrôle de l'ordinateur.
+            </p>
+          </div>
+
+          <Field
+            label={t('workflowBuilder.agentInspector.providerLabel')}
+            hint={t('workflowBuilder.agentInspector.providerHint')}
+          >
+            <select
+              value={selectedProviderValue}
+              onChange={(event) => handleProviderChange(event.target.value)}
+              disabled={availableModelsLoading}
+            >
+              <option value="">
+                {t('workflowBuilder.agentInspector.providerPlaceholder')}
+              </option>
+              {providerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field
+            label={t('workflowBuilder.agentInspector.modelLabel')}
+            hint={t('workflowBuilder.agentInspector.modelHelp')}
+          >
+            <select
+              value={selectedModelOption}
+              onChange={(event) => handleModelChange(event.target.value)}
+              disabled={availableModelsLoading}
+            >
+              <option value="">
+                {t('workflowBuilder.agentInspector.modelPlaceholder')}
+              </option>
+              {modelsForProvider.map((model) => {
+                const displayLabel = model.display_name?.trim()
+                  ? `${model.display_name.trim()} (${model.name})`
+                  : model.name;
+                const reasoningSuffix = model.supports_reasoning
+                  ? t('workflowBuilder.agentInspector.reasoningSuffix')
+                  : '';
+                const providerSuffix = model.provider_slug?.trim()
+                  ? ` – ${model.provider_slug.trim()}`
+                  : model.provider_id?.trim()
+                    ? ` – ${model.provider_id.trim()}`
+                    : '';
+                return (
+                  <option
+                    key={`${model.id}:${model.name}`}
+                    value={JSON.stringify({
+                      name: model.name,
+                      providerId: model.provider_id ?? null,
+                      providerSlug: model.provider_slug ?? null,
+                      store: model.store ?? null,
+                    })}
+                  >
+                    {`${displayLabel}${reasoningSuffix}${providerSuffix}`}
+                  </option>
+                );
+              })}
+            </select>
+          </Field>
+
+          {availableModelsLoading ? (
+            <p className={styles.mutedMessage}>
+              {t('workflowBuilder.agentInspector.modelsLoading')}
+            </p>
+          ) : availableModelsError ? (
+            <p className={styles.errorMessage}>{availableModelsError}</p>
+          ) : matchedModel?.description ? (
+            <p className={styles.mutedMessage}>{matchedModel.description}</p>
+          ) : null}
+        </div>
+      )}
 
       {!isSSH && !isVNC && (
         <label className={styles.nodeInspectorField}>
