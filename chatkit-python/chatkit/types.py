@@ -883,6 +883,9 @@ class ComputerUseTask(BaseTask):
     vnc_token: str | None = None
     """Secure token for accessing a VNC remote desktop session via WebSocket."""
 
+    mode: Literal["agent", "manual"] = "agent"
+    """Mode of operation for the computer use session."""
+
 
 Task = Annotated[
     CustomTask | SearchTask | ThoughtTask | FileTask | ImageTask | ComputerUseTask,

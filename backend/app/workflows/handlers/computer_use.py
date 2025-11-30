@@ -268,6 +268,11 @@ class ComputerUseNodeHandler(BaseNodeHandler):
                 if vnc_token:
                     task_kwargs["vnc_token"] = vnc_token
 
+                # Add mode from config
+                mode = computer_use_config.get("mode", "agent")
+                if mode in ("agent", "manual"):
+                    task_kwargs["mode"] = mode
+
                 # Debug: Log task_kwargs before creating ComputerUseTask
                 logger.info(f"task_kwargs before ComputerUseTask: {task_kwargs}")
 
