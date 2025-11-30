@@ -23,6 +23,7 @@ import { useDragAndDrop } from '../hooks/useDragAndDrop';
 import { useAttachments } from '../hooks/useAttachments';
 import { useInlineWidgets } from '../hooks/useInlineWidgets';
 import { useWidgetActions } from '../hooks/useWidgetActions';
+import { useAutoDismissError } from '../hooks/useAutoDismissError';
 import type { Attachment } from '../api/attachments';
 import { COPY_FEEDBACK_DELAY_MS } from '../utils';
 import './ChatKit.css';
@@ -109,6 +110,9 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
     control,
     widgets: options.widgets,
   });
+
+  // Auto-dismiss errors
+  useAutoDismissError(control.error, control.clearError);
 
   // Clear the composer when switching threads
   useEffect(() => {
@@ -311,8 +315,11 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
 
       {/* Error display */}
       {control.error && (
-        <div className="chatkit-error">
-          <strong>Erreur:</strong> {control.error.message}
+        <div className="chatkit-error" onClick={control.clearError} role="button" aria-label="Fermer l'erreur">
+          <div className="chatkit-error-content">
+            <span><strong>Erreur:</strong> {control.error.message}</span>
+            <span className="chatkit-error-close">&times;</span>
+          </div>
         </div>
       )}
 
