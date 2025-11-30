@@ -1735,6 +1735,9 @@ async def stream_agent_response(
                     # Store the reasoning ID to associate with the next message
                     current_reasoning_id = item.id
                 if item.type == "message":
+                    if item.id in produced_items:
+                        continue
+
                     if ctx.workflow_item:
                         yield end_workflow(ctx.workflow_item)
                     produced_items.add(item.id)
