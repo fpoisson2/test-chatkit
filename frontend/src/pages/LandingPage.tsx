@@ -12,7 +12,7 @@ import {
   Layers,
   Cpu
 } from "lucide-react";
-import edxoLogo from "../assets/edxo-logo.svg";
+import edxoLogo from "../assets/favicon.svg";
 import styles from "./LandingPage.module.css";
 
 const LandingPage = () => {
