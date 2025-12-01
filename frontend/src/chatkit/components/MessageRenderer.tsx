@@ -30,6 +30,7 @@ export interface MessageRendererProps {
   onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (screencast: { token: string; itemId: string } | null) => void;
+  onDismissScreencast: (itemId: string) => void;
   onContinueWorkflow: () => void;
   // Admin props for cost tracking
   isAdmin?: boolean;
@@ -402,6 +403,7 @@ function WorkflowContent({
   onScreencastLastFrame: (itemId: string) => (frameDataUrl: string) => void;
   onScreencastConnectionError: (token: string) => void;
   onActiveScreencastChange: (screencast: { token: string; itemId: string } | null) => void;
+  onDismissScreencast: (itemId: string) => void;
   onContinueWorkflow: () => void;
 }): JSX.Element | null {
   if (item.type !== 'workflow') return null;
@@ -544,9 +546,7 @@ function WorkflowContent({
 
           if (showPreview) {
             const handleEndSession = () => {
-              onActiveScreencastChange(
-                activeScreencast?.itemId === item.id ? null : activeScreencast
-              );
+              onDismissScreencast(item.id);
               onContinueWorkflow();
             };
 
@@ -672,6 +672,7 @@ export function MessageRenderer({
   onScreencastLastFrame,
   onScreencastConnectionError,
   onActiveScreencastChange,
+  onDismissScreencast,
   onContinueWorkflow,
   isAdmin,
 }: MessageRendererProps): JSX.Element | null {
@@ -729,6 +730,7 @@ export function MessageRenderer({
           onScreencastLastFrame={onScreencastLastFrame}
           onScreencastConnectionError={onScreencastConnectionError}
           onActiveScreencastChange={onActiveScreencastChange}
+          onDismissScreencast={onDismissScreencast}
           onContinueWorkflow={onContinueWorkflow}
         />
       )}
