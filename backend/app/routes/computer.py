@@ -872,6 +872,22 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
         return
 
     session_lock: asyncio.Lock = session.setdefault("ws_lock", asyncio.Lock())
+    availability: asyncio.Event = session.setdefault("ws_available", asyncio.Event())
+
+    # Ensure the availability event reflects the current state
+    if not session.get("ws_active"):
+        availability.set()
+    else:
+        availability.clear()
+
+    # Wait for the session to become available instead of failing fast, so the
+    # frontend doesn't churn through rapid reconnects while another connection
+    # is still cleaning up.
+    try:
+        await asyncio.wait_for(availability.wait(), timeout=15)
+    except asyncio.TimeoutError:
+        await websocket.close(code=1013, reason="SSH session busy")
+        return
 
     async with session_lock:
         if session.get("ws_active"):
@@ -879,12 +895,14 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
             return
 
         session["ws_active"] = True
+        availability.clear()
 
     ssh_instance = session.get("ssh")
     if not ssh_instance:
         await websocket.close(code=1011, reason="SSH instance not found")
         async with session_lock:
             session["ws_active"] = False
+            availability.set()
         return
 
     logger.info(f"SSH WebSocket connected for session {token[:8]}...")
@@ -896,6 +914,7 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
             await websocket.close(code=1011, reason="Failed to create SSH shell")
             async with session_lock:
                 session["ws_active"] = False
+                availability.set()
             return
 
         async def forward_ssh_to_client() -> None:
@@ -967,6 +986,7 @@ async def ssh_websocket_terminal(websocket: WebSocket, token: str) -> None:
     finally:
         async with session_lock:
             session["ws_active"] = False
+            availability.set()
         logger.info(f"SSH WebSocket closed for session {token[:8]}...")
 
 
