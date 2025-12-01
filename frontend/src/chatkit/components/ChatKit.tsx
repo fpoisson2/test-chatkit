@@ -54,7 +54,10 @@ export function ChatKit({ control, options, className, style }: ChatKitProps): J
   const attachmentsEnabled = attachmentsConfig?.enabled === true;
 
   // Extract auth token from API headers for DevToolsScreencast
-  const authToken = api.headers?.['Authorization']?.replace('Bearer ', '') || undefined;
+  const authHeader =
+    (api.headers?.['Authorization'] as string | undefined) ??
+    (api.headers?.['authorization'] as string | undefined);
+  const authToken = authHeader?.replace(/^Bearer\s+/i, '').trim() || undefined;
 
   // Scroll management
   const {

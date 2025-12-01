@@ -61,7 +61,6 @@ export function useScreencast({
   useEffect(() => {
     const items = threadItems || [];
     const workflows = items.filter((i: any) => i.type === 'workflow');
-    const lastWorkflow = workflows[workflows.length - 1];
 
     // Use ref to avoid re-running this effect when activeScreencast changes
     const currentActiveScreencast = activeScreencastRef.current;
@@ -101,97 +100,55 @@ export function useScreencast({
       });
     });
 
-    // Get the latest (most recent) computer_use task
-    const latestComputerUseEntry = allComputerUseTasks[allComputerUseTasks.length - 1];
-    const latestComputerUseTask = latestComputerUseEntry
-      ? { itemId: latestComputerUseEntry.item.id, token: latestComputerUseEntry.task.debug_url_token, status: latestComputerUseEntry.task.status_indicator }
-      : null;
+    const tokenEntries: Array<{
+      entry: typeof allComputerUseTasks[number];
+      token: string;
+    }> = [];
 
-    let newActiveScreencast: ScreencastState | null = null;
-    let currentScreencastIsComplete = false;
+    allComputerUseTasks.forEach((cuEntry) => {
+      const { item, task: computerUseTask } = cuEntry;
+      const token =
+        computerUseTask.debug_url_token ||
+        computerUseTask.ssh_token ||
+        computerUseTask.vnc_token;
 
-    // Second pass: determine the active screencast
-    allComputerUseTasks.forEach((cuEntry, index) => {
-      const { item, task: computerUseTask, workflowIndex, isLoading: taskIsLoading, isTerminal } = cuEntry;
-      const isLastComputerUseTask = index === allComputerUseTasks.length - 1;
-      const isLastWorkflow = lastWorkflow && lastWorkflow.id === item.id;
-      const isLastWorkflowAndStreaming = isLastWorkflow && isLoading;
-
-      // Debug logging
-      if (computerUseTask.debug_url_token) {
-        console.log('[useScreencast] Found computer_use task with token:', {
-          itemId: item.id,
-          token: computerUseTask.debug_url_token.substring(0, 8),
-          status: computerUseTask.status_indicator,
-          isLastComputerUseTask,
-          isLastWorkflow,
-          allComputerUseTasksLength: allComputerUseTasks.length,
-        });
-
-        // If this token was previously marked as failed but now appears in a task,
-        // give it another chance (e.g., after page refresh or backend reconnection)
-        if (failedScreencastTokens.has(computerUseTask.debug_url_token)) {
-          console.log('[useScreencast] Removing token from failed list (giving it another chance):', computerUseTask.debug_url_token.substring(0, 8));
-          setFailedScreencastTokens(prev => {
-            const next = new Set(prev);
-            next.delete(computerUseTask.debug_url_token!);
-            return next;
-          });
-        }
+      if (!token) {
+        return;
       }
 
-      // A computer_use task is "done" if there's a NEWER computer_use task (not just any newer workflow)
-      // This ensures that assistant messages don't close the screencast
-      const hasNewerComputerUseTask = index < allComputerUseTasks.length - 1;
-      const isEffectivelyDone = hasNewerComputerUseTask;
+      console.log('[useScreencast] Found computer_use task with token:', {
+        itemId: item.id,
+        token: token.substring(0, 8),
+        status: computerUseTask.status_indicator,
+        workflowId: item.id,
+      });
 
-      if (isEffectivelyDone && currentActiveScreencast && computerUseTask.debug_url_token === currentActiveScreencast.token) {
-        currentScreencastIsComplete = true;
-      }
-
-      if (isLastComputerUseTask && computerUseTask.debug_url_token && !isEffectivelyDone &&
-          !failedScreencastTokens.has(computerUseTask.debug_url_token)) {
-        // Show screencast if it has a token and is not superseded by a newer workflow/task
-        // Keep it visible even if the task is complete, until user explicitly dismisses it
-        console.log('[useScreencast] Activating screencast:', {
-          itemId: item.id,
-          token: computerUseTask.debug_url_token.substring(0, 8),
-        });
-        newActiveScreencast = {
-          token: computerUseTask.debug_url_token,
-          itemId: item.id,
-        };
-      } else if (isLastComputerUseTask && computerUseTask.debug_url_token) {
-        console.log('[useScreencast] NOT activating (conditions failed):', {
-          itemId: item.id,
-          token: computerUseTask.debug_url_token.substring(0, 8),
-          isEffectivelyDone,
-          isInFailedTokens: failedScreencastTokens.has(computerUseTask.debug_url_token),
+      if (failedScreencastTokens.has(token)) {
+        console.log('[useScreencast] Removing token from failed list (giving it another chance):', token.substring(0, 8));
+        setFailedScreencastTokens(prev => {
+          const next = new Set(prev);
+          next.delete(token);
+          return next;
         });
       }
+
+      tokenEntries.push({ entry: cuEntry, token });
     });
 
-    // Handle token mismatch
-    if (currentActiveScreencast && latestComputerUseTask &&
-        currentActiveScreencast.token !== latestComputerUseTask.token) {
-      currentScreencastIsComplete = true;
-    }
+    const loadingTokenEntries = tokenEntries.filter(({ entry }) => entry.task.status_indicator === 'loading');
+    const latestLoadingEntry = [...loadingTokenEntries]
+      .reverse()
+      .find(({ token }) => !failedScreencastTokens.has(token));
 
-    // Handle failed tokens
-    if (currentActiveScreencast && failedScreencastTokens.has(currentActiveScreencast.token)) {
-      currentScreencastIsComplete = true;
-    }
+    const newActiveScreencast = latestLoadingEntry
+      ? {
+          token: latestLoadingEntry.token,
+          itemId: latestLoadingEntry.entry.item.id,
+        }
+      : null;
 
-    const latestComputerUseIsTerminal = latestComputerUseEntry?.isTerminal ?? false;
-    const hasLoadingComputerUse = allComputerUseTasks.some(t => t.isLoading);
-
-    // Priority 1: Close screencast if needed
-    // Only close if the screencast is complete (superseded by newer workflow/task)
-    // Don't close just because the task is terminal - keep it open until user dismisses
-    if (currentScreencastIsComplete) {
-      if (currentActiveScreencast) {
-        setActiveScreencast(null);
-      }
+    if (!newActiveScreencast && currentActiveScreencast) {
+      setActiveScreencast(null);
       if (lastScreencastScreenshot) {
         const screenshotWorkflow = workflows.find((w: any) => w.id === lastScreencastScreenshot.itemId);
         const screenshotTask = screenshotWorkflow?.workflow?.tasks?.find((t: any) => t.type === 'computer_use');
@@ -203,7 +160,7 @@ export function useScreencast({
         }
       }
     }
-    // Priority 2: Activate new screencast if different (or if no current screencast)
+
     if (newActiveScreencast &&
         (!currentActiveScreencast ||
          newActiveScreencast.token !== currentActiveScreencast.token ||
@@ -212,6 +169,38 @@ export function useScreencast({
       setActiveScreencast(newActiveScreencast);
     }
   }, [isLoading, threadItems, dismissedScreencastItems, failedScreencastTokens, lastScreencastScreenshot]);
+
+  // Auto-retry failed screencasts after a short delay while the task is still active.
+  // Without this, a transient 404/timeout while the browser starts would mark the token
+  // as failed and it would only recover after a full page refresh.
+  useEffect(() => {
+    if (failedScreencastTokens.size === 0) return;
+
+    const activeFailedTokens = Array.from(failedScreencastTokens).filter(token => {
+      return threadItems.some((item: any) => {
+        if (item.type !== 'workflow') return false;
+        const tasks = item.workflow?.tasks || [];
+        return tasks.some((task: any) =>
+          task.type === 'computer_use' &&
+          task.debug_url_token === token &&
+          task.status_indicator !== 'complete' &&
+          task.status_indicator !== 'error'
+        );
+      });
+    });
+
+    if (activeFailedTokens.length === 0) return;
+
+    const retryTimeout = setTimeout(() => {
+      setFailedScreencastTokens(prev => {
+        const next = new Set(prev);
+        activeFailedTokens.forEach(token => next.delete(token));
+        return next;
+      });
+    }, 1500);
+
+    return () => clearTimeout(retryTimeout);
+  }, [failedScreencastTokens, threadItems]);
 
   // Callback for last frame (screenshots now handled by backend)
   const handleScreencastLastFrame = useCallback((itemId: string) => {

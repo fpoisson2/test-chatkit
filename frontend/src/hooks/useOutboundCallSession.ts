@@ -147,9 +147,16 @@ export function useOutboundCallSession(options?: UseOutboundCallSessionOptions):
     }
 
     // Connect to outbound call events WebSocket
+    const authToken = authTokenRef.current;
+    if (!authToken) {
+      console.error("[OutboundCallSession] Missing auth token, cannot connect to websocket");
+      setError("Jeton d'authentification manquant pour la session d'appels sortants");
+      return;
+    }
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/api/outbound/events`;
+    const wsUrl = `${protocol}//${host}/api/outbound/events?token=${encodeURIComponent(authToken)}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
