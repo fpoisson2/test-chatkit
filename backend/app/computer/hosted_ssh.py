@@ -422,8 +422,18 @@ class HostedSSH(AsyncComputer):
                 logger.info(f"Interactive shell (fallback) created for {self.ssh_info}")
                 return process
             except asyncssh.Error as exc2:
-                logger.error(f"Failed to create interactive shell (fallback): {exc2}")
-                return None
+                logger.warning(f"Failed to create interactive shell (fallback without PTY): {exc2}. Trying fallback with /bin/sh.")
+                try:
+                    # Second fallback: try executing /bin/sh explicitly
+                    process = await conn.create_process(
+                        "/bin/sh",
+                        encoding=None
+                    )
+                    logger.info(f"Interactive shell (/bin/sh fallback) created for {self.ssh_info}")
+                    return process
+                except asyncssh.Error as exc3:
+                    logger.error(f"Failed to create interactive shell (final fallback): {exc3}")
+                    return None
 
     @property
     def config(self) -> SSHConfig:
