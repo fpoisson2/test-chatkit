@@ -724,6 +724,25 @@ def _normalize_shell_result(result: Any) -> tuple[str | None, str | None, ShellC
         except Exception:
             pass
 
+    if isinstance(result, (list, tuple)):
+        stdouts: list[str] = []
+        stderrs: list[str] = []
+        outcome: ShellCallOutcome | None = None
+
+        for entry in result:
+            entry_stdout, entry_stderr, entry_outcome = _normalize_shell_result(entry)
+
+            if entry_stdout:
+                stdouts.append(entry_stdout)
+            if entry_stderr:
+                stderrs.append(entry_stderr)
+            if entry_outcome:
+                outcome = entry_outcome
+
+        stdout = "\n".join(stdouts) if stdouts else None
+        stderr = "\n".join(stderrs) if stderrs else None
+        return stdout, stderr, outcome
+
     if isinstance(result, dict):
         stdout = _stringify_shell_value(
             result.get("stdout")
