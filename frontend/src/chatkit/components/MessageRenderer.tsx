@@ -515,11 +515,8 @@ function WorkflowContent({
             src = lastScreencastScreenshot.src;
           }
 
-          const isComplete = computerUseTask.status_indicator === 'complete';
-          const isError = computerUseTask.status_indicator === 'error';
-          const isTerminal = isComplete || isError;
           // Never show screenshots for SSH/VNC sessions (they have no meaningful screenshots)
-          const showScreenshot = !!src && !showLiveScreencast && !showSSHTerminal && !showVNCScreencast && !isTerminal && !sshToken && !vncToken;
+          const showScreenshot = !!src && !showLiveScreencast && !showSSHTerminal && !showVNCScreencast && !sshToken && !vncToken;
 
           const isDismissed = dismissedScreencastItems.has(item.id);
           const shouldShowLiveScreencast = showLiveScreencast && !isDismissed;
