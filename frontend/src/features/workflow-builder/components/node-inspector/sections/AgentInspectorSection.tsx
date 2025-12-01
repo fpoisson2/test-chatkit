@@ -43,6 +43,10 @@ import {
   reasoningSummaryOptions,
   textVerbosityOptions,
 } from "../constants";
+import {
+  buildComputerUseConfig,
+  type ComputerUseFieldUpdates,
+} from "../utils/computerUse";
 import { useAgentInspectorState } from "../hooks/useAgentInspectorState";
 import { HelpTooltip } from "../components/HelpTooltip";
 import { ToggleRow } from "../components/ToggleRow";
@@ -388,48 +392,25 @@ export const AgentInspectorSection = ({
   const customModeOptionId = `${nestedWorkflowLabelId}-custom`;
   const localWorkflowSelectId = `${nestedWorkflowLabelId}-select`;
   const hostedWorkflowIdFieldId = `${nestedWorkflowLabelId}-hosted-id`;
+  const computerUseModeValue =
+    computerUseConfig?.mode ?? DEFAULT_COMPUTER_USE_CONFIG.mode;
+  const computerUseSshHostValue = computerUseConfig?.ssh_host ?? "";
+  const computerUseSshPortValue =
+    computerUseConfig?.ssh_port != null ? String(computerUseConfig.ssh_port) : "";
+  const computerUseSshUsernameValue = computerUseConfig?.ssh_username ?? "";
+  const computerUseSshPasswordValue = computerUseConfig?.ssh_password ?? "";
+  const computerUseSshPrivateKeyValue = computerUseConfig?.ssh_private_key ?? "";
+  const computerUseVncHostValue = computerUseConfig?.vnc_host ?? "";
+  const computerUseVncPortValue =
+    computerUseConfig?.vnc_port != null ? String(computerUseConfig.vnc_port) : "";
+  const computerUseVncPasswordValue = computerUseConfig?.vnc_password ?? "";
+  const computerUseNoVncPortValue =
+    computerUseConfig?.novnc_port != null ? String(computerUseConfig.novnc_port) : "";
+  const computerUseEnvironmentIsSsh = computerUseEnvironmentValue === "ssh";
+  const computerUseEnvironmentIsVnc = computerUseEnvironmentValue === "vnc";
 
-  const parseDimension = (value: string, fallback: number): number => {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.min(parsed, 4096);
-    }
-    return fallback;
-  };
-
-  const handleComputerUseFieldChange = (updates: {
-    display_width?: string;
-    display_height?: string;
-    environment?: string;
-    start_url?: string;
-  }) => {
-    const base = computerUseConfig ?? { ...DEFAULT_COMPUTER_USE_CONFIG };
-    const nextWidth = parseDimension(
-      updates.display_width ?? computerUseDisplayWidthValue,
-      base.display_width,
-    );
-    const nextHeight = parseDimension(
-      updates.display_height ?? computerUseDisplayHeightValue,
-      base.display_height,
-    );
-    const envCandidate = (updates.environment ?? computerUseEnvironmentValue)
-      .trim()
-      .toLowerCase();
-    const normalizedEnvironment = COMPUTER_USE_ENVIRONMENTS.includes(
-      envCandidate as (typeof COMPUTER_USE_ENVIRONMENTS)[number],
-    )
-      ? (envCandidate as ComputerUseConfig["environment"])
-      : base.environment;
-    const startUrlCandidate = updates.start_url ?? computerUseStartUrlValue;
-    const payload: ComputerUseConfig = {
-      display_width: nextWidth,
-      display_height: nextHeight,
-      environment: normalizedEnvironment,
-    };
-    const trimmedUrl = startUrlCandidate.trim();
-    if (trimmedUrl) {
-      payload.start_url = trimmedUrl;
-    }
+  const handleComputerUseFieldChange = (updates: ComputerUseFieldUpdates) => {
+    const payload = buildComputerUseConfig(computerUseConfig, updates);
     onAgentComputerUseChange(nodeId, payload);
   };
 
@@ -1614,6 +1595,28 @@ export const AgentInspectorSection = ({
                   </select>
                 </label>
 
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    {t("workflowBuilder.agentInspector.computerUseModeLabel")}
+                    <HelpTooltip
+                      label={t("workflowBuilder.agentInspector.computerUseModeHelp")}
+                    />
+                  </span>
+                  <select
+                    value={computerUseModeValue}
+                    onChange={(event) =>
+                      handleComputerUseFieldChange({ mode: event.target.value })
+                    }
+                  >
+                    <option value="agent">
+                      {t("workflowBuilder.agentInspector.computerUseMode.agent")}
+                    </option>
+                    <option value="manual">
+                      {t("workflowBuilder.agentInspector.computerUseMode.manual")}
+                    </option>
+                  </select>
+                </label>
+
                 <label className={styles.nodeInspectorField}>
                   <span className={styles.nodeInspectorLabel}>
                     {t(
@@ -1638,6 +1641,228 @@ export const AgentInspectorSection = ({
                     )}
                   />
                 </label>
+
+                {computerUseEnvironmentIsSsh ? (
+                  <>
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseSshHostLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseSshHostHelp",
+                          )}
+                        />
+                      </span>
+                      <input
+                        type="text"
+                        value={computerUseSshHostValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            ssh_host: event.target.value,
+                          })
+                        }
+                        placeholder="192.168.1.100"
+                      />
+                    </label>
+
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseSshPortLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseSshPortHelp",
+                          )}
+                        />
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={computerUseSshPortValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            ssh_port: event.target.value,
+                          })
+                        }
+                        placeholder="22"
+                      />
+                    </label>
+
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseSshUsernameLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseSshUsernameHelp",
+                          )}
+                        />
+                      </span>
+                      <input
+                        type="text"
+                        value={computerUseSshUsernameValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            ssh_username: event.target.value,
+                          })
+                        }
+                        placeholder="root"
+                      />
+                    </label>
+
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseSshPasswordLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseSshPasswordHelp",
+                          )}
+                        />
+                      </span>
+                      <input
+                        type="password"
+                        value={computerUseSshPasswordValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            ssh_password: event.target.value,
+                          })
+                        }
+                        placeholder="••••••••"
+                      />
+                    </label>
+
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseSshPrivateKeyLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseSshPrivateKeyHelp",
+                          )}
+                        />
+                      </span>
+                      <textarea
+                        value={computerUseSshPrivateKeyValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            ssh_private_key: event.target.value,
+                          })
+                        }
+                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
+                        rows={4}
+                        style={{ fontFamily: "monospace", fontSize: "12px" }}
+                      />
+                    </label>
+                  </>
+                ) : null}
+
+                {computerUseEnvironmentIsVnc ? (
+                  <>
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseVncHostLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseVncHostHelp",
+                          )}
+                        />
+                      </span>
+                      <input
+                        type="text"
+                        value={computerUseVncHostValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            vnc_host: event.target.value,
+                          })
+                        }
+                        placeholder="192.168.1.100"
+                      />
+                    </label>
+
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseVncPortLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseVncPortHelp",
+                          )}
+                        />
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={computerUseVncPortValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            vnc_port: event.target.value,
+                          })
+                        }
+                        placeholder="5900"
+                      />
+                    </label>
+
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseVncPasswordLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseVncPasswordHelp",
+                          )}
+                        />
+                      </span>
+                      <input
+                        type="password"
+                        value={computerUseVncPasswordValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            vnc_password: event.target.value,
+                          })
+                        }
+                        placeholder="••••••••"
+                      />
+                    </label>
+
+                    <label className={styles.nodeInspectorField}>
+                      <span className={styles.nodeInspectorLabel}>
+                        {t(
+                          "workflowBuilder.agentInspector.computerUseNoVncPortLabel",
+                        )}
+                        <HelpTooltip
+                          label={t(
+                            "workflowBuilder.agentInspector.computerUseNoVncPortHelp",
+                          )}
+                        />
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={computerUseNoVncPortValue}
+                        onChange={(event) =>
+                          handleComputerUseFieldChange({
+                            novnc_port: event.target.value,
+                          })
+                        }
+                        placeholder="6080"
+                      />
+                    </label>
+                  </>
+                ) : null}
               </div>
             ) : null}
 
