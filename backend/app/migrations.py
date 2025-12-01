@@ -55,6 +55,68 @@ def _app_settings_has_lti_columns(connection) -> bool:
     return required.issubset(columns)
 
 
+def _app_settings_has_appearance_columns(connection) -> bool:
+    inspector = inspect(connection)
+    if not inspector.has_table("app_settings"):
+        return False
+    columns = {column["name"] for column in inspector.get_columns("app_settings")}
+    required = {
+        "appearance_color_scheme",
+        "appearance_radius_style",
+        "appearance_accent_color",
+        "appearance_use_custom_surface",
+        "appearance_surface_hue",
+        "appearance_surface_tint",
+        "appearance_surface_shade",
+        "appearance_heading_font",
+        "appearance_body_font",
+        "appearance_start_greeting",
+        "appearance_start_prompt",
+        "appearance_input_placeholder",
+        "appearance_disclaimer",
+    }
+    return required.issubset(columns)
+
+
+def _add_app_settings_appearance_columns(connection) -> None:
+    inspector = inspect(connection)
+
+    if not inspector.has_table("app_settings"):
+        logger.warning(
+            "Cannot add appearance columns to app_settings because the table does not exist"
+        )
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("app_settings")
+    }
+
+    statements: tuple[tuple[str, str], ...] = (
+        ("appearance_color_scheme", "VARCHAR(16)"),
+        ("appearance_radius_style", "VARCHAR(16)"),
+        ("appearance_accent_color", "VARCHAR(32)"),
+        ("appearance_use_custom_surface", "BOOLEAN"),
+        ("appearance_surface_hue", "FLOAT"),
+        ("appearance_surface_tint", "FLOAT"),
+        ("appearance_surface_shade", "FLOAT"),
+        ("appearance_heading_font", "VARCHAR(128)"),
+        ("appearance_body_font", "VARCHAR(128)"),
+        ("appearance_start_greeting", "TEXT"),
+        ("appearance_start_prompt", "TEXT"),
+        ("appearance_input_placeholder", "TEXT"),
+        ("appearance_disclaimer", "TEXT"),
+    )
+
+    for column_name, column_type in statements:
+        if column_name in existing_columns:
+            continue
+        connection.execute(
+            text(
+                f"ALTER TABLE app_settings ADD COLUMN {column_name} {column_type}"
+            )
+        )
+
+
 def _add_app_settings_lti_columns(connection) -> None:
     inspector = inspect(connection)
 
@@ -437,6 +499,12 @@ def check_and_apply_migrations():
             "description": "Add permission column to workflow_shares for read/write access control",
             "check_fn": _workflow_shares_has_permission_column,
             "apply_fn": _add_workflow_shares_permission_column,
+        },
+        {
+            "id": "011_add_appearance_to_app_settings",
+            "description": "Add appearance columns to app_settings",
+            "check_fn": _app_settings_has_appearance_columns,
+            "apply_fn": _add_app_settings_appearance_columns,
         },
     ]
 
