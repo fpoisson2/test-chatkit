@@ -346,7 +346,7 @@ button {
   --chatkit-sidebar-padding-x: 24px;
   --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   overflow: hidden;
-  transition: margin-left 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 }
 
@@ -431,7 +431,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, var(--chatkit-sidebar-collapsed-width)) 1fr;
   align-items: stretch;
-  transition: grid-template-columns 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open {
