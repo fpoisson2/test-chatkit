@@ -111,7 +111,11 @@ export function SSHTerminal({
 
     // Build WebSocket URL
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/computer/ssh/ws?token=${sshToken}`;
+    let wsUrl = `${protocol}//${window.location.host}/api/computer/ssh/ws?token=${sshToken}`;
+
+    if (authToken) {
+      wsUrl += `&auth_token=${encodeURIComponent(authToken)}`;
+    }
 
     terminal.writeln("\x1b[33mConnexion au serveur SSH...\x1b[0m");
 
