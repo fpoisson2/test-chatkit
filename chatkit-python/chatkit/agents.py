@@ -1393,16 +1393,20 @@ async def stream_agent_response(
         token_added = False
         if tracker.task.debug_url_token is None:
             computer_tool = get_current_computer_tool()
+            LOGGER.info(f"[ComputerTaskTracker] Checking for debug_url, computer_tool={'found' if computer_tool else 'None'}")
             if computer_tool is not None:
                 try:
                     computer = getattr(computer_tool, "computer", None)
+                    LOGGER.info(f"[ComputerTaskTracker] computer={'found' if computer else 'None'}")
                     if computer is not None:
                         debug_url = getattr(computer, "debug_url", None)
                         if callable(debug_url):
                             debug_url = debug_url()
+                        LOGGER.info(f"[ComputerTaskTracker] debug_url={debug_url if debug_url else 'None'}")
                         if debug_url:
                             LOGGER.info(f"[ComputerTaskTracker] Browser started, obtained debug_url: {debug_url}")
                             callback = get_debug_session_callback()
+                            LOGGER.info(f"[ComputerTaskTracker] callback={'found' if callback else 'None'}")
                             if callback is not None:
                                 try:
                                     debug_url_token = callback(debug_url, user_id=None)
