@@ -1331,6 +1331,7 @@ export const fr: TranslationDictionary = {
   "chatkit.task.command": "Commande",
   "chatkit.task.stdout": "Sortie standard",
   "chatkit.task.stderr": "Erreur standard",
+  "chatkit.task.messages": "Messages",
   "admin.browserTest.title": "Test navigateur",
   "admin.browserTest.description": "Testez l'automatisation du navigateur Chrome et la fonctionnalité de diffusion en direct utilisée par les outils computer use.",
   "admin.browserTest.controls.title": "Contrôles du navigateur",

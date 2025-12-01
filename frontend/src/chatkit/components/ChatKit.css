@@ -2485,6 +2485,39 @@
   margin-top: 4px;
 }
 
+.chatkit-shell-call-messages {
+  margin-bottom: 10px;
+}
+
+.chatkit-shell-call-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.chatkit-shell-call-message {
+  padding: 8px 10px;
+  background: var(--color-bg-subtle);
+  border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+}
+
+.chatkit-shell-call-message-role {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--color-text-subtle);
+  text-transform: capitalize;
+}
+
+.chatkit-shell-call-message-content {
+  font-size: 13px;
+  color: var(--color-text-default);
+}
+
 .chatkit-shell-call-output pre {
   background: var(--color-bg-subtle);
   color: var(--color-text-default);

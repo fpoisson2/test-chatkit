@@ -1278,6 +1278,7 @@ export const en: TranslationDictionary = {
   "chatkit.task.command": "Command",
   "chatkit.task.stdout": "Stdout",
   "chatkit.task.stderr": "Stderr",
+  "chatkit.task.messages": "Messages",
   "admin.browserTest.title": "Browser Test",
   "admin.browserTest.description": "Test the Chrome browser automation and live screencast functionality used by computer use tools.",
   "admin.browserTest.controls.title": "Browser Controls",

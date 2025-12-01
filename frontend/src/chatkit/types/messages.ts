@@ -232,10 +232,16 @@ export interface ShellCommandOutput {
   outcome?: ShellCallOutcome;
 }
 
+export interface ShellCommandMessage {
+  role: string;
+  content: string;
+}
+
 export interface ShellCallTask extends BaseTask {
   type: 'shell_call';
   title?: string;
   output?: ShellCommandOutput[];
+  messages?: ShellCommandMessage[];
 }
 
 export interface VoiceAgentTask extends BaseTask {

@@ -124,7 +124,7 @@ export function TaskRenderer({
           backendUrl={backendUrl}
         />
       )}
-      {task.type === 'shell_call' && <ShellCallTaskRenderer task={task} icon={icon} />}
+      {task.type === 'shell_call' && <ShellCallTaskRenderer task={task} theme={theme} icon={icon} />}
     </div>
   );
 }
@@ -244,13 +244,28 @@ function ImageTaskRenderer({ task, t, icon }: { task: ImageTask; t: (key: string
   );
 }
 
-function ShellCallTaskRenderer({ task, icon }: { task: Extract<Task, { type: 'shell_call' }>; icon?: React.ReactNode | null }): JSX.Element {
+function ShellCallTaskRenderer({ task, icon, theme = 'light' }: { task: Extract<Task, { type: 'shell_call' }>; icon?: React.ReactNode | null; theme?: 'light' | 'dark' }): JSX.Element {
   const { t } = useI18n();
 
   return (
     <div className="chatkit-task-shell-call">
       <TaskLayout icon={icon}>
         {task.title && <div className="chatkit-task-title">{task.title}</div>}
+        {task.messages && task.messages.length > 0 && (
+          <div className="chatkit-shell-call-messages">
+            <div className="chatkit-shell-call-label">{t('chatkit.task.messages')}</div>
+            <div className="chatkit-shell-call-message-list">
+              {task.messages.map((message, messageIndex) => (
+                <div key={messageIndex} className="chatkit-shell-call-message">
+                  <span className="chatkit-shell-call-message-role">{message.role}</span>
+                  <div className="chatkit-shell-call-message-content">
+                    <MarkdownRenderer content={message.content} theme={theme} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {task.output && task.output.length > 0 && (
           <div className="chatkit-task-shell-calls">
             {task.output.map((call, index) => (

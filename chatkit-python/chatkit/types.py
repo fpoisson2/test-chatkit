@@ -919,12 +919,23 @@ class ShellCommandOutput(BaseModel):
     """Outcome metadata such as exit codes."""
 
 
+class ShellCommandMessage(BaseModel):
+    """Transcript entry associated with a shell command execution."""
+
+    role: str
+    """Message author (e.g., ``"system"``, ``"assistant"``)."""
+
+    content: str
+    """Message text content."""
+
+
 class ShellCallTask(BaseTask):
     """Workflow task representing one or more shell command executions."""
 
     type: Literal["shell_call"] = "shell_call"
     title: str | None = None
     output: list[ShellCommandOutput] = Field(default_factory=list)
+    messages: list[ShellCommandMessage] = Field(default_factory=list)
 
 
 Task = Annotated[
