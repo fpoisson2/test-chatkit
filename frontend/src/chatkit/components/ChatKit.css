@@ -2802,3 +2802,220 @@
 [data-theme="dark"] .chatkit-usage-model {
   color: #9ca3af;
 }
+
+/* ===== APPLY PATCH TASK ===== */
+.chatkit-task-apply-patch {
+  width: 100%;
+}
+
+.chatkit-apply-patch-operations {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.chatkit-apply-patch-operation {
+  border-radius: 8px;
+  border-left: 4px solid;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.chatkit-apply-patch-operation--create_file {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.chatkit-apply-patch-operation--update_file {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.chatkit-apply-patch-operation--delete_file {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.chatkit-apply-patch-operation-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.chatkit-apply-patch-operation-type {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.chatkit-apply-patch-operation--create_file .chatkit-apply-patch-operation-type {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+
+.chatkit-apply-patch-operation--update_file .chatkit-apply-patch-operation-type {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+}
+
+.chatkit-apply-patch-operation--delete_file .chatkit-apply-patch-operation-type {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+}
+
+.chatkit-apply-patch-operation-path {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 13px;
+  color: #374151;
+  font-weight: 600;
+  flex: 1;
+}
+
+.chatkit-apply-patch-operation-status {
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.chatkit-apply-patch-operation-status--completed {
+  color: #16a34a;
+}
+
+.chatkit-apply-patch-operation-status--failed {
+  color: #dc2626;
+}
+
+.chatkit-apply-patch-diff {
+  margin-top: 8px;
+}
+
+.chatkit-diff-preview {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 0;
+  overflow-x: auto;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.chatkit-diff-line {
+  padding: 2px 6px;
+  margin: 0 -6px;
+  border-radius: 3px;
+  white-space: pre;
+}
+
+.chatkit-diff-line--addition {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+  font-weight: 500;
+}
+
+.chatkit-diff-line--deletion {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+.chatkit-diff-line--context {
+  color: #6b7280;
+  font-style: italic;
+  font-size: 11px;
+}
+
+.chatkit-apply-patch-error {
+  margin-top: 8px;
+  padding: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 6px;
+  color: #dc2626;
+  font-size: 13px;
+  border-left: 3px solid #ef4444;
+}
+
+/* Dark mode overrides */
+[data-theme="dark"] .chatkit-apply-patch-operation {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation--create_file {
+  border-color: #4ade80;
+  background: rgba(74, 222, 128, 0.08);
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation--update_file {
+  border-color: #60a5fa;
+  background: rgba(96, 165, 250, 0.08);
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation--delete_file {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation-type {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation--create_file .chatkit-apply-patch-operation-type {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation--update_file .chatkit-apply-patch-operation-type {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation--delete_file .chatkit-apply-patch-operation-type {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation-path {
+  color: #e5e7eb;
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation-status--completed {
+  color: #4ade80;
+}
+
+[data-theme="dark"] .chatkit-apply-patch-operation-status--failed {
+  color: #f87171;
+}
+
+[data-theme="dark"] .chatkit-diff-preview {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .chatkit-diff-line--addition {
+  background: rgba(74, 222, 128, 0.12);
+  color: #86efac;
+}
+
+[data-theme="dark"] .chatkit-diff-line--deletion {
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+}
+
+[data-theme="dark"] .chatkit-diff-line--context {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .chatkit-apply-patch-error {
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+  border-color: #f87171;
+}
